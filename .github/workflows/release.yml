@@ -394,16 +394,23 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          path: artifacts/
+          name: windows-installer
+          path: release/
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-amd64
+          path: release/
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-arm64
+          path: release/
+      - uses: actions/download-artifact@v4
+        with:
+          name: pi-image
+          path: release/
 
-      - name: Collect release files
-        run: |
-          mkdir -p release/
-          cp artifacts/windows-installer/*.exe release/
-          cp artifacts/linux-amd64/*.tar.gz release/
-          cp artifacts/linux-arm64/*.tar.gz release/
-          cp artifacts/pi-image/*.img.xz release/
-          ls -lh release/
+      - name: List release files
+        run: ls -lh release/
 
       - name: Generate checksums
         working-directory: release
