@@ -42,9 +42,16 @@ REM Configure logging (NSSM's own stdout/stderr capture)
 REM Create data and log directories
 if not exist "%DATA_DIR%" mkdir "%DATA_DIR%"
 if not exist "%DATA_DIR%\logs" mkdir "%DATA_DIR%\logs"
-if not exist "%DATA_DIR%\projects" mkdir "%DATA_DIR%\projects"
+if not exist "%DATA_DIR%\projects\default" mkdir "%DATA_DIR%\projects\default"
 if not exist "%DATA_DIR%\drivers" mkdir "%DATA_DIR%\drivers"
 if not exist "%DATA_DIR%\backups" mkdir "%DATA_DIR%\backups"
+
+REM Seed default project if not present
+if not exist "%DATA_DIR%\projects\default\project.avc" (
+    if exist "%INSTALL_DIR%\_internal\projects\default\project.avc" (
+        copy "%INSTALL_DIR%\_internal\projects\default\project.avc" "%DATA_DIR%\projects\default\project.avc" >nul
+    )
+)
 
 REM Start the service
 "%INSTALL_DIR%\nssm.exe" start OpenAVC

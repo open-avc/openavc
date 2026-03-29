@@ -112,6 +112,7 @@ begin
   if CurStep = ssPostInstall then
   begin
     AddFirewallRule();
+    SeedDefaultProject();
   end;
 end;
 
