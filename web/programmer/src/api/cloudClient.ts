@@ -1,131 +1,27 @@
 /**
- * Cloud AI API client — communicates directly with OpenAVC Cloud
- * for AI chat features. Separate from restClient which talks to the local instance.
+ * AI API client — communicates with the local server's AI proxy endpoints.
+ *
+ * The local server proxies requests to the cloud using system-level HMAC auth
+ * (established during pairing). No separate cloud login is needed.
  */
 
-// --- Cloud auth state (persisted in sessionStorage — not localStorage to reduce XSS risk) ---
-
-const CLOUD_TOKEN_KEY = "openavc_cloud_token";
-const CLOUD_REFRESH_TOKEN_KEY = "openavc_cloud_refresh_token";
-const CLOUD_ENDPOINT_KEY = "openavc_cloud_endpoint";
-
-export function getCloudToken(): string | null {
-  return sessionStorage.getItem(CLOUD_TOKEN_KEY);
+// Derive API base path so tunneled remote access works.
+function getBasePath(): string {
+  const pathParts = window.location.pathname.split("/programmer");
+  const prefix = pathParts[0] || "";
+  return `${prefix}/api/ai`;
 }
+const AI_BASE = getBasePath();
 
-export function setCloudToken(token: string): void {
-  sessionStorage.setItem(CLOUD_TOKEN_KEY, token);
-}
-
-export function getCloudEndpoint(): string | null {
-  return sessionStorage.getItem(CLOUD_ENDPOINT_KEY);
-}
-
-export function setCloudEndpoint(endpoint: string): void {
-  sessionStorage.setItem(CLOUD_ENDPOINT_KEY, endpoint);
-}
-
-export function getRefreshToken(): string | null {
-  return sessionStorage.getItem(CLOUD_REFRESH_TOKEN_KEY);
-}
-
-export function setRefreshToken(token: string): void {
-  sessionStorage.setItem(CLOUD_REFRESH_TOKEN_KEY, token);
-}
-
-export function clearCloudAuth(): void {
-  sessionStorage.removeItem(CLOUD_TOKEN_KEY);
-  sessionStorage.removeItem(CLOUD_REFRESH_TOKEN_KEY);
-  sessionStorage.removeItem(CLOUD_ENDPOINT_KEY);
-}
-
-/** Listeners notified when auth state changes (e.g., on 401). */
-let authChangeListeners: Array<() => void> = [];
-export function onAuthChange(handler: () => void): () => void {
-  authChangeListeners.push(handler);
-  return () => {
-    authChangeListeners = authChangeListeners.filter((h) => h !== handler);
-  };
-}
-function notifyAuthChange() {
-  for (const h of authChangeListeners) h();
-}
-
-export function isCloudAuthenticated(): boolean {
-  return !!getCloudToken() && !!getCloudEndpoint();
-}
-
-// --- Cloud API request helper ---
-
-let refreshInProgress: Promise<boolean> | null = null;
-
-async function tryRefreshToken(): Promise<boolean> {
-  const endpoint = getCloudEndpoint();
-  const refreshToken = getRefreshToken();
-  if (!endpoint || !refreshToken) return false;
-
-  try {
-    const res = await fetch(`${endpoint}/api/v1/auth/refresh`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh_token: refreshToken }),
-    });
-    if (!res.ok) return false;
-    const data = await res.json();
-    if (data.access_token) {
-      setCloudToken(data.access_token);
-      if (data.refresh_token) setRefreshToken(data.refresh_token);
-      return true;
-    }
-  } catch {
-    // Refresh failed — fall through
-  }
-  return false;
-}
-
-async function cloudRequest<T>(path: string, options?: RequestInit): Promise<T> {
-  const endpoint = getCloudEndpoint();
-  const token = getCloudToken();
-  if (!endpoint || !token) {
-    throw new Error("Not authenticated with cloud");
-  }
-
-  let res = await fetch(`${endpoint}/api/v1${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
+async function aiRequest<T>(path: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(`${AI_BASE}${path}`, {
+    headers: { "Content-Type": "application/json" },
     ...options,
   });
 
-  // On 401, attempt a silent token refresh
-  if (res.status === 401) {
-    if (!refreshInProgress) {
-      refreshInProgress = tryRefreshToken().finally(() => {
-        refreshInProgress = null;
-      });
-    }
-    const refreshed = await refreshInProgress;
-    if (refreshed) {
-      // Retry with new token
-      res = await fetch(`${endpoint}/api/v1${path}`, {
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${getCloudToken()}`,
-        },
-        ...options,
-      });
-    }
-    if (res.status === 401) {
-      clearCloudAuth();
-      notifyAuthChange();
-      throw new Error("Cloud session expired. Please log in again.");
-    }
-  }
-
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`Cloud API ${res.status}: ${body}`);
+    throw new Error(`AI API ${res.status}: ${body}`);
   }
 
   // Handle empty responses (e.g., 204 No Content)
@@ -136,33 +32,15 @@ async function cloudRequest<T>(path: string, options?: RequestInit): Promise<T> 
   return res.json();
 }
 
-// --- Cloud auth ---
+// --- AI status ---
 
-export interface CloudLoginResponse {
-  access_token: string;
-  refresh_token: string;
-  token_type: string;
+export interface AIStatus {
+  available: boolean;
+  reason?: string;
 }
 
-export async function cloudLogin(
-  endpoint: string,
-  email: string,
-  password: string
-): Promise<CloudLoginResponse> {
-  const res = await fetch(`${endpoint}/api/v1/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Login failed: ${body}`);
-  }
-  const data: CloudLoginResponse = await res.json();
-  setCloudEndpoint(endpoint);
-  setCloudToken(data.access_token);
-  if (data.refresh_token) setRefreshToken(data.refresh_token);
-  return data;
+export async function getAIStatus(): Promise<AIStatus> {
+  return aiRequest<AIStatus>("/status");
 }
 
 // --- AI Chat API ---
@@ -215,7 +93,7 @@ export interface AIUsage {
 }
 
 export async function sendChatMessage(req: ChatRequest): Promise<ChatResponse> {
-  return cloudRequest<ChatResponse>("/ai/chat", {
+  return aiRequest<ChatResponse>("/chat", {
     method: "POST",
     body: JSON.stringify(req),
   });
@@ -250,59 +128,24 @@ export interface StreamCallbacks {
 
 /**
  * Stream a chat message via SSE. Returns an AbortController to cancel.
- * Uses fetch + ReadableStream (not EventSource) because we need POST + auth headers.
  */
 export function streamChatMessage(
   req: ChatRequest,
   callbacks: StreamCallbacks,
 ): AbortController {
   const controller = new AbortController();
-  const endpoint = getCloudEndpoint();
-  const token = getCloudToken();
-
-  if (!endpoint || !token) {
-    callbacks.onError?.("Not authenticated with cloud");
-    return controller;
-  }
 
   (async () => {
     try {
-      const res = await fetch(`${endpoint}/api/v1/ai/chat?stream=true`, {
+      const res = await fetch(`${AI_BASE}/chat?stream=true`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
           Accept: "text/event-stream",
         },
         body: JSON.stringify(req),
         signal: controller.signal,
       });
-
-      if (res.status === 401) {
-        // Try token refresh
-        if (!refreshInProgress) {
-          refreshInProgress = tryRefreshToken().finally(() => {
-            refreshInProgress = null;
-          });
-        }
-        const refreshed = await refreshInProgress;
-        if (!refreshed) {
-          clearCloudAuth();
-          notifyAuthChange();
-          callbacks.onError?.("Cloud session expired. Please log in again.");
-          return;
-        }
-        // Retry with new token (non-streaming fallback if refresh worked)
-        const retryRes = await sendChatMessage(req);
-        callbacks.onDone?.({
-          conversation_id: retryRes.conversation_id,
-          message: retryRes.message,
-          input_tokens: retryRes.input_tokens,
-          output_tokens: retryRes.output_tokens,
-          tool_calls: retryRes.tool_calls,
-        });
-        return;
-      }
 
       if (!res.ok) {
         const body = await res.text();
@@ -314,8 +157,12 @@ export function streamChatMessage(
           callbacks.onError?.(
             "AI features require an active subscription."
           );
+        } else if (res.status === 503) {
+          callbacks.onError?.(
+            "AI is not available. Make sure this system is paired and connected to the cloud."
+          );
         } else {
-          callbacks.onError?.(`Cloud API ${res.status}: ${body}`);
+          callbacks.onError?.(`AI API ${res.status}: ${body}`);
         }
         return;
       }
@@ -396,17 +243,17 @@ export function streamChatMessage(
 }
 
 export async function listConversations(): Promise<ConversationSummary[]> {
-  return cloudRequest<ConversationSummary[]>("/ai/conversations");
+  return aiRequest<ConversationSummary[]>("/conversations");
 }
 
 export async function getConversation(id: string): Promise<ConversationDetail> {
-  return cloudRequest<ConversationDetail>(`/ai/conversations/${id}`);
+  return aiRequest<ConversationDetail>(`/conversations/${id}`);
 }
 
 export async function deleteConversation(id: string): Promise<void> {
-  await cloudRequest(`/ai/conversations/${id}`, { method: "DELETE" });
+  await aiRequest(`/conversations/${id}`, { method: "DELETE" });
 }
 
 export async function getAIUsage(): Promise<AIUsage> {
-  return cloudRequest<AIUsage>("/ai/usage");
+  return aiRequest<AIUsage>("/usage");
 }

@@ -1,12 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { MessageSquare, Plus, Trash2, Undo2, Square, Search } from "lucide-react";
+import { MessageSquare, Plus, Trash2, Undo2, Square, Search, CloudOff } from "lucide-react";
 import { ViewContainer } from "../components/layout/ViewContainer";
 import { ChatMessage as ChatMessageComponent } from "../components/ai/ChatMessage";
 import { ChatInput } from "../components/ai/ChatInput";
-import { CloudLoginDialog } from "../components/ai/CloudLoginDialog";
 import { PromptCards, SuggestionChips } from "../components/ai/SuggestedPrompts";
 import { useAIChatStore } from "../store/aiChatStore";
-import { isCloudAuthenticated, clearCloudAuth } from "../api/cloudClient";
 import { getCloudStatus, getProject } from "../api/restClient";
 
 const listItemStyle: React.CSSProperties = {
@@ -31,7 +29,8 @@ function phaseLabel(phase: string | null, round: { current: number; max: number 
 }
 
 export function AIChatView() {
-  const authenticated = useAIChatStore((s) => s.authenticated);
+  const available = useAIChatStore((s) => s.available);
+  const unavailableReason = useAIChatStore((s) => s.unavailableReason);
   const conversations = useAIChatStore((s) => s.conversations);
   const activeConversationId = useAIChatStore((s) => s.activeConversationId);
   const messages = useAIChatStore((s) => s.messages);
@@ -43,7 +42,7 @@ export function AIChatView() {
   const currentRound = useAIChatStore((s) => s.currentRound);
   const suggestions = useAIChatStore((s) => s.suggestions);
 
-  const checkAuth = useAIChatStore((s) => s.checkAuth);
+  const checkAvailability = useAIChatStore((s) => s.checkAvailability);
   const loadConversations = useAIChatStore((s) => s.loadConversations);
   const selectConversation = useAIChatStore((s) => s.selectConversation);
   const newConversation = useAIChatStore((s) => s.newConversation);
@@ -54,28 +53,37 @@ export function AIChatView() {
   const undoMessage = useAIChatStore((s) => s.undoMessage);
   const revertAll = useAIChatStore((s) => s.revertAll);
 
-  const [showLogin, setShowLogin] = useState(false);
   const [systemId, setSystemId] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
 
-  // Auto-detect system_id from cloud status
+  // Check AI availability and auto-detect system_id
   useEffect(() => {
+    checkAvailability();
     getCloudStatus()
       .then((s) => {
         if (s.system_id) setSystemId(s.system_id);
       })
       .catch(console.error);
-  }, []);
+  }, [checkAvailability]);
 
-  // Load conversations when authenticated
+  // Load conversations when available
   useEffect(() => {
-    if (authenticated) {
+    if (available) {
       loadConversations();
     }
-  }, [authenticated, loadConversations]);
+  }, [available, loadConversations]);
+
+  // Periodically re-check availability (in case cloud connects/disconnects)
+  useEffect(() => {
+    if (available) return;
+    const interval = setInterval(() => {
+      checkAvailability();
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [available, checkAvailability]);
 
   // Auto-scroll on new content (only if user is at bottom)
   useEffect(() => {
@@ -113,19 +121,8 @@ export function AIChatView() {
     await revertAll();
   }, [undoStack, revertAll]);
 
-  const handleLogout = useCallback(() => {
-    clearCloudAuth();
-    checkAuth();
-  }, [checkAuth]);
-
-  const handleLoginSuccess = useCallback(() => {
-    setShowLogin(false);
-    checkAuth();
-    loadConversations();
-  }, [checkAuth, loadConversations]);
-
-  // Not authenticated
-  if (!authenticated) {
+  // Not available — show connection message
+  if (!available) {
     return (
       <ViewContainer title="AI Assistant">
         <div
@@ -140,80 +137,47 @@ export function AIChatView() {
             padding: "var(--space-xl)",
           }}
         >
-          <MessageSquare size={48} style={{ color: "var(--text-muted)" }} />
+          <CloudOff size={48} style={{ color: "var(--text-muted)" }} />
           <h2 style={{ fontSize: "var(--font-size-lg)" }}>AI Assistant</h2>
           <p style={{ color: "var(--text-secondary)", maxWidth: 400 }}>
-            Describe what you want to build and AI will create it. Sign in once
-            with your OpenAVC Cloud credentials.
+            AI features require a cloud connection. Pair this system with your
+            OpenAVC Cloud account in the Cloud settings to get started.
           </p>
-          <button
-            onClick={() => setShowLogin(true)}
-            style={{
-              padding: "8px 24px",
-              fontSize: "var(--font-size-sm)",
-              borderRadius: "var(--border-radius)",
-              background: "var(--accent)",
-              color: "#fff",
-              border: "none",
-              cursor: "pointer",
-              fontWeight: 500,
-            }}
-          >
-            Sign in to Cloud
-          </button>
-          {showLogin && (
-            <CloudLoginDialog
-              onSuccess={handleLoginSuccess}
-              onClose={() => setShowLogin(false)}
-            />
+          {unavailableReason && unavailableReason !== "Checking..." && (
+            <p style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}>
+              {unavailableReason}
+            </p>
           )}
         </div>
       </ViewContainer>
     );
   }
 
-  // Authenticated
+  // Available
   return (
     <ViewContainer
       title="AI Assistant"
       actions={
-        <div style={{ display: "flex", gap: "var(--space-sm)", alignItems: "center" }}>
-          {undoStack.length > 0 && (
-            <button
-              onClick={handleRevertAll}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "var(--space-xs)",
-                padding: "var(--space-xs) var(--space-md)",
-                borderRadius: "var(--border-radius)",
-                background: "#e53e3e",
-                color: "#fff",
-                fontSize: "var(--font-size-sm)",
-                border: "none",
-                cursor: "pointer",
-              }}
-              title="Revert all AI changes"
-            >
-              <Undo2 size={14} /> Revert all
-            </button>
-          )}
+        undoStack.length > 0 ? (
           <button
-            onClick={handleLogout}
+            onClick={handleRevertAll}
             style={{
-              padding: "4px 8px",
-              fontSize: "var(--font-size-sm)",
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--space-xs)",
+              padding: "var(--space-xs) var(--space-md)",
               borderRadius: "var(--border-radius)",
-              border: "1px solid var(--border-color)",
-              background: "var(--bg-hover)",
-              color: "var(--text-secondary)",
+              background: "#e53e3e",
+              color: "#fff",
+              fontSize: "var(--font-size-sm)",
+              border: "none",
               cursor: "pointer",
             }}
-            title="Sign out of cloud"
+            title="Revert all AI changes"
           >
-            Sign out
+            <Undo2 size={14} /> Revert all
           </button>
-        </div>
+        ) : undefined
       }
     >
       <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>

@@ -1,5 +1,5 @@
 /**
- * AI Chat store — manages conversations, messages, streaming state, cloud auth, and undo.
+ * AI Chat store — manages conversations, messages, streaming state, and undo.
  */
 
 import { create } from "zustand";
@@ -28,9 +28,9 @@ export interface Message {
 }
 
 interface AIChatStore {
-  // Cloud auth
-  authenticated: boolean;
-  cloudEndpoint: string;
+  // AI availability (cloud paired + connected)
+  available: boolean;
+  unavailableReason: string;
 
   // Conversations
   conversations: cloud.ConversationSummary[];
@@ -54,7 +54,7 @@ interface AIChatStore {
   undoStack: { messageId: string; snapshot: unknown }[];
 
   // Actions
-  checkAuth: () => void;
+  checkAvailability: () => Promise<void>;
   loadConversations: () => Promise<void>;
   selectConversation: (id: string) => Promise<void>;
   newConversation: () => void;
@@ -68,8 +68,8 @@ interface AIChatStore {
 }
 
 export const useAIChatStore = create<AIChatStore>((set, get) => ({
-  authenticated: cloud.isCloudAuthenticated(),
-  cloudEndpoint: cloud.getCloudEndpoint() || "",
+  available: false,
+  unavailableReason: "Checking...",
   conversations: [],
   activeConversationId: null,
   messages: [],
@@ -82,12 +82,19 @@ export const useAIChatStore = create<AIChatStore>((set, get) => ({
   suggestions: [],
   undoStack: [],
 
-  checkAuth: () => {
-    set({ authenticated: cloud.isCloudAuthenticated() });
+  checkAvailability: async () => {
+    try {
+      const status = await cloud.getAIStatus();
+      set({
+        available: status.available,
+        unavailableReason: status.reason || "",
+      });
+    } catch {
+      set({ available: false, unavailableReason: "Could not check AI status" });
+    }
   },
 
   loadConversations: async () => {
-    if (!cloud.isCloudAuthenticated()) return;
     set({ loading: true, error: null });
     try {
       const conversations = await cloud.listConversations();
@@ -362,8 +369,3 @@ export const useAIChatStore = create<AIChatStore>((set, get) => ({
     }
   },
 }));
-
-// Listen for auth changes and sync store
-cloud.onAuthChange(() => {
-  useAIChatStore.getState().checkAuth();
-});

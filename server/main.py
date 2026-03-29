@@ -23,7 +23,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from server import config
-from server.api import rest, ws, isc_ws, discovery as discovery_api, plugins as plugins_api, assets as assets_api, themes as themes_api
+from server.api import rest, ws, isc_ws, discovery as discovery_api, plugins as plugins_api, assets as assets_api, themes as themes_api, ai_proxy as ai_proxy_api
 from server.core.engine import Engine
 from server.discovery.engine import DiscoveryEngine
 from server.utils.logger import get_logger
@@ -86,6 +86,7 @@ ws.set_engine(engine)
 plugins_api.set_engine(engine)
 assets_api.set_engine(engine)
 themes_api.set_engine(engine)
+ai_proxy_api.set_engine(engine)
 
 # Wire discovery engine
 discovery_api.set_discovery_engine(discovery_engine)
@@ -102,6 +103,7 @@ app.include_router(plugins_api.router)
 app.include_router(assets_api.open_router)
 app.include_router(assets_api.router)
 app.include_router(themes_api.router)
+app.include_router(ai_proxy_api.router)
 
 # CORS — allow same-origin and localhost by default.
 # Additional origins can be set via OPENAVC_CORS_ORIGINS (comma-separated).

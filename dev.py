@@ -10,7 +10,6 @@ Usage:
 
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -43,15 +42,7 @@ def main():
     # Step 1: Always build programmer UI (takes ~2s)
     build_programmer_ui()
 
-    # Step 2: Start PJLink simulator in background
-    print("[dev] Starting PJLink simulator...")
-    simulator = subprocess.Popen(
-        [sys.executable, "-m", "tests.simulators.pjlink_simulator"],
-        cwd=str(ROOT),
-    )
-    time.sleep(0.5)
-
-    # Step 3: Start the server (foreground)
+    # Step 2: Start the server (foreground)
     print("[dev] Starting OpenAVC server...")
     print("[dev]")
     print("[dev]   Panel:      http://localhost:8080/panel")
@@ -70,11 +61,6 @@ def main():
     except KeyboardInterrupt:
         print("\n[dev] Shutting down...")
     finally:
-        simulator.terminate()
-        try:
-            simulator.wait(timeout=3)
-        except subprocess.TimeoutExpired:
-            simulator.kill()
         print("[dev] Stopped.")
 
 
