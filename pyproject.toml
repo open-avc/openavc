@@ -1,0 +1,51 @@
+[project]
+name = "openavc"
+version = "0.1.0"
+description = "Open-source AV room control platform"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+    {name = "Aaron Todd"},
+]
+
+dependencies = [
+    "fastapi==0.115.12",         # MIT - Web framework + WebSocket support
+    "python-multipart==0.0.20",  # Apache-2.0 - Required by FastAPI for file uploads
+    "uvicorn[standard]==0.34.2", # BSD-3 - ASGI server
+    "websockets==16.0",          # BSD-3 - WebSocket library
+    "pyserial==3.5",             # BSD-3 - RS-232 serial communication
+    "pyserial-asyncio==0.6",     # BSD-3 - Async serial support
+    "zeroconf==0.148.0",         # Apache-2.0 - mDNS discovery
+    "aiosqlite==0.21.0",         # MIT - Async SQLite
+    "pydantic==2.11.1",          # MIT - Data validation
+    "pyyaml==6.0.3",             # MIT - YAML parsing
+    "httpx==0.28.1",             # BSD-3 - Async HTTP client (for HTTP transport)
+    "croniter==6.2.2",           # MIT - Cron expression parser (pure Python)
+    "defusedxml==0.7.1",         # PSF - Safe XML parsing (prevents XXE/billion laughs)
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.3.5",             # MIT - Testing framework
+    "pytest-asyncio==0.26.0",    # Apache-2.0 - Async test support
+    "ruff>=0.6.0",               # MIT - Fast Python linter/formatter (unpinned, linter updates are safe)
+]
+pi = [
+    "gpiozero>=2.0.0",           # BSD-3 - GPIO access (Pi only)
+]
+
+[tool.setuptools.packages.find]
+include = ["server*", "tests*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint.per-file-ignores]
+"server/main.py" = ["E402"]
+"server/api/rest.py" = ["E402"]
+"server/core/project_loader.py" = ["E402"]

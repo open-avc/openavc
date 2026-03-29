@@ -1,0 +1,67 @@
+{
+    "openavc_version": "0.3.0",
+    "project": {
+        "id": "New_Room",
+        "name": "New Room",
+        "description": "",
+        "created": "2026-01-01T00:00:00.000000",
+        "modified": "2026-01-01T00:00:00.000000"
+    },
+    "devices": [],
+    "connections": {},
+    "driver_dependencies": [],
+    "plugin_dependencies": [],
+    "plugins": {},
+    "variables": [],
+    "macros": [],
+    "ui": {
+        "settings": {
+            "theme": "dark",
+            "theme_id": "slate",
+            "theme_overrides": {},
+            "accent_color": "#2196F3",
+            "font_family": "Inter, system-ui, sans-serif",
+            "lock_code": "",
+            "idle_timeout_seconds": 0,
+            "idle_page": "main",
+            "orientation": "landscape",
+            "page_transition": "none",
+            "page_transition_duration": 200,
+            "element_entry": "none",
+            "element_entry_duration": 150,
+            "element_entry_delay": 30,
+            "background_image": "",
+            "background_size": "cover",
+            "background_position": "center",
+            "background_opacity": 1.0
+        },
+        "pages": [
+            {
+                "id": "main",
+                "name": "Main",
+                "icon": "layout-dashboard",
+                "group": "",
+                "elements": [],
+                "grid": {
+                    "columns": 12,
+                    "row_height": 60,
+                    "gap": 8,
+                    "padding": 16
+                },
+                "overlays": [],
+                "background_image": "",
+                "background_size": "cover",
+                "background_position": "center",
+                "background_opacity": 1.0
+            }
+        ],
+        "master_elements": []
+    },
+    "scripts": [],
+    "schedules": [],
+    "isc": {
+        "instance_name": "",
+        "shared_variables": [],
+        "peers": []
+    }
+}

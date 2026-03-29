@@ -1,0 +1,27 @@
+[Unit]
+Description=OpenAVC Room Control Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=openavc
+Group=openavc
+WorkingDirectory=/opt/openavc
+ExecStart=/opt/openavc/venv/bin/python -m server.main
+Restart=always
+RestartSec=5
+Environment=OPENAVC_DATA_DIR=/var/lib/openavc
+Environment=OPENAVC_LOG_DIR=/var/log/openavc
+Environment=OPENAVC_PROJECT=/var/lib/openavc/projects/default/project.avc
+Environment=OPENAVC_BIND=0.0.0.0
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/openavc /var/log/openavc
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,57 @@
+# Generic Serial Device Driver
+# Use this as a template for any RS-232/RS-485 controlled device.
+# Define your commands in the device config after adding the device.
+
+id: generic_serial
+name: Generic Serial Device
+manufacturer: Generic
+category: utility
+version: 1.0.0
+author: OpenAVC
+description: >
+  Send raw serial commands to any RS-232/RS-485 device.
+  Define commands in the device config.
+transport: serial
+delimiter: "\r"
+
+default_config:
+  port: ""
+  baudrate: 9600
+  parity: "N"
+  bytesize: 8
+  stopbits: 1
+  inter_command_delay: 0.1
+  poll_interval: 0
+
+config_schema:
+  port:
+    type: string
+    required: true
+    label: Serial Port
+    description: "e.g., COM3 or /dev/ttyUSB0. Use SIM:name for simulation."
+  baudrate:
+    type: integer
+    default: 9600
+    label: Baud Rate
+  parity:
+    type: enum
+    values: ["N", "E", "O"]
+    default: "N"
+    label: Parity
+  bytesize:
+    type: integer
+    default: 8
+    label: Data Bits
+  stopbits:
+    type: number
+    default: 1
+    label: Stop Bits
+  inter_command_delay:
+    type: number
+    default: 0.1
+    label: Inter-Command Delay (sec)
+
+state_variables: {}
+commands: {}
+responses: []
+polling: {}

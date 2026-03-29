@@ -1,0 +1,114 @@
+{
+    "openavc_version": "0.1.0",
+    "project": {
+        "id": "simple_projector",
+        "name": "Simple Projector",
+        "description": "Single projector with power on/off control."
+    },
+    "devices": [
+        {
+            "id": "projector1",
+            "driver": "pjlink",
+            "name": "Projector",
+            "config": {
+                "host": "192.168.1.100",
+                "port": 4352
+            }
+        }
+    ],
+    "variables": [
+        {
+            "id": "system_power",
+            "type": "string",
+            "default": "off",
+            "label": "System Power State"
+        }
+    ],
+    "macros": [
+        {
+            "id": "system_on",
+            "name": "System On",
+            "steps": [
+                { "action": "device.command", "device": "projector1", "command": "power_on" },
+                { "action": "state.set", "key": "var.system_power", "value": "on" }
+            ]
+        },
+        {
+            "id": "system_off",
+            "name": "System Off",
+            "steps": [
+                { "action": "device.command", "device": "projector1", "command": "power_off" },
+                { "action": "state.set", "key": "var.system_power", "value": "off" }
+            ]
+        }
+    ],
+    "ui": {
+        "settings": {
+            "theme": "dark",
+            "accent_color": "#2196F3"
+        },
+        "pages": [
+            {
+                "id": "main",
+                "name": "Main",
+                "grid": { "columns": 4, "rows": 3 },
+                "elements": [
+                    {
+                        "id": "lbl_title",
+                        "type": "label",
+                        "text": "Projector Control",
+                        "grid_area": { "col": 1, "row": 1, "col_span": 4, "row_span": 1 },
+                        "style": { "font_size": 20, "text_align": "center" }
+                    },
+                    {
+                        "id": "btn_on",
+                        "type": "button",
+                        "label": "System On",
+                        "grid_area": { "col": 1, "row": 2, "col_span": 2, "row_span": 1 },
+                        "style": { "bg_color": "#4CAF50" },
+                        "bindings": {
+                            "press": { "action": "macro", "macro": "system_on" },
+                            "feedback": {
+                                "key": "var.system_power",
+                                "condition": { "equals": "on" },
+                                "style_active": { "bg_color": "#4CAF50", "text_color": "#fff" },
+                                "style_inactive": { "bg_color": "#424242" }
+                            }
+                        }
+                    },
+                    {
+                        "id": "btn_off",
+                        "type": "button",
+                        "label": "System Off",
+                        "grid_area": { "col": 3, "row": 2, "col_span": 2, "row_span": 1 },
+                        "style": { "bg_color": "#F44336" },
+                        "bindings": {
+                            "press": { "action": "macro", "macro": "system_off" },
+                            "feedback": {
+                                "key": "var.system_power",
+                                "condition": { "equals": "off" },
+                                "style_active": { "bg_color": "#F44336", "text_color": "#fff" },
+                                "style_inactive": { "bg_color": "#424242" }
+                            }
+                        }
+                    },
+                    {
+                        "id": "led_power",
+                        "type": "status_led",
+                        "grid_area": { "col": 2, "row": 3, "col_span": 2, "row_span": 1 },
+                        "bindings": {
+                            "color": {
+                                "key": "var.system_power",
+                                "map": { "on": "#4CAF50", "off": "#F44336" },
+                                "default": "#9E9E9E"
+                            }
+                        }
+                    }
+                ]
+            }
+        ]
+    },
+    "scripts": [],
+    "schedules": [],
+    "isc": { "shared_state": [], "auth_key": "" }
+}

@@ -1,0 +1,32 @@
+# pi-gen configuration for OpenAVC Raspberry Pi image
+# See: https://github.com/RPi-Distro/pi-gen#config
+
+# Image name (used in output filename)
+IMG_NAME=openavc-__VERSION__-pi
+
+# Target architecture (64-bit only)
+TARGET_HOSTNAME=openavc
+RELEASE=trixie
+
+# Use Raspberry Pi OS with Desktop as base (needed for kiosk display support)
+# If no display is connected, the server still runs headless over the network.
+STAGE_LIST="stage0 stage1 stage2 stage3 stage-openavc"
+
+# First user (openavc, password changed on first boot)
+FIRST_USER_NAME=openavc
+FIRST_USER_PASS=openavc
+
+# Locale and keyboard (sensible defaults, user can change later)
+KEYBOARD_KEYMAP=us
+KEYBOARD_LAYOUT="English (US)"
+TIMEZONE_DEFAULT=Etc/UTC
+LOCALE_DEFAULT=en_US.UTF-8
+
+# Enable SSH by default (headless access)
+ENABLE_SSH=1
+
+# Image compression
+DEPLOY_COMPRESSION=xz
+
+# Use 64-bit kernel and userspace
+ARCH=arm64

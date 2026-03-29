@@ -1,0 +1,18 @@
+[Unit]
+Description=OpenAVC Panel Kiosk Display
+After=openavc.service graphical.target
+Wants=openavc.service
+ConditionPathExists=/var/lib/openavc/system.json
+
+[Service]
+Type=simple
+User=openavc
+Environment=DISPLAY=:0
+Environment=WAYLAND_DISPLAY=wayland-1
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+ExecStart=/opt/openavc/scripts/panel-kiosk.sh
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=graphical.target

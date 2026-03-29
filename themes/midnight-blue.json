@@ -1,0 +1,145 @@
+{
+    "name": "Midnight Blue",
+    "id": "midnight-blue",
+    "version": "1.0.0",
+    "author": "OpenAVC",
+    "description": "Deep navy with indigo buttons and sky blue accents — designed for corporate boardrooms.",
+    "preview_colors": ["#0a1628", "#0f1f3d", "#42a5f5", "#cfd8dc"],
+    "variables": {
+        "panel_bg": "#0a1628",
+        "panel_text": "#cfd8dc",
+        "accent": "#42a5f5",
+        "accent_hover": "#2196f3",
+        "button_bg": "#1a237e",
+        "button_text": "#cfd8dc",
+        "button_active_bg": "#42a5f5",
+        "button_active_text": "#ffffff",
+        "button_border": "#283593",
+        "danger": "#e53935",
+        "success": "#43a047",
+        "warning": "#fb8c00",
+        "surface": "#0f1f3d",
+        "surface_border": "#1a2f52",
+        "grid_gap": 8,
+        "border_radius": 8,
+        "font_family": "Inter, system-ui, sans-serif"
+    },
+    "element_defaults": {
+        "button": {
+            "bg_color": "#1a237e",
+            "text_color": "#cfd8dc",
+            "border_width": 1,
+            "border_color": "#283593",
+            "border_radius": 8,
+            "box_shadow": "0 2px 6px rgba(0,0,0,0.4)"
+        },
+        "label": {
+            "bg_color": "transparent",
+            "text_color": "#cfd8dc",
+            "border_width": 0,
+            "border_color": "transparent",
+            "border_radius": 0,
+            "box_shadow": "none"
+        },
+        "slider": {
+            "bg_color": "#0f1f3d",
+            "border_width": 1,
+            "border_color": "#1a2f52",
+            "border_radius": 8,
+            "box_shadow": "inset 0 1px 3px rgba(0,0,0,0.4)"
+        },
+        "page_nav": {
+            "bg_color": "#0f1f3d",
+            "text_color": "#cfd8dc",
+            "border_width": 1,
+            "border_color": "#1a2f52",
+            "border_radius": 8,
+            "box_shadow": "0 2px 4px rgba(0,0,0,0.3)"
+        },
+        "select": {
+            "bg_color": "#0f1f3d",
+            "text_color": "#cfd8dc",
+            "border_width": 1,
+            "border_color": "#1a2f52",
+            "border_radius": 8
+        },
+        "text_input": {
+            "bg_color": "#0f1f3d",
+            "text_color": "#cfd8dc",
+            "border_width": 1,
+            "border_color": "#1a2f52",
+            "border_radius": 8
+        },
+        "status_led": {
+            "bg_color": "transparent"
+        },
+        "image": {
+            "bg_color": "transparent"
+        },
+        "spacer": {
+            "bg_color": "transparent"
+        },
+        "camera_preset": {
+            "bg_color": "#1a237e",
+            "text_color": "#cfd8dc",
+            "border_width": 1,
+            "border_color": "#283593",
+            "border_radius": 8,
+            "box_shadow": "0 2px 6px rgba(0,0,0,0.4)"
+        },
+        "gauge": {
+            "bg_color": "transparent",
+            "text_color": "#cfd8dc",
+            "gauge_color": "#42a5f5",
+            "gauge_bg_color": "#0f1f3d"
+        },
+        "level_meter": {
+            "bg_color": "transparent"
+        },
+        "fader": {
+            "bg_color": "transparent",
+            "text_color": "#cfd8dc"
+        },
+        "group": {
+            "bg_color": "rgba(66,165,245,0.04)",
+            "text_color": "#7e8fa6",
+            "border_width": 1,
+            "border_color": "#1a2f52",
+            "border_radius": 12
+        },
+        "clock": {
+            "bg_color": "transparent",
+            "text_color": "#cfd8dc"
+        },
+        "keypad": {
+            "bg_color": "#0f1f3d",
+            "text_color": "#cfd8dc",
+            "border_width": 1,
+            "border_color": "#1a2f52",
+            "border_radius": 8
+        },
+        "list": {
+            "bg_color": "#0a1628",
+            "text_color": "#cfd8dc",
+            "border_width": 1,
+            "border_color": "#1a2f52",
+            "border_radius": 8,
+            "item_bg": "#0f1f3d",
+            "item_active_bg": "#42a5f5"
+        },
+        "matrix": {
+            "bg_color": "#0a1628",
+            "text_color": "#cfd8dc",
+            "border_width": 1,
+            "border_color": "#1a2f52",
+            "border_radius": 8,
+            "crosspoint_active_color": "#42a5f5",
+            "crosspoint_inactive_color": "#1a2f52"
+        }
+    },
+    "page_defaults": {
+        "background_color": "var(panel_bg)",
+        "background_image": null,
+        "background_gradient": null
+    }
+}

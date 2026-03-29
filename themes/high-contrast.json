@@ -1,0 +1,145 @@
+{
+    "name": "High Contrast",
+    "id": "high-contrast",
+    "version": "1.0.0",
+    "author": "OpenAVC",
+    "description": "Pure black with bright green and white — maximum readability for accessibility and industrial use.",
+    "preview_colors": ["#000000", "#111111", "#00E676", "#ffffff"],
+    "variables": {
+        "panel_bg": "#000000",
+        "panel_text": "#ffffff",
+        "accent": "#00E676",
+        "accent_hover": "#00c853",
+        "button_bg": "#1a1a1a",
+        "button_text": "#ffffff",
+        "button_active_bg": "#00E676",
+        "button_active_text": "#000000",
+        "button_border": "#444444",
+        "danger": "#ff1744",
+        "success": "#00E676",
+        "warning": "#ffea00",
+        "surface": "#111111",
+        "surface_border": "#333333",
+        "grid_gap": 8,
+        "border_radius": 4,
+        "font_family": "Inter, system-ui, sans-serif"
+    },
+    "element_defaults": {
+        "button": {
+            "bg_color": "#1a1a1a",
+            "text_color": "#ffffff",
+            "border_width": 2,
+            "border_color": "#444444",
+            "border_radius": 4,
+            "box_shadow": "none"
+        },
+        "label": {
+            "bg_color": "transparent",
+            "text_color": "#ffffff",
+            "border_width": 0,
+            "border_color": "transparent",
+            "border_radius": 0,
+            "box_shadow": "none"
+        },
+        "slider": {
+            "bg_color": "#111111",
+            "border_width": 2,
+            "border_color": "#333333",
+            "border_radius": 4,
+            "box_shadow": "none"
+        },
+        "page_nav": {
+            "bg_color": "#111111",
+            "text_color": "#ffffff",
+            "border_width": 2,
+            "border_color": "#333333",
+            "border_radius": 4,
+            "box_shadow": "none"
+        },
+        "select": {
+            "bg_color": "#111111",
+            "text_color": "#ffffff",
+            "border_width": 2,
+            "border_color": "#333333",
+            "border_radius": 4
+        },
+        "text_input": {
+            "bg_color": "#111111",
+            "text_color": "#ffffff",
+            "border_width": 2,
+            "border_color": "#333333",
+            "border_radius": 4
+        },
+        "status_led": {
+            "bg_color": "transparent"
+        },
+        "image": {
+            "bg_color": "transparent"
+        },
+        "spacer": {
+            "bg_color": "transparent"
+        },
+        "camera_preset": {
+            "bg_color": "#1a1a1a",
+            "text_color": "#ffffff",
+            "border_width": 2,
+            "border_color": "#444444",
+            "border_radius": 4,
+            "box_shadow": "none"
+        },
+        "gauge": {
+            "bg_color": "transparent",
+            "text_color": "#ffffff",
+            "gauge_color": "#00E676",
+            "gauge_bg_color": "#333333"
+        },
+        "level_meter": {
+            "bg_color": "transparent"
+        },
+        "fader": {
+            "bg_color": "transparent",
+            "text_color": "#ffffff"
+        },
+        "group": {
+            "bg_color": "rgba(255,255,255,0.04)",
+            "text_color": "#888888",
+            "border_width": 2,
+            "border_color": "#333333",
+            "border_radius": 4
+        },
+        "clock": {
+            "bg_color": "transparent",
+            "text_color": "#ffffff"
+        },
+        "keypad": {
+            "bg_color": "#111111",
+            "text_color": "#ffffff",
+            "border_width": 2,
+            "border_color": "#333333",
+            "border_radius": 4
+        },
+        "list": {
+            "bg_color": "#000000",
+            "text_color": "#ffffff",
+            "border_width": 2,
+            "border_color": "#333333",
+            "border_radius": 4,
+            "item_bg": "#111111",
+            "item_active_bg": "#00E676"
+        },
+        "matrix": {
+            "bg_color": "#000000",
+            "text_color": "#ffffff",
+            "border_width": 2,
+            "border_color": "#333333",
+            "border_radius": 4,
+            "crosspoint_active_color": "#00E676",
+            "crosspoint_inactive_color": "#333333"
+        }
+    },
+    "page_defaults": {
+        "background_color": "var(panel_bg)",
+        "background_image": null,
+        "background_gradient": null
+    }
+}

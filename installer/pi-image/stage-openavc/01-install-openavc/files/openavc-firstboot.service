@@ -1,0 +1,12 @@
+[Unit]
+Description=OpenAVC First Boot Setup
+After=network-online.target
+ConditionPathExists=/var/lib/openavc/.firstboot
+
+[Service]
+Type=oneshot
+ExecStart=/opt/openavc/scripts/openavc-firstboot.sh
+RemainAfterExit=false
+
+[Install]
+WantedBy=multi-user.target

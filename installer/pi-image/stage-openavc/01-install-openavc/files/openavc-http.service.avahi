@@ -1,0 +1,15 @@
+<?xml version="1.0" standalone='no'?>
+<!DOCTYPE service-group SYSTEM "avahi-service.dtd">
+<!--
+  Avahi/mDNS service definition for OpenAVC.
+  Makes the server discoverable at http://openavc.local:8080
+-->
+<service-group>
+  <name replace-wildcards="yes">OpenAVC on %h</name>
+  <service>
+    <type>_http._tcp</type>
+    <port>8080</port>
+    <txt-record>path=/programmer</txt-record>
+    <txt-record>product=OpenAVC</txt-record>
+  </service>
+</service-group>

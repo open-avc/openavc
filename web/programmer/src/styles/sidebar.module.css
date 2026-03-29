@@ -1,0 +1,91 @@
+.sidebar {
+  width: var(--sidebar-width);
+  height: 100%;
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: var(--space-sm);
+  flex-shrink: 0;
+}
+
+.logo {
+  width: 32px;
+  height: 32px;
+  margin-bottom: var(--space-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+}
+
+.navItem {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--border-radius);
+  color: var(--text-muted);
+  transition: all var(--transition-fast);
+  margin-bottom: var(--space-xs);
+  position: relative;
+}
+
+.navItem:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.navItem.active {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.tooltip {
+  display: none;
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--border-radius);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+  box-shadow: var(--shadow-md);
+  z-index: 100;
+  pointer-events: none;
+}
+
+.navItem:hover .tooltip {
+  display: block;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.connectionStatus {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: var(--space-sm);
+  position: relative;
+  cursor: default;
+}
+
+.connectionStatus:hover .tooltip {
+  display: block;
+}
+
+.statusDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  transition: background var(--transition-fast);
+}

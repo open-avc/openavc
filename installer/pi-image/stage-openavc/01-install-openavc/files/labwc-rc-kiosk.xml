@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<!--
+  labwc configuration overlay for OpenAVC kiosk mode.
+  Merged into ~/.config/labwc/rc.xml when kiosk is enabled.
+
+  - Hides the cursor after 1 second of inactivity (touch panels)
+  - Removes window decorations from Chromium (clean fullscreen)
+-->
+<labwc_config>
+  <core>
+    <cursor>
+      <hideTimeout>1000</hideTimeout>
+    </cursor>
+  </core>
+  <windowRules>
+    <windowRule identifier="chromium">
+      <serverDecoration>no</serverDecoration>
+      <skipTaskbar>yes</skipTaskbar>
+    </windowRule>
+  </windowRules>
+</labwc_config>

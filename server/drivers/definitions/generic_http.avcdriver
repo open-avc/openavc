@@ -1,0 +1,146 @@
+# Generic HTTP/REST Device Driver
+# Use this as a template for any device that exposes a REST API.
+#
+# Many modern AV devices have HTTP APIs:
+#   - Panasonic PTZ cameras (CGI-based control)
+#   - Sony Bravia displays (REST API)
+#   - Crestron DM NVX endpoints
+#   - Barco ClickShare
+#   - Zoom Rooms (local REST API)
+#   - QSC Q-SYS (HTTP API)
+#   - Shure MXA microphones
+#   - Biamp Tesira (REST alongside serial)
+#
+# Commands use method/path/body instead of raw protocol strings:
+#   method: GET, POST, PUT, DELETE (default: GET)
+#   path:   URL path (e.g., "/api/power")
+#   body:   JSON body string (optional, for POST/PUT)
+#   params: Parameter definitions for {substitution} in path and body
+
+id: generic_http
+name: Generic HTTP/REST Device
+manufacturer: Generic
+category: utility
+version: 1.0.0
+author: OpenAVC
+description: >
+  Template driver for HTTP/REST-controlled devices. Supports JSON APIs
+  with configurable authentication (none, basic, bearer, API key, digest)
+  and optional HTTPS with self-signed certificate support.
+transport: http
+
+default_config:
+  host: ""
+  port: 80
+  ssl: false
+  verify_ssl: false            # AV devices almost always use self-signed certs
+  auth_type: "none"            # none, basic, digest, bearer, api_key
+  username: ""
+  password: ""
+  token: ""
+  api_key: ""
+  api_key_header: "X-API-Key"
+  timeout: 10.0
+  poll_interval: 0
+
+config_schema:
+  host:
+    type: string
+    required: true
+    label: IP Address / Hostname
+    description: "Device IP address or hostname"
+  port:
+    type: integer
+    default: 80
+    label: Port
+    description: "HTTP port (80 for HTTP, 443 for HTTPS)"
+  ssl:
+    type: boolean
+    default: false
+    label: Use HTTPS
+    description: "Enable HTTPS (TLS/SSL)"
+  verify_ssl:
+    type: boolean
+    default: false
+    label: Verify SSL Certificate
+    description: "Set to false for self-signed certificates (common on AV devices)"
+  auth_type:
+    type: enum
+    values: ["none", "basic", "digest", "bearer", "api_key"]
+    default: "none"
+    label: Authentication Type
+  username:
+    type: string
+    default: ""
+    label: Username
+    description: "For basic or digest auth"
+  password:
+    type: string
+    default: ""
+    label: Password
+    description: "For basic or digest auth"
+    secret: true
+  token:
+    type: string
+    default: ""
+    label: Bearer Token
+    description: "For bearer token auth"
+    secret: true
+  api_key:
+    type: string
+    default: ""
+    label: API Key
+    description: "For API key auth"
+    secret: true
+  api_key_header:
+    type: string
+    default: "X-API-Key"
+    label: API Key Header Name
+    description: "Custom header name for the API key"
+  timeout:
+    type: number
+    default: 10.0
+    label: Request Timeout (sec)
+
+# No built-in state variables — user adds device-specific ones
+state_variables: {}
+
+# No built-in commands — user defines device-specific commands
+# Example command formats:
+#
+# commands:
+#   power_on:
+#     label: Power On
+#     method: POST
+#     path: "/api/power"
+#     body: '{"power": "on"}'
+#     params: {}
+#
+#   get_status:
+#     label: Get Status
+#     method: GET
+#     path: "/api/status"
+#     params: {}
+#
+#   set_volume:
+#     label: Set Volume
+#     method: POST
+#     path: "/api/audio/volume"
+#     body: '{"level": {level}}'
+#     params:
+#       level:
+#         type: integer
+#         required: true
+#
+#   switch_input:
+#     label: Switch Input
+#     method: PUT
+#     path: "/api/video/input/{input_id}"
+#     params:
+#       input_id:
+#         type: string
+#         required: true
+
+commands: {}
+responses: []
+polling: {}

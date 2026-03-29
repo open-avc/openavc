@@ -1,0 +1,13 @@
+[Unit]
+Description=OpenAVC Boot Info Display
+After=network-online.target openavc.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/openavc/scripts/openavc-info.sh
+RemainAfterExit=true
+StandardOutput=journal
+
+[Install]
+WantedBy=multi-user.target

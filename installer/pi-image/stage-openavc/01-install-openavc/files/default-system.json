@@ -1,0 +1,40 @@
+{
+    "network": {
+        "http_port": 8080,
+        "bind_address": "0.0.0.0"
+    },
+    "auth": {
+        "programmer_password": "",
+        "api_key": "",
+        "panel_lock_code": ""
+    },
+    "isc": {
+        "enabled": true,
+        "discovery_enabled": true,
+        "auth_key": ""
+    },
+    "logging": {
+        "level": "info",
+        "file_enabled": true,
+        "max_size_mb": 50,
+        "max_files": 5
+    },
+    "updates": {
+        "check_enabled": true,
+        "channel": "stable",
+        "auto_check_interval_hours": 24,
+        "auto_backup_before_update": true,
+        "notify_only": false
+    },
+    "cloud": {
+        "enabled": false,
+        "endpoint": "wss://cloud.openavc.com/agent/v1",
+        "system_key": "",
+        "system_id": ""
+    },
+    "kiosk": {
+        "enabled": false,
+        "target_url": "http://localhost:8080/panel",
+        "cursor_visible": false
+    }
+}

@@ -1,0 +1,145 @@
+{
+    "name": "Warm Charcoal",
+    "id": "warm-charcoal",
+    "version": "1.0.0",
+    "author": "OpenAVC",
+    "description": "Dark charcoal with amber and gold accents — warm and inviting for hospitality environments.",
+    "preview_colors": ["#1e1e1e", "#2a2a2a", "#FFA726", "#e0dcd5"],
+    "variables": {
+        "panel_bg": "#1e1e1e",
+        "panel_text": "#e0dcd5",
+        "accent": "#FFA726",
+        "accent_hover": "#f59100",
+        "button_bg": "#333333",
+        "button_text": "#e0dcd5",
+        "button_active_bg": "#FFA726",
+        "button_active_text": "#1e1e1e",
+        "button_border": "#484848",
+        "danger": "#ef5350",
+        "success": "#81c784",
+        "warning": "#ffca28",
+        "surface": "#2a2a2a",
+        "surface_border": "#3d3d3d",
+        "grid_gap": 8,
+        "border_radius": 8,
+        "font_family": "Inter, system-ui, sans-serif"
+    },
+    "element_defaults": {
+        "button": {
+            "bg_color": "#333333",
+            "text_color": "#e0dcd5",
+            "border_width": 1,
+            "border_color": "#484848",
+            "border_radius": 8,
+            "box_shadow": "0 2px 4px rgba(0,0,0,0.35)"
+        },
+        "label": {
+            "bg_color": "transparent",
+            "text_color": "#e0dcd5",
+            "border_width": 0,
+            "border_color": "transparent",
+            "border_radius": 0,
+            "box_shadow": "none"
+        },
+        "slider": {
+            "bg_color": "#2a2a2a",
+            "border_width": 1,
+            "border_color": "#3d3d3d",
+            "border_radius": 8,
+            "box_shadow": "inset 0 1px 3px rgba(0,0,0,0.35)"
+        },
+        "page_nav": {
+            "bg_color": "#2a2a2a",
+            "text_color": "#e0dcd5",
+            "border_width": 1,
+            "border_color": "#3d3d3d",
+            "border_radius": 8,
+            "box_shadow": "0 1px 3px rgba(0,0,0,0.25)"
+        },
+        "select": {
+            "bg_color": "#2a2a2a",
+            "text_color": "#e0dcd5",
+            "border_width": 1,
+            "border_color": "#3d3d3d",
+            "border_radius": 8
+        },
+        "text_input": {
+            "bg_color": "#2a2a2a",
+            "text_color": "#e0dcd5",
+            "border_width": 1,
+            "border_color": "#3d3d3d",
+            "border_radius": 8
+        },
+        "status_led": {
+            "bg_color": "transparent"
+        },
+        "image": {
+            "bg_color": "transparent"
+        },
+        "spacer": {
+            "bg_color": "transparent"
+        },
+        "camera_preset": {
+            "bg_color": "#333333",
+            "text_color": "#e0dcd5",
+            "border_width": 1,
+            "border_color": "#484848",
+            "border_radius": 8,
+            "box_shadow": "0 2px 4px rgba(0,0,0,0.35)"
+        },
+        "gauge": {
+            "bg_color": "transparent",
+            "text_color": "#e0dcd5",
+            "gauge_color": "#FFA726",
+            "gauge_bg_color": "#3d3d3d"
+        },
+        "level_meter": {
+            "bg_color": "transparent"
+        },
+        "fader": {
+            "bg_color": "transparent",
+            "text_color": "#e0dcd5"
+        },
+        "group": {
+            "bg_color": "rgba(255,167,38,0.04)",
+            "text_color": "#8a8580",
+            "border_width": 1,
+            "border_color": "#3d3d3d",
+            "border_radius": 12
+        },
+        "clock": {
+            "bg_color": "transparent",
+            "text_color": "#e0dcd5"
+        },
+        "keypad": {
+            "bg_color": "#2a2a2a",
+            "text_color": "#e0dcd5",
+            "border_width": 1,
+            "border_color": "#3d3d3d",
+            "border_radius": 8
+        },
+        "list": {
+            "bg_color": "#1e1e1e",
+            "text_color": "#e0dcd5",
+            "border_width": 1,
+            "border_color": "#3d3d3d",
+            "border_radius": 8,
+            "item_bg": "#2a2a2a",
+            "item_active_bg": "#FFA726"
+        },
+        "matrix": {
+            "bg_color": "#1e1e1e",
+            "text_color": "#e0dcd5",
+            "border_width": 1,
+            "border_color": "#3d3d3d",
+            "border_radius": 8,
+            "crosspoint_active_color": "#FFA726",
+            "crosspoint_inactive_color": "#3d3d3d"
+        }
+    },
+    "page_defaults": {
+        "background_color": "var(panel_bg)",
+        "background_image": null,
+        "background_gradient": null
+    }
+}

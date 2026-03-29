@@ -1,0 +1,152 @@
+{
+    "openavc_version": "0.1.0",
+    "project": {
+        "id": "classroom",
+        "name": "Classroom",
+        "description": "Display and document camera with a simplified UI for non-technical users."
+    },
+    "devices": [
+        {
+            "id": "display1",
+            "driver": "pjlink",
+            "name": "Display",
+            "config": { "host": "192.168.1.100", "port": 4352 }
+        },
+        {
+            "id": "doccam1",
+            "driver": "generic_tcp",
+            "name": "Document Camera",
+            "config": { "host": "192.168.1.103", "port": 23 }
+        }
+    ],
+    "variables": [
+        { "id": "system_power", "type": "string", "default": "off", "label": "System Power" },
+        { "id": "current_source", "type": "string", "default": "pc", "label": "Active Source" }
+    ],
+    "macros": [
+        {
+            "id": "system_on",
+            "name": "Start Class",
+            "steps": [
+                { "action": "device.command", "device": "display1", "command": "power_on" },
+                { "action": "delay", "seconds": 3 },
+                { "action": "state.set", "key": "var.system_power", "value": "on" },
+                { "action": "state.set", "key": "var.current_source", "value": "pc" }
+            ]
+        },
+        {
+            "id": "system_off",
+            "name": "End Class",
+            "steps": [
+                { "action": "device.command", "device": "display1", "command": "power_off" },
+                { "action": "state.set", "key": "var.system_power", "value": "off" }
+            ]
+        },
+        {
+            "id": "select_pc",
+            "name": "Show PC",
+            "steps": [
+                { "action": "device.command", "device": "display1", "command": "input", "params": { "input": "hdmi1" } },
+                { "action": "state.set", "key": "var.current_source", "value": "pc" }
+            ]
+        },
+        {
+            "id": "select_doccam",
+            "name": "Show Document Camera",
+            "steps": [
+                { "action": "device.command", "device": "display1", "command": "input", "params": { "input": "hdmi2" } },
+                { "action": "state.set", "key": "var.current_source", "value": "doccam" }
+            ]
+        }
+    ],
+    "ui": {
+        "settings": {
+            "theme": "dark",
+            "accent_color": "#FF9800",
+            "font_family": "Inter, system-ui, sans-serif"
+        },
+        "pages": [
+            {
+                "id": "main",
+                "name": "Main",
+                "grid": { "columns": 2, "rows": 4 },
+                "elements": [
+                    {
+                        "id": "btn_start",
+                        "type": "button",
+                        "label": "Start Class",
+                        "grid_area": { "col": 1, "row": 1, "col_span": 1, "row_span": 2 },
+                        "style": { "bg_color": "#4CAF50", "font_size": 20 },
+                        "bindings": {
+                            "press": { "action": "macro", "macro": "system_on" },
+                            "feedback": {
+                                "key": "var.system_power",
+                                "condition": { "equals": "on" },
+                                "style_active": { "bg_color": "#4CAF50", "label": "System On" },
+                                "style_inactive": { "bg_color": "#424242", "label": "Start Class" }
+                            }
+                        }
+                    },
+                    {
+                        "id": "btn_end",
+                        "type": "button",
+                        "label": "End Class",
+                        "grid_area": { "col": 2, "row": 1, "col_span": 1, "row_span": 2 },
+                        "style": { "bg_color": "#F44336", "font_size": 20 },
+                        "bindings": {
+                            "press": { "action": "macro", "macro": "system_off" }
+                        }
+                    },
+                    {
+                        "id": "btn_pc",
+                        "type": "button",
+                        "label": "Computer",
+                        "grid_area": { "col": 1, "row": 3, "col_span": 1, "row_span": 1 },
+                        "bindings": {
+                            "press": { "action": "macro", "macro": "select_pc" },
+                            "feedback": {
+                                "key": "var.current_source",
+                                "condition": { "equals": "pc" },
+                                "style_active": { "bg_color": "#FF9800" },
+                                "style_inactive": { "bg_color": "#424242" }
+                            }
+                        }
+                    },
+                    {
+                        "id": "btn_doccam",
+                        "type": "button",
+                        "label": "Document Camera",
+                        "grid_area": { "col": 2, "row": 3, "col_span": 1, "row_span": 1 },
+                        "bindings": {
+                            "press": { "action": "macro", "macro": "select_doccam" },
+                            "feedback": {
+                                "key": "var.current_source",
+                                "condition": { "equals": "doccam" },
+                                "style_active": { "bg_color": "#FF9800" },
+                                "style_inactive": { "bg_color": "#424242" }
+                            }
+                        }
+                    },
+                    {
+                        "id": "lbl_help",
+                        "type": "label",
+                        "text": "Press 'Start Class' to turn on the display",
+                        "grid_area": { "col": 1, "row": 4, "col_span": 2, "row_span": 1 },
+                        "style": { "font_size": 12, "text_align": "center" },
+                        "bindings": {
+                            "text": {
+                                "key": "var.system_power",
+                                "condition": { "equals": "on" },
+                                "text_true": "Select a source above, or press 'End Class' when done",
+                                "text_false": "Press 'Start Class' to turn on the display"
+                            }
+                        }
+                    }
+                ]
+            }
+        ]
+    },
+    "scripts": [],
+    "schedules": [],
+    "isc": { "shared_state": [], "auth_key": "" }
+}

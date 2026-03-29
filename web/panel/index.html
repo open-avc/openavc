@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>OpenAVC Panel</title>
+    <link rel="stylesheet" href="panel.css">
+</head>
+<body>
+    <div id="connection-status" class="disconnected">Connecting...</div>
+    <div id="offline-overlay">
+        <div class="offline-content">
+            <div class="offline-icon">&#9888;</div>
+            <div class="offline-title">System Offline</div>
+            <div class="offline-message">Reconnecting...</div>
+            <div id="reconnect-info" class="offline-message" style="font-size:0.85em;opacity:0.7;"></div>
+            <button onclick="location.reload()" style="margin-top:1rem;padding:0.5rem 1.5rem;border:1px solid rgba(255,255,255,0.3);background:transparent;color:#fff;border-radius:4px;cursor:pointer;">Retry Now</button>
+        </div>
+    </div>
+    <div id="loading-state" style="display:flex;align-items:center;justify-content:center;height:100vh;color:#999;font-size:1.2rem;">Loading panel...</div>
+    <div id="panel-root"></div>
+    <script src="panel.js"></script>
+</body>
+</html>

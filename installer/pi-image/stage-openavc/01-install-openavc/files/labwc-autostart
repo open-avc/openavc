@@ -1,0 +1,5 @@
+# OpenAVC kiosk autostart for labwc (Wayland compositor)
+# This file is appended to ~/.config/labwc/autostart when kiosk mode is enabled.
+# On Raspberry Pi OS Bookworm+, labwc is the default Wayland compositor.
+
+/opt/openavc/scripts/panel-kiosk.sh &

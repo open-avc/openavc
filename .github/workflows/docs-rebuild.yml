@@ -1,0 +1,15 @@
+name: Trigger docs site rebuild
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+
+jobs:
+  trigger-rebuild:
+    name: Rebuild docs.openavc.com
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Netlify deploy hook
+        run: curl -s -X POST "${{ secrets.DOCS_DEPLOY_HOOK }}"

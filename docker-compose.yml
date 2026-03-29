@@ -1,0 +1,22 @@
+# OpenAVC Docker Compose - Single Room
+#
+# Start:   docker compose up -d
+# Stop:    docker compose down
+# Update:  docker compose pull && docker compose up -d
+# Logs:    docker compose logs -f
+
+services:
+  openavc:
+    image: openavc/openavc:latest
+    container_name: openavc
+    ports:
+      - "8080:8080"
+    volumes:
+      - openavc-data:/data
+    restart: unless-stopped
+    # For serial/USB device passthrough, uncomment:
+    # devices:
+    #   - /dev/ttyUSB0:/dev/ttyUSB0
+
+volumes:
+  openavc-data:

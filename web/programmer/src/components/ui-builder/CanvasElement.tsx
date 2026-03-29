@@ -1,0 +1,308 @@
+import { useRef, useState, useCallback } from "react";
+import { useDraggable } from "@dnd-kit/core";
+import type { UIElement, GridArea } from "../../api/types";
+import { RenderElement } from "./ElementRenderers/renderElement";
+
+interface CanvasElementProps {
+  element: UIElement;
+  pageId: string;
+  selected: boolean;
+  previewMode: boolean;
+  columns: number;
+  rows: number;
+  liveState: Record<string, unknown>;
+  hasOverlap?: boolean;
+  onSelect: (id: string, shiftKey?: boolean) => void;
+  onCommitResize: (elementId: string, gridArea: GridArea) => void;
+  onContextMenu: (e: React.MouseEvent, elementId: string) => void;
+  themeElementDefaults?: Record<string, Record<string, unknown>>;
+}
+
+const HANDLE_SIZE = 12;
+
+const HANDLE_POSITIONS: Record<
+  string,
+  React.CSSProperties
+> = {
+  n: {
+    top: -HANDLE_SIZE / 2,
+    left: "50%",
+    transform: "translateX(-50%)",
+    cursor: "ns-resize",
+    width: HANDLE_SIZE * 2,
+    height: HANDLE_SIZE,
+  },
+  s: {
+    bottom: -HANDLE_SIZE / 2,
+    left: "50%",
+    transform: "translateX(-50%)",
+    cursor: "ns-resize",
+    width: HANDLE_SIZE * 2,
+    height: HANDLE_SIZE,
+  },
+  e: {
+    right: -HANDLE_SIZE / 2,
+    top: "50%",
+    transform: "translateY(-50%)",
+    cursor: "ew-resize",
+    width: HANDLE_SIZE,
+    height: HANDLE_SIZE * 2,
+  },
+  w: {
+    left: -HANDLE_SIZE / 2,
+    top: "50%",
+    transform: "translateY(-50%)",
+    cursor: "ew-resize",
+    width: HANDLE_SIZE,
+    height: HANDLE_SIZE * 2,
+  },
+  ne: {
+    top: -HANDLE_SIZE / 2,
+    right: -HANDLE_SIZE / 2,
+    cursor: "nesw-resize",
+    width: HANDLE_SIZE,
+    height: HANDLE_SIZE,
+  },
+  nw: {
+    top: -HANDLE_SIZE / 2,
+    left: -HANDLE_SIZE / 2,
+    cursor: "nwse-resize",
+    width: HANDLE_SIZE,
+    height: HANDLE_SIZE,
+  },
+  se: {
+    bottom: -HANDLE_SIZE / 2,
+    right: -HANDLE_SIZE / 2,
+    cursor: "nwse-resize",
+    width: HANDLE_SIZE,
+    height: HANDLE_SIZE,
+  },
+  sw: {
+    bottom: -HANDLE_SIZE / 2,
+    left: -HANDLE_SIZE / 2,
+    cursor: "nesw-resize",
+    width: HANDLE_SIZE,
+    height: HANDLE_SIZE,
+  },
+};
+
+export function CanvasElement({
+  element,
+  pageId,
+  selected,
+  previewMode,
+  columns,
+  rows,
+  liveState,
+  hasOverlap,
+  onSelect,
+  onCommitResize,
+  onContextMenu,
+  themeElementDefaults,
+}: CanvasElementProps) {
+  const [tempGridArea, setTempGridArea] = useState<GridArea | null>(null);
+  const tempGridAreaRef = useRef<GridArea | null>(null);
+  const isResizing = useRef(false);
+
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `canvas-${element.id}`,
+    data: { source: "canvas", elementId: element.id, pageId },
+    disabled: previewMode || isResizing.current,
+  });
+
+  const gridArea = tempGridArea || element.grid_area;
+
+  const handleClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (previewMode) return;
+      e.stopPropagation();
+      onSelect(element.id, e.shiftKey);
+    },
+    [previewMode, onSelect, element.id],
+  );
+
+  const handleRightClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (previewMode) return;
+      e.preventDefault();
+      e.stopPropagation();
+      onSelect(element.id);
+      onContextMenu(e, element.id);
+    },
+    [previewMode, onSelect, onContextMenu, element.id],
+  );
+
+  const handleResizeStart = useCallback(
+    (direction: string, e: React.PointerEvent) => {
+      e.stopPropagation();
+      e.preventDefault();
+      isResizing.current = true;
+
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const startGrid = { ...element.grid_area };
+
+      // Get cell dimensions from canvas grid parent
+      const gridEl = (e.currentTarget as HTMLElement).closest(
+        "[data-canvas-grid]",
+      );
+      const gridRect = gridEl?.getBoundingClientRect();
+      if (!gridRect) return;
+
+      const cellW = gridRect.width / columns;
+      const cellH = gridRect.height / rows;
+
+      const handlePointerMove = (moveEvent: PointerEvent) => {
+        const dxCells = Math.round((moveEvent.clientX - startX) / cellW);
+        const dyCells = Math.round((moveEvent.clientY - startY) / cellH);
+
+        let { col, row, col_span, row_span } = startGrid;
+
+        if (direction.includes("e"))
+          col_span = Math.max(1, startGrid.col_span + dxCells);
+        if (direction.includes("w")) {
+          col = startGrid.col + dxCells;
+          col_span = startGrid.col_span - dxCells;
+        }
+        if (direction.includes("s"))
+          row_span = Math.max(1, startGrid.row_span + dyCells);
+        if (direction.includes("n")) {
+          row = startGrid.row + dyCells;
+          row_span = startGrid.row_span - dyCells;
+        }
+
+        // Clamp
+        col = Math.max(1, Math.min(columns, col));
+        row = Math.max(1, Math.min(rows, row));
+        col_span = Math.max(1, Math.min(columns - col + 1, col_span));
+        row_span = Math.max(1, Math.min(rows - row + 1, row_span));
+
+        const newArea = { col, row, col_span, row_span };
+        setTempGridArea(newArea);
+        tempGridAreaRef.current = newArea;
+      };
+
+      const handlePointerUp = () => {
+        document.removeEventListener("pointermove", handlePointerMove);
+        document.removeEventListener("pointerup", handlePointerUp);
+        isResizing.current = false;
+
+        const finalGrid = tempGridAreaRef.current;
+        setTempGridArea(null);
+        tempGridAreaRef.current = null;
+
+        if (
+          finalGrid &&
+          (finalGrid.col !== element.grid_area.col ||
+            finalGrid.row !== element.grid_area.row ||
+            finalGrid.col_span !== element.grid_area.col_span ||
+            finalGrid.row_span !== element.grid_area.row_span)
+        ) {
+          onCommitResize(element.id, finalGrid);
+        }
+      };
+
+      document.addEventListener("pointermove", handlePointerMove);
+      document.addEventListener("pointerup", handlePointerUp);
+    },
+    [element.grid_area, element.id, columns, rows, onCommitResize],
+  );
+
+  return (
+    <div
+      ref={setNodeRef}
+      {...(!previewMode ? { ...listeners, ...attributes } : {})}
+      onClick={handleClick}
+      onContextMenu={handleRightClick}
+      style={{
+        gridColumn: `${gridArea.col} / span ${gridArea.col_span}`,
+        gridRow: `${gridArea.row} / span ${gridArea.row_span}`,
+        position: "relative",
+        outline: selected && !previewMode
+          ? "2px solid var(--accent)"
+          : hasOverlap && !previewMode
+          ? "1px dashed var(--color-warning)"
+          : "none",
+        outlineOffset: "1px",
+        opacity: isDragging ? 0.3 : 1,
+        cursor: previewMode ? "default" : "move",
+        zIndex: selected ? 10 : 1,
+        minWidth: 0,
+        minHeight: 0,
+        overflow: "hidden",
+      }}
+    >
+      <RenderElement
+        element={element}
+        previewMode={previewMode}
+        liveState={liveState}
+        themeDefaults={themeElementDefaults}
+      />
+      {selected && !previewMode && (
+        <>
+          {Object.entries(HANDLE_POSITIONS).map(([dir, style]) => (
+            <div
+              key={dir}
+              onPointerDown={(e) => handleResizeStart(dir, e)}
+              style={{
+                position: "absolute",
+                ...style,
+                backgroundColor: "var(--accent)",
+                borderRadius: 2,
+                zIndex: 20,
+              }}
+            />
+          ))}
+        </>
+      )}
+      {/* Overlap warning indicator */}
+      {hasOverlap && !previewMode && (
+        <div
+          title="This element overlaps with another element"
+          style={{
+            position: "absolute",
+            top: 2,
+            right: 2,
+            width: 14,
+            height: 14,
+            borderRadius: "50%",
+            background: "#ff9800",
+            color: "#000",
+            fontSize: 10,
+            fontWeight: 700,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 25,
+            lineHeight: 1,
+            pointerEvents: "none",
+          }}
+        >
+          !
+        </div>
+      )}
+      {/* Resize tooltip showing position/size */}
+      {tempGridArea && !previewMode && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: -22,
+            left: "50%",
+            transform: "translateX(-50%)",
+            padding: "2px 8px",
+            borderRadius: 4,
+            background: "rgba(0,0,0,0.85)",
+            color: "#fff",
+            fontSize: 10,
+            whiteSpace: "nowrap",
+            pointerEvents: "none",
+            zIndex: 30,
+            fontFamily: "monospace",
+          }}
+        >
+          {tempGridArea.col_span}&times;{tempGridArea.row_span} at col {tempGridArea.col}, row {tempGridArea.row}
+        </div>
+      )}
+    </div>
+  );
+}
