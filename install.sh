@@ -191,17 +191,29 @@ download() {
 }
 
 get_latest_release_url() {
-    local api_url="https://api.github.com/repos/${GITHUB_REPO}/releases/latest"
     local asset_name="openavc-.*-linux-${ARCH}\\.tar\\.gz"
 
     info "Checking for latest release..."
 
-    local release_json
-    if [ "$DOWNLOADER" = "curl" ]; then
-        release_json=$(curl -fsSL -H "Accept: application/vnd.github.v3+json" "$api_url" 2>/dev/null) || true
-    else
-        release_json=$(wget -q -O - --header="Accept: application/vnd.github.v3+json" "$api_url" 2>/dev/null) || true
-    fi
+    # Try /releases/latest first (stable releases only), then fall back to
+    # /releases (includes prereleases) so beta testers can install too.
+    local release_json=""
+    local api_urls=(
+        "https://api.github.com/repos/${GITHUB_REPO}/releases/latest"
+        "https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=1"
+    )
+
+    for api_url in "${api_urls[@]}"; do
+        if [ "$DOWNLOADER" = "curl" ]; then
+            release_json=$(curl -fsSL -H "Accept: application/vnd.github.v3+json" "$api_url" 2>/dev/null) || true
+        else
+            release_json=$(wget -q -O - --header="Accept: application/vnd.github.v3+json" "$api_url" 2>/dev/null) || true
+        fi
+
+        if [ -n "$release_json" ]; then
+            break
+        fi
+    done
 
     if [ -z "$release_json" ]; then
         return 1
