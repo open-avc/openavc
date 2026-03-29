@@ -1,0 +1,416 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "20"
+
+jobs:
+  # ── Gate: run full test suite before building anything ──────────────
+  test:
+    name: Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio ruff
+
+      - name: Lint
+        run: ruff check server/ tests/
+
+      - name: Run tests
+        run: pytest tests/ -v --tb=short
+
+  # ── Extract version from tag ────────────────────────────────────────
+  version:
+    name: Extract version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      prerelease: ${{ steps.ver.outputs.prerelease }}
+    steps:
+      - id: ver
+        run: |
+          TAG="${GITHUB_REF#refs/tags/v}"
+          echo "version=$TAG" >> "$GITHUB_OUTPUT"
+          if [[ "$TAG" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ── Windows installer (.exe) ────────────────────────────────────────
+  windows:
+    name: Windows installer
+    needs: [test, version]
+    runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Build Programmer UI
+        working-directory: web/programmer
+        run: |
+          npm ci
+          npm run build
+
+      - name: Install Python build deps
+        run: pip install pyinstaller infi.systray -r requirements.txt
+
+      - name: Bundle server with PyInstaller
+        run: pyinstaller installer/openavc.spec --noconfirm --clean
+
+      - name: Bundle tray app with PyInstaller
+        run: pyinstaller installer/tray.spec --noconfirm --clean
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Set version in setup.iss
+        shell: bash
+        run: |
+          sed -i "s/^#define MyAppVersion \".*\"/#define MyAppVersion \"$VERSION\"/" installer/setup.iss
+
+      - name: Build installer
+        run: iscc installer/setup.iss
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: dist/OpenAVC-Setup-*.exe
+
+  # ── Linux archive (amd64) ──────────────────────────────────────────
+  linux-amd64:
+    name: Linux archive (amd64)
+    needs: [test, version]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Build Programmer UI
+        working-directory: web/programmer
+        run: |
+          npm ci
+          npm run build
+
+      - name: Create archive
+        run: |
+          ARCHIVE="openavc-${VERSION}-linux-amd64.tar.gz"
+          tar czf "$ARCHIVE" \
+            --exclude='__pycache__' \
+            --exclude='*.pyc' \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='.env' \
+            --exclude='tests' \
+            --exclude='.pytest_cache' \
+            --exclude='.ruff_cache' \
+            --exclude='installer/pi-image/pi-gen' \
+            --exclude='web/programmer/node_modules' \
+            --exclude='web/programmer/src' \
+            --exclude='web/programmer/.env*' \
+            server/ \
+            web/panel/ \
+            web/programmer/dist/ \
+            driver_repo/ \
+            plugin_repo/ \
+            themes/ \
+            installer/seed/ \
+            installer/openavc.service \
+            requirements.txt \
+            pyproject.toml \
+            LICENSE
+          echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-amd64
+          path: openavc-*-linux-amd64.tar.gz
+
+  # ── Linux archive (arm64) ──────────────────────────────────────────
+  linux-arm64:
+    name: Linux archive (arm64)
+    needs: [test, version]
+    runs-on: ubuntu-24.04-arm
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Build Programmer UI
+        working-directory: web/programmer
+        run: |
+          npm ci
+          npm run build
+
+      - name: Create archive
+        run: |
+          ARCHIVE="openavc-${VERSION}-linux-arm64.tar.gz"
+          tar czf "$ARCHIVE" \
+            --exclude='__pycache__' \
+            --exclude='*.pyc' \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='.env' \
+            --exclude='tests' \
+            --exclude='.pytest_cache' \
+            --exclude='.ruff_cache' \
+            --exclude='installer/pi-image/pi-gen' \
+            --exclude='web/programmer/node_modules' \
+            --exclude='web/programmer/src' \
+            --exclude='web/programmer/.env*' \
+            server/ \
+            web/panel/ \
+            web/programmer/dist/ \
+            driver_repo/ \
+            plugin_repo/ \
+            themes/ \
+            installer/seed/ \
+            installer/openavc.service \
+            requirements.txt \
+            pyproject.toml \
+            LICENSE
+          echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-arm64
+          path: openavc-*-linux-arm64.tar.gz
+
+  # ── Docker image (multi-arch) ──────────────────────────────────────
+  docker:
+    name: Docker image
+    needs: [test, version]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        if: ${{ vars.DOCKERHUB_ENABLED == 'true' }}
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Determine Docker tags
+        id: tags
+        run: |
+          GHCR="ghcr.io/${{ github.repository_owner }}/openavc"
+          TAGS="${GHCR}:${VERSION}"
+          # Only tag :latest for stable releases (no hyphen in version)
+          if [[ "$VERSION" != *-* ]]; then
+            TAGS="${TAGS},${GHCR}:latest"
+          fi
+          # Add Docker Hub tags if configured
+          if [ "${{ vars.DOCKERHUB_ENABLED }}" = "true" ]; then
+            TAGS="${TAGS},openavc/openavc:${VERSION}"
+            if [[ "$VERSION" != *-* ]]; then
+              TAGS="${TAGS},openavc/openavc:latest"
+            fi
+          fi
+          echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── Raspberry Pi image ─────────────────────────────────────────────
+  pi-image:
+    name: Raspberry Pi image
+    needs: [test, version]
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Build Programmer UI
+        working-directory: web/programmer
+        run: |
+          npm ci
+          npm run build
+
+      - name: Set up QEMU for ARM emulation
+        run: docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+
+      - name: Clone pi-gen (arm64 branch)
+        run: git clone --depth 1 --branch arm64 https://github.com/RPi-Distro/pi-gen.git installer/pi-image/pi-gen
+
+      - name: Package server archive
+        run: |
+          mkdir -p installer/pi-image/stage-openavc/01-install-openavc/files
+          tar czf installer/pi-image/stage-openavc/01-install-openavc/files/openavc.tar.gz \
+            --exclude='__pycache__' \
+            --exclude='*.pyc' \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='.env' \
+            --exclude='tests' \
+            --exclude='.pytest_cache' \
+            --exclude='.ruff_cache' \
+            --exclude='installer/pi-image/pi-gen' \
+            --exclude='web/programmer/node_modules' \
+            --exclude='web/programmer/src' \
+            --exclude='web/programmer/.env*' \
+            server/ \
+            web/panel/ \
+            web/programmer/dist/ \
+            driver_repo/ \
+            plugin_repo/ \
+            themes/ \
+            requirements.txt \
+            pyproject.toml
+
+      - name: Configure pi-gen
+        run: |
+          cd installer/pi-image
+
+          # Copy config and inject version
+          cp config pi-gen/config
+          sed -i "s/__VERSION__/${VERSION}/g" pi-gen/config
+
+          # Copy custom stage
+          rm -rf pi-gen/stage-openavc
+          cp -r stage-openavc pi-gen/stage-openavc
+
+          # Fix permissions
+          find pi-gen/stage-openavc -name "*.sh" -exec chmod +x {} \;
+          chmod +x pi-gen/stage-openavc/prerun.sh
+
+          # Skip stages 4 and 5
+          touch pi-gen/stage4/SKIP pi-gen/stage4/SKIP_IMAGES
+          touch pi-gen/stage5/SKIP pi-gen/stage5/SKIP_IMAGES
+
+          # Only generate image after our custom stage
+          touch pi-gen/stage0/SKIP_IMAGES
+          touch pi-gen/stage1/SKIP_IMAGES
+          touch pi-gen/stage2/SKIP_IMAGES
+          touch pi-gen/stage3/SKIP_IMAGES
+
+      - name: Build Pi image
+        run: |
+          cd installer/pi-image/pi-gen
+          PRESERVE_CONTAINER=0 ./build-docker.sh
+
+      - name: Collect image
+        run: |
+          IMG=$(ls installer/pi-image/pi-gen/deploy/*.img.xz 2>/dev/null | tail -1)
+          if [ -z "$IMG" ]; then
+            echo "ERROR: No image found in deploy/"
+            exit 1
+          fi
+          # Rename to standard format
+          cp "$IMG" "openavc-${VERSION}-pi.img.xz"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pi-image
+          path: openavc-*-pi.img.xz
+
+  # ── Create GitHub Release ──────────────────────────────────────────
+  release:
+    name: Create release
+    needs: [version, windows, linux-amd64, linux-arm64, docker, pi-image]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Collect release files
+        run: |
+          mkdir -p release/
+          cp artifacts/windows-installer/*.exe release/
+          cp artifacts/linux-amd64/*.tar.gz release/
+          cp artifacts/linux-arm64/*.tar.gz release/
+          cp artifacts/pi-image/*.img.xz release/
+          ls -lh release/
+
+      - name: Generate checksums
+        working-directory: release
+        run: |
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: OpenAVC v${{ env.VERSION }}
+          prerelease: ${{ needs.version.outputs.prerelease }}
+          generate_release_notes: true
+          files: release/*
