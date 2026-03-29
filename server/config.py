@@ -9,7 +9,7 @@ Backward-compatible module-level constants for existing code that does:
 
 import os
 
-from server.system_config import get_system_config, APP_DIR
+from server.system_config import get_system_config, get_data_dir, APP_DIR
 
 # Paths
 BASE_DIR = APP_DIR
@@ -17,8 +17,9 @@ PROJECT_PATH = os.environ.get(
     "OPENAVC_PROJECT", str(BASE_DIR / "projects" / "default" / "project.avc")
 )
 
-# Project Library (saved project files)
-SAVED_PROJECTS_DIR = BASE_DIR / "saved_projects"
+# Project Library (saved project files — lives in the data directory, not the app directory,
+# because the app directory may be read-only in production deployments)
+SAVED_PROJECTS_DIR = get_data_dir() / "saved_projects"
 
 
 def _safe_int(env_key: str, default: int) -> int:
