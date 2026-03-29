@@ -29,7 +29,10 @@ pip install -r requirements.txt
 cd web/programmer && npm install && npm run build && cd ../..
 ```
 
-> **Windows installer available:** Download `OpenAVC-Setup-{version}.exe` from the [GitHub Releases](https://github.com/open-avc/openavc/releases) page. A Linux one-line install script is also in development.
+> **Installers available:** Download the Windows installer from [GitHub Releases](https://github.com/open-avc/openavc/releases), or install on Linux with one command:
+> ```bash
+> curl -sSL https://get.openavc.com | sudo bash
+> ```
 
 ## Network Configuration
 
