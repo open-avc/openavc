@@ -273,7 +273,7 @@ install_files() {
 
     info "Extracting to ${INSTALL_DIR}/..."
     mkdir -p "$INSTALL_DIR"
-    tar -xzf "$ARCHIVE_PATH" -C "$INSTALL_DIR" --strip-components=1
+    tar -xzf "$ARCHIVE_PATH" -C "$INSTALL_DIR"
     ok "Extracted to ${INSTALL_DIR}/"
 
     # Clean up archive
