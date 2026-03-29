@@ -302,9 +302,11 @@ jobs:
           npm run build
 
       - name: Set up QEMU for ARM emulation
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static binfmt-support
+          # pi-gen's build-docker.sh checks "which qemu-aarch64" (not qemu-aarch64-static)
+          sudo ln -sf /usr/bin/qemu-aarch64-static /usr/bin/qemu-aarch64
 
       - name: Clone pi-gen (arm64 branch)
         run: git clone --depth 1 --branch arm64 https://github.com/RPi-Distro/pi-gen.git installer/pi-image/pi-gen
