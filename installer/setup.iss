@@ -107,6 +107,22 @@ begin
     '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
+// Seed default project to data directory if not already present
+procedure SeedDefaultProject();
+var
+  DataDir: String;
+  SrcDir: String;
+begin
+  DataDir := ExpandConstant('{commonappdata}\OpenAVC\projects\default');
+  SrcDir := ExpandConstant('{app}\_internal\projects\default');
+  if not DirExists(DataDir) then
+  begin
+    ForceDirectories(DataDir);
+    // Copy default project
+    CopyFile(SrcDir + '\project.avc', DataDir + '\project.avc', False);
+  end;
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
@@ -137,21 +153,5 @@ begin
   if CurUninstallStep = usPostUninstall then
   begin
     RemoveAppDirLeftovers();
-  end;
-end;
-
-// Seed default project to data directory if not already present
-procedure SeedDefaultProject();
-var
-  DataDir: String;
-  SrcDir: String;
-begin
-  DataDir := ExpandConstant('{commonappdata}\OpenAVC\projects\default');
-  SrcDir := ExpandConstant('{app}\_internal\projects\default');
-  if not DirExists(DataDir) then
-  begin
-    ForceDirectories(DataDir);
-    // Copy default project
-    CopyFile(SrcDir + '\project.avc', DataDir + '\project.avc', False);
   end;
 end;
