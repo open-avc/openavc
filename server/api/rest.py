@@ -1811,16 +1811,13 @@ async def update_system_config(request: Request) -> dict[str, Any]:
 
 # --- Update System ---
 
-# Lazy singleton for the update manager
-_update_manager = None
-
 
 def _get_update_manager():
-    global _update_manager
-    if _update_manager is None:
+    engine = _get_engine()
+    if engine.update_manager is None:
         from server.updater.manager import UpdateManager
-        _update_manager = UpdateManager(state_store=_get_engine().state)
-    return _update_manager
+        engine.update_manager = UpdateManager(state_store=engine.state)
+    return engine.update_manager
 
 
 @router.get("/system/updates/check")

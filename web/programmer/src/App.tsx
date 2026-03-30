@@ -15,6 +15,7 @@ import { AIChatView } from "./views/AIChatView";
 import { DashboardView } from "./views/DashboardView";
 import { PluginsView } from "./views/PluginsView";
 import { PluginExtensionView } from "./views/PluginExtensionView";
+import { UpdatesView } from "./views/UpdatesView";
 import { useProjectStore } from "./store/projectStore";
 import { useNavigationStore } from "./store/navigationStore";
 import { useWebSocket } from "./hooks/useWebSocket";
@@ -73,6 +74,8 @@ function App() {
         return <AIChatView />;
       case "cloud":
         return <CloudSettingsView />;
+      case "updates":
+        return <UpdatesView />;
       default:
         if (activeView.startsWith("plugin-view:")) {
           return <PluginExtensionView viewKey={activeView.slice("plugin-view:".length)} />;

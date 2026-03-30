@@ -43,6 +43,7 @@ class HandshakeResult:
     session_expires: str
     enabled_capabilities: list[str]
     config: dict[str, Any]
+    upgrade_required: dict[str, Any] | None = None
 
 
 class HandshakeError(Exception):
@@ -200,6 +201,7 @@ class Handshake:
         session_expires = payload.get("session_expires", "")
         enabled_capabilities = payload.get("enabled_capabilities", [])
         config = payload.get("config", {})
+        upgrade_required = payload.get("upgrade_required")
 
         if not all([session_id, session_token, signing_key_salt_hex]):
             raise HandshakeError(
@@ -229,6 +231,7 @@ class Handshake:
             session_expires=session_expires,
             enabled_capabilities=enabled_capabilities,
             config=config,
+            upgrade_required=upgrade_required,
         )
 
     async def send_resume(

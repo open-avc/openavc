@@ -59,6 +59,15 @@ async def lifespan(app: FastAPI):
         log.warning("  Set OPENAVC_PROGRAMMER_PASSWORD or OPENAVC_API_KEY,")
         log.warning("  or bind to 127.0.0.1 (OPENAVC_BIND=127.0.0.1).")
         log.warning("=" * 60)
+    # Check if automatic rollback is needed (failed update crash detection)
+    from server.system_config import get_system_config
+    from server.updater.rollback import check_rollback_needed
+    data_dir = get_system_config().data_dir
+    if check_rollback_needed(data_dir):
+        from server.updater.rollback import perform_rollback
+        perform_rollback(data_dir)
+        # perform_rollback logs the outcome; continue startup on current code
+
     await engine.start()
     # Load driver hints into discovery engine after drivers are registered
     from server.core.device_manager import get_driver_registry

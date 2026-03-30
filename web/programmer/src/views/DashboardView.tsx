@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Cpu, Zap, Cloud, FileCode, AlertTriangle, Clock, ArrowRight } from "lucide-react";
+import { Cpu, Zap, Cloud, FileCode, AlertTriangle, Clock, ArrowRight, ArrowUpCircle } from "lucide-react";
 import { ViewContainer } from "../components/layout/ViewContainer";
 import { DeviceStatusDot } from "../components/shared/DeviceStatusDot";
 import { useProjectStore } from "../store/projectStore";
@@ -154,6 +154,35 @@ export function DashboardView() {
               </div>
             </div>
           </div>
+
+          {/* Update available card */}
+          {!!liveState["system.update_available"] && (
+            <div
+              onClick={() => useNavigationStore.getState().navigateTo("updates")}
+              style={{
+                ...cardStyle,
+                marginBottom: "var(--space-xl)",
+                borderColor: "rgba(33,150,243,0.3)",
+                display: "flex",
+                alignItems: "center",
+                gap: "var(--space-md)",
+                cursor: "pointer",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "var(--bg-surface)")}
+            >
+              <ArrowUpCircle size={20} style={{ color: "var(--accent)", flexShrink: 0 }} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 500, fontSize: "var(--font-size-sm)" }}>
+                  {"OpenAVC v" + String(liveState["system.update_available"]) + " available"}
+                </div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
+                  View changelog and install
+                </div>
+              </div>
+              <ArrowRight size={14} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+            </div>
+          )}
 
           {/* Getting Started — shown when project is empty */}
           {devices.length === 0 && project.macros.length === 0 && (

@@ -900,6 +900,63 @@ export async function uninstallPlugin(pluginId: string): Promise<{ status: strin
 
 export type { PluginInfo, SchemaField } from "./types";
 
+// --- System Updates ---
+
+export interface UpdateStatus {
+  current_version: string;
+  deployment_type: string;
+  can_self_update: boolean;
+  update_available: string;
+  update_channel: string;
+  update_status: string;
+  update_progress: number;
+  update_error: string;
+  rollback_available: boolean;
+  rollback_version: string;
+}
+
+export interface UpdateCheckResult {
+  update_available: boolean;
+  current_version: string;
+  available_version?: string;
+  channel: string;
+  prerelease?: boolean;
+  changelog?: string;
+  published_at?: string;
+  can_self_update?: boolean;
+  deployment_type?: string;
+  instructions?: string;
+  error?: string;
+}
+
+export interface UpdateHistoryEntry {
+  from_version: string;
+  to_version: string;
+  status: string;
+  error?: string;
+  timestamp: string;
+}
+
+export async function checkForUpdates(): Promise<UpdateCheckResult> {
+  return request("/system/updates/check");
+}
+
+export async function applyUpdate(): Promise<{ success: boolean; message?: string; error?: string }> {
+  return request("/system/updates/apply", { method: "POST" });
+}
+
+export async function rollbackUpdate(): Promise<{ success: boolean; message?: string; error?: string }> {
+  return request("/system/updates/rollback", { method: "POST" });
+}
+
+export async function getUpdateStatus(): Promise<UpdateStatus> {
+  return request("/system/updates/status");
+}
+
+export async function getUpdateHistory(): Promise<UpdateHistoryEntry[]> {
+  return request("/system/updates/history");
+}
+
 // --- Assets ---
 
 export interface AssetInfo {

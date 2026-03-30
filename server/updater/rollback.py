@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -101,10 +103,111 @@ def check_rollback_needed(data_dir: Path) -> bool:
 def can_rollback(app_dir: Path) -> bool:
     """Check if a previous version is available for rollback."""
     if sys.platform == "win32":
-        # Windows: check for cached previous installer
-        cache_dir = app_dir / "update-cache"
+        # Windows: check for cached previous installer in the data directory
+        from server.system_config import get_system_config
+        cache_dir = get_system_config().data_dir / "update-cache"
         return any(cache_dir.glob("OpenAVC-Setup-*.exe")) if cache_dir.exists() else False
     else:
         # Linux: check for /opt/openavc.previous/
         previous = app_dir.parent / f"{app_dir.name}.previous"
         return previous.is_dir()
+
+
+def perform_rollback(data_dir: Path) -> bool:
+    """Restore the previous version of OpenAVC.
+
+    Called automatically when the server crashes after an update (attempts >= 2),
+    or manually via the REST API.
+
+    Returns True if rollback was initiated, False if no previous version available.
+    """
+    marker = read_pending_marker(data_dir)
+    from_version = marker.get("from_version", "unknown") if marker else "unknown"
+    to_version = marker.get("to_version", "unknown") if marker else "unknown"
+
+    if sys.platform == "win32":
+        return _rollback_windows(data_dir, from_version, to_version)
+    else:
+        return _rollback_linux(data_dir, from_version, to_version)
+
+
+def _rollback_windows(data_dir: Path, from_version: str, to_version: str) -> bool:
+    """Rollback on Windows by re-running a cached previous installer."""
+    cache_dir = data_dir / "update-cache"
+    if not cache_dir.exists():
+        log.error("Rollback failed: no update-cache directory")
+        return False
+
+    # Find the most recent cached installer that isn't the current version
+    installers = sorted(cache_dir.glob("OpenAVC-Setup-*.exe"))
+    if not installers:
+        log.error("Rollback failed: no cached installer found")
+        return False
+
+    # Use the most recent cached installer
+    installer = installers[-1]
+    log.warning(
+        "Automatic rollback: running cached installer %s (v%s failed after update from v%s)",
+        installer.name, to_version, from_version,
+    )
+
+    # Clear the marker before rollback to prevent rollback loops
+    clear_pending_marker(data_dir)
+
+    try:
+        subprocess.Popen(
+            [
+                str(installer),
+                "/VERYSILENT",
+                "/SUPPRESSMSGBOXES",
+                "/NORESTART",
+            ],
+            creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+        )
+        return True
+    except OSError as e:
+        log.error("Rollback failed: could not launch installer: %s", e)
+        return False
+
+
+def _rollback_linux(data_dir: Path, from_version: str, to_version: str) -> bool:
+    """Rollback on Linux by restoring /opt/openavc.previous/."""
+    app_dir = Path("/opt/openavc")
+    previous_dir = app_dir.parent / "openavc.previous"
+
+    if not previous_dir.is_dir():
+        log.error("Rollback failed: %s does not exist", previous_dir)
+        return False
+
+    log.warning(
+        "Automatic rollback: restoring %s (v%s failed after update from v%s)",
+        previous_dir, to_version, from_version,
+    )
+
+    # Clear the marker before rollback to prevent rollback loops
+    clear_pending_marker(data_dir)
+
+    try:
+        # Replace current install with the previous one
+        failed_dir = app_dir.parent / "openavc.failed"
+        if failed_dir.exists():
+            shutil.rmtree(failed_dir)
+
+        # Move current (failed) out of the way
+        shutil.move(str(app_dir), str(failed_dir))
+        # Move previous into place
+        shutil.move(str(previous_dir), str(app_dir))
+        # Clean up the failed install
+        shutil.rmtree(failed_dir, ignore_errors=True)
+
+        log.info("Rollback restored previous install. Restarting service...")
+
+        # Restart the service with the restored code
+        subprocess.run(
+            ["sudo", "systemctl", "restart", "openavc"],
+            check=False,
+        )
+        return True
+    except OSError as e:
+        log.error("Rollback failed during file operations: %s", e)
+        return False

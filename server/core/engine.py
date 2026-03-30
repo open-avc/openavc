@@ -60,6 +60,7 @@ class Engine:
         self.plugin_loader = PluginLoader(self.state, self.events, self.macros, self.devices)
         self.isc = None  # ISCManager, initialized in start() if enabled
         self.cloud_agent = None  # CloudAgent, initialized in start() if enabled
+        self.update_manager = None  # UpdateManager, initialized in start()
 
         # Wire StateStore -> EventBus
         self.state.set_event_bus(self.events)
@@ -82,6 +83,7 @@ class Engine:
         # Tracking
         self._start_time: float = 0
         self._running = False
+        self._marker_confirm_task: asyncio.Task | None = None
 
     async def start(self) -> None:
         """
@@ -229,16 +231,65 @@ class Engine:
         # Start trigger engine after system.started (so startup triggers work)
         await self.triggers.start()
 
+        # Update Manager — check for updates and schedule auto-check
+        try:
+            from server.updater.manager import UpdateManager
+            self.update_manager = UpdateManager(state_store=self.state)
+            await self.update_manager.start_auto_check()
+            # Wire into cloud command handler for cloud-triggered updates
+            if self.cloud_agent and hasattr(self.cloud_agent, '_command_handler'):
+                handler = self.cloud_agent._command_handler
+                if handler:
+                    handler._update_manager = self.update_manager
+        except Exception:
+            log.exception("Update manager failed to start — continuing without updates")
+            self.update_manager = None
+
+        # 60-second startup confirmation — clear pending-update marker
+        self._marker_confirm_task = asyncio.create_task(
+            self._confirm_startup_after_delay()
+        )
+        self._marker_confirm_task.add_done_callback(_log_task_exception)
+
         log.info(
             f'Engine started — project "{self.project.project.name}" '
             f"({len(self.project.devices)} devices, "
             f"{len(self.project.macros)} macros)"
         )
 
+    async def _confirm_startup_after_delay(self) -> None:
+        """Clear pending-update marker after 60 seconds of stable running."""
+        try:
+            await asyncio.sleep(60)
+            from server.system_config import get_system_config
+            from server.updater.rollback import read_pending_marker, clear_pending_marker
+            data_dir = get_system_config().data_dir
+            marker = read_pending_marker(data_dir)
+            if marker:
+                clear_pending_marker(data_dir)
+                log.info(
+                    "Update confirmed successful after 60s (v%s -> v%s)",
+                    marker.get("from_version"), marker.get("to_version"),
+                )
+        except asyncio.CancelledError:
+            pass
+
     async def stop(self) -> None:
         """Stop the engine gracefully."""
         log.info("Engine stopping...")
         self._running = False
+
+        # Cancel startup confirmation timer
+        if self._marker_confirm_task and not self._marker_confirm_task.done():
+            self._marker_confirm_task.cancel()
+            try:
+                await self._marker_confirm_task
+            except asyncio.CancelledError:
+                pass
+
+        # Stop update manager
+        if self.update_manager:
+            await self.update_manager.stop_auto_check()
 
         # Unsubscribe all event/state handlers to prevent leaks on reload
         for sub_id in self._state_sub_ids:

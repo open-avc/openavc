@@ -38,7 +38,7 @@ function viewFromHash(): ViewId {
   const known: ViewId[] = [
     "dashboard", "project", "devices", "variables",
     "ui-builder", "macros", "scripts", "plugins",
-    "isc", "ai", "cloud", "log",
+    "isc", "ai", "cloud", "log", "updates",
   ];
   return known.includes(hash as ViewId) ? (hash as ViewId) : "dashboard";
 }

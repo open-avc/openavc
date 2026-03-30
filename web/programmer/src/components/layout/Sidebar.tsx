@@ -11,6 +11,7 @@ import {
   Cloud,
   Bot,
   Plug,
+  ArrowUpCircle,
 } from "lucide-react";
 import { usePluginStore } from "../../store/pluginStore";
 import { useConnectionStore } from "../../store/connectionStore";
@@ -29,6 +30,7 @@ export type ViewId =
   | "ai"
   | "cloud"
   | "log"
+  | "updates"
   | `plugin-view:${string}`;
 
 interface SidebarProps {
@@ -54,6 +56,7 @@ const navItems: { id: ViewId; label: string; icon: typeof Monitor }[] = [
 export function Sidebar({ activeView, onViewChange }: SidebarProps) {
   const pluginViews = usePluginStore((s) => s.extensions.views);
   const connected = useConnectionStore((s) => s.connected);
+  const updateAvailable = String(useConnectionStore((s) => s.liveState["system.update_available"]) ?? "");
 
   return (
     <nav className={styles.sidebar}>
@@ -87,6 +90,20 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
         );
       })}
       <div className={styles.spacer} />
+      {updateAvailable && (
+        <button
+          className={`${styles.navItem} ${activeView === "updates" ? styles.active : ""}`}
+          onClick={() => onViewChange("updates")}
+          style={{
+            background: activeView === "updates" ? undefined : "rgba(33, 150, 243, 0.1)",
+            color: "var(--accent)",
+            marginBottom: "var(--space-sm)",
+          }}
+        >
+          <ArrowUpCircle size={20} />
+          <span className={styles.tooltip}>{"Update available: v" + updateAvailable}</span>
+        </button>
+      )}
       <div className={styles.connectionStatus}>
         <div
           className={styles.statusDot}

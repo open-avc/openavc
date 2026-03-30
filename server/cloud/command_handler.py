@@ -42,6 +42,7 @@ class CommandHandler:
         devices: DeviceManager,
         events: EventBus,
         reload_fn=None,
+        update_manager=None,
     ):
         """
         Args:
@@ -49,11 +50,13 @@ class CommandHandler:
             devices: DeviceManager for device commands.
             events: EventBus for emitting audit events.
             reload_fn: Optional async callable to trigger project reload.
+            update_manager: Optional UpdateManager for cloud-triggered updates.
         """
         self._agent = agent
         self._devices = devices
         self._events = events
         self._reload_fn = reload_fn
+        self._update_manager = update_manager
 
     async def handle(self, msg: dict[str, Any]) -> None:
         """
@@ -223,29 +226,75 @@ class CommandHandler:
     async def _handle_software_update(
         self, payload: dict[str, Any], request_id: str, user_name: str
     ) -> None:
-        """Handle a software update request."""
+        """Handle a software update request from the cloud.
+
+        Triggers a check-and-apply flow through UpdateManager.
+        For non-self-updating deployments (Docker, git), acknowledges
+        but does not attempt to apply.
+        """
         target_version = payload.get("target_version", "")
-        update_url = payload.get("update_url", "")
         auto_restart = payload.get("auto_restart", True)
         log.info(
-            f"Cloud software update: {user_name} → "
-            f"version={target_version}, url={update_url}"
+            f"Cloud software update: {user_name} → version={target_version}"
         )
 
         await self._events.emit("cloud.software_update", {
             "target_version": target_version,
-            "update_url": update_url,
             "auto_restart": auto_restart,
             "user_name": user_name,
             "request_id": request_id,
         })
 
-        # Actual download/apply is deployment-method-specific (pip, Docker, tar)
-        # For now, acknowledge receipt
-        await self._send_result(
-            request_id, True,
-            result=f"Update to {target_version} acknowledged (manual apply required)",
-        )
+        # Use UpdateManager to check and apply
+        try:
+            from server.updater.platform import can_self_update, detect_deployment_type
+
+            deployment_type = detect_deployment_type()
+
+            if self._update_manager is None:
+                await self._send_result(
+                    request_id, True,
+                    result=f"Update to {target_version} noted. Check the Programmer IDE for update status.",
+                )
+                return
+
+            # Run check
+            check_result = await self._update_manager.check_for_updates()
+
+            if not can_self_update(deployment_type):
+                await self._send_result(
+                    request_id, True,
+                    result=f"Update to {target_version} available but this deployment type does not support self-update.",
+                )
+                return
+
+            if not check_result.get("update_available"):
+                await self._send_result(
+                    request_id, True,
+                    result="System is already up to date.",
+                )
+                return
+
+            # Apply the update
+            if auto_restart:
+                apply_result = await self._update_manager.apply_update()
+                await self._send_result(
+                    request_id, apply_result.get("success", False),
+                    result=apply_result.get("message"),
+                    error=apply_result.get("error"),
+                )
+            else:
+                await self._send_result(
+                    request_id, True,
+                    result=f"Update to {target_version} available. auto_restart=false, waiting for manual apply.",
+                )
+
+        except Exception as e:
+            log.exception("Cloud software update failed")
+            await self._send_result(
+                request_id, False,
+                error=f"Update failed: {e}",
+            )
 
     async def _send_result(
         self, request_id: str, success: bool,

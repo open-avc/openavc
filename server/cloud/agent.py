@@ -294,6 +294,26 @@ class CloudAgent:
             self._apply_config(result.config)
             self._enabled_capabilities = result.enabled_capabilities
 
+            # Handle upgrade_required from cloud
+            if result.upgrade_required:
+                min_ver = result.upgrade_required.get("min_version", "")
+                self.state.set("system.cloud_upgrade_required", True, source="cloud")
+                self.state.set("system.cloud_min_version", min_ver, source="cloud")
+                log.warning(
+                    "Cloud requires core v%s or later: %s",
+                    min_ver, result.upgrade_required.get("message", ""),
+                )
+            else:
+                self.state.set("system.cloud_upgrade_required", False, source="cloud")
+                self.state.set("system.cloud_min_version", "", source="cloud")
+
+            # Apply cloud update policy to UpdateManager
+            update_policy = result.config.get("update_policy")
+            if update_policy and self._command_handler and hasattr(self._command_handler, '_update_manager'):
+                mgr = self._command_handler._update_manager
+                if mgr:
+                    mgr.apply_update_policy(update_policy)
+
             # Reset sequencer for new session
             self._sequencer.reset_for_new_session()
 
