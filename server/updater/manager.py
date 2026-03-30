@@ -356,8 +356,6 @@ class UpdateManager:
 
     async def _apply_linux(self, artifact_path: Path) -> None:
         """Apply update on Linux: stop service, backup current, extract, rebuild venv, restart."""
-        from server.system_config import APP_DIR
-
         app_dir = Path("/opt/openavc")
         previous_dir = app_dir.parent / "openavc.previous"
 
@@ -566,7 +564,6 @@ class UpdateManager:
             return
 
         start_time = dt_time(start_h, start_m)
-        end_time = dt_time(end_h, end_m)
         max_retries = 7  # Days to retry
 
         try:
@@ -597,7 +594,6 @@ class UpdateManager:
 
     async def _sleep_until_window(self, start_time, tz_name: str | None) -> None:
         """Sleep until the next occurrence of the maintenance window start time."""
-        from datetime import time as dt_time
         while True:
             now = datetime.now(timezone.utc)
             # Convert to target timezone if specified

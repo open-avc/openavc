@@ -347,7 +347,8 @@ class TestUpdateManager:
         mgr = UpdateManager(state_store=mock_state, data_dir=tmp_path)
         status = mgr.get_status()
 
-        assert status["current_version"] == "0.1.0"
+        from server.version import __version__
+        assert status["current_version"] == __version__
         assert status["deployment_type"] == "git_dev"
         assert status["can_self_update"] is False
 
