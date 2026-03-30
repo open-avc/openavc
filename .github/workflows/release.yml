@@ -425,3 +425,10 @@ jobs:
           prerelease: ${{ needs.version.outputs.prerelease }}
           generate_release_notes: true
           files: release/*
+
+      - name: Trigger marketing site rebuild
+        if: ${{ needs.version.outputs.prerelease == 'false' }}
+        run: |
+          curl -s -X POST "${{ secrets.SITE_DEPLOY_HOOK }}"
+        env:
+          SITE_DEPLOY_HOOK: ${{ secrets.SITE_DEPLOY_HOOK }}
