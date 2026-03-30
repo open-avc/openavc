@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 
 from server.api.auth import require_programmer_auth
+from server.api.errors import api_error as _api_error
 from server.core.project_loader import (
     PluginConfig,
     build_default_plugin_config,
@@ -36,12 +37,6 @@ def _get_engine():
         raise HTTPException(status_code=503, detail="Engine not started")
     return _engine
 
-
-def _api_error(status_code: int, message: str, exc: Exception | None = None) -> HTTPException:
-    """Build an HTTPException with a safe user-facing message, logging the full exception."""
-    if exc is not None:
-        log.error(f"API error ({status_code}): {message} — {type(exc).__name__}: {exc}")
-    return HTTPException(status_code=status_code, detail=message)
 
 
 # ──── List / Detail ────

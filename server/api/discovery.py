@@ -9,6 +9,7 @@ from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
 from server.api.auth import require_programmer_auth
+from server.api.errors import api_error as _api_error
 from server.discovery.engine import DiscoveryEngine
 from server.utils.logger import get_logger
 
@@ -20,12 +21,6 @@ _app_engine = None  # The main OpenAVC engine (for add-device)
 def set_app_engine(engine) -> None:
     global _app_engine
     _app_engine = engine
-
-def _api_error(status_code: int, message: str, exc: Exception | None = None) -> HTTPException:
-    """Build an HTTPException with a safe user-facing message, logging the full exception."""
-    if exc is not None:
-        log.error(f"API error ({status_code}): {message} — {type(exc).__name__}: {exc}")
-    return HTTPException(status_code=status_code, detail=message)
 
 
 router = APIRouter(

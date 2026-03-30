@@ -11,6 +11,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from server.api.auth import require_programmer_auth
+from server.api.errors import api_error as _api_error
 from server.api.models import (
     CloudPairRequest,
     CommandRequest,
@@ -71,11 +72,6 @@ def _rate_limit_test(endpoint_key: str) -> None:
     _test_endpoint_last_call[endpoint_key] = now
 
 
-def _api_error(status_code: int, message: str, exc: Exception | None = None) -> HTTPException:
-    """Build an HTTPException with a safe user-facing message, logging the full exception."""
-    if exc is not None:
-        log.error(f"API error ({status_code}): {message} — {type(exc).__name__}: {exc}")
-    return HTTPException(status_code=status_code, detail=message)
 
 
 # --- System ---
