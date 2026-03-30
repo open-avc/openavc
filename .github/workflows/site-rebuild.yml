@@ -1,0 +1,13 @@
+name: Trigger marketing site rebuild
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  rebuild:
+    name: Rebuild openavc.com
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Netlify build hook
+        run: curl -s -X POST "${{ secrets.SITE_DEPLOY_HOOK }}"
