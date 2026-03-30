@@ -7,7 +7,6 @@ uninstall_plugin, _register_installed_plugin, _install_pip_deps.
 
 import zipfile
 from io import BytesIO
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx

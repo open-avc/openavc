@@ -1,6 +1,6 @@
 """Tests for the authentication module (server/api/auth.py)."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi import FastAPI, HTTPException
@@ -8,8 +8,6 @@ from fastapi.security import HTTPBasicCredentials
 from fastapi.testclient import TestClient
 
 from server.api.auth import (
-    _check_api_key,
-    _check_password,
     check_ws_auth,
     get_ws_auth_subprotocol,
     require_programmer_auth,

@@ -1,6 +1,5 @@
 """Tests for WebSocket protocol — message handling, panel vs programmer, state validation."""
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
