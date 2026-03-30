@@ -33,6 +33,7 @@ from server.cloud.protocol import (
 from server.cloud.session import Session, SessionInvalid
 from server.cloud.sequencer import Sequencer
 from server.utils.logger import get_logger
+from server.version import __version__
 
 if TYPE_CHECKING:
     from server.core.state_store import StateStore
@@ -136,7 +137,7 @@ class CloudAgent:
         self._throttles: dict[str, asyncio.Event] = {}
 
         # Application version
-        self._version = "0.1.0"  # TODO: read from package
+        self._version = __version__
 
     @staticmethod
     def _load_system_key(key_input: str | bytes) -> bytes:
@@ -563,9 +564,9 @@ class CloudAgent:
         asyncio.create_task(self._unthrottle(limit_type, retry_after))
 
     async def _unthrottle(self, limit_type: str, delay: float) -> None:
-        """Release a throttle after the specified delay."""
+        """Release a throttle after the specified delay, then clean up."""
         await asyncio.sleep(delay)
-        event = self._throttles.get(limit_type)
+        event = self._throttles.pop(limit_type, None)
         if event:
             event.set()
             log.info(f"Cloud agent: throttle on '{limit_type}' released")

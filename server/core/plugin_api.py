@@ -43,6 +43,7 @@ class PluginAPI:
         platform_id: str,
         save_config_fn: Callable | None = None,
         log_fn: Callable | None = None,
+        failure_reporter: Callable | None = None,
     ):
         self._plugin_id = plugin_id
         self._capabilities = set(capabilities)
@@ -55,6 +56,7 @@ class PluginAPI:
         self._platform_id = platform_id
         self._save_config_fn = save_config_fn
         self._log_fn = log_fn
+        self._failure_reporter = failure_reporter
         self._periodic_tasks: dict[str, asyncio.Task] = {}
 
     def _require(self, capability: str) -> None:
@@ -108,6 +110,8 @@ class PluginAPI:
 
         # Wrap to match internal StateStore signature (key, old_value, new_value, source)
         # and provide the plugin-facing signature (key, value, old_value)
+        failure_reporter = self._failure_reporter
+
         async def _wrapper(key: str, old_value: Any, new_value: Any, source: str) -> None:
             try:
                 result = callback(key, new_value, old_value)
@@ -117,6 +121,8 @@ class PluginAPI:
                 log.exception(
                     f"Plugin '{self._plugin_id}' state callback error for key '{key}'"
                 )
+                if failure_reporter:
+                    failure_reporter()
 
         sub_id = self._state.subscribe(pattern, _wrapper)
         self._registry.track_state_subscription(sub_id)
@@ -150,6 +156,8 @@ class PluginAPI:
         """
         self._require("event_subscribe")
 
+        failure_reporter = self._failure_reporter
+
         async def _wrapper(event_name: str, payload: dict[str, Any] | None) -> None:
             try:
                 result = callback(event_name, payload or {})
@@ -159,6 +167,8 @@ class PluginAPI:
                 log.exception(
                     f"Plugin '{self._plugin_id}' event callback error for '{event_name}'"
                 )
+                if failure_reporter:
+                    failure_reporter()
 
         handler_id = self._events.on(pattern, _wrapper)
         self._registry.track_event_subscription(handler_id)

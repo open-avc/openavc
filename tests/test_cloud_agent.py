@@ -850,3 +850,127 @@ class TestCommandHandler:
         assert sent[0][1]["success"] is True
         assert len(emitted) == 1
         assert emitted[0]["mode"] == "graceful"
+
+
+# ===========================================================================
+# State Relay Tests
+# ===========================================================================
+
+
+class TestStateRelay:
+    """Tests for server.cloud.state_relay."""
+
+    def test_on_state_change_batches(self):
+        """State changes are collected into a batch."""
+        from server.core.state_store import StateStore
+        from server.cloud.state_relay import StateRelay
+
+        state = StateStore()
+        agent = type("MockAgent", (), {"_config": {}})()
+        relay = StateRelay(agent, state)
+
+        relay._on_state_change("device.proj.power", None, "on", "driver")
+        relay._on_state_change("var.room_active", False, True, "ws")
+
+        assert len(relay._batch) == 2
+        assert relay._batch[0]["key"] == "device.proj.power"
+        assert relay._batch[0]["value"] == "on"
+        assert relay._batch[1]["key"] == "var.room_active"
+        assert relay._batch[1]["value"] is True
+
+    def test_skips_cloud_internal_state(self):
+        """Cloud-internal state keys are not relayed."""
+        from server.core.state_store import StateStore
+        from server.cloud.state_relay import StateRelay
+
+        state = StateStore()
+        agent = type("MockAgent", (), {"_config": {}})()
+        relay = StateRelay(agent, state)
+
+        relay._on_state_change("system.cloud.connected", None, True, "system")
+        assert len(relay._batch) == 0
+
+    def test_skips_isc_state(self):
+        """ISC remote state is not relayed (prevents echo loops)."""
+        from server.core.state_store import StateStore
+        from server.cloud.state_relay import StateRelay
+
+        state = StateStore()
+        agent = type("MockAgent", (), {"_config": {}})()
+        relay = StateRelay(agent, state)
+
+        relay._on_state_change("isc.peer1.status", None, "online", "isc")
+        assert len(relay._batch) == 0
+
+    def test_format_ts(self):
+        """Timestamp formatting produces ISO 8601 with Z suffix."""
+        from server.cloud.state_relay import StateRelay
+
+        ts = 1711724400.123  # Fixed epoch
+        formatted = StateRelay._format_ts(ts)
+        assert formatted.endswith("Z")
+        assert "T" in formatted
+
+    @pytest.mark.asyncio
+    async def test_start_stop_lifecycle(self):
+        """Start subscribes to state, stop unsubscribes."""
+        from server.core.state_store import StateStore
+        from server.core.event_bus import EventBus
+        from server.cloud.state_relay import StateRelay
+
+        state = StateStore()
+        events = EventBus()
+        state.set_event_bus(events)
+
+        sent = []
+
+        class MockAgent:
+            _config = {"state_batch_interval": 0.1, "state_batch_max_size": 500}
+            async def send_message(self, msg_type, payload):
+                sent.append((msg_type, payload))
+
+        relay = StateRelay(MockAgent(), state)
+        await relay.start()
+
+        # Trigger a state change
+        state.set("var.test", 42, source="test")
+
+        # Wait for flush
+        await asyncio.sleep(0.3)
+
+        await relay.stop()
+
+        # At least one batch should have been sent
+        assert len(sent) >= 1
+        assert sent[0][0] == STATE_BATCH
+        changes = sent[0][1]["changes"]
+        assert any(c["key"] == "var.test" and c["value"] == 42 for c in changes)
+
+
+# ===========================================================================
+# Agent Throttle Cleanup Tests
+# ===========================================================================
+
+
+class TestAgentThrottle:
+    """Tests for CloudAgent throttle handling."""
+
+    @pytest.mark.asyncio
+    async def test_unthrottle_removes_entry(self):
+        """_unthrottle removes the throttle entry from the dict."""
+        from server.cloud.agent import CloudAgent
+
+        # Create a minimal agent instance without actually connecting
+        agent = CloudAgent.__new__(CloudAgent)
+        agent._throttles = {}
+
+        # Manually set up a throttle entry
+        event = asyncio.Event()
+        event.clear()
+        agent._throttles["state_batch"] = event
+
+        # Run _unthrottle with a very short delay
+        await agent._unthrottle("state_batch", 0.01)
+
+        # Entry should be removed
+        assert "state_batch" not in agent._throttles

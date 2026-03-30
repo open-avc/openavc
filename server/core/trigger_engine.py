@@ -22,6 +22,15 @@ if TYPE_CHECKING:
 
 log = get_logger(__name__)
 
+
+def _log_task_exception(task: asyncio.Task) -> None:
+    """Done-callback to log unhandled exceptions from fire-and-forget tasks."""
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc:
+        log.error(f"Background task {task.get_name()!r} failed: {exc}", exc_info=exc)
+
 try:
     from croniter import croniter
 
@@ -126,11 +135,13 @@ class TriggerEngine:
 
             elif ttype == "startup":
                 delay = t.get("delay_seconds", 0)
-                asyncio.create_task(self._fire_startup(ts, delay))
+                t = asyncio.create_task(self._fire_startup(ts, delay))
+                t.add_done_callback(_log_task_exception)
 
         # Start cron loop if any schedule triggers exist
         if has_cron and HAS_CRONITER:
             self._cron_task = asyncio.create_task(self._cron_loop())
+            self._cron_task.add_done_callback(_log_task_exception)
             log.info("Trigger cron loop started")
         elif has_cron and not HAS_CRONITER:
             log.warning("Schedule triggers defined but croniter not installed")

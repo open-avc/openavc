@@ -146,8 +146,7 @@ class ScriptEngine:
                     f"in top-level code"
                 )
         finally:
-            # Shutdown without waiting — marks worker threads as daemon-like
-            pool.shutdown(wait=False)
+            pool.shutdown(wait=True)
 
         self._loaded_modules[script_id] = module_name
 

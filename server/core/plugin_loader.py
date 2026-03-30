@@ -372,6 +372,17 @@ class PluginLoader:
 
         # Create registry and API
         registry = PluginRegistry(plugin_id)
+
+        def _on_callback_failure(_pid=plugin_id):
+            count = self._callback_failures.get(_pid, 0) + 1
+            self._callback_failures[_pid] = count
+            if count >= MAX_CALLBACK_FAILURES:
+                log.error(
+                    f"Plugin '{_pid}' hit {count} consecutive callback failures "
+                    f"— auto-disabling"
+                )
+                asyncio.create_task(self._auto_disable_plugin(_pid))
+
         api = PluginAPI(
             plugin_id=plugin_id,
             capabilities=info.get("capabilities", []),
@@ -384,6 +395,7 @@ class PluginLoader:
             platform_id=self._platform_id,
             save_config_fn=self._save_config_fn,
             log_fn=self._plugin_log,
+            failure_reporter=_on_callback_failure,
         )
 
         # Instantiate and start
@@ -663,6 +675,20 @@ class PluginLoader:
             "missing": missing,
             "platform_warnings": platform_warnings,
         }
+
+    # ──── Auto-Disable ────
+
+    async def _auto_disable_plugin(self, plugin_id: str) -> None:
+        """Stop a plugin that has exceeded MAX_CALLBACK_FAILURES."""
+        if plugin_id not in self._instances:
+            return
+        await self.stop_plugin(plugin_id)
+        self._status[plugin_id] = "error"
+        self._errors[plugin_id] = (
+            f"Auto-disabled after {MAX_CALLBACK_FAILURES} consecutive callback failures"
+        )
+        self._state.set(f"plugin.{plugin_id}.auto_disabled", True, source="system")
+        await self._events.emit("plugin.auto_disabled", {"plugin_id": plugin_id})
 
     # ──── Internal ────
 

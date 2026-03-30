@@ -30,6 +30,15 @@ from server.version import __version__
 log = get_logger(__name__)
 
 
+def _log_task_exception(task: asyncio.Task) -> None:
+    """Done-callback to log unhandled exceptions from fire-and-forget tasks."""
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc:
+        log.error(f"Background task {task.get_name()!r} failed: {exc}", exc_info=exc)
+
+
 class Engine:
     """
     Main runtime engine. Singleton per OpenAVC instance.
@@ -205,6 +214,7 @@ class Engine:
 
         # Start the batch flush task
         self._batch_task = asyncio.create_task(self._flush_state_batch_loop())
+        self._batch_task.add_done_callback(_log_task_exception)
         self._running = True
 
         # Record startup errors (if any) for UI visibility
@@ -505,7 +515,8 @@ class Engine:
             macro_id = binding.get("macro", "")
             if macro_id:
                 # Run macro in background so UI doesn't block
-                asyncio.create_task(self.macros.execute(macro_id))
+                task = asyncio.create_task(self.macros.execute(macro_id))
+                task.add_done_callback(_log_task_exception)
 
         elif action == "device.command":
             device_id = binding.get("device", "")
