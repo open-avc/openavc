@@ -1,5 +1,6 @@
 """Tests for AI tool handler — agent-side tool call dispatch."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -9,6 +10,12 @@ from server.cloud.protocol import (
     AI_TOOL_CALL, AI_TOOL_RESULT,
     build_ai_tool_result, _now_iso,
 )
+
+
+async def _handle_and_wait(handler, msg):
+    """Call handle() and wait for the background task to complete."""
+    await handler.handle(msg)
+    await asyncio.sleep(0)
 
 
 def _make_tool_call_msg(tool_name, tool_input=None, request_id="req-1"):
@@ -69,7 +76,7 @@ def handler(mock_agent, mock_devices, mock_events):
 @pytest.mark.asyncio
 async def test_get_project_state(handler, mock_agent):
     msg = _make_tool_call_msg("get_project_state")
-    await handler.handle(msg)
+    await _handle_and_wait(handler, msg)
 
     mock_agent.send_message.assert_called_once()
     call_args = mock_agent.send_message.call_args
@@ -83,7 +90,7 @@ async def test_get_project_state(handler, mock_agent):
 @pytest.mark.asyncio
 async def test_get_state_value(handler, mock_agent):
     msg = _make_tool_call_msg("get_state_value", {"key": "device.projector.power"})
-    await handler.handle(msg)
+    await _handle_and_wait(handler, msg)
 
     payload = mock_agent.send_message.call_args[0][1]
     assert payload["success"] is True
@@ -93,7 +100,7 @@ async def test_get_state_value(handler, mock_agent):
 @pytest.mark.asyncio
 async def test_list_devices(handler, mock_agent, mock_devices):
     msg = _make_tool_call_msg("list_devices")
-    await handler.handle(msg)
+    await _handle_and_wait(handler, msg)
 
     mock_devices.list_devices.assert_called_once()
     payload = mock_agent.send_message.call_args[0][1]
@@ -105,7 +112,7 @@ async def test_list_devices(handler, mock_agent, mock_devices):
 @pytest.mark.asyncio
 async def test_get_device_info(handler, mock_agent, mock_devices):
     msg = _make_tool_call_msg("get_device_info", {"device_id": "projector"})
-    await handler.handle(msg)
+    await _handle_and_wait(handler, msg)
 
     mock_devices.get_device_info.assert_called_once_with("projector")
     payload = mock_agent.send_message.call_args[0][1]
@@ -120,7 +127,7 @@ async def test_send_device_command(handler, mock_agent, mock_devices, mock_event
         "command": "power_on",
         "params": {},
     })
-    await handler.handle(msg)
+    await _handle_and_wait(handler, msg)
 
     mock_devices.send_command.assert_called_once_with("projector", "power_on", {})
     mock_events.emit.assert_called()
@@ -131,7 +138,7 @@ async def test_send_device_command(handler, mock_agent, mock_devices, mock_event
 @pytest.mark.asyncio
 async def test_set_state_value(handler, mock_agent):
     msg = _make_tool_call_msg("set_state_value", {"key": "var.mode", "value": "away"})
-    await handler.handle(msg)
+    await _handle_and_wait(handler, msg)
 
     mock_agent.state.set.assert_called_once_with("var.mode", "away", source="ai")
     payload = mock_agent.send_message.call_args[0][1]
@@ -147,7 +154,7 @@ async def test_execute_macro(handler, mock_agent):
 
     with patch("server.cloud.ai_tool_handler.AIToolHandler._get_engine", return_value=mock_engine):
         msg = _make_tool_call_msg("execute_macro", {"macro_id": "all_off"})
-        await handler.handle(msg)
+        await _handle_and_wait(handler, msg)
 
     mock_engine.macros.execute.assert_called_once_with("all_off")
     payload = mock_agent.send_message.call_args[0][1]
@@ -160,7 +167,7 @@ async def test_execute_macro(handler, mock_agent):
 @pytest.mark.asyncio
 async def test_unknown_tool(handler, mock_agent):
     msg = _make_tool_call_msg("nonexistent_tool")
-    await handler.handle(msg)
+    await _handle_and_wait(handler, msg)
 
     payload = mock_agent.send_message.call_args[0][1]
     assert payload["success"] is False
@@ -175,7 +182,7 @@ async def test_device_command_error(handler, mock_agent, mock_devices):
         "device_id": "unknown",
         "command": "power_on",
     })
-    await handler.handle(msg)
+    await _handle_and_wait(handler, msg)
 
     payload = mock_agent.send_message.call_args[0][1]
     assert payload["success"] is False
@@ -186,7 +193,7 @@ async def test_device_command_error(handler, mock_agent, mock_devices):
 async def test_no_request_id_skips_result(handler, mock_agent):
     """If no request_id, no result is sent."""
     msg = _make_tool_call_msg("list_devices", request_id="")
-    await handler.handle(msg)
+    await _handle_and_wait(handler, msg)
 
     # Should still call list_devices but not send result (empty request_id)
     mock_agent.send_message.assert_not_called()
