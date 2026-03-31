@@ -50,7 +50,6 @@ class AIToolHandler:
         # Tool dispatch table
         self._tools: dict[str, Any] = {
             # Reading / Searching
-            "get_project": self._get_project,
             "get_project_summary": self._get_project_summary,
             "get_project_state": self._get_project_state,
             "get_state_value": self._get_state_value,
@@ -60,7 +59,6 @@ class AIToolHandler:
             "list_drivers": self._list_drivers,
             "search_community_drivers": self._search_community_drivers,
             "get_installed_drivers": self._get_installed_drivers,
-            "list_driver_definitions": self._list_driver_definitions,
             "get_driver_definition": self._get_driver_definition,
             "get_script_source": self._get_script_source,
             "get_logs": self._get_logs,
@@ -69,8 +67,7 @@ class AIToolHandler:
             "get_ui_page": self._get_ui_page,
             "get_schedule": self._get_schedule,
             # Writing / Creating
-            "save_project": self._save_project,
-            "reload_project": self._reload_project,
+            "update_project_metadata": self._update_project_metadata,
             "update_device": self._update_device,
             "delete_device": self._delete_device,
             "add_device": self._add_device,
@@ -81,10 +78,13 @@ class AIToolHandler:
             "update_macro": self._update_macro,
             "delete_macro": self._delete_macro,
             "add_ui_page": self._add_ui_page,
+            "update_ui_page": self._update_ui_page,
             "delete_ui_page": self._delete_ui_page,
             "add_ui_elements": self._add_ui_elements,
             "update_ui_element": self._update_ui_element,
             "delete_ui_elements": self._delete_ui_elements,
+            "add_master_element": self._add_master_element,
+            "delete_master_element": self._delete_master_element,
             "add_schedule": self._add_schedule,
             "update_schedule": self._update_schedule,
             "delete_schedule": self._delete_schedule,
@@ -105,7 +105,6 @@ class AIToolHandler:
             "update_plugin_config": self._update_plugin_config,
             # Discovery
             "start_discovery_scan": self._start_discovery_scan,
-            "get_discovery_status": self._get_discovery_status,
             "get_discovery_results": self._get_discovery_results,
             # Themes
             "list_themes": self._list_themes,
@@ -162,12 +161,6 @@ class AIToolHandler:
             await self._send_result(request_id, False, error=str(e))
 
     # ===== READING / SEARCHING =====
-
-    async def _get_project(self, input: dict) -> Any:
-        engine = self._get_engine()
-        if engine and engine.project:
-            return engine.project.model_dump(mode="json")
-        return {"error": "No project loaded"}
 
     async def _get_project_state(self, input: dict) -> Any:
         return self._agent.state.snapshot()
@@ -238,14 +231,6 @@ class AIToolHandler:
             installed.append({"id": filepath.stem, "name": filepath.stem.replace("_", " ").title(), "format": "python", "filename": filepath.name})
 
         return {"drivers": installed}
-
-    async def _list_driver_definitions(self, input: dict) -> Any:
-        from server.drivers.driver_loader import list_driver_definitions
-        dirs = self._get_driver_dirs()
-        definitions = list_driver_definitions(dirs)
-        for d in definitions:
-            d.pop("_source_file", None)
-        return definitions
 
     async def _get_driver_definition(self, input: dict) -> Any:
         from server.drivers.driver_loader import list_driver_definitions
@@ -383,25 +368,27 @@ class AIToolHandler:
 
     # ===== WRITING / CREATING =====
 
-    async def _save_project(self, input: dict) -> Any:
+    async def _update_project_metadata(self, input: dict) -> Any:
         engine = self._get_engine()
-        if not engine:
-            return {"error": "Engine not available"}
-        project_json = input.get("project_json")
-        if not project_json:
-            return {"error": "No project_json provided"}
-        from server.core.project_loader import ProjectConfig, save_project
-        project = ProjectConfig(**project_json)
-        save_project(engine.project_path, project)
-        if self._reload_fn:
-            await self._reload_fn()
-        return "Project saved and reloaded"
+        if not engine or not engine.project:
+            return {"error": "No project loaded"}
 
-    async def _reload_project(self, input: dict) -> Any:
-        if self._reload_fn:
-            await self._reload_fn()
-            return "Project reloaded"
-        return {"error": "Reload not available"}
+        changed = []
+        if "name" in input:
+            engine.project.project.name = input["name"]
+            changed.append("name")
+        if "description" in input:
+            engine.project.project.description = input["description"]
+            changed.append("description")
+
+        if not changed:
+            return {"error": "No fields to update. Provide 'name' and/or 'description'."}
+
+        from server.core.project_loader import save_project
+        save_project(engine.project_path, engine.project)
+        await self._notify_project_changed()
+
+        return {"status": "updated", "changed": changed}
 
     async def _update_device(self, input: dict) -> Any:
         engine = self._get_engine()
@@ -683,6 +670,51 @@ class AIToolHandler:
 
         return {"status": "created", "id": page_id}
 
+    async def _update_ui_page(self, input: dict) -> Any:
+        engine = self._get_engine()
+        if not engine or not engine.project:
+            return {"error": "No project loaded"}
+
+        page_id = input.get("page_id", "")
+        page = None
+        for p in engine.project.ui.pages:
+            if p.id == page_id:
+                page = p
+                break
+        if page is None:
+            return {"error": f"UI page '{page_id}' not found"}
+
+        changed = []
+        if "name" in input:
+            page.name = input["name"]
+            changed.append("name")
+        if "grid" in input:
+            from server.core.project_loader import GridConfig
+            page.grid = GridConfig(**input["grid"])
+            changed.append("grid")
+        if "page_type" in input:
+            page.page_type = input["page_type"]
+            changed.append("page_type")
+        if "overlay" in input:
+            from server.core.project_loader import OverlayConfig
+            page.overlay = OverlayConfig(**input["overlay"]) if input["overlay"] else None
+            changed.append("overlay")
+        if "background" in input:
+            from server.core.project_loader import PageBackground
+            page.background = PageBackground(**input["background"]) if input["background"] else None
+            changed.append("background")
+
+        if not changed:
+            return {"error": "No fields to update"}
+
+        from server.core.project_loader import save_project
+        save_project(engine.project_path, engine.project)
+
+        if self._reload_fn:
+            await self._reload_fn()
+
+        return {"status": "updated", "page_id": page_id, "changed": changed}
+
     async def _delete_ui_page(self, input: dict) -> Any:
         engine = self._get_engine()
         if not engine or not engine.project:
@@ -814,6 +846,55 @@ class AIToolHandler:
             await self._reload_fn()
 
         return {"status": "deleted", "element_ids": sorted(deleted_ids)}
+
+    async def _add_master_element(self, input: dict) -> Any:
+        engine = self._get_engine()
+        if not engine or not engine.project:
+            return {"error": "No project loaded"}
+
+        element_id = input.get("id", "")
+        if not element_id:
+            return {"error": "Element ID is required"}
+
+        # Check for ID collision with page elements and existing master elements
+        for page in engine.project.ui.pages:
+            if any(el.id == element_id for el in page.elements):
+                return {"error": f"Element '{element_id}' already exists on page '{page.id}'"}
+        if any(el.id == element_id for el in engine.project.ui.master_elements):
+            return {"error": f"Master element '{element_id}' already exists"}
+
+        from server.core.project_loader import MasterElement, save_project
+        el_data = {k: v for k, v in input.items() if k != "id"}
+        el_data["id"] = element_id
+        new_el = MasterElement(**el_data)
+        engine.project.ui.master_elements.append(new_el)
+        save_project(engine.project_path, engine.project)
+
+        if self._reload_fn:
+            await self._reload_fn()
+
+        return {"status": "created", "id": element_id}
+
+    async def _delete_master_element(self, input: dict) -> Any:
+        engine = self._get_engine()
+        if not engine or not engine.project:
+            return {"error": "No project loaded"}
+
+        element_id = input.get("element_id", "")
+        original_count = len(engine.project.ui.master_elements)
+        engine.project.ui.master_elements = [
+            el for el in engine.project.ui.master_elements if el.id != element_id
+        ]
+        if len(engine.project.ui.master_elements) == original_count:
+            return {"error": f"Master element '{element_id}' not found"}
+
+        from server.core.project_loader import save_project
+        save_project(engine.project_path, engine.project)
+
+        if self._reload_fn:
+            await self._reload_fn()
+
+        return {"status": "deleted", "element_id": element_id}
 
     async def _add_schedule(self, input: dict) -> Any:
         engine = self._get_engine()
@@ -1425,12 +1506,6 @@ class AIToolHandler:
             "status": status["status"],
             "subnets": status["subnets"],
         }
-
-    async def _get_discovery_status(self, input: dict) -> Any:
-        from server.api.discovery import _engine as discovery_engine
-        if discovery_engine is None:
-            return {"error": "Discovery engine not available"}
-        return discovery_engine.get_status()
 
     async def _get_discovery_results(self, input: dict) -> Any:
         from server.api.discovery import _engine as discovery_engine
