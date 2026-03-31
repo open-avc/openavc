@@ -33,17 +33,13 @@ That's it. OpenAVC is ready to run.
 
 ## Start OpenAVC
 
-The easiest way to start everything:
+Start the server:
 
 ```bash
-python dev.py
+python -m server.main
 ```
 
-This single command:
-
-1. Builds the Programmer IDE frontend
-2. Starts a PJLink projector simulator (for testing without hardware)
-3. Starts the OpenAVC server on port 8080
+This starts the OpenAVC server on port 8080.
 
 ## Manual Launch
 

@@ -134,6 +134,7 @@ jobs:
 
       - name: Create archive
         run: |
+          mkdir -p driver_repo plugin_repo projects/default
           ARCHIVE="openavc-${VERSION}-linux-amd64.tar.gz"
           tar czf "$ARCHIVE" \
             --exclude='__pycache__' \
@@ -192,6 +193,7 @@ jobs:
 
       - name: Create archive
         run: |
+          mkdir -p driver_repo plugin_repo projects/default
           ARCHIVE="openavc-${VERSION}-linux-arm64.tar.gz"
           tar czf "$ARCHIVE" \
             --exclude='__pycache__' \
@@ -313,6 +315,7 @@ jobs:
 
       - name: Package server archive
         run: |
+          mkdir -p driver_repo plugin_repo projects/default
           mkdir -p installer/pi-image/stage-openavc/01-install-openavc/files
           tar czf installer/pi-image/stage-openavc/01-install-openavc/files/openavc.tar.gz \
             --exclude='__pycache__' \

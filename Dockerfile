@@ -40,8 +40,8 @@ COPY --from=frontend /build/programmer/dist/ ./web/programmer/dist/
 COPY --from=frontend /build/panel/ ./web/panel/
 
 # Copy data files
-COPY driver_repo/ ./driver_repo/
 COPY themes/ ./themes/
+RUN mkdir -p driver_repo plugin_repo
 COPY installer/seed/default/ ./seed/default/
 COPY installer/openavc.service ./installer/openavc.service
 

@@ -70,11 +70,8 @@ installer/pi-image/stage-openavc/01-install-openavc/files/openavc.tar.gz
 # Runtime user data
 data/
 saved_projects/
-projects/*
-!projects/.gitkeep
+projects/
 
-# Community drivers and plugins (installed at runtime, not tracked)
-driver_repo/*
-!driver_repo/.gitkeep
-plugin_repo/*
-!plugin_repo/.gitkeep
+# Community drivers and plugins (created at runtime)
+driver_repo/
+plugin_repo/

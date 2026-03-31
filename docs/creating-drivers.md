@@ -1192,10 +1192,10 @@ python -m tests.simulators.samsung_mdc_simulator
 python -m tests.simulators.vmix_simulator
 ```
 
-### With the dev server
+### With the server
 
 ```bash
-python dev.py
+python -m server.main
 ```
 
 Then open the Programmer UI at `http://localhost:8080/programmer`:

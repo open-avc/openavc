@@ -24,7 +24,7 @@ The system needs logic that macros cannot express:
 ## Prerequisites
 
 - Completed the conference room tutorial (or equivalent experience with the Programmer IDE)
-- OpenAVC running (`python dev.py`)
+- OpenAVC running (`python -m server.main`)
 - A browser open to the Programmer IDE at `http://localhost:8080/programmer`
 
 ## When Scripts Beat Macros
