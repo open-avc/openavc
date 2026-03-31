@@ -150,10 +150,10 @@ async def ai_chat(request: Request, stream: bool = Query(False)):
                             yield chunk
             except httpx.TimeoutException:
                 log.warning("Cloud AI chat stream timed out")
-                yield f'event: error\ndata: {{"message": "Request timed out. Please try again."}}\n\n'
+                yield 'event: error\ndata: {"message": "Request timed out. Please try again."}\n\n'
             except Exception as e:
                 log.warning("Cloud AI chat stream error: %s", e)
-                yield f'event: error\ndata: {{"message": "Connection to cloud lost. Please try again."}}\n\n'
+                yield 'event: error\ndata: {"message": "Connection to cloud lost. Please try again."}\n\n'
 
         return StreamingResponse(
             relay_stream(),
