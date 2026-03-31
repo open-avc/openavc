@@ -246,8 +246,25 @@ export function CloudSettingsView() {
               Pair with OpenAVC Cloud
             </h3>
             <p style={helpTextStyle}>
-              Enter the pairing token from your OpenAVC Cloud portal. You can
-              generate one at Settings &gt; Systems &gt; Add System.
+              Enter the pairing token from your{" "}
+              <a
+                href="https://cloud.openavc.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "var(--accent)" }}
+              >
+                OpenAVC Cloud
+              </a>{" "}
+              account. You can generate one at Settings &gt; Systems &gt; Add System.
+              Don't have an account?{" "}
+              <a
+                href="https://cloud.openavc.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "var(--accent)" }}
+              >
+                Sign up free
+              </a>.
             </p>
 
             <div style={{ marginTop: "var(--space-md)" }}>

@@ -136,7 +136,11 @@ class AIToolHandler:
         }
 
     async def handle(self, msg: dict[str, Any]) -> None:
-        """Route an incoming AI_TOOL_CALL message to the appropriate handler."""
+        """Route an incoming AI_TOOL_CALL message to the appropriate handler.
+
+        Dispatches tool execution as a background task so long-running tools
+        (discovery scans, wait) don't block the agent's receive loop.
+        """
         payload = extract_payload(msg)
         request_id = payload.get("request_id", "")
         tool_name = payload.get("tool_name", "")
@@ -152,11 +156,17 @@ class AIToolHandler:
             )
             return
 
+        # Run in background so the receive loop stays responsive to pings/acks
+        asyncio.create_task(self._execute_tool(request_id, tool_name, handler, tool_input))
+
+    async def _execute_tool(
+        self, request_id: str, tool_name: str, handler: Any, tool_input: dict
+    ) -> None:
+        """Execute a tool handler and send the result back to the cloud."""
         try:
             result = await handler(tool_input)
             await self._send_result(request_id, True, result=result)
         except Exception as e:
-            # Catch-all: isolates tool execution errors; reports failure to cloud
             log.exception(f"AI tool handler: error executing {tool_name}")
             await self._send_result(request_id, False, error=str(e))
 

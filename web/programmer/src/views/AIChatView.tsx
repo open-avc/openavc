@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { MessageSquare, Plus, Trash2, Undo2, Square, Search, CloudOff } from "lucide-react";
+import { MessageSquare, Plus, Trash2, Undo2, Square, Search, CloudOff, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { ViewContainer } from "../components/layout/ViewContainer";
 import { ChatMessage as ChatMessageComponent } from "../components/ai/ChatMessage";
 import { ChatInput } from "../components/ai/ChatInput";
 import { PromptCards, SuggestionChips } from "../components/ai/SuggestedPrompts";
 import { useAIChatStore } from "../store/aiChatStore";
+import { useNavigationStore } from "../store/navigationStore";
 import { getCloudStatus, getProject } from "../api/restClient";
 
 const listItemStyle: React.CSSProperties = {
@@ -55,6 +56,7 @@ export function AIChatView() {
 
   const [systemId, setSystemId] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
@@ -141,8 +143,39 @@ export function AIChatView() {
           <h2 style={{ fontSize: "var(--font-size-lg)" }}>AI Assistant</h2>
           <p style={{ color: "var(--text-secondary)", maxWidth: 400 }}>
             AI features require a cloud connection. Pair this system with your
-            OpenAVC Cloud account in the Cloud settings to get started.
+            OpenAVC Cloud account to get started.
           </p>
+          <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap", justifyContent: "center" }}>
+            <a
+              href="https://cloud.openavc.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                padding: "var(--space-xs) var(--space-md)",
+                borderRadius: "var(--border-radius)",
+                background: "var(--accent)",
+                color: "#fff",
+                fontSize: "var(--font-size-sm)",
+                textDecoration: "none",
+              }}
+            >
+              Sign up at cloud.openavc.com
+            </a>
+            <button
+              onClick={() => useNavigationStore.getState().navigateTo("cloud")}
+              style={{
+                padding: "var(--space-xs) var(--space-md)",
+                borderRadius: "var(--border-radius)",
+                background: "var(--bg-surface)",
+                border: "1px solid var(--border-color)",
+                color: "var(--text-primary)",
+                fontSize: "var(--font-size-sm)",
+                cursor: "pointer",
+              }}
+            >
+              Open Cloud Settings
+            </button>
+          </div>
           {unavailableReason && unavailableReason !== "Checking..." && (
             <p style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}>
               {unavailableReason}
@@ -182,134 +215,183 @@ export function AIChatView() {
     >
       <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
         {/* Conversation sidebar */}
-        <div
-          style={{
-            width: 220,
-            flexShrink: 0,
-            borderRight: "1px solid var(--border-color)",
-            display: "flex",
-            flexDirection: "column",
-            overflow: "hidden",
-          }}
-        >
-          <button
-            onClick={newConversation}
+        {sidebarOpen && (
+          <div
             style={{
+              width: 220,
+              flexShrink: 0,
+              borderRight: "1px solid var(--border-color)",
               display: "flex",
-              alignItems: "center",
-              gap: "var(--space-xs)",
-              margin: "var(--space-sm)",
-              padding: "var(--space-xs) var(--space-md)",
-              borderRadius: "var(--border-radius)",
-              background: "var(--accent)",
-              color: "#fff",
-              fontSize: "var(--font-size-sm)",
-              border: "none",
-              cursor: "pointer",
+              flexDirection: "column",
+              overflow: "hidden",
             }}
           >
-            <Plus size={14} /> New Chat
-          </button>
-          {conversations.length > 3 && (
-            <div style={{ padding: "0 var(--space-sm) var(--space-xs)", position: "relative" }}>
-              <Search
-                size={12}
+            <div style={{ display: "flex", gap: "var(--space-xs)", margin: "var(--space-sm)" }}>
+              <button
+                onClick={newConversation}
                 style={{
-                  position: "absolute",
-                  left: "calc(var(--space-sm) + 8px)",
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  color: "var(--text-muted)",
-                  pointerEvents: "none",
-                }}
-              />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search..."
-                style={{
-                  width: "100%",
-                  padding: "4px 8px 4px 24px",
-                  fontSize: "var(--font-size-xs)",
+                  flex: 1,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "var(--space-xs)",
+                  padding: "var(--space-xs) var(--space-md)",
                   borderRadius: "var(--border-radius)",
-                  border: "1px solid var(--border-color)",
-                  background: "var(--bg-secondary)",
-                  color: "var(--text-primary)",
-                  outline: "none",
-                  boxSizing: "border-box",
-                }}
-              />
-            </div>
-          )}
-          <div style={{ flex: 1, overflow: "auto" }}>
-            {conversations.filter((c) =>
-              !searchQuery || c.title.toLowerCase().includes(searchQuery.toLowerCase())
-            ).map((conv) => (
-              <div
-                key={conv.id}
-                onClick={() => selectConversation(conv.id)}
-                style={{
-                  ...listItemStyle,
-                  background:
-                    activeConversationId === conv.id
-                      ? "var(--bg-hover)"
-                      : "transparent",
-                }}
-              >
-                <span
-                  style={{
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    flex: 1,
-                  }}
-                >
-                  {conv.title}
-                </span>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    deleteConversation(conv.id);
-                  }}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    color: "var(--text-muted)",
-                    padding: 2,
-                    flexShrink: 0,
-                  }}
-                  title="Delete conversation"
-                >
-                  <Trash2 size={12} />
-                </button>
-              </div>
-            ))}
-            {conversations.length === 0 && !loading && (
-              <p
-                style={{
-                  color: "var(--text-muted)",
+                  background: "var(--accent)",
+                  color: "#fff",
                   fontSize: "var(--font-size-sm)",
-                  padding: "var(--space-md)",
-                  textAlign: "center",
+                  border: "none",
+                  cursor: "pointer",
                 }}
               >
-                No conversations yet
-              </p>
+                <Plus size={14} /> New Chat
+              </button>
+              <button
+                onClick={() => setSidebarOpen(false)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: "var(--space-xs)",
+                  borderRadius: "var(--border-radius)",
+                  background: "none",
+                  border: "1px solid var(--border-color)",
+                  color: "var(--text-muted)",
+                  cursor: "pointer",
+                  flexShrink: 0,
+                }}
+                title="Hide conversations"
+              >
+                <PanelLeftClose size={14} />
+              </button>
+            </div>
+            {conversations.length > 3 && (
+              <div style={{ padding: "0 var(--space-sm) var(--space-xs)", position: "relative" }}>
+                <Search
+                  size={12}
+                  style={{
+                    position: "absolute",
+                    left: "calc(var(--space-sm) + 8px)",
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    color: "var(--text-muted)",
+                    pointerEvents: "none",
+                  }}
+                />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search..."
+                  style={{
+                    width: "100%",
+                    padding: "4px 8px 4px 24px",
+                    fontSize: "var(--font-size-xs)",
+                    borderRadius: "var(--border-radius)",
+                    border: "1px solid var(--border-color)",
+                    background: "var(--bg-secondary)",
+                    color: "var(--text-primary)",
+                    outline: "none",
+                    boxSizing: "border-box",
+                  }}
+                />
+              </div>
             )}
+            <div style={{ flex: 1, overflow: "auto" }}>
+              {conversations.filter((c) =>
+                !searchQuery || c.title.toLowerCase().includes(searchQuery.toLowerCase())
+              ).map((conv) => (
+                <div
+                  key={conv.id}
+                  onClick={() => selectConversation(conv.id)}
+                  style={{
+                    ...listItemStyle,
+                    background:
+                      activeConversationId === conv.id
+                        ? "var(--bg-hover)"
+                        : "transparent",
+                  }}
+                >
+                  <span
+                    style={{
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      flex: 1,
+                    }}
+                  >
+                    {conv.title}
+                  </span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteConversation(conv.id);
+                    }}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      color: "var(--text-muted)",
+                      padding: 2,
+                      flexShrink: 0,
+                    }}
+                    title="Delete conversation"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              ))}
+              {conversations.length === 0 && !loading && (
+                <p
+                  style={{
+                    color: "var(--text-muted)",
+                    fontSize: "var(--font-size-sm)",
+                    padding: "var(--space-md)",
+                    textAlign: "center",
+                  }}
+                >
+                  No conversations yet
+                </p>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Chat area */}
         <div
           style={{
             flex: 1,
+            minWidth: 0,
             display: "flex",
             flexDirection: "column",
+            position: "relative",
             overflow: "hidden",
           }}
         >
+          {/* Sidebar toggle when collapsed */}
+          {!sidebarOpen && (
+            <button
+              onClick={() => setSidebarOpen(true)}
+              style={{
+                position: "absolute",
+                top: "var(--space-sm)",
+                left: "var(--space-sm)",
+                zIndex: 1,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "var(--space-xs)",
+                borderRadius: "var(--border-radius)",
+                background: "var(--bg-surface)",
+                border: "1px solid var(--border-color)",
+                color: "var(--text-muted)",
+                cursor: "pointer",
+              }}
+              title="Show conversations"
+            >
+              <PanelLeftOpen size={14} />
+            </button>
+          )}
           {/* Messages */}
           <div
             ref={scrollContainerRef}

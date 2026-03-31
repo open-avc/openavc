@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { Send } from "lucide-react";
 
 interface ChatInputProps {
@@ -9,6 +9,8 @@ interface ChatInputProps {
 
 export function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
   const [text, setText] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const wasDisabled = useRef(disabled);
 
   const handleSend = useCallback(() => {
     const trimmed = text.trim();
@@ -27,10 +29,27 @@ export function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
     [handleSend]
   );
 
+  // Auto-resize textarea as content changes
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 120) + "px";
+  }, [text]);
+
+  // Refocus textarea when sending completes (disabled goes from true to false)
+  useEffect(() => {
+    if (wasDisabled.current && !disabled) {
+      textareaRef.current?.focus();
+    }
+    wasDisabled.current = disabled;
+  }, [disabled]);
+
   return (
     <div
       style={{
         display: "flex",
+        alignItems: "flex-end",
         gap: "var(--space-sm)",
         padding: "var(--space-md)",
         borderTop: "1px solid var(--border-color)",
@@ -38,6 +57,7 @@ export function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
       }}
     >
       <textarea
+        ref={textareaRef}
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={handleKeyDown}
@@ -55,7 +75,7 @@ export function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
           resize: "none",
           fontFamily: "inherit",
           lineHeight: 1.5,
-          minHeight: 36,
+          minHeight: 38,
           maxHeight: 120,
           overflow: "auto",
         }}
@@ -72,6 +92,8 @@ export function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
           cursor: disabled || !text.trim() ? "not-allowed" : "pointer",
           display: "flex",
           alignItems: "center",
+          height: 38,
+          flexShrink: 0,
         }}
       >
         <Send size={16} />

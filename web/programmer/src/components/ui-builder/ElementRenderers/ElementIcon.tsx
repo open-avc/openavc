@@ -21,7 +21,8 @@ function getIconComponent(kebabName: string): React.ComponentType<{ size?: numbe
   return null;
 }
 
-export function ElementIcon({ name, size = 24, color }: ElementIconProps) {
+export function ElementIcon({ name, size, color }: ElementIconProps) {
+  size = size ?? 24;
   if (!name) return null;
 
   // Custom asset icon
@@ -53,13 +54,13 @@ interface IconTextLayoutProps {
 export function IconTextLayout({
   icon,
   iconPosition = "left",
-  iconSize = 24,
+  iconSize,
   iconColor,
   children,
 }: IconTextLayoutProps) {
   if (!icon) return <>{children}</>;
 
-  const iconEl = <ElementIcon name={icon} size={iconSize} color={iconColor} />;
+  const iconEl = <ElementIcon name={icon} size={iconSize ?? 24} color={iconColor} />;
 
   if (iconPosition === "center") {
     return iconEl;

@@ -129,9 +129,6 @@ export function Canvas({
     <div
       style={{
         flex: 1,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
         overflow: "auto",
         background: "var(--bg-base)",
         padding: "var(--space-lg)",
@@ -142,8 +139,9 @@ export function Canvas({
           width: overlayWidth,
           height: overlayHeight,
           transform: `scale(${zoom})`,
-          transformOrigin: "center center",
+          transformOrigin: "top center",
           flexShrink: 0,
+          margin: "auto",
         }}
       >
         <div

@@ -394,19 +394,26 @@ class CloudAgent:
         # Assign sequence number and buffer
         self._sequencer.assign_seq(msg)
 
-        # Sign
+        # Sign and serialize immediately (before any await) to prevent
+        # shared payload data from being mutated by concurrent tasks
+        # between signing and sending.
         self._session.sign_outgoing(msg)
+        raw = json.dumps(msg)
 
-        # Send
-        await self._send_raw(msg)
+        # Send pre-serialized string
+        await self._send_raw_str(raw)
 
     async def _send_raw(self, msg: dict[str, Any]) -> None:
         """Send a raw message dict over the WebSocket."""
+        await self._send_raw_str(json.dumps(msg))
+
+    async def _send_raw_str(self, raw: str) -> None:
+        """Send a pre-serialized JSON string over the WebSocket."""
         ws = self._ws  # Capture local reference to avoid race
         if not ws:
             return
         try:
-            await ws.send(json.dumps(msg))
+            await ws.send(raw)
         except ConnectionClosed:
             raise
         except OSError:

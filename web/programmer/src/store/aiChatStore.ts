@@ -14,6 +14,10 @@ export interface LiveToolCall {
   durationMs?: number;
 }
 
+export type ContentBlock =
+  | { type: "text"; text: string }
+  | { type: "tool"; toolCall: LiveToolCall };
+
 export interface Message {
   id: string;
   role: "user" | "assistant" | "tool_use" | "tool_result";
@@ -23,6 +27,7 @@ export interface Message {
   // Streaming fields
   streaming?: boolean;
   liveToolCalls?: LiveToolCall[];
+  contentBlocks?: ContentBlock[];
   inputTokens?: number;
   outputTokens?: number;
 }
@@ -108,13 +113,27 @@ export const useAIChatStore = create<AIChatStore>((set, get) => ({
     set({ loading: true, error: null, activeConversationId: id, undoStack: [] });
     try {
       const detail = await cloud.getConversation(id);
-      const messages: Message[] = detail.messages.map((m) => ({
-        id: m.id,
-        role: m.role as Message["role"],
-        content: m.content,
-        toolCalls: m.tool_calls as Message["toolCalls"],
-        createdAt: m.created_at,
-      }));
+      const messages: Message[] = detail.messages.map((m) => {
+        const msg: Message = {
+          id: m.id,
+          role: m.role as Message["role"],
+          content: m.content,
+          toolCalls: m.tool_calls as Message["toolCalls"],
+          createdAt: m.created_at,
+        };
+        // Build content blocks from persisted data (text + tools interleaved)
+        if (msg.role === "assistant") {
+          const blocks: ContentBlock[] = [];
+          if (msg.content) blocks.push({ type: "text", text: msg.content });
+          if (msg.toolCalls) {
+            for (const tc of msg.toolCalls) {
+              blocks.push({ type: "tool", toolCall: { ...tc, status: "success" as const } });
+            }
+          }
+          msg.contentBlocks = blocks;
+        }
+        return msg;
+      });
       set({ messages, loading: false });
     } catch (e) {
       set({ error: String(e), loading: false });
@@ -192,51 +211,54 @@ export const useAIChatStore = create<AIChatStore>((set, get) => ({
         onTextDelta: (deltaText) => {
           set((s) => ({
             streamingPhase: "writing",
-            messages: s.messages.map((m) =>
-              m.id === assistantId
-                ? { ...m, content: m.content + deltaText }
-                : m
-            ),
+            messages: s.messages.map((m) => {
+              if (m.id !== assistantId) return m;
+              const blocks = [...(m.contentBlocks || [])];
+              const last = blocks[blocks.length - 1];
+              if (last && last.type === "text") {
+                blocks[blocks.length - 1] = { type: "text", text: last.text + deltaText };
+              } else {
+                blocks.push({ type: "text", text: deltaText });
+              }
+              return { ...m, content: m.content + deltaText, contentBlocks: blocks };
+            }),
           }));
         },
 
         onToolUseStart: (id, name) => {
           set((s) => ({
             streamingPhase: name,
-            messages: s.messages.map((m) =>
-              m.id === assistantId
-                ? {
-                    ...m,
-                    liveToolCalls: [
-                      ...(m.liveToolCalls || []),
-                      { id, name, status: "running" as const },
-                    ],
-                  }
-                : m
-            ),
+            messages: s.messages.map((m) => {
+              if (m.id !== assistantId) return m;
+              const tc: LiveToolCall = { id, name, status: "running" as const };
+              const blocks = [...(m.contentBlocks || []), { type: "tool" as const, toolCall: tc }];
+              return {
+                ...m,
+                liveToolCalls: [...(m.liveToolCalls || []), tc],
+                contentBlocks: blocks,
+              };
+            }),
           }));
         },
 
         onToolResult: (data) => {
           set((s) => ({
-            messages: s.messages.map((m) =>
-              m.id === assistantId
-                ? {
-                    ...m,
-                    liveToolCalls: (m.liveToolCalls || []).map((tc) =>
-                      tc.id === data.id
-                        ? {
-                            ...tc,
-                            input: data.input,
-                            status: (data.success ? "success" : "error") as "success" | "error",
-                            summary: data.summary,
-                            durationMs: data.duration_ms,
-                          }
-                        : tc
-                    ),
-                  }
-                : m
-            ),
+            messages: s.messages.map((m) => {
+              if (m.id !== assistantId) return m;
+              const updateTc = (tc: LiveToolCall): LiveToolCall =>
+                tc.id === data.id
+                  ? { ...tc, input: data.input, status: (data.success ? "success" : "error") as "success" | "error", summary: data.summary, durationMs: data.duration_ms }
+                  : tc;
+              return {
+                ...m,
+                liveToolCalls: (m.liveToolCalls || []).map(updateTc),
+                contentBlocks: (m.contentBlocks || []).map((b) =>
+                  b.type === "tool" && b.toolCall.id === data.id
+                    ? { type: "tool" as const, toolCall: updateTc(b.toolCall) }
+                    : b
+                ),
+              };
+            }),
           }));
         },
 
@@ -245,7 +267,7 @@ export const useAIChatStore = create<AIChatStore>((set, get) => ({
         },
 
         onDone: (data) => {
-          // Finalize the assistant message
+          // Finalize the assistant message — keep interleaved content blocks
           set((s) => ({
             sending: false,
             streamingAbort: null,
@@ -253,18 +275,33 @@ export const useAIChatStore = create<AIChatStore>((set, get) => ({
             currentRound: null,
             activeConversationId: data.conversation_id,
             suggestions: data.suggestions || [],
-            messages: s.messages.map((m) =>
-              m.id === assistantId
-                ? {
-                    ...m,
-                    content: data.message || m.content,
-                    streaming: false,
-                    toolCalls: data.tool_calls,
-                    inputTokens: data.input_tokens,
-                    outputTokens: data.output_tokens,
-                  }
-                : m
-            ),
+            messages: s.messages.map((m) => {
+              if (m.id !== assistantId) return m;
+              // Update tool calls in blocks with final data from done event
+              let blocks = m.contentBlocks;
+              if (blocks && data.tool_calls) {
+                const tcMap = new Map(
+                  (data.tool_calls as { id: string; name: string; input: Record<string, unknown> }[])
+                    .map((tc) => [tc.id, tc])
+                );
+                blocks = blocks.map((b) => {
+                  if (b.type !== "tool") return b;
+                  const final = tcMap.get(b.toolCall.id);
+                  if (!final) return b;
+                  return { type: "tool" as const, toolCall: { ...b.toolCall, input: final.input } };
+                });
+              }
+              return {
+                ...m,
+                content: data.message || m.content,
+                streaming: false,
+                liveToolCalls: undefined,
+                toolCalls: data.tool_calls,
+                contentBlocks: blocks,
+                inputTokens: data.input_tokens,
+                outputTokens: data.output_tokens,
+              };
+            }),
           }));
 
           // Refresh conversation list

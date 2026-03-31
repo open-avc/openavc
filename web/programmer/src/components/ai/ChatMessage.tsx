@@ -1,5 +1,5 @@
 import { Bot, User, Undo2 } from "lucide-react";
-import type { Message } from "../../store/aiChatStore";
+import type { Message, ContentBlock } from "../../store/aiChatStore";
 import { ToolCallBlock } from "./ToolCallBlock";
 
 interface ChatMessageProps {
@@ -32,14 +32,39 @@ const assistantBubble: React.CSSProperties = {
   color: "var(--text-primary)",
 };
 
+function renderBlocks(blocks: ContentBlock[], streaming?: boolean) {
+  return blocks.map((block, idx) => {
+    if (block.type === "text") {
+      return (
+        <div key={`text-${idx}`} style={assistantBubble}>
+          {block.text}
+          {streaming && idx === blocks.length - 1 && (
+            <span
+              style={{
+                display: "inline-block",
+                width: 6,
+                height: 14,
+                background: "var(--accent)",
+                marginLeft: 2,
+                verticalAlign: "text-bottom",
+                animation: "blink 1s step-end infinite",
+              }}
+            />
+          )}
+        </div>
+      );
+    }
+    // Tool block
+    return (
+      <ToolCallBlock key={block.toolCall.id || `tool-${idx}`} toolCall={block.toolCall} />
+    );
+  });
+}
+
 export function ChatMessage({ message, canUndo, onUndo }: ChatMessageProps) {
   const isUser = message.role === "user";
-
-  // Show live tool calls (streaming) or persisted tool calls
-  const liveTools = message.liveToolCalls;
-  const persistedTools = message.toolCalls;
-  const hasLiveTools = liveTools && liveTools.length > 0;
-  const hasPersistedTools = persistedTools && persistedTools.length > 0;
+  const blocks = message.contentBlocks;
+  const hasBlocks = blocks && blocks.length > 0;
 
   return (
     <div
@@ -65,39 +90,27 @@ export function ChatMessage({ message, canUndo, onUndo }: ChatMessageProps) {
       >
         {isUser ? <User size={14} color="#fff" /> : <Bot size={14} />}
       </div>
-      <div style={{ minWidth: 0, maxWidth: "85%" }}>
-        <div style={isUser ? userBubble : assistantBubble}>
-          {message.content}
-          {message.streaming && (
-            <span
-              style={{
-                display: "inline-block",
-                width: 6,
-                height: 14,
-                background: "var(--accent)",
-                marginLeft: 2,
-                verticalAlign: "text-bottom",
-                animation: "blink 1s step-end infinite",
-              }}
-            />
-          )}
-        </div>
-
-        {/* Live tool calls during streaming */}
-        {hasLiveTools && (
-          <div style={{ marginTop: "var(--space-xs)" }}>
-            {liveTools.map((tc) => (
-              <ToolCallBlock key={tc.id} toolCall={tc} />
-            ))}
-          </div>
-        )}
-
-        {/* Persisted tool calls (from loaded conversations) */}
-        {!hasLiveTools && hasPersistedTools && (
-          <div style={{ marginTop: "var(--space-xs)" }}>
-            {persistedTools.map((tc) => (
-              <ToolCallBlock key={tc.id} toolCall={tc} />
-            ))}
+      <div style={{ minWidth: 0, maxWidth: "85%", display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
+        {/* Interleaved content blocks (assistant with blocks) */}
+        {!isUser && hasBlocks ? (
+          renderBlocks(blocks, message.streaming)
+        ) : (
+          /* Fallback: single bubble (user messages, or assistant without blocks) */
+          <div style={isUser ? userBubble : assistantBubble}>
+            {message.content}
+            {message.streaming && !hasBlocks && (
+              <span
+                style={{
+                  display: "inline-block",
+                  width: 6,
+                  height: 14,
+                  background: "var(--accent)",
+                  marginLeft: 2,
+                  verticalAlign: "text-bottom",
+                  animation: "blink 1s step-end infinite",
+                }}
+              />
+            )}
           </div>
         )}
 
@@ -105,7 +118,6 @@ export function ChatMessage({ message, canUndo, onUndo }: ChatMessageProps) {
         {!isUser && !message.streaming && (
           <div
             style={{
-              marginTop: "var(--space-xs)",
               display: "flex",
               alignItems: "center",
               justifyContent: "flex-end",
