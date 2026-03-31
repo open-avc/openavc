@@ -478,7 +478,7 @@ class CloudAgent:
                     seq=self._sequencer.next_seq,
                 )
                 self._sequencer.assign_seq(gap_msg)
-                await self.send_raw(gap_msg)
+                await self._send_raw(gap_msg)
 
         # Check for session rotation trigger
         if self._session and seq is not None:

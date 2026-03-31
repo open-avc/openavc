@@ -135,7 +135,33 @@ export function streamChatMessage(
 ): AbortController {
   const controller = new AbortController();
 
+  // Inactivity timeout: if no events arrive for 120s, abort the stream.
+  // This catches stalled connections where the server stops sending but
+  // doesn't close the connection.
+  const INACTIVITY_TIMEOUT_MS = 120_000;
+  let inactivityTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function resetInactivityTimer() {
+    if (inactivityTimer) clearTimeout(inactivityTimer);
+    inactivityTimer = setTimeout(() => {
+      if (!controller.signal.aborted) {
+        controller.abort();
+        callbacks.onError?.("Request timed out. The AI assistant did not respond. Please try again.");
+      }
+    }, INACTIVITY_TIMEOUT_MS);
+  }
+
+  function clearInactivityTimer() {
+    if (inactivityTimer) {
+      clearTimeout(inactivityTimer);
+      inactivityTimer = null;
+    }
+  }
+
   (async () => {
+    let receivedDoneOrError = false;
+    resetInactivityTimer();
+
     try {
       const res = await fetch(`${AI_BASE}/chat?stream=true`, {
         method: "POST",
@@ -148,7 +174,9 @@ export function streamChatMessage(
       });
 
       if (!res.ok) {
+        clearInactivityTimer();
         const body = await res.text();
+        receivedDoneOrError = true;
         if (res.status === 429) {
           callbacks.onError?.(
             "AI request limit reached. Please try again later or upgrade your plan."
@@ -170,6 +198,8 @@ export function streamChatMessage(
       // Parse SSE stream
       const reader = res.body?.getReader();
       if (!reader) {
+        clearInactivityTimer();
+        receivedDoneOrError = true;
         callbacks.onError?.("No response body");
         return;
       }
@@ -181,6 +211,7 @@ export function streamChatMessage(
         const { done, value } = await reader.read();
         if (done) break;
 
+        resetInactivityTimer();
         buffer += decoder.decode(value, { stream: true });
 
         // Process complete SSE messages (separated by double newlines)
@@ -222,9 +253,11 @@ export function streamChatMessage(
                 callbacks.onRound?.(data.current, data.max);
                 break;
               case "done":
+                receivedDoneOrError = true;
                 callbacks.onDone?.(data);
                 break;
               case "error":
+                receivedDoneOrError = true;
                 callbacks.onError?.(data.message || "Unknown error");
                 break;
             }
@@ -234,8 +267,17 @@ export function streamChatMessage(
         }
       }
     } catch (err) {
-      if (controller.signal.aborted) return; // User cancelled
+      clearInactivityTimer();
+      if (controller.signal.aborted) return; // User cancelled (or inactivity timeout)
+      receivedDoneOrError = true;
       callbacks.onError?.(String(err));
+    } finally {
+      clearInactivityTimer();
+      // Safety net: if the stream ended without a done or error event,
+      // fire onError so the UI doesn't stay stuck in "sending" state.
+      if (!receivedDoneOrError && !controller.signal.aborted) {
+        callbacks.onError?.("Connection lost. Please try again.");
+      }
     }
   })();
 
