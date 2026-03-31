@@ -1,6 +1,6 @@
 [project]
 name = "openavc"
-version = "0.2.0"
+version = "0.2.1"
 description = "Open-source AV room control platform"
 license = "MIT"
 requires-python = ">=3.11"
