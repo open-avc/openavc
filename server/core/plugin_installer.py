@@ -30,9 +30,12 @@ from server.utils.logger import get_logger
 
 log = get_logger(__name__)
 
-# Community plugin repository URL
+# Community plugin repository URLs
 COMMUNITY_REPO_URL = (
     "https://raw.githubusercontent.com/open-avc/openavc-plugins/main"
+)
+COMMUNITY_API_URL = (
+    "https://api.github.com/repos/open-avc/openavc-plugins/contents"
 )
 
 # Plugin repo directory
@@ -108,42 +111,43 @@ async def install_plugin(plugin_id: str, file_url: str) -> dict[str, Any]:
 
     try:
         async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-            resp = await client.get(file_url)
-            resp.raise_for_status()
-            content = resp.content
+            if file_url.endswith(".py"):
+                # Single file plugin
+                resp = await client.get(file_url)
+                resp.raise_for_status()
+                plugin_dir.mkdir(parents=True, exist_ok=True)
+                filename = _sanitize_filename(Path(file_url).name)
+                (plugin_dir / filename).write_bytes(resp.content)
+                log.info(f"Installed plugin '{plugin_id}' from {filename}")
 
-        # Determine if it's a single .py file or a zip/directory structure
-        if file_url.endswith(".py"):
-            # Single file plugin
-            plugin_dir.mkdir(parents=True, exist_ok=True)
-            filename = _sanitize_filename(Path(file_url).name)
-            (plugin_dir / filename).write_bytes(content)
-            log.info(f"Installed plugin '{plugin_id}' from {filename}")
+            elif file_url.endswith(".zip"):
+                # Zip archive
+                resp = await client.get(file_url)
+                resp.raise_for_status()
+                plugin_dir.mkdir(parents=True, exist_ok=True)
+                with zipfile.ZipFile(BytesIO(resp.content)) as zf:
+                    for name in zf.namelist():
+                        parts = name.split("/", 1)
+                        if len(parts) > 1:
+                            target = plugin_dir / parts[1]
+                        else:
+                            target = plugin_dir / name
+                        if name.endswith("/"):
+                            target.mkdir(parents=True, exist_ok=True)
+                        else:
+                            target.parent.mkdir(parents=True, exist_ok=True)
+                            target.write_bytes(zf.read(name))
+                log.info(f"Installed plugin '{plugin_id}' from zip archive")
 
-        elif file_url.endswith(".zip"):
-            # Zip archive
-            plugin_dir.mkdir(parents=True, exist_ok=True)
-            with zipfile.ZipFile(BytesIO(content)) as zf:
-                for name in zf.namelist():
-                    # Strip leading directory if present
-                    parts = name.split("/", 1)
-                    if len(parts) > 1:
-                        target = plugin_dir / parts[1]
-                    else:
-                        target = plugin_dir / name
-                    if name.endswith("/"):
-                        target.mkdir(parents=True, exist_ok=True)
-                    else:
-                        target.parent.mkdir(parents=True, exist_ok=True)
-                        target.write_bytes(zf.read(name))
-            log.info(f"Installed plugin '{plugin_id}' from zip archive")
-
-        else:
-            # Assume single file, use plugin_id as dir name
-            plugin_dir.mkdir(parents=True, exist_ok=True)
-            filename = f"{plugin_id}_plugin.py"
-            (plugin_dir / filename).write_bytes(content)
-            log.info(f"Installed plugin '{plugin_id}'")
+            else:
+                # Directory — download all files via GitHub Contents API
+                plugin_dir.mkdir(parents=True, exist_ok=True)
+                # Extract the path relative to the repo from the raw URL
+                repo_path = file_url.replace(COMMUNITY_REPO_URL + "/", "")
+                await _download_github_directory(
+                    client, repo_path, plugin_dir
+                )
+                log.info(f"Installed plugin '{plugin_id}' from directory")
 
         # Install pip dependencies if we can find them
         await _install_pip_deps(plugin_id, plugin_dir)
@@ -160,6 +164,37 @@ async def install_plugin(plugin_id: str, file_url: str) -> dict[str, Any]:
         if plugin_dir.exists():
             shutil.rmtree(plugin_dir, ignore_errors=True)
         raise
+
+
+async def _download_github_directory(
+    client: httpx.AsyncClient, repo_path: str, dest_dir: Path
+) -> None:
+    """Recursively download a directory from GitHub using the Contents API."""
+    api_url = f"{COMMUNITY_API_URL}/{repo_path}?ref=main"
+    resp = await client.get(api_url)
+    resp.raise_for_status()
+    entries = resp.json()
+
+    if not isinstance(entries, list):
+        raise ValueError(f"Expected directory listing, got: {type(entries)}")
+
+    for entry in entries:
+        name = entry.get("name", "")
+        entry_type = entry.get("type", "")
+        if entry_type == "file":
+            download_url = entry.get("download_url", "")
+            if download_url:
+                file_resp = await client.get(download_url)
+                file_resp.raise_for_status()
+                target = dest_dir / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(file_resp.content)
+        elif entry_type == "dir":
+            sub_dir = dest_dir / name
+            sub_dir.mkdir(parents=True, exist_ok=True)
+            await _download_github_directory(
+                client, f"{repo_path}/{name}", sub_dir
+            )
 
 
 async def _install_pip_deps(plugin_id: str, plugin_dir: Path) -> None:

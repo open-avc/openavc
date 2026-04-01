@@ -26,6 +26,52 @@ if TYPE_CHECKING:
 
 log = get_logger(__name__)
 
+# Standard config format for control surface plugins (Stream Deck, X-Keys, etc.).
+# The Surface Configurator writes this format; the platform documents it once so
+# the AI can configure any surface plugin without plugin-specific hardcoding.
+SURFACE_BUTTONS_FORMAT = """\
+Control surface buttons are stored in a top-level "buttons" array (NOT under "pages").
+Each entry in the array represents one physical button:
+
+{
+  "index": 0,            // Button position (0-based, left-to-right then top-to-bottom)
+  "page": 0,             // Page number (0-based, for multi-page surfaces)
+  "label": "Power",      // Text shown on the button (optional)
+  "icon": "power",       // Lucide icon name, e.g. "power", "volume-2", "play" (optional)
+  "bg_color": "#1a1a2e", // Per-button default background color, hex (optional)
+  "text_color": "#e0e0e0", // Per-button default text color, hex (optional)
+  "bindings": {          // Action and feedback configuration
+    "press": {
+      "action": "macro",           // Action type: "macro", "device.command", "state.set", "navigate"
+      "macro": "macro_name"        // For macro action
+      // OR for device.command:
+      // "action": "device.command", "device": "device_id", "command": "cmd", "params": {}
+      // OR for state.set:
+      // "action": "state.set", "key": "var.my_var", "value": "new_value"
+      // OR for page navigation:
+      // "action": "navigate", "page": "__next_page__"  (or "__prev_page__")
+
+      // Optional mode (default is "tap"):
+      // "mode": "toggle",  — requires toggle_key, toggle_value, off_action
+      // "mode": "hold_repeat", — requires hold_repeat_ms (default 200)
+      // "mode": "tap_hold", — requires hold_action, hold_threshold_ms (default 500)
+    },
+    "feedback": {         // Visual feedback based on state (optional)
+      "source": "state",
+      "key": "device.my_device.power",   // State key to watch
+      "condition": { "equals": true },   // When this matches, button shows active style
+      "style_active": { "bg_color": "#2e7d32", "text_color": "#ffffff", "icon": "power" },
+      "style_inactive": { "bg_color": "#c62828", "text_color": "#ffffff", "icon": "power-off" },
+      "label_active": "ON",              // Override label when active (optional)
+      "label_inactive": "OFF"            // Override label when inactive (optional)
+    }
+  }
+}
+
+Color priority: feedback style > per-button defaults > global plugin config defaults.
+Only include fields you need. Unassigned buttons can be omitted from the array.
+"""
+
 
 class AIToolHandler:
     """
@@ -1303,14 +1349,26 @@ class AIToolHandler:
         return {"plugins": plugins, "error": error}
 
     async def _install_plugin(self, input: dict) -> Any:
-        from server.core.plugin_installer import install_plugin
+        from server.core.plugin_installer import (
+            COMMUNITY_REPO_URL,
+            get_community_plugins,
+            install_plugin,
+        )
 
         plugin_id = input.get("plugin_id", "")
         file_url = input.get("file_url", "")
         if not plugin_id:
             return {"error": "plugin_id is required"}
+
+        # Auto-resolve URL from community index if not provided
         if not file_url:
-            return {"error": "file_url is required"}
+            plugins, error = await get_community_plugins()
+            if error:
+                return {"error": f"Could not fetch community index: {error}"}
+            match = next((p for p in plugins if p.get("id") == plugin_id), None)
+            if not match or not match.get("file"):
+                return {"error": f"Plugin '{plugin_id}' not found in community index"}
+            file_url = f"{COMMUNITY_REPO_URL}/{match['file']}"
 
         try:
             result = await install_plugin(plugin_id, file_url)
@@ -1431,16 +1489,30 @@ class AIToolHandler:
         plugin_class = _PLUGIN_CLASS_REGISTRY.get(plugin_id)
         schema = {}
         setup_fields = []
+        result: dict[str, Any] = {
+            "plugin_id": plugin_id,
+            "config": entry.config,
+        }
+
         if plugin_class:
             schema = getattr(plugin_class, "CONFIG_SCHEMA", {}) or {}
             setup_fields = get_plugin_setup_fields(schema)
 
-        return {
-            "plugin_id": plugin_id,
-            "config": entry.config,
-            "schema": schema,
-            "required_fields": [f["name"] for f in setup_fields],
-        }
+            # If plugin has a surface layout, include it and the standard
+            # surface button config format so the AI knows how to write it.
+            surface_layout = getattr(plugin_class, "SURFACE_LAYOUT", None)
+            if surface_layout:
+                result["surface_layout"] = surface_layout
+                result["buttons_format"] = SURFACE_BUTTONS_FORMAT
+
+            # Plugin-specific AI guidance (optional, declared by plugin author)
+            ai_guide = getattr(plugin_class, "AI_GUIDE", None)
+            if ai_guide:
+                result["ai_guide"] = ai_guide
+
+        result["schema"] = schema
+        result["required_fields"] = [f["name"] for f in setup_fields]
+        return result
 
     async def _update_plugin_config(self, input: dict) -> Any:
         engine = self._get_engine()

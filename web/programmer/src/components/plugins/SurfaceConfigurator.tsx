@@ -17,6 +17,9 @@ import { useConnectionStore } from "../../store/connectionStore";
 import { useProjectStore } from "../../store/projectStore";
 import { ButtonBindingEditor } from "../shared/ButtonBindingEditor";
 import type { ButtonBindings } from "../shared/ButtonBindingEditor";
+import { InlineColorPicker } from "../shared/InlineColorPicker";
+import { IconPicker } from "../ui-builder/IconPicker";
+import { ElementIcon } from "../ui-builder/ElementRenderers/ElementIcon";
 import * as api from "../../api/restClient";
 
 // ──── Types ────
@@ -59,6 +62,9 @@ interface ButtonAssignment {
   index?: number;
   page?: number;
   label?: string;
+  icon?: string;
+  bg_color?: string;
+  text_color?: string;
   // Legacy fields (backward compat)
   macro_id?: string;
   feedback_key?: string;
@@ -251,7 +257,8 @@ function GridSurface({
       {Array.from({ length: rows * cols }, (_, i) => {
         const assignment = getAssignment(i, currentPage);
         const isSelected = selectedControl === String(i);
-        const hasAssignment = !!assignment?.macro_id || !!assignment?.label;
+        const hasAssignment = !!assignment?.macro_id || !!assignment?.label || !!assignment?.icon || !!assignment?.bindings?.press;
+        const bgColor = assignment?.bg_color;
 
         return (
           <button
@@ -263,9 +270,7 @@ function GridSurface({
               borderRadius: 6,
               background: isSelected
                 ? "var(--accent-dim)"
-                : hasAssignment
-                  ? "var(--bg-elevated)"
-                  : "var(--bg-surface)",
+                : bgColor || (hasAssignment ? "var(--bg-elevated)" : "var(--bg-surface)"),
               border: isSelected
                 ? "2px solid var(--accent)"
                 : "1px solid var(--border-color)",
@@ -278,6 +283,7 @@ function GridSurface({
               transition: "all var(--transition-fast)",
               overflow: "hidden",
               padding: 4,
+              color: assignment?.text_color || "var(--text-secondary)",
             }}
             title={
               hasAssignment
@@ -296,11 +302,18 @@ function GridSurface({
                 {i + 1}
               </div>
             )}
+            {assignment?.icon && (
+              <ElementIcon
+                name={assignment.icon}
+                size={assignment.label ? Math.floor(keySize * 0.35) : Math.floor(keySize * 0.5)}
+                color={assignment?.text_color || "var(--text-secondary)"}
+              />
+            )}
             {assignment?.label && (
               <div
                 style={{
                   fontSize: 9,
-                  color: "var(--text-secondary)",
+                  color: assignment?.text_color || "var(--text-secondary)",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
@@ -740,6 +753,39 @@ function ControlAssignmentPanel({
         </button>
       </div>
 
+      {/* Icon */}
+      <div>
+        <label style={panelLabelStyle}>Icon</label>
+        <IconPicker
+          value={assignment?.icon ?? ""}
+          onChange={(icon) => onUpdate({ icon: icon || undefined })}
+        />
+      </div>
+
+      {/* Default Colors */}
+      <div>
+        <label style={panelLabelStyle}>Default Colors</label>
+        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
+            <span style={panelHintStyle}>Background</span>
+            <InlineColorPicker
+              value={assignment?.bg_color ?? ""}
+              onChange={(c) => onUpdate({ bg_color: c || undefined })}
+            />
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
+            <span style={panelHintStyle}>Text</span>
+            <InlineColorPicker
+              value={assignment?.text_color ?? ""}
+              onChange={(c) => onUpdate({ text_color: c || undefined })}
+            />
+          </div>
+        </div>
+        <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
+          Feedback colors override these when active.
+        </div>
+      </div>
+
       {/* Shared binding editor — same component the web UI Builder uses */}
       {project ? (
         <ButtonBindingEditor
@@ -832,3 +878,20 @@ function PageTabs({
     </div>
   );
 }
+
+// ──── Shared Styles ────
+
+const panelLabelStyle: React.CSSProperties = {
+  display: "block",
+  fontSize: 12,
+  fontWeight: 600,
+  color: "var(--text-secondary)",
+  marginBottom: "var(--space-xs)",
+};
+
+const panelHintStyle: React.CSSProperties = {
+  fontSize: 11,
+  color: "var(--text-muted)",
+  width: 56,
+  flexShrink: 0,
+};

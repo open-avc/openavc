@@ -8,12 +8,12 @@
  *   - Active/inactive color pickers with preview
  *   - Conditional label text (active/inactive)
  */
-import { useState, useRef, useEffect, useMemo } from "react";
-import { HexColorPicker } from "react-colorful";
-import { ChevronDown, Plus, Trash2 } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { Plus, Trash2 } from "lucide-react";
 import { useProjectStore } from "../../../store/projectStore";
 import { useConnectionStore } from "../../../store/connectionStore";
 import { IconPicker } from "../IconPicker";
+import { InlineColorPicker } from "../../shared/InlineColorPicker";
 
 interface FeedbackBindingEditorProps {
   value: Record<string, unknown> | null;
@@ -576,6 +576,13 @@ export function FeedbackBindingEditor({
                 />
               </div>
             )}
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
+              <span style={{ ...colorLabelStyle, width: 56 }}>Icon</span>
+              <IconPicker
+                value={styleActive.icon || ""}
+                onChange={(v) => handleChange({ style_active: { ...styleActive, icon: v || undefined } })}
+              />
+            </div>
             {/* Preview */}
             <div style={{
               display: "flex", alignItems: "center", justifyContent: "center",
@@ -621,6 +628,13 @@ export function FeedbackBindingEditor({
                 />
               </div>
             )}
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
+              <span style={{ ...colorLabelStyle, width: 56 }}>Icon</span>
+              <IconPicker
+                value={styleInactive.icon || ""}
+                onChange={(v) => handleChange({ style_inactive: { ...styleInactive, icon: v || undefined } })}
+              />
+            </div>
             {/* Preview */}
             <div style={{
               display: "flex", alignItems: "center", justifyContent: "center",
@@ -647,56 +661,6 @@ export function FeedbackBindingEditor({
         >
           Remove Feedback
         </button>
-      )}
-    </div>
-  );
-}
-
-
-// ──── Inline Color Picker ────
-
-function InlineColorPicker({ value, onChange }: { value: string; onChange: (c: string) => void }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const handleClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [open]);
-
-  return (
-    <div ref={ref} style={{ position: "relative", display: "flex", alignItems: "center", gap: 4 }}>
-      <div
-        onClick={() => setOpen(!open)}
-        style={{
-          width: 22, height: 22, borderRadius: 4, flexShrink: 0,
-          backgroundColor: value || "transparent",
-          border: "1px solid var(--border-color)", cursor: "pointer",
-        }}
-      />
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder="#000"
-        style={{ width: 72, padding: "3px 4px", fontSize: 11, borderRadius: 3, border: "1px solid var(--border-color)" }}
-      />
-      {open && (
-        <div style={{
-          position: "absolute", zIndex: 100, top: 28, left: 0,
-          background: "var(--bg-elevated)", border: "1px solid var(--border-color)",
-          borderRadius: "var(--border-radius)", padding: "var(--space-xs)",
-          boxShadow: "var(--shadow-lg)",
-        }}>
-          <HexColorPicker
-            color={value || "#000000"}
-            onChange={onChange}
-            style={{ width: 160, height: 130 }}
-          />
-        </div>
       )}
     </div>
   );
