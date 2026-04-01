@@ -24,7 +24,12 @@ async function aiRequest<T>(path: string, options?: RequestInit): Promise<T> {
     throw new Error(`AI API ${res.status}: ${body}`);
   }
 
-  // Handle empty responses (e.g., 204 No Content)
+  // Handle 204 No Content (e.g., DELETE responses)
+  if (res.status === 204) {
+    return undefined as T;
+  }
+
+  // Handle other non-JSON responses
   const contentType = res.headers.get("content-type");
   if (!contentType || !contentType.includes("application/json")) {
     return undefined as T;

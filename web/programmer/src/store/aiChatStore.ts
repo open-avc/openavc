@@ -197,6 +197,10 @@ export const useAIChatStore = create<AIChatStore>((set, get) => ({
       };
     });
 
+    // For new conversations, refresh the sidebar once streaming starts
+    // so the conversation appears immediately (not after the full response).
+    let refreshedList = !!convId; // Skip if resuming an existing conversation
+
     const controller = cloud.streamChatMessage(
       {
         message: text,
@@ -206,6 +210,11 @@ export const useAIChatStore = create<AIChatStore>((set, get) => ({
       {
         onStatus: (phase) => {
           set({ streamingPhase: phase });
+          // Refresh conversation list on first event for new conversations
+          if (!refreshedList) {
+            refreshedList = true;
+            cloud.listConversations().then((convs) => set({ conversations: convs })).catch(() => {});
+          }
         },
 
         onTextDelta: (deltaText) => {
