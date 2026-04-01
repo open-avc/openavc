@@ -322,14 +322,23 @@ class TestInstallPlugin:
         # Directory should not remain after failure
         assert not (plugin_repo / "bad_download").exists()
 
-    async def test_install_other_url_creates_default_filename(self, plugin_repo):
-        """URL that doesn't end in .py or .zip gets a default filename."""
-        mock_response = MagicMock()
-        mock_response.content = b"# some plugin code"
-        mock_response.raise_for_status = MagicMock()
+    async def test_install_directory_url_downloads_all_files(self, plugin_repo):
+        """URL that doesn't end in .py or .zip downloads directory via GitHub API."""
+        api_response = MagicMock()
+        api_response.raise_for_status = MagicMock()
+        api_response.json.return_value = [
+            {"name": "my_plugin.py", "type": "file",
+             "download_url": "https://raw.githubusercontent.com/open-avc/openavc-plugins/main/plugins/my_plugin.py"},
+            {"name": "config.json", "type": "file",
+             "download_url": "https://raw.githubusercontent.com/open-avc/openavc-plugins/main/plugins/config.json"},
+        ]
+
+        file_response = MagicMock()
+        file_response.content = b"# plugin code"
+        file_response.raise_for_status = MagicMock()
 
         mock_client = AsyncMock()
-        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.get = AsyncMock(side_effect=[api_response, file_response, file_response])
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
@@ -338,11 +347,12 @@ class TestInstallPlugin:
                 with patch("server.core.plugin_installer._install_native_deps", new_callable=AsyncMock):
                     result = await install_plugin(
                         "generic_plugin",
-                        "https://example.com/plugins/generic_plugin",
+                        "https://raw.githubusercontent.com/open-avc/openavc-plugins/main/plugins/generic_plugin",
                     )
 
         assert result["status"] == "installed"
-        assert (plugin_repo / "generic_plugin" / "generic_plugin_plugin.py").exists()
+        assert (plugin_repo / "generic_plugin" / "my_plugin.py").exists()
+        assert (plugin_repo / "generic_plugin" / "config.json").exists()
 
 
 # ═══════════════════════════════════════════════════════════
