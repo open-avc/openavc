@@ -123,7 +123,6 @@ class AddDeviceRequest(BaseModel):
     driver_id: str
     name: str = ""
     config: dict[str, Any] = {}
-    group: str = ""
 
 
 class InstallAndMatchRequest(BaseModel):
@@ -323,7 +322,6 @@ async def add_device(req: AddDeviceRequest) -> dict[str, Any]:
         "name": name,
         "config": protocol_config,
         "enabled": True,
-        "group": req.group,
     }
 
     # Pass merged config (protocol + connection) to the device manager

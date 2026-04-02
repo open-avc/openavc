@@ -32,6 +32,7 @@ class MacroEngine:
         self.events = events
         self.devices = devices
         self._macros: dict[str, dict[str, Any]] = {}  # id -> macro config
+        self._groups: dict[str, list[str]] = {}  # group_id -> [device_ids]
         self._running: dict[str, asyncio.Task] = {}  # id -> running task
         self._call_stack: set[str] = set()  # macro IDs currently executing (recursion guard)
         self._call_stack_lock = asyncio.Lock()  # serialize recursion checks
@@ -84,6 +85,16 @@ class MacroEngine:
             if macro_id:
                 self._macros[macro_id] = macro
         log.info(f"Loaded {len(self._macros)} macro(s)")
+
+    def load_groups(self, groups: list[dict[str, Any]]) -> None:
+        """Register device group definitions from the project config."""
+        self._groups.clear()
+        for group in groups:
+            group_id = group.get("id", "")
+            if group_id:
+                self._groups[group_id] = group.get("device_ids", [])
+        if self._groups:
+            log.info(f"Loaded {len(self._groups)} device group(s)")
 
     async def execute(self, macro_id: str, context: dict[str, Any] | None = None) -> None:
         """
@@ -226,6 +237,8 @@ class MacroEngine:
         action = step.get("action", "")
         if action == "device.command":
             return f"Sending {step.get('command', '?')} to {step.get('device', '?')}"
+        if action == "group.command":
+            return f"Sending {step.get('command', '?')} to group {step.get('group', '?')}"
         if action == "delay":
             return f"Waiting {step.get('seconds', 0)} seconds"
         if action == "state.set":
@@ -265,6 +278,32 @@ class MacroEngine:
             params = self._resolve_params(step.get("params") or {})
             log.debug(f"  Macro step: {device_id}.{command}({params})")
             await self.devices.send_command(device_id, command, params)
+
+        elif action == "group.command":
+            group_id = step.get("group", "")
+            command = step.get("command", "")
+            params = self._resolve_params(step.get("params") or {})
+            device_ids = self._groups.get(group_id)
+            if device_ids is None:
+                log.error(f"  Macro step: unknown group '{group_id}'")
+                return
+            if not device_ids:
+                log.debug(f"  Macro step: group '{group_id}' is empty, skipping")
+                return
+            # Send to all online devices concurrently
+            tasks = []
+            for did in device_ids:
+                connected = self.state.get(f"device.{did}.connected")
+                if not connected:
+                    log.debug(f"  Group command: skipping offline device '{did}'")
+                    continue
+                tasks.append(self.devices.send_command(did, command, params))
+            if tasks:
+                log.debug(f"  Macro step: group '{group_id}'.{command} -> {len(tasks)} device(s)")
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                for i, result in enumerate(results):
+                    if isinstance(result, Exception):
+                        log.error(f"  Group command error: {result}")
 
         elif action == "delay":
             seconds = max(0, step.get("seconds", 0))

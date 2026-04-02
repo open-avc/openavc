@@ -51,12 +51,21 @@ These state keys are the building blocks of your system. They appear in UI bindi
 
 The device detail panel includes several management actions:
 
-- **Group/Location.** Assign a group or location label to organize devices in the list (e.g., "Board Room", "Lobby").
 - **Enable/Disable.** Temporarily disable a device without removing it from the project. Disabled devices do not connect or poll.
 - **Test Connection.** Test network reachability (ping/TCP connect) without using the driver, useful for diagnosing network issues.
 - **Reconnect.** Force an immediate reconnect attempt on a disconnected device.
 - **Duplicate.** Create a copy of the device with a new ID, pre-filled with the same driver and settings.
 - **Device Log.** Filtered log view showing only activity for the selected device (commands sent, responses received, errors).
+
+## Device Groups
+
+The **Groups** tab in the Devices view lets you create named groups of devices. Groups serve two purposes:
+
+1. **Macro commands.** Use a "Group Command" macro step to send a command to every device in the group at once. For example, power on all projectors with a single step instead of one step per projector. Commands are sent concurrently, and offline devices are skipped automatically.
+
+2. **Organization.** Devices in the same group are visually grouped together in the device list.
+
+A device can belong to multiple groups (e.g., a display might be in both "All Displays" and "Conference Room A").
 
 ## Device Settings
 

@@ -37,7 +37,6 @@ class DeviceConfig(BaseModel):
     name: str
     config: dict[str, Any] = Field(default_factory=dict)
     enabled: bool = True
-    group: str = ""
     pending_settings: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("id")
@@ -45,6 +44,19 @@ class DeviceConfig(BaseModel):
     def id_no_dots(cls, v: str) -> str:
         if "." in v:
             raise ValueError(f"Device ID '{v}' must not contain dots (used as state key separator)")
+        return v
+
+
+class DeviceGroup(BaseModel):
+    id: str
+    name: str
+    device_ids: list[str] = Field(default_factory=list)
+
+    @field_validator("id")
+    @classmethod
+    def id_no_dots(cls, v: str) -> str:
+        if "." in v:
+            raise ValueError(f"Device group ID '{v}' must not contain dots")
         return v
 
 
@@ -74,9 +86,10 @@ class StepCondition(BaseModel):
 
 
 class MacroStep(BaseModel):
-    action: str  # "device.command", "delay", "state.set", "macro", "event.emit", "conditional"
+    action: str  # "device.command", "group.command", "delay", "state.set", "macro", "event.emit", "conditional"
     # Fields used by different action types (all optional, validated at runtime)
     device: str | None = None
+    group: str | None = None  # group.command: target device group ID
     command: str | None = None
     params: dict[str, Any] | None = None
     seconds: float | None = None
@@ -317,6 +330,7 @@ class ProjectConfig(BaseModel):
     openavc_version: str = "0.3.0"
     project: ProjectMeta
     devices: list[DeviceConfig] = Field(default_factory=list)
+    device_groups: list[DeviceGroup] = Field(default_factory=list)
     connections: dict[str, dict[str, Any]] = Field(default_factory=dict)
     driver_dependencies: list[DriverDependency] = Field(default_factory=list)
     plugin_dependencies: list[PluginDependency] = Field(default_factory=list)

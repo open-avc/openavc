@@ -148,12 +148,11 @@ async def test_get_project_summary(handler, mock_agent, mock_engine):
     # Project meta
     assert result["project"]["name"] == "Test Room"
 
-    # Devices — lightweight (id/name/driver/group, no config)
+    # Devices — lightweight (id/name/driver, no config)
     assert len(result["devices"]) == 2
     d = result["devices"][0]
     assert d["id"] == "projector1"
     assert d["driver"] == "pjlink"
-    assert d["group"] == "displays"
     assert "config" not in d  # No full config in summary
 
     # Variables — full
@@ -260,7 +259,6 @@ async def test_add_device(handler, mock_agent, mock_engine):
                 "driver": "samsung_mdc",
                 "name": "Main Display",
                 "config": {"host": "192.168.1.30", "port": 1515},
-                "group": "displays",
             })
             await handler.handle(msg)
         await asyncio.sleep(0)

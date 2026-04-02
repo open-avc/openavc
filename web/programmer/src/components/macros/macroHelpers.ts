@@ -1,4 +1,4 @@
-import type { MacroStep, MacroConfig, DeviceConfig, TriggerConfig } from "../../api/types";
+import type { MacroStep, MacroConfig, DeviceConfig, DeviceGroup, TriggerConfig } from "../../api/types";
 
 export interface StepTypeInfo {
   action: string;
@@ -21,6 +21,14 @@ export const STEP_TYPES: StepTypeInfo[] = [
       return `${name} → ${step.command ?? "?"}`;
     },
     defaults: () => ({ action: "device.command", device: "", command: "" }),
+  },
+  {
+    action: "group.command",
+    label: "Group Command",
+    description: "Send a command to all devices in a group at once",
+    color: "#0ea5e9",
+    summary: (step) => `${step.group ?? "?"} → ${step.command ?? "?"}`,
+    defaults: () => ({ action: "group.command", group: "", command: "" }),
   },
   {
     action: "delay",

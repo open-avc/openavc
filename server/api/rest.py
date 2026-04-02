@@ -201,7 +201,6 @@ async def update_device(device_id: str, body: DeviceUpdateRequest) -> dict[str, 
         name=new_name,
         config=new_config,
         enabled=existing.enabled if body.enabled is None else body.enabled,
-        group=existing.group if body.group is None else body.group,
     )
 
     # Update project config, save, and hot-swap device

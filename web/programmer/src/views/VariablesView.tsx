@@ -811,16 +811,23 @@ function DeviceStatesSubTab() {
     return buildStateUsageMap(project, scriptRefs);
   }, [project, scriptRefs]);
 
-  // Group devices by their group field
+  // Group devices by device_groups
+  const projGroups = project?.device_groups ?? [];
   const deviceGroups = useMemo(() => {
+    const deviceToGroup = new Map<string, string>();
+    for (const g of projGroups) {
+      for (const did of g.device_ids) {
+        if (!deviceToGroup.has(did)) deviceToGroup.set(did, g.name);
+      }
+    }
     const groups = new Map<string, typeof devices>();
     for (const d of devices) {
-      const g = d.group || "Ungrouped";
+      const g = deviceToGroup.get(d.id) || "Ungrouped";
       if (!groups.has(g)) groups.set(g, []);
       groups.get(g)!.push(d);
     }
     return groups;
-  }, [devices]);
+  }, [devices, projGroups]);
 
   // Build state entries from driver-declared state_variables + live state
   const stateEntries = useMemo(() => {

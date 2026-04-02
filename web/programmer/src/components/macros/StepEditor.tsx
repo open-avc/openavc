@@ -34,6 +34,14 @@ export function StepEditor({ step, macros, currentMacroId, onChange }: StepEdito
         />
       );
       break;
+    case "group.command":
+      editor = (
+        <GroupCommandEditor
+          step={step}
+          onChange={update}
+        />
+      );
+      break;
     case "delay":
       editor = (
         <div>
@@ -317,6 +325,162 @@ function DeviceCommandEditor({
                     {paramDef.help}
                   </div>
                 )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- Group Command Editor ---
+
+function GroupCommandEditor({
+  step,
+  onChange,
+}: {
+  step: MacroStep;
+  onChange: (patch: Partial<MacroStep>) => void;
+}) {
+  const groups = useProjectStore((s) => s.project?.device_groups) ?? [];
+  const devices = useProjectStore((s) => s.project?.devices) ?? [];
+
+  const selectedGroup = groups.find((g) => g.id === step.group);
+
+  // Fetch device info for all group members to find shared commands
+  const [sharedCommands, setSharedCommands] = useState<Record<string, any>>({});
+  const [loadingCommands, setLoadingCommands] = useState(false);
+
+  useEffect(() => {
+    if (!selectedGroup || selectedGroup.device_ids.length === 0) {
+      setSharedCommands({});
+      return;
+    }
+    setLoadingCommands(true);
+    Promise.all(
+      selectedGroup.device_ids.map((id) =>
+        api.getDevice(id).catch(() => null)
+      )
+    ).then((infos) => {
+      const validInfos = infos.filter(Boolean);
+      if (validInfos.length === 0) {
+        setSharedCommands({});
+        return;
+      }
+      // Intersection of command sets
+      const commandSets = validInfos.map((info) => info!.commands ?? {});
+      const firstCommands = commandSets[0] as Record<string, any>;
+      const shared: Record<string, any> = {};
+      for (const [cmd, def] of Object.entries(firstCommands)) {
+        if (commandSets.every((cs) => cmd in (cs as Record<string, any>))) {
+          shared[cmd] = def;
+        }
+      }
+      setSharedCommands(shared);
+    }).finally(() => setLoadingCommands(false));
+  }, [selectedGroup]);
+
+  const commandNames = Object.keys(sharedCommands);
+  const commandDef = sharedCommands[step.command ?? ""];
+  const paramSchema = (commandDef?.params ?? {}) as Record<string, any>;
+  const paramKeys = Object.keys(paramSchema);
+
+  const handleGroupChange = (groupId: string) => {
+    onChange({ group: groupId, command: "", params: undefined });
+  };
+
+  const handleCommandChange = (command: string) => {
+    onChange({ command, params: undefined });
+  };
+
+  const handleParamChange = (key: string, value: unknown) => {
+    const params = { ...(step.params ?? {}), [key]: value };
+    onChange({ params });
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+      <HelpText>Send a command to all devices in a group at once. Only commands shared by every device in the group are shown.</HelpText>
+
+      {/* Group picker */}
+      <div style={rowStyle}>
+        <label style={labelStyle}>Group</label>
+        <select
+          value={step.group ?? ""}
+          onChange={(e) => handleGroupChange(e.target.value)}
+          style={inputStyle}
+        >
+          <option value="">Select group...</option>
+          {groups.map((g) => (
+            <option key={g.id} value={g.id}>
+              {g.name} ({g.device_ids.length} devices)
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Command picker */}
+      {step.group && (
+        <div style={rowStyle}>
+          <label style={labelStyle}>Command</label>
+          {loadingCommands ? (
+            <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
+              Loading shared commands...
+            </span>
+          ) : commandNames.length > 0 ? (
+            <div style={{ flex: 1 }}>
+              <select
+                value={step.command ?? ""}
+                onChange={(e) => handleCommandChange(e.target.value)}
+                style={{ ...inputStyle, width: "100%" }}
+              >
+                <option value="">Select command...</option>
+                {commandNames.map((cmd) => {
+                  const def = sharedCommands[cmd];
+                  const label = def?.label ?? cmd;
+                  return (
+                    <option key={cmd} value={cmd}>{label}</option>
+                  );
+                })}
+              </select>
+              {step.command && sharedCommands[step.command]?.help && (
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                  {sharedCommands[step.command].help}
+                </div>
+              )}
+            </div>
+          ) : selectedGroup && selectedGroup.device_ids.length === 0 ? (
+            <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
+              No devices in this group yet
+            </span>
+          ) : (
+            <input
+              type="text"
+              value={step.command ?? ""}
+              onChange={(e) => onChange({ command: e.target.value })}
+              placeholder="Type command name"
+              style={inputStyle}
+            />
+          )}
+        </div>
+      )}
+
+      {/* Parameters */}
+      {step.command && paramKeys.length > 0 && (
+        <div style={{ marginLeft: 78, display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+          {paramKeys.map((paramKey) => {
+            const paramDef = paramSchema[paramKey];
+            const currentVal = (step.params as Record<string, unknown>)?.[paramKey] ?? "";
+            return (
+              <div key={paramKey} style={rowStyle}>
+                <label style={{ ...labelStyle, minWidth: 60 }}>{paramDef?.label ?? paramKey}</label>
+                <input
+                  value={String(currentVal)}
+                  onChange={(e) => handleParamChange(paramKey, e.target.value)}
+                  placeholder={paramDef?.type === "number" ? "0" : ""}
+                  style={inputStyle}
+                />
               </div>
             );
           })}

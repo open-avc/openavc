@@ -140,9 +140,11 @@ class Engine:
         # Bind variable sources (auto-sync from device state)
         self._bind_variable_sources()
 
-        # Load macros
+        # Load macros and device groups
         macros_data = [m.model_dump() for m in self.project.macros]
         self.macros.load_macros(macros_data)
+        groups_data = [g.model_dump() for g in self.project.device_groups]
+        self.macros.load_groups(groups_data)
 
         # Add and connect devices (merge connection table into device config)
         startup_errors: list[str] = []
@@ -366,9 +368,11 @@ class Engine:
         # Sync plugins: add new, remove deleted, restart changed
         await self._sync_plugins()
 
-        # Reload macros
+        # Reload macros and device groups
         macros_data = [m.model_dump() for m in self.project.macros]
         self.macros.load_macros(macros_data)
+        groups_data = [g.model_dump() for g in self.project.device_groups]
+        self.macros.load_groups(groups_data)
 
         # Reload triggers
         await self.triggers.stop()

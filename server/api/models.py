@@ -48,7 +48,6 @@ class DeviceUpdateRequest(BaseModel):
     driver: str | None = None
     config: dict[str, Any] | None = None
     enabled: bool | None = None
-    group: str | None = None
 
 
 class ScriptSourceRequest(BaseModel):

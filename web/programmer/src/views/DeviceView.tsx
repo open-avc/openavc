@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { Plus, Send, Pencil, Trash2, Wifi, Power, RefreshCw, Copy, CheckSquare, Settings, Check, X, Loader2, Radar } from "lucide-react";
+import { Plus, Send, Pencil, Trash2, Wifi, Power, RefreshCw, Copy, CheckSquare, Settings, Check, X, Loader2, Radar, Layers } from "lucide-react";
 import { CopyButton } from "../components/shared/CopyButton";
 import { ViewContainer } from "../components/layout/ViewContainer";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
@@ -9,13 +9,13 @@ import { useConnectionStore } from "../store/connectionStore";
 import { useLogStore } from "../store/logStore";
 import { useNavigationStore } from "../store/navigationStore";
 import * as api from "../api/restClient";
-import type { DeviceConfig, DeviceInfo, DeviceSettingValue, DriverInfo } from "../api/types";
+import type { DeviceConfig, DeviceGroup, DeviceInfo, DeviceSettingValue, DriverInfo } from "../api/types";
 import { DevicePanelSlot, ContextActionRenderer } from "../components/plugins/PluginExtensions";
 import { DeviceSettingsSetupDialog, hasDriverSetupSettings } from "../components/shared/DeviceSettingsSetupDialog";
 import { DiscoveryPanel } from "./DiscoveryView";
 import { DriverPanel } from "./DriverBuilderView";
 
-type DeviceSubTab = "devices" | "discovery" | "drivers";
+type DeviceSubTab = "devices" | "groups" | "discovery" | "drivers";
 
 export function DeviceView() {
   const project = useProjectStore((s) => s.project);
@@ -63,6 +63,8 @@ export function DeviceView() {
 
   const deviceConfigs = project?.devices ?? [];
 
+  const deviceGroups = project?.device_groups ?? [];
+
   // Filter and group devices (memoized)
   const { filteredDevices, grouped, sortedGroups, hasGroups } = useMemo(() => {
     const filtered = deviceConfigs.filter(
@@ -72,9 +74,18 @@ export function DeviceView() {
         dev.id.toLowerCase().includes(search.toLowerCase()) ||
         dev.driver.toLowerCase().includes(search.toLowerCase())
     );
+    // Build device -> first group name mapping from device_groups
+    const deviceToGroup = new Map<string, string>();
+    for (const g of deviceGroups) {
+      for (const did of g.device_ids) {
+        if (!deviceToGroup.has(did)) {
+          deviceToGroup.set(did, g.name);
+        }
+      }
+    }
     const groups = new Map<string, typeof filtered>();
     for (const dev of filtered) {
-      const g = dev.group || "";
+      const g = deviceToGroup.get(dev.id) || "";
       if (!groups.has(g)) groups.set(g, []);
       groups.get(g)!.push(dev);
     }
@@ -89,7 +100,7 @@ export function DeviceView() {
       sortedGroups: sorted,
       hasGroups: sorted.some((g) => g !== ""),
     };
-  }, [deviceConfigs, search]);
+  }, [deviceConfigs, deviceGroups, search]);
 
   const handleDeviceDeleted = useCallback(
     (deletedId: string) => {
@@ -176,6 +187,7 @@ export function DeviceView() {
         <div style={{ display: "flex", gap: "var(--space-sm)", alignItems: "center" }}>
           {([
             { id: "devices" as const, label: "Devices" },
+            { id: "groups" as const, label: "Groups" },
             { id: "discovery" as const, label: "Discovery" },
             { id: "drivers" as const, label: "Drivers" },
           ]).map((tab) => (
@@ -258,6 +270,8 @@ export function DeviceView() {
         <DiscoveryPanel />
       ) : subTab === "drivers" ? (
         <DriverPanel />
+      ) : subTab === "groups" ? (
+        <DeviceGroupsPanel />
       ) : (
       <div style={{ display: "flex", gap: "var(--space-lg)", flex: 1, minHeight: 0 }}>
         {/* Device list */}
@@ -1688,7 +1702,6 @@ function AddDeviceDialog({
   const [drivers, setDrivers] = useState<DriverInfo[]>([]);
   const [deviceId, setDeviceId] = useState(prefill ? "" : "");
   const [deviceName, setDeviceName] = useState(prefill?.name ? `${prefill.name} (Copy)` : "");
-  const [deviceGroup, setDeviceGroup] = useState(prefill?.group ?? "");
   const [selectedDriver, setSelectedDriver] = useState(prefill?.driver ?? "");
   const [configValues, setConfigValues] = useState<Record<string, string>>(() => {
     if (!prefill) return {};
@@ -1738,7 +1751,6 @@ function AddDeviceDialog({
       name: deviceName || deviceId,
       config,
     };
-    if (deviceGroup) newDevice.group = deviceGroup;
 
     update({
       devices: [...(project?.devices ?? []), newDevice],
@@ -1883,27 +1895,6 @@ function AddDeviceDialog({
           />
         </div>
 
-        <div style={{ marginBottom: "var(--space-md)" }}>
-          <label
-            style={{
-              display: "block",
-              fontSize: "var(--font-size-sm)",
-              color: "var(--text-secondary)",
-              marginBottom: "var(--space-xs)",
-            }}
-          >
-            Group / Location
-          </label>
-          <input
-            value={deviceGroup}
-            onChange={(e) => setDeviceGroup(e.target.value)}
-            placeholder="e.g., Conference Room A"
-            style={{ width: "100%" }}
-          />
-          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-            Optional. Devices with the same group are shown together.
-          </div>
-        </div>
 
         {configKeys.length > 0 && (
           <div style={{ marginBottom: "var(--space-md)" }}>
@@ -1984,7 +1975,6 @@ function EditDeviceDialog({
 }) {
   const [drivers, setDrivers] = useState<DriverInfo[]>([]);
   const [deviceName, setDeviceName] = useState(device.name);
-  const [deviceGroup, setDeviceGroup] = useState(device.group ?? "");
   const [selectedDriver, setSelectedDriver] = useState(device.driver);
   const [configValues, setConfigValues] = useState<Record<string, string>>(() => {
     // Merge device.config with connection table overrides (host, port, etc.)
@@ -2044,11 +2034,6 @@ function EditDeviceDialog({
         driver: selectedDriver,
         config,
       };
-      if (deviceGroup) {
-        updateData.group = deviceGroup;
-      } else {
-        updateData.group = "";
-      }
 
       await api.updateDevice(device.id, updateData as {
         name?: string;
@@ -2173,27 +2158,6 @@ function EditDeviceDialog({
           />
         </div>
 
-        <div style={{ marginBottom: "var(--space-md)" }}>
-          <label
-            style={{
-              display: "block",
-              fontSize: "var(--font-size-sm)",
-              color: "var(--text-secondary)",
-              marginBottom: "var(--space-xs)",
-            }}
-          >
-            Group / Location
-          </label>
-          <input
-            value={deviceGroup}
-            onChange={(e) => setDeviceGroup(e.target.value)}
-            placeholder="e.g., Conference Room A"
-            style={{ width: "100%" }}
-          />
-          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-            Optional. Devices with the same group are shown together.
-          </div>
-        </div>
 
         {configKeys.length > 0 && (
           <div style={{ marginBottom: "var(--space-md)" }}>
@@ -2506,6 +2470,234 @@ function DeviceStateLog({ deviceId }: { deviceId: string }) {
             })}
           </tbody>
         </table>
+      )}
+    </div>
+  );
+}
+
+// ==========================================================================
+// Device Groups Panel
+// ==========================================================================
+
+function DeviceGroupsPanel() {
+  const project = useProjectStore((s) => s.project);
+  const update = useProjectStore((s) => s.update);
+  const save = useProjectStore((s) => s.save);
+
+  const groups = project?.device_groups ?? [];
+  const devices = project?.devices ?? [];
+
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [newGroupId, setNewGroupId] = useState("");
+  const [newGroupName, setNewGroupName] = useState("");
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+
+  const selectedGroup = groups.find((g) => g.id === selectedGroupId);
+
+  const handleCreate = () => {
+    const id = newGroupId.trim().replace(/[^a-zA-Z0-9_]/g, "_");
+    if (!id || groups.some((g) => g.id === id)) return;
+    const newGroup: DeviceGroup = {
+      id,
+      name: newGroupName.trim() || id,
+      device_ids: [],
+    };
+    update({ device_groups: [...groups, newGroup] });
+    setNewGroupId("");
+    setNewGroupName("");
+    setShowCreate(false);
+    setSelectedGroupId(id);
+    setTimeout(() => save(), 100);
+  };
+
+  const handleDelete = (groupId: string) => {
+    update({ device_groups: groups.filter((g) => g.id !== groupId) });
+    if (selectedGroupId === groupId) setSelectedGroupId(null);
+    setDeleteConfirm(null);
+    setTimeout(() => save(), 100);
+  };
+
+  const handleUpdateGroup = (groupId: string, patch: Partial<DeviceGroup>) => {
+    update({
+      device_groups: groups.map((g) =>
+        g.id === groupId ? { ...g, ...patch } : g
+      ),
+    });
+    setTimeout(() => save(), 500);
+  };
+
+  const toggleDevice = (groupId: string, deviceId: string) => {
+    const group = groups.find((g) => g.id === groupId);
+    if (!group) return;
+    const ids = group.device_ids.includes(deviceId)
+      ? group.device_ids.filter((d) => d !== deviceId)
+      : [...group.device_ids, deviceId];
+    handleUpdateGroup(groupId, { device_ids: ids });
+  };
+
+  return (
+    <div style={{ display: "flex", height: "100%" }}>
+      {/* Left: group list */}
+      <div style={{ width: 280, flexShrink: 0, borderRight: "1px solid var(--border-color)", display: "flex", flexDirection: "column" }}>
+        <div style={{ padding: "var(--space-sm) var(--space-md)", borderBottom: "1px solid var(--border-color)" }}>
+          <button
+            onClick={() => setShowCreate((v) => !v)}
+            style={{
+              display: "flex", alignItems: "center", gap: "var(--space-xs)",
+              padding: "var(--space-xs) var(--space-sm)",
+              background: "var(--accent)", color: "var(--text-on-accent)",
+              border: "none", borderRadius: "var(--border-radius)",
+              fontSize: "var(--font-size-sm)", cursor: "pointer", fontWeight: 500,
+            }}
+          >
+            <Plus size={14} /> New Group
+          </button>
+        </div>
+
+        {showCreate && (
+          <div style={{ padding: "var(--space-sm) var(--space-md)", borderBottom: "1px solid var(--border-color)", display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
+            <input
+              value={newGroupId}
+              onChange={(e) => setNewGroupId(e.target.value)}
+              placeholder="Group ID (e.g., projectors)"
+              style={{ fontSize: "var(--font-size-sm)", padding: "var(--space-xs) var(--space-sm)", borderRadius: "var(--border-radius)", border: "1px solid var(--border-color)", background: "var(--bg-input)", color: "var(--text-primary)" }}
+              autoFocus
+              onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+            />
+            <input
+              value={newGroupName}
+              onChange={(e) => setNewGroupName(e.target.value)}
+              placeholder="Display name (e.g., All Projectors)"
+              style={{ fontSize: "var(--font-size-sm)", padding: "var(--space-xs) var(--space-sm)", borderRadius: "var(--border-radius)", border: "1px solid var(--border-color)", background: "var(--bg-input)", color: "var(--text-primary)" }}
+              onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+            />
+            <div style={{ display: "flex", gap: "var(--space-xs)" }}>
+              <button onClick={handleCreate} style={{ padding: "var(--space-xs) var(--space-sm)", background: "var(--accent)", color: "var(--text-on-accent)", border: "none", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-sm)", cursor: "pointer" }}>Create</button>
+              <button onClick={() => setShowCreate(false)} style={{ padding: "var(--space-xs) var(--space-sm)", background: "var(--bg-hover)", color: "var(--text-secondary)", border: "none", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-sm)", cursor: "pointer" }}>Cancel</button>
+            </div>
+          </div>
+        )}
+
+        <div style={{ flex: 1, overflow: "auto" }}>
+          {groups.length === 0 ? (
+            <div style={{ padding: "var(--space-xl)", textAlign: "center", color: "var(--text-muted)", fontSize: "var(--font-size-sm)", lineHeight: 1.6 }}>
+              No device groups yet.
+              <br /><br />
+              Groups let you send a single command to multiple devices at once.
+              For example, create a "Projectors" group and power them all on with one macro step.
+            </div>
+          ) : (
+            groups.map((g) => (
+              <div
+                key={g.id}
+                onClick={() => setSelectedGroupId(g.id)}
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  padding: "var(--space-sm) var(--space-md)",
+                  cursor: "pointer",
+                  background: selectedGroupId === g.id ? "var(--bg-hover)" : "transparent",
+                  borderBottom: "1px solid var(--border-color)",
+                }}
+                onMouseEnter={(e) => { if (selectedGroupId !== g.id) (e.currentTarget as HTMLElement).style.background = "var(--bg-hover)"; }}
+                onMouseLeave={(e) => { if (selectedGroupId !== g.id) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+              >
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
+                    <Layers size={14} style={{ color: "var(--accent)" }} />
+                    <span style={{ fontWeight: selectedGroupId === g.id ? 600 : 400, color: "var(--text-primary)" }}>{g.name}</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>
+                    {g.device_ids.length} device{g.device_ids.length !== 1 ? "s" : ""}
+                  </div>
+                </div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setDeleteConfirm(g.id); }}
+                  style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: 2 }}
+                  title="Delete group"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* Right: group detail */}
+      <div style={{ flex: 1, overflow: "auto", padding: "var(--space-lg)" }}>
+        {selectedGroup ? (
+          <div>
+            <div style={{ marginBottom: "var(--space-lg)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", marginBottom: "var(--space-sm)" }}>
+                <Layers size={20} style={{ color: "var(--accent)" }} />
+                <input
+                  value={selectedGroup.name}
+                  onChange={(e) => handleUpdateGroup(selectedGroup.id, { name: e.target.value })}
+                  style={{ fontSize: "var(--font-size-lg)", fontWeight: 600, background: "transparent", border: "none", color: "var(--text-primary)", outline: "none", padding: 0 }}
+                />
+              </div>
+              <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
+                ID: <code style={{ background: "var(--bg-hover)", padding: "1px 4px", borderRadius: 3 }}>{selectedGroup.id}</code>
+              </div>
+            </div>
+
+            <h3 style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "var(--space-sm)" }}>
+              Devices ({selectedGroup.device_ids.length})
+            </h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              {devices.map((dev) => {
+                const isMember = selectedGroup.device_ids.includes(dev.id);
+                return (
+                  <label
+                    key={dev.id}
+                    style={{
+                      display: "flex", alignItems: "center", gap: "var(--space-sm)",
+                      padding: "var(--space-xs) var(--space-sm)",
+                      borderRadius: "var(--border-radius)",
+                      cursor: "pointer",
+                      background: isMember ? "rgba(33,150,243,0.08)" : "transparent",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isMember}
+                      onChange={() => toggleDevice(selectedGroup.id, dev.id)}
+                    />
+                    <span style={{ fontWeight: isMember ? 500 : 400, color: "var(--text-primary)" }}>{dev.name}</span>
+                    <span style={{ fontSize: 11, color: "var(--text-muted)" }}>({dev.id})</span>
+                  </label>
+                );
+              })}
+              {devices.length === 0 && (
+                <div style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)", fontStyle: "italic" }}>
+                  No devices in the project yet.
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-muted)", gap: "var(--space-sm)", textAlign: "center" }}>
+            <Layers size={32} style={{ opacity: 0.3 }} />
+            <div style={{ fontSize: "var(--font-size-md)" }}>
+              {groups.length === 0 ? "Create your first device group" : "Select a group to manage its devices"}
+            </div>
+            <div style={{ fontSize: "var(--font-size-sm)", maxWidth: 420, lineHeight: 1.5 }}>
+              Device groups let you target multiple devices with a single macro step.
+              Create a group, add devices to it, then use "Group Command" in your macros.
+            </div>
+          </div>
+        )}
+      </div>
+
+      {deleteConfirm && (
+        <ConfirmDialog
+          title="Delete Group"
+          message={`Delete group "${groups.find((g) => g.id === deleteConfirm)?.name ?? deleteConfirm}"? This will not delete any devices.`}
+          confirmLabel="Delete"
+          onConfirm={() => handleDelete(deleteConfirm)}
+          onCancel={() => setDeleteConfirm(null)}
+        />
       )}
     </div>
   );

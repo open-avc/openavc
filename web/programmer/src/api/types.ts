@@ -14,8 +14,13 @@ export interface DeviceConfig {
   name: string;
   config: Record<string, unknown>;
   enabled?: boolean;
-  group?: string;
   pending_settings?: Record<string, unknown>;
+}
+
+export interface DeviceGroup {
+  id: string;
+  name: string;
+  device_ids: string[];
 }
 
 export interface VariableConfig {
@@ -38,6 +43,7 @@ export interface StepCondition {
 export interface MacroStep {
   action: string;
   device?: string;
+  group?: string;  // group.command: target device group ID
   command?: string;
   params?: Record<string, unknown>;
   seconds?: number;
@@ -342,6 +348,7 @@ export interface ProjectConfig {
   openavc_version: string;
   project: ProjectMeta;
   devices: DeviceConfig[];
+  device_groups: DeviceGroup[];
   connections: Record<string, Record<string, unknown>>;
   driver_dependencies: DriverDependency[];
   plugin_dependencies: PluginDependency[];

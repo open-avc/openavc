@@ -116,6 +116,9 @@ class AIToolHandler:
             "update_device": self._update_device,
             "delete_device": self._delete_device,
             "add_device": self._add_device,
+            "add_device_group": self._add_device_group,
+            "update_device_group": self._update_device_group,
+            "delete_device_group": self._delete_device_group,
             "add_variable": self._add_variable,
             "update_variable": self._update_variable,
             "delete_variable": self._delete_variable,
@@ -347,8 +350,12 @@ class AIToolHandler:
         result = {
             "project": {"id": p.project.id, "name": p.project.name},
             "devices": [
-                {"id": d.id, "name": d.name, "driver": d.driver, "group": d.group}
+                {"id": d.id, "name": d.name, "driver": d.driver}
                 for d in p.devices
+            ],
+            "device_groups": [
+                {"id": g.id, "name": g.name, "device_ids": g.device_ids}
+                for g in p.device_groups
             ],
             "variables": [v.model_dump(mode="json") for v in p.variables],
             "macros": [
@@ -448,7 +455,6 @@ class AIToolHandler:
             name=input.get("name", existing.name),
             config=input.get("config", existing.config),
             enabled=existing.enabled,
-            group=existing.group,
         )
         engine.project.devices[device_idx] = updated
         save_project(engine.project_path, engine.project)
@@ -504,7 +510,6 @@ class AIToolHandler:
             name=input.get("name", device_id),
             config=protocol_config,
             enabled=input.get("enabled", True),
-            group=input.get("group", ""),
         )
         engine.project.devices.append(new_device)
         if conn_overrides:
@@ -516,6 +521,66 @@ class AIToolHandler:
         await self._notify_project_changed()
 
         return {"status": "created", "id": device_id}
+
+    async def _add_device_group(self, input: dict) -> Any:
+        engine = self._get_engine()
+        if not engine or not engine.project:
+            return {"error": "No project loaded"}
+        group_id = input.get("id", "")
+        if not group_id:
+            return {"error": "Group ID is required"}
+        if any(g.id == group_id for g in engine.project.device_groups):
+            return {"error": f"Group '{group_id}' already exists"}
+        from server.core.project_loader import DeviceGroup, save_project
+        new_group = DeviceGroup(
+            id=group_id,
+            name=input.get("name", group_id),
+            device_ids=input.get("device_ids", []),
+        )
+        engine.project.device_groups.append(new_group)
+        save_project(engine.project_path, engine.project)
+        # Reload groups in macro engine
+        engine.macros.load_groups([g.model_dump() for g in engine.project.device_groups])
+        await self._notify_project_changed()
+        return {"status": "created", "id": group_id}
+
+    async def _update_device_group(self, input: dict) -> Any:
+        engine = self._get_engine()
+        if not engine or not engine.project:
+            return {"error": "No project loaded"}
+        group_id = input.get("id", "")
+        group_idx = None
+        for i, g in enumerate(engine.project.device_groups):
+            if g.id == group_id:
+                group_idx = i
+                break
+        if group_idx is None:
+            return {"error": f"Group '{group_id}' not found"}
+        from server.core.project_loader import save_project
+        existing = engine.project.device_groups[group_idx]
+        if "name" in input:
+            existing.name = input["name"]
+        if "device_ids" in input:
+            existing.device_ids = input["device_ids"]
+        save_project(engine.project_path, engine.project)
+        engine.macros.load_groups([g.model_dump() for g in engine.project.device_groups])
+        await self._notify_project_changed()
+        return {"status": "updated", "id": group_id}
+
+    async def _delete_device_group(self, input: dict) -> Any:
+        engine = self._get_engine()
+        if not engine or not engine.project:
+            return {"error": "No project loaded"}
+        group_id = input.get("id", "")
+        original_count = len(engine.project.device_groups)
+        engine.project.device_groups = [g for g in engine.project.device_groups if g.id != group_id]
+        if len(engine.project.device_groups) == original_count:
+            return {"error": f"Group '{group_id}' not found"}
+        from server.core.project_loader import save_project
+        save_project(engine.project_path, engine.project)
+        engine.macros.load_groups([g.model_dump() for g in engine.project.device_groups])
+        await self._notify_project_changed()
+        return {"status": "deleted", "id": group_id}
 
     async def _add_variable(self, input: dict) -> Any:
         engine = self._get_engine()

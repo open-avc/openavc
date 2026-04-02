@@ -18,6 +18,7 @@ Use the search box at the top of the macro list to filter by name.
 | Step Type | Description | Example |
 |-----------|-------------|---------|
 | **Device Command** | Send a command to a device | `projector_main` -> `power_on` |
+| **Group Command** | Send a command to all devices in a group at once | `projectors` -> `power_on` |
 | **Delay** | Wait N seconds between steps | Wait 15 seconds for projector warmup |
 | **Set Variable** | Set a user variable | `var.room_active` = `true` |
 | **Emit Event** | Fire a custom event on the event bus | `room.shutdown_complete` |
@@ -25,6 +26,8 @@ Use the search box at the top of the macro list to filter by name.
 | **Conditional** | If/else branching based on state | If projector is already on, skip power-on |
 
 The **Device Command** step uses smart dropdowns: after selecting a device, the command dropdown only shows commands defined by that device's driver, with parameter fields that match the driver's command definition. No guessing at command syntax.
+
+The **Group Command** step works the same way but targets a device group instead of a single device. All devices in the group receive the command concurrently. Only commands shared by every device in the group are shown. Offline devices are skipped automatically. Create and manage device groups from the **Groups** tab in the Devices view.
 
 Reorder steps by dragging the grip handle on the left side of each step. Toggle **Stop on Error** in the macro header to halt execution if any step fails (by default, macros continue through errors).
 
