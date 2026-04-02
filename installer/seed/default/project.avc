@@ -58,7 +58,6 @@
         "master_elements": []
     },
     "scripts": [],
-    "schedules": [],
     "isc": {
         "instance_name": "",
         "shared_variables": [],

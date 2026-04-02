@@ -20,7 +20,6 @@ from server.core.event_bus import EventBus
 from server.core.macro_engine import MacroEngine
 from server.core.plugin_loader import PluginLoader
 from server.core.project_loader import ProjectConfig, load_project, save_project
-from server.core.scheduler import Scheduler
 from server.core.script_engine import ScriptEngine
 from server.core.state_store import StateStore
 from server.core.trigger_engine import TriggerEngine
@@ -54,7 +53,6 @@ class Engine:
         self.events = EventBus()
         self.devices = DeviceManager(self.state, self.events)
         self.macros = MacroEngine(self.state, self.events, self.devices)
-        self.scheduler = Scheduler(self.events)
         self.triggers = TriggerEngine(self.state, self.events, self.macros)
         self.scripts: ScriptEngine | None = None
         self.plugin_loader = PluginLoader(self.state, self.events, self.macros, self.devices)
@@ -166,11 +164,6 @@ class Engine:
         except Exception as e:  # Catch-all: isolates script loading errors from core startup
             startup_errors.append(f"Scripts: {e}")
             log.exception("Script engine failed to load scripts")
-
-        # Scheduler (cron jobs from project.avc)
-        schedules_data = [s.model_dump() for s in self.project.schedules]
-        self.scheduler.load_schedules(schedules_data)
-        await self.scheduler.start()
 
         # Trigger engine (automatic macro triggers)
         macros_data_triggers = [m.model_dump() for m in self.project.macros]
@@ -304,9 +297,6 @@ class Engine:
         # Stop trigger engine
         await self.triggers.stop()
 
-        # Stop scheduler
-        await self.scheduler.stop()
-
         # Stop Cloud Agent
         if self.cloud_agent:
             await self.cloud_agent.stop()
@@ -369,12 +359,6 @@ class Engine:
         if self.scripts:
             scripts_data = [s.model_dump() for s in self.project.scripts]
             self.scripts.reload_scripts(scripts_data)
-
-        # Reload schedules
-        await self.scheduler.stop()
-        schedules_data = [s.model_dump() for s in self.project.schedules]
-        self.scheduler.load_schedules(schedules_data)
-        await self.scheduler.start()
 
         # Reload ISC config
         await self._reload_isc()

@@ -65,8 +65,15 @@ class VariableConfig(BaseModel):
     source_map: dict[str, Any] | None = None  # value mapping for source
 
 
+class StepCondition(BaseModel):
+    """Condition for conditional steps and skip_if guards."""
+    key: str
+    operator: str = "eq"  # eq, ne, gt, lt, gte, lte, truthy, falsy
+    value: Any = None
+
+
 class MacroStep(BaseModel):
-    action: str  # "device.command", "delay", "state.set", "macro", "event.emit"
+    action: str  # "device.command", "delay", "state.set", "macro", "event.emit", "conditional"
     # Fields used by different action types (all optional, validated at runtime)
     device: str | None = None
     command: str | None = None
@@ -77,6 +84,18 @@ class MacroStep(BaseModel):
     macro: str | None = None
     event: str | None = None
     payload: dict[str, Any] | None = None
+    description: str | None = None  # human-readable step description (for progress display)
+
+    # Conditional step fields (action == "conditional")
+    condition: StepCondition | None = None
+    then_steps: list["MacroStep"] | None = None
+    else_steps: list["MacroStep"] | None = None
+
+    # Step-level guard: skip this step if condition is true
+    skip_if: StepCondition | None = None
+
+    # Device offline guard: skip device.command if device is disconnected
+    skip_if_offline: bool = False
 
 
 class TriggerCondition(BaseModel):
@@ -126,6 +145,7 @@ class MacroConfig(BaseModel):
     steps: list[MacroStep] = Field(default_factory=list)
     triggers: list[TriggerConfig] = Field(default_factory=list)
     stop_on_error: bool = False
+    cancel_group: str | None = None  # macros in the same group preempt each other
 
 
 class GridArea(BaseModel):
@@ -262,15 +282,6 @@ class ScriptConfig(BaseModel):
     description: str = ""
 
 
-class ScheduleConfig(BaseModel):
-    id: str
-    type: str = "cron"
-    expression: str = ""
-    event: str = ""
-    enabled: bool = True
-    description: str = ""
-
-
 class ISCConfig(BaseModel):
     enabled: bool = False
     shared_state: list[str] = Field(default_factory=list)
@@ -313,7 +324,6 @@ class ProjectConfig(BaseModel):
     macros: list[MacroConfig] = Field(default_factory=list)
     ui: UIConfig = Field(default_factory=UIConfig)
     scripts: list[ScriptConfig] = Field(default_factory=list)
-    schedules: list[ScheduleConfig] = Field(default_factory=list)
     isc: ISCConfig = Field(default_factory=ISCConfig)
 
     @field_validator("plugins")

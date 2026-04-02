@@ -13,6 +13,7 @@ import time
 from datetime import datetime
 from typing import Any, TYPE_CHECKING
 
+from server.core.condition_eval import eval_operator
 from server.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -202,7 +203,7 @@ class TriggerEngine:
         # Check state_operator match
         op = t.get("state_operator", "any")
         target = t.get("state_value")
-        if op != "any" and not self._eval_operator(op, new_value, target):
+        if op != "any" and not eval_operator(op, new_value, target):
             log.debug(
                 f"Trigger {t['id']} skipped — state_operator {op} not met "
                 f"(actual={new_value!r}, target={target!r})"
@@ -338,7 +339,7 @@ class TriggerEngine:
                 target = t.get("state_value")
                 if op != "any":
                     current = self.state.get(state_key)
-                    if not self._eval_operator(op, current, target):
+                    if not eval_operator(op, current, target):
                         log.info(
                             f"Trigger {t['id']} skipped — state reverted during delay"
                         )
@@ -479,48 +480,9 @@ class TriggerEngine:
             op = cond.get("operator", "eq")
             target = cond.get("value")
             actual = self.state.get(key)
-            if not self._eval_operator(op, actual, target):
+            if not eval_operator(op, actual, target):
                 return False
         return True
-
-    _OPERATOR_ALIASES: dict[str, str] = {
-        "equals": "eq",
-        "not_equals": "ne",
-        "==": "eq",
-        "!=": "ne",
-        ">": "gt",
-        "<": "lt",
-        ">=": "gte",
-        "<=": "lte",
-        "equal": "eq",
-        "not_equal": "ne",
-        "greater_than": "gt",
-        "less_than": "lt",
-        "greater_or_equal": "gte",
-        "less_or_equal": "lte",
-    }
-
-    @staticmethod
-    def _eval_operator(op: str, actual: Any, target: Any) -> bool:
-        """Evaluate a comparison operator (with alias normalization)."""
-        op = TriggerEngine._OPERATOR_ALIASES.get(op, op)
-        if op == "eq":
-            return actual == target
-        if op == "ne":
-            return actual != target
-        if op == "gt":
-            return actual is not None and target is not None and actual > target
-        if op == "lt":
-            return actual is not None and target is not None and actual < target
-        if op == "gte":
-            return actual is not None and target is not None and actual >= target
-        if op == "lte":
-            return actual is not None and target is not None and actual <= target
-        if op == "truthy":
-            return bool(actual)
-        if op == "falsy":
-            return not bool(actual)
-        return False
 
     # --- Status / API ---
 

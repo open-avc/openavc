@@ -349,7 +349,6 @@ def create_blank_project(project_id: str, project_name: str) -> ProjectConfig:
             ],
         ),
         scripts=[],
-        schedules=[],
         isc=ISCConfig(),
     )
 

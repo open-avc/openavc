@@ -302,6 +302,5 @@
             "description": "Source routing, volume mapping, occupancy auto-shutdown, mode presets, mic toggle"
         }
     ],
-    "schedules": [],
     "isc": { "shared_state": [], "auth_key": "" }
 }

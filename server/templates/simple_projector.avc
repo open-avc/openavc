@@ -109,6 +109,5 @@
         ]
     },
     "scripts": [],
-    "schedules": [],
     "isc": { "shared_state": [], "auth_key": "" }
 }

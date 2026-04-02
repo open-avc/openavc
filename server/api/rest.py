@@ -928,6 +928,16 @@ async def execute_macro(macro_id: str) -> dict[str, Any]:
     return {"status": "executed", "macro_id": macro_id}
 
 
+@router.post("/macros/{macro_id}/cancel")
+async def cancel_macro(macro_id: str) -> dict[str, Any]:
+    """Cancel a running macro by ID."""
+    engine = _get_engine()
+    cancelled = await engine.macros.cancel(macro_id)
+    if cancelled:
+        return {"cancelled": True}
+    return {"cancelled": False, "reason": "not_running"}
+
+
 # --- Triggers ---
 
 

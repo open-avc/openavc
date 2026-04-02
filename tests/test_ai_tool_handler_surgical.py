@@ -1,8 +1,8 @@
 """Tests for surgical AI tool handlers — focused CRUD tools.
 
-Tests the 19 new handlers: get_project_summary, get_macro, get_ui_page,
-get_schedule, add_device, add/update/delete_variable, add/update/delete_macro,
-add/delete_ui_page, add/update/delete_ui_elements, add/update/delete_schedule.
+Tests the handlers: get_project_summary, get_macro, get_ui_page,
+add_device, add/update/delete_variable, add/update/delete_macro,
+add/delete_ui_page, add/update/delete_ui_elements.
 """
 
 import asyncio
@@ -39,7 +39,7 @@ def _make_project():
     from server.core.project_loader import (
         ProjectConfig, ProjectMeta, DeviceConfig, VariableConfig,
         MacroConfig, MacroStep, TriggerConfig, UIConfig, UIPage,
-        UIElement, GridArea, GridConfig, ScriptConfig, ScheduleConfig,
+        UIElement, GridArea, GridConfig, ScriptConfig,
     )
     return ProjectConfig(
         project=ProjectMeta(id="test_project", name="Test Room"),
@@ -74,9 +74,6 @@ def _make_project():
         ]),
         scripts=[
             ScriptConfig(id="auto_lights", file="auto_lights.py", description="Auto lighting"),
-        ],
-        schedules=[
-            ScheduleConfig(id="evening_off", expression="0 18 * * 1-5", event="shutdown", description="Weekday shutdown"),
         ],
     )
 
@@ -182,10 +179,6 @@ async def test_get_project_summary(handler, mock_agent, mock_engine):
     assert len(result["scripts"]) == 1
     assert result["scripts"][0]["id"] == "auto_lights"
 
-    # Schedules
-    assert len(result["schedules"]) == 1
-    assert result["schedules"][0]["expression"] == "0 18 * * 1-5"
-
 
 @pytest.mark.asyncio
 async def test_get_project_summary_no_project(handler, mock_agent):
@@ -247,33 +240,6 @@ async def test_get_ui_page(handler, mock_agent, mock_engine):
 async def test_get_ui_page_not_found(handler, mock_agent, mock_engine):
     with patch.object(handler, "_get_engine", return_value=mock_engine):
         msg = _make_tool_call_msg("get_ui_page", {"page_id": "nonexistent"})
-        await handler.handle(msg)
-        await asyncio.sleep(0)
-
-    payload = _get_result_payload(mock_agent)
-    assert payload["success"] is True
-    assert "error" in payload["result"]
-
-
-@pytest.mark.asyncio
-async def test_get_schedule(handler, mock_agent, mock_engine):
-    with patch.object(handler, "_get_engine", return_value=mock_engine):
-        msg = _make_tool_call_msg("get_schedule", {"schedule_id": "evening_off"})
-        await handler.handle(msg)
-        await asyncio.sleep(0)
-
-    payload = _get_result_payload(mock_agent)
-    assert payload["success"] is True
-    result = payload["result"]
-    assert result["id"] == "evening_off"
-    assert result["expression"] == "0 18 * * 1-5"
-    assert result["event"] == "shutdown"
-
-
-@pytest.mark.asyncio
-async def test_get_schedule_not_found(handler, mock_agent, mock_engine):
-    with patch.object(handler, "_get_engine", return_value=mock_engine):
-        msg = _make_tool_call_msg("get_schedule", {"schedule_id": "nonexistent"})
         await handler.handle(msg)
         await asyncio.sleep(0)
 
@@ -747,99 +713,6 @@ async def test_delete_ui_elements_not_found(handler, mock_agent, mock_engine):
 # ===== SCHEDULE TOOLS =====
 
 
-@pytest.mark.asyncio
-async def test_add_schedule(handler, mock_agent, mock_engine):
-    with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
-            msg = _make_tool_call_msg("add_schedule", {
-                "id": "morning_on",
-                "expression": "0 8 * * 1-5",
-                "event": "startup",
-                "description": "Weekday morning startup",
-            })
-            await handler.handle(msg)
-        await asyncio.sleep(0)
-
-    payload = _get_result_payload(mock_agent)
-    assert payload["success"] is True
-    assert payload["result"]["status"] == "created"
-
-    sched = next(s for s in mock_engine.project.schedules if s.id == "morning_on")
-    assert sched.expression == "0 8 * * 1-5"
-    assert sched.event == "startup"
-    handler._reload_fn.assert_called()
-
-
-@pytest.mark.asyncio
-async def test_add_schedule_duplicate(handler, mock_agent, mock_engine):
-    with patch.object(handler, "_get_engine", return_value=mock_engine):
-        msg = _make_tool_call_msg("add_schedule", {"id": "evening_off", "expression": "0 18 * * *"})
-        await handler.handle(msg)
-        await asyncio.sleep(0)
-
-    payload = _get_result_payload(mock_agent)
-    assert "already exists" in payload["result"]["error"]
-
-
-@pytest.mark.asyncio
-async def test_update_schedule(handler, mock_agent, mock_engine):
-    with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
-            msg = _make_tool_call_msg("update_schedule", {
-                "schedule_id": "evening_off",
-                "expression": "0 20 * * 1-5",
-                "description": "Updated to 8pm",
-            })
-            await handler.handle(msg)
-        await asyncio.sleep(0)
-
-    payload = _get_result_payload(mock_agent)
-    assert payload["success"] is True
-    assert payload["result"]["status"] == "updated"
-
-    sched = next(s for s in mock_engine.project.schedules if s.id == "evening_off")
-    assert sched.expression == "0 20 * * 1-5"
-    assert sched.description == "Updated to 8pm"
-    # Event should remain unchanged
-    assert sched.event == "shutdown"
-
-
-@pytest.mark.asyncio
-async def test_update_schedule_not_found(handler, mock_agent, mock_engine):
-    with patch.object(handler, "_get_engine", return_value=mock_engine):
-        msg = _make_tool_call_msg("update_schedule", {"schedule_id": "nonexistent"})
-        await handler.handle(msg)
-        await asyncio.sleep(0)
-
-    payload = _get_result_payload(mock_agent)
-    assert "not found" in payload["result"]["error"]
-
-
-@pytest.mark.asyncio
-async def test_delete_schedule(handler, mock_agent, mock_engine):
-    with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
-            msg = _make_tool_call_msg("delete_schedule", {"schedule_id": "evening_off"})
-            await handler.handle(msg)
-        await asyncio.sleep(0)
-
-    payload = _get_result_payload(mock_agent)
-    assert payload["success"] is True
-    assert payload["result"]["status"] == "deleted"
-    assert len(mock_engine.project.schedules) == 0
-
-
-@pytest.mark.asyncio
-async def test_delete_schedule_not_found(handler, mock_agent, mock_engine):
-    with patch.object(handler, "_get_engine", return_value=mock_engine):
-        msg = _make_tool_call_msg("delete_schedule", {"schedule_id": "nonexistent"})
-        await handler.handle(msg)
-        await asyncio.sleep(0)
-
-    payload = _get_result_payload(mock_agent)
-    assert "not found" in payload["result"]["error"]
-
-
 # ===== RELOAD BEHAVIOR =====
 
 
@@ -898,21 +771,6 @@ async def test_ui_tools_trigger_reload(handler, mock_agent, mock_engine):
     handler._reload_fn.assert_called_once()
 
 
-@pytest.mark.asyncio
-async def test_schedule_tools_trigger_reload(handler, mock_agent, mock_engine):
-    """Schedule tools should trigger a reload for scheduler registration."""
-    with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
-            msg = _make_tool_call_msg("add_schedule", {
-                "id": "test_sched",
-                "expression": "0 * * * *",
-            })
-            await handler.handle(msg)
-        await asyncio.sleep(0)
-
-    handler._reload_fn.assert_called_once()
-
-
 # ===== DISPATCH TABLE =====
 
 
@@ -926,12 +784,11 @@ def test_all_surgical_tools_registered():
     handler = AIToolHandler(agent, devices, events)
 
     expected = {
-        "get_project_summary", "get_macro", "get_ui_page", "get_schedule",
+        "get_project_summary", "get_macro", "get_ui_page",
         "add_device", "add_variable", "update_variable", "delete_variable",
         "add_macro", "update_macro", "delete_macro",
         "add_ui_page", "delete_ui_page", "add_ui_elements",
         "update_ui_element", "delete_ui_elements",
-        "add_schedule", "update_schedule", "delete_schedule",
     }
     for name in expected:
         assert name in handler._tools, f"Tool '{name}' not registered in dispatch table"

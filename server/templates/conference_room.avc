@@ -225,6 +225,5 @@
             "description": "Volume mapping and projector status updates"
         }
     ],
-    "schedules": [],
     "isc": { "shared_state": [], "auth_key": "" }
 }

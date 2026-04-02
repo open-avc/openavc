@@ -38,7 +38,8 @@ def trigger_engine(core, macro_engine):
 
 
 def test_eval_operator():
-    ev = TriggerEngine._eval_operator
+    from server.core.condition_eval import eval_operator as ev_fn
+    ev = ev_fn
     assert ev("eq", 42, 42) is True
     assert ev("eq", 42, 43) is False
     assert ev("ne", 1, 2) is True

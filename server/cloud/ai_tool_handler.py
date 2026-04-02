@@ -111,7 +111,6 @@ class AIToolHandler:
             "list_triggers": self._list_triggers,
             "get_macro": self._get_macro,
             "get_ui_page": self._get_ui_page,
-            "get_schedule": self._get_schedule,
             # Writing / Creating
             "update_project_metadata": self._update_project_metadata,
             "update_device": self._update_device,
@@ -131,9 +130,6 @@ class AIToolHandler:
             "delete_ui_elements": self._delete_ui_elements,
             "add_master_element": self._add_master_element,
             "delete_master_element": self._delete_master_element,
-            "add_schedule": self._add_schedule,
-            "update_schedule": self._update_schedule,
-            "delete_schedule": self._delete_schedule,
             "install_community_driver": self._install_community_driver,
             "create_driver_definition": self._create_driver_definition,
             "update_driver_definition": self._update_driver_definition,
@@ -371,10 +367,6 @@ class AIToolHandler:
                 {"id": s.id, "file": s.file, "enabled": s.enabled, "description": s.description}
                 for s in p.scripts
             ],
-            "schedules": [
-                {"id": s.id, "expression": s.expression, "event": s.event, "enabled": s.enabled, "description": s.description}
-                for s in p.schedules
-            ],
         }
 
         # Plugin status
@@ -411,16 +403,6 @@ class AIToolHandler:
             if p.id == page_id:
                 return p.model_dump(mode="json")
         return {"error": f"UI page '{page_id}' not found"}
-
-    async def _get_schedule(self, input: dict) -> Any:
-        engine = self._get_engine()
-        if not engine or not engine.project:
-            return {"error": "No project loaded"}
-        schedule_id = input.get("schedule_id", "")
-        for s in engine.project.schedules:
-            if s.id == schedule_id:
-                return s.model_dump(mode="json")
-        return {"error": f"Schedule '{schedule_id}' not found"}
 
     # ===== WRITING / CREATING =====
 
@@ -951,84 +933,6 @@ class AIToolHandler:
             await self._reload_fn()
 
         return {"status": "deleted", "element_id": element_id}
-
-    async def _add_schedule(self, input: dict) -> Any:
-        engine = self._get_engine()
-        if not engine or not engine.project:
-            return {"error": "No project loaded"}
-
-        schedule_id = input.get("id", "")
-        if not schedule_id:
-            return {"error": "Schedule ID is required"}
-        if any(s.id == schedule_id for s in engine.project.schedules):
-            return {"error": f"Schedule '{schedule_id}' already exists"}
-
-        from server.core.project_loader import ScheduleConfig, save_project
-        new_schedule = ScheduleConfig(
-            id=schedule_id,
-            expression=input.get("expression", ""),
-            event=input.get("event", ""),
-            enabled=input.get("enabled", True),
-            description=input.get("description", ""),
-        )
-        engine.project.schedules.append(new_schedule)
-        save_project(engine.project_path, engine.project)
-
-        if self._reload_fn:
-            await self._reload_fn()
-
-        return {"status": "created", "id": schedule_id}
-
-    async def _update_schedule(self, input: dict) -> Any:
-        engine = self._get_engine()
-        if not engine or not engine.project:
-            return {"error": "No project loaded"}
-
-        schedule_id = input.get("schedule_id", "")
-        sched_idx = None
-        for i, s in enumerate(engine.project.schedules):
-            if s.id == schedule_id:
-                sched_idx = i
-                break
-        if sched_idx is None:
-            return {"error": f"Schedule '{schedule_id}' not found"}
-
-        from server.core.project_loader import save_project
-        existing = engine.project.schedules[sched_idx]
-        if "expression" in input:
-            existing.expression = input["expression"]
-        if "event" in input:
-            existing.event = input["event"]
-        if "enabled" in input:
-            existing.enabled = input["enabled"]
-        if "description" in input:
-            existing.description = input["description"]
-
-        save_project(engine.project_path, engine.project)
-
-        if self._reload_fn:
-            await self._reload_fn()
-
-        return {"status": "updated", "id": schedule_id}
-
-    async def _delete_schedule(self, input: dict) -> Any:
-        engine = self._get_engine()
-        if not engine or not engine.project:
-            return {"error": "No project loaded"}
-
-        schedule_id = input.get("schedule_id", "")
-        original_count = len(engine.project.schedules)
-        engine.project.schedules = [s for s in engine.project.schedules if s.id != schedule_id]
-        if len(engine.project.schedules) == original_count:
-            return {"error": f"Schedule '{schedule_id}' not found"}
-
-        from server.core.project_loader import save_project
-        save_project(engine.project_path, engine.project)
-
-        if self._reload_fn:
-            await self._reload_fn()
-
-        return {"status": "deleted", "id": schedule_id}
 
     async def _install_community_driver(self, input: dict) -> Any:
         from server.core.device_manager import register_driver
