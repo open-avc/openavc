@@ -21,6 +21,8 @@ Use the search box at the top of the macro list to filter by name.
 | **Delay** | Wait N seconds between steps | Wait 15 seconds for projector warmup |
 | **Set Variable** | Set a user variable | `var.room_active` = `true` |
 | **Emit Event** | Fire a custom event on the event bus | `room.shutdown_complete` |
+| **Run Macro** | Execute another macro as a sub-routine | Run `select_hdmi1` |
+| **Conditional** | If/else branching based on state | If projector is already on, skip power-on |
 
 The **Device Command** step uses smart dropdowns: after selecting a device, the command dropdown only shows commands defined by that device's driver, with parameter fields that match the driver's command definition. No guessing at command syntax.
 
@@ -41,6 +43,45 @@ Here is a real-world example of a `system_on` macro for a conference room:
 | 7 | Device Command | `dsp_1` -> `set_level`, channel: `program`, level: -20 |
 | 8 | Device Command | `dsp_1` -> `unmute`, channel: `program` |
 
+## Conditional Steps
+
+Use the **Conditional** step type to add if/else logic to a macro without writing a script.
+
+A conditional step checks a state value and runs one set of steps if the condition is true, and optionally a different set if false. For example: "If the projector is already on, skip the power-on and warmup delay."
+
+1. Add a **Conditional** step
+2. Set the **If** condition: pick a state key, operator (equals, not equals, greater than, less than, truthy, falsy), and value
+3. Add steps to the **Then** block (runs when condition is true)
+4. Optionally add steps to the **Else** block (runs when condition is false)
+
+Conditionals can be nested (a conditional inside a conditional) up to 5 levels deep. For most rooms, one level is enough.
+
+## Skip If Guards
+
+Every step has an optional **Skip this step if...** guard in the Guards section at the bottom of the step editor. When enabled, the step is silently skipped if the condition is true.
+
+This is simpler than a full conditional block when you just want to skip one step. For example: skip the "power on" command if `device.projector.power` already equals `"on"`.
+
+Device Command steps also have a **Skip if device is offline** checkbox. When checked, the step is silently skipped instead of failing if the device is disconnected. This is useful for macros that control optional equipment that may not always be present.
+
+## Dynamic Parameters
+
+Macro step parameters are normally static values set at design time. Dynamic parameters let a step use whatever value a variable holds at runtime.
+
+Click the **$** button next to any parameter field to switch between static and dynamic mode. In dynamic mode, you pick a state key (like `var.target_volume`), and the macro reads the current value when it runs.
+
+For example, a volume slider on the touch panel writes to `var.volume_level`. A macro step can use `$var.volume_level` as the level parameter for a DSP set_volume command. The same macro works for any volume, determined by the slider position.
+
+Dynamic references also work on the **Set Variable** step's value field. This lets you copy one variable to another at runtime.
+
+## Cancel Groups
+
+When two macros should not run at the same time (like System On and System Off), assign them to the same **cancel group**. When a macro with a cancel group starts, any other running macro in the same group is cancelled first.
+
+Set the cancel group in the macro header, next to the macro ID. Give both macros the same group name (e.g., `system_power`). Now if someone presses System Off while System On is still running, the system-on macro stops immediately and system-off takes over.
+
+You can also cancel a running macro manually by clicking the **Cancel** button in the macro header while it's running.
+
 ## Variables in Macros
 
 Click the variable icon in any step to create or select a user variable. The Variable Picker shows all available variables with their current values. Variables let macros share state. For example, the `system_on` macro sets `var.room_active` to `true`, and UI buttons use that variable for feedback.
@@ -51,7 +92,7 @@ Click **Test** to execute the macro immediately. A progress indicator shows whic
 
 ## Convert to Script
 
-Click **Convert to Script** to generate a Python script from the macro. This is useful when you outgrow macros and need conditional logic, error handling, loops, or complex timing. The generated script is fully functional and includes all the same steps with proper `await` calls and error handling.
+Click **Convert to Script** to generate a Python script from the macro. This is useful when you need loops, error handling with retries, external API calls, or complex data processing that macros cannot express. The generated script is fully functional and includes all the same steps with proper `await` calls.
 
 ## Triggers
 
@@ -118,13 +159,13 @@ async def system_on(event, payload):
 
 | Use a Macro When | Use a Script When |
 |-----------------|-------------------|
-| Simple sequence of commands | Need if/else conditional logic |
-| Fixed delays between steps | Need to check state mid-sequence |
-| No error handling needed | Need try/except error handling |
-| Quick one-off actions | Need loops or complex timing |
-| Non-programmers will maintain it | Need to call external APIs or do math |
+| Sequences of commands with delays | Need loops (repeat N times, while condition) |
+| Simple if/else branching (conditional steps) | Need complex multi-condition logic trees |
+| Skipping steps based on state | Need try/except error handling with retries |
+| Quick one-off actions | Need to call external APIs or do math |
+| Non-programmers will maintain it | Need string manipulation or data parsing |
 
-Most rooms can be built entirely with macros and bindings. Scripts are there when you need them.
+Most rooms can be built entirely with macros, conditionals, and bindings. Scripts are there when you need them.
 
 ## Script Templates
 
