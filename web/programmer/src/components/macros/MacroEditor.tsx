@@ -258,6 +258,14 @@ export function MacroEditor({
     }
   };
 
+  const handleCancel = async () => {
+    try {
+      await api.cancelMacro(macro.id);
+    } catch (e) {
+      console.error("Macro cancel failed:", e);
+    }
+  };
+
   const updateStep = (index: number, updated: MacroStep) => {
     const steps = [...macro.steps];
     steps[index] = updated;
@@ -368,6 +376,27 @@ export function MacroEditor({
               {macro.id}
             </code>
             <CopyButton value={macro.id} title="Copy macro ID" />
+            <span style={{ color: "var(--border-color)", margin: "0 4px" }}>|</span>
+            <label style={{ fontSize: 11, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4 }}>
+              Cancel group:
+              <input
+                type="text"
+                value={macro.cancel_group ?? ""}
+                onChange={(e) => onUpdate({ ...macro, cancel_group: e.target.value || undefined })}
+                placeholder="none"
+                title="Macros in the same cancel group interrupt each other. Use this for System On / System Off pairs."
+                style={{
+                  width: 100,
+                  padding: "1px 4px",
+                  fontSize: 11,
+                  fontFamily: "var(--font-mono)",
+                  background: "var(--bg-primary)",
+                  border: "1px solid var(--border-color)",
+                  borderRadius: 3,
+                  color: "var(--text-primary)",
+                }}
+              />
+            </label>
           </div>
         </div>
         <button
@@ -393,6 +422,19 @@ export function MacroEditor({
             <Play size={14} />
           )}
           Test
+        </button>
+        <button
+          onClick={handleCancel}
+          disabled={!isRunning}
+          style={{
+            ...btnStyle,
+            background: isRunning ? "#ef4444" : "var(--bg-hover)",
+            opacity: isRunning ? 1 : 0.4,
+          }}
+          title="Cancel running macro"
+        >
+          <X size={14} />
+          Cancel
         </button>
         <button
           onClick={() => onUpdate({ ...macro, stop_on_error: !macro.stop_on_error })}

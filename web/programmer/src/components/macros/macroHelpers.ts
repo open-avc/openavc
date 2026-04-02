@@ -54,6 +54,27 @@ export const STEP_TYPES: StepTypeInfo[] = [
     summary: (step) => step.macro ?? "?",
     defaults: () => ({ action: "macro", macro: "" }),
   },
+  {
+    action: "conditional",
+    label: "Conditional",
+    description: "Run steps only if a condition is true (if/else branching)",
+    color: "#f97316",
+    summary: (step) => {
+      const cond = step.condition;
+      if (!cond) return "No condition set";
+      const op = cond.operator ?? "eq";
+      const val = cond.value != null ? JSON.stringify(cond.value) : "?";
+      if (op === "truthy") return `${cond.key} is truthy`;
+      if (op === "falsy") return `${cond.key} is falsy`;
+      return `${cond.key} ${op} ${val}`;
+    },
+    defaults: () => ({
+      action: "conditional",
+      condition: { key: "", operator: "eq", value: "" },
+      then_steps: [],
+      else_steps: [],
+    }),
+  },
 ];
 
 export function getStepType(action: string): StepTypeInfo | undefined {

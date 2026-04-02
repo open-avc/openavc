@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
-import type { MacroStep, MacroConfig, DeviceConfig, DeviceInfo } from "../../api/types";
+import type { MacroStep, MacroConfig, DeviceConfig, DeviceInfo, StepCondition } from "../../api/types";
 import { useProjectStore } from "../../store/projectStore";
 import { useConnectionStore } from "../../store/connectionStore";
 import { VariableKeyPicker } from "../shared/VariableKeyPicker";
+import { ConditionEditor } from "./ConditionEditor";
+import { STEP_TYPES, getStepType } from "./macroHelpers";
 import * as api from "../../api/restClient";
 
 interface StepEditorProps {
@@ -19,17 +21,21 @@ export function StepEditor({ step, macros, currentMacroId, onChange }: StepEdito
     onChange({ ...step, ...patch });
   };
 
+  // Main editor per action type
+  let editor: React.ReactNode;
+
   switch (step.action) {
     case "device.command":
-      return (
+      editor = (
         <DeviceCommandEditor
           step={step}
           devices={devices}
           onChange={update}
         />
       );
+      break;
     case "delay":
-      return (
+      editor = (
         <div>
           <HelpText>Wait before executing the next step. Useful for device warm-up times.</HelpText>
           <div style={rowStyle}>
@@ -45,12 +51,15 @@ export function StepEditor({ step, macros, currentMacroId, onChange }: StepEdito
           </div>
         </div>
       );
+      break;
     case "state.set":
-      return <StateSetEditor step={step} onChange={update} />;
+      editor = <StateSetEditor step={step} onChange={update} />;
+      break;
     case "event.emit":
-      return <EventEmitEditor step={step} onChange={update} />;
+      editor = <EventEmitEditor step={step} onChange={update} />;
+      break;
     case "macro":
-      return (
+      editor = (
         <div>
           <HelpText>Execute another macro as a sub-routine. The steps will run in order before continuing.</HelpText>
           <div style={rowStyle}>
@@ -75,13 +84,38 @@ export function StepEditor({ step, macros, currentMacroId, onChange }: StepEdito
           )}
         </div>
       );
+      break;
+    case "conditional":
+      editor = (
+        <ConditionalEditor
+          step={step}
+          macros={macros}
+          currentMacroId={currentMacroId}
+          devices={devices}
+          onChange={onChange}
+        />
+      );
+      break;
     default:
-      return (
+      editor = (
         <div style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}>
           Unknown action: {step.action}
         </div>
       );
   }
+
+  // For non-conditional steps, show optional skip_if and skip_if_offline toggles
+  const showSkipOptions = step.action !== "conditional";
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+      {editor}
+
+      {showSkipOptions && (
+        <StepGuards step={step} onChange={update} />
+      )}
+    </div>
+  );
 }
 
 // --- Device Command Editor (smart dropdowns) ---
@@ -130,7 +164,7 @@ function DeviceCommandEditor({
     onChange({ command, params: undefined });
   };
 
-  const handleParamChange = (key: string, value: string) => {
+  const handleParamChange = (key: string, value: unknown) => {
     const params = { ...(step.params ?? {}), [key]: value };
     onChange({ params });
   };
@@ -206,6 +240,7 @@ function DeviceCommandEditor({
           {paramKeys.map((paramKey) => {
             const paramDef = paramSchema[paramKey];
             const currentVal = (step.params as Record<string, unknown>)?.[paramKey] ?? "";
+            const isDynamic = typeof currentVal === "string" && currentVal.startsWith("$");
 
             return (
               <div key={paramKey}>
@@ -214,7 +249,16 @@ function DeviceCommandEditor({
                   {paramKey}
                   {paramDef?.required && <span style={{ color: "#ef4444" }}> *</span>}
                 </label>
-                {paramDef?.type === "enum" && Array.isArray(paramDef.values) ? (
+                {isDynamic ? (
+                  /* Dynamic mode: state key picker */
+                  <VariableKeyPicker
+                    value={String(currentVal).slice(1)}
+                    onChange={(key) => handleParamChange(paramKey, `$${key}`)}
+                    showDeviceState
+                    placeholder="Select state key..."
+                    style={{ flex: 1 }}
+                  />
+                ) : paramDef?.type === "enum" && Array.isArray(paramDef.values) ? (
                   <select
                     value={String(currentVal)}
                     onChange={(e) => handleParamChange(paramKey, e.target.value)}
@@ -236,8 +280,39 @@ function DeviceCommandEditor({
                     style={inputStyle}
                   />
                 )}
+                {/* Dynamic toggle */}
+                <button
+                  onClick={() => {
+                    if (isDynamic) {
+                      handleParamChange(paramKey, "");
+                    } else {
+                      handleParamChange(paramKey, "$var.");
+                    }
+                  }}
+                  title={isDynamic ? "Switch to static value" : "Use dynamic value from state variable"}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    padding: "3px 6px",
+                    borderRadius: "var(--border-radius)",
+                    border: `1px solid ${isDynamic ? "var(--accent)" : "var(--border-color)"}`,
+                    background: isDynamic ? "rgba(33,150,243,0.15)" : "transparent",
+                    color: isDynamic ? "var(--accent)" : "var(--text-muted)",
+                    fontSize: 11,
+                    cursor: "pointer",
+                    flexShrink: 0,
+                    fontFamily: "var(--font-mono)",
+                  }}
+                >
+                  $
+                </button>
                 </div>
-                {paramDef?.help && (
+                {isDynamic && (
+                  <div style={{ fontSize: 11, color: "var(--accent)", marginTop: 2, marginLeft: 78 }}>
+                    Value will be read from state at runtime
+                  </div>
+                )}
+                {!isDynamic && paramDef?.help && (
                   <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2, marginLeft: 78 }}>
                     {paramDef.help}
                   </div>
@@ -282,40 +357,73 @@ function StateSetEditor({
       </div>
 
       {/* Value field */}
-      {step.key && (
-        <div style={rowStyle}>
-          <label style={labelStyle}>Value</label>
-          {selectedVar?.type === "boolean" ? (
-            <select
-              value={step.value != null ? String(step.value) : ""}
-              onChange={(e) => onChange({ value: e.target.value === "true" })}
-              style={inputStyle}
-            >
-              <option value="">Select...</option>
-              <option value="true">true</option>
-              <option value="false">false</option>
-            </select>
-          ) : (
-            <input
-              type={selectedVar?.type === "number" ? "number" : "text"}
-              value={step.value != null ? String(step.value) : ""}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (v === "true") onChange({ value: true });
-                else if (v === "false") onChange({ value: false });
-                else if (v !== "" && !isNaN(Number(v))) onChange({ value: Number(v) });
-                else onChange({ value: v });
+      {step.key && (() => {
+        const isDynamic = typeof step.value === "string" && step.value.startsWith("$");
+        return (
+          <div style={rowStyle}>
+            <label style={labelStyle}>Value</label>
+            {isDynamic ? (
+              <VariableKeyPicker
+                value={String(step.value).slice(1)}
+                onChange={(key) => onChange({ value: `$${key}` })}
+                showDeviceState
+                placeholder="Select state key..."
+                style={{ flex: 1 }}
+              />
+            ) : selectedVar?.type === "boolean" ? (
+              <select
+                value={step.value != null ? String(step.value) : ""}
+                onChange={(e) => onChange({ value: e.target.value === "true" })}
+                style={inputStyle}
+              >
+                <option value="">Select...</option>
+                <option value="true">true</option>
+                <option value="false">false</option>
+              </select>
+            ) : (
+              <input
+                type={selectedVar?.type === "number" ? "number" : "text"}
+                value={step.value != null ? String(step.value) : ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === "true") onChange({ value: true });
+                  else if (v === "false") onChange({ value: false });
+                  else if (v !== "" && !isNaN(Number(v))) onChange({ value: Number(v) });
+                  else onChange({ value: v });
+                }}
+                placeholder={
+                  selectedVar
+                    ? `${selectedVar.type} (default: ${JSON.stringify(selectedVar.default)})`
+                    : "Value"
+                }
+                style={inputStyle}
+              />
+            )}
+            <button
+              onClick={() => {
+                if (isDynamic) onChange({ value: "" });
+                else onChange({ value: "$var." });
               }}
-              placeholder={
-                selectedVar
-                  ? `${selectedVar.type} (default: ${JSON.stringify(selectedVar.default)})`
-                  : "Value"
-              }
-              style={inputStyle}
-            />
-          )}
-        </div>
-      )}
+              title={isDynamic ? "Switch to static value" : "Use dynamic value from state variable"}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                padding: "3px 6px",
+                borderRadius: "var(--border-radius)",
+                border: `1px solid ${isDynamic ? "var(--accent)" : "var(--border-color)"}`,
+                background: isDynamic ? "rgba(33,150,243,0.15)" : "transparent",
+                color: isDynamic ? "var(--accent)" : "var(--text-muted)",
+                fontSize: 11,
+                cursor: "pointer",
+                flexShrink: 0,
+                fontFamily: "var(--font-mono)",
+              }}
+            >
+              $
+            </button>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -367,6 +475,294 @@ function EventEmitEditor({
         Scripts use <code style={{ background: "var(--bg-hover)", padding: "0 4px", borderRadius: 2 }}>@on_event("custom.my_event")</code> to
         respond to emitted events.
       </div>
+    </div>
+  );
+}
+
+// --- Conditional Editor (if/else branching) ---
+
+function ConditionalEditor({
+  step,
+  macros,
+  currentMacroId,
+  devices,
+  onChange,
+}: {
+  step: MacroStep;
+  macros: MacroConfig[];
+  currentMacroId: string;
+  devices: DeviceConfig[];
+  onChange: (updated: MacroStep) => void;
+}) {
+  const condition = step.condition ?? { key: "", operator: "eq", value: "" };
+  const thenSteps = step.then_steps ?? [];
+  const elseSteps = step.else_steps ?? [];
+
+  const updateThenStep = (index: number, updated: MacroStep) => {
+    const steps = [...thenSteps];
+    steps[index] = updated;
+    onChange({ ...step, then_steps: steps });
+  };
+
+  const updateElseStep = (index: number, updated: MacroStep) => {
+    const steps = [...elseSteps];
+    steps[index] = updated;
+    onChange({ ...step, else_steps: steps });
+  };
+
+  const addThenStep = (action: string) => {
+    const typeInfo = getStepType(action);
+    if (!typeInfo) return;
+    onChange({ ...step, then_steps: [...thenSteps, { action, ...typeInfo.defaults() }] });
+  };
+
+  const addElseStep = (action: string) => {
+    const typeInfo = getStepType(action);
+    if (!typeInfo) return;
+    onChange({ ...step, else_steps: [...elseSteps, { action, ...typeInfo.defaults() }] });
+  };
+
+  const removeThenStep = (index: number) => {
+    onChange({ ...step, then_steps: thenSteps.filter((_, i) => i !== index) });
+  };
+
+  const removeElseStep = (index: number) => {
+    onChange({ ...step, else_steps: elseSteps.filter((_, i) => i !== index) });
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
+      <HelpText>
+        Run different steps based on a condition. If the condition is true, the "Then" steps run.
+        Otherwise, the "Else" steps run (optional).
+      </HelpText>
+
+      {/* Condition */}
+      <div>
+        <label style={{ ...labelStyle, display: "block", marginBottom: 4 }}>If</label>
+        <ConditionEditor
+          condition={condition}
+          onChange={(c) => onChange({ ...step, condition: c })}
+        />
+      </div>
+
+      {/* Then steps */}
+      <div>
+        <label style={{ ...labelStyle, display: "block", marginBottom: 4, color: "#10b981" }}>Then</label>
+        <div style={{ borderLeft: "2px solid #10b981", paddingLeft: 12, display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+          {thenSteps.map((s, i) => (
+            <InlineStepCard
+              key={i}
+              step={s}
+              index={i}
+              macros={macros}
+              currentMacroId={currentMacroId}
+              onChange={(updated) => updateThenStep(i, updated)}
+              onDelete={() => removeThenStep(i)}
+            />
+          ))}
+          <AddStepDropdown onAdd={addThenStep} />
+        </div>
+      </div>
+
+      {/* Else steps */}
+      <div>
+        <label style={{ ...labelStyle, display: "block", marginBottom: 4, color: "#ef4444" }}>Else (optional)</label>
+        <div style={{ borderLeft: "2px solid #ef4444", paddingLeft: 12, display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+          {elseSteps.map((s, i) => (
+            <InlineStepCard
+              key={i}
+              step={s}
+              index={i}
+              macros={macros}
+              currentMacroId={currentMacroId}
+              onChange={(updated) => updateElseStep(i, updated)}
+              onDelete={() => removeElseStep(i)}
+            />
+          ))}
+          <AddStepDropdown onAdd={addElseStep} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Compact step card used inside conditional then/else lists */
+function InlineStepCard({
+  step,
+  index,
+  macros,
+  currentMacroId,
+  onChange,
+  onDelete,
+}: {
+  step: MacroStep;
+  index: number;
+  macros: MacroConfig[];
+  currentMacroId: string;
+  onChange: (updated: MacroStep) => void;
+  onDelete: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const typeInfo = getStepType(step.action);
+  const devices = useProjectStore((s) => s.project?.devices) ?? [];
+
+  return (
+    <div style={{
+      border: "1px solid var(--border-color)",
+      borderRadius: "var(--border-radius)",
+      background: "var(--bg-surface)",
+    }}>
+      <div
+        onClick={() => setExpanded(!expanded)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "var(--space-sm)",
+          padding: "var(--space-xs) var(--space-sm)",
+          cursor: "pointer",
+          fontSize: "var(--font-size-sm)",
+        }}
+      >
+        <span style={{
+          fontSize: 10,
+          fontWeight: 600,
+          color: "#fff",
+          background: typeInfo?.color ?? "#666",
+          padding: "1px 5px",
+          borderRadius: 3,
+          textTransform: "uppercase",
+          flexShrink: 0,
+        }}>
+          {typeInfo?.label ?? step.action}
+        </span>
+        <span style={{ flex: 1, color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {typeInfo?.summary(step, devices as any) ?? ""}
+        </span>
+        <button
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          style={{ background: "none", border: "none", color: "var(--color-error)", cursor: "pointer", padding: 2, display: "flex" }}
+          title="Remove step"
+        >
+          <span style={{ fontSize: 14, lineHeight: 1 }}>&times;</span>
+        </button>
+      </div>
+      {expanded && (
+        <div style={{ padding: "var(--space-sm)", borderTop: "1px solid var(--border-color)" }}>
+          <StepEditor step={step} macros={macros} currentMacroId={currentMacroId} onChange={onChange} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Small "Add Step" dropdown for inside conditional blocks */
+function AddStepDropdown({ onAdd }: { onAdd: (action: string) => void }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div style={{ position: "relative" }}>
+      <button
+        onClick={() => setOpen(!open)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 4,
+          padding: "3px 10px",
+          borderRadius: "var(--border-radius)",
+          border: "1px dashed var(--border-color)",
+          background: "transparent",
+          color: "var(--text-muted)",
+          fontSize: 12,
+          cursor: "pointer",
+        }}
+      >
+        + Add step
+      </button>
+      {open && (
+        <div style={{
+          position: "absolute",
+          top: "100%",
+          left: 0,
+          marginTop: 4,
+          background: "var(--bg-surface)",
+          border: "1px solid var(--border-color)",
+          borderRadius: "var(--border-radius)",
+          boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+          zIndex: 20,
+          minWidth: 200,
+        }}>
+          {STEP_TYPES.map((t) => (
+            <div
+              key={t.action}
+              onClick={() => { onAdd(t.action); setOpen(false); }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "var(--space-sm)",
+                padding: "var(--space-xs) var(--space-sm)",
+                cursor: "pointer",
+                fontSize: 12,
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+            >
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: t.color, flexShrink: 0 }} />
+              <span style={{ color: "var(--text-primary)" }}>{t.label}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- Step Guards (skip_if, skip_if_offline) ---
+
+function StepGuards({ step, onChange }: { step: MacroStep; onChange: (patch: Partial<MacroStep>) => void }) {
+  const hasSkipIf = step.skip_if != null;
+  const isDeviceCommand = step.action === "device.command";
+
+  return (
+    <div style={{ borderTop: "1px solid var(--border-color)", paddingTop: "var(--space-sm)", marginTop: "var(--space-xs)" }}>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: "var(--space-xs)", fontWeight: 500 }}>Guards</div>
+
+      {/* skip_if_offline (device commands only) */}
+      {isDeviceCommand && (
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-secondary)", cursor: "pointer", marginBottom: "var(--space-xs)" }}>
+          <input
+            type="checkbox"
+            checked={step.skip_if_offline ?? false}
+            onChange={(e) => onChange({ skip_if_offline: e.target.checked })}
+          />
+          Skip if device is offline
+        </label>
+      )}
+
+      {/* skip_if toggle */}
+      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-secondary)", cursor: "pointer" }}>
+        <input
+          type="checkbox"
+          checked={hasSkipIf}
+          onChange={(e) => {
+            if (e.target.checked) {
+              onChange({ skip_if: { key: "", operator: "eq", value: "" } });
+            } else {
+              onChange({ skip_if: undefined });
+            }
+          }}
+        />
+        Skip this step if...
+      </label>
+
+      {hasSkipIf && (
+        <div style={{ marginTop: "var(--space-xs)", marginLeft: 20 }}>
+          <ConditionEditor
+            condition={step.skip_if!}
+            onChange={(c) => onChange({ skip_if: c })}
+          />
+        </div>
+      )}
     </div>
   );
 }

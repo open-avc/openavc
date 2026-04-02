@@ -28,6 +28,12 @@ export interface VariableConfig {
   source_map?: Record<string, unknown>;
 }
 
+export interface StepCondition {
+  key: string;
+  operator: string; // eq, ne, gt, lt, gte, lte, truthy, falsy
+  value?: unknown;
+}
+
 export interface MacroStep {
   action: string;
   device?: string;
@@ -39,6 +45,18 @@ export interface MacroStep {
   macro?: string;
   event?: string;
   payload?: Record<string, unknown>;
+  description?: string;
+
+  // Conditional step fields (action == "conditional")
+  condition?: StepCondition;
+  then_steps?: MacroStep[];
+  else_steps?: MacroStep[];
+
+  // Step-level guard
+  skip_if?: StepCondition;
+
+  // Device offline guard
+  skip_if_offline?: boolean;
 }
 
 export interface TriggerCondition {
@@ -79,6 +97,7 @@ export interface MacroConfig {
   steps: MacroStep[];
   triggers?: TriggerConfig[];
   stop_on_error?: boolean;
+  cancel_group?: string;
 }
 
 export interface GridArea {

@@ -269,6 +269,12 @@ export async function executeMacro(
   return request(`/macros/${macroId}/execute`, { method: "POST" });
 }
 
+export async function cancelMacro(
+  macroId: string
+): Promise<{ cancelled: boolean; reason?: string }> {
+  return request(`/macros/${macroId}/cancel`, { method: "POST" });
+}
+
 // --- Scripts ---
 
 export async function getScriptSource(
