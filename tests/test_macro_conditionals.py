@@ -1,6 +1,5 @@
 """Tests for conditional macro steps, skip_if guards, and skip_if_offline."""
 
-import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 

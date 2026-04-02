@@ -54,7 +54,7 @@ async def test_cancel_running_macro(engine, events):
     }])
 
     # Start macro in background
-    task = asyncio.create_task(engine.execute("slow_macro"))
+    asyncio.create_task(engine.execute("slow_macro"))
     await asyncio.sleep(0.05)  # Let it start
 
     assert engine.is_macro_running("slow_macro")
@@ -85,7 +85,7 @@ async def test_cancel_cleanup(engine, state):
         "steps": [{"action": "delay", "seconds": 10}],
     }])
 
-    task = asyncio.create_task(engine.execute("test_macro"))
+    asyncio.create_task(engine.execute("test_macro"))
     await asyncio.sleep(0.05)
 
     await engine.cancel("test_macro")
@@ -134,7 +134,7 @@ async def test_cancel_group_preemption(engine, events, state):
     ])
 
     # Start system_on (has 10s delay)
-    task_on = asyncio.create_task(engine.execute("system_on"))
+    asyncio.create_task(engine.execute("system_on"))
     await asyncio.sleep(0.05)
 
     # Start system_off (same cancel_group) - should preempt system_on
@@ -177,7 +177,7 @@ async def test_cancel_group_different_groups(engine, state):
         },
     ])
 
-    task_a = asyncio.create_task(engine.execute("macro_a"))
+    asyncio.create_task(engine.execute("macro_a"))
     await asyncio.sleep(0.05)
 
     # macro_b is in a different group, should NOT cancel macro_a
@@ -214,7 +214,7 @@ async def test_cancel_group_no_group(engine, state):
         },
     ])
 
-    task_a = asyncio.create_task(engine.execute("macro_a"))
+    asyncio.create_task(engine.execute("macro_a"))
     await asyncio.sleep(0.05)
 
     await engine.execute("macro_b")
