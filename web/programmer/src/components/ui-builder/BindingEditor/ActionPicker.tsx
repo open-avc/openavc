@@ -359,11 +359,56 @@ function ScriptCallConfig({
   value: Record<string, unknown> | null;
   onChange: (v: Record<string, unknown>) => void;
 }) {
+  const [functions, setFunctions] = useState<api.ScriptFunction[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    api.getScriptFunctions()
+      .then((fns) => { setFunctions(fns); setLoaded(true); })
+      .catch(() => setLoaded(true)); // Fall back to text input on error
+  }, []);
+
+  // Group by script
+  const grouped = new Map<string, api.ScriptFunction[]>();
+  for (const fn of functions) {
+    if (!grouped.has(fn.script)) grouped.set(fn.script, []);
+    grouped.get(fn.script)!.push(fn);
+  }
+
+  const currentValue = String(value?.function || "");
+
+  // Use dropdown if we have functions, text input as fallback
+  if (loaded && functions.length > 0) {
+    return (
+      <div>
+        <label style={labelStyle}>Function</label>
+        <select
+          value={currentValue}
+          onChange={(e) =>
+            onChange({ action: "script.call", function: e.target.value })
+          }
+          style={{ width: "100%", padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
+        >
+          <option value="">Select function...</option>
+          {[...grouped.entries()].map(([scriptId, fns]) => (
+            <optgroup key={scriptId} label={scriptId}>
+              {fns.map((fn) => (
+                <option key={`${fn.script}.${fn.function}`} value={fn.function}>
+                  {fn.function}{fn.doc ? ` — ${fn.doc}` : ""}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+      </div>
+    );
+  }
+
   return (
     <div>
       <label style={labelStyle}>Function Name</label>
       <input
-        value={String(value?.function || "")}
+        value={currentValue}
         onChange={(e) =>
           onChange({ action: "script.call", function: e.target.value })
         }

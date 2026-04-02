@@ -988,6 +988,15 @@ def _safe_script_path(scripts_dir: Path, filename: str) -> Path:
     return resolved
 
 
+@router.get("/scripts/functions")
+async def get_script_functions() -> list[dict[str, str]]:
+    """Return all callable functions from loaded scripts."""
+    engine = _get_engine()
+    if not engine.scripts:
+        return []
+    return engine.scripts.get_callable_functions()
+
+
 @router.get("/scripts/{script_id}/source")
 async def get_script_source(script_id: str) -> dict[str, Any]:
     """Read a script's Python source code from disk."""

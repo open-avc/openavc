@@ -324,6 +324,16 @@ export async function getScriptReferences(): Promise<ScriptReference[]> {
   return data.references;
 }
 
+export interface ScriptFunction {
+  script: string;
+  function: string;
+  doc: string;
+}
+
+export async function getScriptFunctions(): Promise<ScriptFunction[]> {
+  return request<ScriptFunction[]>("/scripts/functions");
+}
+
 // --- Logs ---
 
 export async function getRecentLogs(

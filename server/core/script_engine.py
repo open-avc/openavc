@@ -192,6 +192,32 @@ class ScriptEngine:
         if count:
             log.info(f"Unloaded {count} handler(s)")
 
+    def get_callable_functions(self) -> list[dict[str, str]]:
+        """Return all callable functions from loaded scripts.
+
+        Returns a list of dicts: {"script": script_id, "function": name, "doc": docstring}.
+        Excludes private functions (starting with _) and decorated event/state handlers.
+        """
+        import inspect
+
+        results: list[dict[str, str]] = []
+        for script_id, module_name in self._loaded_modules.items():
+            module = sys.modules.get(module_name)
+            if not module:
+                continue
+            for name, obj in inspect.getmembers(module, inspect.isfunction):
+                # Skip private, dunder, and imported stdlib functions
+                if name.startswith("_"):
+                    continue
+                if getattr(obj, "__module__", "") != module_name:
+                    continue
+                results.append({
+                    "script": script_id,
+                    "function": name,
+                    "doc": (inspect.getdoc(obj) or "")[:200],
+                })
+        return results
+
     def reload_scripts(self, scripts: list[dict[str, Any]]) -> int:
         """Hot-reload: unload everything, then re-load scripts."""
         log.info("Reloading scripts...")

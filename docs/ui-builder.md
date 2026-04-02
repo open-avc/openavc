@@ -84,7 +84,7 @@ What happens when the button is pressed. Five action types are available:
 - **Device Command**: send a command directly (pick device, command, params)
 - **Set Variable**: set a user variable value
 - **Navigate to Page**: switch to another page
-- **Script Function**: call a Python function
+- **Script Function**: call a Python function (dropdown shows all functions from enabled scripts)
 
 A press binding can contain **multiple actions**. Click "Add another action" to stack actions on a single button press. For example, a "Laptop" source button can set `var.current_source` to "laptop" AND run the `apply_source` macro in one press, without needing a wrapper macro.
 

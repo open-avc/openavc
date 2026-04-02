@@ -248,3 +248,38 @@ async def test_openavc_importable(engine):
     assert hasattr(openavc, "state")
     assert hasattr(openavc, "log")
     assert hasattr(openavc, "delay")
+
+
+# ===== get_callable_functions =====
+
+
+def test_get_callable_functions(engine, script_dir):
+    """Returns callable functions from loaded scripts."""
+    _write_script(script_dir, "room.py", """
+        def toggle_power():
+            \"\"\"Toggle room power.\"\"\"
+            pass
+
+        def select_source(name):
+            pass
+
+        def _private_helper():
+            pass
+    """)
+    engine.load_scripts([{"id": "room", "file": "room.py", "enabled": True}])
+
+    functions = engine.get_callable_functions()
+    names = [f["function"] for f in functions]
+    assert "toggle_power" in names
+    assert "select_source" in names
+    assert "_private_helper" not in names
+
+    # Check doc is included
+    toggle = next(f for f in functions if f["function"] == "toggle_power")
+    assert toggle["script"] == "room"
+    assert "Toggle room power" in toggle["doc"]
+
+
+def test_get_callable_functions_empty(engine):
+    """No scripts loaded returns empty list."""
+    assert engine.get_callable_functions() == []
