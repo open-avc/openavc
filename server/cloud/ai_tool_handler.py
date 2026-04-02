@@ -176,6 +176,7 @@ class AIToolHandler:
             "test_device_connection": self._test_device_connection,
             "test_driver_command": self._test_driver_command,
             "execute_macro": self._execute_macro,
+            "cancel_macro": self._cancel_macro,
             "set_state_value": self._set_state_value,
             "test_trigger": self._test_trigger,
         }
@@ -1275,6 +1276,14 @@ class AIToolHandler:
         if engine and engine.macros:
             await engine.macros.execute(macro_id)
             return {"status": "executed", "macro_id": macro_id}
+        return {"error": "Macro engine not available"}
+
+    async def _cancel_macro(self, input: dict) -> Any:
+        macro_id = input.get("macro_id", "")
+        engine = self._get_engine()
+        if engine and engine.macros:
+            cancelled = await engine.macros.cancel(macro_id)
+            return {"status": "cancelled" if cancelled else "not_running", "macro_id": macro_id}
         return {"error": "Macro engine not available"}
 
     async def _set_state_value(self, input: dict) -> Any:
