@@ -156,6 +156,16 @@ state.set → ui.btn_power.opacity → 0.5
 
 These overrides take priority over feedback bindings. Use them when you need more control than the feedback condition provides, for example showing different text for each stage of a multi-step startup sequence.
 
+### Dynamic Visibility
+
+Show or hide elements based on system state. Select an element, open the **Visibility** section in the properties panel, and check "Show only when..." to add a condition.
+
+For example, show video conference controls only when `var.current_mode` equals `"video_conference"`. Or hide an advanced settings group unless `var.show_advanced` is truthy.
+
+You can add multiple conditions. All conditions must be true for the element to be visible (AND logic). This works on every element type, including groups, so you can show or hide entire sections of the panel at once.
+
+Visibility conditions are evaluated client-side in the panel, so they respond instantly without a server round-trip. They also work alongside the `ui.*.visible` state key overrides, which take priority when set.
+
 ### Color Binding (status LEDs)
 
 Map state values to indicator colors:

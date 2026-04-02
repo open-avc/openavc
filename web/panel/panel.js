@@ -292,6 +292,7 @@ class PanelApp {
                 const area = element.grid_area || {};
                 el.style.gridColumn = `${area.col || 1} / span ${area.col_span || 1}`;
                 el.style.gridRow = `${area.row || 1} / span ${area.row_span || 1}`;
+                this.registerVisibleWhen(el, element);
                 grid.appendChild(el);
             }
         }
@@ -418,6 +419,7 @@ class PanelApp {
                 el.style.gridColumn = `${area.col || 1} / span ${area.col_span || 1}`;
                 el.style.gridRow = `${area.row || 1} / span ${area.row_span || 1}`;
                 el.style.zIndex = '0';  // Below page elements
+                this.registerVisibleWhen(el, mEl);
                 grid.appendChild(el);
             }
         }
@@ -444,12 +446,34 @@ class PanelApp {
                     }, delay);
                 }
 
+                this.registerVisibleWhen(el, element);
                 grid.appendChild(el);
             }
         }
 
         this.root.appendChild(grid);
         this.evaluateAllBindings();
+    }
+
+    /**
+     * Register a visible_when binding for an element if it has one.
+     * Call this after renderElement() for every element placed on a page.
+     */
+    registerVisibleWhen(el, element) {
+        const vw = element.bindings?.visible_when;
+        if (!vw) return;
+
+        // Single condition or compound (all:[...])
+        const conditions = vw.all || [vw];
+        // Collect all keys for the optimized change-detection
+        const keys = conditions.map(c => c.key).filter(Boolean);
+
+        this.bindings.push({
+            type: 'visible_when',
+            element: el,
+            elementDef: element,
+            binding: { conditions, _keys: keys },
+        });
     }
 
     renderElement(element) {
@@ -2403,8 +2427,10 @@ class PanelApp {
                 // Skip bindings not affected by changed keys
                 if (changedKeys) {
                     const bKey = b.binding?.key;
+                    const bKeys = b.binding?._keys;  // visible_when: array of keys
                     const bPattern = b.binding?.key_pattern || b._routePattern;
-                    if (bKey && !changedKeys.includes(bKey)) continue;
+                    if (bKeys && !bKeys.some(k => changedKeys.includes(k))) continue;
+                    if (bKey && !bKeys && !changedKeys.includes(bKey)) continue;
                     if (bPattern) {
                         const prefix = bPattern.replace(/\*.*$/, '');
                         if (!changedKeys.some(k => k.startsWith(prefix))) continue;
@@ -2412,6 +2438,9 @@ class PanelApp {
                     if (!bKey && !bPattern) { /* safety: evaluate anyway */ }
                 }
                 switch (b.type) {
+                    case 'visible_when':
+                        this.evaluateVisibleWhen(b);
+                        break;
                     case 'feedback':
                         this.evaluateFeedback(b);
                         break;
@@ -2491,6 +2520,32 @@ class PanelApp {
                 el.style.display = (visibleOverride === false || visibleOverride === 'false')
                     ? 'none' : '';
             }
+        }
+    }
+
+    evaluateVisibleWhen(b) {
+        const { element, binding } = b;
+        const conditions = binding.conditions || [];
+        // All conditions must be true for the element to be visible
+        const visible = conditions.every(cond => {
+            const actual = this.state[cond.key];
+            return this._evalConditionOp(cond.operator || 'eq', actual, cond.value);
+        });
+        element.style.display = visible ? '' : 'none';
+    }
+
+    /** Evaluate a condition operator (shared by visible_when). */
+    _evalConditionOp(op, actual, target) {
+        switch (op) {
+            case 'eq': case 'equals': case '==': return actual == target;
+            case 'ne': case 'not_equals': case '!=': return actual != target;
+            case 'gt': case '>': return actual != null && target != null && actual > target;
+            case 'lt': case '<': return actual != null && target != null && actual < target;
+            case 'gte': case '>=': return actual != null && target != null && actual >= target;
+            case 'lte': case '<=': return actual != null && target != null && actual <= target;
+            case 'truthy': return !!actual;
+            case 'falsy': return !actual;
+            default: return false;
         }
     }
 
