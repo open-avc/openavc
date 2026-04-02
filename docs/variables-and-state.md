@@ -15,6 +15,10 @@ Manages user-defined variables and shows where each is used. Variables are the g
 
 State key format: `var.<name>` (e.g., `var.room_active`, `var.current_source`)
 
+**Persistence:** By default, variables reset to their default value when the server restarts. Enable **Persist Across Restarts** in the variable's detail panel to save the current value to disk. Persisted values survive reboots and power outages, so the system comes back in the same state it was in. Useful for room mode, last selected source, and similar stateful values. Persisted values are stored in `state.json` alongside the project file.
+
+Keep in mind that device states are always re-polled from hardware when devices reconnect, so they are always current. A persisted variable, however, reflects whatever value it had when the system last ran. If the real world changed while the system was off (for example, someone manually switched an input on a matrix switcher), a persisted variable tracking that input could be stale. For variables that need to stay in sync with hardware, use a **Source Binding** (below) or a **Startup trigger** to re-read the device state and update the variable when the system comes back online. See [Macros and Triggers](macros-and-triggers.md) for details on startup triggers.
+
 **Usage Cross-Reference:** Each variable shows a list of everywhere it is referenced: macros, UI elements, triggers, and scripts. Invaluable for debugging.
 
 **Source Binding:** Variables can optionally be *bound* to a device state key. Choose "Bound to state key" in the Source section of a variable's detail panel, select the device state to mirror, and optionally add a value map to translate hardware values into friendly text (e.g., `on` → `Ready`, `warming` → `Warming Up`). This eliminates the need for scripts for simple device-to-variable mirroring.

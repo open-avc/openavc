@@ -21,6 +21,7 @@ from server.core.macro_engine import MacroEngine
 from server.core.plugin_loader import PluginLoader
 from server.core.project_loader import ProjectConfig, load_project, save_project
 from server.core.script_engine import ScriptEngine
+from server.core.state_persister import StatePersister
 from server.core.state_store import StateStore
 from server.core.trigger_engine import TriggerEngine
 from server.utils.logger import get_logger
@@ -56,6 +57,7 @@ class Engine:
         self.triggers = TriggerEngine(self.state, self.events, self.macros)
         self.scripts: ScriptEngine | None = None
         self.plugin_loader = PluginLoader(self.state, self.events, self.macros, self.devices)
+        self.persister: StatePersister | None = None
         self.isc = None  # ISCManager, initialized in start() if enabled
         self.cloud_agent = None  # CloudAgent, initialized in start() if enabled
         self.update_manager = None  # UpdateManager, initialized in start()
@@ -116,10 +118,24 @@ class Engine:
         # Load project-level drivers (community drivers installed via IDE)
         self._load_project_drivers()
 
-        # Initialize user variables with defaults
+        # Initialize state persister and load saved values
+        state_file = self.project_path.parent / "state.json"
+        self.persister = StatePersister(state_file, self.state)
+        persisted_values = self.persister.load()
+
+        # Initialize user variables: persisted value takes priority over default
+        persistent_keys: set[str] = set()
         for var in self.project.variables:
             key = f"var.{var.id}"
-            self.state.set(key, var.default, source="system")
+            if var.persist:
+                persistent_keys.add(key)
+            if key in persisted_values:
+                self.state.set(key, persisted_values[key], source="system")
+            else:
+                self.state.set(key, var.default, source="system")
+
+        # Start watching persistent variables for changes
+        self.persister.start(persistent_keys)
 
         # Bind variable sources (auto-sync from device state)
         self._bind_variable_sources()
@@ -292,6 +308,10 @@ class Engine:
             self.events.off(sub_id)
         self._event_sub_ids.clear()
 
+        # Flush and stop state persister
+        if self.persister:
+            self.persister.stop()
+
         await self.events.emit("system.stopping")
 
         # Stop trigger engine
@@ -332,6 +352,13 @@ class Engine:
         """Hot-reload project.avc without full restart."""
         log.info("Reloading project...")
         self.project = load_project(self.project_path)
+
+        # Update persistent variable keys
+        if self.persister:
+            persistent_keys = {
+                f"var.{v.id}" for v in self.project.variables if v.persist
+            }
+            self.persister.update_keys(persistent_keys)
 
         # Sync devices: remove deleted, add new, update changed
         await self._sync_devices()

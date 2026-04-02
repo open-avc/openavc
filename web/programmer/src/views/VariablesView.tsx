@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
-import { Plus, Trash2, ChevronRight, Zap, Layout, FileCode, LayoutDashboard, X, Cpu, Link, ExternalLink } from "lucide-react";
+import { Plus, Trash2, ChevronRight, Zap, Layout, FileCode, LayoutDashboard, HardDrive, X, Cpu, Link, ExternalLink } from "lucide-react";
 import { CopyButton } from "../components/shared/CopyButton";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import { VariableKeyPicker } from "../components/shared/VariableKeyPicker";
@@ -410,6 +410,7 @@ function VariablesSubTab() {
                       </code>
                       <CopyButton value={`var.${v.id}`} title="Copy variable key" />
                       <span style={typeBadgeStyle}>{v.type}</span>
+                      {v.persist && <span title="Persisted across restarts"><HardDrive size={12} style={{ color: "var(--text-muted)" }} /></span>}
                     </div>
                     <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>
                       {v.label}{live !== undefined ? ` = ${JSON.stringify(live)}` : ""}
@@ -487,28 +488,53 @@ function VariablesSubTab() {
               </div>
             </div>
 
-            {/* Dashboard tracking */}
-            <div style={{ marginBottom: "var(--space-xl)" }}>
-              <button
-                onClick={() => handleUpdate(selectedVar.id, { dashboard: !selectedVar.dashboard })}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "var(--space-sm)",
-                  padding: "var(--space-sm) var(--space-md)",
-                  borderRadius: "var(--border-radius)",
-                  background: selectedVar.dashboard ? "rgba(33,150,243,0.15)" : "var(--bg-surface)",
-                  border: "1px solid " + (selectedVar.dashboard ? "rgba(33,150,243,0.3)" : "var(--border-color)"),
-                  color: selectedVar.dashboard ? "var(--accent)" : "var(--text-secondary)",
-                  fontSize: "var(--font-size-sm)",
-                  cursor: "pointer",
-                }}
-              >
-                <LayoutDashboard size={14} />
-                {selectedVar.dashboard ? "Shown on Dashboard" : "Show on Dashboard"}
-              </button>
-              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
-                Tracked variables appear on the Dashboard with their live value.
+            {/* Dashboard tracking + Persistence */}
+            <div style={{ display: "flex", gap: "var(--space-md)", marginBottom: "var(--space-xl)", flexWrap: "wrap" }}>
+              <div>
+                <button
+                  onClick={() => handleUpdate(selectedVar.id, { dashboard: !selectedVar.dashboard })}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "var(--space-sm)",
+                    padding: "var(--space-sm) var(--space-md)",
+                    borderRadius: "var(--border-radius)",
+                    background: selectedVar.dashboard ? "rgba(33,150,243,0.15)" : "var(--bg-surface)",
+                    border: "1px solid " + (selectedVar.dashboard ? "rgba(33,150,243,0.3)" : "var(--border-color)"),
+                    color: selectedVar.dashboard ? "var(--accent)" : "var(--text-secondary)",
+                    fontSize: "var(--font-size-sm)",
+                    cursor: "pointer",
+                  }}
+                >
+                  <LayoutDashboard size={14} />
+                  {selectedVar.dashboard ? "Shown on Dashboard" : "Show on Dashboard"}
+                </button>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
+                  Tracked variables appear on the Dashboard with their live value.
+                </div>
+              </div>
+              <div>
+                <button
+                  onClick={() => handleUpdate(selectedVar.id, { persist: !selectedVar.persist })}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "var(--space-sm)",
+                    padding: "var(--space-sm) var(--space-md)",
+                    borderRadius: "var(--border-radius)",
+                    background: selectedVar.persist ? "rgba(33,150,243,0.15)" : "var(--bg-surface)",
+                    border: "1px solid " + (selectedVar.persist ? "rgba(33,150,243,0.3)" : "var(--border-color)"),
+                    color: selectedVar.persist ? "var(--accent)" : "var(--text-secondary)",
+                    fontSize: "var(--font-size-sm)",
+                    cursor: "pointer",
+                  }}
+                >
+                  <HardDrive size={14} />
+                  {selectedVar.persist ? "Persisted Across Restarts" : "Persist Across Restarts"}
+                </button>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
+                  When enabled, this variable&apos;s value is saved to disk and restored after a server restart.
+                </div>
               </div>
             </div>
 

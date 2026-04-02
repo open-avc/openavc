@@ -61,6 +61,7 @@ class VariableConfig(BaseModel):
     default: Any = None
     label: str = ""
     dashboard: bool = False
+    persist: bool = False  # save value to disk, restore on restart
     source_key: str | None = None  # auto-sync from this state key
     source_map: dict[str, Any] | None = None  # value mapping for source
 

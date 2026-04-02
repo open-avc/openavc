@@ -24,6 +24,7 @@ export interface VariableConfig {
   default: unknown;
   label: string;
   dashboard?: boolean;
+  persist?: boolean;
   source_key?: string;
   source_map?: Record<string, unknown>;
 }

@@ -535,6 +535,7 @@ class AIToolHandler:
             default=input.get("default"),
             label=input.get("label", ""),
             dashboard=input.get("dashboard", False),
+            persist=input.get("persist", False),
         )
         engine.project.variables.append(new_var)
         save_project(engine.project_path, engine.project)
@@ -570,6 +571,8 @@ class AIToolHandler:
             existing.label = input["label"]
         if "dashboard" in input:
             existing.dashboard = input["dashboard"]
+        if "persist" in input:
+            existing.persist = input["persist"]
 
         save_project(engine.project_path, engine.project)
         await self._notify_project_changed()
