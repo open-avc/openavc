@@ -142,6 +142,7 @@ function VariablesActions() {
 function VariablesSubTab() {
   const project = useProjectStore((s) => s.project);
   const update = useProjectStore((s) => s.update);
+  const updateWithUndo = useProjectStore((s) => s.updateWithUndo);
   const liveState = useConnectionStore((s) => s.liveState);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -243,7 +244,7 @@ function VariablesSubTab() {
         confirmLabel: "Delete",
         onConfirm: () => {
           setPendingConfirm(null);
-          update({ variables: variables.filter((v) => v.id !== id) });
+          updateWithUndo({ variables: variables.filter((v) => v.id !== id) }, `Delete variable "${id}"`);
           if (selectedId === id) setSelectedId(null);
           setTimeout(() => useProjectStore.getState().save(), 100);
         },

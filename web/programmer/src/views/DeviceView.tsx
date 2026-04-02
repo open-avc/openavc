@@ -2482,6 +2482,7 @@ function DeviceStateLog({ deviceId }: { deviceId: string }) {
 function DeviceGroupsPanel() {
   const project = useProjectStore((s) => s.project);
   const update = useProjectStore((s) => s.update);
+  const updateWithUndo = useProjectStore((s) => s.updateWithUndo);
   const save = useProjectStore((s) => s.save);
 
   const groups = project?.device_groups ?? [];
@@ -2512,7 +2513,8 @@ function DeviceGroupsPanel() {
   };
 
   const handleDelete = (groupId: string) => {
-    update({ device_groups: groups.filter((g) => g.id !== groupId) });
+    const group = groups.find((g) => g.id === groupId);
+    updateWithUndo({ device_groups: groups.filter((g) => g.id !== groupId) }, `Delete group "${group?.name || groupId}"`);
     if (selectedGroupId === groupId) setSelectedGroupId(null);
     setDeleteConfirm(null);
     setTimeout(() => save(), 100);

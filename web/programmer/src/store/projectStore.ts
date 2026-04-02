@@ -2,6 +2,13 @@ import { create } from "zustand";
 import type { ProjectConfig } from "../api/types";
 import * as api from "../api/restClient";
 
+interface UndoEntry {
+  description: string;
+  snapshot: Partial<ProjectConfig>;
+}
+
+const MAX_UNDO = 50;
+
 interface ProjectStore {
   project: ProjectConfig | null;
   loading: boolean;
@@ -9,11 +16,19 @@ interface ProjectStore {
   error: string | null;
   dirty: boolean;
 
+  // Undo/redo
+  undoStack: UndoEntry[];
+  redoStack: UndoEntry[];
+  lastUndoDescription: string;
+
   load: () => Promise<void>;
   save: (retryCount?: number) => Promise<void>;
   update: (patch: Partial<ProjectConfig>) => void;
+  updateWithUndo: (patch: Partial<ProjectConfig>, description: string) => void;
   updateProject: (patch: Partial<ProjectConfig["project"]>) => void;
   setProject: (project: ProjectConfig) => void;
+  undo: () => void;
+  redo: () => void;
 }
 
 export const useProjectStore = create<ProjectStore>((set, get) => ({
@@ -22,6 +37,10 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   saving: false,
   error: null,
   dirty: false,
+
+  undoStack: [],
+  redoStack: [],
+  lastUndoDescription: "",
 
   load: async () => {
     // Skip reload if we have local unsaved changes (prevents save/reload race)
@@ -65,6 +84,25 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     set({ project: { ...project, ...patch }, dirty: true });
   },
 
+  updateWithUndo: (patch, description) => {
+    const { project, undoStack } = get();
+    if (!project) return;
+
+    // Snapshot only the keys being changed
+    const snapshot: Partial<ProjectConfig> = {};
+    for (const key of Object.keys(patch) as (keyof ProjectConfig)[]) {
+      (snapshot as Record<string, unknown>)[key] = project[key];
+    }
+
+    set({
+      project: { ...project, ...patch },
+      dirty: true,
+      undoStack: [...undoStack.slice(-(MAX_UNDO - 1)), { description, snapshot }],
+      redoStack: [],
+      lastUndoDescription: "",
+    });
+  },
+
   updateProject: (patch) => {
     const { project } = get();
     if (!project) return;
@@ -75,4 +113,52 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   },
 
   setProject: (project) => set({ project, dirty: false }),
+
+  undo: () => {
+    const { project, undoStack, redoStack } = get();
+    if (!project || undoStack.length === 0) return;
+
+    const entry = undoStack[undoStack.length - 1];
+
+    // Snapshot current state for redo
+    const redoSnapshot: Partial<ProjectConfig> = {};
+    for (const key of Object.keys(entry.snapshot) as (keyof ProjectConfig)[]) {
+      (redoSnapshot as Record<string, unknown>)[key] = project[key];
+    }
+
+    set({
+      project: { ...project, ...entry.snapshot },
+      dirty: true,
+      undoStack: undoStack.slice(0, -1),
+      redoStack: [...redoStack, { description: entry.description, snapshot: redoSnapshot }],
+      lastUndoDescription: `Undo: ${entry.description}`,
+    });
+
+    // Auto-save after undo
+    setTimeout(() => get().save(), 100);
+  },
+
+  redo: () => {
+    const { project, undoStack, redoStack } = get();
+    if (!project || redoStack.length === 0) return;
+
+    const entry = redoStack[redoStack.length - 1];
+
+    // Snapshot current state for undo
+    const undoSnapshot: Partial<ProjectConfig> = {};
+    for (const key of Object.keys(entry.snapshot) as (keyof ProjectConfig)[]) {
+      (undoSnapshot as Record<string, unknown>)[key] = project[key];
+    }
+
+    set({
+      project: { ...project, ...entry.snapshot },
+      dirty: true,
+      undoStack: [...undoStack, { description: entry.description, snapshot: undoSnapshot }],
+      redoStack: redoStack.slice(0, -1),
+      lastUndoDescription: `Redo: ${entry.description}`,
+    });
+
+    // Auto-save after redo
+    setTimeout(() => get().save(), 100);
+  },
 }));

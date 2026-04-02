@@ -13,6 +13,7 @@ import { showError, showInfo } from "../store/toastStore";
 export function MacroView() {
   const project = useProjectStore((s) => s.project);
   const update = useProjectStore((s) => s.update);
+  const updateWithUndo = useProjectStore((s) => s.updateWithUndo);
   const save = useProjectStore((s) => s.save);
 
   // Consume pending focus from navigation store (on mount)
@@ -50,12 +51,13 @@ export function MacroView() {
 
   const doDelete = useCallback(
     (id: string) => {
-      update({ macros: macros.filter((m) => m.id !== id) });
+      const macro = macros.find((m) => m.id === id);
+      updateWithUndo({ macros: macros.filter((m) => m.id !== id) }, `Delete macro "${macro?.name || id}"`);
       if (selectedId === id) setSelectedId(null);
       setTimeout(() => useProjectStore.getState().save(), 100);
       setConfirmDeleteId(null);
     },
-    [macros, selectedId, update]
+    [macros, selectedId, updateWithUndo]
   );
 
   const macroSaveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);

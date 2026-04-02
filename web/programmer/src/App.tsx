@@ -19,6 +19,7 @@ import { UpdatesView } from "./views/UpdatesView";
 import { useProjectStore } from "./store/projectStore";
 import { useNavigationStore } from "./store/navigationStore";
 import { useWebSocket } from "./hooks/useWebSocket";
+import { showInfo } from "./store/toastStore";
 
 function App() {
   const activeView = useNavigationStore((s) => s.activeView);
@@ -41,6 +42,32 @@ function App() {
     };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
+  }, []);
+
+  // Global undo/redo keyboard shortcuts (skip when in UI Builder, which has its own)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      if (e.key !== "z" && e.key !== "Z") return;
+      // Don't intercept in UI Builder
+      if (useNavigationStore.getState().activeView === "ui-builder") return;
+      // Don't intercept in text inputs
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
+      e.preventDefault();
+      const store = useProjectStore.getState();
+      if (e.shiftKey) {
+        store.redo();
+      } else {
+        store.undo();
+      }
+      // Show toast with description
+      const desc = useProjectStore.getState().lastUndoDescription;
+      if (desc) showInfo(desc);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
   }, []);
 
   const handleViewChange = useCallback(
