@@ -28,7 +28,7 @@ Before diving into the IDE features, it helps to understand three core concepts:
 
 **Device States** are live values reported by your hardware: power status, input selection, volume levels, lamp hours. These update automatically as devices send data. You never set these yourself. State keys look like `device.projector.power` or `device.dsp.level`. You can bind UI elements directly to device states.
 
-**Variables** are values you create for your program logic. Things like room mode, system status text, or custom flags. Use variables when you need to track something no device reports. State keys look like `var.room_active` or `var.current_source`. Variables can optionally be *bound* to a device state key with a value map, so they auto-sync without writing code.
+**Variables** are values you create for your program logic. Things like room mode, system status text, or custom flags. Use variables when you need to track something no device reports. State keys look like `var.room_active` or `var.current_source`. Variables can optionally be *bound* to a device state key with a value map, so they auto-sync without writing code. Variables can be marked as persistent so their values survive server restarts.
 
 **Events** are one-shot notifications. A button was pressed, a schedule fired, the system started. Events trigger actions but don't store a value. If nothing is listening when an event fires, it's lost. State changes (both device and variable) are durable. You can always read the current value.
 
@@ -40,6 +40,8 @@ Before diving into the IDE features, it helps to understand three core concepts:
 2. **Need a friendly version of a device value?** Create a variable bound to the device state with a value map (e.g., `on` → `Ready`).
 3. **Need to track something no device reports?** Create a manual variable (e.g., `var.room_mode`).
 4. **Need to react when something happens?** Use a macro trigger on the state change, or an event trigger for button presses and schedules.
+5. **Need to control multiple similar devices together?** Create a device group and use a Group Command macro step to send commands to all of them at once.
+6. **Need different behavior depending on system state?** Use conditional macro steps (if/else branching) or skip-if guards on individual steps.
 
 ## Dashboard
 

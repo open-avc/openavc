@@ -788,7 +788,7 @@ class TestProjectSchema:
     def test_project_config_has_plugins(self):
         """ProjectConfig accepts plugins and plugin_dependencies fields."""
         data = {
-            "openavc_version": "0.3.0",
+            "openavc_version": "0.4.0",
             "project": {"id": "test", "name": "Test"},
             "plugins": {
                 "mqtt": {"enabled": True, "config": {"broker": "localhost"}},
@@ -805,7 +805,7 @@ class TestProjectSchema:
     def test_project_config_empty_plugins(self):
         """ProjectConfig works with empty plugins (backwards compatibility)."""
         data = {
-            "openavc_version": "0.3.0",
+            "openavc_version": "0.4.0",
             "project": {"id": "test", "name": "Test"},
         }
         config = ProjectConfig(**data)
@@ -830,7 +830,7 @@ class TestProjectMigration:
         }
         result, migrated = migrate_project(data)
         assert migrated
-        assert result["openavc_version"] == "0.3.0"
+        assert result["openavc_version"] == "0.4.0"
         assert result["plugins"] == {}
         assert result["plugin_dependencies"] == []
 
@@ -845,7 +845,7 @@ class TestProjectMigration:
         }
         result, migrated = migrate_project(data)
         assert migrated
-        assert result["openavc_version"] == "0.3.0"
+        assert result["openavc_version"] == "0.4.0"
         # 0.1 → 0.2: host moved to connections
         assert "host" not in result["devices"][0]["config"]
         assert result["connections"]["proj1"]["host"] == "1.2.3.4"
@@ -855,7 +855,7 @@ class TestProjectMigration:
 
     def test_no_migration_needed(self):
         data = {
-            "openavc_version": "0.3.0",
+            "openavc_version": "0.4.0",
             "project": {"id": "test", "name": "Test"},
             "plugins": {"mqtt": {"enabled": True, "config": {}}},
             "plugin_dependencies": [],

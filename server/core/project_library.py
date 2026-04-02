@@ -331,7 +331,7 @@ def create_blank_project(project_id: str, project_name: str) -> ProjectConfig:
     """Create a minimal empty project."""
     now = datetime.now().isoformat()
     return ProjectConfig(
-        openavc_version="0.3.0",
+        openavc_version="0.4.0",
         project=ProjectMeta(
             id=project_id,
             name=project_name,

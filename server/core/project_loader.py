@@ -327,7 +327,7 @@ class PluginConfig(BaseModel):
 
 
 class ProjectConfig(BaseModel):
-    openavc_version: str = "0.3.0"
+    openavc_version: str = "0.4.0"
     project: ProjectMeta
     devices: list[DeviceConfig] = Field(default_factory=list)
     device_groups: list[DeviceGroup] = Field(default_factory=list)

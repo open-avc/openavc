@@ -9,7 +9,7 @@ from server.utils.logger import get_logger
 
 log = get_logger(__name__)
 
-CURRENT_VERSION = "0.3.0"
+CURRENT_VERSION = "0.4.0"
 
 # Connection-related config fields that belong in the connections table
 CONNECTION_FIELDS = {
@@ -58,10 +58,25 @@ def migrate_0_2_to_0_3(data: dict) -> dict:
     return data
 
 
+def migrate_0_3_to_0_4(data: dict) -> dict:
+    """
+    Migrate from 0.3.0 to 0.4.0:
+    - Add empty device_groups list
+    - Remove group field from devices (now handled by device_groups)
+    - Bump version
+    """
+    data.setdefault("device_groups", [])
+    for device in data.get("devices", []):
+        device.pop("group", None)
+    data["openavc_version"] = "0.4.0"
+    return data
+
+
 # Ordered list of migrations: (source_version, target_version, transform_fn)
 MIGRATIONS = [
     ("0.1.0", "0.2.0", migrate_0_1_to_0_2),
     ("0.2.0", "0.3.0", migrate_0_2_to_0_3),
+    ("0.3.0", "0.4.0", migrate_0_3_to_0_4),
 ]
 
 
