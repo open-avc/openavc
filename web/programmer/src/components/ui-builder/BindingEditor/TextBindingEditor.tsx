@@ -9,7 +9,7 @@ interface TextBindingEditorProps {
   onClear: () => void;
 }
 
-type TextMode = "static" | "state" | "conditional";
+type TextMode = "static" | "state" | "conditional" | "macro_progress";
 
 export function TextBindingEditor({
   value,
@@ -18,9 +18,11 @@ export function TextBindingEditor({
   onClear,
 }: TextBindingEditorProps) {
   const currentMode: TextMode = value
-    ? value.condition
-      ? "conditional"
-      : "state"
+    ? value.source === "macro_progress"
+      ? "macro_progress"
+      : value.condition
+        ? "conditional"
+        : "state"
     : "static";
 
   const [mode, setMode] = useState<TextMode>(currentMode);
@@ -33,6 +35,8 @@ export function TextBindingEditor({
       onClear();
     } else if (newMode === "state") {
       onChange({ source: "state", key: value?.key || "" });
+    } else if (newMode === "macro_progress") {
+      onChange({ source: "macro_progress", macro: "", idle_text: "Ready" });
     } else {
       onChange({
         source: "state",
@@ -64,6 +68,7 @@ export function TextBindingEditor({
             { key: "static", label: "Static" },
             { key: "state", label: "State Variable" },
             { key: "conditional", label: "Conditional" },
+            { key: "macro_progress", label: "Macro Progress" },
           ] as const
         ).map(({ key, label }) => (
           <label
@@ -172,6 +177,44 @@ export function TextBindingEditor({
               onChange={(e) =>
                 onChange({ ...value!, text_false: e.target.value })
               }
+              style={inputStyle}
+            />
+          </div>
+        </>
+      )}
+
+      {/* Macro Progress mode */}
+      {mode === "macro_progress" && (
+        <>
+          <div style={helpStyle}>
+            Shows the current step description while a macro is running.
+            When the macro is idle, shows the text below.
+          </div>
+          <div>
+            <label style={labelStyle}>Macro</label>
+            <select
+              value={String(value?.macro || "")}
+              onChange={(e) =>
+                onChange({ source: "macro_progress", macro: e.target.value, idle_text: value?.idle_text || "Ready" })
+              }
+              style={inputStyle}
+            >
+              <option value="">Select macro...</option>
+              {project.macros.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>Idle Text</label>
+            <input
+              value={String(value?.idle_text || "")}
+              onChange={(e) =>
+                onChange({ source: "macro_progress", macro: value?.macro, idle_text: e.target.value })
+              }
+              placeholder="e.g., Ready"
               style={inputStyle}
             />
           </div>

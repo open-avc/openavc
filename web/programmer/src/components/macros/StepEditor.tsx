@@ -119,6 +119,19 @@ export function StepEditor({ step, macros, currentMacroId, onChange }: StepEdito
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
       {editor}
 
+      {/* Optional description for panel progress display */}
+      {step.action !== "conditional" && (
+        <div style={rowStyle}>
+          <label style={labelStyle}>Description</label>
+          <input
+            value={step.description ?? ""}
+            onChange={(e) => update({ description: e.target.value || undefined })}
+            placeholder="e.g., Powering on projector (shown in panel progress)"
+            style={inputStyle}
+          />
+        </div>
+      )}
+
       {showSkipOptions && (
         <StepGuards step={step} onChange={update} />
       )}

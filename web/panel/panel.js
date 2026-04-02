@@ -27,6 +27,7 @@ class PanelApp {
         this._pendingBindingKeys = null; // Batched binding keys for rAF
         this._bindingRafId = null;       // requestAnimationFrame ID
         this.overlayStack = [];      // Stack of overlay page IDs (newest on top)
+        this._runningMacros = {};    // macro_id -> { description, step_index, total_steps }
         this.reconnectDelay = 1000;
         this.maxReconnectDelay = 10000;
         this.reconnectAttempts = 0;
@@ -153,6 +154,33 @@ class PanelApp {
                 if (msg.page_id) {
                     this.navigateToPage(msg.page_id);
                 }
+                break;
+
+            case 'macro.started':
+                this._runningMacros[msg.macro_id] = {
+                    description: '',
+                    step_index: 0,
+                    total_steps: msg.total_steps || 0,
+                };
+                this._updateMacroBusyState(msg.macro_id);
+                this._updateMacroProgressBindings(msg.macro_id);
+                break;
+
+            case 'macro.progress':
+                if (this._runningMacros[msg.macro_id]) {
+                    this._runningMacros[msg.macro_id].description = msg.description || '';
+                    this._runningMacros[msg.macro_id].step_index = msg.step_index || 0;
+                    this._runningMacros[msg.macro_id].total_steps = msg.total_steps || 0;
+                }
+                this._updateMacroProgressBindings(msg.macro_id);
+                break;
+
+            case 'macro.completed':
+            case 'macro.error':
+            case 'macro.cancelled':
+                delete this._runningMacros[msg.macro_id];
+                this._updateMacroBusyState(msg.macro_id);
+                this._updateMacroProgressBindings(msg.macro_id);
                 break;
 
             case 'error':
@@ -643,12 +671,25 @@ class PanelApp {
 
         // Text binding
         if (element.bindings && element.bindings.text) {
-            this.bindings.push({
-                type: 'text',
-                element: el,
-                elementDef: element,
-                binding: element.bindings.text,
-            });
+            const textBinding = element.bindings.text;
+            if (textBinding.source === 'macro_progress') {
+                // Macro progress label: show step descriptions while macro runs
+                this.bindings.push({
+                    type: 'macro_progress',
+                    element: el,
+                    elementDef: element,
+                    binding: textBinding,
+                });
+                // Set initial idle text
+                el.textContent = textBinding.idle_text || '';
+            } else {
+                this.bindings.push({
+                    type: 'text',
+                    element: el,
+                    elementDef: element,
+                    binding: textBinding,
+                });
+            }
         }
 
         return el;
@@ -2405,6 +2446,40 @@ class PanelApp {
     }
 
     // --- Bindings ---
+
+    _updateMacroBusyState(macroId) {
+        // Apply or remove busy state on buttons whose press binding triggers this macro
+        for (const [elemId, entry] of Object.entries(this.elementMap)) {
+            const pressActions = entry.elementDef?.bindings?.press;
+            if (!pressActions) continue;
+            const actions = Array.isArray(pressActions) ? pressActions : [pressActions];
+            const referencesMacro = actions.some(a => a.action === 'macro' && a.macro === macroId);
+            if (!referencesMacro) continue;
+            const isRunning = macroId in this._runningMacros;
+            if (isRunning) {
+                entry.el.classList.add('macro-busy');
+                entry.el.setAttribute('data-macro-busy', macroId);
+            } else {
+                entry.el.classList.remove('macro-busy');
+                entry.el.removeAttribute('data-macro-busy');
+            }
+        }
+    }
+
+    _updateMacroProgressBindings(macroId) {
+        // Update any text bindings with source: "macro_progress" for this macro
+        for (const b of this.bindings) {
+            if (b.type !== 'macro_progress') continue;
+            if (b.binding.macro !== macroId) continue;
+            const running = this._runningMacros[macroId];
+            if (running) {
+                const text = running.description || `Step ${running.step_index + 1} of ${running.total_steps}`;
+                b.element.textContent = text;
+            } else {
+                b.element.textContent = b.binding.idle_text || '';
+            }
+        }
+    }
 
     _scheduleBindingEvaluation(keys) {
         // Batch multiple state updates into a single rAF evaluation

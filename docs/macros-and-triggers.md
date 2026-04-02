@@ -85,6 +85,14 @@ Set the cancel group in the macro header, next to the macro ID. Give both macros
 
 You can also cancel a running macro manually by clicking the **Cancel** button in the macro header while it's running.
 
+## Progress in Panel
+
+When a macro is running, the panel provides two forms of feedback:
+
+**Button busy state (automatic).** If a button triggers a macro and that macro is currently running, the button automatically shows a pulsing animation and blocks re-presses. This prevents users from accidentally triggering the same macro twice. No configuration needed.
+
+**Progress label (opt-in).** You can bind a label's text to "Macro Progress" in the Text Binding editor. Select the macro to track and set the idle text (what shows when the macro is not running). While the macro runs, the label shows the current step's description. Add descriptions to each macro step in the step editor to control what users see (e.g., "Powering on projector", "Waiting for warmup"). If no description is set, the system generates one from the action type.
+
 ## Variables in Macros
 
 Click the variable icon in any step to create or select a user variable. The Variable Picker shows all available variables with their current values. Variables let macros share state. For example, the `system_on` macro sets `var.room_active` to `true`, and UI buttons use that variable for feedback.

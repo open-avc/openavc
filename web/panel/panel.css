@@ -139,6 +139,15 @@ button.panel-element {
 .panel-button.pressing {
     filter: brightness(0.8);
 }
+.panel-button.macro-busy {
+    opacity: 0.7;
+    pointer-events: none;
+    animation: macro-pulse 1.5s ease-in-out infinite;
+}
+@keyframes macro-pulse {
+    0%, 100% { opacity: 0.7; }
+    50% { opacity: 0.4; }
+}
 
 /* Label */
 .panel-label {
