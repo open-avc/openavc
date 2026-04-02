@@ -78,7 +78,7 @@
                         "grid_area": { "col": 1, "row": 1, "col_span": 1, "row_span": 2 },
                         "style": { "bg_color": "#4CAF50", "font_size": 20 },
                         "bindings": {
-                            "press": { "action": "macro", "macro": "system_on" },
+                            "press": [{ "action": "macro", "macro": "system_on" }],
                             "feedback": {
                                 "key": "var.system_power",
                                 "condition": { "equals": "on" },
@@ -94,7 +94,7 @@
                         "grid_area": { "col": 2, "row": 1, "col_span": 1, "row_span": 2 },
                         "style": { "bg_color": "#F44336", "font_size": 20 },
                         "bindings": {
-                            "press": { "action": "macro", "macro": "system_off" }
+                            "press": [{ "action": "macro", "macro": "system_off" }]
                         }
                     },
                     {
@@ -103,7 +103,7 @@
                         "label": "Computer",
                         "grid_area": { "col": 1, "row": 3, "col_span": 1, "row_span": 1 },
                         "bindings": {
-                            "press": { "action": "macro", "macro": "select_pc" },
+                            "press": [{ "action": "macro", "macro": "select_pc" }],
                             "feedback": {
                                 "key": "var.current_source",
                                 "condition": { "equals": "pc" },
@@ -118,7 +118,7 @@
                         "label": "Document Camera",
                         "grid_area": { "col": 2, "row": 3, "col_span": 1, "row_span": 1 },
                         "bindings": {
-                            "press": { "action": "macro", "macro": "select_doccam" },
+                            "press": [{ "action": "macro", "macro": "select_doccam" }],
                             "feedback": {
                                 "key": "var.current_source",
                                 "condition": { "equals": "doccam" },

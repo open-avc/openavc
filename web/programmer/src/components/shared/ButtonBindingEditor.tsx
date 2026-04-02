@@ -22,9 +22,9 @@ import { VariableKeyPicker } from "./VariableKeyPicker";
 import { useConnectionStore } from "../../store/connectionStore";
 
 export interface ButtonBindings {
-  press?: Record<string, unknown> | null;
-  release?: Record<string, unknown> | null;
-  hold?: Record<string, unknown> | null;
+  press?: Record<string, unknown>[] | null;
+  release?: Record<string, unknown>[] | null;
+  hold?: Record<string, unknown>[] | null;
   feedback?: Record<string, unknown> | null;
 }
 
@@ -49,7 +49,10 @@ export function ButtonBindingEditor({
 }: ButtonBindingEditorProps) {
   const [expandedSlot, setExpandedSlot] = useState<string | null>(null);
 
-  const press: Record<string, unknown> = (bindings.press as Record<string, unknown>) ?? {};
+  // Press binding is an array; mode/toggle/hold config lives on the first action
+  const pressArray: Record<string, unknown>[] = Array.isArray(bindings.press) ? bindings.press : [];
+  const press: Record<string, unknown> = pressArray[0] ?? {};
+  const extraActions: Record<string, unknown>[] = pressArray.slice(1);
   const currentMode = String(press.mode || "tap");
 
   // Extract nested actions for toggle and tap/hold
@@ -71,7 +74,7 @@ export function ButtonBindingEditor({
 
   const updatePress = (patch: Record<string, unknown>) => {
     const updated = { ...press, ...patch };
-    onBindingsChange({ ...bindings, press: updated });
+    onBindingsChange({ ...bindings, press: [updated, ...extraActions] });
   };
 
   const updateFeedback = (value: Record<string, unknown> | null) => {
@@ -87,7 +90,7 @@ export function ButtonBindingEditor({
   const updateRelease = (value: Record<string, unknown> | null) => {
     const next = { ...bindings };
     if (value) {
-      next.release = value;
+      next.release = [value];
     } else {
       delete next.release;
     }
@@ -109,7 +112,9 @@ export function ButtonBindingEditor({
     }
     if (mode !== "hold_repeat") delete updated.hold_repeat_ms;
     if (mode !== "tap_hold") { delete updated.hold_action; delete updated.hold_threshold_ms; }
-    onBindingsChange({ ...bindings, press: updated });
+    // When switching away from tap mode, drop extra actions
+    const keepExtras = mode === "tap" ? extraActions : [];
+    onBindingsChange({ ...bindings, press: [updated, ...keepExtras] });
   };
 
   const summarizeAction = (action: Record<string, unknown> | null | undefined): string => {
@@ -154,13 +159,16 @@ export function ButtonBindingEditor({
     }
     if (sectionId === "off_action") return offAction;
     if (sectionId === "hold_action") return holdAction;
-    if (sectionId === "release") return (bindings.release as Record<string, unknown>) ?? null;
+    if (sectionId === "release") {
+      const releaseArr = Array.isArray(bindings.release) ? bindings.release : [];
+      return releaseArr[0] ?? null;
+    }
     return null;
   };
 
   const setActionValue = (sectionId: string, value: Record<string, unknown> | null) => {
     if (sectionId === "press") {
-      // Merge action fields into press, keeping mode/config
+      // Merge action fields into press[0], keeping mode/config
       const modeFields: Record<string, unknown> = {};
       if (press.mode) modeFields.mode = press.mode;
       if (press.off_action) modeFields.off_action = press.off_action;
@@ -172,7 +180,8 @@ export function ButtonBindingEditor({
       if (press.on_label) modeFields.on_label = press.on_label;
       if (press.off_label) modeFields.off_label = press.off_label;
       const updated = value ? { ...modeFields, ...value } : modeFields;
-      onBindingsChange({ ...bindings, press: Object.keys(updated).length > 0 ? updated : null });
+      const hasContent = Object.keys(updated).length > 0;
+      onBindingsChange({ ...bindings, press: hasContent ? [updated, ...extraActions] : null });
     } else if (sectionId === "off_action") {
       updatePress({ off_action: value ?? undefined });
     } else if (sectionId === "hold_action") {
@@ -426,6 +435,70 @@ export function ButtonBindingEditor({
           </div>
         );
       })}
+
+      {/* Extra actions (tap mode only) */}
+      {currentMode === "tap" && extraActions.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+          <label style={{ ...sectionLabelStyle, marginBottom: 0 }}>Additional Actions</label>
+          {extraActions.map((act, i) => (
+            <div
+              key={i}
+              style={{
+                border: "1px solid var(--border-color)",
+                borderRadius: "var(--border-radius)",
+                padding: "var(--space-sm)",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--space-xs)" }}>
+                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Action {i + 2}</span>
+                <button
+                  onClick={() => {
+                    const newExtra = extraActions.filter((_, j) => j !== i);
+                    onBindingsChange({ ...bindings, press: [press, ...newExtra] });
+                  }}
+                  style={{
+                    padding: "2px 6px", borderRadius: "var(--border-radius)",
+                    fontSize: 11, color: "var(--color-error)",
+                    background: "transparent", border: "1px solid var(--border-color)",
+                    cursor: "pointer",
+                  }}
+                >
+                  Remove
+                </button>
+              </div>
+              <ActionPicker
+                value={act}
+                project={project}
+                onChange={(v) => {
+                  const newExtra = [...extraActions];
+                  newExtra[i] = v;
+                  onBindingsChange({ ...bindings, press: [press, ...newExtra] });
+                }}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add another action button (tap mode only) */}
+      {currentMode === "tap" && getActionValue("press") && (
+        <button
+          onClick={() => {
+            onBindingsChange({ ...bindings, press: [...pressArray, { action: "" }] });
+          }}
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "center",
+            gap: 4, padding: "5px 10px",
+            borderRadius: "var(--border-radius)",
+            border: "1px dashed var(--border-color)",
+            background: "transparent",
+            color: "var(--text-muted)",
+            fontSize: 12, cursor: "pointer",
+          }}
+        >
+          + Add another action
+        </button>
+      )}
     </div>
   );
 }

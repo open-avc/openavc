@@ -67,7 +67,7 @@
                         "grid_area": { "col": 1, "row": 2, "col_span": 2, "row_span": 1 },
                         "style": { "bg_color": "#4CAF50" },
                         "bindings": {
-                            "press": { "action": "macro", "macro": "system_on" },
+                            "press": [{ "action": "macro", "macro": "system_on" }],
                             "feedback": {
                                 "key": "var.system_power",
                                 "condition": { "equals": "on" },
@@ -83,7 +83,7 @@
                         "grid_area": { "col": 3, "row": 2, "col_span": 2, "row_span": 1 },
                         "style": { "bg_color": "#F44336" },
                         "bindings": {
-                            "press": { "action": "macro", "macro": "system_off" },
+                            "press": [{ "action": "macro", "macro": "system_off" }],
                             "feedback": {
                                 "key": "var.system_power",
                                 "condition": { "equals": "off" },

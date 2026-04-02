@@ -86,7 +86,7 @@ What happens when the button is pressed. Five action types are available:
 - **Navigate to Page**: switch to another page
 - **Script Function**: call a Python function
 
-Example: A "Laptop" source button might run a macro called `select_laptop` that switches the matrix, sets the scaler input, and updates a variable tracking the current source.
+A press binding can contain **multiple actions**. Click "Add another action" to stack actions on a single button press. For example, a "Laptop" source button can set `var.current_source` to "laptop" AND run the `apply_source` macro in one press, without needing a wrapper macro.
 
 ### Button Modes
 

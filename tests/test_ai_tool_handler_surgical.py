@@ -624,7 +624,7 @@ async def test_update_ui_element(handler, mock_agent, mock_engine):
                 "element_id": "btn_on",
                 "label": "Power On",
                 "style": {"bg_color": "#4CAF50"},
-                "bindings": {"press": {"action": "macro", "macro": "all_on"}},
+                "bindings": {"press": [{"action": "macro", "macro": "all_on"}]},
             })
             await handler.handle(msg)
         await asyncio.sleep(0)
@@ -638,7 +638,7 @@ async def test_update_ui_element(handler, mock_agent, mock_engine):
     el = next(e for e in page.elements if e.id == "btn_on")
     assert el.label == "Power On"
     assert el.style == {"bg_color": "#4CAF50"}
-    assert el.bindings["press"]["action"] == "macro"
+    assert el.bindings["press"][0]["action"] == "macro"
 
 
 @pytest.mark.asyncio

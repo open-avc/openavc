@@ -89,7 +89,7 @@
                         "label": "System On",
                         "grid_area": { "col": 5, "row": 1, "col_span": 1, "row_span": 1 },
                         "bindings": {
-                            "press": { "action": "macro", "macro": "system_on" },
+                            "press": [{ "action": "macro", "macro": "system_on" }],
                             "feedback": {
                                 "key": "var.system_power",
                                 "condition": { "equals": "on" },
@@ -104,7 +104,7 @@
                         "label": "System Off",
                         "grid_area": { "col": 6, "row": 1, "col_span": 1, "row_span": 1 },
                         "bindings": {
-                            "press": { "action": "macro", "macro": "system_off" },
+                            "press": [{ "action": "macro", "macro": "system_off" }],
                             "feedback": {
                                 "key": "var.system_power",
                                 "condition": { "equals": "off" },
@@ -119,7 +119,7 @@
                         "label": "Laptop",
                         "grid_area": { "col": 1, "row": 2, "col_span": 3, "row_span": 1 },
                         "bindings": {
-                            "press": { "action": "macro", "macro": "select_laptop" },
+                            "press": [{ "action": "macro", "macro": "select_laptop" }],
                             "feedback": {
                                 "key": "var.current_source",
                                 "condition": { "equals": "laptop" },
@@ -134,7 +134,7 @@
                         "label": "Wireless",
                         "grid_area": { "col": 4, "row": 2, "col_span": 3, "row_span": 1 },
                         "bindings": {
-                            "press": { "action": "macro", "macro": "select_wireless" },
+                            "press": [{ "action": "macro", "macro": "select_wireless" }],
                             "feedback": {
                                 "key": "var.current_source",
                                 "condition": { "equals": "wireless" },
@@ -193,7 +193,7 @@
                         "preset_number": 1,
                         "grid_area": { "col": 1, "row": 2, "col_span": 2, "row_span": 1 },
                         "bindings": {
-                            "press": { "action": "device.command", "device": "camera1", "command": "recall_preset", "params": { "preset": 1 } }
+                            "press": [{ "action": "device.command", "device": "camera1", "command": "recall_preset", "params": { "preset": 1 } }]
                         }
                     },
                     {
@@ -203,7 +203,7 @@
                         "preset_number": 2,
                         "grid_area": { "col": 3, "row": 2, "col_span": 2, "row_span": 1 },
                         "bindings": {
-                            "press": { "action": "device.command", "device": "camera1", "command": "recall_preset", "params": { "preset": 2 } }
+                            "press": [{ "action": "device.command", "device": "camera1", "command": "recall_preset", "params": { "preset": 2 } }]
                         }
                     },
                     {

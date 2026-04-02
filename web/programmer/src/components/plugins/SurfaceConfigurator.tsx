@@ -287,7 +287,7 @@ function GridSurface({
             }}
             title={
               hasAssignment
-                ? `Button ${i + 1}: ${assignment?.label || assignment?.bindings?.press?.action || assignment?.macro_id || "configured"}`
+                ? `Button ${i + 1}: ${assignment?.label || (Array.isArray(assignment?.bindings?.press) && assignment?.bindings?.press[0]?.action) || assignment?.macro_id || "configured"}`
                 : `Button ${i + 1} (unassigned)`
             }
           >
@@ -716,7 +716,7 @@ function ControlAssignmentPanel({
   // Read bindings (with backward compat for old macro_id/feedback_key)
   const currentBindings: ButtonBindings = assignment?.bindings ?? {};
   if (!currentBindings.press && assignment?.macro_id) {
-    currentBindings.press = { action: "macro", macro: assignment.macro_id };
+    currentBindings.press = [{ action: "macro", macro: assignment.macro_id }];
   }
   if (!currentBindings.feedback && assignment?.feedback_key) {
     currentBindings.feedback = {

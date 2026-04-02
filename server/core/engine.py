@@ -510,53 +510,62 @@ class Engine:
                 if var_key:
                     self.state.set(var_key, data.get("value"), source="ui")
 
-        # Look up the binding for this event type
+        # Look up the binding for this event type (always a list of actions)
         binding = bindings.get(event_type)
 
-        # Toggle off: look for off_action nested inside press binding
+        # Toggle off: look for off_action inside the first press action that has one
         if not binding and event_type == "toggle_off":
-            press_binding = bindings.get("press")
-            if press_binding and isinstance(press_binding, dict):
-                binding = press_binding.get("off_action")
+            press_actions = bindings.get("press")
+            if isinstance(press_actions, list):
+                for act in press_actions:
+                    if isinstance(act, dict) and "off_action" in act:
+                        binding = [act["off_action"]]
+                        break
 
-        # Hold: look for hold_action nested inside press binding (tap_hold mode)
+        # Hold: look for hold_action inside the first press action that has one
         if not binding and event_type == "hold":
-            press_binding = bindings.get("press")
-            if press_binding and isinstance(press_binding, dict):
-                binding = press_binding.get("hold_action")
+            press_actions = bindings.get("press")
+            if isinstance(press_actions, list):
+                for act in press_actions:
+                    if isinstance(act, dict) and "hold_action" in act:
+                        binding = [act["hold_action"]]
+                        break
 
         if not binding:
             return
 
-        # Dispatch based on action type
-        await self._execute_binding(binding, data)
+        # Binding is a list of actions — execute sequentially
+        if not isinstance(binding, list):
+            binding = [binding]
+        for action_item in binding:
+            if isinstance(action_item, dict):
+                await self._execute_action(action_item, data)
 
-    async def _execute_binding(
-        self, binding: dict[str, Any], data: dict[str, Any]
+    async def _execute_action(
+        self, action_def: dict[str, Any], data: dict[str, Any]
     ) -> None:
-        """Execute a UI binding action."""
-        action = binding.get("action", "")
+        """Execute a single UI binding action."""
+        action = action_def.get("action", "")
 
         if action == "value_map":
             # Per-option action map (used by select elements).
-            # Look up the element's current value and execute that action.
             element_value = str(data.get("value", ""))
-            action_map = binding.get("map", {})
+            action_map = action_def.get("map", {})
             mapped_action = action_map.get(element_value)
             if mapped_action:
-                await self._execute_binding(mapped_action, data)
+                await self._execute_action(mapped_action, data)
 
         elif action == "macro":
-            macro_id = binding.get("macro", "")
+            macro_id = action_def.get("macro", "")
             if macro_id:
                 # Run macro in background so UI doesn't block
                 task = asyncio.create_task(self.macros.execute(macro_id))
                 task.add_done_callback(_log_task_exception)
 
         elif action == "device.command":
-            device_id = binding.get("device", "")
-            command = binding.get("command", "")
-            params = dict(binding.get("params", {}))
+            device_id = action_def.get("device", "")
+            command = action_def.get("command", "")
+            params = dict(action_def.get("params", {}))
             # Replace $value placeholder with actual value from UI event
             for k, v in params.items():
                 if v == "$value":
@@ -571,17 +580,17 @@ class Engine:
                 log.exception(f"Binding command failed: {device_id}.{command}")
 
         elif action == "state.set":
-            key = binding.get("key", "")
+            key = action_def.get("key", "")
             # Support "value_from": "element" to use the element's current value
-            if binding.get("value_from") == "element":
+            if action_def.get("value_from") == "element":
                 value = data.get("value")
             else:
-                value = binding.get("value")
+                value = action_def.get("value")
             self.state.set(key, value, source="ui")
 
         elif action in ("page", "navigate"):
             # Page navigation — broadcast to all panels so they can switch
-            page_id = binding.get("page", "")
+            page_id = action_def.get("page", "")
             if page_id:
                 await self.events.emit(f"ui.page.{page_id}")
                 await self._broadcast_ws({
@@ -590,7 +599,7 @@ class Engine:
                 })
 
         elif action == "script.call":
-            func_name = binding.get("function", "")
+            func_name = action_def.get("function", "")
             if func_name:
                 await self.events.emit(f"script.call.{func_name}", data)
 

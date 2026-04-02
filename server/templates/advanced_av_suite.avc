@@ -113,7 +113,7 @@
                         "label": "System On",
                         "grid_area": { "col": 5, "row": 1, "col_span": 1, "row_span": 1 },
                         "bindings": {
-                            "press": { "action": "macro", "macro": "system_on" },
+                            "press": [{ "action": "macro", "macro": "system_on" }],
                             "feedback": {
                                 "key": "var.system_power",
                                 "condition": { "equals": "on" },
@@ -128,7 +128,7 @@
                         "label": "System Off",
                         "grid_area": { "col": 6, "row": 1, "col_span": 1, "row_span": 1 },
                         "bindings": {
-                            "press": { "action": "macro", "macro": "system_off" },
+                            "press": [{ "action": "macro", "macro": "system_off" }],
                             "feedback": {
                                 "key": "var.system_power",
                                 "condition": { "equals": "off" },
@@ -143,7 +143,7 @@
                         "label": "Laptop",
                         "grid_area": { "col": 1, "row": 2, "col_span": 2, "row_span": 1 },
                         "bindings": {
-                            "press": { "action": "event.emit", "event": "custom.select_source", "payload": { "source": "laptop" } },
+                            "press": [{ "action": "event.emit", "event": "custom.select_source", "payload": { "source": "laptop" } }],
                             "feedback": { "key": "var.current_source", "condition": { "equals": "laptop" }, "style_active": { "bg_color": "#00BCD4" }, "style_inactive": { "bg_color": "#424242" } }
                         }
                     },
@@ -153,7 +153,7 @@
                         "label": "Wireless",
                         "grid_area": { "col": 3, "row": 2, "col_span": 2, "row_span": 1 },
                         "bindings": {
-                            "press": { "action": "event.emit", "event": "custom.select_source", "payload": { "source": "wireless" } },
+                            "press": [{ "action": "event.emit", "event": "custom.select_source", "payload": { "source": "wireless" } }],
                             "feedback": { "key": "var.current_source", "condition": { "equals": "wireless" }, "style_active": { "bg_color": "#00BCD4" }, "style_inactive": { "bg_color": "#424242" } }
                         }
                     },
@@ -163,7 +163,7 @@
                         "label": "Blu-ray",
                         "grid_area": { "col": 5, "row": 2, "col_span": 2, "row_span": 1 },
                         "bindings": {
-                            "press": { "action": "event.emit", "event": "custom.select_source", "payload": { "source": "bluray" } },
+                            "press": [{ "action": "event.emit", "event": "custom.select_source", "payload": { "source": "bluray" } }],
                             "feedback": { "key": "var.current_source", "condition": { "equals": "bluray" }, "style_active": { "bg_color": "#00BCD4" }, "style_inactive": { "bg_color": "#424242" } }
                         }
                     },
@@ -183,7 +183,7 @@
                         "label": "Mic Mute",
                         "grid_area": { "col": 5, "row": 3, "col_span": 2, "row_span": 1 },
                         "bindings": {
-                            "press": { "action": "event.emit", "event": "custom.toggle_mic_mute" },
+                            "press": [{ "action": "event.emit", "event": "custom.toggle_mic_mute" }],
                             "feedback": { "key": "var.mic_mute", "condition": { "equals": true }, "style_active": { "bg_color": "#F44336", "label": "Mic MUTED" }, "style_inactive": { "bg_color": "#4CAF50", "label": "Mic Live" } }
                         }
                     },
@@ -234,7 +234,7 @@
                         "grid_area": { "col": 4, "row": 5, "col_span": 3, "row_span": 1 },
                         "bindings": {
                             "variable": { "key": "var.mode" },
-                            "change": { "action": "event.emit", "event": "custom.mode_change" }
+                            "change": [{ "action": "event.emit", "event": "custom.mode_change" }]
                         }
                     }
                 ]
@@ -257,7 +257,7 @@
                         "label": "Wide",
                         "preset_number": 1,
                         "grid_area": { "col": 1, "row": 2, "col_span": 1, "row_span": 1 },
-                        "bindings": { "press": { "action": "device.command", "device": "camera1", "command": "recall_preset", "params": { "preset": 1 } } }
+                        "bindings": { "press": [{ "action": "device.command", "device": "camera1", "command": "recall_preset", "params": { "preset": 1 } }] }
                     },
                     {
                         "id": "cam_presenter",
@@ -265,7 +265,7 @@
                         "label": "Presenter",
                         "preset_number": 2,
                         "grid_area": { "col": 2, "row": 2, "col_span": 1, "row_span": 1 },
-                        "bindings": { "press": { "action": "device.command", "device": "camera1", "command": "recall_preset", "params": { "preset": 2 } } }
+                        "bindings": { "press": [{ "action": "device.command", "device": "camera1", "command": "recall_preset", "params": { "preset": 2 } }] }
                     },
                     {
                         "id": "cam_audience",
@@ -273,7 +273,7 @@
                         "label": "Audience",
                         "preset_number": 3,
                         "grid_area": { "col": 3, "row": 2, "col_span": 1, "row_span": 1 },
-                        "bindings": { "press": { "action": "device.command", "device": "camera1", "command": "recall_preset", "params": { "preset": 3 } } }
+                        "bindings": { "press": [{ "action": "device.command", "device": "camera1", "command": "recall_preset", "params": { "preset": 3 } }] }
                     },
                     {
                         "id": "cam_whiteboard",
@@ -281,7 +281,7 @@
                         "label": "Whiteboard",
                         "preset_number": 4,
                         "grid_area": { "col": 4, "row": 2, "col_span": 1, "row_span": 1 },
-                        "bindings": { "press": { "action": "device.command", "device": "camera1", "command": "recall_preset", "params": { "preset": 4 } } }
+                        "bindings": { "press": [{ "action": "device.command", "device": "camera1", "command": "recall_preset", "params": { "preset": 4 } }] }
                     },
                     {
                         "id": "nav_back",

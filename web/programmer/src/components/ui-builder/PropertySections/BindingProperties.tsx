@@ -48,9 +48,9 @@ export function BindingProperties({
   // Buttons use the shared ButtonBindingEditor
   if (element.type === "button") {
     const btnBindings: ButtonBindings = {
-      press: element.bindings.press as Record<string, unknown> | undefined,
-      release: element.bindings.release as Record<string, unknown> | undefined,
-      hold: element.bindings.hold as Record<string, unknown> | undefined,
+      press: element.bindings.press as Record<string, unknown>[] | undefined,
+      release: element.bindings.release as Record<string, unknown>[] | undefined,
+      hold: element.bindings.hold as Record<string, unknown>[] | undefined,
       feedback: element.bindings.feedback as Record<string, unknown> | undefined,
     };
     return (
@@ -90,51 +90,57 @@ export function BindingProperties({
     onChange({ bindings: newBindings });
   };
 
+  const summarizeAction = (b: Record<string, unknown>): string => {
+    if (b.action === "macro") return `Macro: ${b.macro}`;
+    if (b.action === "device.command") return `${b.device}.${b.command}`;
+    if (b.action === "state.set") return `Set ${b.key}`;
+    if (b.action === "navigate") return `Go to ${b.page}`;
+    return String(b.action || "Configured");
+  };
+
   const getSlotSummary = (slot: string): string => {
     const binding = element.bindings[slot];
     if (!binding) return "Not configured";
-    const b = binding as Record<string, unknown>;
 
     switch (slot) {
-      case "variable":
+      case "variable": {
+        const b = binding as Record<string, unknown>;
         return b.key ? String(b.key) : "Not configured";
+      }
       case "press":
       case "release":
       case "hold":
       case "change":
       case "submit":
       case "route":
-      case "select":
-        if (b.action === "macro") return `Macro: ${b.macro}`;
-        if (b.action === "device.command")
-          return `${b.device}.${b.command}`;
-        if (b.action === "state.set") return `Set ${b.key}`;
-        if (b.action === "navigate") return `Go to ${b.page}`;
-        return String(b.action || "Configured");
-      case "items":
+      case "select": {
+        const arr = binding as Record<string, unknown>[];
+        if (!Array.isArray(arr) || arr.length === 0) return "Not configured";
+        const first = summarizeAction(arr[0]);
+        return arr.length > 1 ? `${first} +${arr.length - 1} more` : first;
+      }
+      case "items": {
+        const b = binding as Record<string, unknown>;
         return b.key_pattern ? String(b.key_pattern) : "Not configured";
+      }
       case "meter":
-        return b.key ? String(b.key) : "Not configured";
       case "feedback":
-        return b.key ? `State: ${b.key}` : "Configured";
       case "text":
-        return b.key ? `State: ${b.key}` : "Configured";
       case "selected":
-        return b.key ? `State: ${b.key}` : "Not configured";
       case "color":
-        return b.key ? `State: ${b.key}` : "Configured";
-      case "value":
-        return b.key ? `State: ${b.key}` : "Configured";
+      case "value": {
+        const b = binding as Record<string, unknown>;
+        return b.key ? `State: ${b.key}` : "Not configured";
+      }
       default:
         return "Configured";
     }
   };
 
   const renderEditor = (slot: string) => {
-    const binding = element.bindings[slot] as Record<string, unknown> | undefined;
-
     switch (slot) {
-      case "variable":
+      case "variable": {
+        const binding = element.bindings[slot] as Record<string, unknown> | undefined;
         return (
           <VariableBindingEditor
             value={binding || null}
@@ -143,22 +149,26 @@ export function BindingProperties({
             onClear={() => handleBindingChange(slot, null)}
           />
         );
+      }
       case "press":
       case "release":
-      case "hold":
+      case "hold": {
+        const actions = (element.bindings[slot] as Record<string, unknown>[] | undefined) ?? [];
         return (
           <PressBindingEditor
-            value={binding || null}
+            value={actions}
             project={project}
             onChange={(v) => handleBindingChange(slot, v)}
             onClear={() => handleBindingChange(slot, null)}
           />
         );
-      case "change":
+      }
+      case "change": {
+        const changeBinding = element.bindings[slot];
         if (element.type === "select") {
           return (
             <SelectChangeEditor
-              value={binding || null}
+              value={(changeBinding as Record<string, unknown>) || null}
               project={project}
               options={element.options ?? []}
               onChange={(v) => handleBindingChange(slot, v)}
@@ -166,10 +176,11 @@ export function BindingProperties({
             />
           );
         }
+        const changeActions = (changeBinding as Record<string, unknown>[] | undefined) ?? [];
         return (
           <div>
             <PressBindingEditor
-              value={binding || null}
+              value={changeActions}
               project={project}
               onChange={(v) => handleBindingChange(slot, v)}
               onClear={() => handleBindingChange(slot, null)}
@@ -180,7 +191,9 @@ export function BindingProperties({
             </div>
           </div>
         );
-      case "text":
+      }
+      case "text": {
+        const binding = element.bindings[slot] as Record<string, unknown> | undefined;
         return (
           <TextBindingEditor
             value={binding || null}
@@ -189,7 +202,9 @@ export function BindingProperties({
             onClear={() => handleBindingChange(slot, null)}
           />
         );
-      case "feedback":
+      }
+      case "feedback": {
+        const binding = element.bindings[slot] as Record<string, unknown> | undefined;
         if (element.type === "select") {
           return (
             <SelectFeedbackEditor
@@ -207,7 +222,9 @@ export function BindingProperties({
             onClear={() => handleBindingChange(slot, null)}
           />
         );
-      case "color":
+      }
+      case "color": {
+        const binding = element.bindings[slot] as Record<string, unknown> | undefined;
         return (
           <ColorBindingEditor
             value={binding || null}
@@ -215,7 +232,9 @@ export function BindingProperties({
             onClear={() => handleBindingChange(slot, null)}
           />
         );
-      case "value":
+      }
+      case "value": {
+        const binding = element.bindings[slot] as Record<string, unknown> | undefined;
         return (
           <SliderBindingEditor
             value={binding || null}
@@ -224,12 +243,14 @@ export function BindingProperties({
             onClear={() => handleBindingChange(slot, null)}
           />
         );
+      }
       case "submit":
-      case "select":
+      case "select": {
+        const slotActions = (element.bindings[slot] as Record<string, unknown>[] | undefined) ?? [];
         return (
           <div>
             <PressBindingEditor
-              value={binding || null}
+              value={slotActions}
               project={project}
               onChange={(v) => handleBindingChange(slot, v)}
               onClear={() => handleBindingChange(slot, null)}
@@ -246,11 +267,13 @@ export function BindingProperties({
             )}
           </div>
         );
-      case "route":
+      }
+      case "route": {
+        const routeActions = (element.bindings[slot] as Record<string, unknown>[] | undefined) ?? [];
         return (
           <div>
             <PressBindingEditor
-              value={binding || null}
+              value={routeActions}
               project={project}
               onChange={(v) => handleBindingChange(slot, v)}
               onClear={() => handleBindingChange(slot, null)}
@@ -260,7 +283,9 @@ export function BindingProperties({
             </div>
           </div>
         );
-      case "selected":
+      }
+      case "selected": {
+        const binding = element.bindings[slot] as Record<string, unknown> | undefined;
         return (
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>Selected Item Key</div>
@@ -283,7 +308,9 @@ export function BindingProperties({
             )}
           </div>
         );
-      case "items":
+      }
+      case "items": {
+        const binding = element.bindings[slot] as Record<string, unknown> | undefined;
         return (
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>Key Pattern</div>
@@ -306,7 +333,9 @@ export function BindingProperties({
             )}
           </div>
         );
-      case "meter":
+      }
+      case "meter": {
+        const binding = element.bindings[slot] as Record<string, unknown> | undefined;
         return (
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>Meter Source</div>
@@ -328,6 +357,7 @@ export function BindingProperties({
             )}
           </div>
         );
+      }
       default:
         return null;
     }

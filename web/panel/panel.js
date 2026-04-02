@@ -516,7 +516,9 @@ class PanelApp {
         this.elementMap[element.id] = { el, elementDef: element };
 
         // Button mode: tap (default), toggle, hold_repeat, tap_hold
-        const pressBinding = element.bindings?.press || {};
+        // Press binding is an array of actions; mode properties come from the first action
+        const pressActions = element.bindings?.press || [];
+        const pressBinding = (Array.isArray(pressActions) ? pressActions[0] : pressActions) || {};
         const mode = pressBinding.mode || 'tap';
         const holdRepeatMs = pressBinding.hold_repeat_ms || 200;
         const holdThresholdMs = pressBinding.hold_threshold_ms || 500;
