@@ -8,6 +8,37 @@ helpers provide the building blocks so drivers don't reinvent the wheel.
 
 from __future__ import annotations
 
+import re
+
+# Escape sequences recognized in driver delimiter/command strings
+_ESCAPE_MAP = {
+    r"\r": "\r",
+    r"\n": "\n",
+    r"\t": "\t",
+    r"\\": "\\",
+}
+
+
+def encode_escape_sequences(s: str) -> bytes:
+    """Convert a string with escape sequences (\\r, \\n, \\t, \\xHH) to bytes.
+
+    Only safe, known sequences are processed. Unknown backslash sequences
+    are passed through literally. Used by drivers and frame parsers.
+    """
+    def _replace(m: re.Match) -> str:
+        seq = m.group(0)
+        if seq in _ESCAPE_MAP:
+            return _ESCAPE_MAP[seq]
+        if seq.startswith(r"\x") and len(seq) == 4:
+            try:
+                return chr(int(seq[2:], 16))
+            except ValueError:
+                pass
+        return seq
+
+    processed = re.sub(r'\\(?:r|n|t|\\|x[0-9a-fA-F]{2})', _replace, s)
+    return processed.encode("latin-1")
+
 
 def checksum_xor(data: bytes) -> int:
     """XOR all bytes together. Common in Samsung MDC, LG, etc."""

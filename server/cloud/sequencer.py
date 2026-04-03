@@ -45,6 +45,7 @@ class Sequencer:
 
         # Downstream
         self._last_downstream_seq: int = 0
+        self._last_gap: tuple[int, int] | None = None
 
         # Use threading.Lock for sync methods (all operations are microsecond-fast
         # dict mutations, never held across await points). Safe for event loop usage.
@@ -169,7 +170,7 @@ class Sequencer:
         Returns:
             (expected_start, missing_end) tuple, or None if no gap.
         """
-        gap = getattr(self, "_last_gap", None)
+        gap = self._last_gap
         self._last_gap = None
         return gap
 

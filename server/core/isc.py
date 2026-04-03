@@ -211,6 +211,7 @@ class ISCManager:
         # UDP discovery
         self._discovery_sock: socket.socket | None = None
         self._discovery_transport: Any = None  # asyncio DatagramTransport
+        self._beacon_rate: dict[str, float] = {}
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -623,8 +624,6 @@ class ISCManager:
         # Rate limit beacon processing: max 1 per source IP per 5 seconds
         now = time()
         source_ip = addr[0]
-        if not hasattr(self, "_beacon_rate"):
-            self._beacon_rate: dict[str, float] = {}
         last_seen = self._beacon_rate.get(source_ip, 0)
         if now - last_seen < 5.0:
             return

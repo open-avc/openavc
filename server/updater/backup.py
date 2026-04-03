@@ -49,6 +49,22 @@ def create_backup(data_dir: Path, current_version: str) -> Path:
                     arcname = file_path.relative_to(data_dir).as_posix()
                     zf.write(file_path, arcname)
 
+        # Back up themes directory
+        themes_dir = data_dir / "themes"
+        if themes_dir.exists():
+            for file_path in themes_dir.rglob("*"):
+                if file_path.is_file():
+                    arcname = file_path.relative_to(data_dir).as_posix()
+                    zf.write(file_path, arcname)
+
+        # Back up plugin_repo directory
+        plugin_dir = data_dir / "plugin_repo"
+        if plugin_dir.exists():
+            for file_path in plugin_dir.rglob("*"):
+                if file_path.is_file():
+                    arcname = file_path.relative_to(data_dir).as_posix()
+                    zf.write(file_path, arcname)
+
         # Back up system.json
         system_json = data_dir / "system.json"
         if system_json.exists():

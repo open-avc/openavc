@@ -24,39 +24,7 @@ from server.utils.logger import get_logger
 
 log = get_logger(__name__)
 
-# Allowed escape sequences for command strings.
-# Only these are processed — unknown sequences like \x00 are rejected.
-_ESCAPE_MAP = {
-    r"\r": "\r",
-    r"\n": "\n",
-    r"\t": "\t",
-    r"\\": "\\",
-}
-
-
-def _safe_encode_escapes(s: str) -> bytes:
-    """Process only safe escape sequences in a command string.
-
-    Supports: \\r, \\n, \\t, \\\\, \\xHH (hex byte).
-    All other backslash sequences are passed through literally.
-    """
-    import re
-
-    def _replace_escape(m: re.Match) -> str:
-        seq = m.group(0)
-        if seq in _ESCAPE_MAP:
-            return _ESCAPE_MAP[seq]
-        # Handle \xHH hex escapes
-        if seq.startswith(r"\x") and len(seq) == 4:
-            try:
-                return chr(int(seq[2:], 16))
-            except ValueError:
-                pass
-        # Unknown escape — pass through literally
-        return seq
-
-    processed = re.sub(r'\\(?:r|n|t|\\|x[0-9a-fA-F]{2})', _replace_escape, s)
-    return processed.encode("latin-1")
+from server.transport.binary_helpers import encode_escape_sequences as _safe_encode_escapes
 
 
 class ConfigurableDriver(BaseDriver):
@@ -265,7 +233,7 @@ class ConfigurableDriver(BaseDriver):
 
     async def on_data_received(self, data: bytes) -> None:
         """Match response against pre-compiled regex patterns, update state."""
-        text = data.decode("ascii", errors="replace").strip()
+        text = data.decode("utf-8", errors="replace").strip()
         if not text:
             return
 

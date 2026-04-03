@@ -68,8 +68,9 @@ class GenericTCPDriver(BaseDriver):
         """Connect to the device via TCP."""
         host = self.config.get("host", "")
         port = self.config.get("port", 23)
+        from server.transport.binary_helpers import encode_escape_sequences
         delimiter_str = self.config.get("delimiter", "\r\n")
-        delimiter = delimiter_str.encode().decode("unicode_escape").encode()
+        delimiter = encode_escape_sequences(delimiter_str)
         delay = self.config.get("inter_command_delay", 0.0)
 
         self.transport = await TCPTransport.create(
@@ -88,6 +89,7 @@ class GenericTCPDriver(BaseDriver):
 
     async def disconnect(self) -> None:
         """Disconnect from the device."""
+        await self.stop_polling()
         if self.transport:
             await self.transport.close()
             self.transport = None

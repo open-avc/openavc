@@ -159,10 +159,18 @@ class BaseDriver(ABC):
         else:
             raise ValueError(f"Unsupported transport type: {transport_type}")
 
-        self._connected = True
-        self.set_state("connected", True)
-        await self.events.emit(f"device.connected.{self.device_id}")
-        log.info(f"[{self.device_id}] Connected via {transport_type}")
+        try:
+            self._connected = True
+            self.set_state("connected", True)
+            await self.events.emit(f"device.connected.{self.device_id}")
+            log.info(f"[{self.device_id}] Connected via {transport_type}")
+        except Exception:
+            # Clean up transport if post-connect setup fails
+            if self.transport:
+                await self.transport.close()
+                self.transport = None
+            self._connected = False
+            raise
 
         # Start polling if configured
         poll_interval = self.config.get("poll_interval", 0)
@@ -250,19 +258,21 @@ class BaseDriver(ABC):
         Checks DRIVER_INFO["delimiter"] first, then self.config["delimiter"],
         then falls back to b"\\r". Override for custom logic.
         """
+        from server.transport.binary_helpers import encode_escape_sequences
+
         # Check DRIVER_INFO
         delim = self.DRIVER_INFO.get("delimiter")
         if delim is not None:
             if isinstance(delim, bytes):
                 return delim
-            return delim.encode().decode("unicode_escape").encode()
+            return encode_escape_sequences(delim)
 
         # Check config
         delim = self.config.get("delimiter")
         if delim is not None:
             if isinstance(delim, bytes):
                 return delim
-            return delim.encode().decode("unicode_escape").encode()
+            return encode_escape_sequences(delim)
 
         # Default
         return b"\r"
