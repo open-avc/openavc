@@ -85,7 +85,7 @@ def hex_dump(data: bytes, width: int = 16) -> str:
         chunk = data[offset : offset + width]
         hex_part = " ".join(f"{b:02X}" for b in chunk)
         ascii_part = "".join(chr(b) if 32 <= b < 127 else "." for b in chunk)
-        lines.append(f"{offset:04X}: {hex_part:<{width * 3 - 1}}  |{ascii_part}|")
+        lines.append(f"{offset:04X}: {hex_part:<{width * 3}}  |{ascii_part}|")
     return "\n".join(lines)
 
 

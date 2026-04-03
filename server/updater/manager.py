@@ -156,15 +156,14 @@ class UpdateManager:
 
         # Download and verify checksum
         if checksum_url:
-            await self._verify_checksum(client=None, checksum_url=checksum_url,
+            await self._verify_checksum(checksum_url=checksum_url,
                                         artifact_path=artifact_path, artifact_name=artifact_name)
         else:
             log.warning("No SHA256SUMS.txt in release, skipping checksum verification")
 
         return artifact_path
 
-    async def _verify_checksum(self, *, client: httpx.AsyncClient | None,
-                               checksum_url: str, artifact_path: Path,
+    async def _verify_checksum(self, *, checksum_url: str, artifact_path: Path,
                                artifact_name: str) -> None:
         """Download SHA256SUMS.txt and verify the artifact checksum."""
         self._set_state("system.update_status", "verifying")

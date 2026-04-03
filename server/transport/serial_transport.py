@@ -235,6 +235,8 @@ class SerialTransport:
         if self._writer and not self._simulate:
             try:
                 self._writer.close()
+                if hasattr(self._writer, "wait_closed"):
+                    await self._writer.wait_closed()
             except (OSError, AttributeError):
                 pass
         log.info(f"Serial disconnected from {self.port}")

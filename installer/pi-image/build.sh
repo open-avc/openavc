@@ -69,11 +69,11 @@ fi
 
 echo ""
 echo "Building Programmer UI..."
-(cd "$REPO_ROOT/web/programmer" && npm ci --silent && npm run build)
+(cd "$REPO_ROOT/web/programmer" && npm ci --silent && npm run build) || { echo "ERROR: Programmer UI build failed"; exit 1; }
 
 if [ -f "$REPO_ROOT/web/panel/package.json" ]; then
     echo "Building Panel UI..."
-    (cd "$REPO_ROOT/web/panel" && npm ci --silent && npm run build)
+    (cd "$REPO_ROOT/web/panel" && npm ci --silent && npm run build) || { echo "ERROR: Panel UI build failed"; exit 1; }
 fi
 
 # --- Package server archive ---

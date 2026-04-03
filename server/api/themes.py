@@ -23,7 +23,7 @@ router = APIRouter(prefix="/api", dependencies=[Depends(require_programmer_auth)
 _engine = None
 
 BUILTIN_THEMES_DIR = Path(__file__).resolve().parent.parent.parent / "themes"
-THEME_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9\-]*$")
+THEME_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9\-]{0,63}$")
 
 REQUIRED_FIELDS = {"name", "id", "version", "variables"}
 

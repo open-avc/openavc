@@ -152,6 +152,10 @@ class FixedLengthFrameParser(FrameParser):
     def feed(self, data: bytes) -> list[bytes]:
         self._buffer += data
         if len(self._buffer) > self._max_buffer:
+            log.warning(
+                "FixedLength parser buffer overflow (%d bytes), dropping oldest data",
+                len(self._buffer),
+            )
             self._buffer = self._buffer[-self._max_buffer:]
         messages: list[bytes] = []
         while len(self._buffer) >= self._length:

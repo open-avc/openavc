@@ -117,7 +117,7 @@ async def get_state() -> dict[str, Any]:
 async def get_state_history(count: int = 50) -> list[dict[str, Any]]:
     """Recent state change history."""
     engine = _get_engine()
-    return engine.state.get_history(count)
+    return engine.state.get_history(min(count, 10000))
 
 
 @router.get("/state/{key:path}")

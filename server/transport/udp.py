@@ -35,7 +35,11 @@ class UDPTransport:
         """Send a UDP datagram to a specific host and port."""
         if self._transport is None:
             raise ConnectionError("UDP socket not open")
-        self._transport.sendto(data, (host, port))
+        try:
+            self._transport.sendto(data, (host, port))
+        except OSError as e:
+            log.error(f"[{self._name}] UDP send failed to {host}:{port}: {e}")
+            raise
         log.info(f"[{self._name}] TX: {_format_data(data)} -> {host}:{port}")
 
     async def broadcast(self, data: bytes, port: int) -> None:
