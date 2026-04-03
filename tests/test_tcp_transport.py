@@ -1,9 +1,7 @@
 """Tests for TCP transport."""
 
 import asyncio
-import ssl
 import tempfile
-from pathlib import Path
 
 import pytest
 
@@ -515,7 +513,6 @@ async def test_default_name(echo_server):
 async def test_tls_connection_self_signed():
     """TLS connect with self-signed cert, ssl_verify=False."""
     import ssl as ssl_mod
-    import tempfile
     import os
 
     # Generate a self-signed certificate using stdlib
@@ -602,7 +599,6 @@ async def test_tls_connection_self_signed():
 async def test_tls_refused_with_invalid_cert():
     """TLS connect with verify=True against a self-signed cert should fail."""
     import ssl as ssl_mod
-    import tempfile
     import os
 
     server_ctx = ssl_mod.SSLContext(ssl_mod.PROTOCOL_TLS_SERVER)

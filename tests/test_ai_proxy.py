@@ -245,7 +245,6 @@ class TestAiChatEndpoint:
 
     async def test_non_streaming_success(self, client):
         """Non-streaming chat proxies to cloud and returns JSON."""
-        import httpx
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"response": "hello"}

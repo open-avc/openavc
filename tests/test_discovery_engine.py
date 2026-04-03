@@ -10,7 +10,7 @@ from unittest.mock import patch, AsyncMock, MagicMock
 import pytest
 
 from server.discovery.engine import DiscoveryEngine, ScanStatus
-from server.discovery.result import DiscoveredDevice, DriverMatch, compute_confidence
+from server.discovery.result import DiscoveredDevice
 
 
 # --- ScanStatus tests ---
@@ -142,7 +142,7 @@ class TestStartScan:
     async def test_auto_detect_subnets(self):
         with patch("server.discovery.engine.get_local_subnets", return_value=["192.168.1.0/24"]):
             with patch.object(self.engine, "_run_scan", new_callable=AsyncMock):
-                scan_id = await self.engine.start_scan()
+                await self.engine.start_scan()
                 assert self.engine.scan_status.subnets == ["192.168.1.0/24"]
 
     async def test_extra_subnets_appended(self):

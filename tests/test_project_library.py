@@ -1,22 +1,11 @@
 """Tests for project library — saved project file management."""
 
 import json
-import shutil
-import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 
-from server.core.project_loader import (
-    ProjectConfig,
-    ProjectMeta,
-    UIConfig,
-    UIPage,
-    UISettings,
-    GridConfig,
-    ISCConfig,
-)
 from server.core.project_library import (
     sanitize_id,
     list_projects,
@@ -29,7 +18,6 @@ from server.core.project_library import (
     replace_scripts,
     ensure_starter_projects,
     _project_meta,
-    _lib_dir,
 )
 
 
