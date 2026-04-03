@@ -75,8 +75,9 @@ export function useWebSocket() {
           // Warn user that an external change was received but we have local edits
           showInfo("Project modified externally — your unsaved changes may conflict");
         } else {
+          // Silently reload — no toast needed whether this is our own echo or
+          // another client's change, the data refreshes automatically
           debouncedProjectReload();
-          showInfo("Project updated from server");
         }
       }
 

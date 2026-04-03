@@ -106,24 +106,21 @@ class MacroEngine:
         """
         macro = self._macros.get(macro_id)
         if macro is None:
-            log.error(f"Macro '{macro_id}' not found")
-            return
+            raise ValueError(f"Macro '{macro_id}' not found")
 
         # Recursion guard: prevent self-referencing or circular macro calls
         # Hold lock through the guard check AND adding to call_stack + starting
         # execution, to prevent two concurrent calls from both passing the check
         async with self._call_stack_lock:
             if macro_id in self._call_stack:
-                log.error(
+                raise ValueError(
                     f"Macro '{macro_id}' blocked — circular/recursive call detected "
                     f"(call stack: {' -> '.join(self._call_stack)} -> {macro_id})"
                 )
-                return
             if len(self._call_stack) >= self._max_depth:
-                log.error(
+                raise ValueError(
                     f"Macro '{macro_id}' blocked — max nesting depth ({self._max_depth}) reached"
                 )
-                return
             self._call_stack.add(macro_id)
 
             name = macro.get("name", macro_id)
@@ -334,10 +331,9 @@ class MacroEngine:
                 return
 
             if _conditional_depth >= self._max_conditional_depth:
-                log.error(
-                    f"  Conditional nesting depth ({self._max_conditional_depth}) exceeded, skipping"
+                raise RuntimeError(
+                    f"Conditional nesting depth limit ({self._max_conditional_depth}) exceeded"
                 )
-                return
 
             result = self._evaluate_condition(condition)
             if result:
@@ -360,4 +356,4 @@ class MacroEngine:
                     log.debug("  Conditional: false, no else-steps")
 
         else:
-            log.warning(f"  Unknown macro action: {action}")
+            raise ValueError(f"Unknown macro action: '{action}'")

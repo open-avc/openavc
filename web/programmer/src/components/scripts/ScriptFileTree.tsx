@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { Plus, Trash2, FileText } from "lucide-react";
+import { Plus, Trash2, FileText, AlertTriangle } from "lucide-react";
 import type { ScriptConfig } from "../../api/types";
 import { CopyButton } from "../shared/CopyButton";
 
 interface ScriptFileTreeProps {
   scripts: ScriptConfig[];
   selectedId: string | null;
+  loadErrors?: Record<string, string>;
   onSelect: (id: string) => void;
   onCreate: (id: string, file: string, description: string) => void;
   onDelete: (id: string) => void;
@@ -14,6 +15,7 @@ interface ScriptFileTreeProps {
 export function ScriptFileTree({
   scripts,
   selectedId,
+  loadErrors = {},
   onSelect,
   onCreate,
   onDelete,
@@ -198,20 +200,31 @@ export function ScriptFileTree({
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", minWidth: 0 }}>
-                <FileText
-                  size={14}
-                  style={{
-                    color: s.enabled ? "var(--accent)" : "var(--text-muted)",
-                    flexShrink: 0,
-                  }}
-                />
+                {loadErrors[s.id] ? (
+                  <span title={`Load error: ${loadErrors[s.id]}`}>
+                    <AlertTriangle
+                      size={14}
+                      style={{ color: "var(--danger, #ef4444)", flexShrink: 0 }}
+                    />
+                  </span>
+                ) : (
+                  <FileText
+                    size={14}
+                    style={{
+                      color: s.enabled ? "var(--accent)" : "var(--text-muted)",
+                      flexShrink: 0,
+                    }}
+                  />
+                )}
                 <div style={{ minWidth: 0 }}>
                   <div
                     style={{
                       fontSize: "var(--font-size-sm)",
-                      color: s.enabled
-                        ? "var(--text-primary)"
-                        : "var(--text-muted)",
+                      color: loadErrors[s.id]
+                        ? "var(--danger, #ef4444)"
+                        : s.enabled
+                          ? "var(--text-primary)"
+                          : "var(--text-muted)",
                       fontWeight: selectedId === s.id ? 600 : 400,
                       overflow: "hidden",
                       textOverflow: "ellipsis",
@@ -220,7 +233,20 @@ export function ScriptFileTree({
                   >
                     {s.file}
                   </div>
-                  {s.description && (
+                  {loadErrors[s.id] ? (
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: "var(--danger, #ef4444)",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                      title={loadErrors[s.id]}
+                    >
+                      Failed to load
+                    </div>
+                  ) : s.description ? (
                     <div
                       style={{
                         fontSize: 11,
@@ -232,7 +258,7 @@ export function ScriptFileTree({
                     >
                       {s.description}
                     </div>
-                  )}
+                  ) : null}
                   <div style={{ display: "flex", alignItems: "center", gap: 2, marginTop: 1 }}>
                     <code style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-mono)", opacity: 0.7 }}>
                       {s.id}

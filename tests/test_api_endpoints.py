@@ -155,12 +155,11 @@ def test_send_command_device_not_found(client):
 # ── Macro endpoints ──
 
 
-def test_execute_macro_unknown_still_returns_200(client):
-    """Macro execute returns 200 even for unknown macros (logs error internally)."""
+def test_execute_macro_unknown_returns_404(client):
+    """Macro execute returns 404 for unknown macros."""
     c, engine = client
     resp = c.post("/api/macros/nonexistent/execute")
-    assert resp.status_code == 200
-    assert resp.json()["status"] == "executed"
+    assert resp.status_code == 404
 
 
 def test_execute_macro_success(client):

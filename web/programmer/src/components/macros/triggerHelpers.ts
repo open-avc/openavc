@@ -152,14 +152,39 @@ export const CRON_PRESETS: CronPreset[] = [
   { label: "Custom", make: () => "" },
 ];
 
-/** Basic cron expression validation (5-field format). */
+/** Cron expression validation (5-field format) with range checking. */
 export function isValidCron(cron: string): boolean {
   if (!cron.trim()) return false;
   const parts = cron.trim().split(/\s+/);
   if (parts.length !== 5) return false;
-  // Each field should only contain digits, *, -, /, ,
+  // Field ranges: minute(0-59), hour(0-23), day(1-31), month(1-12), dow(0-7)
+  const maxValues = [59, 23, 31, 12, 7];
+  const minValues = [0, 0, 1, 1, 0];
   const fieldPattern = /^[\d*\-/,]+$/;
-  return parts.every((p) => fieldPattern.test(p));
+  for (let i = 0; i < 5; i++) {
+    const p = parts[i];
+    if (!fieldPattern.test(p)) return false;
+    if (p === "*") continue;
+    // Validate each comma-separated segment
+    for (const seg of p.split(",")) {
+      // Handle step values like */5 or 1-10/2
+      const [rangePart, stepStr] = seg.split("/");
+      if (stepStr !== undefined) {
+        const step = parseInt(stepStr, 10);
+        if (isNaN(step) || step <= 0) return false;
+      }
+      if (rangePart === "*") continue;
+      // Handle ranges like 1-5
+      const [startStr, endStr] = rangePart.split("-");
+      const start = parseInt(startStr, 10);
+      if (isNaN(start) || start < minValues[i] || start > maxValues[i]) return false;
+      if (endStr !== undefined) {
+        const end = parseInt(endStr, 10);
+        if (isNaN(end) || end < minValues[i] || end > maxValues[i]) return false;
+      }
+    }
+  }
+  return true;
 }
 
 /** Human-readable summary of a cron expression. */

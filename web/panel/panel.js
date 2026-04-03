@@ -368,6 +368,10 @@ class PanelApp {
         this.holdTimers = {};
         for (const t of this.debounceTimers) clearTimeout(t);
         this.debounceTimers = [];
+        // Clean up orphaned fader drag listeners
+        for (const el of this.root.querySelectorAll('.panel-fader .fader-track-wrap')) {
+            if (el._faderDragCleanup) el._faderDragCleanup();
+        }
         // Clean up global clock interval
         if (this._clockInterval) {
             clearInterval(this._clockInterval);
@@ -639,6 +643,13 @@ class PanelApp {
         el.style.touchAction = 'none';
         el.addEventListener('touchstart', onPress);
         el.addEventListener('touchend', onRelease);
+        el.addEventListener('touchcancel', () => {
+            el.classList.remove('pressing');
+            if (this.holdTimers[element.id]) {
+                clearInterval(this.holdTimers[element.id]);
+                delete this.holdTimers[element.id];
+            }
+        });
 
         // Feedback binding
         if (element.bindings && element.bindings.feedback) {
@@ -824,6 +835,7 @@ class PanelApp {
                     value: select.value,
                 });
             }, 100);
+            this.debounceTimers.push(changeTimeout);
         });
 
         el.appendChild(select);
@@ -868,6 +880,7 @@ class PanelApp {
                     value: input.value,
                 });
             }, 300);
+            this.debounceTimers.push(changeTimeout);
         });
 
         el.appendChild(input);
@@ -1928,6 +1941,10 @@ class PanelApp {
             document.removeEventListener('touchmove', onMove);
             document.removeEventListener('touchend', onEnd);
         };
+        // Store drag cleanup so renderCurrentPage can remove orphaned listeners
+        trackWrap._faderDragCleanup = () => {
+            onEnd();
+        };
 
         trackWrap.addEventListener('mousedown', (e) => {
             onStart(e);
@@ -2765,6 +2782,8 @@ class PanelApp {
 
     evaluateTextInputValue(b) {
         const { element, binding } = b;
+        // Don't overwrite if user is actively editing (prevents cursor loss)
+        if (document.activeElement === element) return;
         const value = this.state[binding.key];
         if (value !== undefined && value !== null) {
             element.value = String(value);
@@ -2820,6 +2839,23 @@ class PanelApp {
         input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') tryUnlock();
         });
+
+        // Clear PIN when page is hidden (security on shared displays)
+        const clearOnHide = () => {
+            if (document.hidden) {
+                input.value = '';
+                error.textContent = '';
+            }
+        };
+        document.addEventListener('visibilitychange', clearOnHide);
+        // Clean up listener when overlay is removed
+        const observer = new MutationObserver(() => {
+            if (!document.body.contains(overlay)) {
+                document.removeEventListener('visibilitychange', clearOnHide);
+                observer.disconnect();
+            }
+        });
+        observer.observe(document.body, { childList: true });
 
         input.focus();
     }

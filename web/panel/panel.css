@@ -200,6 +200,19 @@ button.panel-element {
     background: var(--panel-accent);
     cursor: pointer;
 }
+.panel-slider input[type="range"]::-moz-range-thumb {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--panel-accent);
+    cursor: pointer;
+    border: none;
+}
+.panel-slider input[type="range"]::-moz-range-track {
+    background: #333;
+    border-radius: 4px;
+    border: none;
+}
 
 /* Page nav button */
 .panel-page-nav {

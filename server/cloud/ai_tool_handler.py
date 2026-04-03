@@ -1274,7 +1274,10 @@ class AIToolHandler:
         macro_id = input.get("macro_id", "")
         engine = self._get_engine()
         if engine and engine.macros:
-            await engine.macros.execute(macro_id)
+            try:
+                await engine.macros.execute(macro_id)
+            except ValueError as e:
+                return {"error": str(e)}
             return {"status": "executed", "macro_id": macro_id}
         return {"error": "Macro engine not available"}
 

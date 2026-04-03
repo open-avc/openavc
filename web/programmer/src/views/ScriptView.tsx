@@ -24,9 +24,15 @@ export function ScriptView() {
   const [saving, setSaving] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const [pendingConfirm, setPendingConfirm] = useState<{ title: string; message: string; confirmLabel: string; onConfirm: () => void } | null>(null);
+  const [scriptLoadErrors, setScriptLoadErrors] = useState<Record<string, string>>({});
 
   const editorInstanceRef = useRef<any>(null);
   const pendingLineRef = useRef<number | null>(null);
+
+  // Fetch script load errors on mount
+  useEffect(() => {
+    api.getScriptErrors().then(setScriptLoadErrors).catch(() => {});
+  }, []);
 
   // Consume pending focus from navigation store
   useEffect(() => {
@@ -131,13 +137,17 @@ export function ScriptView() {
     // Reload scripts
     try {
       const result = await api.reloadScripts();
+      setScriptLoadErrors(result.errors ?? {});
       // Add a synthetic log entry to show the result
+      const errorCount = Object.keys(result.errors ?? {}).length;
       useLogStore.getState().addLogEntry({
         timestamp: Date.now() / 1000,
-        level: "INFO",
+        level: errorCount > 0 ? "WARNING" : "INFO",
         source: "openavc.programmer",
         category: "script",
-        message: `Scripts reloaded: ${result.handlers} handler(s) registered`,
+        message: errorCount > 0
+          ? `Scripts reloaded: ${result.handlers} handler(s), ${errorCount} script(s) failed to load`
+          : `Scripts reloaded: ${result.handlers} handler(s) registered`,
       });
     } catch (e) {
       useLogStore.getState().addLogEntry({
@@ -309,6 +319,7 @@ export function ScriptView() {
           <ScriptFileTree
             scripts={scripts}
             selectedId={selectedId}
+            loadErrors={scriptLoadErrors}
             onSelect={handleSelect}
             onCreate={handleCreate}
             onDelete={handleDelete}

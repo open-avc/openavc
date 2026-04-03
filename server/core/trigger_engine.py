@@ -203,12 +203,18 @@ class TriggerEngine:
         # Check state_operator match
         op = t.get("state_operator", "any")
         target = t.get("state_value")
-        if op != "any" and not eval_operator(op, new_value, target):
-            log.debug(
-                f"Trigger {t['id']} skipped — state_operator {op} not met "
-                f"(actual={new_value!r}, target={target!r})"
-            )
-            return
+        if op != "any":
+            try:
+                matched = eval_operator(op, new_value, target)
+            except ValueError:
+                log.error(f"Trigger {t['id']} has invalid operator '{op}'")
+                return
+            if not matched:
+                log.debug(
+                    f"Trigger {t['id']} skipped — state_operator {op} not met "
+                    f"(actual={new_value!r}, target={target!r})"
+                )
+                return
 
         self._initiate_fire(ts, {"key": key, "old_value": old_value, "new_value": new_value})
 
@@ -339,7 +345,12 @@ class TriggerEngine:
                 target = t.get("state_value")
                 if op != "any":
                     current = self.state.get(state_key)
-                    if not eval_operator(op, current, target):
+                    try:
+                        matched = eval_operator(op, current, target)
+                    except ValueError:
+                        log.error(f"Trigger {t['id']} has invalid operator '{op}'")
+                        return
+                    if not matched:
                         log.info(
                             f"Trigger {t['id']} skipped — state reverted during delay"
                         )
@@ -484,7 +495,11 @@ class TriggerEngine:
             op = cond.get("operator", "eq")
             target = cond.get("value")
             actual = self.state.get(key)
-            if not eval_operator(op, actual, target):
+            try:
+                if not eval_operator(op, actual, target):
+                    return False
+            except ValueError:
+                log.error(f"Invalid condition operator '{op}' for key '{key}'")
                 return False
         return True
 
@@ -512,5 +527,9 @@ class TriggerEngine:
         ts = self._triggers.get(trigger_id)
         if not ts:
             return False
-        await self.macros.execute(ts.macro_id)
+        try:
+            await self.macros.execute(ts.macro_id)
+        except ValueError:
+            log.warning(f"Trigger {trigger_id} test: macro '{ts.macro_id}' not found")
+            return False
         return True

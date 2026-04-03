@@ -160,10 +160,15 @@ async def enable_plugin(plugin_id: str) -> dict[str, Any]:
     else:
         engine.project.plugins[plugin_id].enabled = True
 
-    # Save and start
-    save_project(engine.project_path, engine.project)
+    # Start first, only persist to disk if start succeeds
     config = engine.project.plugins[plugin_id].config
     success = await engine.plugin_loader.start_plugin(plugin_id, config)
+
+    if not success:
+        # Roll back enabled flag so it won't retry on next restart
+        engine.project.plugins[plugin_id].enabled = False
+
+    save_project(engine.project_path, engine.project)
 
     return {
         "status": "enabled" if success else "error",

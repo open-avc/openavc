@@ -56,7 +56,8 @@ def test_eval_operator():
     assert ev("truthy", 0, None) is False
     assert ev("falsy", False, None) is True
     assert ev("falsy", 1, None) is False
-    assert ev("unknown_op", 1, 1) is False
+    with pytest.raises(ValueError, match="Unknown condition operator"):
+        ev("unknown_op", 1, 1)
     # None safety for gt/lt/gte/lte
     assert ev("gt", None, 5) is False
     assert ev("lt", 5, None) is False

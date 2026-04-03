@@ -315,8 +315,13 @@ export async function deleteScript(
 export async function reloadScripts(): Promise<{
   status: string;
   handlers: number;
+  errors?: Record<string, string>;
 }> {
   return request("/scripts/reload", { method: "POST" });
+}
+
+export async function getScriptErrors(): Promise<Record<string, string>> {
+  return request("/scripts/errors");
 }
 
 export async function getScriptReferences(): Promise<ScriptReference[]> {

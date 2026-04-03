@@ -131,9 +131,19 @@ async def get_state_value(key: str) -> dict[str, Any]:
 @router.put("/state/{key:path}")
 async def set_state_value(key: str, body: StateSetRequest) -> dict[str, Any]:
     """Set a state value."""
+    if not _is_flat_primitive(body.value):
+        raise _api_error(
+            422,
+            "Value must be a flat primitive (str, int, float, bool, or null)",
+        )
     engine = _get_engine()
     engine.state.set(key, body.value, source="api")
     return {"key": key, "value": body.value}
+
+
+def _is_flat_primitive(value: object) -> bool:
+    """Check that a value is a flat primitive (str, int, float, bool, None)."""
+    return value is None or isinstance(value, (str, int, float, bool))
 
 
 # --- Devices ---
@@ -923,7 +933,12 @@ async def uninstall_driver(driver_id: str) -> dict[str, Any]:
 async def execute_macro(macro_id: str) -> dict[str, Any]:
     """Execute a macro by ID."""
     engine = _get_engine()
-    await engine.macros.execute(macro_id)
+    try:
+        await engine.macros.execute(macro_id)
+    except ValueError as e:
+        raise _api_error(404, str(e))
+    except Exception as e:
+        raise _api_error(500, f"Macro execution failed: {e}", exc=e)
     return {"status": "executed", "macro_id": macro_id}
 
 
@@ -1135,7 +1150,17 @@ async def reload_scripts() -> dict[str, Any]:
         raise HTTPException(status_code=503, detail="Script engine not initialized")
     scripts_data = [s.model_dump() for s in engine.project.scripts] if engine.project else []
     count = engine.scripts.reload_scripts(scripts_data)
-    return {"status": "reloaded", "handlers": count}
+    errors = engine.scripts.get_load_errors()
+    return {"status": "reloaded", "handlers": count, "errors": errors}
+
+
+@router.get("/scripts/errors")
+async def get_script_errors() -> dict[str, str]:
+    """Return load errors for scripts that failed to load."""
+    engine = _get_engine()
+    if not engine.scripts:
+        return {}
+    return engine.scripts.get_load_errors()
 
 
 # --- Driver Definitions ---

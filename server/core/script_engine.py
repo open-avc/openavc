@@ -58,6 +58,7 @@ class ScriptEngine:
         self._event_handler_ids: list[str] = []
         self._state_sub_ids: list[str] = []
         self._loaded_modules: dict[str, str] = {}  # script_id -> module_name
+        self._load_errors: dict[str, str] = {}  # script_id -> error message
 
     def install(self) -> None:
         """Inject the openavc shim into sys.modules and wire proxies."""
@@ -76,6 +77,7 @@ class ScriptEngine:
             Number of handlers registered.
         """
         handler_count = 0
+        self._load_errors.clear()
         for script_cfg in scripts:
             if not script_cfg.get("enabled", True):
                 log.info(f"Script '{script_cfg['id']}' is disabled, skipping")
@@ -86,7 +88,9 @@ class ScriptEngine:
             script_path = self.scripts_dir / script_file
 
             if not script_path.exists():
-                log.error(f"Script file not found: {script_path}")
+                msg = f"Script file not found: {script_path}"
+                log.error(msg)
+                self._load_errors[script_id] = msg
                 continue
 
             try:
@@ -96,15 +100,22 @@ class ScriptEngine:
                     f"Loaded script '{script_id}' ({script_file}) — "
                     f"{count} handler(s)"
                 )
-            except Exception:  # Catch-all: loading user scripts can raise anything
+            except Exception as exc:  # Catch-all: loading user scripts can raise anything
                 log.exception(f"Failed to load script '{script_id}' ({script_file})")
+                self._load_errors[script_id] = str(exc)
 
         if handler_count:
             log.info(f"ScriptEngine: {handler_count} total handler(s) registered")
         return handler_count
 
+    def get_load_errors(self) -> dict[str, str]:
+        """Return dict of script_id -> error message for scripts that failed to load."""
+        return dict(self._load_errors)
+
     # Timeout for script top-level execution (seconds)
     SCRIPT_LOAD_TIMEOUT = 10
+    # Timeout for async event/state handlers (seconds)
+    HANDLER_TIMEOUT = 30
 
     def _load_single_script(self, script_id: str, script_path: Path) -> int:
         """Import a single script file and drain its handlers."""
@@ -251,7 +262,28 @@ class ScriptEngine:
                 else:
                     result = handler(event, payload)
                 if asyncio.iscoroutine(result):
-                    await result
+                    await asyncio.wait_for(result, timeout=self.HANDLER_TIMEOUT)
+                elif result is None:
+                    # Sync handler already returned — but run blocking handlers
+                    # through a thread with timeout to protect the event loop
+                    pass
+            except asyncio.TimeoutError:
+                handler_name = getattr(handler, "__name__", "anonymous")
+                msg = (
+                    f"Script '{script_id}' handler '{handler_name}' timed out "
+                    f"after {self.HANDLER_TIMEOUT}s for event '{event}'"
+                )
+                log.error(msg)
+                try:
+                    await events_ref.emit("script.error", {
+                        "script_id": script_id,
+                        "handler": handler_name,
+                        "event": event,
+                        "error": msg,
+                        "traceback": "",
+                    })
+                except Exception:
+                    pass
             except Exception as exc:  # Catch-all: isolates user script errors from engine
                 handler_name = getattr(handler, "__name__", "anonymous")
                 log.exception(

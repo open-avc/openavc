@@ -257,11 +257,50 @@ function _generateStepLines(
     return;
   }
   for (const step of steps) {
+    // skip_if guard
+    if (step.skip_if) {
+      const guardLine = _conditionToGuard(step.skip_if, indent);
+      if (guardLine) {
+        // _conditionToGuard generates "if <inverse-condition>:" — we want skip logic
+        // so: if condition matches, skip (continue)
+        const key = _pyEscape(step.skip_if.key ?? "");
+        const val = JSON.stringify(step.skip_if.value ?? "");
+        const op = step.skip_if.operator ?? "eq";
+        const opMap: Record<string, string> = { eq: "==", ne: "!=", gt: ">", lt: "<", gte: ">=", lte: "<=" };
+        const pyOp = opMap[op] ?? "==";
+        if (op === "truthy") {
+          lines.push(`${indent}if state.get("${key}"):  # skip_if`);
+        } else if (op === "falsy") {
+          lines.push(`${indent}if not state.get("${key}"):  # skip_if`);
+        } else {
+          lines.push(`${indent}if state.get("${key}") ${pyOp} ${val}:  # skip_if`);
+        }
+        lines.push(`${indent}    pass  # skipped`);
+        // Wrap the actual step in else
+        lines.push(`${indent}else:`);
+        // Re-enter with extra indent
+        _generateStepLines(lines, [{ ...step, skip_if: undefined }], indent + "    ");
+        continue;
+      }
+    }
     switch (step.action) {
       case "device.command": {
         const params = step.params ? `, ${JSON.stringify(step.params)}` : "";
         lines.push(
           `${indent}await devices.send("${_pyEscape(step.device ?? "")}", "${_pyEscape(step.command ?? "")}"${params})`
+        );
+        break;
+      }
+      case "group.command": {
+        const params = step.params ? `, ${JSON.stringify(step.params)}` : "";
+        lines.push(
+          `${indent}# Group command: ${_pyEscape(step.group ?? "")} -> ${_pyEscape(step.command ?? "")}`
+        );
+        lines.push(
+          `${indent}for device_id in device_groups.get("${_pyEscape(step.group ?? "")}", []):`
+        );
+        lines.push(
+          `${indent}    await devices.send(device_id, "${_pyEscape(step.command ?? "")}"${params})`
         );
         break;
       }
@@ -280,6 +319,37 @@ function _generateStepLines(
       }
       case "macro":
         lines.push(`${indent}await macros.execute("${_pyEscape(step.macro ?? "")}")`);
+        break;
+      case "conditional": {
+        const cond = step.condition;
+        if (cond) {
+          const key = _pyEscape(cond.key ?? "");
+          const val = JSON.stringify(cond.value ?? "");
+          const op = cond.operator ?? "eq";
+          const opMap: Record<string, string> = { eq: "==", ne: "!=", gt: ">", lt: "<", gte: ">=", lte: "<=" };
+          const pyOp = opMap[op] ?? "==";
+          if (op === "truthy") {
+            lines.push(`${indent}if state.get("${key}"):`);
+          } else if (op === "falsy") {
+            lines.push(`${indent}if not state.get("${key}"):`);
+          } else {
+            lines.push(`${indent}if state.get("${key}") ${pyOp} ${val}:`);
+          }
+          const thenSteps = (step as any).then_steps ?? [];
+          const elseSteps = (step as any).else_steps ?? [];
+          _generateStepLines(lines, thenSteps, indent + "    ");
+          if (elseSteps.length > 0) {
+            lines.push(`${indent}else:`);
+            _generateStepLines(lines, elseSteps, indent + "    ");
+          }
+        } else {
+          lines.push(`${indent}# Conditional step with no condition set`);
+          lines.push(`${indent}pass`);
+        }
+        break;
+      }
+      default:
+        lines.push(`${indent}# Unsupported step type: ${step.action}`);
         break;
     }
   }

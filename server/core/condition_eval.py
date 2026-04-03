@@ -47,4 +47,7 @@ def eval_operator(op: str, actual: Any, target: Any) -> bool:
         return bool(actual)
     if op == "falsy":
         return not bool(actual)
-    return False
+    raise ValueError(
+        f"Unknown condition operator: '{op}'. "
+        f"Valid operators: eq, ne, gt, lt, gte, lte, truthy, falsy"
+    )

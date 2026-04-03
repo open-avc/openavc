@@ -109,8 +109,9 @@ async def test_error_continues_to_next_step(macro_engine, core):
 
 
 async def test_unknown_macro(macro_engine):
-    # Should log error but not crash
-    await macro_engine.execute("nonexistent")
+    # Should raise ValueError for unknown macro
+    with pytest.raises(ValueError, match="not found"):
+        await macro_engine.execute("nonexistent")
 
 
 async def test_multi_step_sequence(macro_engine, core):

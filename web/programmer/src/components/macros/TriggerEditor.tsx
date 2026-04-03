@@ -369,7 +369,8 @@ function StateChangeEditor({
         <span style={unitStyle}>seconds</span>
       </div>
       <div style={hintStyle}>
-        Wait, then re-check before executing. Good for occupancy timeouts.
+        Wait this long after debounce settles, then re-check conditions before executing.
+        Good for "turn off projector 10 minutes after room empties" style timeouts.
       </div>
 
       {/* Debounce */}
@@ -385,7 +386,8 @@ function StateChangeEditor({
         <span style={unitStyle}>seconds</span>
       </div>
       <div style={hintStyle}>
-        Wait for changes to settle. Good for flickering devices.
+        Restart the timer each time the state changes again. Only fires once changes stop
+        for this duration. Good for flickering devices or rapid value changes.
       </div>
     </div>
   );

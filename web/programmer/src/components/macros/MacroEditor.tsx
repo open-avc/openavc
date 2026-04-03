@@ -381,6 +381,7 @@ export function MacroEditor({
               Cancel group:
               <input
                 type="text"
+                list="cancel-groups"
                 value={macro.cancel_group ?? ""}
                 onChange={(e) => onUpdate({ ...macro, cancel_group: e.target.value || undefined })}
                 placeholder="none"
@@ -396,6 +397,11 @@ export function MacroEditor({
                   color: "var(--text-primary)",
                 }}
               />
+              <datalist id="cancel-groups">
+                {[...new Set(allMacros.filter(m => m.cancel_group && m.id !== macro.id).map(m => m.cancel_group!))].map(g => (
+                  <option key={g} value={g} />
+                ))}
+              </datalist>
             </label>
           </div>
         </div>
