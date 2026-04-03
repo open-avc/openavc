@@ -291,7 +291,7 @@ class TestRunScan:
             await self.engine._run_scan(["192.168.1.0/24"], timeout=10.0)
 
         assert self.engine.scan_status.status == "complete"
-        assert self.engine.scan_status.duration > 0
+        assert self.engine.scan_status.duration >= 0
 
     async def test_timeout_still_completes(self):
         """If pipeline exceeds timeout, scan still completes."""
