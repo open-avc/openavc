@@ -19,12 +19,11 @@ import re
 from typing import Any
 
 from server.drivers.base import BaseDriver
+from server.transport.binary_helpers import encode_escape_sequences as _safe_encode_escapes
 from server.transport.frame_parsers import FrameParser
 from server.utils.logger import get_logger
 
 log = get_logger(__name__)
-
-from server.transport.binary_helpers import encode_escape_sequences as _safe_encode_escapes
 
 
 class ConfigurableDriver(BaseDriver):

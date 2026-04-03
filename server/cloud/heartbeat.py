@@ -11,7 +11,6 @@ for platform-specific features like CPU temperature.
 
 from __future__ import annotations
 
-import platform
 import time
 from typing import Any, TYPE_CHECKING
 
