@@ -365,7 +365,11 @@ class UpdateManager:
             "sudo", "systemctl", "stop", "openavc",
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
         )
-        await proc.communicate()
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"Failed to stop openavc service (exit {proc.returncode}): {stderr.decode()}"
+            )
 
         try:
             # Step 2: Back up current install to .previous (for rollback)
@@ -396,7 +400,9 @@ class UpdateManager:
                 )
                 _, stderr = await proc.communicate()
                 if proc.returncode != 0:
-                    log.warning("pip install returned non-zero: %s", stderr.decode())
+                    raise RuntimeError(
+                        f"pip install failed (exit {proc.returncode}): {stderr.decode()}"
+                    )
 
         finally:
             # Step 5: Always restart the service (even if extraction failed,

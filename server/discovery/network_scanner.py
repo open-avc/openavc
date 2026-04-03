@@ -117,7 +117,7 @@ async def _ping(ip: str, timeout: float = 1.0) -> bool:
     if _IS_WINDOWS:
         cmd = ["ping", "-n", "1", "-w", str(int(timeout * 1000)), ip]
     else:
-        cmd = ["ping", "-c", "1", "-W", str(int(timeout)), ip]
+        cmd = ["ping", "-c", "1", "-W", str(max(1, int(timeout))), ip]
 
     try:
         proc = await asyncio.create_subprocess_exec(

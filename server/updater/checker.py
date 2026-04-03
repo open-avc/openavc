@@ -72,9 +72,19 @@ def is_newer(candidate: str, current: str) -> bool:
         return False
     if not c_pre and r_pre:
         return True
-    # Both have prerelease or both stable: compare lexicographically
+    # Both have prerelease or both stable: compare per semver spec
     if c_pre and r_pre:
-        return c_pre > r_pre
+        c_parts = c_pre.split(".")
+        r_parts = r_pre.split(".")
+        for cp, rp in zip(c_parts, r_parts):
+            try:
+                ci, ri = int(cp), int(rp)
+                if ci != ri:
+                    return ci > ri
+            except ValueError:
+                if cp != rp:
+                    return cp > rp
+        return len(c_parts) > len(r_parts)
     return False
 
 

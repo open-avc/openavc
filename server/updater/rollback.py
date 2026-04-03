@@ -138,14 +138,25 @@ def _rollback_windows(data_dir: Path, from_version: str, to_version: str) -> boo
         log.error("Rollback failed: no update-cache directory")
         return False
 
-    # Find the most recent cached installer that isn't the current version
+    # Find the cached installer matching the version we're rolling back to
     installers = sorted(cache_dir.glob("OpenAVC-Setup-*.exe"))
     if not installers:
         log.error("Rollback failed: no cached installer found")
         return False
 
-    # Use the most recent cached installer
-    installer = installers[-1]
+    # Prefer the exact from_version installer; fall back to any that isn't to_version
+    target_name = f"OpenAVC-Setup-{from_version}.exe"
+    installer = None
+    for inst in installers:
+        if inst.name == target_name:
+            installer = inst
+            break
+    if installer is None:
+        candidates = [i for i in installers if to_version not in i.name]
+        if not candidates:
+            log.error("Rollback failed: no suitable installer (only v%s cached)", to_version)
+            return False
+        installer = candidates[-1]
     log.warning(
         "Automatic rollback: running cached installer %s (v%s failed after update from v%s)",
         installer.name, to_version, from_version,

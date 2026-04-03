@@ -609,13 +609,12 @@ class SNMPScanner:
     ) -> bytes | None:
         """Send a UDP packet and receive the response."""
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.setblocking(False)
+        sock.settimeout(2.0)
 
         try:
             await loop.run_in_executor(
                 None, lambda: sock.sendto(packet, (ip, SNMP_PORT))
             )
-            sock.settimeout(2.0)
             data = await loop.run_in_executor(
                 None, lambda: sock.recv(4096)
             )

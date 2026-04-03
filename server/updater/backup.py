@@ -38,7 +38,7 @@ def create_backup(data_dir: Path, current_version: str) -> Path:
         if projects_dir.exists():
             for file_path in projects_dir.rglob("*"):
                 if file_path.is_file():
-                    arcname = str(file_path.relative_to(data_dir))
+                    arcname = file_path.relative_to(data_dir).as_posix()
                     zf.write(file_path, arcname)
 
         # Back up drivers directory
@@ -46,7 +46,7 @@ def create_backup(data_dir: Path, current_version: str) -> Path:
         if drivers_dir.exists():
             for file_path in drivers_dir.rglob("*"):
                 if file_path.is_file():
-                    arcname = str(file_path.relative_to(data_dir))
+                    arcname = file_path.relative_to(data_dir).as_posix()
                     zf.write(file_path, arcname)
 
         # Back up system.json
