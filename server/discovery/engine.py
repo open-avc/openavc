@@ -338,7 +338,7 @@ class DiscoveryEngine:
                 on_found=on_ping_found,
             )
             self.scan_status.total_hosts_scanned = sum(
-                len(list(__import__("ipaddress").IPv4Network(s, strict=False).hosts()))
+                max(0, __import__("ipaddress").IPv4Network(s, strict=False).num_addresses - 2)
                 for s in subnets
             )
 

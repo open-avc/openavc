@@ -251,6 +251,11 @@ class AlertMonitor:
                             "detail": {"rule_id": rule["id"], "duration_seconds": duration},
                         })
 
+                # Prune stale device entries (devices not seen in 24 hours)
+                stale_cutoff = now - 86400
+                for dev_id in [k for k, t in self._last_state_times.items() if t < stale_cutoff]:
+                    self._last_state_times.pop(dev_id, None)
+
                 # Check absence rules
                 for rule in self._rules:
                     if rule.get("rule_type") != "absence" or not rule.get("enabled", True):

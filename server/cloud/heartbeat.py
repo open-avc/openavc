@@ -53,6 +53,10 @@ class HeartbeatCollector:
         self._ws_client_count_fn = ws_client_count_fn
         self._start_time = time.time()
 
+        # Resolve data directory for disk usage reporting
+        from server.system_config import get_data_dir
+        self._data_dir = str(get_data_dir())
+
     async def collect(self) -> dict[str, Any]:
         """
         Collect all metrics and return as a heartbeat payload dict.
@@ -98,13 +102,10 @@ class HeartbeatCollector:
         return 0.0
 
     def _get_disk_percent(self) -> float:
-        """Get disk usage percentage for the root/main partition."""
+        """Get disk usage percentage for the partition holding user data."""
         if HAS_PSUTIL:
             try:
-                if platform.system() == "Windows":
-                    return psutil.disk_usage("C:\\").percent
-                else:
-                    return psutil.disk_usage("/").percent
+                return psutil.disk_usage(self._data_dir).percent
             except (OSError, AttributeError):
                 pass  # psutil can fail on restricted environments or missing mounts
         return 0.0

@@ -2,6 +2,8 @@
 
 import json
 import logging
+import os
+import tempfile
 from pathlib import Path
 
 import server.config as cfg
@@ -30,11 +32,20 @@ def load_cloud_config() -> dict:
 
 
 def save_cloud_config(config: dict) -> None:
-    """Save cloud config to disk."""
+    """Save cloud config to disk (atomic write to prevent corruption)."""
     path = _config_path()
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(config, indent=2), encoding="utf-8")
+        fd, tmp_path = tempfile.mkstemp(
+            dir=str(path.parent), suffix=".tmp", prefix="cloud_"
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(config, f, indent=2)
+            os.replace(tmp_path, str(path))
+        except BaseException:
+            os.unlink(tmp_path)
+            raise
         log.info("Saved cloud config to %s", path)
     except OSError as e:
         log.error("Failed to save cloud config to %s: %s", path, e)

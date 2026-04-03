@@ -17,10 +17,20 @@ from server.core.event_bus import EventBus
 from server.core.state_store import StateStore
 from server.utils.logger import get_logger
 
+log = get_logger(__name__)
+
+
+def _log_task_exception(task: asyncio.Task) -> None:
+    """Log unhandled exceptions from fire-and-forget tasks."""
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc:
+        log.error("Unhandled exception in background task: %s", exc, exc_info=exc)
+
+
 if TYPE_CHECKING:
     from server.drivers.base import BaseDriver
-
-log = get_logger(__name__)
 
 # Driver registry — maps driver ID strings to driver classes
 _DRIVER_REGISTRY: dict[str, type[BaseDriver]] = {}
@@ -446,6 +456,7 @@ class DeviceManager:
         if device_id in self._reconnect_tasks:
             return  # Already reconnecting
         task = asyncio.create_task(self._reconnect_loop(device_id))
+        task.add_done_callback(_log_task_exception)
         self._reconnect_tasks[device_id] = task
 
     def _cancel_reconnect(self, device_id: str) -> None:

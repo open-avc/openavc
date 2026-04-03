@@ -104,6 +104,7 @@ def load_driver_files(directories: list[Path | str]) -> int:
     from server.drivers.configurable import create_configurable_driver_class
 
     count = 0
+    seen_ids: set[str] = set()
     for dir_path in directories:
         dir_path = Path(dir_path)
         if not dir_path.exists():
@@ -115,6 +116,10 @@ def load_driver_files(directories: list[Path | str]) -> int:
                 continue
 
             driver_id = driver_def.get("id", "")
+            if driver_id in seen_ids:
+                log.warning(f"Duplicate driver ID '{driver_id}' in {filepath.name} — skipping")
+                continue
+            seen_ids.add(driver_id)
             try:
                 driver_class = create_configurable_driver_class(driver_def)
                 register_driver(driver_class)

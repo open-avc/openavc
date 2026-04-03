@@ -279,6 +279,7 @@ class BaseDriver(ABC):
         log.warning(f"[{self.device_id}] Connection lost")
         try:
             loop = asyncio.get_running_loop()
+            loop.create_task(self.stop_polling())
             loop.create_task(
                 self.events.emit(f"device.disconnected.{self.device_id}")
             )

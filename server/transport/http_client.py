@@ -215,6 +215,7 @@ class HTTPClientTransport:
             path = "/" + path
 
         try:
+            req_timeout = getattr(self, "_request_timeout", None)
             response = await self._client.request(
                 method,
                 path,
@@ -223,6 +224,7 @@ class HTTPClientTransport:
                 data=form_data,
                 content=content,
                 headers=headers,
+                **({"timeout": req_timeout} if req_timeout else {}),
             )
 
             # Parse JSON if content type indicates it
@@ -297,20 +299,15 @@ class HTTPClientTransport:
         For HTTP, every request is inherently a send-and-wait, so this
         is straightforward — send the request and return the response text.
         """
-        # Temporarily override timeout if different from default
-        original_timeout = None
-        if self._client and timeout != self.timeout:
-            original_timeout = self._client.timeout
-            self._client.timeout = httpx.Timeout(timeout)
-
+        # Store timeout override for the next send() call
+        self._request_timeout = httpx.Timeout(timeout) if timeout != self.timeout else None
         try:
             await self.send(data)
             if self._last_response is not None:
                 return self._last_response.text.encode("utf-8")
             return b""
         finally:
-            if original_timeout is not None and self._client:
-                self._client.timeout = original_timeout
+            self._request_timeout = None
 
     # --- Internal helpers ---
 

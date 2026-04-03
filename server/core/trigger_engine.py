@@ -418,9 +418,13 @@ class TriggerEngine:
         """Wait for running macro to finish, re-check conditions, then fire."""
         macro_id = ts.macro_id
         # Poll until macro finishes (max 5 minutes)
+        trigger_id = ts.trigger.get("id", "")
         for _ in range(300):
             await asyncio.sleep(1)
             if not self._running:
+                return
+            if ts.trigger.get("disabled"):
+                log.debug(f"Trigger {trigger_id} disabled during queue wait — aborting")
                 return
             if not self.macros.is_macro_running(macro_id):
                 break
