@@ -136,15 +136,45 @@ class UpdateManager:
         download_dir.mkdir(parents=True, exist_ok=True)
         artifact_path = download_dir / artifact_name
 
+        # Check available disk space (require at least 500 MB)
+        import shutil
+        disk = shutil.disk_usage(str(download_dir))
+        if disk.free < 500 * 1024 * 1024:
+            free_mb = disk.free // (1024 * 1024)
+            raise RuntimeError(
+                f"Insufficient disk space for update: {free_mb} MB free, need at least 500 MB"
+            )
+
         log.info("Downloading update artifact: %s", artifact_url)
 
-        # Download artifact with progress tracking
+        # Download artifact with progress tracking and resume support
+        headers: dict[str, str] = {}
+        downloaded = 0
+        file_mode = "wb"
+        if artifact_path.exists():
+            downloaded = artifact_path.stat().st_size
+            headers["Range"] = f"bytes={downloaded}-"
+            file_mode = "ab"
+            log.info("Resuming download from byte %d", downloaded)
+
         async with httpx.AsyncClient(timeout=300.0, follow_redirects=True) as client:
-            async with client.stream("GET", artifact_url) as response:
-                response.raise_for_status()
-                total = int(response.headers.get("content-length", 0))
-                downloaded = 0
-                with open(artifact_path, "wb") as f:
+            async with client.stream("GET", artifact_url, headers=headers) as response:
+                if response.status_code == 416:
+                    # Range not satisfiable — file already complete or server doesn't support range
+                    log.info("Download already complete (416), re-downloading")
+                    downloaded = 0
+                    file_mode = "wb"
+                    # Fall through to re-download without Range header below
+                elif response.status_code == 206:
+                    # Partial content — resume working
+                    total = downloaded + int(response.headers.get("content-length", 0))
+                else:
+                    response.raise_for_status()
+                    total = int(response.headers.get("content-length", 0))
+                    downloaded = 0
+                    file_mode = "wb"  # Server doesn't support range, start over
+
+                with open(artifact_path, file_mode) as f:
                     async for chunk in response.aiter_bytes(chunk_size=65536):
                         f.write(chunk)
                         downloaded += len(chunk)

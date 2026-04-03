@@ -230,17 +230,12 @@ class TestWsAuthValid:
         headers = {"sec-websocket-protocol": "auth.ws-key"}
         assert check_ws_auth({}, headers) is True
 
-    def test_token_query_param_with_password(self, monkeypatch):
+    def test_token_query_param_not_accepted(self, monkeypatch):
+        """Token-in-URL was removed — must not authenticate."""
         monkeypatch.setattr(config, "PROGRAMMER_PASSWORD", "secret123")
         monkeypatch.setattr(config, "API_KEY", "")
 
-        assert check_ws_auth({"token": "secret123"}, {}) is True
-
-    def test_token_query_param_with_api_key(self, monkeypatch):
-        monkeypatch.setattr(config, "PROGRAMMER_PASSWORD", "")
-        monkeypatch.setattr(config, "API_KEY", "ws-key")
-
-        assert check_ws_auth({"token": "ws-key"}, {}) is True
+        assert check_ws_auth({"token": "secret123"}, {}) is False
 
 
 # ---------------------------------------------------------------------------

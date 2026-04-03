@@ -1,8 +1,7 @@
 """
 OpenAVC optional authentication.
 
-All auth is opt-in: if no password / API key is configured, everything
-is open (backward compatible).
+All auth is opt-in: if no password / API key is configured, everything is open.
 
 - OPENAVC_PROGRAMMER_PASSWORD — HTTP Basic password for /programmer and protected API routes
 - OPENAVC_API_KEY — alternative token-based auth via X-API-Key header
@@ -65,13 +64,11 @@ async def require_programmer_auth(
 
 
 def check_ws_auth(query_params: dict, headers: dict) -> bool:
-    """Check WebSocket authentication from headers, subprotocol, or query params.
+    """Check WebSocket authentication from headers or subprotocol.
 
     Checks (in priority order):
     1. X-API-Key header (best for programmatic access)
     2. Sec-WebSocket-Protocol subprotocol prefixed with "auth." (browser-safe)
-    3. ?token= query param (legacy fallback, avoid in production since
-       tokens in URLs can appear in proxy logs and browser history)
 
     Returns True if auth passes or is not required.
     """
@@ -97,14 +94,6 @@ def check_ws_auth(query_params: dict, headers: dict) -> bool:
                     return True
                 if config.API_KEY and _check_api_key(token):
                     return True
-
-    # Check ?token= query param (legacy fallback)
-    token = query_params.get("token", "")
-    if token:
-        if config.PROGRAMMER_PASSWORD and _check_password(token):
-            return True
-        if config.API_KEY and _check_api_key(token):
-            return True
 
     return False
 

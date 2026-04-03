@@ -9,6 +9,8 @@ Protocol: JSON messages with a "type" field.
 
 import asyncio
 import json
+import time
+from collections import deque
 from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -97,9 +99,20 @@ async def websocket_endpoint(ws: WebSocket) -> None:
         # Start heartbeat
         ping_task = asyncio.create_task(_ping_loop())
 
+        # Per-client rate limiting: max 200 messages per second
+        _msg_times: deque[float] = deque(maxlen=200)
+
         # Message loop
         while True:
             text = await ws.receive_text()
+
+            # Rate limit check
+            now = time.monotonic()
+            if len(_msg_times) >= 200 and now - _msg_times[0] < 1.0:
+                await ws.send_json({"type": "error", "message": "Rate limit exceeded"})
+                continue
+            _msg_times.append(now)
+
             try:
                 msg = json.loads(text)
                 await _handle_message(ws, msg, client_type)
