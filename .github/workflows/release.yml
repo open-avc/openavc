@@ -425,6 +425,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           name: OpenAVC v${{ env.VERSION }}
+          draft: false
           prerelease: ${{ needs.version.outputs.prerelease }}
           generate_release_notes: true
           files: release/*
