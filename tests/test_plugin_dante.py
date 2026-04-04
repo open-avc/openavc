@@ -16,15 +16,22 @@ import pytest
 
 from server.core.plugin_test_harness import PluginTestHarness
 
-# Add openavc-plugins to the import path so we can import the plugin
+# Add openavc-plugins to the import path so we can import the plugin.
+# Skip the entire module in CI where the sibling repo isn't checked out.
 _PLUGINS_ROOT = Path(__file__).resolve().parents[2] / "openavc-plugins"
 if str(_PLUGINS_ROOT) not in sys.path:
     sys.path.insert(0, str(_PLUGINS_ROOT))
 
-from integrations.dante.dante_plugin import (  # noqa: E402
-    DanteDDMPlugin,
-    _sanitize_id,
-)
+try:
+    from integrations.dante.dante_plugin import (  # noqa: E402
+        DanteDDMPlugin,
+        _sanitize_id,
+    )
+except ModuleNotFoundError:
+    pytest.skip(
+        "openavc-plugins repo not available (CI)",
+        allow_module_level=True,
+    )
 
 
 # ──── Fixtures ────
