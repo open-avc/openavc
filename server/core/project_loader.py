@@ -508,6 +508,8 @@ def build_default_plugin_config(schema: dict) -> dict:
     for key, field in schema.items():
         if field.get("type") == "group":
             config[key] = build_default_plugin_config(field.get("fields", {}))
+        elif field.get("type") == "mapping_list":
+            config[key] = field.get("default", [])
         elif "default" in field:
             config[key] = field["default"]
     return config

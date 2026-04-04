@@ -338,6 +338,7 @@ export interface SchemaField {
   step?: number;
   options?: { value: string; label: string }[];
   fields?: Record<string, SchemaField>;
+  item_schema?: Record<string, SchemaField>;
   collapsed?: boolean;
   visible_when?: Record<string, unknown>;
   min_items?: number;

@@ -166,6 +166,17 @@ function SchemaFormRenderer({
           );
         }
 
+        if (field.type === "mapping_list" && field.item_schema) {
+          return (
+            <SchemaFieldMappingList
+              key={key}
+              field={field}
+              items={(values[key] as Record<string, unknown>[]) ?? []}
+              onChange={(v) => onChange(key, v)}
+            />
+          );
+        }
+
         return (
           <SchemaFieldInput
             key={key}
@@ -232,6 +243,219 @@ function SchemaFieldGroup({
           />
         </div>
       )}
+    </div>
+  );
+}
+
+function SchemaFieldMappingList({
+  field,
+  items,
+  onChange,
+}: {
+  field: SchemaField;
+  items: Record<string, unknown>[];
+  onChange: (value: Record<string, unknown>[]) => void;
+}) {
+  const schema = field.item_schema!;
+  const columns = Object.entries(schema);
+
+  const buildDefaultRow = (): Record<string, unknown> => {
+    const row: Record<string, unknown> = {};
+    for (const [key, col] of columns) {
+      row[key] = col.default ?? "";
+    }
+    return row;
+  };
+
+  const addRow = () => {
+    if (field.max_items != null && items.length >= field.max_items) return;
+    onChange([...items, buildDefaultRow()]);
+  };
+
+  const removeRow = (index: number) => {
+    if (field.min_items != null && items.length <= field.min_items) return;
+    onChange(items.filter((_, i) => i !== index));
+  };
+
+  const updateCell = (rowIndex: number, key: string, value: unknown) => {
+    const next = items.map((row, i) => (i === rowIndex ? { ...row, [key]: value } : row));
+    onChange(next);
+  };
+
+  const cellStyle: React.CSSProperties = {
+    padding: "2px 4px",
+  };
+
+  const cellInputStyle: React.CSSProperties = {
+    width: "100%",
+    padding: "var(--space-xs) var(--space-sm)",
+    borderRadius: "var(--border-radius)",
+    border: "1px solid var(--border-color)",
+    background: "var(--bg-surface)",
+    color: "var(--text-primary)",
+    fontSize: "var(--font-size-sm)",
+    boxSizing: "border-box",
+  };
+
+  const renderCell = (col: SchemaField, value: unknown, rowIndex: number, key: string) => {
+    switch (col.type) {
+      case "boolean":
+        return (
+          <input
+            type="checkbox"
+            checked={Boolean(value)}
+            onChange={(e) => updateCell(rowIndex, key, e.target.checked)}
+            style={{ width: 16, height: 16, accentColor: "var(--accent)" }}
+          />
+        );
+      case "select":
+        return (
+          <select
+            value={String(value ?? col.default ?? "")}
+            onChange={(e) => updateCell(rowIndex, key, e.target.value)}
+            style={cellInputStyle}
+          >
+            {col.options?.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        );
+      case "integer":
+      case "float":
+        return (
+          <input
+            type="number"
+            value={value != null && value !== "" ? String(value) : ""}
+            min={col.min}
+            max={col.max}
+            step={col.step ?? (col.type === "float" ? 0.1 : 1)}
+            placeholder={col.placeholder}
+            onChange={(e) => {
+              const v = e.target.value;
+              updateCell(rowIndex, key, v === "" ? null : col.type === "integer" ? parseInt(v, 10) : parseFloat(v));
+            }}
+            style={{ ...cellInputStyle, width: 70 }}
+          />
+        );
+      default:
+        return (
+          <input
+            type="text"
+            value={String(value ?? "")}
+            placeholder={col.placeholder}
+            onChange={(e) => updateCell(rowIndex, key, e.target.value)}
+            style={cellInputStyle}
+          />
+        );
+    }
+  };
+
+  return (
+    <div>
+      <label
+        style={{
+          display: "block",
+          fontSize: "var(--font-size-sm)",
+          fontWeight: 500,
+          marginBottom: "var(--space-xs)",
+          color: "var(--text-secondary)",
+        }}
+      >
+        {field.label}
+      </label>
+      {field.description && (
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
+          {field.description}
+        </div>
+      )}
+      <div
+        style={{
+          border: "1px solid var(--border-color)",
+          borderRadius: "var(--border-radius)",
+          overflow: "hidden",
+        }}
+      >
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "var(--font-size-sm)" }}>
+          <thead>
+            <tr style={{ background: "var(--bg-hover)" }}>
+              {columns.map(([key, col]) => (
+                <th
+                  key={key}
+                  style={{
+                    padding: "var(--space-xs) var(--space-sm)",
+                    textAlign: "left",
+                    fontWeight: 500,
+                    color: "var(--text-secondary)",
+                    fontSize: 11,
+                    borderBottom: "1px solid var(--border-color)",
+                  }}
+                >
+                  {col.label}
+                </th>
+              ))}
+              <th style={{ width: 32, borderBottom: "1px solid var(--border-color)" }} />
+            </tr>
+          </thead>
+          <tbody>
+            {items.length === 0 && (
+              <tr>
+                <td
+                  colSpan={columns.length + 1}
+                  style={{ padding: "var(--space-md)", textAlign: "center", color: "var(--text-muted)", fontSize: 12 }}
+                >
+                  No items. Click + to add one.
+                </td>
+              </tr>
+            )}
+            {items.map((row, rowIndex) => (
+              <tr key={rowIndex} style={{ borderBottom: "1px solid var(--border-color)" }}>
+                {columns.map(([key, col]) => (
+                  <td key={key} style={cellStyle}>
+                    {renderCell(col, row[key], rowIndex, key)}
+                  </td>
+                ))}
+                <td style={{ ...cellStyle, textAlign: "center" }}>
+                  <button
+                    onClick={() => removeRow(rowIndex)}
+                    title="Remove row"
+                    style={{
+                      background: "none",
+                      color: "var(--text-muted)",
+                      fontSize: 14,
+                      cursor: "pointer",
+                      padding: "2px 6px",
+                      borderRadius: "var(--border-radius)",
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.color = "var(--color-error)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
+                  >
+                    &times;
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <button
+          onClick={addRow}
+          disabled={field.max_items != null && items.length >= field.max_items}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "var(--space-xs)",
+            width: "100%",
+            padding: "var(--space-xs) var(--space-sm)",
+            background: "var(--bg-hover)",
+            fontSize: "var(--font-size-sm)",
+            color: "var(--text-secondary)",
+            cursor: "pointer",
+            borderTop: "1px solid var(--border-color)",
+          }}
+        >
+          + Add
+        </button>
+      </div>
     </div>
   );
 }
