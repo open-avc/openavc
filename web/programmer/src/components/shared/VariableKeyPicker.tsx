@@ -91,54 +91,62 @@ export function VariableKeyPicker({
       });
     }
 
-    // Device State
+    // Live state keys — group by prefix
     if (showDeviceState) {
+      // Build device name lookup from project
+      const deviceNames: Record<string, string> = {};
       for (const d of devices) {
-        const prefix = `device.${d.id}.`;
-        for (const k of Object.keys(liveState)) {
-          if (k.startsWith(prefix)) {
-            entries.push({
-              key: k,
-              label: k.slice(prefix.length),
-              group: `device:${d.id}`,
-              groupDesc: "Live hardware state reported by this device",
-              deviceName: d.name,
-            });
-          }
+        deviceNames[d.id] = d.name;
+      }
+
+      // Build page/element lookup for UI keys
+      const uiElements = new Set<string>();
+      const pageNames: Record<string, string> = {};
+      for (const page of pages) {
+        for (const el of page.elements ?? []) {
+          uiElements.add(el.id);
+          pageNames[el.id] = page.name;
         }
       }
 
-      // System keys
       for (const k of Object.keys(liveState)) {
-        if (k.startsWith("system.")) {
+        if (k.startsWith("device.")) {
+          const parts = k.split(".");
+          const deviceId = parts[1] ?? "";
+          entries.push({
+            key: k,
+            label: parts.slice(2).join("."),
+            group: `device:${deviceId}`,
+            groupDesc: "Live hardware state reported by this device",
+            deviceName: deviceNames[deviceId] || deviceId,
+          });
+        } else if (k.startsWith("system.")) {
           entries.push({
             key: k,
             label: k.slice(7),
             group: "system",
             groupDesc: "System-level values (uptime, status)",
           });
-        }
-      }
-
-      // UI override keys
-      const overrideProps = [
-        { prop: "label", desc: "Label override" },
-        { prop: "visible", desc: "Show/hide" },
-        { prop: "bg_color", desc: "Background color" },
-        { prop: "text_color", desc: "Text color" },
-        { prop: "opacity", desc: "Opacity (0-1)" },
-      ];
-      for (const page of pages) {
-        for (const el of page.elements ?? []) {
-          for (const { prop } of overrideProps) {
-            entries.push({
-              key: `ui.${el.id}.${prop}`,
-              label: `${el.id}.${prop}`,
-              group: `ui:${page.id}`,
-              groupDesc: "Override element appearance from macros or scripts",
-              deviceName: page.name,
-            });
-          }
+        } else if (k.startsWith("plugin.")) {
+          const parts = k.split(".");
+          const pluginId = parts[1] ?? "";
+          entries.push({
+            key: k,
+            label: parts.slice(2).join("."),
+            group: `plugin:${pluginId}`,
+            groupDesc: "State from a running plugin",
+            deviceName: pluginId,
+          });
+        } else if (k.startsWith("ui.")) {
+          const parts = k.split(".");
+          const elId = parts[1] ?? "";
+          entries.push({
+            key: k,
+            label: parts.slice(1).join("."),
+            group: uiElements.has(elId) ? `ui:${elId}` : "ui",
+            groupDesc: "Override element appearance from macros or scripts",
+            deviceName: pageNames[elId] || "",
+          });
         }
       }
     }
