@@ -41,6 +41,7 @@ interface SurfaceLayout {
   columns_state_pattern?: string;
   cell_type?: string;
   cell_state_pattern?: string;
+  presets?: boolean;
 }
 
 interface ControlDef {
@@ -77,6 +78,7 @@ interface SurfaceConfiguratorProps {
   pluginId: string;
   config: Record<string, unknown>;
   onConfigChange: (config: Record<string, unknown>) => void;
+  onRequestConfigRefresh?: () => void;
 }
 
 // ──── Main Component ────
@@ -86,6 +88,7 @@ export function SurfaceConfigurator({
   pluginId,
   config,
   onConfigChange,
+  onRequestConfigRefresh,
 }: SurfaceConfiguratorProps) {
   const [selectedControl, setSelectedControl] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
@@ -210,7 +213,7 @@ export function SurfaceConfigurator({
       );
 
     case "matrix":
-      return <RoutingMatrix layout={layout} pluginId={pluginId} />;
+      return <RoutingMatrix layout={layout} pluginId={pluginId} config={config} onRequestConfigRefresh={onRequestConfigRefresh} />;
 
     default:
       return (
@@ -584,11 +587,20 @@ function CustomSurface({
 function RoutingMatrix({
   layout,
   pluginId,
+  config,
+  onRequestConfigRefresh,
 }: {
   layout: SurfaceLayout;
   pluginId: string;
+  config: Record<string, unknown>;
+  onRequestConfigRefresh?: () => void;
 }) {
   const liveState = useConnectionStore((s) => s.liveState);
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [newPresetName, setNewPresetName] = useState("");
+  const [presetDropdownOpen, setPresetDropdownOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Get row/column labels from state
   const rowPrefix = (layout.rows_state_pattern ?? "").replace("*", "");
@@ -616,82 +628,272 @@ function RoutingMatrix({
     await api.emitContextAction(pluginId, actionId, { row, col });
   };
 
-  if (rowNames.length === 0 && colNames.length === 0) {
-    return (
-      <div style={{ color: "var(--text-muted)", padding: "var(--space-lg)", fontSize: "var(--font-size-sm)" }}>
-        No routing data available. The plugin needs to populate state keys matching the configured patterns.
-      </div>
-    );
-  }
+  // Preset support
+  const showPresets = layout.presets === true;
+  const presets = (config?._presets as Record<string, unknown[]>) ?? {};
+  const presetNames = Object.keys(presets);
+  const activePreset = String(liveState[`plugin.${pluginId}.active_preset`] ?? "");
+  const isDirty = Boolean(liveState[`plugin.${pluginId}.preset_dirty`]);
+
+  const handleRecallPreset = async (name: string) => {
+    setPresetDropdownOpen(false);
+    await api.emitContextAction(pluginId, "recall_preset", { preset_name: name });
+  };
+
+  const handleSavePreset = async () => {
+    const name = newPresetName.trim();
+    if (!name) return;
+    await api.emitContextAction(pluginId, "save_preset", { name });
+    setNewPresetName("");
+    setShowSaveDialog(false);
+    onRequestConfigRefresh?.();
+  };
+
+  const handleUpdatePreset = async () => {
+    if (!activePreset) return;
+    await api.emitContextAction(pluginId, "update_preset", { name: activePreset });
+    onRequestConfigRefresh?.();
+  };
+
+  const handleDeletePreset = async (name: string) => {
+    await api.emitContextAction(pluginId, "delete_preset", { name });
+    setConfirmDelete(null);
+    onRequestConfigRefresh?.();
+  };
+
+  const hasData = rowNames.length > 0 || colNames.length > 0;
+
+  const btnStyle: React.CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: "var(--space-xs)",
+    padding: "var(--space-xs) var(--space-sm)",
+    borderRadius: "var(--border-radius)",
+    background: "var(--bg-hover)",
+    fontSize: "var(--font-size-sm)",
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  };
 
   return (
-    <div style={{ overflow: "auto" }}>
-      {layout.columns_label && (
-        <div style={{ textAlign: "center", fontSize: "var(--font-size-sm)", color: "var(--text-muted)", marginBottom: "var(--space-xs)" }}>
-          {layout.columns_label}
-        </div>
-      )}
-      <table style={{ borderCollapse: "collapse" }}>
-        <thead>
-          <tr>
-            <th style={{ padding: "var(--space-xs) var(--space-sm)", fontSize: 10, color: "var(--text-muted)" }}>
-              {layout.rows_label ?? ""}
-            </th>
-            {colNames.map((col) => (
-              <th
-                key={col}
-                style={{
-                  padding: "var(--space-xs)",
-                  fontSize: 10,
-                  color: "var(--text-muted)",
-                  fontWeight: 400,
-                  writingMode: "vertical-lr",
-                  transform: "rotate(180deg)",
-                  maxHeight: 80,
-                }}
-              >
-                {col}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rowNames.map((row) => (
-            <tr key={row}>
-              <td
+    <div>
+      {/* Preset toolbar */}
+      {showPresets && (
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "var(--space-sm)",
+          marginBottom: "var(--space-md)",
+          flexWrap: "wrap",
+        }}>
+          {/* Preset dropdown */}
+          <div style={{ position: "relative" }} ref={dropdownRef}>
+            <button
+              onClick={() => setPresetDropdownOpen(!presetDropdownOpen)}
+              style={{
+                ...btnStyle,
+                border: "1px solid var(--border-color)",
+                background: "var(--bg-surface)",
+                minWidth: 150,
+              }}
+            >
+              <span style={{ flex: 1, textAlign: "left" }}>
+                {activePreset || "No preset"}
+                {activePreset && isDirty && (
+                  <span style={{ color: "var(--color-warning, #f59e0b)", marginLeft: 4, fontSize: 11 }}>
+                    (modified)
+                  </span>
+                )}
+              </span>
+              <ChevronRight size={14} style={{ transform: presetDropdownOpen ? "rotate(90deg)" : "rotate(0)", transition: "transform 0.15s" }} />
+            </button>
+            {presetDropdownOpen && (
+              <div style={{
+                position: "absolute",
+                top: "100%",
+                left: 0,
+                marginTop: 4,
+                background: "var(--bg-surface)",
+                border: "1px solid var(--border-color)",
+                borderRadius: "var(--border-radius)",
+                boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                zIndex: 100,
+                minWidth: 180,
+                maxHeight: 200,
+                overflow: "auto",
+              }}>
+                {presetNames.length === 0 && (
+                  <div style={{ padding: "var(--space-sm) var(--space-md)", color: "var(--text-muted)", fontSize: 12 }}>
+                    No presets saved yet
+                  </div>
+                )}
+                {presetNames.map((name) => (
+                  <button
+                    key={name}
+                    onClick={() => handleRecallPreset(name)}
+                    style={{
+                      display: "block",
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "var(--space-sm) var(--space-md)",
+                      background: name === activePreset ? "var(--bg-hover)" : "transparent",
+                      fontSize: "var(--font-size-sm)",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {name}
+                    {name === activePreset && <span style={{ color: "var(--text-muted)", marginLeft: 6, fontSize: 11 }}>(active)</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Save as New */}
+          {hasData && !showSaveDialog && (
+            <button onClick={() => setShowSaveDialog(true)} style={btnStyle}>
+              Save as New...
+            </button>
+          )}
+          {showSaveDialog && (
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
+              <input
+                value={newPresetName}
+                onChange={(e) => setNewPresetName(e.target.value)}
+                placeholder="Preset name"
+                onKeyDown={(e) => e.key === "Enter" && handleSavePreset()}
+                autoFocus
                 style={{
                   padding: "var(--space-xs) var(--space-sm)",
-                  fontSize: 10,
-                  color: "var(--text-muted)",
-                  whiteSpace: "nowrap",
+                  borderRadius: "var(--border-radius)",
+                  border: "1px solid var(--border-color)",
+                  background: "var(--bg-surface)",
+                  color: "var(--text-primary)",
+                  fontSize: "var(--font-size-sm)",
+                  width: 140,
                 }}
-              >
-                {row}
-              </td>
-              {colNames.map((col) => {
-                const active = getCellState(row, col);
-                return (
-                  <td key={col} style={{ padding: 1 }}>
-                    <button
-                      onClick={() => handleCellClick(row, col)}
-                      style={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: 3,
-                        background: active ? "var(--accent)" : "var(--bg-surface)",
-                        border: "1px solid var(--border-color)",
-                        cursor: "pointer",
-                        transition: "background var(--transition-fast)",
-                      }}
-                      title={`${row} → ${col}: ${active ? "Routed" : "Unrouted"}`}
-                    />
+              />
+              <button onClick={handleSavePreset} style={{ ...btnStyle, background: "var(--accent)", color: "white" }}>Save</button>
+              <button onClick={() => { setShowSaveDialog(false); setNewPresetName(""); }} style={btnStyle}>Cancel</button>
+            </div>
+          )}
+
+          {/* Update existing */}
+          {activePreset && isDirty && (
+            <button onClick={handleUpdatePreset} style={{ ...btnStyle, background: "var(--accent)", color: "white" }}>
+              Update "{activePreset}"
+            </button>
+          )}
+
+          {/* Delete */}
+          {activePreset && !confirmDelete && (
+            <button
+              onClick={() => setConfirmDelete(activePreset)}
+              style={{ ...btnStyle, color: "var(--text-muted)" }}
+              title="Delete preset"
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
+          {confirmDelete && (
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", fontSize: 12 }}>
+              <span style={{ color: "var(--color-error, #ef4444)" }}>Delete "{confirmDelete}"?</span>
+              <button onClick={() => handleDeletePreset(confirmDelete)} style={{ ...btnStyle, fontSize: 12 }}>Yes</button>
+              <button onClick={() => setConfirmDelete(null)} style={{ ...btnStyle, fontSize: 12 }}>No</button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!hasData && (
+        <div style={{
+          padding: "var(--space-xl)",
+          textAlign: "center",
+          color: "var(--text-muted)",
+        }}>
+          <div style={{ fontSize: "var(--font-size-base)", fontWeight: 500, marginBottom: "var(--space-sm)" }}>
+            Routing Matrix
+          </div>
+          <div style={{ fontSize: "var(--font-size-sm)", maxWidth: 420, margin: "0 auto", lineHeight: 1.5 }}>
+            The routing matrix will appear here once the plugin connects and discovers
+            devices. Click crosspoints to route audio between transmitters and receivers.
+            {showPresets && " Save your routing configuration as presets to recall them later."}
+          </div>
+        </div>
+      )}
+
+      {/* Matrix table */}
+      {hasData && (
+        <div style={{ overflow: "auto" }}>
+          {layout.columns_label && (
+            <div style={{ textAlign: "center", fontSize: "var(--font-size-sm)", color: "var(--text-muted)", marginBottom: "var(--space-xs)" }}>
+              {layout.columns_label}
+            </div>
+          )}
+          <table style={{ borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={{ padding: "var(--space-xs) var(--space-sm)", fontSize: 10, color: "var(--text-muted)" }}>
+                  {layout.rows_label ?? ""}
+                </th>
+                {colNames.map((col) => (
+                  <th
+                    key={col}
+                    style={{
+                      padding: "var(--space-xs)",
+                      fontSize: 10,
+                      color: "var(--text-muted)",
+                      fontWeight: 400,
+                      writingMode: "vertical-lr",
+                      transform: "rotate(180deg)",
+                      maxHeight: 80,
+                    }}
+                  >
+                    {col}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rowNames.map((row) => (
+                <tr key={row}>
+                  <td
+                    style={{
+                      padding: "var(--space-xs) var(--space-sm)",
+                      fontSize: 10,
+                      color: "var(--text-muted)",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {row}
                   </td>
-                );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+                  {colNames.map((col) => {
+                    const active = getCellState(row, col);
+                    return (
+                      <td key={col} style={{ padding: 1 }}>
+                        <button
+                          onClick={() => handleCellClick(row, col)}
+                          style={{
+                            width: 24,
+                            height: 24,
+                            borderRadius: 3,
+                            background: active ? "var(--accent)" : "var(--bg-surface)",
+                            border: "1px solid var(--border-color)",
+                            cursor: "pointer",
+                            transition: "background var(--transition-fast)",
+                          }}
+                          title={`${row} \u2192 ${col}: ${active ? "Routed" : "Unrouted"}`}
+                        />
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

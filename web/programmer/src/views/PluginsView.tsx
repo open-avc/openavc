@@ -8,6 +8,7 @@ import * as api from "../api/restClient";
 import type { PluginInfo, SchemaField } from "../api/types";
 import { SurfaceConfigurator } from "../components/plugins/SurfaceConfigurator";
 import { BrowsePlugins } from "../components/plugins/BrowsePlugins";
+import { VariableKeyPicker } from "../components/shared/VariableKeyPicker";
 
 // ──── Status Dot ────
 
@@ -337,6 +338,15 @@ function SchemaFieldMappingList({
             style={{ ...cellInputStyle, width: 70 }}
           />
         );
+      case "state_key":
+        return (
+          <VariableKeyPicker
+            value={String(value ?? "")}
+            onChange={(k) => updateCell(rowIndex, key, k)}
+            placeholder={col.placeholder ?? "Select state key..."}
+            style={{ minWidth: 200 }}
+          />
+        );
       default:
         return (
           <input
@@ -534,6 +544,15 @@ function SchemaFieldInput({
       break;
 
     case "state_key":
+      input = (
+        <VariableKeyPicker
+          value={String(value ?? "")}
+          onChange={(key) => onChange(key)}
+          placeholder={field.placeholder ?? "Select state key..."}
+        />
+      );
+      break;
+
     case "macro_ref":
     case "device_ref":
     case "string":
@@ -542,7 +561,7 @@ function SchemaFieldInput({
         <input
           type="text"
           value={String(value ?? "")}
-          placeholder={field.placeholder ?? (field.type === "state_key" ? "e.g. device.projector.power" : field.type === "macro_ref" ? "Macro ID" : field.type === "device_ref" ? "Device ID" : "")}
+          placeholder={field.placeholder ?? (field.type === "macro_ref" ? "Macro ID" : field.type === "device_ref" ? "Device ID" : "")}
           maxLength={field.max_length}
           onChange={(e) => onChange(e.target.value)}
           style={inputStyle}
@@ -880,6 +899,14 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
                 await updateConfig(plugin.plugin_id, newConfig);
                 setSaving(false);
               }, 1500);
+            }}
+            onRequestConfigRefresh={async () => {
+              try {
+                const r = await api.getPluginConfig(plugin.plugin_id);
+                setConfigValues(r.config);
+              } catch (e) {
+                console.error("Failed to refresh config:", e);
+              }
             }}
           />
         </div>
