@@ -12,6 +12,7 @@ import {
   Bot,
   Plug,
   ArrowUpCircle,
+  Settings,
 } from "lucide-react";
 import { usePluginStore } from "../../store/pluginStore";
 import { useConnectionStore } from "../../store/connectionStore";
@@ -30,6 +31,7 @@ export type ViewId =
   | "ai"
   | "cloud"
   | "log"
+  | "settings"
   | "updates"
   | `plugin-view:${string}`;
 
@@ -51,6 +53,7 @@ const navItems: { id: ViewId; label: string; icon: typeof Monitor }[] = [
   { id: "ai", label: "AI Assistant", icon: Bot },
   { id: "cloud", label: "Cloud", icon: Cloud },
   { id: "log", label: "Log", icon: ScrollText },
+  { id: "settings", label: "Settings", icon: Settings },
 ];
 
 export function Sidebar({ activeView, onViewChange }: SidebarProps) {

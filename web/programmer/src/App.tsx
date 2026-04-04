@@ -1,25 +1,28 @@
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, lazy, Suspense } from "react";
 import { Sidebar } from "./components/layout/Sidebar";
 import { ErrorBoundary } from "./components/shared/ErrorBoundary";
 import ToastContainer from "./components/shared/ToastContainer";
-import { ProjectView } from "./views/ProjectView";
-import { DeviceView } from "./views/DeviceView";
-import { LogView } from "./views/LogView";
-import { UIBuilderView } from "./views/UIBuilderView";
-import { MacroView } from "./views/MacroView";
-import { ScriptView } from "./views/ScriptView";
-import { VariablesView } from "./views/VariablesView";
-import { ISCView } from "./views/ISCView";
-import { CloudSettingsView } from "./views/CloudSettingsView";
-import { AIChatView } from "./views/AIChatView";
 import { DashboardView } from "./views/DashboardView";
-import { PluginsView } from "./views/PluginsView";
-import { PluginExtensionView } from "./views/PluginExtensionView";
-import { UpdatesView } from "./views/UpdatesView";
 import { useProjectStore } from "./store/projectStore";
 import { useNavigationStore } from "./store/navigationStore";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { showInfo } from "./store/toastStore";
+
+// Lazy-load views that aren't shown on initial page load
+const ProjectView = lazy(() => import("./views/ProjectView").then((m) => ({ default: m.ProjectView })));
+const DeviceView = lazy(() => import("./views/DeviceView").then((m) => ({ default: m.DeviceView })));
+const LogView = lazy(() => import("./views/LogView").then((m) => ({ default: m.LogView })));
+const UIBuilderView = lazy(() => import("./views/UIBuilderView").then((m) => ({ default: m.UIBuilderView })));
+const MacroView = lazy(() => import("./views/MacroView").then((m) => ({ default: m.MacroView })));
+const ScriptView = lazy(() => import("./views/ScriptView").then((m) => ({ default: m.ScriptView })));
+const VariablesView = lazy(() => import("./views/VariablesView").then((m) => ({ default: m.VariablesView })));
+const ISCView = lazy(() => import("./views/ISCView").then((m) => ({ default: m.ISCView })));
+const CloudSettingsView = lazy(() => import("./views/CloudSettingsView").then((m) => ({ default: m.CloudSettingsView })));
+const AIChatView = lazy(() => import("./views/AIChatView").then((m) => ({ default: m.AIChatView })));
+const PluginsView = lazy(() => import("./views/PluginsView").then((m) => ({ default: m.PluginsView })));
+const PluginExtensionView = lazy(() => import("./views/PluginExtensionView").then((m) => ({ default: m.PluginExtensionView })));
+const UpdatesView = lazy(() => import("./views/UpdatesView").then((m) => ({ default: m.UpdatesView })));
+const SystemSettingsView = lazy(() => import("./views/SystemSettingsView").then((m) => ({ default: m.SystemSettingsView })));
 
 function App() {
   const activeView = useNavigationStore((s) => s.activeView);
@@ -101,6 +104,8 @@ function App() {
         return <AIChatView />;
       case "cloud":
         return <CloudSettingsView />;
+      case "settings":
+        return <SystemSettingsView />;
       case "updates":
         return <UpdatesView />;
       default:
@@ -115,7 +120,9 @@ function App() {
     <div style={{ display: "flex", height: "100vh" }}>
       <Sidebar activeView={activeView} onViewChange={handleViewChange} />
       <main style={{ flex: 1, overflow: "hidden" }}>
-        <ErrorBoundary>{renderView()}</ErrorBoundary>
+        <ErrorBoundary>
+          <Suspense fallback={null}>{renderView()}</Suspense>
+        </ErrorBoundary>
       </main>
       <ToastContainer />
     </div>

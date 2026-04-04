@@ -1078,3 +1078,28 @@ export async function importTheme(file: File): Promise<{ status: string; id: str
   }
   return res.json();
 }
+
+// --- System Config ---
+
+export interface SystemConfig {
+  network: { http_port: number; bind_address: string };
+  auth: { programmer_password: string; api_key: string; panel_lock_code: string };
+  isc: { enabled: boolean; discovery_enabled: boolean; auth_key: string };
+  logging: { level: string; file_enabled: boolean; max_size_mb: number; max_files: number };
+  updates: { check_enabled: boolean; channel: string; auto_check_interval_hours: number; auto_backup_before_update: boolean; notify_only: boolean };
+  cloud: { enabled: boolean; endpoint: string; system_key: string; system_id: string };
+  kiosk: { enabled: boolean; target_url: string; cursor_visible: boolean };
+}
+
+export async function getSystemConfig(): Promise<SystemConfig> {
+  return request("/system/config");
+}
+
+export async function updateSystemConfig(
+  data: Partial<SystemConfig>
+): Promise<{ success: boolean; updated_sections: string[] }> {
+  return request("/system/config", {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
