@@ -5,6 +5,7 @@ import {
   Plus,
   Trash2,
   Copy,
+  Clipboard,
   ChevronUp,
   ChevronDown,
   ChevronRight,
@@ -16,6 +17,8 @@ import {
   Clock,
   CheckCircle,
   XCircle,
+  LayoutTemplate,
+  GitBranch,
 } from "lucide-react";
 import {
   DndContext,
@@ -38,7 +41,17 @@ import { useLogStore } from "../../store/logStore";
 import type { StepError, ConditionalResult, GroupCommandResult, MacroLastRun } from "../../store/logStore";
 import { StepEditor } from "./StepEditor";
 import { TriggerList } from "./TriggerList";
-import { STEP_TYPES, getStepType } from "./macroHelpers";
+import {
+  STEP_TYPES,
+  getStepType,
+  copyStep,
+  getClipboardStep,
+  hasClipboardStep,
+  STEP_TEMPLATES,
+  getMacroCallers,
+  getMacroCallees,
+  detectCircularDependency,
+} from "./macroHelpers";
 import { CopyButton } from "../shared/CopyButton";
 import * as api from "../../api/restClient";
 
@@ -60,6 +73,7 @@ interface SortableStepItemProps {
   onMoveStep: (index: number, direction: -1 | 1) => void;
   onDeleteStep: (index: number) => void;
   onDuplicateStep: (index: number) => void;
+  onCopyStep: (index: number) => void;
   onUpdateStep: (index: number, updated: MacroStep) => void;
 }
 
@@ -81,6 +95,7 @@ function SortableStepItem({
   onMoveStep,
   onDeleteStep,
   onDuplicateStep,
+  onCopyStep,
   onUpdateStep,
 }: SortableStepItemProps) {
   const {
@@ -196,6 +211,13 @@ function SortableStepItem({
             title="Move down"
           >
             <ChevronDown size={14} />
+          </button>
+          <button
+            onClick={() => onCopyStep(index)}
+            style={iconBtnStyle}
+            title="Copy step to clipboard"
+          >
+            <Clipboard size={14} />
           </button>
           <button
             onClick={() => onDuplicateStep(index)}
@@ -326,6 +348,8 @@ export function MacroEditor({
 }: MacroEditorProps) {
   const [expandedStep, setExpandedStep] = useState<number | null>(null);
   const [showAddMenu, setShowAddMenu] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [clipboardRevision, setClipboardRevision] = useState(0); // force re-render on copy
 
   const macroProgress = useLogStore((s) => s.macroProgress);
   const isRunning =
@@ -378,6 +402,35 @@ export function MacroEditor({
     onUpdate({ ...macro, steps });
     setExpandedStep(index + 1);
   };
+
+  const handleCopyStep = (index: number) => {
+    copyStep(macro.steps[index]);
+    setClipboardRevision((r) => r + 1);
+  };
+
+  const handlePasteStep = () => {
+    const step = getClipboardStep();
+    if (!step) return;
+    onUpdate({ ...macro, steps: [...macro.steps, step] });
+    setExpandedStep(macro.steps.length);
+    setShowAddMenu(false);
+  };
+
+  const addTemplate = (templateSteps: MacroStep[]) => {
+    const copies = templateSteps.map((s) => ({ ...s }));
+    onUpdate({ ...macro, steps: [...macro.steps, ...copies] });
+    setExpandedStep(macro.steps.length);
+    setShowTemplates(false);
+    setShowAddMenu(false);
+  };
+
+  // Circular dependency detection (8.7)
+  const circularWarning = detectCircularDependency(macro.id, allMacros);
+
+  // Dependency info (8.6)
+  const callers = getMacroCallers(macro.id, allMacros);
+  const calleeIds = getMacroCallees(macro.id, allMacros);
+  const callees = calleeIds.map((id) => allMacros.find((m) => m.id === id)).filter(Boolean);
 
   const moveStep = (index: number, direction: -1 | 1) => {
     const newIndex = index + direction;
@@ -558,6 +611,66 @@ export function MacroEditor({
         </button>
       </div>
 
+      {/* Circular dependency warning (8.7) */}
+      {circularWarning && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--space-sm)",
+            padding: "var(--space-sm) var(--space-md)",
+            background: "rgba(239,68,68,0.1)",
+            borderBottom: "1px solid rgba(239,68,68,0.3)",
+            fontSize: 12,
+            color: "#ef4444",
+          }}
+        >
+          <AlertTriangle size={14} style={{ flexShrink: 0 }} />
+          <span>
+            <strong>Circular dependency detected:</strong>{" "}
+            {circularWarning.map((id) => {
+              const m = allMacros.find((mac) => mac.id === id);
+              return m?.name ?? id;
+            }).join(" → ")}
+          </span>
+        </div>
+      )}
+
+      {/* Dependency tree (8.6) */}
+      {(callers.length > 0 || callees.length > 0) && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: "var(--space-sm)",
+            padding: "var(--space-xs) var(--space-md)",
+            borderBottom: "1px solid var(--border-color)",
+            fontSize: 11,
+            color: "var(--text-muted)",
+          }}
+        >
+          <GitBranch size={12} style={{ flexShrink: 0 }} />
+          {callers.length > 0 && (
+            <span>
+              Called by: {callers.map((m) => (
+                <span key={m.id} style={{ color: "#ec4899", fontWeight: 500 }}>{m.name}</span>
+              )).reduce<React.ReactNode[]>((acc, el, i) => i === 0 ? [el] : [...acc, ", ", el], [])}
+            </span>
+          )}
+          {callers.length > 0 && callees.length > 0 && (
+            <span style={{ color: "var(--border-color)" }}>|</span>
+          )}
+          {callees.length > 0 && (
+            <span>
+              Calls: {callees.map((m) => (
+                <span key={m!.id} style={{ color: "#ec4899", fontWeight: 500 }}>{m!.name}</span>
+              )).reduce<React.ReactNode[]>((acc, el, i) => i === 0 ? [el] : [...acc, ", ", el], [])}
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Triggers + Steps */}
       <div style={{ flex: 1, overflow: "auto", padding: "var(--space-md)" }}>
         {/* Triggers section */}
@@ -611,6 +724,7 @@ export function MacroEditor({
                     onMoveStep={moveStep}
                     onDeleteStep={deleteStep}
                     onDuplicateStep={duplicateStep}
+                    onCopyStep={handleCopyStep}
                     onUpdateStep={updateStep}
                   />
                 ))}
@@ -626,25 +740,45 @@ export function MacroEditor({
 
         {/* Add step button */}
         <div style={{ marginTop: "var(--space-md)", position: "relative" }}>
-          <button
-            onClick={() => setShowAddMenu(!showAddMenu)}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "var(--space-xs)",
-              padding: "var(--space-sm) var(--space-md)",
-              borderRadius: "var(--border-radius)",
-              border: "1px dashed var(--border-color)",
-              background: "transparent",
-              color: "var(--text-secondary)",
-              fontSize: "var(--font-size-sm)",
-              cursor: "pointer",
-              width: "100%",
-              justifyContent: "center",
-            }}
-          >
-            <Plus size={14} /> Add Step
-          </button>
+          <div style={{ display: "flex", gap: "var(--space-sm)" }}>
+            <button
+              onClick={() => { setShowAddMenu(!showAddMenu); setShowTemplates(false); }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "var(--space-xs)",
+                padding: "var(--space-sm) var(--space-md)",
+                borderRadius: "var(--border-radius)",
+                border: "1px dashed var(--border-color)",
+                background: "transparent",
+                color: "var(--text-secondary)",
+                fontSize: "var(--font-size-sm)",
+                cursor: "pointer",
+                flex: 1,
+                justifyContent: "center",
+              }}
+            >
+              <Plus size={14} /> Add Step
+            </button>
+            <button
+              onClick={() => { setShowTemplates(!showTemplates); setShowAddMenu(false); }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "var(--space-xs)",
+                padding: "var(--space-sm) var(--space-md)",
+                borderRadius: "var(--border-radius)",
+                border: "1px dashed var(--border-color)",
+                background: "transparent",
+                color: "var(--text-secondary)",
+                fontSize: "var(--font-size-sm)",
+                cursor: "pointer",
+              }}
+              title="Insert a pre-built step template"
+            >
+              <LayoutTemplate size={14} /> Templates
+            </button>
+          </div>
 
           {showAddMenu && (
             <div
@@ -661,6 +795,39 @@ export function MacroEditor({
                 zIndex: 10,
               }}
             >
+              {/* Paste from clipboard */}
+              {hasClipboardStep() && (
+                <>
+                  <div
+                    onClick={handlePasteStep}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "var(--space-sm)",
+                      padding: "var(--space-sm) var(--space-md)",
+                      cursor: "pointer",
+                      fontSize: "var(--font-size-sm)",
+                      borderBottom: "1px solid var(--border-color)",
+                    }}
+                    onMouseEnter={(e) =>
+                      ((e.currentTarget as HTMLElement).style.background =
+                        "var(--bg-hover)")
+                    }
+                    onMouseLeave={(e) =>
+                      ((e.currentTarget as HTMLElement).style.background =
+                        "transparent")
+                    }
+                  >
+                    <Clipboard size={14} style={{ color: "var(--accent)", flexShrink: 0 }} />
+                    <div>
+                      <div style={{ fontWeight: 500, color: "var(--accent)" }}>Paste Copied Step</div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>
+                        {(() => { const s = getClipboardStep(); return s ? getStepType(s.action)?.summary(s, devices as any) ?? s.action : ""; })()}
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
               {STEP_TYPES.map((t) => (
                 <div
                   key={t.action}
@@ -695,6 +862,59 @@ export function MacroEditor({
                   <div>
                     <div style={{ fontWeight: 500, color: "var(--text-primary)" }}>{t.label}</div>
                     <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>{t.description}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Templates dropdown (8.2) */}
+          {showTemplates && (
+            <div
+              style={{
+                position: "absolute",
+                top: "100%",
+                right: 0,
+                marginTop: 4,
+                minWidth: 320,
+                background: "var(--bg-surface)",
+                border: "1px solid var(--border-color)",
+                borderRadius: "var(--border-radius)",
+                boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+                zIndex: 10,
+              }}
+            >
+              <div style={{ padding: "var(--space-sm) var(--space-md)", fontSize: 11, color: "var(--text-muted)", borderBottom: "1px solid var(--border-color)" }}>
+                Pre-built step patterns. Edit them after inserting.
+              </div>
+              {STEP_TEMPLATES.map((t) => (
+                <div
+                  key={t.id}
+                  onClick={() => addTemplate(t.steps)}
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: "var(--space-sm)",
+                    padding: "var(--space-sm) var(--space-md)",
+                    cursor: "pointer",
+                    fontSize: "var(--font-size-sm)",
+                  }}
+                  onMouseEnter={(e) =>
+                    ((e.currentTarget as HTMLElement).style.background =
+                      "var(--bg-hover)")
+                  }
+                  onMouseLeave={(e) =>
+                    ((e.currentTarget as HTMLElement).style.background =
+                      "transparent")
+                  }
+                >
+                  <LayoutTemplate size={14} style={{ color: "var(--accent)", flexShrink: 0, marginTop: 2 }} />
+                  <div>
+                    <div style={{ fontWeight: 500, color: "var(--text-primary)" }}>{t.label}</div>
+                    <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>{t.description}</div>
+                    <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
+                      {t.steps.length} steps
+                    </div>
                   </div>
                 </div>
               ))}

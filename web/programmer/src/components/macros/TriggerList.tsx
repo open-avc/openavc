@@ -3,11 +3,12 @@
  * Placed above the steps section in MacroEditor.
  */
 import { useState, useEffect, useRef } from "react";
-import { Plus, Trash2, ChevronRight, Eye, EyeOff, Clock, Loader2 } from "lucide-react";
+import { Plus, Trash2, ChevronRight, Eye, EyeOff, Clock, Loader2, Play } from "lucide-react";
 import type { TriggerConfig, MacroConfig, DeviceConfig } from "../../api/types";
 import { TRIGGER_TYPES, getTriggerType, generateTriggerId } from "./triggerHelpers";
 import { TriggerEditor } from "./TriggerEditor";
 import { useLogStore } from "../../store/logStore";
+import * as api from "../../api/restClient";
 
 interface TriggerListProps {
   triggers: TriggerConfig[];
@@ -344,6 +345,15 @@ export function TriggerList({ triggers, devices, allMacros, onUpdate }: TriggerL
                     style={{ display: "flex", gap: 2, flexShrink: 0 }}
                     onClick={(e) => e.stopPropagation()}
                   >
+                    <button
+                      onClick={async () => {
+                        try { await api.testTrigger(trigger.id); } catch (e) { console.error("Fire trigger failed:", e); }
+                      }}
+                      style={{ ...iconBtnStyle, color: "var(--accent)" }}
+                      title="Fire now (bypasses conditions)"
+                    >
+                      <Play size={14} />
+                    </button>
                     <button
                       onClick={() => toggleEnabled(i)}
                       style={iconBtnStyle}

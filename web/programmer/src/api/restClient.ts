@@ -275,6 +275,12 @@ export async function cancelMacro(
   return request(`/macros/${macroId}/cancel`, { method: "POST" });
 }
 
+export async function testTrigger(
+  triggerId: string
+): Promise<{ status: string }> {
+  return request(`/triggers/${triggerId}/test`, { method: "POST" });
+}
+
 // --- Scripts ---
 
 export async function getScriptSource(

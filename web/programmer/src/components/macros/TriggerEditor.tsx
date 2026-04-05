@@ -1,7 +1,7 @@
 /**
  * Per-trigger-type editors + conditions + advanced settings.
  */
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Trash2, ChevronDown, ChevronRight, Plus, HelpCircle } from "lucide-react";
 import type { TriggerConfig, TriggerCondition } from "../../api/types";
 import { useProjectStore } from "../../store/projectStore";
@@ -14,6 +14,7 @@ import {
   describeCron,
   EVENT_CATEGORIES,
 } from "./triggerHelpers";
+import * as api from "../../api/restClient";
 
 interface TriggerEditorProps {
   trigger: TriggerConfig;
@@ -105,6 +106,19 @@ export function TriggerEditor({ trigger, onChange }: TriggerEditorProps) {
 
 // --- Schedule Editor ---
 
+// Cron examples (8.5)
+const CRON_EXAMPLES = [
+  { label: "Every weekday at 8:00 AM", cron: "0 8 * * 1-5" },
+  { label: "Every weekday at 6:00 PM", cron: "0 18 * * 1-5" },
+  { label: "Every day at midnight", cron: "0 0 * * *" },
+  { label: "Every hour", cron: "0 * * * *" },
+  { label: "Every 15 minutes during business hours", cron: "*/15 8-17 * * 1-5" },
+  { label: "Every 30 minutes", cron: "*/30 * * * *" },
+  { label: "First day of every month at 9:00 AM", cron: "0 9 1 * *" },
+  { label: "First Monday of month at 8:00 AM", cron: "0 8 1-7 * 1" },
+  { label: "Weekends at noon", cron: "0 12 * * 0,6" },
+];
+
 function ScheduleEditor({
   trigger,
   onChange,
@@ -135,6 +149,8 @@ function ScheduleEditor({
 
   const [presetIdx, setPresetIdx] = useState(detectPreset);
   const [showRaw, setShowRaw] = useState(false);
+  const [showFieldEditor, setShowFieldEditor] = useState(false);
+  const [showExamples, setShowExamples] = useState(false);
 
   const handlePresetChange = (idx: number) => {
     setPresetIdx(idx);
@@ -183,7 +199,24 @@ function ScheduleEditor({
     setPresetIdx(4); // Switch to custom since user is manually toggling
   };
 
+  // Field-by-field cron editing (8.4)
+  const cronFields = hasValidParts ? parts : ["*", "*", "*", "*", "*"];
+  const updateField = (fieldIdx: number, value: string) => {
+    const newParts = [...cronFields];
+    newParts[fieldIdx] = value || "*";
+    onChange({ cron: newParts.join(" ") });
+    setPresetIdx(4);
+  };
+
   const activeDays = getActiveDays();
+
+  const FIELD_LABELS = [
+    { label: "Minute", hint: "0-59, */5, 0,30", placeholder: "*" },
+    { label: "Hour", hint: "0-23, 8-17, */2", placeholder: "*" },
+    { label: "Day", hint: "1-31, 1,15", placeholder: "*" },
+    { label: "Month", hint: "1-12", placeholder: "*" },
+    { label: "Weekday", hint: "0-7 (0,7=Sun), 1-5", placeholder: "*" },
+  ];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
@@ -248,6 +281,42 @@ function ScheduleEditor({
         </div>
       )}
 
+      {/* Field-by-field editor (8.4) */}
+      <div>
+        <div
+          onClick={() => setShowFieldEditor(!showFieldEditor)}
+          style={{ fontSize: 11, color: "var(--text-muted)", cursor: "pointer" }}
+        >
+          {showFieldEditor ? "▾" : "▸"} Field-by-field editor
+        </div>
+        {showFieldEditor && (
+          <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
+            <div style={{ display: "flex", gap: 4 }}>
+              {FIELD_LABELS.map((f, i) => (
+                <div key={f.label} style={{ flex: 1, textAlign: "center" }}>
+                  <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 2, fontWeight: 600 }}>{f.label}</div>
+                  <input
+                    type="text"
+                    value={cronFields[i]}
+                    onChange={(e) => updateField(i, e.target.value)}
+                    placeholder={f.placeholder}
+                    style={{
+                      ...inputStyle,
+                      width: "100%",
+                      textAlign: "center",
+                      fontFamily: "var(--font-mono)",
+                      fontSize: 12,
+                      padding: "3px 4px",
+                    }}
+                  />
+                  <div style={{ fontSize: 9, color: "var(--text-muted)", marginTop: 1 }}>{f.hint}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Raw cron toggle */}
       <div>
         <div
@@ -264,6 +333,45 @@ function ScheduleEditor({
             placeholder="0 18 * * 1-5"
             style={{ ...inputStyle, marginTop: 4, fontFamily: "var(--font-mono)", fontSize: 12 }}
           />
+        )}
+      </div>
+
+      {/* Examples dropdown (8.5) */}
+      <div>
+        <div
+          onClick={() => setShowExamples(!showExamples)}
+          style={{ fontSize: 11, color: "var(--text-muted)", cursor: "pointer" }}
+        >
+          {showExamples ? "▾" : "▸"} Common examples
+        </div>
+        {showExamples && (
+          <div style={{
+            marginTop: 4,
+            border: "1px solid var(--border-color)",
+            borderRadius: "var(--border-radius)",
+            overflow: "hidden",
+          }}>
+            {CRON_EXAMPLES.map((ex) => (
+              <div
+                key={ex.cron}
+                onClick={() => { onChange({ cron: ex.cron }); setPresetIdx(4); setShowExamples(false); }}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: "4px 8px",
+                  fontSize: 11,
+                  cursor: "pointer",
+                  borderBottom: "1px solid var(--border-color)",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+              >
+                <span style={{ color: "var(--text-primary)" }}>{ex.label}</span>
+                <code style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>{ex.cron}</code>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 
@@ -416,6 +524,25 @@ function EventEditor({
   const options = catDef?.options(devices, macros, schedules) ?? [];
   const isCustom = catDef?.label === "Custom";
 
+  // Build all event suggestions for autocomplete (8.8)
+  const allSuggestions = EVENT_CATEGORIES
+    .filter((c) => c.label !== "Custom")
+    .flatMap((c) => c.options(devices, macros, schedules));
+  // Also add script events from configured scripts
+  const scripts = project?.scripts ?? [];
+  for (const s of scripts) {
+    allSuggestions.push({ label: `Script: ${s.id}`, pattern: `script.${s.id}` });
+  }
+
+  // Filter suggestions when typing custom pattern
+  const customPattern = trigger.event_pattern ?? "";
+  const filteredSuggestions = isCustom && customPattern
+    ? allSuggestions.filter((s) =>
+        s.pattern.toLowerCase().includes(customPattern.toLowerCase()) ||
+        s.label.toLowerCase().includes(customPattern.toLowerCase())
+      )
+    : [];
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
       <div style={rowStyle}>
@@ -432,15 +559,52 @@ function EventEditor({
       </div>
 
       {isCustom ? (
-        <div style={rowStyle}>
-          <label style={labelStyle}>Pattern</label>
-          <input
-            type="text"
-            value={trigger.event_pattern ?? ""}
-            onChange={(e) => onChange({ event_pattern: e.target.value })}
-            placeholder="e.g. custom.my_event"
-            style={{ ...inputStyle, fontFamily: "var(--font-mono)", fontSize: 12 }}
-          />
+        <div style={{ position: "relative" }}>
+          <div style={rowStyle}>
+            <label style={labelStyle}>Pattern</label>
+            <input
+              type="text"
+              value={trigger.event_pattern ?? ""}
+              onChange={(e) => onChange({ event_pattern: e.target.value })}
+              placeholder="Type to search all events..."
+              list="event-autocomplete"
+              style={{ ...inputStyle, fontFamily: "var(--font-mono)", fontSize: 12 }}
+            />
+          </div>
+          <datalist id="event-autocomplete">
+            {allSuggestions.map((s) => (
+              <option key={s.pattern} value={s.pattern}>{s.label}</option>
+            ))}
+          </datalist>
+          {filteredSuggestions.length > 0 && filteredSuggestions.length <= 10 && (
+            <div style={{
+              marginTop: 4,
+              marginLeft: 78,
+              fontSize: 11,
+              color: "var(--text-muted)",
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 4,
+            }}>
+              {filteredSuggestions.slice(0, 8).map((s) => (
+                <span
+                  key={s.pattern}
+                  onClick={() => onChange({ event_pattern: s.pattern })}
+                  style={{
+                    padding: "1px 6px",
+                    borderRadius: 3,
+                    background: "var(--bg-hover)",
+                    cursor: "pointer",
+                    fontFamily: "var(--font-mono)",
+                    fontSize: 10,
+                  }}
+                  title={s.label}
+                >
+                  {s.pattern}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       ) : options.length > 0 ? (
         <div style={rowStyle}>
@@ -638,6 +802,95 @@ function ConditionsEditor({
       >
         <Plus size={12} /> Add Condition
       </button>
+
+      {/* Condition preview (8.9) */}
+      <ConditionPreview conditions={conditions} />
+    </div>
+  );
+}
+
+// --- Condition Preview (8.9) ---
+
+function ConditionPreview({ conditions }: { conditions: TriggerCondition[] }) {
+  const [currentState, setCurrentState] = useState<Record<string, unknown>>({});
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchState = async () => {
+      try {
+        const state = await api.getState();
+        if (!cancelled) { setCurrentState(state); setLoaded(true); }
+      } catch { /* ignore */ }
+    };
+    fetchState();
+    const interval = setInterval(fetchState, 3000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, []);
+
+  if (!loaded || conditions.length === 0) return null;
+
+  const evaluateCondition = (cond: TriggerCondition): boolean => {
+    const actual = currentState[cond.key];
+    const op = cond.operator ?? "eq";
+    const expected = cond.value;
+
+    switch (op) {
+      case "eq": return actual == expected; // eslint-disable-line eqeqeq
+      case "ne": return actual != expected; // eslint-disable-line eqeqeq
+      case "gt": return actual != null && expected != null && Number(actual) > Number(expected);
+      case "lt": return actual != null && expected != null && Number(actual) < Number(expected);
+      case "gte": return actual != null && expected != null && Number(actual) >= Number(expected);
+      case "lte": return actual != null && expected != null && Number(actual) <= Number(expected);
+      case "truthy": return !!actual;
+      case "falsy": return !actual;
+      default: return false;
+    }
+  };
+
+  const allPass = conditions.every(evaluateCondition);
+
+  return (
+    <div
+      style={{
+        marginTop: "var(--space-sm)",
+        padding: "var(--space-xs) var(--space-sm)",
+        borderRadius: "var(--border-radius)",
+        border: `1px solid ${allPass ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.3)"}`,
+        background: allPass ? "rgba(16,185,129,0.06)" : "rgba(239,68,68,0.06)",
+        fontSize: 11,
+      }}
+    >
+      <div style={{
+        fontWeight: 600,
+        color: allPass ? "#10b981" : "#ef4444",
+        marginBottom: conditions.length > 1 ? 4 : 0,
+      }}>
+        Evaluated now: {allPass ? "ALL TRUE — trigger would fire" : "FALSE — trigger would not fire"}
+      </div>
+      {conditions.map((cond, i) => {
+        const actual = currentState[cond.key];
+        const passes = evaluateCondition(cond);
+        return (
+          <div key={i} style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--space-xs)",
+            color: "var(--text-secondary)",
+            padding: "1px 0",
+          }}>
+            <span style={{ color: passes ? "#10b981" : "#ef4444", fontWeight: 600 }}>
+              {passes ? "T" : "F"}
+            </span>
+            <code style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}>
+              {cond.key}
+            </code>
+            <span style={{ color: "var(--text-muted)" }}>
+              = {actual === undefined ? <em>undefined</em> : JSON.stringify(actual)}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }

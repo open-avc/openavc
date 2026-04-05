@@ -359,3 +359,130 @@ let _nextId = 1;
 export function generateId(prefix: string): string {
   return `${prefix}_${Date.now()}_${_nextId++}`;
 }
+
+// --- Step clipboard (cross-macro copy/paste) ---
+
+let _clipboardStep: MacroStep | null = null;
+
+export function copyStep(step: MacroStep): void {
+  _clipboardStep = JSON.parse(JSON.stringify(step));
+}
+
+export function getClipboardStep(): MacroStep | null {
+  return _clipboardStep ? JSON.parse(JSON.stringify(_clipboardStep)) : null;
+}
+
+export function hasClipboardStep(): boolean {
+  return _clipboardStep !== null;
+}
+
+// --- Step templates (pre-built multi-step patterns) ---
+
+export interface StepTemplate {
+  id: string;
+  label: string;
+  description: string;
+  steps: MacroStep[];
+}
+
+export const STEP_TEMPLATES: StepTemplate[] = [
+  {
+    id: "power_sequence",
+    label: "Power Sequence",
+    description: "Power on devices in order with delays between each",
+    steps: [
+      { action: "device.command", device: "", command: "power_on", description: "Power on first device" },
+      { action: "delay", seconds: 3, description: "Wait for device to warm up" },
+      { action: "device.command", device: "", command: "power_on", description: "Power on second device" },
+      { action: "delay", seconds: 2, description: "Wait before switching input" },
+      { action: "device.command", device: "", command: "", description: "Set input source" },
+    ],
+  },
+  {
+    id: "source_switch",
+    label: "Source Switch",
+    description: "Switch input source and update a room variable",
+    steps: [
+      { action: "device.command", device: "", command: "", description: "Switch input on display/switcher" },
+      { action: "state.set", key: "var.current_source", value: "", description: "Track active source" },
+      { action: "event.emit", event: "source.changed", description: "Notify other macros" },
+    ],
+  },
+  {
+    id: "volume_ramp",
+    label: "Volume Ramp",
+    description: "Gradually adjust volume in steps with short delays",
+    steps: [
+      { action: "device.command", device: "", command: "set_volume", params: { level: 20 }, description: "Set volume to 20%" },
+      { action: "delay", seconds: 0.3 },
+      { action: "device.command", device: "", command: "set_volume", params: { level: 40 }, description: "Set volume to 40%" },
+      { action: "delay", seconds: 0.3 },
+      { action: "device.command", device: "", command: "set_volume", params: { level: 60 }, description: "Set volume to 60%" },
+    ],
+  },
+];
+
+// --- Circular dependency detection ---
+
+/** Collect all macro IDs referenced by steps (recursively into conditionals). */
+function collectMacroRefs(steps: MacroStep[]): Set<string> {
+  const refs = new Set<string>();
+  for (const step of steps) {
+    if (step.action === "macro" && step.macro) {
+      refs.add(step.macro);
+    }
+    if (step.then_steps) collectMacroRefs(step.then_steps).forEach((r) => refs.add(r));
+    if (step.else_steps) collectMacroRefs(step.else_steps).forEach((r) => refs.add(r));
+  }
+  return refs;
+}
+
+/** Build a dependency map: macro ID -> set of macro IDs it calls. */
+export function buildDependencyMap(macros: MacroConfig[]): Map<string, Set<string>> {
+  const map = new Map<string, Set<string>>();
+  for (const m of macros) {
+    map.set(m.id, collectMacroRefs(m.steps));
+  }
+  return map;
+}
+
+/** Find macros that directly call a given macro. */
+export function getMacroCallers(macroId: string, macros: MacroConfig[]): MacroConfig[] {
+  return macros.filter((m) => m.id !== macroId && collectMacroRefs(m.steps).has(macroId));
+}
+
+/** Find macros that a given macro directly calls. */
+export function getMacroCallees(macroId: string, macros: MacroConfig[]): string[] {
+  const macro = macros.find((m) => m.id === macroId);
+  if (!macro) return [];
+  return [...collectMacroRefs(macro.steps)];
+}
+
+/** Detect circular dependency starting from a given macro. Returns the cycle path or null. */
+export function detectCircularDependency(
+  macroId: string,
+  macros: MacroConfig[]
+): string[] | null {
+  const depMap = buildDependencyMap(macros);
+
+  function dfs(current: string, path: string[], visited: Set<string>): string[] | null {
+    if (visited.has(current)) {
+      const cycleStart = path.indexOf(current);
+      return cycleStart >= 0 ? [...path.slice(cycleStart), current] : null;
+    }
+    visited.add(current);
+    path.push(current);
+    const refs = depMap.get(current);
+    if (refs) {
+      for (const ref of refs) {
+        const cycle = dfs(ref, path, visited);
+        if (cycle) return cycle;
+      }
+    }
+    path.pop();
+    visited.delete(current);
+    return null;
+  }
+
+  return dfs(macroId, [], new Set());
+}
