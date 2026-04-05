@@ -1,6 +1,7 @@
-import { useEffect, useRef, useMemo, useState } from "react";
+import { useEffect, useRef, useMemo, useState, useCallback } from "react";
 import { Trash2, Pause, Play } from "lucide-react";
 import { useLogStore } from "../../store/logStore";
+import { useNavigationStore } from "../../store/navigationStore";
 
 const LEVEL_COLORS: Record<string, string> = {
   DEBUG: "var(--text-muted)",
@@ -88,39 +89,97 @@ export function ScriptConsole() {
       >
         {scriptEntries.length === 0 ? (
           <div style={{ color: "var(--text-muted)", padding: "var(--space-sm)" }}>
-            Script output will appear here. Click Run to reload scripts.
+            Script output will appear here. Click Save &amp; Reload or press Ctrl+Shift+R.
           </div>
         ) : (
           scriptEntries.map((e, i) => (
-            <div
-              key={i}
-              style={{
-                display: "flex",
-                gap: "var(--space-sm)",
-                padding: "1px 0",
-                lineHeight: 1.4,
-              }}
-            >
-              <span style={{ color: "var(--text-muted)", flexShrink: 0 }}>
-                {formatTime(e.timestamp)}
-              </span>
-              <span
-                style={{
-                  color: LEVEL_COLORS[e.level] ?? "var(--text-primary)",
-                  fontWeight: e.level === "ERROR" ? 600 : 400,
-                  flexShrink: 0,
-                  minWidth: 50,
-                }}
-              >
-                [{e.level}]
-              </span>
-              <span style={{ color: "var(--text-primary)", wordBreak: "break-word" }}>
-                {e.message}
-              </span>
-            </div>
+            <ConsoleEntry key={i} entry={e} formatTime={formatTime} />
           ))
         )}
       </div>
+    </div>
+  );
+}
+
+/** Render a single console entry with multi-line support and clickable line numbers. */
+function ConsoleEntry({ entry, formatTime }: { entry: { timestamp: number; level: string; message: string }; formatTime: (ts: number) => string }) {
+  const lines = entry.message.split("\n");
+  const isMultiLine = lines.length > 1;
+
+  // Parse "line N" references and make them clickable
+  const renderMessage = (text: string) => {
+    const parts: React.ReactNode[] = [];
+    const lineRefPattern = /\bline (\d+)\b/g;
+    let lastIndex = 0;
+    let match;
+
+    while ((match = lineRefPattern.exec(text)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(text.slice(lastIndex, match.index));
+      }
+      const lineNum = parseInt(match[1], 10);
+      parts.push(
+        <span
+          key={match.index}
+          onClick={() => {
+            // Navigate to the line in the editor
+            // Scroll to line in the current editor — the ScriptView picks up the focus
+            const nav = useNavigationStore.getState();
+            nav.navigateTo("scripts", { type: "script", id: "", detail: `line:${lineNum}` });
+          }}
+          style={{
+            color: "var(--accent)",
+            cursor: "pointer",
+            textDecoration: "underline",
+            textDecorationStyle: "dotted",
+          }}
+          title={`Go to line ${lineNum}`}
+        >
+          line {lineNum}
+        </span>
+      );
+      lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < text.length) {
+      parts.push(text.slice(lastIndex));
+    }
+    return parts.length > 0 ? parts : text;
+  };
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        gap: "var(--space-sm)",
+        padding: "1px 0",
+        lineHeight: 1.4,
+      }}
+    >
+      <span style={{ color: "var(--text-muted)", flexShrink: 0 }}>
+        {formatTime(entry.timestamp)}
+      </span>
+      <span
+        style={{
+          color: LEVEL_COLORS[entry.level] ?? "var(--text-primary)",
+          fontWeight: entry.level === "ERROR" ? 600 : 400,
+          flexShrink: 0,
+          minWidth: 50,
+        }}
+      >
+        [{entry.level}]
+      </span>
+      <span style={{ color: "var(--text-primary)", wordBreak: "break-word", whiteSpace: "pre-wrap" }}>
+        {isMultiLine ? (
+          lines.map((line, li) => (
+            <span key={li}>
+              {li > 0 && "\n"}
+              {renderMessage(line)}
+            </span>
+          ))
+        ) : (
+          renderMessage(entry.message)
+        )}
+      </span>
     </div>
   );
 }

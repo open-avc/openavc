@@ -89,4 +89,108 @@ async def system_off(event, payload):
     log.info("System off complete")
 `,
   },
+  {
+    name: "Scheduled Task",
+    description: "Run code on a repeating schedule",
+    code: `"""Scheduled task — runs on a cron schedule via a trigger.
+Create a Schedule trigger on a macro, or use the every() timer here."""
+from openavc import on_event, every, cancel_timer, state, devices, log
+
+
+timer_id = None
+
+
+@on_event("system.started")
+def start_schedule(event, payload):
+    global timer_id
+    # Run every 5 minutes (300 seconds)
+    timer_id = every(300, scheduled_check)
+    log.info("Scheduled task started (every 5 minutes)")
+
+
+def scheduled_check():
+    # Add your periodic logic here
+    log.info("Running scheduled check...")
+    # Example: check a device, update a variable, send an alert
+`,
+  },
+  {
+    name: "Device Monitor",
+    description: "Watch device connections and react to status changes",
+    code: `"""Device monitor — react to device connect/disconnect events."""
+from openavc import on_event, state, log
+
+
+@on_event("device.*.connected")
+async def on_connected(event, payload):
+    device_id = event.split(".")[1]
+    log.info(f"Device connected: {device_id}")
+    state.set(f"var.{device_id}_online", True)
+
+
+@on_event("device.*.disconnected")
+async def on_disconnected(event, payload):
+    device_id = event.split(".")[1]
+    log.warning(f"Device disconnected: {device_id}")
+    state.set(f"var.{device_id}_online", False)
+
+
+@on_event("device.*.error")
+async def on_error(event, payload):
+    device_id = event.split(".")[1]
+    error = payload.get("error", "Unknown error")
+    log.error(f"Device error on {device_id}: {error}")
+`,
+  },
+  {
+    name: "Custom Event Handler",
+    description: "Listen for and respond to custom events",
+    code: `"""Custom event handler — create your own event-driven logic."""
+from openavc import on_event, events, state, log
+
+
+@on_event("custom.room_mode_changed")
+async def on_mode_change(event, payload):
+    mode = payload.get("mode", "unknown")
+    log.info(f"Room mode changed to: {mode}")
+
+    if mode == "presentation":
+        state.set("var.room_mode", "presentation")
+        # Emit follow-up events for other scripts to handle
+        await events.emit("custom.lights_preset", {"preset": "dim"})
+    elif mode == "meeting":
+        state.set("var.room_mode", "meeting")
+        await events.emit("custom.lights_preset", {"preset": "bright"})
+
+
+# To trigger this from a macro or another script:
+# await events.emit("custom.room_mode_changed", {"mode": "presentation"})
+`,
+  },
+  {
+    name: "Variable Watcher",
+    description: "Monitor variable changes and enforce rules",
+    code: `"""Variable watcher — monitor changes and enforce rules."""
+from openavc import on_state_change, state, log
+
+
+@on_state_change("var.volume")
+def watch_volume(key, old_value, new_value):
+    # Clamp volume to safe range
+    if isinstance(new_value, (int, float)):
+        if new_value > 80:
+            log.warning(f"Volume {new_value} exceeds safe limit, clamping to 80")
+            state.set("var.volume", 80)
+        elif new_value < 0:
+            state.set("var.volume", 0)
+
+
+@on_state_change("var.room_active")
+def watch_room(key, old_value, new_value):
+    if old_value and not new_value:
+        log.info("Room deactivated — resetting variables")
+        state.set("var.current_source", "None")
+        state.set("var.volume", 30)
+`,
+  },
 ];

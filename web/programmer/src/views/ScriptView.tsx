@@ -58,6 +58,7 @@ export function ScriptView() {
     return () => window.removeEventListener("beforeunload", handler);
   }, [isDirty]);
 
+
   // Extract runtime errors from log entries for the selected script
   const runtimeErrors = useMemo((): RuntimeError[] => {
     if (!selectedId) return [];
@@ -159,6 +160,20 @@ export function ScriptView() {
       });
     }
   }, [selectedId, source, isDirty]);
+
+  // Keyboard shortcut: Ctrl+Shift+R to save & reload scripts (9.4)
+  const handleRunRef = useRef(handleRun);
+  handleRunRef.current = handleRun;
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key === "R") {
+        e.preventDefault();
+        handleRunRef.current();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
 
   const handleCreate = useCallback(
     async (id: string, file: string, description: string) => {
@@ -299,7 +314,7 @@ export function ScriptView() {
             </button>
             <button
               onClick={handleRun}
-              title="Save the current script and reload all script handlers"
+              title="Save the current script and reload all script handlers (Ctrl+Shift+R)"
               style={{
                 ...actionBtnStyle,
                 background: "var(--accent)",

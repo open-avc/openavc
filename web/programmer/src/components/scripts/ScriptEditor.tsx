@@ -84,14 +84,16 @@ export function ScriptEditor({ source, onChange, onCreateVariable, onEditorReady
               kind: monaco.languages.CompletionItemKind.Method,
               insertText: 'send("${1:device_id}", "${2:command}")',
               insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-              detail: "Send a command to a device",
+              detail: "(device_id: str, command: str, params?: dict) -> None",
+              documentation: { value: 'Send a command to a device.\n\n```python\nawait devices.send("projector1", "power_on")\nawait devices.send("switcher", "set_input", {"input": "hdmi1"})\n```' },
               range,
             },
             {
               label: "list",
               kind: monaco.languages.CompletionItemKind.Method,
               insertText: "list()",
-              detail: "List all device IDs",
+              detail: "() -> list[str]",
+              documentation: { value: 'Return a list of all configured device IDs.\n\n```python\nfor dev_id in devices.list():\n    log.info(f"Device: {dev_id}")\n```' },
               range,
             }
           );
@@ -105,7 +107,8 @@ export function ScriptEditor({ source, onChange, onCreateVariable, onEditorReady
               kind: monaco.languages.CompletionItemKind.Method,
               insertText: 'get("${1:key}")',
               insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-              detail: "Get a shared state value",
+              detail: "(key: str) -> str | int | float | bool | None",
+              documentation: { value: 'Read a value from shared state. Returns None if the key doesn\'t exist.\n\n```python\nvolume = state.get("var.volume")\nis_on = state.get("device.projector1.power")\n```' },
               range,
             },
             {
@@ -113,7 +116,8 @@ export function ScriptEditor({ source, onChange, onCreateVariable, onEditorReady
               kind: monaco.languages.CompletionItemKind.Method,
               insertText: 'set("${1:key}", ${2:value})',
               insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-              detail: "Set a shared state value (visible to all UIs, scripts, and macros)",
+              detail: "(key: str, value: str | int | float | bool | None) -> None",
+              documentation: { value: 'Set a value in shared state. Visible to all UIs, scripts, and macros.\n\n```python\nstate.set("var.room_active", True)\nstate.set("var.current_source", "HDMI 1")\n```' },
               range,
             },
             {
@@ -121,7 +125,8 @@ export function ScriptEditor({ source, onChange, onCreateVariable, onEditorReady
               kind: monaco.languages.CompletionItemKind.Method,
               insertText: 'get_namespace("${1:prefix}")',
               insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-              detail: "Get all keys under a prefix",
+              detail: "(prefix: str) -> dict[str, Any]",
+              documentation: { value: 'Get all state keys matching a prefix as a dict.\n\n```python\nproj = state.get_namespace("device.projector1.")\n```' },
               range,
             }
           );
@@ -134,7 +139,8 @@ export function ScriptEditor({ source, onChange, onCreateVariable, onEditorReady
             kind: monaco.languages.CompletionItemKind.Method,
             insertText: 'execute("${1:macro_id}")',
             insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-            detail: "Execute a macro by ID",
+            detail: "(macro_id: str) -> None",
+            documentation: { value: 'Execute a macro by its ID. Runs all steps in order.\n\n```python\nawait macros.execute("macro_system_on")\n```' },
             range,
           });
         }
@@ -146,20 +152,28 @@ export function ScriptEditor({ source, onChange, onCreateVariable, onEditorReady
             kind: monaco.languages.CompletionItemKind.Method,
             insertText: 'emit("${1:event_name}")',
             insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-            detail: "Emit a custom event",
+            detail: "(event: str, payload?: dict) -> None",
+            documentation: { value: 'Fire a named event. Other scripts and triggers listening will be notified.\n\n```python\nawait events.emit("custom.source_changed", {"source": "hdmi1"})\n```' },
             range,
           });
         }
 
         // log.* completions
         if (textUntilPosition.match(/log\.\s*$/)) {
-          for (const level of ["info", "warning", "error", "debug"]) {
+          const logLevels = [
+            { level: "info", desc: "Informational message" },
+            { level: "warning", desc: "Warning (displayed in orange)" },
+            { level: "error", desc: "Error (displayed in red)" },
+            { level: "debug", desc: "Debug message (verbose)" },
+          ];
+          for (const { level, desc } of logLevels) {
             suggestions.push({
               label: level,
               kind: monaco.languages.CompletionItemKind.Method,
               insertText: `${level}(f"$\{1:message}")`,
               insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-              detail: `Log a ${level} message`,
+              detail: `(message: str) -> None`,
+              documentation: { value: `${desc}.\n\n\`\`\`python\nlog.${level}("Something happened")\n\`\`\`` },
               range,
             });
           }
@@ -305,17 +319,19 @@ export function ScriptEditor({ source, onChange, onCreateVariable, onEditorReady
             {
               label: "on_event",
               kind: monaco.languages.CompletionItemKind.Snippet,
-              insertText: 'on_event("${1:event_pattern}")',
+              insertText: 'on_event("${1:event_pattern}")\nasync def ${2:handler}(event, payload):\n    ${0}',
               insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-              detail: "Event handler decorator",
+              detail: "Event handler decorator (pattern: str)",
+              documentation: { value: 'Register a function to run when an event fires. Supports glob patterns.\n\n```python\n@on_event("ui.press.btn_power")\nasync def handle(event, payload):\n    log.info("Power pressed")\n```' },
               range,
             },
             {
               label: "on_state_change",
               kind: monaco.languages.CompletionItemKind.Snippet,
-              insertText: 'on_state_change("${1:key_pattern}")',
+              insertText: 'on_state_change("${1:key_pattern}")\ndef ${2:handler}(key, old_value, new_value):\n    ${0}',
               insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-              detail: "State change handler decorator",
+              detail: "State change handler decorator (key: str)",
+              documentation: { value: 'Register a function to run when a state key changes.\n\n```python\n@on_state_change("var.volume")\ndef on_vol(key, old_value, new_value):\n    log.info(f"Volume: {new_value}")\n```' },
               range,
             }
           );

@@ -23,6 +23,7 @@ export function MacroView() {
   });
 
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [scriptPreview, setScriptPreview] = useState<{ source: string; scriptId: string; fileName: string } | null>(null);
 
   const macros = project?.macros ?? [];
   const devices = project?.devices ?? [];
@@ -85,23 +86,28 @@ export function MacroView() {
     };
   }, []);
 
-  const handleConvertToScript = useCallback(async () => {
+  // Show preview before converting (9.6)
+  const handleConvertToScript = useCallback(() => {
     if (!selectedMacro || !project) return;
     const source = macroToScript(selectedMacro, devices);
     const scriptId = selectedMacro.id.replace(/^macro_/, "script_");
     const fileName = `${scriptId}.py`;
+    setScriptPreview({ source, scriptId, fileName });
+  }, [selectedMacro, project, devices]);
 
+  const handleConfirmConvert = useCallback(async () => {
+    if (!scriptPreview || !selectedMacro) return;
     try {
       await api.createScript({
-        id: scriptId,
-        file: fileName,
+        id: scriptPreview.scriptId,
+        file: scriptPreview.fileName,
         description: `Generated from macro "${selectedMacro.name}"`,
-        source,
+        source: scriptPreview.source,
       });
-      // Reload project to pick up new script
       await useProjectStore.getState().load();
+      setScriptPreview(null);
       showInfo(
-        `Script "${scriptId}" created! ` +
+        `Script "${scriptPreview.scriptId}" created! ` +
         `Important: The original macro and its triggers are still active. ` +
         `To avoid duplicate actions, delete this macro or disable its triggers ` +
         `before enabling the script.`
@@ -109,7 +115,7 @@ export function MacroView() {
     } catch (e) {
       showError(`Failed to create script: ${e}`);
     }
-  }, [selectedMacro, project, devices]);
+  }, [scriptPreview, selectedMacro]);
 
   return (
     <ViewContainer title="Macros">
@@ -168,6 +174,112 @@ export function MacroView() {
           onConfirm={() => doDelete(confirmDeleteId)}
           onCancel={() => setConfirmDeleteId(null)}
         />
+      )}
+
+      {/* Script conversion preview dialog (9.6) */}
+      {scriptPreview && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.6)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 100,
+          }}
+          onClick={() => setScriptPreview(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "var(--bg-surface)",
+              border: "1px solid var(--border-color)",
+              borderRadius: "var(--border-radius)",
+              width: "min(700px, 90vw)",
+              maxHeight: "80vh",
+              display: "flex",
+              flexDirection: "column",
+              boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+            }}
+          >
+            {/* Header */}
+            <div style={{
+              padding: "var(--space-md)",
+              borderBottom: "1px solid var(--border-color)",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}>
+              <div>
+                <div style={{ fontWeight: 600, color: "var(--text-primary)", fontSize: "var(--font-size-md)" }}>
+                  Convert to Script
+                </div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
+                  This will create <code style={{ fontFamily: "var(--font-mono)" }}>{scriptPreview.fileName}</code> &mdash; review the generated code below.
+                </div>
+              </div>
+            </div>
+            {/* Code preview */}
+            <div style={{ flex: 1, overflow: "auto", padding: 0 }}>
+              <pre style={{
+                margin: 0,
+                padding: "var(--space-md)",
+                fontFamily: "var(--font-mono)",
+                fontSize: 12,
+                lineHeight: 1.5,
+                color: "var(--text-primary)",
+                background: "var(--bg-primary)",
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+              }}>
+                {scriptPreview.source}
+              </pre>
+            </div>
+            {/* Actions */}
+            <div style={{
+              padding: "var(--space-md)",
+              borderTop: "1px solid var(--border-color)",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", maxWidth: 400, lineHeight: 1.4 }}>
+                The original macro and its triggers will remain active. Disable or delete the macro after verifying the script works.
+              </div>
+              <div style={{ display: "flex", gap: "var(--space-sm)" }}>
+                <button
+                  onClick={() => setScriptPreview(null)}
+                  style={{
+                    padding: "var(--space-xs) var(--space-md)",
+                    borderRadius: "var(--border-radius)",
+                    background: "var(--bg-hover)",
+                    color: "var(--text-primary)",
+                    fontSize: "var(--font-size-sm)",
+                    border: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmConvert}
+                  style={{
+                    padding: "var(--space-xs) var(--space-md)",
+                    borderRadius: "var(--border-radius)",
+                    background: "var(--accent)",
+                    color: "#fff",
+                    fontSize: "var(--font-size-sm)",
+                    border: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  Create Script
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </ViewContainer>
   );

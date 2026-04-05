@@ -241,10 +241,13 @@ export function ScriptFileTree({
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap",
+                        maxWidth: 180,
                       }}
                       title={loadErrors[s.id]}
                     >
-                      Failed to load
+                      {loadErrors[s.id].length > 60
+                        ? loadErrors[s.id].slice(0, 60) + "..."
+                        : loadErrors[s.id]}
                     </div>
                   ) : s.description ? (
                     <div
