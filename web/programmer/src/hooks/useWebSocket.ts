@@ -6,7 +6,7 @@ import type { LogEntry } from "../store/logStore";
 import { useProjectStore } from "../store/projectStore";
 import { useDiscoveryStore } from "../store/discoveryStore";
 import { usePluginStore } from "../store/pluginStore";
-import { showSuccess, showInfo } from "../store/toastStore";
+import { showSuccess, showInfo, showError } from "../store/toastStore";
 import * as api from "../api/restClient";
 
 export function useWebSocket() {
@@ -96,27 +96,70 @@ export function useWebSocket() {
         useLogStore.getState().addLogBatch(msg.entries as LogEntry[]);
       }
 
+      // Command / state ack — show toast on failure
+      if (msg.type === "command.ack" && msg.success === false) {
+        showError(msg.error as string || "Command failed");
+      }
+
+      if (msg.type === "state.set.ack" && msg.success === false) {
+        showError(msg.error as string || "Failed to set state");
+      }
+
       // Macro progress events
       if (msg.type === "macro.started") {
+        useLogStore.getState().startMacroRun(msg.macro_id as string);
         useLogStore.getState().setMacroProgress({
-          macroId: msg.macro_id as string,
           totalSteps: msg.total_steps as number,
-          stepIndex: null,
-          status: "running",
         });
       }
 
       if (msg.type === "macro.progress") {
-        useLogStore.getState().setMacroProgress({
-          macroId: msg.macro_id as string,
+        const store = useLogStore.getState();
+        // Regular step progress
+        if (msg.status === "running") {
+          store.setMacroProgress({
+            macroId: msg.macro_id as string,
+            stepIndex: msg.step_index as number,
+            totalSteps: msg.total_steps as number,
+            status: "running",
+          });
+        }
+        // Conditional evaluation result
+        if (msg.status === "evaluated" && msg.action === "conditional") {
+          store.addConditionalResult({
+            conditionResult: msg.condition_result as boolean,
+            branch: msg.branch as "then" | "else",
+            conditionKey: msg.condition_key as string,
+            conditionOperator: msg.condition_operator as string,
+            actualValue: msg.actual_value,
+          });
+        }
+        // Group command per-device results
+        if (msg.status === "group_complete" && msg.action === "group.command") {
+          store.addGroupResult({
+            group: msg.group as string,
+            command: msg.command as string,
+            deviceResults: msg.device_results as any[],
+          });
+        }
+      }
+
+      // Macro step error (emitted even when stop_on_error is false)
+      if (msg.type === "macro.step_error") {
+        useLogStore.getState().addStepError({
           stepIndex: msg.step_index as number,
-          totalSteps: msg.total_steps as number,
-          status: "running",
+          action: msg.action as string,
+          device: (msg.device as string) ?? "",
+          group: (msg.group as string) ?? "",
+          command: (msg.command as string) ?? "",
+          error: msg.error as string,
+          description: (msg.description as string) ?? "",
         });
       }
 
       if (msg.type === "macro.completed") {
         const completedId = msg.macro_id as string;
+        useLogStore.getState().finishMacroRun("completed");
         useLogStore.getState().setMacroProgress({
           macroId: completedId,
           status: "completed",
@@ -131,6 +174,7 @@ export function useWebSocket() {
 
       if (msg.type === "macro.error") {
         const errorId = msg.macro_id as string;
+        useLogStore.getState().finishMacroRun("error", msg.error as string);
         useLogStore.getState().setMacroProgress({
           macroId: errorId,
           status: "error",
@@ -140,6 +184,36 @@ export function useWebSocket() {
             useLogStore.getState().resetMacroProgress();
           }
         }, 3000);
+      }
+
+      // Trigger pending / queued events
+      if (msg.type === "trigger.pending") {
+        const triggerId = msg.trigger_id as string;
+        useLogStore.getState().setTriggerPending(triggerId, {
+          reason: msg.reason as "debounce" | "delay",
+          waitSeconds: msg.wait_seconds as number,
+          timestamp: Date.now(),
+        });
+        // Auto-clear after the wait period + buffer
+        const clearMs = ((msg.wait_seconds as number) ?? 5) * 1000 + 500;
+        setTimeout(() => {
+          useLogStore.getState().setTriggerPending(triggerId, null);
+        }, clearMs);
+      }
+
+      if (msg.type === "trigger.queued") {
+        const triggerId = msg.trigger_id as string;
+        useLogStore.getState().setTriggerPending(triggerId, {
+          reason: "queued",
+          queuePosition: msg.queue_position as number,
+          timestamp: Date.now(),
+        });
+      }
+
+      // Clear trigger pending when it fires
+      if (msg.type === "trigger.fired") {
+        const triggerId = msg.trigger_id as string;
+        useLogStore.getState().setTriggerPending(triggerId, null);
       }
 
       // Discovery events

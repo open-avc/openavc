@@ -3,7 +3,7 @@
  * Placed above the steps section in MacroEditor.
  */
 import { useState, useEffect, useRef } from "react";
-import { Plus, Trash2, ChevronRight, Eye, EyeOff } from "lucide-react";
+import { Plus, Trash2, ChevronRight, Eye, EyeOff, Clock, Loader2 } from "lucide-react";
 import type { TriggerConfig, MacroConfig, DeviceConfig } from "../../api/types";
 import { TRIGGER_TYPES, getTriggerType, generateTriggerId } from "./triggerHelpers";
 import { TriggerEditor } from "./TriggerEditor";
@@ -20,6 +20,7 @@ export function TriggerList({ triggers, devices, allMacros, onUpdate }: TriggerL
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [recentlyFired, setRecentlyFired] = useState<Set<string>>(new Set());
+  const [pendingTriggers, setPendingTriggers] = useState<Record<string, { reason: string; waitSeconds?: number; queuePosition?: number }>>({});
   const addMenuRef = useRef<HTMLDivElement>(null);
 
   // Poll for trigger.fired events every 2s instead of subscribing to logEntries
@@ -52,6 +53,15 @@ export function TriggerList({ triggers, devices, allMacros, onUpdate }: TriggerL
         }
       }
     }, 2000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Poll for trigger pending state every 1s
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const tp = useLogStore.getState().triggerPending;
+      setPendingTriggers(tp);
+    }, 1000);
     return () => clearInterval(interval);
   }, []);
 
@@ -220,17 +230,22 @@ export function TriggerList({ triggers, devices, allMacros, onUpdate }: TriggerL
           {triggers.map((trigger, i) => {
             const typeInfo = getTriggerType(trigger.type);
             const isFired = recentlyFired.has(trigger.id);
+            const pending = pendingTriggers[trigger.id];
 
             return (
               <div
                 key={trigger.id}
                 style={{
                   border: `1px solid ${
-                    isFired ? typeInfo?.color ?? "var(--accent)" : "var(--border-color)"
+                    isFired ? typeInfo?.color ?? "var(--accent)"
+                    : pending ? "#f59e0b"
+                    : "var(--border-color)"
                   }`,
                   borderRadius: "var(--border-radius)",
                   background: isFired
                     ? `${typeInfo?.color ?? "var(--accent)"}11`
+                    : pending
+                    ? "rgba(245,158,11,0.06)"
                     : "var(--bg-surface)",
                   transition: "border-color 0.3s, background 0.3s",
                   opacity: trigger.enabled ? 1 : 0.5,
@@ -282,6 +297,34 @@ export function TriggerList({ triggers, devices, allMacros, onUpdate }: TriggerL
                   >
                     {typeInfo?.summary(trigger, devices, allMacros) ?? ""}
                   </span>
+                  {/* Pending/queued indicator */}
+                  {pending && (
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 3,
+                        fontSize: 10,
+                        fontWeight: 600,
+                        color: "#f59e0b",
+                        background: "rgba(245,158,11,0.15)",
+                        padding: "0 5px",
+                        borderRadius: 3,
+                        flexShrink: 0,
+                      }}
+                      title={
+                        pending.reason === "queued"
+                          ? `Queued (position ${pending.queuePosition})`
+                          : `${pending.reason === "debounce" ? "Debouncing" : "Delaying"} ${pending.waitSeconds ?? ""}s`
+                      }
+                    >
+                      {pending.reason === "queued" ? (
+                        <><Clock size={10} /> Queued #{pending.queuePosition}</>
+                      ) : (
+                        <><Loader2 size={10} style={{ animation: "spin 1s linear infinite" }} /> {pending.reason === "debounce" ? "Debouncing" : "Delaying"}</>
+                      )}
+                    </span>
+                  )}
                   {/* Conditions indicator */}
                   {(trigger.conditions?.length ?? 0) > 0 && (
                     <span

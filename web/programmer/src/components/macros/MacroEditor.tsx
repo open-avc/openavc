@@ -13,6 +13,9 @@ import {
   Loader2,
   AlertTriangle,
   GripVertical,
+  Clock,
+  CheckCircle,
+  XCircle,
 } from "lucide-react";
 import {
   DndContext,
@@ -32,6 +35,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import type { MacroConfig, MacroStep, TriggerConfig } from "../../api/types";
 import { useLogStore } from "../../store/logStore";
+import type { StepError, ConditionalResult, GroupCommandResult, MacroLastRun } from "../../store/logStore";
 import { StepEditor } from "./StepEditor";
 import { TriggerList } from "./TriggerList";
 import { STEP_TYPES, getStepType } from "./macroHelpers";
@@ -46,6 +50,9 @@ interface SortableStepItemProps {
   isLast: boolean;
   isExpanded: boolean;
   isActive: boolean;
+  stepError: StepError | undefined;
+  conditionalResult: ConditionalResult | undefined;
+  groupResult: GroupCommandResult | undefined;
   devices: { id: string; name: string }[];
   allMacros: MacroConfig[];
   macroId: string;
@@ -64,6 +71,9 @@ function SortableStepItem({
   isLast,
   isExpanded,
   isActive,
+  stepError,
+  conditionalResult,
+  groupResult,
   devices,
   allMacros,
   macroId,
@@ -202,7 +212,82 @@ function SortableStepItem({
             <Trash2 size={14} />
           </button>
         </div>
+        {/* Step result indicators */}
+        {stepError && (
+          <span title={stepError.error} style={{ display: "flex", flexShrink: 0 }}>
+            <XCircle size={14} style={{ color: "#ef4444" }} />
+          </span>
+        )}
+        {conditionalResult && (
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 600,
+              padding: "0 5px",
+              borderRadius: 3,
+              flexShrink: 0,
+              background: conditionalResult.conditionResult ? "rgba(16,185,129,0.2)" : "rgba(239,68,68,0.2)",
+              color: conditionalResult.conditionResult ? "#10b981" : "#ef4444",
+            }}
+            title={`Condition on '${conditionalResult.conditionKey}' evaluated ${conditionalResult.conditionResult ? "TRUE" : "FALSE"} → ${conditionalResult.branch} branch`}
+          >
+            {conditionalResult.conditionResult ? "TRUE" : "FALSE"}
+          </span>
+        )}
       </div>
+
+      {/* Step error detail */}
+      {stepError && (
+        <div
+          style={{
+            padding: "var(--space-xs) var(--space-md)",
+            fontSize: 12,
+            color: "#ef4444",
+            background: "rgba(239,68,68,0.08)",
+            borderTop: "1px solid rgba(239,68,68,0.2)",
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--space-xs)",
+          }}
+        >
+          <AlertTriangle size={12} style={{ flexShrink: 0 }} />
+          {stepError.error}
+        </div>
+      )}
+
+      {/* Group command per-device results */}
+      {groupResult && (
+        <div
+          style={{
+            padding: "var(--space-xs) var(--space-md)",
+            fontSize: 12,
+            borderTop: "1px solid var(--border-color)",
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "var(--space-xs)",
+          }}
+        >
+          {groupResult.deviceResults.map((dr) => (
+            <span
+              key={dr.device_id}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 3,
+                padding: "1px 6px",
+                borderRadius: 3,
+                fontSize: 11,
+                background: dr.success ? "rgba(16,185,129,0.12)" : "rgba(239,68,68,0.12)",
+                color: dr.success ? "#10b981" : "#ef4444",
+              }}
+              title={dr.success ? "Success" : dr.error ?? "Failed"}
+            >
+              {dr.success ? <CheckCircle size={10} /> : <XCircle size={10} />}
+              {dr.name}
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* Expanded editor */}
       {isExpanded && (
@@ -249,6 +334,13 @@ export function MacroEditor({
     macroProgress.macroId === macro.id && macroProgress.status === "completed";
   const isError =
     macroProgress.macroId === macro.id && macroProgress.status === "error";
+
+  // Step-level feedback from store (snapshot read to avoid rapid re-renders)
+  const stepErrors = useLogStore((s) => s.stepErrors);
+  const conditionalResults = useLogStore((s) => s.conditionalResults);
+  const groupResults = useLogStore((s) => s.groupResults);
+  const lastRun = useLogStore((s) => s.lastRun);
+  const showLastRun = lastRun && lastRun.macroId === macro.id && !isRunning;
 
   const handleTest = async () => {
     try {
@@ -509,6 +601,9 @@ export function MacroEditor({
                     isLast={i === macro.steps.length - 1}
                     isExpanded={expandedStep === i}
                     isActive={isRunning && macroProgress.stepIndex === i}
+                    stepError={stepErrors.find((e) => e.stepIndex === i)}
+                    conditionalResult={step.action === "conditional" ? conditionalResults.find((_, ci) => ci === i) : undefined}
+                    groupResult={step.action === "group.command" ? groupResults.find((g) => g.group === step.group && g.command === step.command) : undefined}
                     devices={devices}
                     allMacros={allMacros}
                     macroId={macro.id}
@@ -522,6 +617,11 @@ export function MacroEditor({
               </div>
             </SortableContext>
           </DndContext>
+        )}
+
+        {/* Last run summary */}
+        {showLastRun && (
+          <LastRunSummary lastRun={lastRun!} />
         )}
 
         {/* Add step button */}
@@ -605,6 +705,59 @@ export function MacroEditor({
 
       {/* Keyframe for spinner */}
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}
+
+function LastRunSummary({ lastRun }: { lastRun: MacroLastRun }) {
+  const durationSec = (lastRun.duration / 1000).toFixed(1);
+  const time = new Date(lastRun.completedAt).toLocaleTimeString();
+  const hasErrors = lastRun.stepErrors.length > 0;
+  const isSuccess = lastRun.status === "completed" && !hasErrors;
+
+  return (
+    <div
+      style={{
+        marginTop: "var(--space-md)",
+        padding: "var(--space-sm) var(--space-md)",
+        borderRadius: "var(--border-radius)",
+        border: `1px solid ${isSuccess ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.3)"}`,
+        background: isSuccess ? "rgba(16,185,129,0.06)" : "rgba(239,68,68,0.06)",
+        fontSize: 12,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", marginBottom: hasErrors ? "var(--space-xs)" : 0 }}>
+        {isSuccess ? (
+          <CheckCircle size={14} style={{ color: "#10b981" }} />
+        ) : (
+          <XCircle size={14} style={{ color: "#ef4444" }} />
+        )}
+        <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>
+          Last run: {isSuccess ? "Completed" : lastRun.status === "error" ? "Failed" : "Completed with errors"}
+        </span>
+        <span style={{ color: "var(--text-muted)" }}>
+          <Clock size={11} style={{ verticalAlign: "middle", marginRight: 2 }} />
+          {durationSec}s at {time}
+        </span>
+      </div>
+      {lastRun.stepErrors.map((err, i) => (
+        <div
+          key={i}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--space-xs)",
+            padding: "2px 0",
+            color: "#ef4444",
+            fontSize: 11,
+          }}
+        >
+          <XCircle size={11} style={{ flexShrink: 0 }} />
+          <span style={{ fontWeight: 500 }}>Step {err.stepIndex + 1}:</span>
+          <span>{err.error}</span>
+          {err.device && <span style={{ color: "var(--text-muted)" }}>({err.device})</span>}
+        </div>
+      ))}
     </div>
   );
 }
