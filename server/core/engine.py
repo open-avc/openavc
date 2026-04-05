@@ -76,6 +76,7 @@ class Engine:
         # Variable-to-state binding subscriptions
         self._var_binding_subs: list[str] = []
         self._var_validation_subs: list[str] = []
+        self._project_revision: int = 0  # incremented on every save
 
         # Event/state subscription IDs (for cleanup on stop/reload)
         self._state_sub_ids: list[str] = []
@@ -362,6 +363,7 @@ class Engine:
         """Hot-reload project.avc without full restart."""
         log.info("Reloading project...")
         self.project = load_project(self.project_path)
+        self._project_revision += 1
 
         # Update persistent variable keys
         if self.persister:
@@ -409,7 +411,10 @@ class Engine:
         })
 
         # Notify Programmer IDE to refetch project data
-        await self._broadcast_ws({"type": "project.reloaded"})
+        await self._broadcast_ws({
+            "type": "project.reloaded",
+            "revision": self._project_revision,
+        })
 
         await self.events.emit("system.project.reloaded")
         log.info("Project reloaded")
@@ -435,9 +440,16 @@ class Engine:
         running_ids = set(self.devices._device_configs.keys())
         project_ids = set(project_devices.keys())
 
-        # Remove devices no longer in project
+        # Remove devices no longer in project and clean up orphaned state keys
         for device_id in running_ids - project_ids:
             await self.devices.remove_device(device_id)
+            # Clean up orphaned device.{id}.* state keys (14.6)
+            prefix = f"device.{device_id}."
+            orphaned = self.state.get_namespace(prefix)
+            for suffix in orphaned:
+                self.state.delete(f"{prefix}{suffix}")
+            if orphaned:
+                log.info(f"Cleaned up {len(orphaned)} orphaned state key(s) for removed device '{device_id}'")
 
         # Add new devices
         for device_id in project_ids - running_ids:

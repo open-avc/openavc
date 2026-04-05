@@ -81,11 +81,16 @@ export async function getSystemStatus(): Promise<Record<string, unknown>> {
 }
 
 export async function saveProject(
-  project: ProjectConfig
-): Promise<{ status: string }> {
+  project: ProjectConfig,
+  revision?: number
+): Promise<{ status: string; revision?: number }> {
+  const body: Record<string, unknown> = { ...project };
+  if (revision !== undefined) {
+    body._revision = revision;
+  }
   return request("/project", {
     method: "PUT",
-    body: JSON.stringify(project),
+    body: JSON.stringify(body),
   });
 }
 

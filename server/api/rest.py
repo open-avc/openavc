@@ -456,10 +456,12 @@ async def store_pending_settings(
 
 @router.get("/project")
 async def get_project() -> dict[str, Any]:
-    """Get the full project configuration."""
+    """Get the full project configuration (includes runtime revision counter)."""
     engine = _get_engine()
     if engine.project:
-        return engine.project.model_dump(mode="json")
+        data = engine.project.model_dump(mode="json")
+        data["_revision"] = engine._project_revision
+        return data
     raise HTTPException(status_code=404, detail="No project loaded")
 
 
@@ -473,20 +475,36 @@ async def reload_project() -> dict[str, Any]:
 
 @router.put("/project")
 async def save_project_config(request: Request) -> dict[str, Any]:
-    """Save a full project configuration, then reload."""
+    """Save a full project configuration, then reload.
+
+    If the request body contains a ``_revision`` field, the server checks
+    it against the current revision.  A mismatch means another client
+    saved since this client last loaded — return 409 Conflict so the
+    frontend can prompt the user.
+    """
     # Limit request body to 10 MB to prevent memory exhaustion
     content_length = request.headers.get("content-length")
     if content_length and int(content_length) > 10 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Project file too large (max 10 MB)")
     engine = _get_engine()
     body = await request.json()
+
+    # Optimistic concurrency check (14.3)
+    client_revision = body.pop("_revision", None)
+    if client_revision is not None:
+        if int(client_revision) != engine._project_revision:
+            raise HTTPException(
+                status_code=409,
+                detail="Project was modified by another session. Reload to see the latest changes.",
+            )
+
     try:
         project = ProjectConfig(**body)
     except Exception as e:
         raise _api_error(422, "Invalid project configuration", e)
     save_project(engine.project_path, project)
     await engine.reload_project()
-    return {"status": "saved"}
+    return {"status": "saved", "revision": engine._project_revision}
 
 
 @router.get("/project/validate-drivers")

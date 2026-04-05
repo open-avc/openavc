@@ -116,14 +116,47 @@ function App() {
     }
   };
 
+  const conflictDetected = useProjectStore((s) => s.conflictDetected);
+  const forceReload = useProjectStore((s) => s.forceReload);
+  const dismissConflict = useProjectStore((s) => s.dismissConflict);
+
   return (
     <div style={{ display: "flex", height: "100vh" }}>
       <Sidebar activeView={activeView} onViewChange={handleViewChange} />
-      <main style={{ flex: 1, overflow: "hidden" }}>
-        <ErrorBoundary>
-          <Suspense fallback={null}>{renderView()}</Suspense>
-        </ErrorBoundary>
-      </main>
+      <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        {/* Conflict banner (14.4) */}
+        {conflictDetected && (
+          <div style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            padding: "var(--space-sm) var(--space-md)",
+            background: "rgba(244,67,54,0.12)", borderBottom: "1px solid rgba(244,67,54,0.3)",
+            fontSize: 13, color: "#ef4444", flexShrink: 0,
+          }}>
+            <span>
+              <strong>Conflict:</strong> The project was modified by another session. Your changes could not be saved.
+            </span>
+            <div style={{ display: "flex", gap: "var(--space-sm)" }}>
+              <button
+                onClick={dismissConflict}
+                style={{ padding: "2px 10px", borderRadius: 4, border: "1px solid rgba(244,67,54,0.3)", background: "transparent", color: "#ef4444", fontSize: 12, cursor: "pointer" }}
+              >
+                Dismiss
+              </button>
+              <button
+                onClick={forceReload}
+                style={{ padding: "2px 10px", borderRadius: 4, border: "none", background: "#ef4444", color: "#fff", fontSize: 12, cursor: "pointer" }}
+              >
+                Reload Project
+              </button>
+            </div>
+          </div>
+        )}
+        <main style={{ flex: 1, overflow: "hidden" }}>
+          <ErrorBoundary>
+            <Suspense fallback={null}>{renderView()}</Suspense>
+          </ErrorBoundary>
+        </main>
+      </div>
       <ToastContainer />
     </div>
   );
