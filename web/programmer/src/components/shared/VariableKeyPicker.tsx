@@ -53,9 +53,11 @@ export function VariableKeyPicker({
   const [newLabel, setNewLabel] = useState("");
   const [newDefault, setNewDefault] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number; flipUp: boolean }>({ top: 0, left: 0, width: 0, flipUp: false });
 
-  // Close on click outside
+  // Close on click outside or scroll
   useEffect(() => {
     if (!open) return;
     const handleClick = (e: MouseEvent) => {
@@ -65,8 +67,19 @@ export function VariableKeyPicker({
         setShowCreate(false);
       }
     };
+    const handleScroll = (e: Event) => {
+      // Ignore scrolling inside the dropdown itself
+      if (containerRef.current && containerRef.current.contains(e.target as Node)) return;
+      setOpen(false);
+      setSearch("");
+      setShowCreate(false);
+    };
     document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
+    document.addEventListener("scroll", handleScroll, true);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("scroll", handleScroll, true);
+    };
   }, [open]);
 
   // Focus search when opening
@@ -235,8 +248,24 @@ export function VariableKeyPicker({
     <div ref={containerRef} style={{ position: "relative", ...style }}>
       {/* Collapsed trigger button */}
       <button
+        ref={triggerRef}
         type="button"
-        onClick={() => setOpen(!open)}
+        onClick={() => {
+          if (!open && triggerRef.current) {
+            const rect = triggerRef.current.getBoundingClientRect();
+            const spaceBelow = window.innerHeight - rect.bottom;
+            const spaceAbove = rect.top;
+            const minDropdownHeight = 250;
+            const flipUp = spaceBelow < minDropdownHeight && spaceAbove > spaceBelow;
+            setDropdownPos({
+              top: flipUp ? 0 : rect.bottom + 2,
+              left: rect.left,
+              width: Math.max(rect.width, 320),
+              flipUp,
+            });
+          }
+          setOpen(!open);
+        }}
         style={{
           ...triggerStyle,
           color: value ? "var(--text-primary)" : "var(--text-muted)",
@@ -253,9 +282,32 @@ export function VariableKeyPicker({
         <ChevronDown size={14} style={{ flexShrink: 0, opacity: 0.5 }} />
       </button>
 
-      {/* Dropdown panel */}
-      {open && (
-        <div style={dropdownStyle}>
+      {/* Dropdown panel (fixed position to avoid overflow clipping) */}
+      {open && (() => {
+        const rect = triggerRef.current?.getBoundingClientRect();
+        const triggerBottom = rect?.bottom ?? dropdownPos.top;
+        const triggerTop = rect?.top ?? dropdownPos.top;
+        const top = dropdownPos.flipUp ? undefined : triggerBottom + 2;
+        const bottom = dropdownPos.flipUp ? (window.innerHeight - triggerTop + 2) : undefined;
+        const maxH = dropdownPos.flipUp
+          ? triggerTop - 16
+          : window.innerHeight - triggerBottom - 16;
+        return (
+        <div style={{
+          position: "fixed",
+          top,
+          bottom,
+          left: dropdownPos.left,
+          width: dropdownPos.width,
+          maxHeight: Math.max(200, maxH),
+          display: "flex",
+          flexDirection: "column",
+          background: "var(--bg-elevated)",
+          border: "1px solid var(--border-color)",
+          borderRadius: "var(--border-radius)",
+          boxShadow: "var(--shadow-lg)",
+          zIndex: 9999,
+        }}>
           {/* Search input */}
           <div style={{ padding: "6px 8px", borderBottom: "1px solid var(--border-color)" }}>
             <input
@@ -268,7 +320,7 @@ export function VariableKeyPicker({
           </div>
 
           {/* Scrollable list */}
-          <div style={{ maxHeight: 280, overflowY: "auto" }}>
+          <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
             {!hasLiveData && showDeviceState && (
               <div style={emptyHintStyle}>
                 Start the system to see live device state values.
@@ -416,7 +468,8 @@ export function VariableKeyPicker({
             </div>
           )}
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

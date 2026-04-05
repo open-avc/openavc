@@ -343,6 +343,7 @@ export interface SchemaField {
   visible_when?: Record<string, unknown>;
   min_items?: number;
   max_items?: number;
+  device_field?: string;
 }
 
 export interface ProjectConfig {

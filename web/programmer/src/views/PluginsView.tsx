@@ -9,6 +9,7 @@ import type { PluginInfo, SchemaField } from "../api/types";
 import { SurfaceConfigurator } from "../components/plugins/SurfaceConfigurator";
 import { BrowsePlugins } from "../components/plugins/BrowsePlugins";
 import { VariableKeyPicker } from "../components/shared/VariableKeyPicker";
+import { useProjectStore } from "../store/projectStore";
 
 // ──── Status Dot ────
 
@@ -347,6 +348,31 @@ function SchemaFieldMappingList({
             style={{ minWidth: 200 }}
           />
         );
+      case "macro_ref":
+        return (
+          <MacroRefPicker
+            value={String(value ?? "")}
+            onChange={(v) => updateCell(rowIndex, key, v)}
+            style={cellInputStyle}
+          />
+        );
+      case "device_ref":
+        return (
+          <DeviceRefPicker
+            value={String(value ?? "")}
+            onChange={(v) => updateCell(rowIndex, key, v)}
+            style={cellInputStyle}
+          />
+        );
+      case "command_ref":
+        return (
+          <CommandRefPicker
+            value={String(value ?? "")}
+            deviceId={String(items[rowIndex]?.[col.device_field ?? "device_id"] ?? "")}
+            onChange={(v) => updateCell(rowIndex, key, v)}
+            style={cellInputStyle}
+          />
+        );
       default:
         return (
           <input
@@ -419,11 +445,22 @@ function SchemaFieldMappingList({
             )}
             {items.map((row, rowIndex) => (
               <tr key={rowIndex} style={{ borderBottom: "1px solid var(--border-color)" }}>
-                {columns.map(([key, col]) => (
-                  <td key={key} style={cellStyle}>
-                    {renderCell(col, row[key], rowIndex, key)}
-                  </td>
-                ))}
+                {columns.map(([key, col]) => {
+                  // Check visible_when condition against this row's values
+                  if (col.visible_when) {
+                    const visible = Object.entries(col.visible_when).every(
+                      ([k, v]) => row[k] === v
+                    );
+                    if (!visible) {
+                      return <td key={key} style={cellStyle} />;
+                    }
+                  }
+                  return (
+                    <td key={key} style={cellStyle}>
+                      {renderCell(col, row[key], rowIndex, key)}
+                    </td>
+                  );
+                })}
                 <td style={{ ...cellStyle, textAlign: "center" }}>
                   <button
                     onClick={() => removeRow(rowIndex)}
@@ -467,6 +504,94 @@ function SchemaFieldMappingList({
         </button>
       </div>
     </div>
+  );
+}
+
+// ──── Ref Pickers (macro, device, command) ────
+
+function MacroRefPicker({
+  value,
+  onChange,
+  style,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  style?: React.CSSProperties;
+}) {
+  const project = useProjectStore((s) => s.project);
+  const macros = project?.macros ?? [];
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      style={style ?? { width: "100%", padding: "var(--space-sm) var(--space-md)", borderRadius: "var(--border-radius)", border: "1px solid var(--border-color)", background: "var(--bg-surface)", color: "var(--text-primary)", fontSize: "var(--font-size-base)" }}
+    >
+      <option value="">Select macro...</option>
+      {macros.map((m) => (
+        <option key={m.id} value={m.id}>{m.name}</option>
+      ))}
+    </select>
+  );
+}
+
+function DeviceRefPicker({
+  value,
+  onChange,
+  style,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  style?: React.CSSProperties;
+}) {
+  const project = useProjectStore((s) => s.project);
+  const devices = project?.devices ?? [];
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      style={style ?? { width: "100%", padding: "var(--space-sm) var(--space-md)", borderRadius: "var(--border-radius)", border: "1px solid var(--border-color)", background: "var(--bg-surface)", color: "var(--text-primary)", fontSize: "var(--font-size-base)" }}
+    >
+      <option value="">Select device...</option>
+      {devices.map((d) => (
+        <option key={d.id} value={d.id}>{d.name}</option>
+      ))}
+    </select>
+  );
+}
+
+function CommandRefPicker({
+  value,
+  deviceId,
+  onChange,
+  style,
+}: {
+  value: string;
+  deviceId: string;
+  onChange: (v: string) => void;
+  style?: React.CSSProperties;
+}) {
+  const [commands, setCommands] = useState<string[]>([]);
+  useEffect(() => {
+    if (!deviceId) {
+      setCommands([]);
+      return;
+    }
+    api.getDevice(deviceId)
+      .then((info) => setCommands(Object.keys(info?.commands ?? {})))
+      .catch(() => setCommands([]));
+  }, [deviceId]);
+
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      style={style ?? { width: "100%", padding: "var(--space-sm) var(--space-md)", borderRadius: "var(--border-radius)", border: "1px solid var(--border-color)", background: "var(--bg-surface)", color: "var(--text-primary)", fontSize: "var(--font-size-base)" }}
+    >
+      <option value="">{deviceId ? "Select command..." : "Select device first"}</option>
+      {commands.map((cmd) => (
+        <option key={cmd} value={cmd}>{cmd}</option>
+      ))}
+    </select>
   );
 }
 
@@ -554,7 +679,13 @@ function SchemaFieldInput({
       break;
 
     case "macro_ref":
+      input = <MacroRefPicker value={String(value ?? "")} onChange={(v) => onChange(v)} />;
+      break;
+
     case "device_ref":
+      input = <DeviceRefPicker value={String(value ?? "")} onChange={(v) => onChange(v)} />;
+      break;
+
     case "string":
     default:
       input = (

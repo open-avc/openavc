@@ -100,6 +100,20 @@ class PluginAPI:
         self._state.set(key, value, source=f"plugin.{self._plugin_id}")
         self._registry.track_state_key(key)
 
+    async def variable_set(self, variable_id: str, value: Any) -> None:
+        """Set a user-defined variable value. Requires: state_write.
+
+        Writes to var.<variable_id> in the state store. This bypasses the
+        plugin namespace restriction since user variables are shared state.
+        """
+        self._require("state_write")
+        if value is not None and not isinstance(value, (str, int, float, bool)):
+            raise PluginPermissionError(
+                f"Variable values must be flat primitives, got {type(value).__name__}"
+            )
+        key = f"var.{variable_id}"
+        self._state.set(key, value, source=f"plugin.{self._plugin_id}")
+
     async def state_subscribe(self, pattern: str, callback: Callable) -> str:
         """Subscribe to state changes matching a glob pattern. Requires: state_read.
 
