@@ -28,6 +28,7 @@ interface KeyEntry {
   group: string;
   groupDesc: string;
   deviceName?: string;
+  description?: string;
 }
 
 export function VariableKeyPicker({
@@ -101,6 +102,7 @@ export function VariableKeyPicker({
         type: v.type,
         group: "variables",
         groupDesc: "Values you define for your program logic",
+        description: v.description,
       });
     }
 
@@ -397,6 +399,20 @@ export function VariableKeyPicker({
                           }}
                         >
                           {entry.key}
+                        </div>
+                      )}
+                      {entry.description && (
+                        <div
+                          style={{
+                            fontSize: 10,
+                            color: "var(--text-muted)",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                          title={entry.description}
+                        >
+                          {entry.description}
                         </div>
                       )}
                     </div>

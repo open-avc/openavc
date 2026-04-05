@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
-import { Plus, Trash2, ChevronRight, Zap, Layout, FileCode, LayoutDashboard, HardDrive, X, Cpu, Link, ExternalLink } from "lucide-react";
+import { Plus, Trash2, ChevronRight, Zap, Layout, FileCode, LayoutDashboard, HardDrive, X, Cpu, Link, ExternalLink, Pencil } from "lucide-react";
 import { CopyButton } from "../components/shared/CopyButton";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import { VariableKeyPicker } from "../components/shared/VariableKeyPicker";
@@ -120,18 +120,22 @@ export function VariablesView() {
 // ==========================================================================
 
 function VariablesActions() {
-  const [showCreate, setShowCreate] = useState(false);
-  // We use a global event to toggle the create form inside VariablesSubTab
-  // Instead, use a simpler approach: expose via a custom event
   return (
-    <button
-      onClick={() => {
-        window.dispatchEvent(new CustomEvent("openavc:toggle-var-create"));
-      }}
-      style={headerBtnStyle}
-    >
-      <Plus size={14} /> New Variable
-    </button>
+    <div style={{ display: "flex", gap: "var(--space-sm)" }}>
+      <button
+        onClick={() => window.dispatchEvent(new CustomEvent("openavc:delete-unused-vars"))}
+        style={{ ...headerBtnStyle, background: "var(--bg-hover)", color: "var(--text-secondary)" }}
+        title="Delete all variables with zero usages"
+      >
+        <Trash2 size={14} /> Delete Unused
+      </button>
+      <button
+        onClick={() => window.dispatchEvent(new CustomEvent("openavc:toggle-var-create"))}
+        style={headerBtnStyle}
+      >
+        <Plus size={14} /> New Variable
+      </button>
+    </div>
   );
 }
 
@@ -148,10 +152,12 @@ function VariablesSubTab() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [search, setSearch] = useState("");
+  const [renameTarget, setRenameTarget] = useState<{ oldId: string; newId: string; usages: VariableUsage[] } | null>(null);
   const [newId, setNewId] = useState("");
   const [newType, setNewType] = useState("string");
   const [newLabel, setNewLabel] = useState("");
   const [newDefault, setNewDefault] = useState("");
+  const [newDesc, setNewDesc] = useState("");
   const [pendingConfirm, setPendingConfirm] = useState<{ title: string; message: React.ReactNode; confirmLabel: string; onConfirm: () => void } | null>(null);
 
   // Listen for header button toggle
@@ -182,6 +188,48 @@ function VariablesSubTab() {
     return buildUsageMap(project, scriptRefs);
   }, [project, scriptRefs]);
 
+  // Listen for "delete unused" header button (10.7)
+  useEffect(() => {
+    const handler = () => {
+      const currentUsageMap = buildUsageMap(useProjectStore.getState().project!, scriptRefs);
+      const currentVars = useProjectStore.getState().project?.variables ?? [];
+      const unused = currentVars.filter((v) => (currentUsageMap.get(v.id) ?? []).length === 0);
+      if (unused.length === 0) {
+        setPendingConfirm({
+          title: "No Unused Variables",
+          message: "All variables are referenced by at least one macro, UI element, or script.",
+          confirmLabel: "OK",
+          onConfirm: () => setPendingConfirm(null),
+        });
+        return;
+      }
+      setPendingConfirm({
+        title: "Delete Unused Variables",
+        message: (
+          <>
+            <div>{unused.length} variable(s) have no references and will be deleted:</div>
+            <ul style={{ margin: "8px 0 0 16px", padding: 0, fontSize: 12 }}>
+              {unused.map((v) => <li key={v.id}><code style={codeStyle}>var.{v.id}</code> ({v.label})</li>)}
+            </ul>
+          </>
+        ),
+        confirmLabel: `Delete ${unused.length}`,
+        onConfirm: () => {
+          const ids = new Set(unused.map((v) => v.id));
+          updateWithUndo(
+            { variables: currentVars.filter((v) => !ids.has(v.id)) },
+            `Delete ${unused.length} unused variable(s)`
+          );
+          if (selectedId && ids.has(selectedId)) setSelectedId(null);
+          setTimeout(() => useProjectStore.getState().save(), 100);
+          setPendingConfirm(null);
+        },
+      });
+    };
+    window.addEventListener("openavc:delete-unused-vars", handler);
+    return () => window.removeEventListener("openavc:delete-unused-vars", handler);
+  }, [scriptRefs, selectedId, updateWithUndo]);
+
   const doCreateVariable = useCallback((id: string) => {
     if (variables.some((v) => v.id === id)) {
       showError(`Variable "${id}" already exists.`);
@@ -196,12 +244,14 @@ function VariablesSubTab() {
       type: newType,
       default: defVal,
       label: newLabel.trim() || id,
+      description: newDesc.trim(),
     };
     update({ variables: [...variables, newVar] });
     setNewId("");
     setNewType("string");
     setNewLabel("");
     setNewDefault("");
+    setNewDesc("");
     setShowCreate(false);
     setSelectedId(id);
     setTimeout(() => useProjectStore.getState().save(), 100);
@@ -274,6 +324,77 @@ function VariablesSubTab() {
       }
     };
   }, []);
+
+  const handleStartRename = useCallback((oldId: string) => {
+    const usages = usageMap.get(oldId) ?? [];
+    setRenameTarget({ oldId, newId: oldId, usages });
+  }, [usageMap]);
+
+  const handleConfirmRename = useCallback(() => {
+    if (!renameTarget || !project) return;
+    const { oldId, newId } = renameTarget;
+    const safeNewId = newId.trim().replace(/[^a-zA-Z0-9_]/g, "_");
+    if (!safeNewId || safeNewId === oldId) { setRenameTarget(null); return; }
+    if (variables.some((v) => v.id === safeNewId)) {
+      showError(`Variable "${safeNewId}" already exists.`);
+      return;
+    }
+
+    const oldKey = `var.${oldId}`;
+    const newKey = `var.${safeNewId}`;
+
+    // Deep clone project data for modification
+    const newVars = variables.map((v) => v.id === oldId ? { ...v, id: safeNewId } : v);
+    const newMacros = project.macros.map((m) => {
+      let changed = false;
+      const steps = m.steps.map((s) => {
+        if (s.action === "state.set" && s.key === oldKey) { changed = true; return { ...s, key: newKey }; }
+        if (s.action === "conditional" && s.condition?.key === oldKey) { changed = true; return { ...s, condition: { ...s.condition, key: newKey } }; }
+        if (s.skip_if?.key === oldKey) { changed = true; return { ...s, skip_if: { ...s.skip_if, key: newKey } }; }
+        return s;
+      });
+      const triggers = (m.triggers ?? []).map((t) => {
+        let tc = false;
+        const patched = { ...t };
+        if (t.state_key === oldKey) { patched.state_key = newKey; tc = true; }
+        const conditions = (t.conditions ?? []).map((c) => {
+          if (c.key === oldKey) { tc = true; return { ...c, key: newKey }; }
+          return c;
+        });
+        if (tc) patched.conditions = conditions;
+        return tc ? patched : t;
+      });
+      return changed || triggers !== m.triggers ? { ...m, steps, triggers } : m;
+    });
+    const newPages = project.ui.pages.map((page) => ({
+      ...page,
+      elements: page.elements.map((el) => {
+        const b = el.bindings;
+        if (!b) return el;
+        let modified = false;
+        const nb = { ...b };
+        for (const bk of ["variable", "text", "feedback", "value", "color"] as const) {
+          const binding = nb[bk] as any;
+          if (binding?.key === oldKey) { nb[bk] = { ...binding, key: newKey }; modified = true; }
+        }
+        for (const ev of ["press", "release", "change"] as const) {
+          const binding = nb[ev] as any;
+          if (binding?.action === "state.set" && binding?.key === oldKey) {
+            nb[ev] = { ...binding, key: newKey }; modified = true;
+          }
+        }
+        return modified ? { ...el, bindings: nb } : el;
+      }),
+    }));
+
+    updateWithUndo(
+      { variables: newVars, macros: newMacros, ui: { ...project.ui, pages: newPages } },
+      `Rename variable "${oldId}" to "${safeNewId}"`
+    );
+    setSelectedId(safeNewId);
+    setRenameTarget(null);
+    setTimeout(() => useProjectStore.getState().save(), 100);
+  }, [renameTarget, project, variables, updateWithUndo]);
 
   const selectedVar = variables.find((v) => v.id === selectedId);
   const selectedUsages = selectedId ? usageMap.get(selectedId) ?? [] : [];
@@ -353,6 +474,16 @@ function VariablesSubTab() {
                 )}
               </div>
             </div>
+            <div>
+              <label style={miniLabel}>Description</label>
+              <input
+                style={fieldInput}
+                value={newDesc}
+                onChange={(e) => setNewDesc(e.target.value)}
+                placeholder="What this variable is for (optional)"
+                onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+              />
+            </div>
             <div style={{ display: "flex", gap: "var(--space-xs)" }}>
               <button onClick={handleCreate} style={btnPrimary}>Create</button>
               <button onClick={() => setShowCreate(false)} style={btnSecondary}>Cancel</button>
@@ -416,6 +547,11 @@ function VariablesSubTab() {
                     <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>
                       {v.label}{live !== undefined ? ` = ${JSON.stringify(live)}` : ""}
                     </div>
+                    {v.description && (
+                      <div style={{ fontSize: 10, color: "var(--text-muted)", opacity: 0.7, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {v.description}
+                      </div>
+                    )}
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", flexShrink: 0 }}>
                     {usages.length > 0 && (
@@ -450,6 +586,13 @@ function VariablesSubTab() {
                 </code>
                 <CopyButton value={`var.${selectedVar.id}`} size={14} title="Copy variable key" />
                 <span style={{ ...typeBadgeStyle, marginLeft: "var(--space-xs)", fontSize: 12 }}>{selectedVar.type}</span>
+                <button
+                  onClick={() => handleStartRename(selectedVar.id)}
+                  style={{ ...iconBtn, marginLeft: "var(--space-sm)" }}
+                  title="Rename variable (updates all references)"
+                >
+                  <Pencil size={14} />
+                </button>
               </div>
             </div>
 
@@ -486,6 +629,79 @@ function VariablesSubTab() {
                 <span style={{ fontSize: "var(--font-size-sm)", color: selectedLiveValue !== undefined ? "var(--text-primary)" : "var(--text-muted)", fontWeight: 500 }}>
                   {selectedLiveValue !== undefined ? JSON.stringify(selectedLiveValue) : "not set (system not running)"}
                 </span>
+              </div>
+            </div>
+
+            {/* Description (10.1) */}
+            <div style={{ maxWidth: 500, marginBottom: "var(--space-xl)" }}>
+              <label style={detailLabel}>Description</label>
+              <input
+                style={detailInput}
+                value={selectedVar.description ?? ""}
+                onChange={(e) => handleUpdate(selectedVar.id, { description: e.target.value })}
+                placeholder="What this variable is for..."
+              />
+            </div>
+
+            {/* Validation rules (10.3) */}
+            <div style={{ maxWidth: 500, marginBottom: "var(--space-xl)" }}>
+              <label style={detailLabel}>Validation Rules</label>
+              {selectedVar.type === "number" ? (
+                <div style={{ display: "flex", gap: "var(--space-md)", alignItems: "center" }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ ...miniLabel, marginBottom: 2 }}>Min</label>
+                    <input
+                      type="number"
+                      style={detailInput}
+                      value={selectedVar.validation?.min ?? ""}
+                      onChange={(e) => {
+                        const val = e.target.value === "" ? null : Number(e.target.value);
+                        handleUpdate(selectedVar.id, {
+                          validation: { ...selectedVar.validation, min: val },
+                        });
+                      }}
+                      placeholder="No minimum"
+                    />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ ...miniLabel, marginBottom: 2 }}>Max</label>
+                    <input
+                      type="number"
+                      style={detailInput}
+                      value={selectedVar.validation?.max ?? ""}
+                      onChange={(e) => {
+                        const val = e.target.value === "" ? null : Number(e.target.value);
+                        handleUpdate(selectedVar.id, {
+                          validation: { ...selectedVar.validation, max: val },
+                        });
+                      }}
+                      placeholder="No maximum"
+                    />
+                  </div>
+                </div>
+              ) : selectedVar.type === "string" ? (
+                <div>
+                  <label style={{ ...miniLabel, marginBottom: 2 }}>Allowed Values (one per line, leave empty for any)</label>
+                  <textarea
+                    style={{ ...detailInput, minHeight: 60, resize: "vertical", fontFamily: "var(--font-mono)", fontSize: 12 }}
+                    value={(selectedVar.validation?.allowed ?? []).join("\n")}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      const allowed = raw ? raw.split("\n").filter((s) => s.length > 0) : null;
+                      handleUpdate(selectedVar.id, {
+                        validation: { ...selectedVar.validation, allowed: allowed && allowed.length > 0 ? allowed : null },
+                      });
+                    }}
+                    placeholder={"e.g.\npresentation\nmeeting\nstandby"}
+                  />
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: "var(--text-muted)", fontStyle: "italic" }}>
+                  Boolean variables don't need validation rules.
+                </div>
+              )}
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+                When a value is set outside these rules, a warning appears in the Activity log.
               </div>
             </div>
 
@@ -585,6 +801,65 @@ function VariablesSubTab() {
           onConfirm={pendingConfirm.onConfirm}
           onCancel={() => setPendingConfirm(null)}
         />
+      )}
+
+      {/* Rename dialog (10.5) */}
+      {renameTarget && (
+        <div
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}
+          onClick={() => setRenameTarget(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: "var(--bg-surface)", border: "1px solid var(--border-color)", borderRadius: "var(--border-radius)", padding: "var(--space-lg)", width: "min(440px, 90vw)", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }}
+          >
+            <div style={{ fontWeight: 600, fontSize: "var(--font-size-md)", color: "var(--text-primary)", marginBottom: "var(--space-md)" }}>
+              Rename Variable
+            </div>
+            <div style={{ marginBottom: "var(--space-md)" }}>
+              <label style={miniLabel}>Current: <code style={codeStyle}>var.{renameTarget.oldId}</code></label>
+              <input
+                style={{ ...detailInput, marginTop: 4 }}
+                value={renameTarget.newId}
+                onChange={(e) => setRenameTarget({ ...renameTarget, newId: e.target.value })}
+                placeholder="new_variable_id"
+                autoFocus
+                onKeyDown={(e) => e.key === "Enter" && handleConfirmRename()}
+              />
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+                New key: <code style={codeStyle}>var.{renameTarget.newId.trim().replace(/[^a-zA-Z0-9_]/g, "_") || "..."}</code>
+              </div>
+            </div>
+            {renameTarget.usages.length > 0 && (
+              <div style={{ marginBottom: "var(--space-md)", padding: "var(--space-sm)", background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)", borderRadius: "var(--border-radius)", fontSize: 12 }}>
+                <div style={{ fontWeight: 600, color: "#f59e0b", marginBottom: 4 }}>
+                  {renameTarget.usages.length} reference(s) will be updated:
+                </div>
+                {renameTarget.usages.slice(0, 8).map((u, i) => (
+                  <div key={i} style={{ color: "var(--text-secondary)", fontSize: 11, padding: "1px 0" }}>
+                    {u.label} — {u.detail}
+                  </div>
+                ))}
+                {renameTarget.usages.length > 8 && (
+                  <div style={{ color: "var(--text-muted)", fontSize: 11 }}>...and {renameTarget.usages.length - 8} more</div>
+                )}
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4, fontStyle: "italic" }}>
+                  Script references (.py files) must be updated manually.
+                </div>
+              </div>
+            )}
+            <div style={{ display: "flex", gap: "var(--space-sm)", justifyContent: "flex-end" }}>
+              <button onClick={() => setRenameTarget(null)} style={btnSecondary}>Cancel</button>
+              <button
+                onClick={handleConfirmRename}
+                disabled={!renameTarget.newId.trim() || renameTarget.newId.trim() === renameTarget.oldId}
+                style={{ ...btnPrimary, opacity: !renameTarget.newId.trim() || renameTarget.newId.trim() === renameTarget.oldId ? 0.5 : 1 }}
+              >
+                Rename
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -1066,13 +1341,14 @@ function DeviceStatesSubTab() {
 function ActivitySubTab() {
   const [entries, setEntries] = useState<StateHistoryEntry[]>([]);
   const [filter, setFilter] = useState<"all" | "device" | "var" | "system">("all");
+  const [keyFilter, setKeyFilter] = useState("");
   const [loading, setLoading] = useState(true);
 
-  // Poll for state history
+  // Poll for state history (expanded to 500)
   useEffect(() => {
     let cancelled = false;
     const fetchHistory = () => {
-      getStateHistory(100)
+      getStateHistory(500)
         .then((data) => { if (!cancelled) { setEntries(data); setLoading(false); } })
         .catch(() => { if (!cancelled) setLoading(false); });
     };
@@ -1082,14 +1358,21 @@ function ActivitySubTab() {
   }, []);
 
   const filteredEntries = useMemo(() => {
-    if (filter === "all") return entries;
-    return entries.filter((e) => {
-      if (filter === "device") return e.key.startsWith("device.");
-      if (filter === "var") return e.key.startsWith("var.");
-      if (filter === "system") return e.key.startsWith("system.");
-      return true;
-    });
-  }, [entries, filter]);
+    let result = entries;
+    if (filter !== "all") {
+      result = result.filter((e) => {
+        if (filter === "device") return e.key.startsWith("device.");
+        if (filter === "var") return e.key.startsWith("var.");
+        if (filter === "system") return e.key.startsWith("system.");
+        return true;
+      });
+    }
+    if (keyFilter) {
+      const q = keyFilter.toLowerCase();
+      result = result.filter((e) => e.key.toLowerCase().includes(q));
+    }
+    return result;
+  }, [entries, filter, keyFilter]);
 
   const formatTime = (ts: number) => {
     const d = new Date(ts * 1000);
@@ -1116,7 +1399,7 @@ function ActivitySubTab() {
       </HelpBanner>
 
       {/* Filter bar */}
-      <div style={{ display: "flex", gap: "var(--space-sm)", padding: "var(--space-sm) var(--space-md)", borderBottom: "1px solid var(--border-color)", alignItems: "center" }}>
+      <div style={{ display: "flex", gap: "var(--space-sm)", padding: "var(--space-sm) var(--space-md)", borderBottom: "1px solid var(--border-color)", alignItems: "center", flexWrap: "wrap" }}>
         <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Filter:</span>
         {(["all", "device", "var", "system"] as const).map((f) => (
           <button
@@ -1135,6 +1418,22 @@ function ActivitySubTab() {
             {f === "all" ? "All" : f === "var" ? "Variables" : f === "device" ? "Device" : "System"}
           </button>
         ))}
+        <input
+          value={keyFilter}
+          onChange={(e) => setKeyFilter(e.target.value)}
+          placeholder="Filter by key..."
+          style={{
+            marginLeft: "auto",
+            padding: "2px 8px",
+            fontSize: 11,
+            borderRadius: "var(--border-radius)",
+            border: "1px solid var(--border-color)",
+            background: "var(--bg-surface)",
+            color: "var(--text-primary)",
+            width: 180,
+            fontFamily: "var(--font-mono)",
+          }}
+        />
       </div>
 
       {/* Entries */}

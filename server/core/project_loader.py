@@ -60,6 +60,13 @@ class DeviceGroup(BaseModel):
         return v
 
 
+class VariableValidation(BaseModel):
+    """Optional validation rules for a variable."""
+    min: float | None = None  # number type: minimum value
+    max: float | None = None  # number type: maximum value
+    allowed: list[str] | None = None  # string type: allowed values (enum)
+
+
 class VariableConfig(BaseModel):
     id: str
     type: str = "string"
@@ -72,10 +79,12 @@ class VariableConfig(BaseModel):
         return v
     default: Any = None
     label: str = ""
+    description: str = ""  # freeform text explaining the variable's purpose
     dashboard: bool = False
     persist: bool = False  # save value to disk, restore on restart
     source_key: str | None = None  # auto-sync from this state key
     source_map: dict[str, Any] | None = None  # value mapping for source
+    validation: VariableValidation | None = None  # optional validation rules
 
 
 class StepCondition(BaseModel):

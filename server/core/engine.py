@@ -75,6 +75,7 @@ class Engine:
 
         # Variable-to-state binding subscriptions
         self._var_binding_subs: list[str] = []
+        self._var_validation_subs: list[str] = []
 
         # Event/state subscription IDs (for cleanup on stop/reload)
         self._state_sub_ids: list[str] = []
@@ -139,6 +140,9 @@ class Engine:
 
         # Bind variable sources (auto-sync from device state)
         self._bind_variable_sources()
+
+        # Register validation listener for variables with rules
+        self._register_variable_validation()
 
         # Load macros and device groups
         macros_data = [m.model_dump() for m in self.project.macros]
@@ -706,6 +710,45 @@ class Engine:
             self._var_binding_subs.append(sub_id)
             log.debug(f"Variable binding: {var_key} ← {source_key}"
                       f"{' (with map)' if source_map else ''}")
+
+    def _register_variable_validation(self) -> None:
+        """Register state listeners that warn when validation rules are violated."""
+        for sub_id in self._var_validation_subs:
+            self.state.unsubscribe(sub_id)
+        self._var_validation_subs.clear()
+
+        if not self.project:
+            return
+
+        for var in self.project.variables:
+            if not var.validation:
+                continue
+            var_key = f"var.{var.id}"
+            val = var.validation
+
+            def make_handler(vk: str, vid: str, vtype: str, v_rules):
+                def handler(key: str, old_value, new_value, source: str):
+                    if source == "system":
+                        return  # Don't warn on init
+                    if new_value is None:
+                        return
+                    warnings = []
+                    if vtype == "number" and isinstance(new_value, (int, float)):
+                        if v_rules.min is not None and new_value < v_rules.min:
+                            warnings.append(f"value {new_value} is below minimum {v_rules.min}")
+                        if v_rules.max is not None and new_value > v_rules.max:
+                            warnings.append(f"value {new_value} exceeds maximum {v_rules.max}")
+                    if vtype == "string" and v_rules.allowed and isinstance(new_value, str):
+                        if new_value not in v_rules.allowed:
+                            warnings.append(f"value '{new_value}' is not in allowed values: {v_rules.allowed}")
+                    for w in warnings:
+                        log.warning(f"Variable validation: var.{vid} — {w} (source={source})")
+                return handler
+
+            sub_id = self.state.subscribe(
+                var_key, make_handler(var_key, var.id, var.type, val)
+            )
+            self._var_validation_subs.append(sub_id)
 
     def _register_ui_bindings(self) -> None:
         """Walk all UI elements and log their bindings for debugging."""

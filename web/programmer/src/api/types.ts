@@ -23,15 +23,23 @@ export interface DeviceGroup {
   device_ids: string[];
 }
 
+export interface VariableValidation {
+  min?: number | null;
+  max?: number | null;
+  allowed?: string[] | null;
+}
+
 export interface VariableConfig {
   id: string;
   type: string;
   default: unknown;
   label: string;
+  description?: string;
   dashboard?: boolean;
   persist?: boolean;
   source_key?: string;
   source_map?: Record<string, unknown>;
+  validation?: VariableValidation | null;
 }
 
 export interface StepCondition {
