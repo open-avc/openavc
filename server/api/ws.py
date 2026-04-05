@@ -164,18 +164,23 @@ async def _log_stream_task(ws: WebSocket, queue: asyncio.Queue) -> None:
         return  # Catch-all: WS send failure ends the stream task silently
 
 
+async def _send_ws(ws: WebSocket, msg: dict[str, Any]) -> None:
+    """Send a JSON message to the client, silently ignoring disconnects."""
+    try:
+        await ws.send_json(msg)
+    except Exception:
+        pass  # Catch-all: client may have disconnected
+
+
 async def _send_ws_error(
     ws: WebSocket, source_type: str, message: str
 ) -> None:
     """Send an error response back to the client."""
-    try:
-        await ws.send_json({
-            "type": "error",
-            "source_type": source_type,
-            "message": message,
-        })
-    except Exception:
-        pass  # Catch-all: client may have disconnected
+    await _send_ws(ws, {
+        "type": "error",
+        "source_type": source_type,
+        "message": message,
+    })
 
 
 def _is_flat_primitive(value: Any) -> bool:
@@ -315,12 +320,25 @@ async def _handle_message(
         params = msg.get("params", {})
         try:
             await _engine.devices.send_command(device_id, command, params)
+            await _send_ws(ws, {
+                "type": "command.ack",
+                "device_id": device_id,
+                "command": command,
+                "success": True,
+            })
         except Exception as e:
             # Catch-all: driver command handlers can raise arbitrary exceptions
             log.error(f"Command failed: {e}")
             device_name = _engine.state.get(f"device.{device_id}.name") or device_id
             host = _engine.state.get(f"device.{device_id}.host") or ""
-            await _send_ws_error(ws, msg_type, friendly_error(e, device=device_name, host=host))
+            error_msg = friendly_error(e, device=device_name, host=host)
+            await _send_ws(ws, {
+                "type": "command.ack",
+                "device_id": device_id,
+                "command": command,
+                "success": False,
+                "error": error_msg,
+            })
 
     elif msg_type == "state.set":
         key = msg.get("key", "")
@@ -333,10 +351,20 @@ async def _handle_message(
             return
         try:
             _engine.state.set(key, value, source="ws")
+            await _send_ws(ws, {
+                "type": "state.set.ack",
+                "key": key,
+                "success": True,
+            })
         except Exception as e:
             # Catch-all: state listeners (scripts/triggers) can raise arbitrary exceptions
             log.error(f"state.set failed: {e}")
-            await _send_ws_error(ws, msg_type, friendly_error(e))
+            await _send_ws(ws, {
+                "type": "state.set.ack",
+                "key": key,
+                "success": False,
+                "error": friendly_error(e),
+            })
 
     elif msg_type == "macro.execute":
         macro_id = msg.get("macro_id", "")

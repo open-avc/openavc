@@ -296,6 +296,15 @@ class TriggerEngine:
             ts.debounce_task = asyncio.create_task(
                 self._debounced_fire(ts, debounce, context)
             )
+            asyncio.create_task(self.events.emit(
+                "trigger.pending",
+                {
+                    "trigger_id": trigger_id,
+                    "macro_id": ts.macro_id,
+                    "reason": "debounce",
+                    "wait_seconds": debounce,
+                },
+            ))
             return
 
         # No debounce — proceed to delay or direct fire
@@ -324,6 +333,15 @@ class TriggerEngine:
             ts.delay_task = asyncio.create_task(
                 self._delayed_fire(ts, delay, context)
             )
+            asyncio.create_task(self.events.emit(
+                "trigger.pending",
+                {
+                    "trigger_id": t["id"],
+                    "macro_id": ts.macro_id,
+                    "reason": "delay",
+                    "wait_seconds": delay,
+                },
+            ))
         else:
             asyncio.create_task(self._execute_trigger(ts, context))
 
@@ -404,7 +422,16 @@ class TriggerEngine:
                 return
             elif overlap == "queue":
                 # Wait for running macro to finish, then re-check and fire
-                asyncio.create_task(self._queued_fire(ts, context))
+                task = asyncio.create_task(self._queued_fire(ts, context))
+                ts.pending_queue.append(task)
+                asyncio.create_task(self.events.emit(
+                    "trigger.queued",
+                    {
+                        "trigger_id": trigger_id,
+                        "macro_id": macro_id,
+                        "queue_position": len(ts.pending_queue),
+                    },
+                ))
                 return
             # overlap == "allow" falls through
 

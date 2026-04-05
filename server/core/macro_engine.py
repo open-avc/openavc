@@ -200,10 +200,26 @@ class MacroEngine:
                 )
 
             try:
-                await self._execute_step(step, context, _conditional_depth)
+                await self._execute_step(step, context, _conditional_depth, macro_id)
             except Exception as e:  # Catch-all: isolates individual step errors from halting the macro
                 step_detail = self._step_error_detail(step, i, total)
                 log.error(f"Macro step failed: {step_detail} — {e}")
+                # Emit step-level error event so the frontend can show it
+                if macro_id:
+                    await self.events.emit(
+                        f"macro.step_error.{macro_id}",
+                        {
+                            "macro_id": macro_id,
+                            "step_index": i,
+                            "total_steps": total,
+                            "action": action,
+                            "device": step.get("device", ""),
+                            "group": step.get("group", ""),
+                            "command": step.get("command", ""),
+                            "error": str(e),
+                            "description": step.get("description") or self._auto_description(step),
+                        },
+                    )
                 if stop_on_error:
                     raise RuntimeError(
                         f"Step {i + 1}/{total} failed ({step_detail}): {e}"
@@ -274,7 +290,7 @@ class MacroEngine:
 
     async def _execute_step(
         self, step: dict[str, Any], context: dict[str, Any],
-        _conditional_depth: int = 0,
+        _conditional_depth: int = 0, macro_id: str | None = None,
     ) -> None:
         """Execute a single macro step."""
         action = step.get("action", "")
@@ -312,22 +328,45 @@ class MacroEngine:
                 log.debug(f"  Macro step: group '{group_id}' is empty, skipping")
                 return
             # Send to all online devices concurrently
+            sent_ids = []
             tasks = []
+            skipped_ids = []
             for did in device_ids:
                 connected = self.state.get(f"device.{did}.connected")
                 if not connected:
                     log.debug(f"  Group command: skipping offline device '{did}'")
+                    skipped_ids.append(did)
                     continue
+                sent_ids.append(did)
                 tasks.append(self.devices.send_command(did, command, params))
             if tasks:
                 log.debug(f"  Macro step: group '{group_id}'.{command} -> {len(tasks)} device(s)")
                 results = await asyncio.gather(*tasks, return_exceptions=True)
-                online_ids = [did for did in device_ids if self.state.get(f"device.{did}.connected")]
+                # Build per-device result list for the progress event
+                device_results = []
                 for j, result in enumerate(results):
+                    did = sent_ids[j] if j < len(sent_ids) else "unknown"
+                    device_name = self.state.get(f"device.{did}.name") or did
                     if isinstance(result, Exception):
-                        failed_device = online_ids[j] if j < len(online_ids) else "unknown"
-                        device_name = self.state.get(f"device.{failed_device}.name") or failed_device
                         log.error(f"  Group command error on '{device_name}': {result}")
+                        device_results.append({"device_id": did, "name": device_name, "success": False, "error": str(result)})
+                    else:
+                        device_results.append({"device_id": did, "name": device_name, "success": True})
+                for did in skipped_ids:
+                    device_name = self.state.get(f"device.{did}.name") or did
+                    device_results.append({"device_id": did, "name": device_name, "success": False, "error": "Device offline"})
+                if macro_id:
+                    await self.events.emit(
+                        f"macro.progress.{macro_id}",
+                        {
+                            "macro_id": macro_id,
+                            "action": "group.command",
+                            "group": group_id,
+                            "command": command,
+                            "device_results": device_results,
+                            "status": "group_complete",
+                        },
+                    )
 
         elif action == "delay":
             seconds = max(0, step.get("seconds", 0))
@@ -363,12 +402,30 @@ class MacroEngine:
                 )
 
             result = self._evaluate_condition(condition)
+
+            # Emit conditional evaluation result
+            if macro_id:
+                await self.events.emit(
+                    f"macro.progress.{macro_id}",
+                    {
+                        "macro_id": macro_id,
+                        "action": "conditional",
+                        "condition_result": result,
+                        "branch": "then" if result else "else",
+                        "condition_key": condition.get("key", ""),
+                        "condition_operator": condition.get("operator", "eq"),
+                        "condition_value": condition.get("value"),
+                        "actual_value": self.state.get(condition.get("key", "")),
+                        "status": "evaluated",
+                    },
+                )
+
             if result:
                 then_steps = step.get("then_steps") or []
                 if then_steps:
                     log.debug(f"  Conditional: true, running {len(then_steps)} then-step(s)")
                     await self.execute_steps(
-                        then_steps, context,
+                        then_steps, context, macro_id,
                         _conditional_depth=_conditional_depth + 1,
                     )
             else:
@@ -376,7 +433,7 @@ class MacroEngine:
                 if else_steps:
                     log.debug(f"  Conditional: false, running {len(else_steps)} else-step(s)")
                     await self.execute_steps(
-                        else_steps, context,
+                        else_steps, context, macro_id,
                         _conditional_depth=_conditional_depth + 1,
                     )
                 else:
