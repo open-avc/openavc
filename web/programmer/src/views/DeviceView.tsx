@@ -38,6 +38,7 @@ export function DeviceView() {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [editDevice, setEditDevice] = useState<DeviceConfig | null>(null);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "online" | "offline" | "orphaned">("all");
   const [duplicateSource, setDuplicateSource] = useState<DeviceConfig | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkMode, setBulkMode] = useState(false);
@@ -66,13 +67,21 @@ export function DeviceView() {
   const deviceGroups = project?.device_groups ?? [];
 
   // Filter and group devices (memoized)
-  const { filteredDevices, grouped, sortedGroups, hasGroups } = useMemo(() => {
+  const connections = project?.connections ?? {};
+  const { filteredDevices, grouped, sortedGroups, hasGroups, statusCounts } = useMemo(() => {
+    const q = search.toLowerCase();
     const filtered = deviceConfigs.filter(
-      (dev) =>
-        !search ||
-        dev.name.toLowerCase().includes(search.toLowerCase()) ||
-        dev.id.toLowerCase().includes(search.toLowerCase()) ||
-        dev.driver.toLowerCase().includes(search.toLowerCase())
+      (dev) => {
+        if (!q) return true;
+        if (dev.name.toLowerCase().includes(q)) return true;
+        if (dev.id.toLowerCase().includes(q)) return true;
+        if (dev.driver.toLowerCase().includes(q)) return true;
+        // Search by IP/host from connections table or config
+        const conn = connections[dev.id] ?? {};
+        const host = String(conn.host ?? dev.config?.host ?? "").toLowerCase();
+        if (host && host.includes(q)) return true;
+        return false;
+      }
     );
     // Build device -> first group name mapping from device_groups
     const deviceToGroup = new Map<string, string>();
@@ -94,13 +103,49 @@ export function DeviceView() {
       if (!b) return -1;
       return a.localeCompare(b);
     });
+    // Compute status counts from live state (snapshot read)
+    const ls = useConnectionStore.getState().liveState;
+    let online = 0, offline = 0, orphanedCount = 0;
+    for (const dev of deviceConfigs) {
+      if (ls[`device.${dev.id}.orphaned`]) orphanedCount++;
+      else if (ls[`device.${dev.id}.connected`]) online++;
+      else offline++;
+    }
+
+    // Apply status filter
+    let statusFiltered = filtered;
+    if (statusFilter !== "all") {
+      statusFiltered = filtered.filter((dev) => {
+        const isOrphaned = !!ls[`device.${dev.id}.orphaned`];
+        const isConnected = !!ls[`device.${dev.id}.connected`];
+        if (statusFilter === "orphaned") return isOrphaned;
+        if (statusFilter === "online") return !isOrphaned && isConnected;
+        if (statusFilter === "offline") return !isOrphaned && !isConnected;
+        return true;
+      });
+    }
+
+    // Re-group with status-filtered devices
+    const filteredGroups = new Map<string, typeof statusFiltered>();
+    for (const dev of statusFiltered) {
+      const g = deviceToGroup.get(dev.id) || "";
+      if (!filteredGroups.has(g)) filteredGroups.set(g, []);
+      filteredGroups.get(g)!.push(dev);
+    }
+    const filteredSorted = [...filteredGroups.keys()].sort((a, b) => {
+      if (!a) return 1;
+      if (!b) return -1;
+      return a.localeCompare(b);
+    });
+
     return {
-      filteredDevices: filtered,
-      grouped: groups,
-      sortedGroups: sorted,
-      hasGroups: sorted.some((g) => g !== ""),
+      filteredDevices: statusFiltered,
+      grouped: filteredGroups,
+      sortedGroups: filteredSorted,
+      hasGroups: filteredSorted.some((g) => g !== ""),
+      statusCounts: { total: deviceConfigs.length, online, offline, orphaned: orphanedCount },
     };
-  }, [deviceConfigs, deviceGroups, search]);
+  }, [deviceConfigs, deviceGroups, search, connections, statusFilter]);
 
   const handleDeviceDeleted = useCallback(
     (deletedId: string) => {
@@ -300,6 +345,35 @@ export function DeviceView() {
               color: "var(--text-primary)",
             }}
           />
+
+          {/* Device count summary + filter chips */}
+          {deviceConfigs.length > 0 && (
+            <div style={{
+              display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center",
+              marginBottom: "var(--space-sm)", fontSize: 11, color: "var(--text-muted)",
+            }}>
+              <span>{statusCounts.total} device{statusCounts.total !== 1 ? "s" : ""}:</span>
+              {([
+                { key: "all" as const, label: "All", count: statusCounts.total },
+                { key: "online" as const, label: "Online", count: statusCounts.online },
+                { key: "offline" as const, label: "Offline", count: statusCounts.offline },
+                { key: "orphaned" as const, label: "Orphaned", count: statusCounts.orphaned },
+              ] as const).filter((f) => f.key === "all" || f.count > 0).map((f) => (
+                <button
+                  key={f.key}
+                  onClick={() => setStatusFilter(f.key)}
+                  style={{
+                    padding: "1px 6px", borderRadius: 3, fontSize: 11, cursor: "pointer",
+                    background: statusFilter === f.key ? "var(--accent)" : "var(--bg-hover)",
+                    color: statusFilter === f.key ? "#fff" : "var(--text-secondary)",
+                    border: "none",
+                  }}
+                >
+                  {f.label} {f.key !== "all" ? f.count : ""}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Bulk action bar */}
           {selectedIds.size > 0 && (
@@ -903,19 +977,19 @@ function DeviceDetail({
         </div>
       </div>
 
-      {/* Orphaned device banner */}
+      {/* Orphaned device banner — prominent red warning */}
       {Boolean(liveState[`device.${deviceId}.orphaned`]) && (
         <div
           style={{
             padding: "var(--space-md)",
             borderRadius: "var(--border-radius)",
             marginBottom: "var(--space-md)",
-            background: "rgba(245, 158, 11, 0.12)",
-            border: "1px solid rgba(245, 158, 11, 0.3)",
+            background: "rgba(239, 68, 68, 0.1)",
+            border: "2px solid rgba(239, 68, 68, 0.4)",
           }}
         >
-          <div style={{ fontWeight: 600, marginBottom: "var(--space-sm)", color: "var(--color-warning, #f59e0b)" }}>
-            Driver Required
+          <div style={{ fontWeight: 600, marginBottom: "var(--space-sm)", color: "#ef4444", fontSize: "var(--font-size-md)" }}>
+            Driver Not Installed
           </div>
           <div style={{ fontSize: "var(--font-size-sm)", marginBottom: "var(--space-md)" }}>
             This device needs the driver "{deviceConfig?.driver}" which is not installed.
@@ -1461,6 +1535,10 @@ function ConfigFieldInputs({
         // Build helpful placeholder from key name conventions
         const placeholder = key === "host" ? "192.168.1.100"
           : key === "port" ? "1-65535"
+          : key === "username" ? "admin"
+          : key === "password" ? "password"
+          : key === "community" ? "public"
+          : key === "baud_rate" || key === "baudrate" ? "9600"
           : defaultVal != null && defaultVal !== "" ? String(defaultVal)
           : label;
 
@@ -1871,9 +1949,24 @@ function AddDeviceDialog({
             onChange={(e) =>
               setDeviceId(e.target.value.replace(/[^a-z0-9_]/gi, "").toLowerCase())
             }
-            placeholder="e.g., projector1"
-            style={{ width: "100%" }}
+            placeholder="e.g., projector_room_1"
+            style={{
+              width: "100%",
+              borderColor: deviceId && project?.devices.some((d) => d.id === deviceId)
+                ? "var(--color-error, #ef4444)" : undefined,
+            }}
           />
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3 }}>
+            Lowercase letters, numbers, and underscores only.
+            {deviceId && (
+              <span style={{ marginLeft: 6 }}>
+                Your ID: <code style={{ fontFamily: "var(--font-mono)", color: "var(--text-primary)" }}>{deviceId}</code>
+                {project?.devices.some((d) => d.id === deviceId) && (
+                  <span style={{ color: "var(--color-error, #ef4444)", marginLeft: 6 }}>Already exists</span>
+                )}
+              </span>
+            )}
+          </div>
         </div>
 
         <div style={{ marginBottom: "var(--space-md)" }}>

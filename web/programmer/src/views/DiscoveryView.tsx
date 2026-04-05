@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Radar,
   Play,
@@ -221,6 +221,24 @@ export function DiscoveryPanel() {
   }, [devices, sortBy, filterCat, avOnly]);
 
   const isRunning = status === "running";
+  const [scanCompletedAt, setScanCompletedAt] = useState<Date | null>(null);
+  const prevStatusRef = useRef(status);
+  useEffect(() => {
+    if (prevStatusRef.current === "running" && status === "complete") {
+      setScanCompletedAt(new Date());
+    }
+    prevStatusRef.current = status;
+  }, [status]);
+
+  // Phase labels for user display
+  const phaseLabel = phase === "ping_sweep" ? "Scanning network..."
+    : phase === "port_scan" ? "Probing ports..."
+    : phase === "protocol_probe" ? "Identifying protocols..."
+    : phase === "driver_match" ? "Matching drivers..."
+    : phase === "snmp_scan" ? "Querying SNMP..."
+    : phase === "mdns_scan" ? "Listening for mDNS..."
+    : phase === "ssdp_scan" ? "Listening for SSDP..."
+    : message || phase || "Scanning...";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", gap: "var(--space-md)" }}>
@@ -326,8 +344,8 @@ export function DiscoveryPanel() {
       {isRunning && (
         <div style={{ marginBottom: "var(--space-md)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: "var(--font-size-sm)", marginBottom: 4 }}>
-            <span>{message || phase}</span>
-            <span>{Object.keys(devices).length} found</span>
+            <span style={{ fontWeight: 500 }}>{phaseLabel}</span>
+            <span>{Object.keys(devices).length} found &middot; {Math.round(progress * 100)}%</span>
           </div>
           <div
             style={{
@@ -402,6 +420,13 @@ export function DiscoveryPanel() {
           </span>
         )}
       </div>
+
+      {/* Results timestamp */}
+      {!isRunning && scanCompletedAt && Object.keys(devices).length > 0 && (
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: "var(--space-xs)" }}>
+          Results from {scanCompletedAt.toLocaleTimeString()} ({Object.keys(devices).length} device{Object.keys(devices).length !== 1 ? "s" : ""})
+        </div>
+      )}
 
       {/* Device list */}
       {status === "idle" && Object.keys(devices).length === 0 ? (
@@ -497,6 +522,14 @@ function DeviceCard({
         <span style={{ fontSize: "var(--font-size-sm)", minWidth: 32 }} title={`Confidence: ${Math.round(device.confidence * 100)}%`}>
           {confidenceStars(device.confidence)}
         </span>
+        {device.confidence >= 0.8 && (
+          <span style={{
+            fontSize: 10, fontWeight: 600, padding: "1px 5px", borderRadius: 3,
+            background: "rgba(16,185,129,0.15)", color: "#10b981",
+          }}>
+            Suggested
+          </span>
+        )}
 
         <span style={{ fontFamily: "monospace", minWidth: 120, fontSize: "var(--font-size-sm)" }}>
           {device.ip}
