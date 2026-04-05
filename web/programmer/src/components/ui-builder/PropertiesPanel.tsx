@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Trash2, Undo2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Trash2, Undo2, Link } from "lucide-react";
 import type { UIElement, UIPage, ProjectConfig, OverlayConfig, PageBackground, MasterElement, UISettings } from "../../api/types";
 import { BasicProperties } from "./PropertySections/BasicProperties";
 import { LayoutProperties } from "./PropertySections/LayoutProperties";
@@ -196,7 +196,7 @@ export function PropertiesPanel({
         <StyleProperties element={element} onChange={handleChange} themeDefaults={themeDefaults?.[element.type]} />
       </Section>
 
-      <Section title="Bindings" defaultOpen>
+      <Section title="Bindings" defaultOpen highlight icon={<Link size={12} style={{ color: "var(--accent)" }} />}>
         <BindingProperties
           element={element}
           project={project}
@@ -315,7 +315,7 @@ function MasterElementProperties({
         <StyleProperties element={masterElement} onChange={handleElementChange} themeDefaults={themeDefaults?.[masterElement.type]} />
       </Section>
 
-      <Section title="Bindings" defaultOpen>
+      <Section title="Bindings" defaultOpen highlight icon={<Link size={12} style={{ color: "var(--accent)" }} />}>
         <BindingProperties
           element={masterElement}
           project={project}
@@ -931,10 +931,14 @@ function FieldRow({
 function Section({
   title,
   defaultOpen,
+  icon,
+  highlight,
   children,
 }: {
   title: string;
   defaultOpen?: boolean;
+  icon?: React.ReactNode;
+  highlight?: boolean;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen ?? true);
@@ -942,7 +946,7 @@ function Section({
   return (
     <div
       style={{
-        border: "1px solid var(--border-color)",
+        border: `1px solid ${highlight ? "var(--accent)" : "var(--border-color)"}`,
         borderRadius: "var(--border-radius)",
         overflow: "hidden",
       }}
@@ -957,12 +961,13 @@ function Section({
           padding: "6px 8px",
           fontSize: "var(--font-size-sm)",
           fontWeight: 600,
-          background: "var(--bg-surface)",
+          background: highlight ? "rgba(33,150,243,0.06)" : "var(--bg-surface)",
           color: "var(--text-primary)",
           textAlign: "left",
         }}
       >
         {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        {icon}
         {title}
       </button>
       {open && (

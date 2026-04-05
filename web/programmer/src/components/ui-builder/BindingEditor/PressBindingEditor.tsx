@@ -1,4 +1,7 @@
+import { Play } from "lucide-react";
 import type { ProjectConfig } from "../../../api/types";
+import * as api from "../../../api/restClient";
+import { showSuccess, showError } from "../../../store/toastStore";
 import { ActionPicker } from "./ActionPicker";
 
 interface PressBindingEditorProps {
@@ -37,6 +40,26 @@ export function PressBindingEditor({
     onChange([...actions, { action: "" }]);
   };
 
+  const testAction = async (action: Record<string, unknown>) => {
+    try {
+      if (action.action === "device.command" && action.device && action.command) {
+        await api.sendCommand(String(action.device), String(action.command), (action.params as Record<string, unknown>) ?? {});
+        showSuccess("Command sent");
+      } else if (action.action === "macro" && action.macro) {
+        await api.executeMacro(String(action.macro));
+        showSuccess("Macro triggered");
+      } else {
+        showError("Cannot test this action type");
+      }
+    } catch (e) {
+      showError(`Test failed: ${e}`);
+    }
+  };
+
+  const isTestable = (action: Record<string, unknown>): boolean =>
+    (action.action === "device.command" && !!action.device && !!action.command) ||
+    (action.action === "macro" && !!action.macro);
+
   return (
     <div
       style={{
@@ -47,32 +70,49 @@ export function PressBindingEditor({
     >
       {actions.map((action, i) => (
         <div key={i}>
-          {actions.length > 1 && (
-            <div style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: 4,
-            }}>
-              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                Action {i + 1}
-              </span>
-              <button
-                onClick={() => removeAction(i)}
-                style={{
-                  padding: "2px 6px",
-                  borderRadius: "var(--border-radius)",
-                  fontSize: 11,
-                  color: "var(--color-error)",
-                  background: "transparent",
-                  border: "1px solid var(--border-color)",
-                  cursor: "pointer",
-                }}
-              >
-                Remove
-              </button>
+          <div style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 4,
+          }}>
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+              {actions.length > 1 ? `Action ${i + 1}` : ""}
+            </span>
+            <div style={{ display: "flex", gap: 4 }}>
+              {isTestable(action) && (
+                <button
+                  onClick={() => testAction(action)}
+                  title="Test this action now"
+                  style={{
+                    display: "flex", alignItems: "center", gap: 3,
+                    padding: "2px 6px", borderRadius: "var(--border-radius)",
+                    fontSize: 11, color: "var(--accent)",
+                    background: "transparent", border: "1px solid var(--border-color)",
+                    cursor: "pointer",
+                  }}
+                >
+                  <Play size={10} /> Test
+                </button>
+              )}
+              {actions.length > 1 && (
+                <button
+                  onClick={() => removeAction(i)}
+                  style={{
+                    padding: "2px 6px",
+                    borderRadius: "var(--border-radius)",
+                    fontSize: 11,
+                    color: "var(--color-error)",
+                    background: "transparent",
+                    border: "1px solid var(--border-color)",
+                    cursor: "pointer",
+                  }}
+                >
+                  Remove
+                </button>
+              )}
             </div>
-          )}
+          </div>
           <ActionPicker
             value={action}
             project={project}
@@ -80,21 +120,36 @@ export function PressBindingEditor({
             forChangeBinding={forChangeBinding}
           />
           {actions.length === 1 && String(action.action || "") && (
-            <button
-              onClick={onClear}
-              style={{
-                marginTop: "var(--space-sm)",
-                padding: "4px 8px",
-                borderRadius: "var(--border-radius)",
-                fontSize: "var(--font-size-sm)",
-                color: "var(--color-error)",
-                background: "transparent",
-                border: "1px solid var(--border-color)",
-                alignSelf: "flex-start",
-              }}
-            >
-              Remove Binding
-            </button>
+            <div style={{ display: "flex", gap: "var(--space-sm)", marginTop: "var(--space-sm)" }}>
+              {isTestable(action) && (
+                <button
+                  onClick={() => testAction(action)}
+                  title="Test this action now"
+                  style={{
+                    display: "flex", alignItems: "center", gap: 3,
+                    padding: "4px 8px", borderRadius: "var(--border-radius)",
+                    fontSize: "var(--font-size-sm)", color: "var(--accent)",
+                    background: "transparent", border: "1px solid var(--border-color)",
+                    cursor: "pointer",
+                  }}
+                >
+                  <Play size={11} /> Test
+                </button>
+              )}
+              <button
+                onClick={onClear}
+                style={{
+                  padding: "4px 8px",
+                  borderRadius: "var(--border-radius)",
+                  fontSize: "var(--font-size-sm)",
+                  color: "var(--color-error)",
+                  background: "transparent",
+                  border: "1px solid var(--border-color)",
+                }}
+              >
+                Remove Binding
+              </button>
+            </div>
           )}
         </div>
       ))}

@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
+import { Info } from "lucide-react";
 import type { ProjectConfig, DeviceInfo } from "../../../api/types";
+import { useConnectionStore } from "../../../store/connectionStore";
 import * as api from "../../../api/restClient";
 
 interface ActionPickerProps {
@@ -152,12 +154,36 @@ function DeviceCommandConfig({
           style={{ width: "100%", padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
         >
           <option value="">Select device...</option>
-          {project.devices.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.name}
-            </option>
-          ))}
+          {project.devices.map((d) => {
+            const connected = useConnectionStore.getState().liveState[`device.${d.id}.connected`];
+            return (
+              <option key={d.id} value={d.id}>
+                {connected ? "\u25CF " : "\u25CB "}{d.name} — {d.driver}
+              </option>
+            );
+          })}
         </select>
+        {/* Device info tooltip */}
+        {selectedDevice && deviceInfo && (
+          <div style={{
+            display: "flex", alignItems: "center", gap: 6,
+            fontSize: 11, color: "var(--text-muted)", marginTop: 3, paddingLeft: 2,
+          }}>
+            <span style={{
+              width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
+              background: deviceInfo.connected ? "#10b981" : "#ef4444",
+            }} />
+            <span>{deviceInfo.connected ? "Connected" : "Offline"}</span>
+            <span style={{ color: "var(--border-color)" }}>|</span>
+            <span>{deviceInfo.driver}</span>
+            {deviceInfo.state && String(deviceInfo.state.host || "") && (
+              <>
+                <span style={{ color: "var(--border-color)" }}>|</span>
+                <span>{String(deviceInfo.state.host || "")}</span>
+              </>
+            )}
+          </div>
+        )}
       </div>
       {selectedDevice && (
         <div>
@@ -181,11 +207,18 @@ function DeviceCommandConfig({
               </option>
             ))}
           </select>
+          {/* Command help text — prominent info box */}
           {selectedCommand && (() => {
             const cmdDef = commands[selectedCommand] as Record<string, unknown> | undefined;
             const cmdHelp = cmdDef?.help as string | undefined;
             return cmdHelp ? (
-              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+              <div style={{
+                display: "flex", alignItems: "flex-start", gap: 6,
+                marginTop: 4, padding: "6px 8px", borderRadius: 4,
+                background: "rgba(33,150,243,0.08)", border: "1px solid rgba(33,150,243,0.15)",
+                fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.4,
+              }}>
+                <Info size={13} style={{ flexShrink: 0, marginTop: 1, color: "var(--accent)" }} />
                 {cmdHelp}
               </div>
             ) : null;
@@ -195,43 +228,93 @@ function DeviceCommandConfig({
       {paramKeys.length > 0 && (
         <div>
           <label style={labelStyle}>Parameters</label>
-          {paramKeys.map((param) => (
-            <div
-              key={param}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 4,
-                marginBottom: 4,
-              }}
-            >
-              <span
-                style={{
-                  fontSize: 11,
-                  color: "var(--text-muted)",
-                  width: 70,
-                }}
-              >
-                {param}
-              </span>
-              <input
-                value={String(currentParams[param] ?? "")}
-                onChange={(e) =>
-                  onChange({
-                    action: "device.command",
-                    device: selectedDevice,
-                    command: selectedCommand,
-                    params: { ...currentParams, [param]: e.target.value },
-                  })
-                }
-                style={{
-                  flex: 1,
-                  padding: "3px 6px",
-                  fontSize: "var(--font-size-sm)",
-                }}
-              />
-            </div>
-          ))}
+          {paramKeys.map((param) => {
+            const paramDef = (commandDef?.params as Record<string, Record<string, unknown>> | undefined)?.[param] ?? {};
+            const paramType = paramDef.type as string | undefined;
+            const paramHelp = paramDef.help as string | undefined;
+            const paramRequired = paramDef.required as boolean | undefined;
+            const paramDefault = paramDef.default;
+            const paramValues = paramDef.values as string[] | undefined;
+            return (
+              <div key={param} style={{ marginBottom: 6 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 2 }}>
+                  <span style={{ fontSize: 11, color: "var(--text-secondary)", fontWeight: 500 }}>
+                    {param}
+                  </span>
+                  {paramType && (
+                    <span style={{
+                      fontSize: 10, padding: "0 4px", borderRadius: 3,
+                      background: "var(--bg-hover)", color: "var(--text-muted)",
+                    }}>
+                      {paramType}
+                    </span>
+                  )}
+                  {paramRequired && (
+                    <span style={{ fontSize: 10, color: "#ef4444" }}>required</span>
+                  )}
+                  {paramDefault !== undefined && (
+                    <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                      default: {String(paramDefault)}
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                  {paramValues && paramValues.length > 0 ? (
+                    <select
+                      value={String(currentParams[param] ?? "")}
+                      onChange={(e) =>
+                        onChange({
+                          action: "device.command",
+                          device: selectedDevice,
+                          command: selectedCommand,
+                          params: { ...currentParams, [param]: e.target.value },
+                        })
+                      }
+                      style={{ flex: 1, padding: "3px 6px", fontSize: "var(--font-size-sm)" }}
+                    >
+                      <option value="">Select...</option>
+                      {paramValues.map((v) => (
+                        <option key={v} value={v}>{v}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      value={String(currentParams[param] ?? "")}
+                      onChange={(e) =>
+                        onChange({
+                          action: "device.command",
+                          device: selectedDevice,
+                          command: selectedCommand,
+                          params: { ...currentParams, [param]: e.target.value },
+                        })
+                      }
+                      placeholder={paramHelp || `Enter ${param}...`}
+                      style={{ flex: 1, padding: "3px 6px", fontSize: "var(--font-size-sm)" }}
+                    />
+                  )}
+                  {/* Dynamic value template buttons */}
+                  <button
+                    onClick={() =>
+                      onChange({
+                        action: "device.command",
+                        device: selectedDevice,
+                        command: selectedCommand,
+                        params: { ...currentParams, [param]: "$value" },
+                      })
+                    }
+                    title="Insert $value — resolves to the element's current value at runtime (slider position, select choice, etc.)"
+                    style={{
+                      padding: "2px 5px", fontSize: 10, borderRadius: 3, cursor: "pointer",
+                      background: "var(--bg-hover)", color: "var(--text-muted)", border: "1px solid var(--border-color)",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    $value
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </>

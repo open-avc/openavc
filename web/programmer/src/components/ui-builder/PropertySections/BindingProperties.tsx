@@ -415,6 +415,22 @@ export function BindingProperties({
     }
   };
 
+  // 4.1: Detect unbound interactive elements
+  const interactiveSlots: Record<string, string> = {
+    button: "press",
+    slider: "change",
+    fader: "change",
+    select: "change",
+    text_input: "change",
+    keypad: "submit",
+    camera_preset: "press",
+    matrix: "route",
+  };
+  const primarySlot = interactiveSlots[element.type];
+  const hasPrimaryBinding = primarySlot ? !!element.bindings[primarySlot] : true;
+  const hasVariableBinding = !!element.bindings.variable;
+  const isUnbound = primarySlot && !hasPrimaryBinding && !hasVariableBinding;
+
   return (
     <div
       style={{
@@ -423,6 +439,30 @@ export function BindingProperties({
         gap: "var(--space-sm)",
       }}
     >
+      {/* Unbound element warning */}
+      {isUnbound && (
+        <div
+          style={{
+            display: "flex", alignItems: "center", gap: "var(--space-sm)",
+            padding: "var(--space-sm)", borderRadius: "var(--border-radius)",
+            background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.25)",
+            fontSize: 12, color: "#d97706", lineHeight: 1.4,
+          }}
+        >
+          <AlertTriangle size={14} style={{ flexShrink: 0 }} />
+          <span>
+            This {element.type} has no action.{" "}
+            <span
+              onClick={() => setEditingSlot(primarySlot)}
+              style={{ textDecoration: "underline", cursor: "pointer", fontWeight: 500 }}
+            >
+              Add a {primarySlot} binding
+            </span>{" "}
+            to make it interactive.
+          </span>
+        </div>
+      )}
+
       {slots.map((slot) => {
         const isEditing = editingSlot === slot;
         const hasBinding = !!element.bindings[slot];

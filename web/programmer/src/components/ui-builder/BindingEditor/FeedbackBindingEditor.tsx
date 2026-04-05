@@ -310,31 +310,22 @@ export function FeedbackBindingEditor({
         </div>
       )}
 
-      {/* Mode toggle: Simple vs Multi-State */}
+      {/* Mode toggle: Multi-State (default) vs Simple (legacy) */}
       {stateKey && (
-        <div>
-          <label style={labelStyle}>Feedback Mode</label>
-          <div style={{ display: "flex", gap: "var(--space-xs)" }}>
-            {[
-              { id: "simple", label: "Simple (On/Off)" },
-              { id: "multi", label: "Multi-State" },
-            ].map((m) => (
-              <button
-                key={m.id}
-                onClick={() => m.id === "multi" ? switchToMultiState() : switchToSimple()}
-                style={{
-                  flex: 1, padding: "5px 10px", borderRadius: "var(--border-radius)",
-                  fontSize: 12, cursor: "pointer",
-                  fontWeight: (m.id === "multi") === isMultiState ? 600 : 400,
-                  background: (m.id === "multi") === isMultiState ? "var(--accent)" : "var(--bg-hover)",
-                  color: (m.id === "multi") === isMultiState ? "#fff" : "var(--text-secondary)",
-                  border: "1px solid " + ((m.id === "multi") === isMultiState ? "var(--accent)" : "var(--border-color)"),
-                }}
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <label style={labelStyle}>
+            Feedback Mode: <strong>{isMultiState ? "Multi-State" : "Simple (On/Off)"}</strong>
+          </label>
+          <button
+            onClick={() => isMultiState ? switchToSimple() : switchToMultiState()}
+            style={{
+              fontSize: 11, color: "var(--text-muted)", background: "none",
+              border: "none", cursor: "pointer", textDecoration: "underline",
+              padding: 0,
+            }}
+          >
+            {isMultiState ? "Switch to simple mode" : "Switch to multi-state"}
+          </button>
         </div>
       )}
 
