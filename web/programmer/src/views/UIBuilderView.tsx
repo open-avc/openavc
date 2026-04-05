@@ -150,6 +150,12 @@ export function UIBuilderView() {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+P toggles preview mode (works in both modes)
+      if ((e.ctrlKey || e.metaKey) && e.key === "p") {
+        e.preventDefault();
+        useUIBuilderStore.getState().setPreviewMode(!previewMode);
+        return;
+      }
       if (previewMode) return;
       const target = e.target as HTMLElement;
       const inInput = target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT";
@@ -921,9 +927,29 @@ export function UIBuilderView() {
           y={contextMenu.y}
           elementId={contextMenu.elementId}
           isMaster={contextMenu.isMaster}
+          multiSelectCount={selectedElementIds.length}
           onClose={() => setContextMenu(null)}
           onDuplicate={handleDuplicateElement}
           onDelete={handleDeleteElement}
+          onDeleteAll={() => {
+            if (currentPage) {
+              applyMutation((pages) => {
+                let result = pages;
+                for (const eid of selectedElementIds) {
+                  result = removeElementFromPage(result, currentPage.id, eid);
+                }
+                return result;
+              });
+              selectElement(null);
+            }
+          }}
+          onDuplicateAll={() => {
+            if (currentPage) {
+              for (const eid of selectedElementIds) {
+                handleDuplicateElement(eid);
+              }
+            }
+          }}
           onCopy={handleCopyElement}
           onPaste={handlePasteElement}
           onBringToFront={handleBringToFront}

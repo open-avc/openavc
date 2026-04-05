@@ -27,6 +27,8 @@ import {
   Redo2,
   Check,
   Loader2,
+  AlignHorizontalDistributeCenter,
+  AlignVerticalDistributeCenter,
 } from "lucide-react";
 import type { UIPage, PageGroup } from "../../api/types";
 import { useUIBuilderStore } from "../../store/uiBuilderStore";
@@ -217,6 +219,54 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
     applyPageMutation((p) =>
       alignElement(p, selectedPageId!, selectedElementId!, action, page.grid),
     );
+  };
+
+  const handleDistribute = (direction: "horizontal" | "vertical") => {
+    if (selectedElementIds.length < 3 || !selectedPageId || !project) return;
+    const page = project.ui.pages.find((p) => p.id === selectedPageId);
+    if (!page) return;
+    const elements = selectedElementIds
+      .map((eid) => page.elements.find((el) => el.id === eid))
+      .filter((el): el is typeof page.elements[0] => !!el);
+    if (elements.length < 3) return;
+
+    if (direction === "horizontal") {
+      const sorted = [...elements].sort((a, b) => a.grid_area.col - b.grid_area.col);
+      const first = sorted[0].grid_area.col;
+      const last = sorted[sorted.length - 1].grid_area.col;
+      const step = (last - first) / (sorted.length - 1);
+      applyPageMutation((p) => {
+        let result = p;
+        sorted.forEach((el, i) => {
+          if (i === 0 || i === sorted.length - 1) return;
+          const newCol = Math.round(first + step * i);
+          result = result.map((pg) =>
+            pg.id === selectedPageId
+              ? { ...pg, elements: pg.elements.map((e) => e.id === el.id ? { ...e, grid_area: { ...e.grid_area, col: newCol } } : e) }
+              : pg
+          );
+        });
+        return result;
+      });
+    } else {
+      const sorted = [...elements].sort((a, b) => a.grid_area.row - b.grid_area.row);
+      const first = sorted[0].grid_area.row;
+      const last = sorted[sorted.length - 1].grid_area.row;
+      const step = (last - first) / (sorted.length - 1);
+      applyPageMutation((p) => {
+        let result = p;
+        sorted.forEach((el, i) => {
+          if (i === 0 || i === sorted.length - 1) return;
+          const newRow = Math.round(first + step * i);
+          result = result.map((pg) =>
+            pg.id === selectedPageId
+              ? { ...pg, elements: pg.elements.map((e) => e.id === el.id ? { ...e, grid_area: { ...e.grid_area, row: newRow } } : e) }
+              : pg
+          );
+        });
+        return result;
+      });
+    }
   };
 
   const preset = SCREEN_PRESETS[screenPresetIndex];
@@ -648,6 +698,51 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
         </button>
       )}
 
+      {/* Grid configuration quick-access (11.2) */}
+      {!previewMode && showGrid && (() => {
+        const currentPage = pages.find((p) => p.id === selectedPageId);
+        if (!currentPage || !project) return null;
+        const handleGridChange = (patch: Record<string, number>) => {
+          const updatedPages = project.ui.pages.map((p) =>
+            p.id === currentPage.id
+              ? {
+                  ...p,
+                  grid: { ...p.grid, ...("columns" in patch || "rows" in patch ? patch : {}) },
+                  ...("grid_gap" in patch ? { grid_gap: patch.grid_gap } : {}),
+                }
+              : p
+          );
+          pushUndo(project.ui.pages);
+          update({ ui: { ...project.ui, pages: updatedPages } });
+          touchMutation();
+        };
+        return (
+          <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
+            <label style={{ fontSize: 10, color: "var(--text-muted)" }}>Cols</label>
+            <input
+              type="number" min={1} max={24}
+              value={currentPage.grid.columns}
+              onChange={(e) => handleGridChange({ columns: Math.max(1, parseInt(e.target.value) || 1) })}
+              style={{ width: 36, padding: "1px 3px", fontSize: 11, textAlign: "center", background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 3, color: "var(--text-primary)" }}
+            />
+            <label style={{ fontSize: 10, color: "var(--text-muted)" }}>Rows</label>
+            <input
+              type="number" min={1} max={24}
+              value={currentPage.grid.rows}
+              onChange={(e) => handleGridChange({ rows: Math.max(1, parseInt(e.target.value) || 1) })}
+              style={{ width: 36, padding: "1px 3px", fontSize: 11, textAlign: "center", background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 3, color: "var(--text-primary)" }}
+            />
+            <label style={{ fontSize: 10, color: "var(--text-muted)" }}>Gap</label>
+            <input
+              type="number" min={0} max={32}
+              value={currentPage.grid_gap ?? 8}
+              onChange={(e) => handleGridChange({ grid_gap: Math.max(0, parseInt(e.target.value) || 0) })}
+              style={{ width: 32, padding: "1px 3px", fontSize: 11, textAlign: "center", background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 3, color: "var(--text-primary)" }}
+            />
+          </div>
+        );
+      })()}
+
       {/* Selection count indicator */}
       {!previewMode && selectedElementIds.length > 1 && (
         <span style={{ fontSize: 11, color: "var(--accent)", fontWeight: 500 }}>
@@ -689,6 +784,30 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
                 {item.icon}
               </button>
             ))}
+            {/* Distribute buttons (11.3, visible with 3+ selected) */}
+            {selectedElementIds.length >= 3 && (
+              <>
+                <div style={{ width: 1, height: 14, background: "var(--border-color)", margin: "0 2px" }} />
+                <button
+                  onClick={() => handleDistribute("horizontal")}
+                  style={{ display: "flex", padding: 3, color: "var(--text-muted)", borderRadius: 3, background: "transparent", border: "none", cursor: "pointer" }}
+                  title="Distribute horizontally (even spacing)"
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                >
+                  <AlignHorizontalDistributeCenter size={13} />
+                </button>
+                <button
+                  onClick={() => handleDistribute("vertical")}
+                  style={{ display: "flex", padding: 3, color: "var(--text-muted)", borderRadius: 3, background: "transparent", border: "none", cursor: "pointer" }}
+                  title="Distribute vertically (even spacing)"
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                >
+                  <AlignVerticalDistributeCenter size={13} />
+                </button>
+              </>
+            )}
           </div>
         </>
       )}

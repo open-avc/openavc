@@ -67,9 +67,26 @@ export function PropertiesPanel({
     );
   }
 
-  // Multi-select mode: show summary instead of individual properties
+  // Multi-select mode: show summary and common editable properties
   const multiSelectCount = selectedElementIds?.length ?? (element ? 1 : 0);
   if (multiSelectCount > 1 && page) {
+    const selectedElements = (selectedElementIds ?? [])
+      .map((eid) => page.elements.find((el) => el.id === eid))
+      .filter((el): el is UIElement => !!el);
+
+    const applyStyleToAll = (stylePatch: Record<string, unknown>) => {
+      for (const el of selectedElements) {
+        onChange(el.id, { style: { ...el.style, ...stylePatch } });
+      }
+    };
+
+    // Get a common value for a style prop (returns undefined if mixed)
+    const getCommonStyle = (prop: string): unknown => {
+      const values = selectedElements.map((el) => el.style[prop]);
+      const first = values[0];
+      return values.every((v) => v === first) ? first : undefined;
+    };
+
     return (
       <div
         style={{
@@ -93,10 +110,44 @@ export function PropertiesPanel({
         <div style={{ fontSize: 13, color: "var(--text-primary)", fontWeight: 500 }}>
           {multiSelectCount} elements selected
         </div>
-        <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.4 }}>
-          Use arrow keys to move all selected elements. Press Delete to remove them.
-          Hold Shift and click to add or remove elements from the selection.
+        <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.4, marginBottom: 4 }}>
+          Changes below apply to all selected elements.
         </div>
+
+        {/* Common style properties */}
+        {([
+          { key: "font_size", label: "Font Size", type: "number" as const, unit: "px" },
+          { key: "padding", label: "Padding", type: "number" as const, unit: "px" },
+          { key: "border_radius", label: "Radius", type: "number" as const, unit: "px" },
+          { key: "bg_color", label: "Background", type: "color" as const, unit: undefined },
+          { key: "text_color", label: "Text Color", type: "color" as const, unit: undefined },
+        ]).map(({ key, label, type, unit }) => {
+          const common = getCommonStyle(key);
+          return (
+            <div key={key} style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
+              <label style={{ fontSize: 11, color: "var(--text-muted)", minWidth: 70, flexShrink: 0 }}>{label}</label>
+              {type === "number" ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <input
+                    type="number"
+                    value={common != null ? Number(common) : ""}
+                    placeholder={common === undefined ? "mixed" : ""}
+                    onChange={(e) => applyStyleToAll({ [key]: e.target.value ? Number(e.target.value) : undefined })}
+                    style={{ width: 60, padding: "2px 4px", fontSize: 11, borderRadius: 3, border: "1px solid var(--border-color)", background: "var(--bg-primary)", color: "var(--text-primary)", textAlign: "center" }}
+                  />
+                  {unit && <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{unit}</span>}
+                </div>
+              ) : (
+                <input
+                  type="color"
+                  value={typeof common === "string" ? common : "#333333"}
+                  onChange={(e) => applyStyleToAll({ [key]: e.target.value })}
+                  style={{ width: 28, height: 22, padding: 0, border: "1px solid var(--border-color)", borderRadius: 3, cursor: "pointer" }}
+                />
+              )}
+            </div>
+          );
+        })}
       </div>
     );
   }

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import {
   MousePointerClick,
@@ -54,6 +55,16 @@ const CATEGORIES = [
 
 export function ElementPalette({ disabled }: { disabled?: boolean }) {
   const panelElements = usePluginStore((s) => s.extensions.panel_elements);
+  const [search, setSearch] = useState("");
+
+  const filteredTypes = search
+    ? ELEMENT_TYPES.filter(
+        (t) =>
+          t.label.toLowerCase().includes(search.toLowerCase()) ||
+          t.type.toLowerCase().includes(search.toLowerCase()) ||
+          t.description.toLowerCase().includes(search.toLowerCase())
+      )
+    : ELEMENT_TYPES;
 
   return (
     <div
@@ -77,8 +88,23 @@ export function ElementPalette({ disabled }: { disabled?: boolean }) {
         Elements
       </div>
 
+      {/* Search (11.7) */}
+      <input
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Search elements..."
+        style={{
+          padding: "var(--space-xs) var(--space-sm)",
+          fontSize: "var(--font-size-sm)",
+          borderRadius: "var(--border-radius)",
+          border: "1px solid var(--border-color)",
+          background: "var(--bg-surface)",
+          color: "var(--text-primary)",
+        }}
+      />
+
       {CATEGORIES.map((cat) => {
-        const items = ELEMENT_TYPES.filter((t) => t.category === cat.key);
+        const items = filteredTypes.filter((t) => t.category === cat.key);
         if (items.length === 0) return null;
         return (
           <div key={cat.key}>
@@ -212,10 +238,17 @@ function PaletteItem({
         (e.currentTarget as HTMLElement).style.background = "transparent";
       }}
     >
-      <span style={{ color: "var(--text-muted)", display: "flex" }}>
+      <span style={{ color: "var(--text-muted)", display: "flex", flexShrink: 0 }}>
         {icon || ICONS[info.type] || <Square size={16} />}
       </span>
-      {info.label}
+      <div style={{ minWidth: 0 }}>
+        <div>{info.label}</div>
+        {info.description && (
+          <div style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {info.description}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

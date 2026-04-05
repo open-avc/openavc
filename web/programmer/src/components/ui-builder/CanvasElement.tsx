@@ -7,6 +7,7 @@ interface CanvasElementProps {
   element: UIElement;
   pageId: string;
   selected: boolean;
+  multiSelected?: boolean;
   previewMode: boolean;
   columns: number;
   rows: number;
@@ -18,7 +19,7 @@ interface CanvasElementProps {
   themeElementDefaults?: Record<string, Record<string, unknown>>;
 }
 
-const HANDLE_SIZE = 12;
+const HANDLE_SIZE = 18;
 
 const HANDLE_POSITIONS: Record<
   string,
@@ -90,6 +91,7 @@ export function CanvasElement({
   element,
   pageId,
   selected,
+  multiSelected,
   previewMode,
   columns,
   rows,
@@ -219,7 +221,9 @@ export function CanvasElement({
         gridRow: `${gridArea.row} / span ${gridArea.row_span}`,
         position: "relative",
         outline: selected && !previewMode
-          ? "2px solid var(--accent)"
+          ? multiSelected
+            ? "2px dashed var(--accent)"
+            : "2px solid var(--accent)"
           : hasOverlap && !previewMode
           ? "1px dashed var(--color-warning)"
           : "none",

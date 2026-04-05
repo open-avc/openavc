@@ -6,9 +6,12 @@ interface ContextMenuProps {
   y: number;
   elementId: string;
   isMaster?: boolean;
+  multiSelectCount?: number;
   onClose: () => void;
   onDuplicate: (elementId: string) => void;
   onDelete: (elementId: string) => void;
+  onDeleteAll?: () => void;
+  onDuplicateAll?: () => void;
   onCopy: (elementId: string) => void;
   onPaste: () => void;
   onBringToFront: (elementId: string) => void;
@@ -24,9 +27,12 @@ export function ContextMenu({
   y,
   elementId,
   isMaster,
+  multiSelectCount,
   onClose,
   onDuplicate,
   onDelete,
+  onDeleteAll,
+  onDuplicateAll,
   onCopy,
   onPaste,
   onBringToFront,
@@ -87,6 +93,34 @@ export function ContextMenu({
           label: "Delete Master",
           icon: <Trash2 size={14} />,
           onClick: () => { onDeleteMaster?.(elementId); onClose(); },
+          danger: true,
+        },
+      ]
+    : multiSelectCount && multiSelectCount > 1
+    ? [
+        {
+          label: `Duplicate All (${multiSelectCount})`,
+          icon: <CopyPlus size={14} />,
+          onClick: () => { onDuplicateAll?.(); onClose(); },
+        },
+        {
+          label: "Copy",
+          icon: <Copy size={14} />,
+          shortcut: "Ctrl+C",
+          onClick: () => { onCopy(elementId); onClose(); },
+        },
+        {
+          label: "Paste",
+          icon: <Clipboard size={14} />,
+          shortcut: "Ctrl+V",
+          onClick: () => { onPaste(); onClose(); },
+          disabled: !hasClipboard,
+        },
+        {
+          label: `Delete All (${multiSelectCount})`,
+          icon: <Trash2 size={14} />,
+          shortcut: "Del",
+          onClick: () => { onDeleteAll?.(); onClose(); },
           danger: true,
         },
       ]

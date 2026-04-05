@@ -284,6 +284,7 @@ export function Canvas({
               element={el}
               pageId={page.id}
               selected={selectedElementIds.includes(el.id)}
+              multiSelected={selectedElementIds.length > 1 && selectedElementIds.includes(el.id)}
               previewMode={previewMode}
               columns={page.grid.columns}
               rows={page.grid.rows}
