@@ -182,15 +182,15 @@ OpenAVC serves HTTP only. It does not terminate TLS. For HTTPS, place a reverse 
 
 ### Rate limiting
 
-Rate limiting is enabled by default on all API endpoints:
+Rate limiting is enabled by default on the HTTP REST API. These limits apply to external integrations and tools making HTTP requests to the server. They do not apply to the touch panel UI (which uses WebSocket) or to the command pipeline between the server and AV hardware, which has no rate limiting — commands are sent to devices the instant they are received.
 
 | Tier | Limit | Applies to |
 |------|-------|-----------|
 | Open | 120 requests/min per IP | Status, health check, library endpoints |
 | Standard | 60 requests/min per IP | General API operations |
-| Strict | 10 requests/min per IP | Device commands, discovery, cloud operations |
+| Strict | 10 requests/min per IP | Device command API, discovery, cloud operations |
 
-Failed authentication attempts count against the strict tier, providing brute-force protection.
+Failed authentication attempts count against the strict tier, providing brute-force protection. Volume ramps, rapid command sequences, and multi-room control from the touch panel are unaffected by these limits.
 
 ---
 
