@@ -30,9 +30,9 @@ export const useToastStore = create<ToastState>((set) => ({
     set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 }));
 
-/** Shorthand for showing an error toast (replaces alert()). */
+/** Shorthand for showing an error toast (replaces alert()). 10s to allow reading. */
 export function showError(message: string): void {
-  useToastStore.getState().addToast(message, "error");
+  useToastStore.getState().addToast(message, "error", 10000);
 }
 
 /** Shorthand for showing an info toast. */

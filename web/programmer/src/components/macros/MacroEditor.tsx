@@ -19,6 +19,7 @@ import {
   XCircle,
   LayoutTemplate,
   GitBranch,
+  HelpCircle,
 } from "lucide-react";
 import {
   DndContext,
@@ -524,6 +525,9 @@ export function MacroEditor({
             <span style={{ color: "var(--border-color)", margin: "0 4px" }}>|</span>
             <label style={{ fontSize: 11, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4 }}>
               Cancel group:
+              <span title="Macros in the same cancel group interrupt each other. Example: put System On and System Off in the same group so starting one cancels the other.">
+                <HelpCircle size={11} style={{ opacity: 0.5 }} />
+              </span>
               <input
                 type="text"
                 list="cancel-groups"

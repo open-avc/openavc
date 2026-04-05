@@ -1,7 +1,8 @@
-import { useEffect, useCallback, lazy, Suspense } from "react";
+import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import { Sidebar } from "./components/layout/Sidebar";
 import { ErrorBoundary } from "./components/shared/ErrorBoundary";
 import ToastContainer from "./components/shared/ToastContainer";
+import { ShortcutsPanel } from "./components/shared/ShortcutsPanel";
 import { DashboardView } from "./views/DashboardView";
 import { useProjectStore } from "./store/projectStore";
 import { useNavigationStore } from "./store/navigationStore";
@@ -28,6 +29,7 @@ function App() {
   const activeView = useNavigationStore((s) => s.activeView);
   const navigateTo = useNavigationStore((s) => s.navigateTo);
   const loadProject = useProjectStore((s) => s.load);
+  const [showShortcuts, setShowShortcuts] = useState(false);
 
   // Connect WebSocket and load project on mount
   useWebSocket();
@@ -46,6 +48,21 @@ function App() {
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
   }, []);
+
+  // Ctrl+/ toggles shortcuts panel (15.7)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "/") {
+        e.preventDefault();
+        setShowShortcuts((v) => !v);
+      }
+      if (e.key === "Escape" && showShortcuts) {
+        setShowShortcuts(false);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [showShortcuts]);
 
   // Global undo/redo keyboard shortcuts (skip when in UI Builder, which has its own)
   useEffect(() => {
@@ -158,6 +175,7 @@ function App() {
         </main>
       </div>
       <ToastContainer />
+      {showShortcuts && <ShortcutsPanel onClose={() => setShowShortcuts(false)} />}
     </div>
   );
 }

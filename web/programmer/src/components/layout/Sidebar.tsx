@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { usePluginStore } from "../../store/pluginStore";
 import { useConnectionStore } from "../../store/connectionStore";
+import { useProjectStore } from "../../store/projectStore";
 import styles from "../../styles/sidebar.module.css";
 
 export type ViewId =
@@ -60,11 +61,26 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
   const pluginViews = usePluginStore((s) => s.extensions.views);
   const connected = useConnectionStore((s) => s.connected);
   const updateAvailable = String(useConnectionStore((s) => s.liveState["system.update_available"]) ?? "");
+  const dirty = useProjectStore((s) => s.dirty);
 
   return (
     <nav className={styles.sidebar}>
-      <div className={styles.logo}>
+      <div className={styles.logo} style={{ position: "relative" }}>
         <Monitor size={24} />
+        {dirty && (
+          <div
+            title="Unsaved changes"
+            style={{
+              position: "absolute",
+              top: 6,
+              right: 6,
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              background: "#f59e0b",
+            }}
+          />
+        )}
       </div>
       {navItems.map((item) => (
         <button
