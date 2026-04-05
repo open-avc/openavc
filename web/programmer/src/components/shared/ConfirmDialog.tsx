@@ -27,6 +27,9 @@ export function ConfirmDialog({
       onClick={onCancel}
     >
       <div
+        role="alertdialog"
+        aria-labelledby="confirm-dialog-title"
+        aria-describedby="confirm-dialog-desc"
         style={{
           background: "var(--bg-elevated)",
           borderRadius: "var(--border-radius)",
@@ -37,12 +40,12 @@ export function ConfirmDialog({
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 style={{ marginBottom: "var(--space-md)", fontSize: "var(--font-size-lg)" }}>
+        <h3 id="confirm-dialog-title" style={{ marginBottom: "var(--space-md)", fontSize: "var(--font-size-lg)" }}>
           {title}
         </h3>
-        <p style={{ color: "var(--text-secondary)", marginBottom: "var(--space-xl)" }}>
+        <div id="confirm-dialog-desc" style={{ color: "var(--text-secondary)", marginBottom: "var(--space-xl)" }}>
           {message}
-        </p>
+        </div>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-sm)" }}>
           <button
             onClick={onCancel}

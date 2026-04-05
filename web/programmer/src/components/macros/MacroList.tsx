@@ -81,7 +81,7 @@ export function MacroList({ macros, selectedId, onSelect, onAdd, onDelete }: Mac
         />
       </div>
 
-      <div style={{ flex: 1, overflow: "auto" }}>
+      <ul style={{ flex: 1, overflow: "auto", margin: 0, padding: 0, listStyle: "none" }} role="listbox" aria-label="Macros">
         {filtered.length === 0 ? (
           <div
             style={{
@@ -104,8 +104,10 @@ export function MacroList({ macros, selectedId, onSelect, onAdd, onDelete }: Mac
           </div>
         ) : (
           filtered.map((m) => (
-            <div
+            <li
               key={m.id}
+              role="option"
+              aria-selected={selectedId === m.id}
               onClick={() => onSelect(m.id)}
               style={{
                 display: "flex",
@@ -171,10 +173,10 @@ export function MacroList({ macros, selectedId, onSelect, onAdd, onDelete }: Mac
               >
                 <Trash2 size={14} />
               </button>
-            </div>
+            </li>
           ))
         )}
-      </div>
+      </ul>
     </div>
   );
 }

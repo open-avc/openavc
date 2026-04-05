@@ -91,6 +91,7 @@ export function UIBuilderView() {
 
   const [showSettings, setShowSettings] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showPalette, setShowPalette] = useState(true);
   const [themeElementDefaults, setThemeElementDefaults] = useState<Record<string, Record<string, unknown>>>({});
   const [themes, setThemes] = useState<{ id: string; name: string; version: string; author: string; description: string; preview_colors: string[]; source: string }[]>([]);
 
@@ -154,6 +155,12 @@ export function UIBuilderView() {
       if ((e.ctrlKey || e.metaKey) && e.key === "p") {
         e.preventDefault();
         useUIBuilderStore.getState().setPreviewMode(!previewMode);
+        return;
+      }
+      // Ctrl+E toggles element palette (13.9)
+      if ((e.ctrlKey || e.metaKey) && e.key === "e") {
+        e.preventDefault();
+        setShowPalette((v) => !v);
         return;
       }
       if (previewMode) return;
@@ -757,8 +764,8 @@ export function UIBuilderView() {
 
         {/* Main 3-panel layout */}
         <PanelGroup direction="horizontal" style={{ flex: 1 }}>
-          {/* Left: Element Palette */}
-          {!previewMode && (
+          {/* Left: Element Palette (Ctrl+E to toggle) */}
+          {!previewMode && showPalette && (
             <>
               <Panel defaultSize={15} minSize={10} maxSize={25}>
                 <div

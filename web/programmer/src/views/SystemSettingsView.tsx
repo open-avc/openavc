@@ -291,8 +291,9 @@ export function SystemSettingsView() {
         <h3 style={sectionTitle}>Network</h3>
         <div style={cardStyle}>
           <div style={fieldRow}>
-            <label style={labelStyle}>Bind address</label>
+            <label style={labelStyle} htmlFor="cfg-bind-address">Bind address</label>
             <input
+              id="cfg-bind-address"
               style={inputStyle}
               value={net.bind_address}
               onChange={(e) => update("network", "bind_address", e.target.value)}
@@ -302,8 +303,9 @@ export function SystemSettingsView() {
             </span>
           </div>
           <div style={fieldRow}>
-            <label style={labelStyle}>HTTP port</label>
+            <label style={labelStyle} htmlFor="cfg-http-port">HTTP port</label>
             <input
+              id="cfg-http-port"
               type="number"
               style={inputStyle}
               value={net.http_port}
@@ -348,8 +350,9 @@ export function SystemSettingsView() {
         <h3 style={sectionTitle}>Logging</h3>
         <div style={cardStyle}>
           <div style={fieldRow}>
-            <label style={labelStyle}>Log level</label>
+            <label style={labelStyle} htmlFor="cfg-log-level">Log level</label>
             <select
+              id="cfg-log-level"
               style={selectStyle}
               value={log.level}
               onChange={(e) => update("logging", "level", e.target.value)}

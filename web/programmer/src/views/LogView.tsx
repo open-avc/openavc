@@ -17,7 +17,7 @@ export function LogView() {
     <ViewContainer
       title="Log"
       actions={
-        <div style={{ display: "flex", gap: "var(--space-sm)" }}>
+        <div style={{ display: "flex", gap: "var(--space-sm)" }} role="tablist">
           <TabButton
             label="System Log"
             active={activeTab === "log"}
@@ -47,6 +47,8 @@ function TabButton({
 }) {
   return (
     <button
+      role="tab"
+      aria-selected={active}
       onClick={onClick}
       style={{
         padding: "var(--space-xs) var(--space-md)",

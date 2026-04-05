@@ -233,7 +233,7 @@ export function DeviceView() {
   return (
     <ViewContainer
       title={
-        <div style={{ display: "flex", gap: "var(--space-sm)", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: "var(--space-sm)", alignItems: "center" }} role="tablist">
           {([
             { id: "devices" as const, label: "Devices" },
             { id: "groups" as const, label: "Groups" },
@@ -242,6 +242,8 @@ export function DeviceView() {
           ]).map((tab) => (
             <button
               key={tab.id}
+              role="tab"
+              aria-selected={subTab === tab.id}
               onClick={() => setSubTab(tab.id)}
               style={{
                 padding: "var(--space-xs) var(--space-md)",

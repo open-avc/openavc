@@ -71,6 +71,8 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
           key={item.id}
           className={`${styles.navItem} ${activeView === item.id ? styles.active : ""}`}
           onClick={() => onViewChange(item.id)}
+          aria-label={item.label}
+          aria-current={activeView === item.id ? "page" : undefined}
         >
           <item.icon size={20} />
           <span className={styles.tooltip}>{item.label}</span>
@@ -86,6 +88,8 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
             key={viewId}
             className={`${styles.navItem} ${activeView === viewId ? styles.active : ""}`}
             onClick={() => onViewChange(viewId)}
+            aria-label={view.label}
+            aria-current={activeView === viewId ? "page" : undefined}
           >
             <Plug size={16} />
             <span className={styles.tooltip}>{view.label}</span>
@@ -97,6 +101,7 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
         <button
           className={`${styles.navItem} ${activeView === "updates" ? styles.active : ""}`}
           onClick={() => onViewChange("updates")}
+          aria-label={"Update available: v" + updateAvailable}
           style={{
             background: activeView === "updates" ? undefined : "rgba(33, 150, 243, 0.1)",
             color: "var(--accent)",
@@ -107,10 +112,11 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
           <span className={styles.tooltip}>{"Update available: v" + updateAvailable}</span>
         </button>
       )}
-      <div className={styles.connectionStatus}>
+      <div className={styles.connectionStatus} role="status" aria-label={connected ? "Server connected" : "Server disconnected"}>
         <div
           className={styles.statusDot}
           style={{ background: connected ? "var(--success, #4caf50)" : "var(--error, #f44336)" }}
+          aria-hidden="true"
         />
         <span className={styles.tooltip}>
           {connected ? "Server connected" : "Server disconnected"}

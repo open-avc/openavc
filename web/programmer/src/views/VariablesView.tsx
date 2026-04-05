@@ -87,7 +87,7 @@ export function VariablesView() {
       actions={subTab === "variables" ? <VariablesActions /> : undefined}
     >
       {/* Sub-tab bar */}
-      <div style={subTabBarStyle}>
+      <div style={subTabBarStyle} role="tablist">
         {([
           { key: "variables" as const, label: "Variables" },
           { key: "device_states" as const, label: "Device States" },
@@ -95,6 +95,9 @@ export function VariablesView() {
         ]).map((tab) => (
           <button
             key={tab.key}
+            role="tab"
+            aria-selected={subTab === tab.key}
+            aria-controls={`tabpanel-${tab.key}`}
             onClick={() => setSubTab(tab.key)}
             style={{
               ...subTabBtnStyle,
@@ -108,9 +111,11 @@ export function VariablesView() {
         ))}
       </div>
 
-      {subTab === "variables" && <VariablesSubTab />}
-      {subTab === "device_states" && <DeviceStatesSubTab />}
-      {subTab === "activity" && <ActivitySubTab />}
+      <div role="tabpanel" id={`tabpanel-${subTab}`} style={{ flex: 1, overflow: "hidden" }}>
+        {subTab === "variables" && <VariablesSubTab />}
+        {subTab === "device_states" && <DeviceStatesSubTab />}
+        {subTab === "activity" && <ActivitySubTab />}
+      </div>
     </ViewContainer>
   );
 }
