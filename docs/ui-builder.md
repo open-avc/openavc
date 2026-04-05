@@ -6,24 +6,28 @@ Design touch panel pages for your AV spaces using the visual UI Builder.
 
 ## Layout
 
-**Left panel: Element Palette.** Drag elements onto the canvas:
+**Left panel: Element Palette.** Drag elements onto the canvas. Use the search box at the top to filter elements by name. Hover over an element to see a preview thumbnail before dragging.
 - **Controls**: Button, Slider, Select, Text Input
 - **Display**: Label, Status LED, Image, Spacer
 - **Navigation**: Page Nav, Camera Preset
 
+Toggle the palette with **Ctrl+E**.
+
 **Center panel: Canvas.** Visual representation of the panel page:
-- Grid overlay shows the layout grid
+- Grid overlay shows the layout grid (configure columns, rows, and gap directly in the canvas toolbar)
 - Drag elements to reposition
 - Drag corners to resize
-- Page tabs at the top for multi-page designs
+- Page tabs at the top for multi-page designs (with thumbnail previews and page type icons)
 - Screen preset selector (7" Tablet, 10" Tablet, iPad, 1080p)
-- Preview mode toggle to test interactions with live state
+- Preview mode toggle (**Ctrl+P**) to test interactions with live state
+- Breadcrumb showing current page context (e.g., "Main > Settings (overlay)")
 
 **Right panel: Properties.** Configure the selected element:
 - Basic properties (ID, type, label)
 - Layout (grid position and span)
 - Style (colors, font size, border radius)
 - Bindings (the critical programming section, where logic meets the UI)
+- Theme tab (live theme preview with sample elements, "Overrides theme" indicator on elements with custom colors, and a "Reset to theme" button)
 
 ## Element Types
 
@@ -59,7 +63,7 @@ Click the **+** tab to add pages. Common patterns for AV rooms:
 - **Camera**: PTZ camera presets, directional controls
 - **Advanced**: Technical controls, diagnostics, IP info
 
-Most rooms need 2-4 pages. Start with a Main page that handles the 80% use case, then add pages for less common tasks.
+Most rooms need 2-4 pages. Start with a Main page that handles the 80% use case, then add pages for less common tasks. Right-click a page tab for options including **Set as Home Page**.
 
 ## Overlays & Sidebars
 
@@ -217,7 +221,9 @@ The **Style** section has subsections for fine-grained control over element appe
 Projects can include uploaded image assets (PNG, JPG, SVG, etc.) stored in the project's `assets/` directory. Use the **Asset Picker** in the Background Image style section to upload and select images.
 
 - Assets are referenced as `assets://filename` in the project file
-- The Asset Picker shows thumbnails of all uploaded images
+- The Asset Picker shows thumbnails of all uploaded images with search by filename
+- A warning appears when uploading images larger than 500KB with a suggestion to compress
+- Unused assets (not referenced by any element) are flagged so you can clean up
 - Assets are included automatically when you export a project as `.zip`
 
 ## Preview Mode
@@ -283,6 +289,14 @@ When a project has many pages, the page tabs at the top of the canvas can get cr
 
 To create a group, click the folder icon in the page tab bar and give the group a name (e.g., "Control", "Settings", "AV Routing"). Then drag page tabs into the group. Groups are purely organizational and do not affect the panel at runtime. Collapse a group to hide its pages while you work on a different section.
 
+## Multi-Select
+
+Hold Ctrl (or Cmd) and click multiple elements to select them together. Multi-selected elements show a dashed blue outline (vs. solid for single selection). With multiple elements selected:
+
+- The Properties panel shows common editable properties (font size, padding, colors) with "Apply to all"
+- **Distribute Horizontally** and **Distribute Vertically** buttons in the toolbar space elements evenly (requires 3+ elements)
+- Right-click for a context menu with Delete All, Duplicate All, and alignment options
+
 ## Alignment Tools
 
 The builder toolbar includes 6 alignment buttons for precise element placement:
@@ -296,7 +310,7 @@ The builder toolbar includes 6 alignment buttons for precise element placement:
 | Align Middle (V) | Center the element vertically on the page grid |
 | Align Bottom | Snap the element's bottom edge to the nearest grid row |
 
-Select an element on the canvas, then click any alignment button. Alignment is relative to the full page grid.
+Select an element on the canvas, then click any alignment button. Alignment is relative to the full page grid. These also work on multi-selected elements, aligning all selected elements together.
 
 ## Element Templates
 
@@ -368,7 +382,18 @@ A common pattern is to set a full-bleed background photo with reduced opacity an
 
 ## Keyboard Shortcuts
 
-Press **?** while in the UI Builder to see all available keyboard shortcuts. Common shortcuts include Ctrl+Z (undo), Ctrl+Y (redo), Ctrl+C (copy), Ctrl+V (paste), Delete (remove selected element), and arrow keys (nudge position).
+Press **Ctrl+/** anywhere in the Programmer IDE to open the keyboard shortcuts reference panel. Common shortcuts include:
+
+| Shortcut | Action |
+|----------|--------|
+| Ctrl+Z | Undo |
+| Ctrl+Y | Redo |
+| Ctrl+C / Ctrl+V | Copy / Paste element |
+| Delete | Remove selected element |
+| Arrow keys | Nudge position |
+| Ctrl+P | Toggle preview mode |
+| Ctrl+E | Toggle element palette |
+| Ctrl+Shift+R | Reload scripts (in Script Editor) |
 
 ## See Also
 

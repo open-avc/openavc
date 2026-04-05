@@ -12,6 +12,7 @@ Manages user-defined variables and shows where each is used. Variables are the g
 - **Name**: descriptive identifier (e.g., `room_active`, `current_source`, `volume_level`)
 - **Type**: string, number, or boolean
 - **Default value**: initial value on system start
+- **Description** (optional): freeform text explaining the variable's purpose. Shows in tooltips and the Variable Key Picker throughout the IDE.
 
 State key format: `var.<name>` (e.g., `var.room_active`, `var.current_source`)
 
@@ -19,7 +20,11 @@ State key format: `var.<name>` (e.g., `var.room_active`, `var.current_source`)
 
 Keep in mind that device states are always re-polled from hardware when devices reconnect, so they are always current. A persisted variable, however, reflects whatever value it had when the system last ran. If the real world changed while the system was off (for example, someone manually switched an input on a matrix switcher), a persisted variable tracking that input could be stale. For variables that need to stay in sync with hardware, use a **Source Binding** (below) or a **Startup trigger** to re-read the device state and update the variable when the system comes back online. See [Macros and Triggers](macros-and-triggers.md) for details on startup triggers.
 
-**Usage Cross-Reference:** Each variable shows a list of everywhere it is referenced: macros, UI elements, triggers, and scripts. Invaluable for debugging.
+**Validation Rules:** In a variable's detail panel, you can set optional validation constraints. For number variables, set a min and/or max value. For string variables, define a list of allowed values (enum). When a value violates its validation rule (set via macro, script, or UI), a warning appears in the Activity log. Validation warns but does not block the set, so automation continues running.
+
+**Renaming Variables:** Click the rename icon next to a variable's ID to rename it. The IDE previews every reference that will be updated (macros, triggers, UI bindings, scripts) before applying the change. All references are updated automatically.
+
+**Usage Cross-Reference:** Each variable shows a count and list of everywhere it is referenced: macros, UI elements, triggers, and scripts. Use the **Delete Unused** button in the header to bulk-remove variables with zero references (with confirmation showing which variables will be deleted).
 
 **Source Binding:** Variables can optionally be *bound* to a device state key. Choose "Bound to state key" in the Source section of a variable's detail panel, select the device state to mirror, and optionally add a value map to translate hardware values into friendly text (e.g., `on` → `Ready`, `warming` → `Warming Up`). This eliminates the need for scripts for simple device-to-variable mirroring.
 
@@ -45,7 +50,7 @@ Use this view to discover available state keys when building macros or UI bindin
 
 ## Activity
 
-A live feed of recent state changes across the entire system. Each entry shows the timestamp, key, old and new values, and the source of the change (device, macro, script, UI, API). Use the filter buttons to narrow by namespace.
+A live feed of recent state changes across the entire system (up to 500 entries). Each entry shows the timestamp, key, old and new values, and the source of the change (device, macro, script, UI, API). Use the filter buttons to narrow by namespace, or type a specific variable or device key in the search box to filter to just that key.
 
 ## See Also
 

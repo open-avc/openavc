@@ -365,6 +365,20 @@ class Engine:
         self.project = load_project(self.project_path)
         self._project_revision += 1
 
+        # Sync variables: initialize new defaults, clean up orphaned keys
+        project_var_ids = {v.id for v in self.project.variables}
+        for var in self.project.variables:
+            key = f"var.{var.id}"
+            if self.state.get(key) is None:
+                self.state.set(key, var.default, source="system")
+        # Remove orphaned var.* state keys for deleted variables
+        all_var_keys = self.state.get_namespace("var.")
+        orphaned_vars = [vid for vid in all_var_keys if vid not in project_var_ids]
+        for vid in orphaned_vars:
+            self.state.delete(f"var.{vid}")
+        if orphaned_vars:
+            log.info(f"Cleaned up {len(orphaned_vars)} orphaned variable state key(s)")
+
         # Update persistent variable keys
         if self.persister:
             persistent_keys = {
@@ -395,6 +409,9 @@ class Engine:
 
         # Re-bind variable sources
         self._bind_variable_sources()
+
+        # Re-register variable validation listeners
+        self._register_variable_validation()
 
         # Reload scripts
         if self.scripts:

@@ -31,6 +31,10 @@ The **Group Command** step works the same way but targets a device group instead
 
 Reorder steps by dragging the grip handle on the left side of each step. Toggle **Stop on Error** in the macro header to halt execution if any step fails (by default, macros continue through errors).
 
+**Step Templates:** Click the **Templates** dropdown in the step toolbar to insert pre-built multi-step patterns: Volume Ramp, Source Switch, and Power Sequence. Templates add several coordinated steps at once and are a fast way to build common sequences.
+
+**Copy and Paste Steps:** Right-click a step (or use the step menu) to copy it. Paste into the same macro or a different one. This works across macros, so you can reuse steps without rebuilding them.
+
 ## A Typical System-On Macro
 
 Here is a real-world example of a `system_on` macro for a conference room:
@@ -97,13 +101,17 @@ When a macro is running, the panel provides two forms of feedback:
 
 Click the variable icon in any step to create or select a user variable. The Variable Picker shows all available variables with their current values. Variables let macros share state. For example, the `system_on` macro sets `var.room_active` to `true`, and UI buttons use that variable for feedback.
 
+## Macro Dependencies
+
+The macro detail panel shows a dependency tree listing which macros call this macro and which macros this macro calls (via "Run Macro" steps). If you create a circular dependency (macro A calls B, B calls A), the IDE warns you at save time.
+
 ## Testing Macros
 
-Click **Test** to execute the macro immediately. A progress indicator shows which step is running, with live status updates. Watch the device state panel to confirm each step is working. If a step fails, the test stops and highlights the failed step.
+Click **Test** to execute the macro immediately. A progress indicator shows which step is running, with live status updates. Conditional steps show whether the condition evaluated to true or false, and group command steps show per-device success/fail icons. A **Last Run** summary shows the timestamp, duration, step results, and any errors from the most recent execution.
 
 ## Convert to Script
 
-Click **Convert to Script** to generate a Python script from the macro. This is useful when you need loops, error handling with retries, external API calls, or complex data processing that macros cannot express. The generated script is fully functional and includes all the same steps with proper `await` calls.
+Click **Convert to Script** to generate a Python script from the macro. A preview shows the generated code in a diff-like view before committing. This is useful when you need loops, error handling with retries, external API calls, or complex data processing that macros cannot express. The generated script is fully functional and includes all the same steps with proper `await` calls.
 
 ## Triggers
 
@@ -116,7 +124,13 @@ Triggers automatically execute macros based on conditions. Click the **Triggers*
 | **Event** | An event fires on the bus | `ui.press.btn_panic` |
 | **Startup** | System starts | Run initialization macro |
 
-The schedule trigger includes a visual cron builder, so you do not need to memorize cron syntax. Pick days, hours, and minutes from a visual grid.
+The schedule trigger includes a visual cron builder with two modes: a **field-by-field editor** (separate inputs for minute, hour, day, month, weekday with labels) and a raw expression editor. A dropdown of common examples ("Every weekday at 8am", "First Monday of month", "Every 15 minutes during business hours") lets you start from a template.
+
+**Fire Now:** Click the **Fire Now** button on any trigger to manually execute it immediately, without waiting for the condition to be met. Useful for testing.
+
+**Condition Preview:** State change triggers show a live preview: "If this condition were evaluated now, it would be: TRUE/FALSE" with the current state values displayed.
+
+**Event Autocomplete:** The event pattern field in event triggers suggests events from your configured devices, macros, and scripts as you type.
 
 Trigger safety features prevent runaway automation:
 
@@ -137,11 +151,11 @@ Use the search box at the top of the script list to filter by file name.
 
 ## The Script Editor
 
-- File tree on the left showing project scripts
+- File tree on the left showing project scripts (files with load errors show a red icon)
 - Monaco editor with Python syntax highlighting and autocomplete
-- Autocomplete for the OpenAVC API (devices, state keys, commands)
-- **Save** to write changes, **Run** to hot-reload without restarting
-- Console panel showing script output and errors
+- Autocomplete for the OpenAVC API with return types, parameter types, and one-line examples
+- **Save** to write changes, **Run** to hot-reload without restarting (**Ctrl+Shift+R** for keyboard shortcut)
+- Console panel showing script output and full error tracebacks with clickable line numbers
 
 ## Quick Example
 
@@ -186,6 +200,10 @@ Click **Templates** to insert boilerplate for common patterns:
 - Device control (send commands with error handling)
 - Periodic timer (recurring status checks)
 - System on/off (full room startup/shutdown sequence)
+- Scheduled task (cron-driven operations)
+- Device monitor (watch device state and react)
+- Custom event handler (listen for custom events)
+- Variable watcher (react to variable changes)
 
 See the [Scripting Guide](scripting-guide.md) for the complete API reference including all available functions, decorators, and patterns.
 
