@@ -341,7 +341,17 @@ export function VariableKeyPicker({
                     {group.desc}
                   </span>
                 </div>
-                {group.entries.map((entry) => (
+                {group.entries.map((entry) => {
+                  const entryLive = liveState[entry.key];
+                  const liveType: string = entryLive === null ? "null"
+                    : entryLive === undefined ? ""
+                    : typeof entryLive;
+                  const sourceColor = entry.group === "variables" ? "#8b5cf6"
+                    : entry.group.startsWith("device:") ? "#10b981"
+                    : entry.group === "system" ? "#6b7280"
+                    : entry.group.startsWith("plugin:") ? "#f59e0b"
+                    : "#3b82f6";
+                  return (
                   <div
                     key={entry.key}
                     onClick={() => handleSelect(entry.key)}
@@ -355,6 +365,11 @@ export function VariableKeyPicker({
                         entry.key === value ? "var(--bg-hover)" : "transparent")
                     }
                   >
+                    {/* Source indicator dot */}
+                    <span style={{
+                      width: 6, height: 6, borderRadius: "50%", flexShrink: 0,
+                      background: sourceColor, marginRight: 4,
+                    }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                         <span
@@ -369,6 +384,9 @@ export function VariableKeyPicker({
                         {entry.type && (
                           <span style={typeBadgeStyle}>{entry.type}</span>
                         )}
+                        {!entry.type && liveType && liveType !== "" && (
+                          <span style={typeBadgeStyle}>{liveType}</span>
+                        )}
                       </div>
                       {entry.group !== "variables" && (
                         <div
@@ -382,12 +400,21 @@ export function VariableKeyPicker({
                         </div>
                       )}
                     </div>
-                    <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0, marginRight: 4 }}>
-                      {liveState[entry.key] !== undefined ? String(liveState[entry.key]) : ""}
-                    </span>
+                    {entryLive !== undefined && (
+                      <span style={{
+                        fontSize: 11, color: "var(--text-muted)", flexShrink: 0, marginRight: 4,
+                        maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                        fontFamily: "var(--font-mono)",
+                      }}
+                        title={String(entryLive)}
+                      >
+                        {String(entryLive)}
+                      </span>
+                    )}
                     <CopyButton value={entry.key} title="Copy state key" />
                   </div>
-                ))}
+                  );
+                })}
               </div>
             ))}
 

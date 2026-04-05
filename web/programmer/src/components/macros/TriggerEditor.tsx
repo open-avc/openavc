@@ -2,7 +2,7 @@
  * Per-trigger-type editors + conditions + advanced settings.
  */
 import { useState } from "react";
-import { Trash2, ChevronDown, ChevronRight, Plus } from "lucide-react";
+import { Trash2, ChevronDown, ChevronRight, Plus, HelpCircle } from "lucide-react";
 import type { TriggerConfig, TriggerCondition } from "../../api/types";
 import { useProjectStore } from "../../store/projectStore";
 import { VariableKeyPicker } from "../shared/VariableKeyPicker";
@@ -356,6 +356,9 @@ function StateChangeEditor({
         </div>
       )}
 
+      {/* Timing controls with help */}
+      <TimingHelp />
+
       {/* Delay */}
       <div style={rowStyle}>
         <label style={labelStyle}>Delay</label>
@@ -369,8 +372,8 @@ function StateChangeEditor({
         <span style={unitStyle}>seconds</span>
       </div>
       <div style={hintStyle}>
-        Wait this long after debounce settles, then re-check conditions before executing.
-        Good for "turn off projector 10 minutes after room empties" style timeouts.
+        Wait this long, then re-check conditions before executing.
+        Example: "Turn off projector 10 minutes after room empties."
       </div>
 
       {/* Debounce */}
@@ -386,8 +389,8 @@ function StateChangeEditor({
         <span style={unitStyle}>seconds</span>
       </div>
       <div style={hintStyle}>
-        Restart the timer each time the state changes again. Only fires once changes stop
-        for this duration. Good for flickering devices or rapid value changes.
+        Restarts timer each time the value changes. Fires once changes stop.
+        Example: "Wait for volume to settle before sending to DSP."
       </div>
     </div>
   );
@@ -635,6 +638,46 @@ function ConditionsEditor({
       >
         <Plus size={12} /> Add Condition
       </button>
+    </div>
+  );
+}
+
+// --- Timing Help Component ---
+
+function TimingHelp() {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div>
+      <div
+        onClick={() => setExpanded(!expanded)}
+        style={{
+          display: "flex", alignItems: "center", gap: 4,
+          cursor: "pointer", fontSize: 11, color: "var(--text-muted)",
+        }}
+      >
+        <HelpCircle size={12} />
+        <span style={{ textDecoration: "underline" }}>How do delay, debounce, and cooldown work?</span>
+      </div>
+      {expanded && (
+        <div style={{
+          marginTop: 6, padding: "var(--space-sm)", borderRadius: 4,
+          background: "rgba(33,150,243,0.06)", border: "1px solid rgba(33,150,243,0.15)",
+          fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.6,
+        }}>
+          <div style={{ marginBottom: 6 }}>
+            <strong>Debounce</strong> &mdash; Waits for the value to stop changing. Each new change resets the timer. Fires once after the value settles. Use for flickering sensors or rapid adjustments.
+          </div>
+          <div style={{ marginBottom: 6 }}>
+            <strong>Delay</strong> &mdash; Waits a set time after the debounce settles, then re-checks the condition before firing. If the condition is no longer true, the trigger is skipped. Use for "turn off after X minutes of inactivity."
+          </div>
+          <div style={{ marginBottom: 6 }}>
+            <strong>Cooldown</strong> (in Advanced) &mdash; After the trigger fires, prevents it from firing again for this many seconds. Use to avoid rapid re-triggering.
+          </div>
+          <div style={{ fontStyle: "italic", color: "var(--text-muted)" }}>
+            Order: State changes → Debounce → Delay (re-check) → Fire → Cooldown
+          </div>
+        </div>
+      )}
     </div>
   );
 }
