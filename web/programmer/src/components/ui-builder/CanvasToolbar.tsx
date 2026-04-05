@@ -29,6 +29,7 @@ import {
   Loader2,
   AlignHorizontalDistributeCenter,
   AlignVerticalDistributeCenter,
+  Home,
 } from "lucide-react";
 import type { UIPage, PageGroup } from "../../api/types";
 import { useUIBuilderStore } from "../../store/uiBuilderStore";
@@ -412,8 +413,12 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
                   }}
                   onClick={() => selectPage(page.id)}
                   onDoubleClick={() => handleDoubleClick(page.id, page.name)}
+                  title={`${page.name}${page.page_type ? ` (${page.page_type})` : ""} — ${page.elements.length} element${page.elements.length !== 1 ? "s" : ""}, ${page.grid.columns}×${page.grid.rows} grid`}
                 >
                   {/* Page type icon */}
+                  {!page.page_type && (
+                    <Square size={10} style={{ opacity: 0.3, flexShrink: 0 }} />
+                  )}
                   {page.page_type === "overlay" && (
                     <Layers size={11} style={{ opacity: 0.5, flexShrink: 0 }} />
                   )}
@@ -444,8 +449,31 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
                   ) : (
                     page.name
                   )}
+                  {/* Home page indicator */}
+                  {pages[0]?.id === page.id && !page.page_type && (
+                    <span title="Home page (shown first on startup)"><Home size={10} style={{ color: "var(--accent)", opacity: 0.6 }} /></span>
+                  )}
                   {pages.length > 1 && !previewMode && (
                     <>
+                      {pages[0]?.id !== page.id && !page.page_type && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            applyPageMutation((p) => {
+                              const idx = p.findIndex((pg) => pg.id === page.id);
+                              if (idx <= 0) return p;
+                              const result = [...p];
+                              const [moved] = result.splice(idx, 1);
+                              result.unshift(moved);
+                              return result;
+                            });
+                          }}
+                          style={{ display: "flex", padding: 0, opacity: 0.3, color: "var(--text-secondary)", background: "none", border: "none", cursor: "pointer" }}
+                          title="Set as home page (move to first position)"
+                        >
+                          <Home size={11} />
+                        </button>
+                      )}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -648,6 +676,21 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
           )}
         </div>
       )}
+
+      {/* Breadcrumb (12.4) */}
+      {(() => {
+        const currentPage = pages.find((p) => p.id === selectedPageId);
+        if (!currentPage) return null;
+        const group = pageGroups.find((g) => g.pages.includes(currentPage.id));
+        const typeLabel = currentPage.page_type ? ` (${currentPage.page_type})` : "";
+        return (
+          <span style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 180 }}>
+            {group ? <><span style={{ opacity: 0.6 }}>{group.name}</span> <ChevronRight size={10} style={{ verticalAlign: "middle", opacity: 0.4 }} /> </> : null}
+            <span style={{ color: "var(--text-secondary)" }}>{currentPage.name}</span>
+            {typeLabel && <span style={{ opacity: 0.5 }}>{typeLabel}</span>}
+          </span>
+        );
+      })()}
 
       {/* Divider */}
       <div

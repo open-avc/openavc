@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Upload, Trash2, X, Image } from "lucide-react";
 import * as api from "../../api/restClient";
+import { useProjectStore } from "../../store/projectStore";
 
 interface AssetPickerProps {
   value: string;
@@ -96,6 +97,24 @@ function AssetBrowserModal({
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+
+  // Build set of referenced asset names (12.10)
+  const project = useProjectStore((s) => s.project);
+  const usedAssets = useMemo(() => {
+    const used = new Set<string>();
+    if (!project) return used;
+    for (const page of project.ui.pages) {
+      for (const el of page.elements) {
+        if (el.src?.startsWith("assets://")) used.add(el.src.replace("assets://", ""));
+        if (el.button_image?.startsWith("assets://")) used.add(el.button_image.replace("assets://", ""));
+        if (el.button_image_active?.startsWith("assets://")) used.add(el.button_image_active.replace("assets://", ""));
+        const bg = page.background;
+        if (bg && typeof bg === "object" && (bg as any).image?.startsWith("assets://")) used.add((bg as any).image.replace("assets://", ""));
+      }
+    }
+    return used;
+  }, [project]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
 
@@ -116,6 +135,14 @@ function AssetBrowserModal({
 
   const handleUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
+    // Warn about large files (12.9)
+    const largeFiles = Array.from(files).filter((f) => f.size > 500 * 1024);
+    if (largeFiles.length > 0) {
+      const names = largeFiles.map((f) => `${f.name} (${(f.size / 1024).toFixed(0)} KB)`).join(", ");
+      if (!window.confirm(
+        `The following files are larger than 500 KB:\n${names}\n\nLarge images slow down panel loading. Consider compressing them before uploading.\n\nUpload anyway?`
+      )) return;
+    }
     setUploading(true);
     setError("");
     try {
@@ -257,6 +284,20 @@ function AssetBrowserModal({
           </div>
         )}
 
+        {/* Asset search (12.8) */}
+        <div style={{ padding: "0 16px 8px" }}>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search assets..."
+            style={{
+              width: "100%", padding: "4px 8px", fontSize: 12,
+              borderRadius: 4, border: "1px solid var(--border-color)",
+              background: "var(--bg-primary)", color: "var(--text-primary)",
+            }}
+          />
+        </div>
+
         {/* Asset grid */}
         <div
           style={{
@@ -281,7 +322,7 @@ function AssetBrowserModal({
                 gap: 8,
               }}
             >
-              {assets.map((asset) => {
+              {assets.filter((a) => !search || a.name.toLowerCase().includes(search.toLowerCase())).map((asset) => {
                 const isSelected = currentValue === `assets://${asset.name}`;
                 return (
                   <div
@@ -332,6 +373,9 @@ function AssetBrowserModal({
                         : asset.size < 1048576
                           ? `${(asset.size / 1024).toFixed(1)} KB`
                           : `${(asset.size / 1048576).toFixed(1)} MB`}
+                      {!usedAssets.has(asset.name) && (
+                        <span style={{ marginLeft: 4, color: "#f59e0b", fontWeight: 500 }} title="Not referenced by any element">unused</span>
+                      )}
                     </div>
                     <button
                       onClick={(e) => {

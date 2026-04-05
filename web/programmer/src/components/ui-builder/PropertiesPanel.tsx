@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Trash2, Undo2, Link } from "lucide-react";
+import { ChevronDown, ChevronRight, Trash2, Undo2, Link, Palette } from "lucide-react";
 import type { UIElement, UIPage, ProjectConfig, OverlayConfig, PageBackground, MasterElement, UISettings } from "../../api/types";
 import { BasicProperties } from "./PropertySections/BasicProperties";
 import { LayoutProperties } from "./PropertySections/LayoutProperties";
@@ -52,6 +52,39 @@ export function PropertiesPanel({
   onDemoteMaster,
   onDeleteMaster,
 }: PropertiesPanelProps) {
+  const [showThemeTab, setShowThemeTab] = useState(false);
+
+  // Theme tab (12.5) — always accessible via toggle
+  if (showThemeTab && themes && themes.length > 0) {
+    const settings = project?.ui?.settings;
+    return (
+      <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+        <button
+          onClick={() => setShowThemeTab(false)}
+          style={{
+            display: "flex", alignItems: "center", gap: 4,
+            padding: "var(--space-xs) var(--space-sm)", margin: "var(--space-xs)",
+            borderRadius: "var(--border-radius)", border: "1px solid var(--accent)",
+            background: "var(--accent-dim, rgba(33,150,243,0.1))", color: "var(--accent)",
+            fontSize: 11, fontWeight: 600, cursor: "pointer",
+          }}
+        >
+          <Palette size={12} /> Back to Properties
+        </button>
+        <div style={{ flex: 1, overflow: "auto" }}>
+          <ThemeSection
+            themes={themes}
+            currentThemeId={project?.ui?.settings?.theme_id || "dark-default"}
+            settings={project?.ui?.settings}
+            onThemeChange={onThemeChange!}
+            onApplyThemeToElements={onApplyThemeToElements}
+            onRefreshThemes={onRefreshThemes}
+          />
+        </div>
+      </div>
+    );
+  }
+
   // Master element selected — show master element properties
   if (masterElement && page) {
     return (
@@ -216,15 +249,35 @@ export function PropertiesPanel({
       {/* Header */}
       <div
         style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "var(--space-xs) var(--space-xs)",
+        }}
+      >
+        <span style={{
           fontSize: "var(--font-size-sm)",
           color: "var(--text-secondary)",
           textTransform: "uppercase",
           letterSpacing: "0.5px",
           fontWeight: 600,
-          padding: "var(--space-xs) var(--space-xs)",
-        }}
-      >
-        Properties
+        }}>
+          Properties
+        </span>
+        {themes && themes.length > 0 && (
+          <button
+            onClick={() => setShowThemeTab(true)}
+            style={{
+              display: "flex", alignItems: "center", gap: 3,
+              padding: "1px 6px", borderRadius: 3,
+              background: "transparent", border: "1px solid var(--border-color)",
+              color: "var(--text-muted)", fontSize: 10, cursor: "pointer",
+            }}
+            title="Open Theme Editor"
+          >
+            <Palette size={10} /> Theme
+          </button>
+        )}
       </div>
 
       <Section title="Basic" defaultOpen>
@@ -244,6 +297,41 @@ export function PropertiesPanel({
       </Section>
 
       <Section title="Style" defaultOpen>
+        {/* Theme override indicator (12.7) */}
+        {themeDefaults?.[element.type] && (() => {
+          const td = themeDefaults[element.type];
+          const overrideKeys = ["bg_color", "text_color", "border_color", "font_size"].filter(
+            (k) => element.style[k] != null && element.style[k] !== td[k]
+          );
+          if (overrideKeys.length === 0) return null;
+          return (
+            <div style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              padding: "4px 8px", marginBottom: 6, borderRadius: 4,
+              background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)",
+              fontSize: 11,
+            }}>
+              <span style={{ color: "#f59e0b", fontWeight: 500 }}>
+                Overrides theme ({overrideKeys.length})
+              </span>
+              <button
+                onClick={() => {
+                  const reset: Record<string, unknown> = {};
+                  for (const k of overrideKeys) reset[k] = undefined;
+                  handleChange({ style: { ...element.style, ...reset } });
+                }}
+                style={{
+                  padding: "1px 6px", borderRadius: 3, fontSize: 10,
+                  background: "transparent", border: "1px solid rgba(245,158,11,0.3)",
+                  color: "#f59e0b", cursor: "pointer",
+                }}
+              >
+                <Undo2 size={10} style={{ verticalAlign: "middle", marginRight: 2 }} />
+                Reset to theme
+              </button>
+            </div>
+          );
+        })()}
         <StyleProperties element={element} onChange={handleChange} themeDefaults={themeDefaults?.[element.type]} />
       </Section>
 
