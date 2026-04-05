@@ -68,7 +68,7 @@ export function DeviceView() {
 
   // Filter and group devices (memoized)
   const connections = project?.connections ?? {};
-  const { filteredDevices, grouped, sortedGroups, hasGroups, statusCounts } = useMemo(() => {
+  const { filteredDevices, grouped, sortedGroups, hasGroups, statusCounts, deviceGroupNames } = useMemo(() => {
     const q = search.toLowerCase();
     const filtered = deviceConfigs.filter(
       (dev) => {
@@ -85,11 +85,14 @@ export function DeviceView() {
     );
     // Build device -> first group name mapping from device_groups
     const deviceToGroup = new Map<string, string>();
+    const deviceToAllGroups = new Map<string, string[]>();
     for (const g of deviceGroups) {
       for (const did of g.device_ids) {
         if (!deviceToGroup.has(did)) {
           deviceToGroup.set(did, g.name);
         }
+        if (!deviceToAllGroups.has(did)) deviceToAllGroups.set(did, []);
+        deviceToAllGroups.get(did)!.push(g.name);
       }
     }
     const groups = new Map<string, typeof filtered>();
@@ -144,6 +147,7 @@ export function DeviceView() {
       sortedGroups: filteredSorted,
       hasGroups: filteredSorted.some((g) => g !== ""),
       statusCounts: { total: deviceConfigs.length, online, offline, orphaned: orphanedCount },
+      deviceGroupNames: deviceToAllGroups,
     };
   }, [deviceConfigs, deviceGroups, search, connections, statusFilter]);
 
@@ -395,6 +399,28 @@ export function DeviceView() {
                 {selectedIds.size} selected
               </span>
               <button
+                onClick={() => setSelectedIds(new Set(filteredDevices.map((d) => d.id)))}
+                style={{ padding: "2px var(--space-sm)", borderRadius: "var(--border-radius)", background: "var(--bg-hover)", fontSize: "var(--font-size-sm)" }}
+              >
+                All
+              </button>
+              <button
+                onClick={() => setSelectedIds(new Set())}
+                style={{ padding: "2px var(--space-sm)", borderRadius: "var(--border-radius)", background: "var(--bg-hover)", fontSize: "var(--font-size-sm)" }}
+              >
+                None
+              </button>
+              <button
+                onClick={() => {
+                  const ls = useConnectionStore.getState().liveState;
+                  setSelectedIds(new Set(filteredDevices.filter((d) => ls[`device.${d.id}.connected`]).map((d) => d.id)));
+                }}
+                style={{ padding: "2px var(--space-sm)", borderRadius: "var(--border-radius)", background: "rgba(76,175,80,0.15)", color: "var(--color-success)", fontSize: "var(--font-size-sm)" }}
+              >
+                Online
+              </button>
+              <span style={{ color: "var(--border-color)" }}>|</span>
+              <button
                 onClick={handleBulkDelete}
                 style={{
                   padding: "2px var(--space-sm)",
@@ -473,22 +499,40 @@ export function DeviceView() {
                     {group || "Ungrouped"}
                   </div>
                 )}
-                {grouped.get(group)!.map((dev) => (
-                  <div key={dev.id} style={{ display: "flex", alignItems: "center" }}>
-                    {bulkMode && (
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(dev.id)}
-                        onChange={() => toggleSelection(dev.id)}
-                        style={{ marginRight: "var(--space-xs)", flexShrink: 0 }}
-                      />
-                    )}
+                {grouped.get(group)!.map((dev) => {
+                  const isChecked = selectedIds.has(dev.id);
+                  return (
+                  <div
+                    key={dev.id}
+                    style={{ display: "flex", alignItems: "center" }}
+                    onMouseEnter={(e) => {
+                      const cb = e.currentTarget.querySelector<HTMLElement>("[data-bulk-cb]");
+                      if (cb) cb.style.opacity = "1";
+                    }}
+                    onMouseLeave={(e) => {
+                      const cb = e.currentTarget.querySelector<HTMLElement>("[data-bulk-cb]");
+                      if (cb && !isChecked) cb.style.opacity = "0";
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      data-bulk-cb=""
+                      checked={isChecked}
+                      onChange={() => toggleSelection(dev.id)}
+                      style={{
+                        marginRight: "var(--space-xs)", flexShrink: 0,
+                        opacity: isChecked ? 1 : 0,
+                        transition: "opacity 0.15s",
+                        cursor: "pointer",
+                      }}
+                    />
                     <DeviceListItem
                       deviceId={dev.id}
                       name={dev.name}
                       driver={dev.driver}
                       selected={selectedId === dev.id}
                       enabled={dev.enabled !== false}
+                      groupNames={deviceGroupNames.get(dev.id)}
                       onClick={() => {
                         if (bulkMode) {
                           toggleSelection(dev.id);
@@ -498,7 +542,8 @@ export function DeviceView() {
                       }}
                     />
                   </div>
-                ))}
+                  );
+                })}
               </div>
             ))
           )}
@@ -569,6 +614,7 @@ function DeviceListItem({
   driver,
   selected,
   enabled,
+  groupNames,
   onClick,
 }: {
   deviceId: string;
@@ -576,6 +622,7 @@ function DeviceListItem({
   driver: string;
   selected: boolean;
   enabled: boolean;
+  groupNames?: string[];
   onClick: () => void;
 }) {
   const connected = useConnectionStore(
@@ -617,8 +664,16 @@ function DeviceListItem({
         <div style={{
           fontSize: "var(--font-size-sm)",
           color: orphaned ? "var(--color-warning, #f59e0b)" : "var(--text-muted)",
+          display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap",
         }}>
-          {driver}{orphaned ? " (not installed)" : ""}
+          <span>{driver}{orphaned ? " (not installed)" : ""}</span>
+          {groupNames && groupNames.length > 0 && groupNames.map((gn) => (
+            <span key={gn} style={{
+              fontSize: 9, padding: "0 4px", borderRadius: 3,
+              background: "rgba(33,150,243,0.12)", color: "var(--accent)",
+              lineHeight: "16px",
+            }}>{gn}</span>
+          ))}
         </div>
       </div>
     </button>
@@ -2583,22 +2638,23 @@ function DeviceGroupsPanel() {
 
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
-  const [newGroupId, setNewGroupId] = useState("");
   const [newGroupName, setNewGroupName] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
   const selectedGroup = groups.find((g) => g.id === selectedGroupId);
 
+  // Auto-generate ID from display name
+  const autoGroupId = newGroupName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+
   const handleCreate = () => {
-    const id = newGroupId.trim().replace(/[^a-zA-Z0-9_]/g, "_");
+    const id = autoGroupId;
     if (!id || groups.some((g) => g.id === id)) return;
     const newGroup: DeviceGroup = {
       id,
-      name: newGroupName.trim() || id,
+      name: newGroupName.trim(),
       device_ids: [],
     };
     update({ device_groups: [...groups, newGroup] });
-    setNewGroupId("");
     setNewGroupName("");
     setShowCreate(false);
     setSelectedGroupId(id);
@@ -2653,23 +2709,24 @@ function DeviceGroupsPanel() {
         {showCreate && (
           <div style={{ padding: "var(--space-sm) var(--space-md)", borderBottom: "1px solid var(--border-color)", display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
             <input
-              value={newGroupId}
-              onChange={(e) => setNewGroupId(e.target.value)}
-              placeholder="Group ID (e.g., projectors)"
+              value={newGroupName}
+              onChange={(e) => setNewGroupName(e.target.value)}
+              placeholder="Group name (e.g., All Projectors)"
               style={{ fontSize: "var(--font-size-sm)", padding: "var(--space-xs) var(--space-sm)", borderRadius: "var(--border-radius)", border: "1px solid var(--border-color)", background: "var(--bg-input)", color: "var(--text-primary)" }}
               autoFocus
               onKeyDown={(e) => e.key === "Enter" && handleCreate()}
             />
-            <input
-              value={newGroupName}
-              onChange={(e) => setNewGroupName(e.target.value)}
-              placeholder="Display name (e.g., All Projectors)"
-              style={{ fontSize: "var(--font-size-sm)", padding: "var(--space-xs) var(--space-sm)", borderRadius: "var(--border-radius)", border: "1px solid var(--border-color)", background: "var(--bg-input)", color: "var(--text-primary)" }}
-              onKeyDown={(e) => e.key === "Enter" && handleCreate()}
-            />
+            {autoGroupId && (
+              <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                ID: <code style={{ fontFamily: "var(--font-mono)" }}>{autoGroupId}</code>
+                {groups.some((g) => g.id === autoGroupId) && (
+                  <span style={{ color: "var(--color-error, #ef4444)", marginLeft: 6 }}>Already exists</span>
+                )}
+              </div>
+            )}
             <div style={{ display: "flex", gap: "var(--space-xs)" }}>
-              <button onClick={handleCreate} style={{ padding: "var(--space-xs) var(--space-sm)", background: "var(--accent)", color: "var(--text-on-accent)", border: "none", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-sm)", cursor: "pointer" }}>Create</button>
-              <button onClick={() => setShowCreate(false)} style={{ padding: "var(--space-xs) var(--space-sm)", background: "var(--bg-hover)", color: "var(--text-secondary)", border: "none", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-sm)", cursor: "pointer" }}>Cancel</button>
+              <button onClick={handleCreate} disabled={!autoGroupId || groups.some((g) => g.id === autoGroupId)} style={{ padding: "var(--space-xs) var(--space-sm)", background: "var(--accent)", color: "var(--text-on-accent)", border: "none", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-sm)", cursor: "pointer", opacity: !autoGroupId || groups.some((g) => g.id === autoGroupId) ? 0.5 : 1 }}>Create</button>
+              <button onClick={() => { setShowCreate(false); setNewGroupName(""); }} style={{ padding: "var(--space-xs) var(--space-sm)", background: "var(--bg-hover)", color: "var(--text-secondary)", border: "none", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-sm)", cursor: "pointer" }}>Cancel</button>
             </div>
           </div>
         )}
@@ -2677,10 +2734,23 @@ function DeviceGroupsPanel() {
         <div style={{ flex: 1, overflow: "auto" }}>
           {groups.length === 0 ? (
             <div style={{ padding: "var(--space-xl)", textAlign: "center", color: "var(--text-muted)", fontSize: "var(--font-size-sm)", lineHeight: 1.6 }}>
-              No device groups yet.
-              <br /><br />
-              Groups let you send a single command to multiple devices at once.
-              For example, create a "Projectors" group and power them all on with one macro step.
+              <Layers size={32} style={{ opacity: 0.3, marginBottom: "var(--space-sm)" }} />
+              <div style={{ fontWeight: 500, color: "var(--text-secondary)", marginBottom: "var(--space-sm)" }}>No groups yet</div>
+              <div>
+                Groups let you control multiple devices at once.
+                Create a "Projectors" group to power them all on with one macro step.
+              </div>
+              <button
+                onClick={() => setShowCreate(true)}
+                style={{
+                  marginTop: "var(--space-md)", padding: "var(--space-xs) var(--space-md)",
+                  background: "var(--accent)", color: "var(--text-on-accent)",
+                  border: "none", borderRadius: "var(--border-radius)",
+                  fontSize: "var(--font-size-sm)", cursor: "pointer", fontWeight: 500,
+                }}
+              >
+                Create your first group
+              </button>
             </div>
           ) : (
             groups.map((g) => (
