@@ -576,7 +576,8 @@ def save_project(path: str | Path, project: ProjectConfig) -> None:
                 _rotate_backups(path.parent, path.stem)
             except OSError as e:
                 log.error(f"Cannot create project backup — aborting save: {e}")
-                raise OSError(f"Backup creation failed: {e}") from e
+                from server.api.error_messages import friendly_save_error
+                raise OSError(friendly_save_error(e)) from e
 
         # Atomic write: write to temp file in the same directory, then rename.
         # os.replace() is atomic on both Windows (NTFS) and Linux.
@@ -591,9 +592,10 @@ def save_project(path: str | Path, project: ProjectConfig) -> None:
             fd = None
             os.replace(tmp_path, str(path))
             tmp_path = None  # Successfully replaced, don't clean up
-        except OSError:
+        except OSError as e:
             log.exception("Failed to save project atomically")
-            raise
+            from server.api.error_messages import friendly_save_error
+            raise OSError(friendly_save_error(e)) from e
         finally:
             if fd is not None:
                 try:

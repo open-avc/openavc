@@ -1226,7 +1226,10 @@ async def create_driver_definition(body: DriverDefinitionRequest) -> dict:
     # Validate
     errors = validate_driver_definition(driver_def)
     if errors:
-        raise HTTPException(status_code=422, detail="; ".join(errors))
+        raise HTTPException(
+            status_code=422,
+            detail={"errors": errors, "message": f"{len(errors)} validation error(s) in driver definition"},
+        )
 
     # Save to driver_repo (user/community directory)
     save_dir = dirs[1]  # driver_repo/
@@ -1265,7 +1268,10 @@ async def update_driver_definition(driver_id: str, body: DriverDefinitionRequest
     # Validate
     errors = validate_driver_definition(driver_def)
     if errors:
-        raise HTTPException(status_code=422, detail="; ".join(errors))
+        raise HTTPException(
+            status_code=422,
+            detail={"errors": errors, "message": f"{len(errors)} validation error(s) in driver definition"},
+        )
 
     # Delete old and save new
     delete_driver_definition(driver_id, dirs)

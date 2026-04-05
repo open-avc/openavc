@@ -16,6 +16,7 @@ from typing import Any
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from server.api.auth import check_ws_auth, get_ws_auth_subprotocol
+from server.api.error_messages import friendly_error
 from server.utils.log_buffer import get_log_buffer, LogEntry
 from server.utils.logger import get_logger
 
@@ -213,7 +214,7 @@ async def _handle_message(
         except Exception as e:
             # Catch-all: UI events dispatch to scripts/macros/drivers which can raise anything
             log.error(f"ui.press failed: {e}")
-            await _send_ws_error(ws, msg_type, str(e))
+            await _send_ws_error(ws, msg_type, friendly_error(e))
 
     elif msg_type == "ui.release":
         element_id = msg.get("element_id", "")
@@ -225,7 +226,7 @@ async def _handle_message(
         except Exception as e:
             # Catch-all: UI events dispatch to scripts/macros/drivers which can raise anything
             log.error(f"ui.release failed: {e}")
-            await _send_ws_error(ws, msg_type, str(e))
+            await _send_ws_error(ws, msg_type, friendly_error(e))
 
     elif msg_type == "ui.hold":
         element_id = msg.get("element_id", "")
@@ -237,7 +238,7 @@ async def _handle_message(
         except Exception as e:
             # Catch-all: UI events dispatch to scripts/macros/drivers which can raise anything
             log.error(f"ui.hold failed: {e}")
-            await _send_ws_error(ws, msg_type, str(e))
+            await _send_ws_error(ws, msg_type, friendly_error(e))
 
     elif msg_type == "ui.toggle_off":
         element_id = msg.get("element_id", "")
@@ -249,7 +250,7 @@ async def _handle_message(
         except Exception as e:
             # Catch-all: UI events dispatch to scripts/macros/drivers which can raise anything
             log.error(f"ui.toggle_off failed: {e}")
-            await _send_ws_error(ws, msg_type, str(e))
+            await _send_ws_error(ws, msg_type, friendly_error(e))
 
     elif msg_type == "ui.change":
         element_id = msg.get("element_id", "")
@@ -265,7 +266,7 @@ async def _handle_message(
         except Exception as e:
             # Catch-all: UI events dispatch to scripts/macros/drivers which can raise anything
             log.error(f"ui.change failed: {e}")
-            await _send_ws_error(ws, msg_type, str(e))
+            await _send_ws_error(ws, msg_type, friendly_error(e))
 
     elif msg_type == "ui.route":
         element_id = msg.get("element_id", "")
@@ -281,7 +282,7 @@ async def _handle_message(
         except Exception as e:
             # Catch-all: UI events dispatch to scripts/macros/drivers which can raise anything
             log.error(f"ui.route failed: {e}")
-            await _send_ws_error(ws, msg_type, str(e))
+            await _send_ws_error(ws, msg_type, friendly_error(e))
 
     elif msg_type == "ui.submit":
         element_id = msg.get("element_id", "")
@@ -294,7 +295,7 @@ async def _handle_message(
         except Exception as e:
             # Catch-all: UI events dispatch to scripts/macros/drivers which can raise anything
             log.error(f"ui.submit failed: {e}")
-            await _send_ws_error(ws, msg_type, str(e))
+            await _send_ws_error(ws, msg_type, friendly_error(e))
 
     elif msg_type == "ui.page":
         page_id = msg.get("page_id", "")
@@ -317,7 +318,9 @@ async def _handle_message(
         except Exception as e:
             # Catch-all: driver command handlers can raise arbitrary exceptions
             log.error(f"Command failed: {e}")
-            await _send_ws_error(ws, msg_type, f"Command failed: {e}")
+            device_name = _engine.state.get(f"device.{device_id}.name") or device_id
+            host = _engine.state.get(f"device.{device_id}.host") or ""
+            await _send_ws_error(ws, msg_type, friendly_error(e, device=device_name, host=host))
 
     elif msg_type == "state.set":
         key = msg.get("key", "")
@@ -333,7 +336,7 @@ async def _handle_message(
         except Exception as e:
             # Catch-all: state listeners (scripts/triggers) can raise arbitrary exceptions
             log.error(f"state.set failed: {e}")
-            await _send_ws_error(ws, msg_type, str(e))
+            await _send_ws_error(ws, msg_type, friendly_error(e))
 
     elif msg_type == "macro.execute":
         macro_id = msg.get("macro_id", "")
@@ -345,7 +348,7 @@ async def _handle_message(
         except Exception as e:
             # Catch-all: macro steps run arbitrary actions (commands, scripts, state changes)
             log.error(f"macro.execute failed: {e}")
-            await _send_ws_error(ws, msg_type, f"Macro failed: {e}")
+            await _send_ws_error(ws, msg_type, f"Macro failed: {friendly_error(e)}")
 
     elif msg_type == "project.reload":
         try:
@@ -353,7 +356,7 @@ async def _handle_message(
         except Exception as e:
             # Catch-all: reload involves file I/O, JSON parsing, driver init, plugin loading
             log.error(f"project.reload failed: {e}")
-            await _send_ws_error(ws, msg_type, f"Reload failed: {e}")
+            await _send_ws_error(ws, msg_type, f"Reload failed: {friendly_error(e)}")
 
     elif msg_type == "log.subscribe":
         ws_id = id(ws)

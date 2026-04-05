@@ -154,11 +154,11 @@ class MacroEngine:
                 f"macro.cancelled.{macro_id}",
                 {"macro_id": macro_id, "name": name},
             )
-        except Exception:  # Catch-all: isolates macro execution errors
+        except Exception as e:  # Catch-all: isolates macro execution errors
             log.exception(f"Macro '{name}' failed")
             await self.events.emit(
                 f"macro.error.{macro_id}",
-                {"macro_id": macro_id, "name": name},
+                {"macro_id": macro_id, "name": name, "error": str(e)},
             )
         finally:
             async with self._call_stack_lock:
@@ -201,12 +201,13 @@ class MacroEngine:
 
             try:
                 await self._execute_step(step, context, _conditional_depth)
-            except Exception:  # Catch-all: isolates individual step errors from halting the macro
-                log.exception(
-                    f"Error in macro step {i + 1}/{total}: {action}"
-                )
+            except Exception as e:  # Catch-all: isolates individual step errors from halting the macro
+                step_detail = self._step_error_detail(step, i, total)
+                log.error(f"Macro step failed: {step_detail} — {e}")
                 if stop_on_error:
-                    raise
+                    raise RuntimeError(
+                        f"Step {i + 1}/{total} failed ({step_detail}): {e}"
+                    ) from e
                 # Continue to next step (don't halt the macro)
 
     def _evaluate_condition(self, condition: dict[str, Any]) -> bool:
@@ -227,6 +228,29 @@ class MacroEngine:
     def _resolve_params(self, params: dict[str, Any]) -> dict[str, Any]:
         """Resolve $state_key references in parameter values."""
         return {k: self._resolve_value(v) for k, v in params.items()}
+
+    def _step_error_detail(self, step: dict[str, Any], index: int, total: int) -> str:
+        """Build a descriptive error context string for a failed macro step."""
+        action = step.get("action", "unknown")
+        parts = [f"step {index + 1}/{total}", action]
+        if action in ("device.command", "group.command"):
+            command = step.get("command", "")
+            if command:
+                parts.append(f"command '{command}'")
+        if action == "device.command":
+            device_id = step.get("device", "")
+            if device_id:
+                device_name = self.state.get(f"device.{device_id}.name") or device_id
+                parts.append(f"on '{device_name}'")
+        elif action == "group.command":
+            group_id = step.get("group", "")
+            if group_id:
+                parts.append(f"on group '{group_id}'")
+        elif action == "macro":
+            sub = step.get("macro", "")
+            if sub:
+                parts.append(f"calling '{sub}'")
+        return ", ".join(parts)
 
     @staticmethod
     def _auto_description(step: dict[str, Any]) -> str:
@@ -282,8 +306,8 @@ class MacroEngine:
             params = self._resolve_params(step.get("params") or {})
             device_ids = self._groups.get(group_id)
             if device_ids is None:
-                log.error(f"  Macro step: unknown group '{group_id}'")
-                return
+                raise ValueError(f"Device group '{group_id}' not found. Check that the group exists in your project.")
+
             if not device_ids:
                 log.debug(f"  Macro step: group '{group_id}' is empty, skipping")
                 return
@@ -298,9 +322,12 @@ class MacroEngine:
             if tasks:
                 log.debug(f"  Macro step: group '{group_id}'.{command} -> {len(tasks)} device(s)")
                 results = await asyncio.gather(*tasks, return_exceptions=True)
-                for i, result in enumerate(results):
+                online_ids = [did for did in device_ids if self.state.get(f"device.{did}.connected")]
+                for j, result in enumerate(results):
                     if isinstance(result, Exception):
-                        log.error(f"  Group command error: {result}")
+                        failed_device = online_ids[j] if j < len(online_ids) else "unknown"
+                        device_name = self.state.get(f"device.{failed_device}.name") or failed_device
+                        log.error(f"  Group command error on '{device_name}': {result}")
 
         elif action == "delay":
             seconds = max(0, step.get("seconds", 0))
