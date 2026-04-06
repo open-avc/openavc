@@ -78,7 +78,7 @@ class PluginRegistry:
             if not task.done():
                 task.cancel()
                 try:
-                    await asyncio.wait_for(asyncio.shield(task), timeout=2.0)
+                    await asyncio.wait_for(task, timeout=2.0)
                 except (asyncio.CancelledError, asyncio.TimeoutError, Exception):
                     pass
         self.managed_tasks.clear()

@@ -383,6 +383,10 @@ class PluginLoader:
                 )
                 asyncio.create_task(self._auto_disable_plugin(_pid))
 
+        def _on_callback_success(_pid=plugin_id):
+            # Reset failure counter on success so transient errors don't accumulate
+            self._callback_failures.pop(_pid, None)
+
         api = PluginAPI(
             plugin_id=plugin_id,
             capabilities=info.get("capabilities", []),
@@ -396,6 +400,7 @@ class PluginLoader:
             save_config_fn=self._save_config_fn,
             log_fn=self._plugin_log,
             failure_reporter=_on_callback_failure,
+            success_reporter=_on_callback_success,
         )
 
         # Instantiate and start

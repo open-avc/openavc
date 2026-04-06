@@ -49,10 +49,9 @@ class MacroEngine:
         if task is None:
             return False
         task.cancel()
-        # Wait for the task to finish its cancellation cleanup
         try:
-            await asyncio.shield(asyncio.sleep(0))
-        except asyncio.CancelledError:
+            await asyncio.wait_for(task, timeout=5.0)
+        except (asyncio.CancelledError, asyncio.TimeoutError):
             pass
         return True
 

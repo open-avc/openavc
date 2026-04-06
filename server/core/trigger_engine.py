@@ -171,6 +171,7 @@ class TriggerEngine:
             for task in ts.pending_queue:
                 if not task.done():
                     task.cancel()
+            ts.pending_queue.clear()
 
         # Unsubscribe state listeners
         for sub_id in self._state_sub_ids:

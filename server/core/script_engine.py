@@ -151,13 +151,20 @@ class ScriptEngine:
             except concurrent.futures.TimeoutError:
                 future.cancel()
                 sys.modules.pop(module_name, None)
+                # Don't wait for the stuck thread — it would hang shutdown.
+                # The daemon thread pool will be cleaned up on process exit.
+                pool.shutdown(wait=False)
+                log.warning(
+                    f"Script '{script_id}' thread leaked — it will persist "
+                    f"until the process exits"
+                )
                 raise RuntimeError(
                     f"Script '{script_id}' timed out during loading "
                     f"(>{self.SCRIPT_LOAD_TIMEOUT}s) — possible infinite loop "
                     f"in top-level code"
                 )
         finally:
-            pool.shutdown(wait=True)
+            pool.shutdown(wait=False)
 
         self._loaded_modules[script_id] = module_name
 

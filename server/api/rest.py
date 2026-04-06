@@ -492,7 +492,11 @@ async def save_project_config(request: Request) -> dict[str, Any]:
     # Optimistic concurrency check (14.3)
     client_revision = body.pop("_revision", None)
     if client_revision is not None:
-        if int(client_revision) != engine._project_revision:
+        try:
+            rev = int(client_revision)
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="Invalid _revision value")
+        if rev != engine._project_revision:
             raise HTTPException(
                 status_code=409,
                 detail="Project was modified by another session. Reload to see the latest changes.",
