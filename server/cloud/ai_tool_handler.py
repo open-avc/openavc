@@ -244,7 +244,7 @@ class AIToolHandler:
                 if not self._ai_backup_created and self._project_path:
                     try:
                         from server.core.backup_manager import create_backup
-                        create_backup(Path(self._project_path).parent, "Before AI changes")
+                        await asyncio.to_thread(create_backup, Path(self._project_path).parent, "Before AI changes")
                     except Exception:
                         log.debug("Could not create pre-AI backup", exc_info=True)
                     self._ai_backup_created = True

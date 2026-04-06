@@ -1527,7 +1527,8 @@ async def open_from_library(request: Request) -> dict[str, Any]:
     scripts_dir = engine.project_path.parent / "scripts"
 
     # Back up current project (including scripts) before replacing
-    create_backup(engine.project_path.parent, f"Before opening '{data.project_name}'")
+    import asyncio
+    await asyncio.to_thread(create_backup, engine.project_path.parent, f"Before opening '{data.project_name}'")
 
     try:
         _open(data.library_id, engine.project_path, scripts_dir,
@@ -1558,7 +1559,8 @@ async def create_blank(request: Request) -> dict[str, Any]:
     project_id = sanitize_id(body.get("project_id") or project_name)
 
     # Back up current project before replacing with blank
-    create_backup(engine.project_path.parent, "Before creating blank project")
+    import asyncio
+    await asyncio.to_thread(create_backup, engine.project_path.parent, "Before creating blank project")
 
     project = create_blank_project(project_id, project_name)
     save_project(engine.project_path, project)
@@ -1618,7 +1620,8 @@ async def create_backup_endpoint(request: Request) -> dict[str, Any]:
     body = await request.json() if request.headers.get("content-length", "0") != "0" else {}
     reason = body.get("reason", "Manual backup")
 
-    path = create_backup(engine.project_path.parent, reason)
+    import asyncio
+    path = await asyncio.to_thread(create_backup, engine.project_path.parent, reason)
     if not path:
         raise HTTPException(status_code=404, detail="No project to back up")
     return {"status": "created", "filename": path.name}
@@ -1646,7 +1649,8 @@ async def restore_backup(filename: str) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="Not a valid backup file")
 
     # Create a backup before restoring
-    create_backup(project_dir, "Before restore")
+    import asyncio
+    await asyncio.to_thread(create_backup, project_dir, "Before restore")
 
     restore_from_backup(backup_path, project_dir)
     await engine.reload_project()

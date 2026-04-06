@@ -163,7 +163,8 @@ class CommandHandler:
                         return
 
                     # Create backup before overwriting
-                    create_backup(project_path.parent, "Before cloud config push")
+                    import asyncio
+                    await asyncio.to_thread(create_backup, project_path.parent, "Before cloud config push")
                     save_project(project_path, project)
 
                 await self._reload_fn()
