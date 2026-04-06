@@ -3,65 +3,134 @@
     "project": {
         "id": "conference_room",
         "name": "Conference Room",
-        "description": "Projector, DSP audio, and PTZ camera with source selection."
+        "description": "Projector, DSP audio, and PTZ camera with source selection.",
+        "created": "2026-04-06T00:00:00",
+        "modified": "2026-04-06T00:00:00"
     },
     "devices": [
         {
             "id": "projector1",
-            "driver": "pjlink",
+            "driver": "pjlink_class1",
             "name": "Projector",
-            "config": { "host": "192.168.1.100", "port": 4352 }
+            "config": {
+                "host": "192.168.1.100",
+                "port": 4352
+            }
         },
         {
             "id": "dsp1",
             "driver": "generic_tcp",
             "name": "DSP",
-            "config": { "host": "192.168.1.101", "port": 23 }
+            "config": {
+                "host": "192.168.1.101",
+                "port": 23
+            }
         },
         {
             "id": "camera1",
             "driver": "generic_tcp",
             "name": "PTZ Camera",
-            "config": { "host": "192.168.1.102", "port": 5678 }
+            "config": {
+                "host": "192.168.1.102",
+                "port": 5678
+            }
         }
     ],
     "variables": [
-        { "id": "system_power", "type": "string", "default": "off", "label": "System Power" },
-        { "id": "current_source", "type": "string", "default": "laptop", "label": "Active Source" },
-        { "id": "volume", "type": "integer", "default": 50, "label": "Volume" },
-        { "id": "projector_status", "type": "string", "default": "Off", "label": "Projector Status Text" }
+        {
+            "id": "system_power",
+            "type": "string",
+            "default": "off",
+            "label": "System Power"
+        },
+        {
+            "id": "current_source",
+            "type": "string",
+            "default": "laptop",
+            "label": "Active Source"
+        },
+        {
+            "id": "volume",
+            "type": "integer",
+            "default": 50,
+            "label": "Volume"
+        },
+        {
+            "id": "projector_status",
+            "type": "string",
+            "default": "Off",
+            "label": "Projector Status Text"
+        }
     ],
     "macros": [
         {
             "id": "system_on",
             "name": "System On",
             "steps": [
-                { "action": "device.command", "device": "projector1", "command": "power_on" },
-                { "action": "state.set", "key": "var.system_power", "value": "on" }
+                {
+                    "action": "device.command",
+                    "device": "projector1",
+                    "command": "power_on"
+                },
+                {
+                    "action": "state.set",
+                    "key": "var.system_power",
+                    "value": "on"
+                }
             ]
         },
         {
             "id": "system_off",
             "name": "System Off",
             "steps": [
-                { "action": "device.command", "device": "projector1", "command": "power_off" },
-                { "action": "state.set", "key": "var.system_power", "value": "off" }
+                {
+                    "action": "device.command",
+                    "device": "projector1",
+                    "command": "power_off"
+                },
+                {
+                    "action": "state.set",
+                    "key": "var.system_power",
+                    "value": "off"
+                }
             ]
         },
         {
             "id": "select_laptop",
             "name": "Select Laptop",
             "steps": [
-                { "action": "device.command", "device": "projector1", "command": "input", "params": { "input": "hdmi1" } },
-                { "action": "state.set", "key": "var.current_source", "value": "laptop" }
+                {
+                    "action": "device.command",
+                    "device": "projector1",
+                    "command": "input",
+                    "params": {
+                        "input": "hdmi1"
+                    }
+                },
+                {
+                    "action": "state.set",
+                    "key": "var.current_source",
+                    "value": "laptop"
+                }
             ]
         },
         {
             "id": "select_wireless",
             "name": "Select Wireless",
             "steps": [
-                { "action": "device.command", "device": "projector1", "command": "input", "params": { "input": "hdmi2" } },
-                { "action": "state.set", "key": "var.current_source", "value": "wireless" }
+                {
+                    "action": "device.command",
+                    "device": "projector1",
+                    "command": "input",
+                    "params": {
+                        "input": "hdmi2"
+                    }
+                },
+                {
+                    "action": "state.set",
+                    "key": "var.current_source",
+                    "value": "wireless"
+                }
             ]
         }
     ],
@@ -74,27 +143,54 @@
             {
                 "id": "main",
                 "name": "Main",
-                "grid": { "columns": 6, "rows": 4 },
+                "grid": {
+                    "columns": 6,
+                    "rows": 4
+                },
                 "elements": [
                     {
                         "id": "lbl_title",
                         "type": "label",
                         "text": "Conference Room",
-                        "grid_area": { "col": 1, "row": 1, "col_span": 4, "row_span": 1 },
-                        "style": { "font_size": 18, "text_align": "center" }
+                        "grid_area": {
+                            "col": 1,
+                            "row": 1,
+                            "col_span": 4,
+                            "row_span": 1
+                        },
+                        "style": {
+                            "font_size": 18,
+                            "text_align": "center"
+                        }
                     },
                     {
                         "id": "btn_on",
                         "type": "button",
                         "label": "System On",
-                        "grid_area": { "col": 5, "row": 1, "col_span": 1, "row_span": 1 },
+                        "grid_area": {
+                            "col": 5,
+                            "row": 1,
+                            "col_span": 1,
+                            "row_span": 1
+                        },
                         "bindings": {
-                            "press": [{ "action": "macro", "macro": "system_on" }],
+                            "press": [
+                                {
+                                    "action": "macro",
+                                    "macro": "system_on"
+                                }
+                            ],
                             "feedback": {
                                 "key": "var.system_power",
-                                "condition": { "equals": "on" },
-                                "style_active": { "bg_color": "#4CAF50" },
-                                "style_inactive": { "bg_color": "#424242" }
+                                "condition": {
+                                    "equals": "on"
+                                },
+                                "style_active": {
+                                    "bg_color": "#4CAF50"
+                                },
+                                "style_inactive": {
+                                    "bg_color": "#424242"
+                                }
                             }
                         }
                     },
@@ -102,14 +198,30 @@
                         "id": "btn_off",
                         "type": "button",
                         "label": "System Off",
-                        "grid_area": { "col": 6, "row": 1, "col_span": 1, "row_span": 1 },
+                        "grid_area": {
+                            "col": 6,
+                            "row": 1,
+                            "col_span": 1,
+                            "row_span": 1
+                        },
                         "bindings": {
-                            "press": [{ "action": "macro", "macro": "system_off" }],
+                            "press": [
+                                {
+                                    "action": "macro",
+                                    "macro": "system_off"
+                                }
+                            ],
                             "feedback": {
                                 "key": "var.system_power",
-                                "condition": { "equals": "off" },
-                                "style_active": { "bg_color": "#F44336" },
-                                "style_inactive": { "bg_color": "#424242" }
+                                "condition": {
+                                    "equals": "off"
+                                },
+                                "style_active": {
+                                    "bg_color": "#F44336"
+                                },
+                                "style_inactive": {
+                                    "bg_color": "#424242"
+                                }
                             }
                         }
                     },
@@ -117,14 +229,30 @@
                         "id": "btn_laptop",
                         "type": "button",
                         "label": "Laptop",
-                        "grid_area": { "col": 1, "row": 2, "col_span": 3, "row_span": 1 },
+                        "grid_area": {
+                            "col": 1,
+                            "row": 2,
+                            "col_span": 3,
+                            "row_span": 1
+                        },
                         "bindings": {
-                            "press": [{ "action": "macro", "macro": "select_laptop" }],
+                            "press": [
+                                {
+                                    "action": "macro",
+                                    "macro": "select_laptop"
+                                }
+                            ],
                             "feedback": {
                                 "key": "var.current_source",
-                                "condition": { "equals": "laptop" },
-                                "style_active": { "bg_color": "#2196F3" },
-                                "style_inactive": { "bg_color": "#424242" }
+                                "condition": {
+                                    "equals": "laptop"
+                                },
+                                "style_active": {
+                                    "bg_color": "#2196F3"
+                                },
+                                "style_inactive": {
+                                    "bg_color": "#424242"
+                                }
                             }
                         }
                     },
@@ -132,14 +260,30 @@
                         "id": "btn_wireless",
                         "type": "button",
                         "label": "Wireless",
-                        "grid_area": { "col": 4, "row": 2, "col_span": 3, "row_span": 1 },
+                        "grid_area": {
+                            "col": 4,
+                            "row": 2,
+                            "col_span": 3,
+                            "row_span": 1
+                        },
                         "bindings": {
-                            "press": [{ "action": "macro", "macro": "select_wireless" }],
+                            "press": [
+                                {
+                                    "action": "macro",
+                                    "macro": "select_wireless"
+                                }
+                            ],
                             "feedback": {
                                 "key": "var.current_source",
-                                "condition": { "equals": "wireless" },
-                                "style_active": { "bg_color": "#2196F3" },
-                                "style_inactive": { "bg_color": "#424242" }
+                                "condition": {
+                                    "equals": "wireless"
+                                },
+                                "style_active": {
+                                    "bg_color": "#2196F3"
+                                },
+                                "style_inactive": {
+                                    "bg_color": "#424242"
+                                }
                             }
                         }
                     },
@@ -150,19 +294,37 @@
                         "min": 0,
                         "max": 100,
                         "step": 1,
-                        "grid_area": { "col": 1, "row": 3, "col_span": 6, "row_span": 1 },
+                        "grid_area": {
+                            "col": 1,
+                            "row": 3,
+                            "col_span": 6,
+                            "row_span": 1
+                        },
                         "bindings": {
-                            "variable": { "key": "var.volume" }
+                            "variable": {
+                                "key": "var.volume"
+                            }
                         }
                     },
                     {
                         "id": "lbl_proj_status",
                         "type": "label",
                         "text": "",
-                        "grid_area": { "col": 1, "row": 4, "col_span": 3, "row_span": 1 },
-                        "style": { "font_size": 12, "text_align": "center" },
+                        "grid_area": {
+                            "col": 1,
+                            "row": 4,
+                            "col_span": 3,
+                            "row_span": 1
+                        },
+                        "style": {
+                            "font_size": 12,
+                            "text_align": "center"
+                        },
                         "bindings": {
-                            "text": { "key": "var.projector_status", "format": "Projector: {value}" }
+                            "text": {
+                                "key": "var.projector_status",
+                                "format": "Projector: {value}"
+                            }
                         }
                     },
                     {
@@ -170,30 +332,60 @@
                         "type": "page_nav",
                         "label": "Camera Controls",
                         "target_page": "camera",
-                        "grid_area": { "col": 4, "row": 4, "col_span": 3, "row_span": 1 }
+                        "grid_area": {
+                            "col": 4,
+                            "row": 4,
+                            "col_span": 3,
+                            "row_span": 1
+                        }
                     }
                 ]
             },
             {
                 "id": "camera",
                 "name": "Camera",
-                "grid": { "columns": 4, "rows": 3 },
+                "grid": {
+                    "columns": 4,
+                    "rows": 3
+                },
                 "elements": [
                     {
                         "id": "lbl_camera",
                         "type": "label",
                         "text": "Camera Presets",
-                        "grid_area": { "col": 1, "row": 1, "col_span": 4, "row_span": 1 },
-                        "style": { "font_size": 18, "text_align": "center" }
+                        "grid_area": {
+                            "col": 1,
+                            "row": 1,
+                            "col_span": 4,
+                            "row_span": 1
+                        },
+                        "style": {
+                            "font_size": 18,
+                            "text_align": "center"
+                        }
                     },
                     {
                         "id": "preset_1",
                         "type": "camera_preset",
                         "label": "Wide",
                         "preset_number": 1,
-                        "grid_area": { "col": 1, "row": 2, "col_span": 2, "row_span": 1 },
+                        "grid_area": {
+                            "col": 1,
+                            "row": 2,
+                            "col_span": 2,
+                            "row_span": 1
+                        },
                         "bindings": {
-                            "press": [{ "action": "device.command", "device": "camera1", "command": "recall_preset", "params": { "preset": 1 } }]
+                            "press": [
+                                {
+                                    "action": "device.command",
+                                    "device": "camera1",
+                                    "command": "recall_preset",
+                                    "params": {
+                                        "preset": 1
+                                    }
+                                }
+                            ]
                         }
                     },
                     {
@@ -201,9 +393,23 @@
                         "type": "camera_preset",
                         "label": "Presenter",
                         "preset_number": 2,
-                        "grid_area": { "col": 3, "row": 2, "col_span": 2, "row_span": 1 },
+                        "grid_area": {
+                            "col": 3,
+                            "row": 2,
+                            "col_span": 2,
+                            "row_span": 1
+                        },
                         "bindings": {
-                            "press": [{ "action": "device.command", "device": "camera1", "command": "recall_preset", "params": { "preset": 2 } }]
+                            "press": [
+                                {
+                                    "action": "device.command",
+                                    "device": "camera1",
+                                    "command": "recall_preset",
+                                    "params": {
+                                        "preset": 2
+                                    }
+                                }
+                            ]
                         }
                     },
                     {
@@ -211,7 +417,12 @@
                         "type": "page_nav",
                         "label": "Back to Main",
                         "target_page": "main",
-                        "grid_area": { "col": 1, "row": 3, "col_span": 4, "row_span": 1 }
+                        "grid_area": {
+                            "col": 1,
+                            "row": 3,
+                            "col_span": 4,
+                            "row_span": 1
+                        }
                     }
                 ]
             }
@@ -225,5 +436,8 @@
             "description": "Volume mapping and projector status updates"
         }
     ],
-    "isc": { "shared_state": [], "auth_key": "" }
+    "isc": {
+        "shared_state": [],
+        "auth_key": ""
+    }
 }

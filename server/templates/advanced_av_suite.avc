@@ -3,79 +3,190 @@
     "project": {
         "id": "advanced_av_suite",
         "name": "Advanced AV Suite",
-        "description": "Multi-device setup with scripted automation: occupancy-based auto-shutdown, volume mapping, source routing logic, status polling, and custom event handling."
+        "description": "Multi-device setup with scripted automation: occupancy-based auto-shutdown, volume mapping, source routing logic, status polling, and custom event handling.",
+        "created": "2026-04-06T00:00:00",
+        "modified": "2026-04-06T00:00:00"
     },
     "devices": [
         {
             "id": "display1",
-            "driver": "pjlink",
+            "driver": "pjlink_class1",
             "name": "Main Display",
-            "config": { "host": "192.168.1.100", "port": 4352 }
+            "config": {
+                "host": "192.168.1.100",
+                "port": 4352
+            }
         },
         {
             "id": "display2",
-            "driver": "pjlink",
+            "driver": "pjlink_class1",
             "name": "Confidence Monitor",
-            "config": { "host": "192.168.1.101", "port": 4352 }
+            "config": {
+                "host": "192.168.1.101",
+                "port": 4352
+            }
         },
         {
             "id": "switcher1",
             "driver": "generic_tcp",
             "name": "Matrix Switcher",
-            "config": { "host": "192.168.1.110", "port": 23 }
+            "config": {
+                "host": "192.168.1.110",
+                "port": 23
+            }
         },
         {
             "id": "dsp1",
             "driver": "generic_tcp",
             "name": "DSP",
-            "config": { "host": "192.168.1.120", "port": 23 }
+            "config": {
+                "host": "192.168.1.120",
+                "port": 23
+            }
         },
         {
             "id": "camera1",
             "driver": "generic_tcp",
             "name": "PTZ Camera",
-            "config": { "host": "192.168.1.130", "port": 5678 }
+            "config": {
+                "host": "192.168.1.130",
+                "port": 5678
+            }
         },
         {
             "id": "sensor1",
             "driver": "generic_tcp",
             "name": "Occupancy Sensor",
-            "config": { "host": "192.168.1.140", "port": 80, "transport": "http" }
+            "config": {
+                "host": "192.168.1.140",
+                "port": 80,
+                "transport": "http"
+            }
         }
     ],
     "variables": [
-        { "id": "system_power", "type": "string", "default": "off", "label": "System Power" },
-        { "id": "current_source", "type": "string", "default": "none", "label": "Active Source" },
-        { "id": "volume", "type": "integer", "default": 40, "label": "Volume" },
-        { "id": "mic_mute", "type": "boolean", "default": true, "label": "Mic Mute" },
-        { "id": "display_status", "type": "string", "default": "Off", "label": "Display Status" },
-        { "id": "room_occupied", "type": "boolean", "default": false, "label": "Room Occupied" },
-        { "id": "auto_shutdown_warning", "type": "boolean", "default": false, "label": "Shutdown Warning Active" },
-        { "id": "mode", "type": "string", "default": "standard", "label": "Presentation Mode" }
+        {
+            "id": "system_power",
+            "type": "string",
+            "default": "off",
+            "label": "System Power"
+        },
+        {
+            "id": "current_source",
+            "type": "string",
+            "default": "none",
+            "label": "Active Source"
+        },
+        {
+            "id": "volume",
+            "type": "integer",
+            "default": 40,
+            "label": "Volume"
+        },
+        {
+            "id": "mic_mute",
+            "type": "boolean",
+            "default": true,
+            "label": "Mic Mute"
+        },
+        {
+            "id": "display_status",
+            "type": "string",
+            "default": "Off",
+            "label": "Display Status"
+        },
+        {
+            "id": "room_occupied",
+            "type": "boolean",
+            "default": false,
+            "label": "Room Occupied"
+        },
+        {
+            "id": "auto_shutdown_warning",
+            "type": "boolean",
+            "default": false,
+            "label": "Shutdown Warning Active"
+        },
+        {
+            "id": "mode",
+            "type": "string",
+            "default": "standard",
+            "label": "Presentation Mode"
+        }
     ],
     "macros": [
         {
             "id": "system_on",
             "name": "System On",
             "steps": [
-                { "action": "device.command", "device": "display1", "command": "power_on" },
-                { "action": "device.command", "device": "display2", "command": "power_on" },
-                { "action": "delay", "seconds": 2 },
-                { "action": "state.set", "key": "var.system_power", "value": "on" },
-                { "action": "state.set", "key": "var.current_source", "value": "laptop" },
-                { "action": "event.emit", "event": "custom.system_ready" }
+                {
+                    "action": "device.command",
+                    "device": "display1",
+                    "command": "power_on"
+                },
+                {
+                    "action": "device.command",
+                    "device": "display2",
+                    "command": "power_on"
+                },
+                {
+                    "action": "delay",
+                    "seconds": 2
+                },
+                {
+                    "action": "state.set",
+                    "key": "var.system_power",
+                    "value": "on"
+                },
+                {
+                    "action": "state.set",
+                    "key": "var.current_source",
+                    "value": "laptop"
+                },
+                {
+                    "action": "event.emit",
+                    "event": "custom.system_ready"
+                }
             ]
         },
         {
             "id": "system_off",
             "name": "System Off",
             "steps": [
-                { "action": "state.set", "key": "var.system_power", "value": "off" },
-                { "action": "state.set", "key": "var.current_source", "value": "none" },
-                { "action": "state.set", "key": "var.auto_shutdown_warning", "value": false },
-                { "action": "device.command", "device": "dsp1", "command": "mute", "params": { "channel": "program", "muted": true } },
-                { "action": "device.command", "device": "display1", "command": "power_off" },
-                { "action": "device.command", "device": "display2", "command": "power_off" }
+                {
+                    "action": "state.set",
+                    "key": "var.system_power",
+                    "value": "off"
+                },
+                {
+                    "action": "state.set",
+                    "key": "var.current_source",
+                    "value": "none"
+                },
+                {
+                    "action": "state.set",
+                    "key": "var.auto_shutdown_warning",
+                    "value": false
+                },
+                {
+                    "action": "device.command",
+                    "device": "dsp1",
+                    "command": "mute",
+                    "params": {
+                        "channel": "program",
+                        "muted": true
+                    }
+                },
+                {
+                    "action": "device.command",
+                    "device": "display1",
+                    "command": "power_off"
+                },
+                {
+                    "action": "device.command",
+                    "device": "display2",
+                    "command": "power_off"
+                }
             ]
         }
     ],
@@ -88,37 +199,74 @@
             {
                 "id": "main",
                 "name": "Main",
-                "grid": { "columns": 6, "rows": 5 },
+                "grid": {
+                    "columns": 6,
+                    "rows": 5
+                },
                 "elements": [
                     {
                         "id": "lbl_title",
                         "type": "label",
                         "text": "AV Suite",
-                        "grid_area": { "col": 1, "row": 1, "col_span": 3, "row_span": 1 },
-                        "style": { "font_size": 20 }
+                        "grid_area": {
+                            "col": 1,
+                            "row": 1,
+                            "col_span": 3,
+                            "row_span": 1
+                        },
+                        "style": {
+                            "font_size": 20
+                        }
                     },
                     {
                         "id": "lbl_display_status",
                         "type": "label",
                         "text": "",
-                        "grid_area": { "col": 4, "row": 1, "col_span": 1, "row_span": 1 },
-                        "style": { "font_size": 11, "text_align": "center" },
+                        "grid_area": {
+                            "col": 4,
+                            "row": 1,
+                            "col_span": 1,
+                            "row_span": 1
+                        },
+                        "style": {
+                            "font_size": 11,
+                            "text_align": "center"
+                        },
                         "bindings": {
-                            "text": { "key": "var.display_status", "format": "{value}" }
+                            "text": {
+                                "key": "var.display_status",
+                                "format": "{value}"
+                            }
                         }
                     },
                     {
                         "id": "btn_on",
                         "type": "button",
                         "label": "System On",
-                        "grid_area": { "col": 5, "row": 1, "col_span": 1, "row_span": 1 },
+                        "grid_area": {
+                            "col": 5,
+                            "row": 1,
+                            "col_span": 1,
+                            "row_span": 1
+                        },
                         "bindings": {
-                            "press": [{ "action": "macro", "macro": "system_on" }],
+                            "press": [
+                                {
+                                    "action": "macro",
+                                    "macro": "system_on"
+                                }
+                            ],
                             "feedback": {
                                 "key": "var.system_power",
-                                "condition": { "equals": "on" },
-                                "style_active": { "bg_color": "#4CAF50" },
-                                "style_inactive": { "bg_color": "#424242" }
+                                "condition": {
+                                    "equals": "on"
+                                },
+                                "style_active": {
+                                    "bg_color": "#4CAF50"
+                                },
+                                "style_inactive": {
+                                    "bg_color": "#424242"
+                                }
                             }
                         }
                     },
@@ -126,14 +274,30 @@
                         "id": "btn_off",
                         "type": "button",
                         "label": "System Off",
-                        "grid_area": { "col": 6, "row": 1, "col_span": 1, "row_span": 1 },
+                        "grid_area": {
+                            "col": 6,
+                            "row": 1,
+                            "col_span": 1,
+                            "row_span": 1
+                        },
                         "bindings": {
-                            "press": [{ "action": "macro", "macro": "system_off" }],
+                            "press": [
+                                {
+                                    "action": "macro",
+                                    "macro": "system_off"
+                                }
+                            ],
                             "feedback": {
                                 "key": "var.system_power",
-                                "condition": { "equals": "off" },
-                                "style_active": { "bg_color": "#F44336" },
-                                "style_inactive": { "bg_color": "#424242" }
+                                "condition": {
+                                    "equals": "off"
+                                },
+                                "style_active": {
+                                    "bg_color": "#F44336"
+                                },
+                                "style_inactive": {
+                                    "bg_color": "#424242"
+                                }
                             }
                         }
                     },
@@ -141,30 +305,102 @@
                         "id": "btn_laptop",
                         "type": "button",
                         "label": "Laptop",
-                        "grid_area": { "col": 1, "row": 2, "col_span": 2, "row_span": 1 },
+                        "grid_area": {
+                            "col": 1,
+                            "row": 2,
+                            "col_span": 2,
+                            "row_span": 1
+                        },
                         "bindings": {
-                            "press": [{ "action": "event.emit", "event": "custom.select_source", "payload": { "source": "laptop" } }],
-                            "feedback": { "key": "var.current_source", "condition": { "equals": "laptop" }, "style_active": { "bg_color": "#00BCD4" }, "style_inactive": { "bg_color": "#424242" } }
+                            "press": [
+                                {
+                                    "action": "event.emit",
+                                    "event": "custom.select_source",
+                                    "payload": {
+                                        "source": "laptop"
+                                    }
+                                }
+                            ],
+                            "feedback": {
+                                "key": "var.current_source",
+                                "condition": {
+                                    "equals": "laptop"
+                                },
+                                "style_active": {
+                                    "bg_color": "#00BCD4"
+                                },
+                                "style_inactive": {
+                                    "bg_color": "#424242"
+                                }
+                            }
                         }
                     },
                     {
                         "id": "btn_wireless",
                         "type": "button",
                         "label": "Wireless",
-                        "grid_area": { "col": 3, "row": 2, "col_span": 2, "row_span": 1 },
+                        "grid_area": {
+                            "col": 3,
+                            "row": 2,
+                            "col_span": 2,
+                            "row_span": 1
+                        },
                         "bindings": {
-                            "press": [{ "action": "event.emit", "event": "custom.select_source", "payload": { "source": "wireless" } }],
-                            "feedback": { "key": "var.current_source", "condition": { "equals": "wireless" }, "style_active": { "bg_color": "#00BCD4" }, "style_inactive": { "bg_color": "#424242" } }
+                            "press": [
+                                {
+                                    "action": "event.emit",
+                                    "event": "custom.select_source",
+                                    "payload": {
+                                        "source": "wireless"
+                                    }
+                                }
+                            ],
+                            "feedback": {
+                                "key": "var.current_source",
+                                "condition": {
+                                    "equals": "wireless"
+                                },
+                                "style_active": {
+                                    "bg_color": "#00BCD4"
+                                },
+                                "style_inactive": {
+                                    "bg_color": "#424242"
+                                }
+                            }
                         }
                     },
                     {
                         "id": "btn_bluray",
                         "type": "button",
                         "label": "Blu-ray",
-                        "grid_area": { "col": 5, "row": 2, "col_span": 2, "row_span": 1 },
+                        "grid_area": {
+                            "col": 5,
+                            "row": 2,
+                            "col_span": 2,
+                            "row_span": 1
+                        },
                         "bindings": {
-                            "press": [{ "action": "event.emit", "event": "custom.select_source", "payload": { "source": "bluray" } }],
-                            "feedback": { "key": "var.current_source", "condition": { "equals": "bluray" }, "style_active": { "bg_color": "#00BCD4" }, "style_inactive": { "bg_color": "#424242" } }
+                            "press": [
+                                {
+                                    "action": "event.emit",
+                                    "event": "custom.select_source",
+                                    "payload": {
+                                        "source": "bluray"
+                                    }
+                                }
+                            ],
+                            "feedback": {
+                                "key": "var.current_source",
+                                "condition": {
+                                    "equals": "bluray"
+                                },
+                                "style_active": {
+                                    "bg_color": "#00BCD4"
+                                },
+                                "style_inactive": {
+                                    "bg_color": "#424242"
+                                }
+                            }
                         }
                     },
                     {
@@ -174,45 +410,118 @@
                         "min": 0,
                         "max": 100,
                         "step": 1,
-                        "grid_area": { "col": 1, "row": 3, "col_span": 4, "row_span": 1 },
-                        "bindings": { "variable": { "key": "var.volume" } }
+                        "grid_area": {
+                            "col": 1,
+                            "row": 3,
+                            "col_span": 4,
+                            "row_span": 1
+                        },
+                        "bindings": {
+                            "variable": {
+                                "key": "var.volume"
+                            }
+                        }
                     },
                     {
                         "id": "btn_mic_mute",
                         "type": "button",
                         "label": "Mic Mute",
-                        "grid_area": { "col": 5, "row": 3, "col_span": 2, "row_span": 1 },
+                        "grid_area": {
+                            "col": 5,
+                            "row": 3,
+                            "col_span": 2,
+                            "row_span": 1
+                        },
                         "bindings": {
-                            "press": [{ "action": "event.emit", "event": "custom.toggle_mic_mute" }],
-                            "feedback": { "key": "var.mic_mute", "condition": { "equals": true }, "style_active": { "bg_color": "#F44336", "label": "Mic MUTED" }, "style_inactive": { "bg_color": "#4CAF50", "label": "Mic Live" } }
+                            "press": [
+                                {
+                                    "action": "event.emit",
+                                    "event": "custom.toggle_mic_mute"
+                                }
+                            ],
+                            "feedback": {
+                                "key": "var.mic_mute",
+                                "condition": {
+                                    "equals": true
+                                },
+                                "style_active": {
+                                    "bg_color": "#F44336",
+                                    "label": "Mic MUTED"
+                                },
+                                "style_inactive": {
+                                    "bg_color": "#4CAF50",
+                                    "label": "Mic Live"
+                                }
+                            }
                         }
                     },
                     {
                         "id": "led_occupancy",
                         "type": "status_led",
-                        "grid_area": { "col": 1, "row": 4, "col_span": 1, "row_span": 1 },
+                        "grid_area": {
+                            "col": 1,
+                            "row": 4,
+                            "col_span": 1,
+                            "row_span": 1
+                        },
                         "bindings": {
-                            "color": { "key": "var.room_occupied", "map": { "true": "#4CAF50", "false": "#9E9E9E" }, "default": "#9E9E9E" }
+                            "color": {
+                                "key": "var.room_occupied",
+                                "map": {
+                                    "true": "#4CAF50",
+                                    "false": "#9E9E9E"
+                                },
+                                "default": "#9E9E9E"
+                            }
                         }
                     },
                     {
                         "id": "lbl_occupancy",
                         "type": "label",
                         "text": "",
-                        "grid_area": { "col": 2, "row": 4, "col_span": 2, "row_span": 1 },
-                        "style": { "font_size": 12 },
+                        "grid_area": {
+                            "col": 2,
+                            "row": 4,
+                            "col_span": 2,
+                            "row_span": 1
+                        },
+                        "style": {
+                            "font_size": 12
+                        },
                         "bindings": {
-                            "text": { "key": "var.room_occupied", "condition": { "equals": true }, "text_true": "Room Occupied", "text_false": "Room Empty" }
+                            "text": {
+                                "key": "var.room_occupied",
+                                "condition": {
+                                    "equals": true
+                                },
+                                "text_true": "Room Occupied",
+                                "text_false": "Room Empty"
+                            }
                         }
                     },
                     {
                         "id": "lbl_shutdown_warn",
                         "type": "label",
                         "text": "",
-                        "grid_area": { "col": 4, "row": 4, "col_span": 3, "row_span": 1 },
-                        "style": { "font_size": 12, "text_color": "#FF9800" },
+                        "grid_area": {
+                            "col": 4,
+                            "row": 4,
+                            "col_span": 3,
+                            "row_span": 1
+                        },
+                        "style": {
+                            "font_size": 12,
+                            "text_color": "#FF9800"
+                        },
                         "bindings": {
-                            "text": { "key": "var.auto_shutdown_warning", "condition": { "equals": true }, "text_true": "Auto-shutdown in 5 minutes...", "text_false": "" }
+                            "text": {
+                                "key": "var.auto_shutdown_warning",
+                                "condition": {
+                                    "equals": true
+                                },
+                                "text_true": "Auto-shutdown in 5 minutes...",
+                                "text_false": ""
+                            }
                         }
                     },
                     {
@@ -220,21 +529,47 @@
                         "type": "page_nav",
                         "label": "Camera & Presets",
                         "target_page": "presets",
-                        "grid_area": { "col": 1, "row": 5, "col_span": 3, "row_span": 1 }
+                        "grid_area": {
+                            "col": 1,
+                            "row": 5,
+                            "col_span": 3,
+                            "row_span": 1
+                        }
                     },
                     {
                         "id": "sel_mode",
                         "type": "select",
                         "label": "Mode",
                         "options": [
-                            { "label": "Standard", "value": "standard" },
-                            { "label": "Video Playback", "value": "video" },
-                            { "label": "Teleconference", "value": "teleconference" }
+                            {
+                                "label": "Standard",
+                                "value": "standard"
+                            },
+                            {
+                                "label": "Video Playback",
+                                "value": "video"
+                            },
+                            {
+                                "label": "Teleconference",
+                                "value": "teleconference"
+                            }
                         ],
-                        "grid_area": { "col": 4, "row": 5, "col_span": 3, "row_span": 1 },
+                        "grid_area": {
+                            "col": 4,
+                            "row": 5,
+                            "col_span": 3,
+                            "row_span": 1
+                        },
                         "bindings": {
-                            "variable": { "key": "var.mode" },
-                            "change": [{ "action": "event.emit", "event": "custom.mode_change" }]
+                            "variable": {
+                                "key": "var.mode"
+                            },
+                            "change": [
+                                {
+                                    "action": "event.emit",
+                                    "event": "custom.mode_change"
+                                }
+                            ]
                         }
                     }
                 ]
@@ -242,53 +577,133 @@
             {
                 "id": "presets",
                 "name": "Camera & Presets",
-                "grid": { "columns": 4, "rows": 3 },
+                "grid": {
+                    "columns": 4,
+                    "rows": 3
+                },
                 "elements": [
                     {
                         "id": "lbl_presets",
                         "type": "label",
                         "text": "Camera Presets",
-                        "grid_area": { "col": 1, "row": 1, "col_span": 4, "row_span": 1 },
-                        "style": { "font_size": 18, "text_align": "center" }
+                        "grid_area": {
+                            "col": 1,
+                            "row": 1,
+                            "col_span": 4,
+                            "row_span": 1
+                        },
+                        "style": {
+                            "font_size": 18,
+                            "text_align": "center"
+                        }
                     },
                     {
                         "id": "cam_wide",
                         "type": "camera_preset",
                         "label": "Wide",
                         "preset_number": 1,
-                        "grid_area": { "col": 1, "row": 2, "col_span": 1, "row_span": 1 },
-                        "bindings": { "press": [{ "action": "device.command", "device": "camera1", "command": "recall_preset", "params": { "preset": 1 } }] }
+                        "grid_area": {
+                            "col": 1,
+                            "row": 2,
+                            "col_span": 1,
+                            "row_span": 1
+                        },
+                        "bindings": {
+                            "press": [
+                                {
+                                    "action": "device.command",
+                                    "device": "camera1",
+                                    "command": "recall_preset",
+                                    "params": {
+                                        "preset": 1
+                                    }
+                                }
+                            ]
+                        }
                     },
                     {
                         "id": "cam_presenter",
                         "type": "camera_preset",
                         "label": "Presenter",
                         "preset_number": 2,
-                        "grid_area": { "col": 2, "row": 2, "col_span": 1, "row_span": 1 },
-                        "bindings": { "press": [{ "action": "device.command", "device": "camera1", "command": "recall_preset", "params": { "preset": 2 } }] }
+                        "grid_area": {
+                            "col": 2,
+                            "row": 2,
+                            "col_span": 1,
+                            "row_span": 1
+                        },
+                        "bindings": {
+                            "press": [
+                                {
+                                    "action": "device.command",
+                                    "device": "camera1",
+                                    "command": "recall_preset",
+                                    "params": {
+                                        "preset": 2
+                                    }
+                                }
+                            ]
+                        }
                     },
                     {
                         "id": "cam_audience",
                         "type": "camera_preset",
                         "label": "Audience",
                         "preset_number": 3,
-                        "grid_area": { "col": 3, "row": 2, "col_span": 1, "row_span": 1 },
-                        "bindings": { "press": [{ "action": "device.command", "device": "camera1", "command": "recall_preset", "params": { "preset": 3 } }] }
+                        "grid_area": {
+                            "col": 3,
+                            "row": 2,
+                            "col_span": 1,
+                            "row_span": 1
+                        },
+                        "bindings": {
+                            "press": [
+                                {
+                                    "action": "device.command",
+                                    "device": "camera1",
+                                    "command": "recall_preset",
+                                    "params": {
+                                        "preset": 3
+                                    }
+                                }
+                            ]
+                        }
                     },
                     {
                         "id": "cam_whiteboard",
                         "type": "camera_preset",
                         "label": "Whiteboard",
                         "preset_number": 4,
-                        "grid_area": { "col": 4, "row": 2, "col_span": 1, "row_span": 1 },
-                        "bindings": { "press": [{ "action": "device.command", "device": "camera1", "command": "recall_preset", "params": { "preset": 4 } }] }
+                        "grid_area": {
+                            "col": 4,
+                            "row": 2,
+                            "col_span": 1,
+                            "row_span": 1
+                        },
+                        "bindings": {
+                            "press": [
+                                {
+                                    "action": "device.command",
+                                    "device": "camera1",
+                                    "command": "recall_preset",
+                                    "params": {
+                                        "preset": 4
+                                    }
+                                }
+                            ]
+                        }
                     },
                     {
                         "id": "nav_back",
                         "type": "page_nav",
                         "label": "Back to Main",
                         "target_page": "main",
-                        "grid_area": { "col": 1, "row": 3, "col_span": 4, "row_span": 1 }
+                        "grid_area": {
+                            "col": 1,
+                            "row": 3,
+                            "col_span": 4,
+                            "row_span": 1
+                        }
                     }
                 ]
             }
@@ -302,5 +717,8 @@
             "description": "Source routing, volume mapping, occupancy auto-shutdown, mode presets, mic toggle"
         }
     ],
-    "isc": { "shared_state": [], "auth_key": "" }
+    "isc": {
+        "shared_state": [],
+        "auth_key": ""
+    }
 }
