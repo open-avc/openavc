@@ -17,6 +17,7 @@ import {
 import type { UIElement, UIPage, UISettings, GridArea, MasterElement } from "../api/types";
 import * as wsClient from "../api/wsClient";
 import { listThemes } from "../api/restClient";
+import { showError } from "../store/toastStore";
 import { useProjectStore } from "../store/projectStore";
 import { useUIBuilderStore } from "../store/uiBuilderStore";
 import { useNavigationStore } from "../store/navigationStore";
@@ -97,7 +98,7 @@ export function UIBuilderView() {
 
   // Load themes list
   const loadThemes = useCallback(() => {
-    listThemes().then(setThemes).catch(() => {});
+    listThemes().then(setThemes).catch(() => showError("Failed to load themes"));
   }, []);
   useEffect(() => { loadThemes(); }, [loadThemes]);
 

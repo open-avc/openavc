@@ -64,8 +64,9 @@ export function MacroView() {
   const macroSaveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const handleUpdate = useCallback(
     (updated: MacroConfig) => {
+      const current = useProjectStore.getState().project?.macros ?? [];
       update({
-        macros: macros.map((m) => (m.id === updated.id ? updated : m)),
+        macros: current.map((m) => (m.id === updated.id ? updated : m)),
       });
       // Debounced auto-save (timer stored in ref to survive useCallback recreation)
       clearTimeout(macroSaveTimer.current);
@@ -73,7 +74,7 @@ export function MacroView() {
         useProjectStore.getState().save();
       }, 1500);
     },
-    [macros, update]
+    [update]
   );
 
   // Flush pending save on unmount to prevent data loss

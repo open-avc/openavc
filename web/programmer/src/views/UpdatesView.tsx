@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { RefreshCw, Download, RotateCcw, CheckCircle, XCircle, Loader, ArrowUpCircle } from "lucide-react";
 import { ViewContainer } from "../components/layout/ViewContainer";
+import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import { useConnectionStore } from "../store/connectionStore";
 import { showError, showSuccess } from "../store/toastStore";
 import * as api from "../api/restClient";
@@ -76,6 +77,7 @@ export function UpdatesView() {
   const [history, setHistory] = useState<UpdateHistoryEntry[]>([]);
   const [checking, setChecking] = useState(false);
   const [showProgressModal, setShowProgressModal] = useState(false);
+  const [showRollbackConfirm, setShowRollbackConfirm] = useState(false);
   const prevVersionRef = useRef<string>("");
 
   // Load initial data
@@ -144,8 +146,8 @@ export function UpdatesView() {
     }
   };
 
-  const handleRollback = async () => {
-    if (!confirm("Roll back to the previous version? The server will restart.")) return;
+  const handleRollback = useCallback(async () => {
+    setShowRollbackConfirm(false);
     try {
       const result = await api.rollbackUpdate();
       if (result.success) {
@@ -156,7 +158,7 @@ export function UpdatesView() {
     } catch (e) {
       showError("Rollback failed: " + String(e));
     }
-  };
+  }, []);
 
   const deploymentLabel = (dt: string) => {
     const map: Record<string, string> = {
@@ -324,7 +326,7 @@ export function UpdatesView() {
               </div>
               <button
                 style={secondaryBtn}
-                onClick={handleRollback}
+                onClick={() => setShowRollbackConfirm(true)}
                 disabled={updateStatus !== "idle"}
               >
                 <RotateCcw size={14} />
@@ -419,6 +421,16 @@ export function UpdatesView() {
           to { transform: rotate(360deg); }
         }
       `}</style>
+
+      {showRollbackConfirm && (
+        <ConfirmDialog
+          title="Rollback"
+          message="Roll back to the previous version? The server will restart."
+          confirmLabel="Rollback"
+          onConfirm={handleRollback}
+          onCancel={() => setShowRollbackConfirm(false)}
+        />
+      )}
     </ViewContainer>
   );
 }

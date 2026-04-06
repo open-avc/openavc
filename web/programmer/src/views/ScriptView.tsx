@@ -31,7 +31,7 @@ export function ScriptView() {
 
   // Fetch script load errors on mount
   useEffect(() => {
-    api.getScriptErrors().then(setScriptLoadErrors).catch(() => {});
+    api.getScriptErrors().then(setScriptLoadErrors).catch(() => showError("Failed to load script errors"));
   }, []);
 
   // Consume pending focus from navigation store

@@ -66,8 +66,7 @@ export function ButtonBindingEditor({
   const toggleOffLabel = String(press.off_label || "");
 
   // Get live value for toggle state key
-  const liveState = useConnectionStore.getState().liveState;
-  const toggleLiveValue = toggleKey ? liveState[toggleKey] : undefined;
+  const toggleLiveValue = useConnectionStore((s) => toggleKey ? s.liveState[toggleKey] : undefined);
   const toggleIsActive = toggleKey && toggleLiveValue !== undefined && toggleValue !== undefined
     ? String(toggleLiveValue).toLowerCase() === String(toggleValue).toLowerCase()
     : null;
@@ -268,7 +267,7 @@ export function ButtonBindingEditor({
                 value={toggleKey}
                 onChange={(key) => {
                   // Auto-detect boolean and set toggle_value
-                  const live = liveState[key];
+                  const live = useConnectionStore.getState().liveState[key];
                   const isBool = live === true || live === false;
                   updatePress({
                     toggle_key: key,

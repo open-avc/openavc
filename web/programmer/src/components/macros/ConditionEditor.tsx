@@ -25,7 +25,7 @@ interface ConditionEditorProps {
 export function ConditionEditor({ condition, onChange }: ConditionEditorProps) {
   const needsValue = !NO_VALUE_OPS.has(condition.operator);
   const [showHelp, setShowHelp] = useState(false);
-  const liveValue = useConnectionStore.getState().liveState[condition.key];
+  const liveValue = useConnectionStore((s) => s.liveState[condition.key]);
   const selectedOp = OPERATORS.find((o) => o.value === condition.operator);
 
   return (
