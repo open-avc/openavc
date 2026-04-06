@@ -218,9 +218,11 @@ class TestSetPhase:
         assert self.engine.scan_status.message == "Scanning hosts..."
 
     async def test_calculates_progress(self):
-        await self.engine._set_phase(4, "arp", "ARP harvest...")
-        # Progress should be (4-1) / 8 = 0.375
-        assert self.engine.scan_status.progress == pytest.approx(3.0 / 8.0)
+        await self.engine._set_phase(4, "arp_harvest", "ARP harvest...")
+        # Weighted progress: sum of preceding phases (standard depth)
+        # subnet_detection(0.02) + passive_listen(0.02) + ping_sweep(0.25) = 0.29
+        expected = 0.02 + 0.02 + 0.25
+        assert self.engine.scan_status.progress == pytest.approx(expected)
 
     async def test_emits_phase_event(self):
         events = []

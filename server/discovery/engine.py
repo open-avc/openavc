@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import logging
 import socket as _socket
 import time
 from typing import Any, Callable, Awaitable
 
-from server.discovery.network_scanner import get_local_subnets, ping_sweep, harvest_arp_table
+from server.discovery.network_scanner import get_local_subnets, ping_sweep, harvest_arp_table, netbios_sweep
 from server.discovery.port_scanner import scan_host_ports, grab_banners, AV_PORTS
 from server.discovery.protocol_prober import probe_device as run_protocol_probes
 from server.discovery.oui_database import OUIDatabase
@@ -25,6 +26,42 @@ from server.discovery.result import (
 )
 
 log = logging.getLogger("discovery")
+
+# Phase weights per scan depth — proportional to expected wall-clock time.
+# Ensures the progress bar allocates more space to slower phases (ping sweep)
+# and less to instant ones (subnet detection).  Must sum to 1.0.
+PHASE_ORDER: dict[str, list[str]] = {
+    "quick": [
+        "subnet_detection", "passive_listen", "ping_sweep", "arp_harvest",
+        "port_scan", "protocol_probe", "passive_collect", "finalize",
+    ],
+    "standard": [
+        "subnet_detection", "passive_listen", "ping_sweep", "arp_harvest",
+        "port_scan", "protocol_probe", "passive_collect", "finalize",
+    ],
+    "thorough": [
+        "subnet_detection", "passive_listen", "ping_sweep", "arp_harvest",
+        "port_scan", "protocol_probe", "passive_collect", "finalize",
+    ],
+}
+
+PHASE_WEIGHTS: dict[str, dict[str, float]] = {
+    "quick": {
+        "subnet_detection": 0.02, "passive_listen": 0.02, "ping_sweep": 0.35,
+        "arp_harvest": 0.10, "port_scan": 0.25, "protocol_probe": 0.18,
+        "passive_collect": 0.03, "finalize": 0.05,
+    },
+    "standard": {
+        "subnet_detection": 0.02, "passive_listen": 0.02, "ping_sweep": 0.25,
+        "arp_harvest": 0.10, "port_scan": 0.22, "protocol_probe": 0.20,
+        "passive_collect": 0.10, "finalize": 0.09,
+    },
+    "thorough": {
+        "subnet_detection": 0.01, "passive_listen": 0.01, "ping_sweep": 0.18,
+        "arp_harvest": 0.08, "port_scan": 0.25, "protocol_probe": 0.22,
+        "passive_collect": 0.17, "finalize": 0.08,
+    },
+}
 
 
 async def _resolve_hostnames(
@@ -67,7 +104,7 @@ class ScanStatus:
         self.status: str = "idle"  # idle, running, complete, cancelled
         self.phase: str = ""
         self.phase_number: int = 0
-        self.total_phases: int = 8  # 1: subnet, 2: passive, 3: ping, 4: arp, 5: port, 6: probe, 7: collect passive, 8: finalize
+        self.total_phases: int = 8
         self.message: str = ""
         self.progress: float = 0.0
         self.devices_found: int = 0
@@ -111,6 +148,7 @@ class DiscoveryEngine:
             "snmp_enabled": True,
             "snmp_community": "public",
             "gentle_mode": False,
+            "scan_depth": "standard",
         }
 
     def load_driver_hints_from_registry(self, registry: list[dict[str, Any]]) -> None:
@@ -297,6 +335,7 @@ class DiscoveryEngine:
           8: Driver matching + finalize
         """
         gentle = self.config.get("gentle_mode", False)
+        depth = self.config.get("scan_depth", "standard")
         ping_concurrency = 10 if gentle else 50
         snmp_enabled = self.config.get("snmp_enabled", True)
         snmp_community = self.config.get("snmp_community", "public")
@@ -332,15 +371,26 @@ class DiscoveryEngine:
                     device.confidence = compute_confidence(device.sources)
                 await self._emit_device_update(device, "ping_sweep")
 
+            # Track per-host ping progress for smooth progress bar
+            ping_total = sum(
+                max(0, ipaddress.IPv4Network(s, strict=False).num_addresses - 2)
+                for s in subnets
+            )
+            ping_done = 0
+
+            async def on_ping_progress(completed: int, total: int) -> None:
+                nonlocal ping_done
+                ping_done = completed
+                if total > 0:
+                    await self._update_intra_progress(completed / total)
+
             alive_ips = await ping_sweep(
                 subnets,
                 concurrency=ping_concurrency,
                 on_found=on_ping_found,
+                on_progress=on_ping_progress,
             )
-            self.scan_status.total_hosts_scanned = sum(
-                max(0, __import__("ipaddress").IPv4Network(s, strict=False).num_addresses - 2)
-                for s in subnets
-            )
+            self.scan_status.total_hosts_scanned = ping_total
 
             if not alive_ips:
                 log.info("No live hosts found — will still collect passive results")
@@ -352,17 +402,43 @@ class DiscoveryEngine:
             if alive_ips:
                 arp_table = await harvest_arp_table()
 
-                # Resolve hostnames concurrently (best-effort, non-blocking)
-                hostnames = await _resolve_hostnames(alive_ips)
+                # Resolve hostnames + NetBIOS concurrently (best-effort)
+                hostname_task = asyncio.create_task(_resolve_hostnames(alive_ips))
+                netbios_task = None
+                if depth != "quick":
+                    netbios_task = asyncio.create_task(
+                        netbios_sweep(alive_ips, concurrency=30, timeout=1.0)
+                    )
+
+                hostnames = await hostname_task
+                netbios_results: dict[str, dict[str, str]] = {}
+                if netbios_task:
+                    try:
+                        netbios_results = await netbios_task
+                    except Exception:
+                        log.debug("NetBIOS sweep failed", exc_info=True)
 
                 for ip in alive_ips:
                     device = self._get_or_create(ip)
                     info: dict[str, Any] = {}
 
-                    # Hostname
+                    # Hostname from reverse DNS
                     hostname = hostnames.get(ip)
                     if hostname:
                         info["hostname"] = hostname
+
+                    # NetBIOS hostname (may override or supplement DNS)
+                    nbt = netbios_results.get(ip)
+                    if nbt:
+                        nbt_name = nbt.get("hostname")
+                        if nbt_name:
+                            # Use NetBIOS name as device_name
+                            info["device_name"] = nbt_name
+                            # Use as hostname if reverse DNS failed
+                            if not hostname:
+                                info["hostname"] = nbt_name
+                            if "netbios_resolved" not in device.sources:
+                                device.sources.append("netbios_resolved")
 
                     # MAC + OUI
                     mac = arp_table.get(ip)
@@ -397,6 +473,18 @@ class DiscoveryEngine:
                 for p in drv.get("ports", []):
                     if isinstance(p, int):
                         port_set.add(p)
+            # Thorough mode: add extended ports for broader coverage
+            if depth == "thorough":
+                port_set.update([
+                    554,    # RTSP (cameras, encoders)
+                    3000,   # Various web UIs
+                    4000,   # Various control protocols
+                    5060,   # SIP (VoIP, conferencing)
+                    8443,   # HTTPS alt
+                    8888,   # HTTP alt
+                    9000,   # Various web UIs
+                    10000,  # Various management
+                ])
             port_list = sorted(port_set)
             log.info("Port scan: %d ports (%d base + driver/community)", len(port_list), len(AV_PORTS))
 
@@ -423,7 +511,7 @@ class DiscoveryEngine:
                         await self._emit_device_update(device, "port_scan")
 
                     # Update progress within this phase
-                    self.scan_status.progress = (4 + (i + 1) / total) / self.scan_status.total_phases
+                    await self._update_intra_progress((i + 1) / total)
 
                     # Gentle mode: small delay between hosts
                     if gentle and i < total - 1:
@@ -436,12 +524,14 @@ class DiscoveryEngine:
             if snmp_enabled and alive_ips:
                 snmp_scanner = SNMPScanner()
                 snmp_concurrency = 10 if gentle else 20
+                use_entity_mib = depth != "quick"
                 snmp_task = asyncio.create_task(
                     snmp_scanner.scan_devices(
                         alive_ips,
                         community=snmp_community,
                         timeout=2.0,
                         concurrency=snmp_concurrency,
+                        entity_mib=use_entity_mib,
                     )
                 )
 
@@ -474,6 +564,18 @@ class DiscoveryEngine:
                     if pr.model and "model_known" not in device.sources:
                         device.sources.append("model_known")
 
+                    # Track protocol-specific sources for confidence
+                    if pr.protocol == "https" and "tls_cert_matched" not in device.sources:
+                        if pr.manufacturer:
+                            device.sources.append("tls_cert_matched")
+                    if pr.protocol == "ssh" and "ssh_identified" not in device.sources:
+                        device.sources.append("ssh_identified")
+                    if pr.protocol == "smb" and "smb_identified" not in device.sources:
+                        if pr.device_name:
+                            device.sources.append("smb_identified")
+                    if pr.extra.get("www_auth_realm") and "www_auth_matched" not in device.sources:
+                        device.sources.append("www_auth_matched")
+
                     # Check banners for banner_matched source
                     if device.banners and "banner_matched" not in device.sources:
                         device.sources.append("banner_matched")
@@ -483,7 +585,7 @@ class DiscoveryEngine:
 
                 # Update progress within this phase
                 if total_probes > 0:
-                    self.scan_status.progress = (5 + (i + 1) / total_probes) / self.scan_status.total_phases
+                    await self._update_intra_progress((i + 1) / total_probes)
 
                 if gentle and i < total_probes - 1:
                     await asyncio.sleep(0.05)
@@ -610,15 +712,33 @@ class DiscoveryEngine:
         mdns_task: asyncio.Task,
         ssdp_task: asyncio.Task,
     ) -> None:
-        """Wait for passive listeners and merge their results into the main results."""
-        # Passive listeners were signalled to stop before this is called.
-        # mDNS exits quickly; SSDP may still be fetching UPnP descriptions.
-        done, pending = await asyncio.wait(
-            [mdns_task, ssdp_task], timeout=15.0,
-        )
+        """Wait for passive listeners and merge their results into the main results.
+
+        Uses a 1-second heartbeat loop so the progress bar moves steadily
+        instead of appearing stuck while waiting for SSDP XML fetches.
+        """
+        depth = self.config.get("scan_depth", "standard")
+        total_wait = {"quick": 5.0, "thorough": 30.0}.get(depth, 15.0)
+        remaining_tasks = {mdns_task, ssdp_task}
+        elapsed = 0.0
+        tick = 1.0
+
+        while elapsed < total_wait and remaining_tasks:
+            done, pending = await asyncio.wait(
+                remaining_tasks, timeout=tick,
+            )
+            remaining_tasks = pending
+            elapsed += tick
+            fraction = min(elapsed / total_wait, 1.0)
+            await self._update_intra_progress(fraction)
+            secs_left = max(0, int(total_wait - elapsed))
+            await self._emit_progress(
+                "passive_collect",
+                f"Collecting passive results... ({secs_left}s remaining)",
+            )
 
         # Cancel any still-running tasks
-        for task in pending:
+        for task in remaining_tasks:
             task.cancel()
             try:
                 await task
@@ -693,6 +813,8 @@ class DiscoveryEngine:
 
             if "snmp_identified" not in device.sources:
                 device.sources.append("snmp_identified")
+            if snmp_info.entity_model and "entity_mib_found" not in device.sources:
+                device.sources.append("entity_mib_found")
 
             merge_device_info(device, info, "snmp")
             await self._emit_device_update(device, "snmp")
@@ -706,17 +828,42 @@ class DiscoveryEngine:
             self.results[ip] = DiscoveredDevice(ip=ip)
         return self.results[ip]
 
+    def _phase_base_progress(self, phase: str) -> float:
+        """Cumulative progress at the START of a phase (sum of preceding weights)."""
+        depth = self.config.get("scan_depth", "standard")
+        order = PHASE_ORDER.get(depth, PHASE_ORDER["standard"])
+        weights = PHASE_WEIGHTS.get(depth, PHASE_WEIGHTS["standard"])
+        idx = order.index(phase) if phase in order else 0
+        return sum(weights.get(p, 0.0) for p in order[:idx])
+
+    def _phase_weight(self, phase: str) -> float:
+        """Weight (fraction of bar) allocated to the current phase."""
+        depth = self.config.get("scan_depth", "standard")
+        weights = PHASE_WEIGHTS.get(depth, PHASE_WEIGHTS["standard"])
+        return weights.get(phase, 0.05)
+
     async def _set_phase(self, number: int, phase: str, message: str) -> None:
         """Update scan phase and emit progress event."""
         self.scan_status.phase_number = number
         self.scan_status.phase = phase
         self.scan_status.message = message
-        self.scan_status.progress = (number - 1) / self.scan_status.total_phases
+        self.scan_status.progress = self._phase_base_progress(phase)
         log.info("Discovery phase %d: %s", number, message)
+        await self._emit_progress(phase, message)
+
+    async def _update_intra_progress(self, fraction: float) -> None:
+        """Update progress within the current phase (fraction 0.0 – 1.0)."""
+        phase = self.scan_status.phase
+        base = self._phase_base_progress(phase)
+        weight = self._phase_weight(phase)
+        self.scan_status.progress = base + weight * min(fraction, 1.0)
+
+    async def _emit_progress(self, phase: str, message: str) -> None:
+        """Emit a discovery_phase event with current progress."""
         await self._emit({
             "type": "discovery_phase",
             "phase": phase,
-            "phase_number": number,
+            "phase_number": self.scan_status.phase_number,
             "total_phases": self.scan_status.total_phases,
             "message": message,
             "progress": self.scan_status.progress,

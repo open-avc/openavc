@@ -1,4 +1,4 @@
-"""Network scanner — subnet detection, ping sweep, ARP table harvest."""
+"""Network scanner — subnet detection, ping sweep, ARP table harvest, NetBIOS."""
 
 from __future__ import annotations
 
@@ -7,6 +7,8 @@ import ipaddress
 import logging
 import platform
 import re
+import socket
+import struct
 from typing import Callable, Awaitable
 
 log = logging.getLogger("discovery.network")
@@ -82,11 +84,16 @@ async def ping_sweep(
     concurrency: int = 50,
     timeout: float = 1.0,
     on_found: Callable[[str], Awaitable[None]] | None = None,
+    on_progress: Callable[[int, int], Awaitable[None]] | None = None,
 ) -> list[str]:
     """Ping all addresses in the given subnets. Returns list of responding IPs.
 
     Uses system ping command (no elevated privileges required).
     Runs up to ``concurrency`` pings simultaneously.
+
+    Args:
+        on_found: Called with IP when a host responds.
+        on_progress: Called with (completed_count, total_count) after each host.
     """
     all_ips: list[str] = []
     for cidr in subnets:
@@ -95,20 +102,26 @@ async def ping_sweep(
     if not all_ips:
         return []
 
-    log.info("Ping sweep: %d addresses across %d subnet(s)", len(all_ips), len(subnets))
+    total = len(all_ips)
+    log.info("Ping sweep: %d addresses across %d subnet(s)", total, len(subnets))
 
     alive: list[str] = []
     semaphore = asyncio.Semaphore(concurrency)
+    completed = 0
 
     async def _ping_one(ip: str) -> None:
+        nonlocal completed
         async with semaphore:
             if await _ping(ip, timeout):
                 alive.append(ip)
                 if on_found:
                     await on_found(ip)
+            completed += 1
+            if on_progress:
+                await on_progress(completed, total)
 
     await asyncio.gather(*[_ping_one(ip) for ip in all_ips])
-    log.info("Ping sweep complete: %d/%d hosts alive", len(alive), len(all_ips))
+    log.info("Ping sweep complete: %d/%d hosts alive", len(alive), total)
     return sorted(alive, key=lambda x: ipaddress.IPv4Address(x))
 
 
@@ -197,3 +210,131 @@ async def _harvest_arp_linux() -> dict[str, str]:
         if mac != "ff:ff:ff:ff:ff:ff":
             result[ip] = mac
     return result
+
+
+# ---------------------------------------------------------------------------
+# NetBIOS Name Query (UDP 137)
+# ---------------------------------------------------------------------------
+
+
+def _build_nbstat_request() -> bytes:
+    """Build a NetBIOS Node Status Request packet.
+
+    This is a single UDP packet that asks the target for all registered
+    NetBIOS names. No credentials needed.
+    """
+    # Transaction ID
+    xid = struct.pack(">H", 0x0001)
+    # Flags: 0x0000 (query)
+    flags = struct.pack(">H", 0x0000)
+    # Questions: 1, Answers: 0, Authority: 0, Additional: 0
+    counts = struct.pack(">HHHH", 1, 0, 0, 0)
+    # Query name: "*" encoded as NetBIOS name (CKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA)
+    # 0x20 length prefix, then 32 bytes of encoded "*\0" padded name, then 0x00 terminator
+    name = b"\x20" + b"CKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + b"\x00"
+    # Type: NBSTAT (0x0021), Class: IN (0x0001)
+    qtype = struct.pack(">HH", 0x0021, 0x0001)
+    return xid + flags + counts + name + qtype
+
+
+def _parse_nbstat_response(data: bytes) -> dict[str, str] | None:
+    """Parse a NetBIOS Node Status Response.
+
+    Returns dict with 'hostname' and optionally 'workgroup', or None.
+    """
+    if len(data) < 57:  # Minimum valid response
+        return None
+
+    # Skip header (12 bytes) + query name echo (34 bytes) + type/class (4 bytes) + TTL (4 bytes) + rdlength (2 bytes)
+    # = 56 bytes before the name count
+    try:
+        offset = 56
+        name_count = data[offset]
+        offset += 1
+
+        hostname = None
+        workgroup = None
+
+        for _ in range(name_count):
+            if offset + 18 > len(data):
+                break
+            name_bytes = data[offset:offset + 15]
+            name_type = data[offset + 15]
+            # name_flags = struct.unpack(">H", data[offset + 16:offset + 18])
+            offset += 18
+
+            name = name_bytes.decode("ascii", errors="replace").rstrip()
+            if not name or name.startswith("\x00"):
+                continue
+
+            # Type 0x00 = Workstation, Type 0x20 = File Server
+            if name_type == 0x00 and hostname is None:
+                hostname = name
+            # Type 0x00 with GROUP flag (bit 15 of flags) = workgroup
+            elif name_type == 0x00 and workgroup is None:
+                flag_word = struct.unpack(">H", data[offset - 2:offset])[0]
+                if flag_word & 0x8000:
+                    workgroup = name
+
+        if not hostname:
+            return None
+
+        result = {"hostname": hostname}
+        if workgroup:
+            result["workgroup"] = workgroup
+        return result
+    except (IndexError, struct.error):
+        return None
+
+
+async def netbios_query(
+    ip: str,
+    timeout: float = 1.0,
+) -> dict[str, str] | None:
+    """Query a device for its NetBIOS name via UDP 137.
+
+    Returns dict with 'hostname' and optionally 'workgroup', or None.
+    Windows PCs, NAS devices, and some Linux hosts with Samba respond.
+    """
+    packet = _build_nbstat_request()
+    loop = asyncio.get_event_loop()
+
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.setblocking(False)
+        sock.settimeout(0)
+
+        await loop.run_in_executor(None, sock.sendto, packet, (ip, 137))
+
+        # Wait for response
+        data = await asyncio.wait_for(
+            loop.sock_recv(sock, 1024),
+            timeout=timeout,
+        )
+        return _parse_nbstat_response(data)
+    except (asyncio.TimeoutError, OSError, socket.error):
+        return None
+    finally:
+        try:
+            sock.close()
+        except OSError:
+            pass
+
+
+async def netbios_sweep(
+    ips: list[str],
+    concurrency: int = 30,
+    timeout: float = 1.0,
+) -> dict[str, dict[str, str]]:
+    """Query multiple IPs for NetBIOS names. Returns {ip: {hostname, workgroup}}."""
+    results: dict[str, dict[str, str]] = {}
+    sem = asyncio.Semaphore(concurrency)
+
+    async def query_one(ip: str) -> None:
+        async with sem:
+            result = await netbios_query(ip, timeout)
+            if result:
+                results[ip] = result
+
+    await asyncio.gather(*[query_one(ip) for ip in ips], return_exceptions=True)
+    return results

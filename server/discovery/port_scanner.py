@@ -10,7 +10,9 @@ log = logging.getLogger("discovery.ports")
 
 # Well-known AV device ports (always scanned regardless of driver hints)
 AV_PORTS: dict[int, str] = {
+    22: "SSH (embedded devices, AV processors)",
     23: "Telnet (Extron, Biamp, QSC, Kramer, Shure, LG)",
+    445: "SMB (Windows devices, NAS)",
     80: "HTTP (web management, Panasonic PTZ, REST APIs)",
     443: "HTTPS (secure web management)",
     1515: "Samsung MDC",
@@ -31,7 +33,7 @@ AV_PORTS: dict[int, str] = {
 }
 
 # Ports where devices typically send a banner immediately on connect
-BANNER_PORTS = {23, 4352, 1688, 41794}
+BANNER_PORTS = {22, 23, 4352, 1688, 41794}
 
 
 async def scan_host_ports(

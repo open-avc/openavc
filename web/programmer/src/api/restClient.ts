@@ -639,10 +639,13 @@ export interface DiscoveryScanStatus {
   total_hosts_scanned: number;
 }
 
+export type ScanDepth = "quick" | "standard" | "thorough";
+
 export interface DiscoveryConfig {
   snmp_enabled: boolean;
   snmp_community: string;
   gentle_mode: boolean;
+  scan_depth: ScanDepth;
 }
 
 export async function discoveryStartScan(options?: {
@@ -651,6 +654,7 @@ export async function discoveryStartScan(options?: {
   snmp_enabled?: boolean;
   snmp_community?: string;
   gentle_mode?: boolean;
+  scan_depth?: ScanDepth;
   timeout?: number;
 }): Promise<{ scan_id: string; status: string; subnets: string[] }> {
   return request("/discovery/scan", {

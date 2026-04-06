@@ -9,8 +9,10 @@ change device state.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import re
+import ssl
 import struct
 from dataclasses import dataclass, field
 from typing import Any
@@ -518,7 +520,194 @@ async def probe_http(ip: str, port: int = 80) -> ProbeResult | None:
 
             return result
 
+    # No fingerprint match — try WWW-Authenticate realm as fallback
+    realm_match = re.search(r'WWW-Authenticate:.*?realm="([^"]+)"', text, re.IGNORECASE)
+    if realm_match:
+        realm = realm_match.group(1).strip()
+        result = ProbeResult(protocol="http", extra={"www_auth_realm": realm})
+        # Many AV devices put their model name in the realm
+        for mfg_name in ("Extron", "Crestron", "AMX", "Biamp", "QSC", "Shure",
+                         "Samsung", "LG", "Sony", "NEC", "Epson", "Panasonic",
+                         "Barco", "Christie"):
+            if mfg_name.lower() in realm.lower():
+                result.manufacturer = mfg_name
+                cleaned = re.sub(re.escape(mfg_name), "", realm, flags=re.IGNORECASE).strip(" -–—:")
+                if cleaned:
+                    result.model = cleaned
+                break
+        if not result.manufacturer and realm:
+            # Use the realm as device name if no manufacturer matched
+            result.device_name = realm
+        return result
+
     return None
+
+
+# ---------------------------------------------------------------------------
+# TLS Certificate Probe (port 443 / any HTTPS port)
+# ---------------------------------------------------------------------------
+
+async def probe_tls_cert(ip: str, port: int = 443) -> ProbeResult | None:
+    """Identify a device from its TLS certificate Subject fields.
+
+    Self-signed certs on AV equipment often contain the manufacturer name
+    in Subject O (Organization) and the model in Subject CN (Common Name).
+    No credentials needed — the cert is sent during the TLS handshake.
+    """
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+
+    try:
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection(ip, port, ssl=ctx), timeout=3.0,
+        )
+    except (asyncio.TimeoutError, ConnectionRefusedError, OSError, ssl.SSLError):
+        return None
+
+    try:
+        ssl_obj = writer.get_extra_info("ssl_object")
+        if not ssl_obj:
+            return None
+        cert = ssl_obj.getpeercert(binary_form=False)
+        if not cert:
+            # Try binary DER form and decode Subject manually
+            der = ssl_obj.getpeercert(binary_form=True)
+            if not der:
+                return None
+            return _parse_tls_der_subject(der)
+
+        return _parse_tls_cert_dict(cert)
+    except Exception:
+        return None
+    finally:
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except (OSError, ConnectionResetError):
+            pass
+
+
+# Known AV manufacturer strings to look for in TLS certificate fields
+_TLS_MANUFACTURERS = [
+    "Extron", "Crestron", "AMX", "Biamp", "QSC", "Shure",
+    "Samsung", "LG", "Sony", "NEC", "Epson", "Panasonic",
+    "Barco", "Christie", "Harman", "BSS", "Crown", "Poly",
+    "Cisco", "Zoom",
+]
+
+
+def _parse_tls_cert_dict(cert: dict) -> ProbeResult | None:
+    """Parse a peercert() dict for manufacturer/model info."""
+    subject = cert.get("subject", ())
+    org = ""
+    cn = ""
+    for rdn in subject:
+        for attr_type, attr_value in rdn:
+            if attr_type == "organizationName":
+                org = attr_value
+            elif attr_type == "commonName":
+                cn = attr_value
+
+    if not org and not cn:
+        return None
+
+    result = ProbeResult(protocol="https", extra={})
+    if org:
+        result.extra["tls_org"] = org
+    if cn:
+        result.extra["tls_cn"] = cn
+
+    # Match manufacturer from org or cn
+    combined = f"{org} {cn}"
+    for mfg in _TLS_MANUFACTURERS:
+        if mfg.lower() in combined.lower():
+            result.manufacturer = mfg
+            # Use CN as model if it's not just an IP or the org name
+            if cn and cn != ip_like(cn) and cn.lower() != mfg.lower():
+                result.model = cn
+            break
+
+    if result.manufacturer:
+        return result
+    return None
+
+
+def ip_like(s: str) -> str:
+    """Return s if it looks like an IP address, else empty string."""
+    return s if re.match(r"^\d{1,3}(\.\d{1,3}){3}$", s) else ""
+
+
+def _parse_tls_der_subject(der: bytes) -> ProbeResult | None:
+    """Fallback: scan raw DER bytes for known manufacturer strings."""
+    text = der.decode("ascii", errors="replace")
+    for mfg in _TLS_MANUFACTURERS:
+        if mfg.lower() in text.lower():
+            return ProbeResult(
+                protocol="https",
+                manufacturer=mfg,
+                extra={"tls_der_match": mfg},
+            )
+    return None
+
+
+# ---------------------------------------------------------------------------
+# SSH Banner Probe (port 22)
+# ---------------------------------------------------------------------------
+
+# Known SSH banners for AV/embedded devices
+_SSH_DEVICE_PATTERNS: list[tuple[re.Pattern, str, str | None]] = [
+    (re.compile(r"dropbear", re.I), "embedded", None),
+    (re.compile(r"Crestron", re.I), "Crestron", "control"),
+    (re.compile(r"Biamp", re.I), "Biamp", "audio"),
+    (re.compile(r"QSC", re.I), "QSC", "audio"),
+    (re.compile(r"Extron", re.I), "Extron", "switcher"),
+]
+
+
+async def probe_ssh_banner(ip: str, port: int = 22) -> ProbeResult | None:
+    """Read the SSH banner to identify the device OS or manufacturer.
+
+    SSH servers send an identification string before authentication:
+    e.g. "SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.6" or "SSH-2.0-dropbear_2020.81"
+    """
+    try:
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection(ip, port), timeout=3.0,
+        )
+    except (asyncio.TimeoutError, ConnectionRefusedError, OSError):
+        return None
+
+    try:
+        data = await asyncio.wait_for(reader.read(256), timeout=2.0)
+        if not data:
+            return None
+        banner = data.decode("utf-8", errors="replace").strip()
+        if not banner.startswith("SSH-"):
+            return None
+
+        result = ProbeResult(
+            protocol="ssh",
+            extra={"ssh_banner": banner},
+        )
+
+        for pattern, mfg_or_type, category in _SSH_DEVICE_PATTERNS:
+            if pattern.search(banner):
+                if mfg_or_type != "embedded":
+                    result.manufacturer = mfg_or_type
+                if category:
+                    result.category = category
+                break
+
+        return result
+    except (asyncio.TimeoutError, OSError):
+        return None
+    finally:
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except (OSError, ConnectionResetError):
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -540,58 +729,8 @@ async def probe_crestron_cip(ip: str, port: int = 1688) -> ProbeResult | None:
     return None
 
 
-# ---------------------------------------------------------------------------
-# Main probe dispatcher
-# ---------------------------------------------------------------------------
-
-# Map of port -> active probe functions
-_PORT_PROBES: dict[int, list] = {
-    4352: [probe_pjlink],
-    1515: [probe_samsung_mdc],
-    10500: [probe_visca],
-    1688: [probe_crestron_cip],
-    80: [probe_http],
-    443: [probe_http],
-    8080: [probe_http],
-    9090: [probe_http],
-}
-
-
-async def probe_device(
-    ip: str,
-    open_ports: list[int],
-    banners: dict[int, str] | None = None,
-) -> list[ProbeResult]:
-    """Run all applicable probes against a device.
-
-    1. For each open port, run any port-specific active probes.
-    2. For any captured banners, run banner-based identification.
-
-    Returns list of successful probe results (may be empty).
-    """
-    results: list[ProbeResult] = []
-
-    # Banner-based probes (fast, no network call)
-    if banners:
-        for port, banner_text in banners.items():
-            banner_result = probe_banner(banner_text)
-            if banner_result:
-                results.append(banner_result)
-
-    # Active port probes (requires network calls)
-    probe_tasks = []
-    for port in open_ports:
-        probe_fns = _PORT_PROBES.get(port, [])
-        for fn in probe_fns:
-            probe_tasks.append(fn(ip, port))
-
-    if probe_tasks:
-        probe_results = await asyncio.gather(*probe_tasks, return_exceptions=True)
-        for r in probe_results:
-            if isinstance(r, ProbeResult) and r is not None:
-                results.append(r)
-
-    return results
+# (Port probe dispatch table and probe_device() are defined at end of file
+# so all probe functions are available.)
 
 
 # ---------------------------------------------------------------------------
@@ -632,3 +771,223 @@ async def probe_shure_active(ip: str, port: int = 23) -> ProbeResult | None:
         )
 
     return None
+
+
+# ---------------------------------------------------------------------------
+# SMB Negotiate Probe (port 445) — Standard depth
+# ---------------------------------------------------------------------------
+
+async def probe_smb(ip: str, port: int = 445) -> ProbeResult | None:
+    """Identify a Windows device via SMB negotiate handshake.
+
+    The SMB negotiate response contains the hostname and OS version
+    without requiring credentials. Works on Windows PCs, servers, NAS.
+    """
+    # SMB1 negotiate request — minimal packet
+    # NetBIOS session header (4 bytes) + SMB header + negotiate request
+    smb_header = (
+        b"\x00\x00\x00\x54"    # NetBIOS: session message, length 84
+        b"\xffSMB"              # SMB1 signature
+        b"\x72"                 # Command: negotiate
+        b"\x00\x00\x00\x00"    # Status: OK
+        b"\x18"                 # Flags: case insensitive + canonicalized paths
+        b"\x01\x28"             # Flags2: long names + extended security
+        b"\x00\x00"             # PID high
+        b"\x00\x00\x00\x00\x00\x00\x00\x00"  # Signature
+        b"\x00\x00"             # Reserved
+        b"\x00\x00"             # TID
+        b"\x00\x00"             # PID
+        b"\x00\x00"             # UID
+        b"\x00\x00"             # MID
+    )
+    # Negotiate request body — request NT LM 0.12 dialect
+    negotiate_body = (
+        b"\x00"                           # Word count: 0
+        b"\x11\x00"                       # Byte count: 17
+        b"\x02NT LM 0.12\x00"           # Dialect: NT LM 0.12
+    )
+
+    packet = smb_header + negotiate_body
+
+    try:
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection(ip, port), timeout=3.0,
+        )
+    except (asyncio.TimeoutError, ConnectionRefusedError, OSError):
+        return None
+
+    try:
+        writer.write(packet)
+        await writer.drain()
+        data = await asyncio.wait_for(reader.read(4096), timeout=3.0)
+        if not data or len(data) < 39:
+            return None
+
+        # Verify SMB response signature
+        if data[4:8] != b"\xffSMB":
+            return None
+
+        result = ProbeResult(protocol="smb", extra={})
+
+        # Try to extract server name from the negotiate response
+        # The NTLMSSP blob in extended security contains the hostname
+        # Look for NTLMSSP signature in the response
+        ntlmssp_offset = data.find(b"NTLMSSP\x00")
+        if ntlmssp_offset >= 0 and ntlmssp_offset + 56 < len(data):
+            blob = data[ntlmssp_offset:]
+            if len(blob) > 56:
+                # Type 2 NTLMSSP message — extract target name
+                try:
+                    target_len = struct.unpack_from("<H", blob, 12)[0]
+                    target_offset = struct.unpack_from("<I", blob, 16)[0]
+                    if target_offset + target_len <= len(blob):
+                        target_name = blob[target_offset:target_offset + target_len]
+                        name = target_name.decode("utf-16-le", errors="replace").strip("\x00")
+                        if name:
+                            result.device_name = name
+                            result.extra["smb_hostname"] = name
+                except (struct.error, UnicodeDecodeError):
+                    pass
+
+        # Extract OS version from the negotiate response SecurityBlob
+        # Look for version info in the NTLMSSP blob
+        if ntlmssp_offset >= 0 and len(data[ntlmssp_offset:]) > 48:
+            blob = data[ntlmssp_offset:]
+            try:
+                # Version is at offset 48 in the NTLMSSP type 2 message (8 bytes)
+                major = blob[48]
+                minor = blob[49]
+                build = struct.unpack_from("<H", blob, 50)[0]
+                if major > 0:
+                    result.extra["os_version"] = f"{major}.{minor}.{build}"
+            except (IndexError, struct.error):
+                pass
+
+        if result.device_name or result.extra:
+            return result
+        return None
+    except (asyncio.TimeoutError, ConnectionResetError, BrokenPipeError, OSError):
+        return None
+    finally:
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except (OSError, ConnectionResetError):
+            pass
+
+
+# ---------------------------------------------------------------------------
+# Favicon Hash Probe — Standard depth
+# ---------------------------------------------------------------------------
+
+# Known favicon hashes (MD5 of favicon.ico content) → manufacturer
+# Populated with common AV device web interface favicons
+_FAVICON_HASHES: dict[str, str] = {
+    # These would be populated by fingerprinting real AV devices.
+    # Format: md5_hex -> manufacturer name
+}
+
+
+async def probe_favicon(ip: str, port: int = 80) -> ProbeResult | None:
+    """Fetch /favicon.ico and hash it to identify the manufacturer.
+
+    Many AV devices have unique favicons that identify the manufacturer
+    even when the HTML title is generic or the page requires auth.
+    """
+    request_line = (
+        f"GET /favicon.ico HTTP/1.0\r\n"
+        f"Host: {ip}\r\n"
+        f"Connection: close\r\n"
+        f"\r\n"
+    )
+
+    data = await _tcp_exchange(ip, port, send=request_line.encode(), timeout=3.0)
+    if not data:
+        return None
+
+    # Check for HTTP 200 response
+    text_start = data[:100].decode("utf-8", errors="replace")
+    if "200" not in text_start.split("\r\n")[0]:
+        return None
+
+    # Find body after headers
+    body_start = data.find(b"\r\n\r\n")
+    if body_start < 0 or body_start + 4 >= len(data):
+        return None
+    body = data[body_start + 4:]
+    if len(body) < 10:
+        return None
+
+    # Hash the favicon content
+    favicon_hash = hashlib.md5(body).hexdigest()
+
+    manufacturer = _FAVICON_HASHES.get(favicon_hash)
+    if manufacturer:
+        return ProbeResult(
+            protocol="http",
+            manufacturer=manufacturer,
+            extra={"favicon_hash": favicon_hash},
+        )
+
+    # Even without a hash match, store the hash for future analysis
+    return ProbeResult(
+        protocol="http",
+        extra={"favicon_hash": favicon_hash},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Main probe dispatcher (at end of file so all probe functions are available)
+# ---------------------------------------------------------------------------
+
+# Map of port -> active probe functions
+_PORT_PROBES: dict[int, list] = {
+    22: [probe_ssh_banner],
+    445: [probe_smb],
+    4352: [probe_pjlink],
+    1515: [probe_samsung_mdc],
+    10500: [probe_visca],
+    1688: [probe_crestron_cip],
+    80: [probe_http],
+    443: [probe_tls_cert, probe_http],
+    8080: [probe_http],
+    8443: [probe_tls_cert],
+    9090: [probe_http],
+}
+
+
+async def probe_device(
+    ip: str,
+    open_ports: list[int],
+    banners: dict[int, str] | None = None,
+) -> list[ProbeResult]:
+    """Run all applicable probes against a device.
+
+    1. For each open port, run any port-specific active probes.
+    2. For any captured banners, run banner-based identification.
+
+    Returns list of successful probe results (may be empty).
+    """
+    results: list[ProbeResult] = []
+
+    # Banner-based probes (fast, no network call)
+    if banners:
+        for port, banner_text in banners.items():
+            banner_result = probe_banner(banner_text)
+            if banner_result:
+                results.append(banner_result)
+
+    # Active port probes (requires network calls)
+    probe_tasks = []
+    for port in open_ports:
+        probe_fns = _PORT_PROBES.get(port, [])
+        for fn in probe_fns:
+            probe_tasks.append(fn(ip, port))
+
+    if probe_tasks:
+        probe_results = await asyncio.gather(*probe_tasks, return_exceptions=True)
+        for r in probe_results:
+            if isinstance(r, ProbeResult) and r is not None:
+                results.append(r)
+
+    return results

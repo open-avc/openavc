@@ -166,8 +166,12 @@ Click a device card to see full details. If a matching driver is found:
 
 ### Scan Options
 
+- **Scan Depth.** Choose how deep the scanner goes:
+  - **Quick.** Fast re-scan. Basic port scanning and protocol probes.
+  - **Standard** (recommended). Full scan with TLS certificate inspection, SSH banner identification, NetBIOS/SMB for Windows device names, SNMP Entity MIB for detailed hardware info, and HTTP authentication realm parsing.
+  - **Thorough.** Extended port range and longer passive listening window. Takes longer but finds everything on the network.
 - **SNMP.** Enable SNMP v2c queries for richer device identification (community string configurable).
-- **Gentle Mode.** Reduces scan aggressiveness for sensitive networks.
+- **Reduce network load.** Slows down the scan to reduce traffic. Use this on networks with strict IDS/IPS policies or where IT has asked you to scan carefully.
 - **Extra Subnets.** Add subnets beyond the auto-detected ones.
 - **Export.** Download scan results as a text report.
 

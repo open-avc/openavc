@@ -113,6 +113,14 @@ CONFIDENCE_WEIGHTS = {
     "model_known": 0.10,
     "driver_matched": 0.20,
     "hint_matched": 0.15,
+    # New sources from scan depth techniques
+    "tls_cert_matched": 0.15,
+    "ssh_identified": 0.05,
+    "netbios_resolved": 0.10,
+    "smb_identified": 0.10,
+    "entity_mib_found": 0.10,
+    "www_auth_matched": 0.10,
+    "favicon_matched": 0.10,
 }
 
 

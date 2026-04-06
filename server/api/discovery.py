@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import PlainTextResponse
@@ -103,19 +103,30 @@ async def _build_port_labels(engine: DiscoveryEngine) -> dict[str, str]:
 
 # --- Request models ---
 
+ScanDepth = Literal["quick", "standard", "thorough"]
+
+_DEPTH_TIMEOUTS: dict[str, float] = {
+    "quick": 60.0,
+    "standard": 120.0,
+    "thorough": 180.0,
+}
+
+
 class ScanRequest(BaseModel):
     subnets: list[str] | None = None
     extra_subnets: list[str] | None = None
     snmp_enabled: bool = True
     snmp_community: str = "public"
     gentle_mode: bool = False
-    timeout: float = 120.0
+    scan_depth: ScanDepth = "standard"
+    timeout: float | None = None  # None = auto from scan_depth
 
 
 class DiscoveryConfigRequest(BaseModel):
     snmp_enabled: bool = True
     snmp_community: str = "public"
     gentle_mode: bool = False
+    scan_depth: ScanDepth = "standard"
 
 
 class AddDeviceRequest(BaseModel):
@@ -142,6 +153,7 @@ async def start_scan(req: ScanRequest) -> dict[str, Any]:
     engine.config["snmp_enabled"] = req.snmp_enabled
     engine.config["snmp_community"] = req.snmp_community
     engine.config["gentle_mode"] = req.gentle_mode
+    engine.config["scan_depth"] = req.scan_depth
 
     # Validate subnet inputs
     import ipaddress
@@ -156,12 +168,14 @@ async def start_scan(req: ScanRequest) -> dict[str, Any]:
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Invalid CIDR: {subnet}")
 
+    timeout = req.timeout if req.timeout is not None else _DEPTH_TIMEOUTS.get(req.scan_depth, 120.0)
+
     try:
         scan_id = await engine.start_scan(
             subnets=req.subnets,
             extra_subnets=req.extra_subnets,
             on_update=_broadcast_fn,
-            timeout=req.timeout,
+            timeout=timeout,
         )
     except RuntimeError as e:
         raise _api_error(409, "A scan is already in progress", e)
@@ -258,6 +272,7 @@ async def update_config(req: DiscoveryConfigRequest) -> dict[str, str]:
     engine.config["snmp_enabled"] = req.snmp_enabled
     engine.config["snmp_community"] = req.snmp_community
     engine.config["gentle_mode"] = req.gentle_mode
+    engine.config["scan_depth"] = req.scan_depth
     return {"status": "ok"}
 
 

@@ -41,6 +41,15 @@ OIDS = {
     "sysLocation": "1.3.6.1.2.1.1.6.0",
 }
 
+# Entity MIB OIDs (for Standard/Thorough depth — more detailed hardware info)
+ENTITY_OIDS = {
+    "entPhysicalMfgName": "1.3.6.1.2.1.47.1.1.1.1.12.1",
+    "entPhysicalModelName": "1.3.6.1.2.1.47.1.1.1.1.13.1",
+    "entPhysicalSerialNum": "1.3.6.1.2.1.47.1.1.1.1.11.1",
+    "entPhysicalHardwareRev": "1.3.6.1.2.1.47.1.1.1.1.8.1",
+    "entPhysicalFirmwareRev": "1.3.6.1.2.1.47.1.1.1.1.9.1",
+}
+
 # BER/ASN.1 tag constants
 ASN1_INTEGER = 0x02
 ASN1_OCTET_STRING = 0x04
@@ -374,6 +383,67 @@ def parse_snmp_response(data: bytes) -> dict[str, str]:
     return result
 
 
+# --- PEN (Private Enterprise Number) Lookup ---
+# Maps IANA PEN to manufacturer name. sysObjectID format: 1.3.6.1.4.1.{PEN}.x.y.z
+# Only includes AV-relevant and common enterprise vendors.
+
+_PEN_TABLE: dict[int, str] = {
+    9: "Cisco",
+    11: "HP",
+    43: "3Com",
+    171: "D-Link",
+    207: "Allied Telesis",
+    236: "Samsung",
+    311: "Microsoft",
+    318: "APC/Schneider",
+    674: "Dell",
+    2435: "Sony",
+    2636: "Juniper",
+    3076: "Altiga/Cisco",
+    3375: "F5 Networks",
+    3872: "QSC",
+    4413: "Ubiquiti",
+    4981: "Panasonic",
+    5765: "Watchguard",
+    6486: "Alcatel-Lucent",
+    6981: "Biamp",
+    8072: "Net-SNMP",
+    9148: "AudioCodes",
+    10002: "Ubiquiti",
+    11898: "Ruckus",
+    14988: "MikroTik",
+    17049: "Extron",
+    21317: "Crestron",
+    24717: "Atlona",
+    25053: "Ruckus Wireless",
+    25506: "H3C/HPE",
+    32812: "Shure",
+    35265: "Ericsson-LG",
+    38581: "Barco",
+    41916: "AMX/Harman",
+    47196: "Aruba",
+    52040: "Christie",
+}
+
+
+def lookup_pen(sys_object_id: str) -> str | None:
+    """Extract the PEN from a sysObjectID and look up the manufacturer.
+
+    sysObjectID is typically: 1.3.6.1.4.1.{PEN}.{rest}
+    Returns manufacturer name or None.
+    """
+    prefix = "1.3.6.1.4.1."
+    if not sys_object_id.startswith(prefix):
+        return None
+    rest = sys_object_id[len(prefix):]
+    pen_str = rest.split(".")[0] if rest else ""
+    try:
+        pen = int(pen_str)
+    except ValueError:
+        return None
+    return _PEN_TABLE.get(pen)
+
+
 # --- SNMP Result ---
 
 
@@ -385,6 +455,12 @@ class SNMPInfo:
     sys_object_id: str = ""
     sys_contact: str = ""
     sys_location: str = ""
+    # Entity MIB fields (populated when entity_mib=True)
+    entity_manufacturer: str = ""
+    entity_model: str = ""
+    entity_serial: str = ""
+    entity_hardware_rev: str = ""
+    entity_firmware_rev: str = ""
 
     def to_dict(self) -> dict[str, str]:
         d: dict[str, str] = {}
@@ -398,6 +474,12 @@ class SNMPInfo:
             d["sysContact"] = self.sys_contact
         if self.sys_location:
             d["sysLocation"] = self.sys_location
+        if self.entity_manufacturer:
+            d["entPhysicalMfgName"] = self.entity_manufacturer
+        if self.entity_model:
+            d["entPhysicalModelName"] = self.entity_model
+        if self.entity_serial:
+            d["entPhysicalSerialNum"] = self.entity_serial
         return d
 
     def to_device_info(self) -> dict[str, Any]:
@@ -420,6 +502,22 @@ class SNMPInfo:
                 info["category"] = parsed["category"]
         elif self.to_dict():
             info["snmp_info"] = self.to_dict()
+
+        # PEN lookup from sysObjectID (fallback if sysDescr didn't identify manufacturer)
+        if not info.get("manufacturer") and self.sys_object_id:
+            pen_mfg = lookup_pen(self.sys_object_id)
+            if pen_mfg:
+                info["manufacturer"] = pen_mfg
+
+        # Entity MIB enrichment (overrides sysDescr-based values if present)
+        if self.entity_manufacturer:
+            info["manufacturer"] = self.entity_manufacturer
+        if self.entity_model:
+            info["model"] = self.entity_model
+        if self.entity_serial:
+            info["serial_number"] = self.entity_serial
+        if self.entity_firmware_rev:
+            info["firmware"] = self.entity_firmware_rev
 
         return info
 
@@ -519,8 +617,13 @@ class SNMPScanner:
         ip: str,
         community: str = DEFAULT_COMMUNITY,
         timeout: float = 2.0,
+        entity_mib: bool = False,
     ) -> SNMPInfo | None:
         """Query a single device for SNMP information.
+
+        Args:
+            entity_mib: If True, also query ENTITY-MIB OIDs for detailed
+                hardware info (model, serial, manufacturer).
 
         Returns SNMPInfo if the device responded, None otherwise.
         """
@@ -562,9 +665,52 @@ class SNMPScanner:
                     info.sys_location = val
 
         # Only return if we got at least one non-empty field
-        if info.sys_descr or info.sys_name:
-            return info
-        return None
+        if not (info.sys_descr or info.sys_name):
+            return None
+
+        # Query Entity MIB for richer hardware info
+        if entity_mib:
+            await self._query_entity_mib(ip, community, timeout, info)
+
+        return info
+
+    async def _query_entity_mib(
+        self, ip: str, community: str, timeout: float, info: SNMPInfo,
+    ) -> None:
+        """Query Entity MIB OIDs and populate entity fields on info."""
+        request_id = random.randint(1, 2**31 - 1)
+        oid_list = list(ENTITY_OIDS.values())
+        packet = build_snmp_get(community, oid_list, request_id)
+
+        try:
+            loop = asyncio.get_event_loop()
+            response = await asyncio.wait_for(
+                self._udp_query(ip, packet, loop),
+                timeout=timeout,
+            )
+        except (asyncio.TimeoutError, OSError):
+            return
+
+        if not response:
+            return
+
+        values = parse_snmp_response(response)
+        if not values:
+            return
+
+        for name, oid_str in ENTITY_OIDS.items():
+            val = values.get(oid_str, "")
+            if val:
+                if name == "entPhysicalMfgName":
+                    info.entity_manufacturer = val
+                elif name == "entPhysicalModelName":
+                    info.entity_model = val
+                elif name == "entPhysicalSerialNum":
+                    info.entity_serial = val
+                elif name == "entPhysicalHardwareRev":
+                    info.entity_hardware_rev = val
+                elif name == "entPhysicalFirmwareRev":
+                    info.entity_firmware_rev = val
 
     async def scan_devices(
         self,
@@ -572,6 +718,7 @@ class SNMPScanner:
         community: str = DEFAULT_COMMUNITY,
         timeout: float = 2.0,
         concurrency: int = 20,
+        entity_mib: bool = False,
     ) -> dict[str, SNMPInfo]:
         """Query multiple devices in parallel.
 
@@ -580,6 +727,7 @@ class SNMPScanner:
             community: SNMP community string.
             timeout: Per-device timeout in seconds.
             concurrency: Max concurrent queries.
+            entity_mib: If True, also query ENTITY-MIB for detailed hardware info.
 
         Returns:
             Dict of {ip: SNMPInfo} for devices that responded.
@@ -589,7 +737,7 @@ class SNMPScanner:
 
         async def query_one(ip: str) -> None:
             async with sem:
-                result = await self.query_device(ip, community, timeout)
+                result = await self.query_device(ip, community, timeout, entity_mib=entity_mib)
                 if result:
                     self._results[ip] = result
 

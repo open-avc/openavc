@@ -110,6 +110,7 @@ export function DiscoveryPanel() {
   const [snmpEnabled, setSnmpEnabled] = useState(true);
   const [snmpCommunity, setSnmpCommunity] = useState("public");
   const [gentleMode, setGentleMode] = useState(false);
+  const [scanDepth, setScanDepth] = useState<api.ScanDepth>("standard");
 
   // Load subnets + config on mount
   useEffect(() => {
@@ -118,6 +119,7 @@ export function DiscoveryPanel() {
       setSnmpEnabled(c.snmp_enabled);
       setSnmpCommunity(c.snmp_community);
       setGentleMode(c.gentle_mode);
+      if (c.scan_depth) setScanDepth(c.scan_depth);
     }).catch(console.error);
     // If there are existing results, load them
     api.discoveryGetResults().then((r) => {
@@ -137,6 +139,7 @@ export function DiscoveryPanel() {
         snmp_enabled: snmpEnabled,
         snmp_community: snmpCommunity,
         gentle_mode: gentleMode,
+        scan_depth: scanDepth,
       });
       // Only set running after API confirms the scan started
       setStatus("running");
@@ -144,7 +147,7 @@ export function DiscoveryPanel() {
       setStatus("idle");
       showError(String(e));
     }
-  }, [extraSubnet, snmpEnabled, snmpCommunity, gentleMode, setStatus]);
+  }, [extraSubnet, snmpEnabled, snmpCommunity, gentleMode, scanDepth, setStatus]);
 
   const handleStopScan = useCallback(async () => {
     await api.discoveryStopScan();
@@ -157,9 +160,9 @@ export function DiscoveryPanel() {
   }, [clear]);
 
   const handleSaveSettings = useCallback(async () => {
-    await api.discoveryUpdateConfig({ snmp_enabled: snmpEnabled, snmp_community: snmpCommunity, gentle_mode: gentleMode });
+    await api.discoveryUpdateConfig({ snmp_enabled: snmpEnabled, snmp_community: snmpCommunity, gentle_mode: gentleMode, scan_depth: scanDepth });
     setShowSettings(false);
-  }, [snmpEnabled, snmpCommunity, gentleMode]);
+  }, [snmpEnabled, snmpCommunity, gentleMode, scanDepth]);
 
   const handleExport = useCallback(async () => {
     try {
@@ -230,10 +233,29 @@ export function DiscoveryPanel() {
     prevStatusRef.current = status;
   }, [status]);
 
+  // Smooth progress bar interpolation — lerp toward backend target
+  const [displayProgress, setDisplayProgress] = useState(0);
+  useEffect(() => {
+    if (!isRunning) {
+      setDisplayProgress(status === "complete" ? 1 : 0);
+      return;
+    }
+    const interval = setInterval(() => {
+      setDisplayProgress((prev) => {
+        const diff = progress - prev;
+        if (Math.abs(diff) < 0.002) return progress;
+        return prev + diff * 0.18;
+      });
+    }, 50);
+    return () => clearInterval(interval);
+  }, [progress, isRunning, status]);
+
   // Phase labels for user display
   const phaseLabel = phase === "ping_sweep" ? "Scanning network..."
     : phase === "port_scan" ? "Probing ports..."
-    : phase === "protocol_probe" ? "Identifying protocols..."
+    : phase === "protocol_probe" ? "Identifying devices..."
+    : phase === "passive_collect" ? (message || "Collecting passive results...")
+    : phase === "finalize" ? "Matching drivers..."
     : phase === "driver_match" ? "Matching drivers..."
     : phase === "snmp_scan" ? "Querying SNMP..."
     : phase === "mdns_scan" ? "Listening for mDNS..."
@@ -296,13 +318,30 @@ export function DiscoveryPanel() {
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-sm)" }}>
+            <label style={{ gridColumn: "1 / -1", display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
+              Scan Depth
+              <select
+                value={scanDepth}
+                onChange={(e) => setScanDepth(e.target.value as api.ScanDepth)}
+                style={{ flex: 1, maxWidth: 220 }}
+              >
+                <option value="quick">Quick (fast re-scan)</option>
+                <option value="standard">Standard (recommended)</option>
+                <option value="thorough">Thorough (extended scan)</option>
+              </select>
+              <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
+                {scanDepth === "quick" && "Basic port scan and protocol probes."}
+                {scanDepth === "standard" && "Full scan with TLS, SSH, NetBIOS, and SMB identification."}
+                {scanDepth === "thorough" && "Extended ports, longer passive listen. Takes longer."}
+              </span>
+            </label>
             <label style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
               <input type="checkbox" checked={snmpEnabled} onChange={(e) => setSnmpEnabled(e.target.checked)} />
               SNMP Enabled
             </label>
             <label style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
               <input type="checkbox" checked={gentleMode} onChange={(e) => setGentleMode(e.target.checked)} />
-              Gentle Scan (slower, less network noise)
+              Reduce network load (slower scan, less traffic)
             </label>
             <label>
               SNMP Community
@@ -345,7 +384,7 @@ export function DiscoveryPanel() {
         <div style={{ marginBottom: "var(--space-md)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: "var(--font-size-sm)", marginBottom: 4 }}>
             <span style={{ fontWeight: 500 }}>{phaseLabel}</span>
-            <span>{Object.keys(devices).length} found &middot; {Math.round(progress * 100)}%</span>
+            <span>{Object.keys(devices).length} found &middot; {Math.round(displayProgress * 100)}%</span>
           </div>
           <div
             style={{
@@ -358,9 +397,9 @@ export function DiscoveryPanel() {
             <div
               style={{
                 height: "100%",
-                width: `${Math.round(progress * 100)}%`,
+                width: `${Math.round(displayProgress * 100)}%`,
                 background: "var(--accent)",
-                transition: "width 0.3s ease",
+                transition: "width 0.8s ease-out",
               }}
             />
           </div>
