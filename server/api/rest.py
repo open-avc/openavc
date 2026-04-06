@@ -186,6 +186,12 @@ async def update_device(device_id: str, body: DeviceUpdateRequest) -> dict[str, 
     new_name = body.name if body.name is not None else existing.name
     new_driver = body.driver if body.driver is not None else existing.driver
 
+    # Validate driver exists
+    if new_driver != existing.driver:
+        from server.core.device_manager import _DRIVER_REGISTRY
+        if new_driver not in _DRIVER_REGISTRY:
+            raise HTTPException(status_code=422, detail=f"Driver '{new_driver}' is not installed")
+
     if body.config is not None:
         # Split incoming config: connection fields → connections table, rest → device.config
         protocol_config = {}
@@ -440,12 +446,16 @@ async def store_pending_settings(
         raise _api_error(404, f"Device '{device_id}' not found", e)
 
     # Persist to project file
+    found = False
     for dev in engine.project.devices:
         if dev.id == device_id:
             if not dev.pending_settings:
                 dev.pending_settings = {}
             dev.pending_settings.update(body.settings)
+            found = True
             break
+    if not found:
+        raise HTTPException(status_code=404, detail=f"Device '{device_id}' not found in project")
 
     save_project(engine.project_path, engine.project)
     return {"status": "pending", "device_id": device_id, "settings": body.settings}
@@ -484,8 +494,11 @@ async def save_project_config(request: Request) -> dict[str, Any]:
     """
     # Limit request body to 10 MB to prevent memory exhaustion
     content_length = request.headers.get("content-length")
-    if content_length and int(content_length) > 10 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="Project file too large (max 10 MB)")
+    try:
+        if content_length and int(content_length) > 10 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="Project file too large (max 10 MB)")
+    except (ValueError, TypeError):
+        pass  # Malformed content-length header — let FastAPI handle the body
     engine = _get_engine()
     body = await request.json()
 
@@ -561,6 +574,8 @@ async def update_connection(device_id: str, request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail=f"Device '{device_id}' not found")
 
     overrides = await request.json()
+    if not isinstance(overrides, dict):
+        raise HTTPException(status_code=422, detail="Connection overrides must be a JSON object")
     engine.project.connections[device_id] = overrides
     save_project(engine.project_path, engine.project)
 
@@ -582,6 +597,8 @@ async def update_connections_bulk(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=503, detail="No project loaded")
 
     table = await request.json()
+    if not isinstance(table, dict) or not all(isinstance(v, dict) for v in table.values()):
+        raise HTTPException(status_code=422, detail="Connection table must be a JSON object of objects")
     engine.project.connections = table
     save_project(engine.project_path, engine.project)
 
@@ -641,6 +658,8 @@ async def import_connections(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=503, detail="No project loaded")
 
     table = await request.json()
+    if not isinstance(table, dict) or not all(isinstance(v, dict) for v in table.values()):
+        raise HTTPException(status_code=422, detail="Import data must be a JSON object of objects")
 
     # Strip metadata fields (start with _) and apply
     cleaned: dict[str, dict[str, Any]] = {}
@@ -1056,6 +1075,8 @@ async def save_script_source(script_id: str, request: Request) -> dict[str, Any]
         raise HTTPException(status_code=404, detail=f"Script '{script_id}' not found")
     body = await request.json()
     source = body.get("source", "")
+    if len(source) > 1_000_000:
+        raise HTTPException(status_code=413, detail="Script source too large (max 1 MB)")
     scripts_dir = _get_scripts_dir()
     path = _safe_script_path(scripts_dir, cfg["file"])
     path.parent.mkdir(parents=True, exist_ok=True)
