@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
@@ -81,17 +82,40 @@ class AIToolHandler:
     ensuring the AI has the same capabilities as the Programmer IDE.
     """
 
+    # Tools that only read data and never modify the project
+    _READ_ONLY_TOOLS: set[str] = {
+        "get_project_summary", "get_project_state", "get_state_value",
+        "get_state_history", "list_devices", "get_device_info",
+        "list_drivers", "search_community_drivers", "get_installed_drivers",
+        "get_driver_definition", "get_script_source", "get_logs",
+        "list_triggers", "get_macro", "get_ui_page",
+        "list_plugins", "browse_community_plugins", "get_plugin_config",
+        "list_themes", "get_theme", "list_assets",
+        "get_isc_status", "list_isc_peers",
+        "get_device_settings", "check_references",
+        "get_discovery_results", "wait",
+    }
+
+    # Idle timeout before resetting the AI backup flag (seconds)
+    _AI_BACKUP_IDLE_TIMEOUT = 300  # 5 minutes
+
     def __init__(
         self,
         agent: CloudAgent,
         devices: DeviceManager,
         events: EventBus,
         reload_fn=None,
+        project_path=None,
     ):
         self._agent = agent
         self._devices = devices
         self._events = events
         self._reload_fn = reload_fn
+        self._project_path = project_path
+
+        # Backup tracking: create one backup before the first write in a conversation
+        self._ai_backup_created: bool = False
+        self._ai_last_write_time: float = 0
 
         # Tool dispatch table
         self._tools: dict[str, Any] = {
@@ -210,6 +234,23 @@ class AIToolHandler:
     ) -> None:
         """Execute a tool handler and send the result back to the cloud."""
         try:
+            # Create a backup before the first write operation in this AI conversation
+            if tool_name not in self._READ_ONLY_TOOLS:
+                # Reset backup flag if idle for too long (new conversation)
+                if (self._ai_last_write_time
+                        and time.monotonic() - self._ai_last_write_time > self._AI_BACKUP_IDLE_TIMEOUT):
+                    self._ai_backup_created = False
+
+                if not self._ai_backup_created and self._project_path:
+                    try:
+                        from server.core.backup_manager import create_backup
+                        create_backup(Path(self._project_path).parent, "Before AI changes")
+                    except Exception:
+                        log.debug("Could not create pre-AI backup", exc_info=True)
+                    self._ai_backup_created = True
+
+                self._ai_last_write_time = time.monotonic()
+
             result = await handler(tool_input)
             await self._send_result(request_id, True, result=result)
         except Exception as e:

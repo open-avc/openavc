@@ -71,17 +71,18 @@ export function useWebSocket() {
       // Project was modified (by AI, fleet push, or other source) — refetch
       if (msg.type === "project.reloaded") {
         const store = useProjectStore.getState();
+        // If we're mid-save, this is our own save echoing back via the
+        // server's reload broadcast.  Ignore it — the PUT response will
+        // update our revision, and real conflicts are caught by the 409.
+        if (store.saving) return;
         const serverRevision = (msg as any).revision;
         if (store.dirty) {
-          // Check if revision diverged — another client saved
           if (serverRevision != null && store.revision != null && serverRevision !== store.revision) {
             showInfo("Project modified by another session — save may trigger a conflict. Consider reloading.");
           } else {
             showInfo("Project modified externally — your unsaved changes may conflict");
           }
         } else {
-          // Silently reload — no toast needed whether this is our own echo or
-          // another client's change, the data refreshes automatically
           debouncedProjectReload();
         }
       }

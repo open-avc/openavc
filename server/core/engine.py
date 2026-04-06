@@ -87,6 +87,11 @@ class Engine:
         self._running = False
         self._marker_confirm_task: asyncio.Task | None = None
 
+        # Periodic backup
+        self._periodic_backup_task: asyncio.Task | None = None
+        self._dirty_since_backup: bool = False
+        self._last_backup_time: float = 0
+
     async def start(self) -> None:
         """
         Start the engine:
@@ -237,6 +242,11 @@ class Engine:
         # Start the batch flush task
         self._batch_task = asyncio.create_task(self._flush_state_batch_loop())
         self._batch_task.add_done_callback(_log_task_exception)
+
+        # Start periodic backup timer (every 30 min if project has changed)
+        self._periodic_backup_task = asyncio.create_task(self._periodic_backup_loop())
+        self._periodic_backup_task.add_done_callback(_log_task_exception)
+
         self._running = True
 
         # Record startup errors (if any) for UI visibility
@@ -353,6 +363,14 @@ class Engine:
             except asyncio.CancelledError:
                 pass
 
+        # Stop periodic backup task
+        if self._periodic_backup_task and not self._periodic_backup_task.done():
+            self._periodic_backup_task.cancel()
+            try:
+                await self._periodic_backup_task
+            except asyncio.CancelledError:
+                pass
+
         # Disconnect all devices
         await self.devices.disconnect_all()
 
@@ -364,6 +382,7 @@ class Engine:
         log.info("Reloading project...")
         self.project = load_project(self.project_path)
         self._project_revision += 1
+        self._dirty_since_backup = True
 
         # Sync variables: initialize new defaults, clean up orphaned keys
         project_var_ids = {v.id for v in self.project.variables}
@@ -902,6 +921,37 @@ class Engine:
                 except Exception:  # Best-effort flush during shutdown; errors are non-critical
                     pass
 
+    # --- Periodic backup ---
+
+    _PERIODIC_BACKUP_INTERVAL = 1800  # 30 minutes
+
+    async def _periodic_backup_loop(self) -> None:
+        """Create an auto-backup every 30 minutes if the project has changed."""
+        try:
+            while True:
+                await asyncio.sleep(60)  # Check every 60 seconds
+                if not self._dirty_since_backup:
+                    continue
+                if self._last_backup_time and (time.time() - self._last_backup_time < self._PERIODIC_BACKUP_INTERVAL):
+                    continue
+                try:
+                    from server.core.backup_manager import create_backup
+                    create_backup(self.project_path.parent, "Auto-backup")
+                    self._dirty_since_backup = False
+                    self._last_backup_time = time.time()
+                except Exception:
+                    log.debug("Periodic backup failed", exc_info=True)
+        except asyncio.CancelledError:
+            pass
+
+    def create_backup(self, reason: str) -> None:
+        """Convenience method to create a named backup of the current project."""
+        from server.core.backup_manager import create_backup
+        result = create_backup(self.project_path.parent, reason)
+        if result:
+            self._last_backup_time = time.time()
+            self._dirty_since_backup = False
+
     # --- ISC helpers ---
 
     async def _start_isc(self) -> None:
@@ -997,6 +1047,7 @@ class Engine:
             handler = CommandHandler(
                 self.cloud_agent, self.devices, self.events,
                 reload_fn=self.reload_project,
+                project_path=self.project_path,
             )
             self.cloud_agent.set_command_handler(handler)
 
@@ -1004,6 +1055,7 @@ class Engine:
             ai_tool_handler = AIToolHandler(
                 self.cloud_agent, self.devices, self.events,
                 reload_fn=self.reload_project,
+                project_path=self.project_path,
             )
             self.cloud_agent.set_ai_tool_handler(ai_tool_handler)
 

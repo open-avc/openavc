@@ -9,7 +9,6 @@ import json
 import os
 import shutil
 import tempfile
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -403,17 +402,6 @@ def load_project(path: str | Path) -> ProjectConfig:
     return project
 
 
-def _rotate_backups(directory: Path, stem: str, max_backups: int = 5) -> None:
-    """Keep only the most recent *max_backups* timestamped backup files."""
-    pattern = f"{stem}.*.avc.bak"
-    backups = sorted(directory.glob(pattern), key=lambda p: p.stat().st_mtime)
-    while len(backups) > max_backups:
-        oldest = backups.pop(0)
-        try:
-            oldest.unlink()
-            log.debug(f"Removed old backup: {oldest.name}")
-        except OSError:
-            pass
 
 
 def build_driver_dependencies(project: ProjectConfig) -> list[DriverDependency]:
@@ -545,8 +533,8 @@ def save_project(path: str | Path, project: ProjectConfig) -> None:
     Save a ProjectConfig back to a JSON file atomically.
 
     Auto-populates driver_dependencies from project devices.
-    Creates a .avc.bak copy and timestamped backups (last 5 kept)
-    before overwriting the existing file.
+    Creates a .avc.bak crash-protection copy before overwriting
+    the existing file.
 
     Uses write-to-temp-then-rename for crash safety: if the process dies
     mid-write, the original file remains intact.
@@ -573,18 +561,12 @@ def save_project(path: str | Path, project: ProjectConfig) -> None:
     content = json.dumps(data, indent=4, ensure_ascii=False)
 
     with _project_save_lock:
-        # Backup existing file before overwriting — fail fast if backup fails
+        # Crash-protection backup — single rolling copy before each write
         if path.exists():
             try:
-                # Quick-restore backup
                 shutil.copy2(path, path.with_suffix(".avc.bak"))
-                # Timestamped backup
-                stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                ts_backup = path.parent / f"{path.stem}.{stamp}.avc.bak"
-                shutil.copy2(path, ts_backup)
-                _rotate_backups(path.parent, path.stem)
             except OSError as e:
-                log.error(f"Cannot create project backup — aborting save: {e}")
+                log.error(f"Cannot create crash-protection backup — aborting save: {e}")
                 from server.api.error_messages import friendly_save_error
                 raise OSError(friendly_save_error(e)) from e
 

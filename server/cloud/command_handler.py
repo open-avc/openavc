@@ -43,6 +43,7 @@ class CommandHandler:
         events: EventBus,
         reload_fn=None,
         update_manager=None,
+        project_path=None,
     ):
         """
         Args:
@@ -51,12 +52,14 @@ class CommandHandler:
             events: EventBus for emitting audit events.
             reload_fn: Optional async callable to trigger project reload.
             update_manager: Optional UpdateManager for cloud-triggered updates.
+            project_path: Path to the active project.avc file.
         """
         self._agent = agent
         self._devices = devices
         self._events = events
         self._reload_fn = reload_fn
         self._update_manager = update_manager
+        self._project_path = project_path
 
     async def handle(self, msg: dict[str, Any]) -> None:
         """
@@ -133,14 +136,18 @@ class CommandHandler:
             "request_id": request_id,
         })
 
-        if self._reload_fn:
+        if self._reload_fn and self._project_path:
             try:
+                from pathlib import Path
+                from server.core.project_loader import ProjectConfig, save_project
+                from server.core.backup_manager import create_backup
+
+                project_path = Path(self._project_path)
+
                 # Capture previous config for rollback support
                 previous_json = None
                 try:
                     import json
-                    from pathlib import Path
-                    project_path = Path("project.avc")
                     if project_path.exists():
                         previous_json = json.loads(project_path.read_text(encoding="utf-8"))
                 except (OSError, json.JSONDecodeError, ValueError):
@@ -148,22 +155,16 @@ class CommandHandler:
 
                 # Write new project_json to disk if provided
                 if project_json:
-                    import json
-                    from pathlib import Path
-                    from server.core.project_loader import ProjectConfig
-
                     # Validate against schema before writing to disk
                     try:
-                        ProjectConfig.model_validate(project_json)
+                        project = ProjectConfig.model_validate(project_json)
                     except (ValueError, TypeError) as ve:
                         await self._send_result(request_id, False, error=f"Invalid project schema: {ve}")
                         return
 
-                    project_path = Path("project.avc")
-                    project_path.write_text(
-                        json.dumps(project_json, indent=2),
-                        encoding="utf-8",
-                    )
+                    # Create backup before overwriting
+                    create_backup(project_path.parent, "Before cloud config push")
+                    save_project(project_path, project)
 
                 await self._reload_fn()
 

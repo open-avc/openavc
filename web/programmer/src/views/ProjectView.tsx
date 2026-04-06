@@ -41,9 +41,10 @@ export function ProjectView() {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
 
   // Backup state
-  const [backups, setBackups] = useState<Array<{filename: string; size: number; modified: number}>>([]);
+  const [backups, setBackups] = useState<api.BackupInfo[]>([]);
   const [backupsLoading, setBackupsLoading] = useState(false);
   const [restoreConfirm, setRestoreConfirm] = useState<string | null>(null);
+  const [creatingBackup, setCreatingBackup] = useState(false);
 
   // Form states
   const [saveAsId, setSaveAsId] = useState("");
@@ -248,6 +249,7 @@ export function ProjectView() {
       await api.restoreBackup(filename);
       await loadProject();
       showSuccess("Project restored successfully.");
+      await refreshBackups();
     } catch (e) {
       showError(String(e));
     } finally {
@@ -536,9 +538,37 @@ export function ProjectView() {
 
       {/* Backups */}
       <div style={{ marginTop: "var(--space-2xl)", maxWidth: 600 }}>
-        <h3 style={{ fontSize: "var(--font-size-base)", color: "var(--text-secondary)", marginBottom: "var(--space-md)" }}>
-          Backups
-        </h3>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "var(--space-md)" }}>
+          <h3 style={{ fontSize: "var(--font-size-base)", color: "var(--text-secondary)", margin: 0 }}>
+            Backups
+          </h3>
+          <button
+            onClick={async () => {
+              setCreatingBackup(true);
+              try {
+                await api.createBackup();
+                showSuccess("Backup created.");
+                await refreshBackups();
+              } catch {
+                showError("Failed to create backup.");
+              } finally {
+                setCreatingBackup(false);
+              }
+            }}
+            disabled={busy || creatingBackup}
+            style={{
+              padding: "var(--space-xs) var(--space-md)",
+              borderRadius: "var(--border-radius)",
+              background: "var(--accent)",
+              color: "var(--accent-text)",
+              fontSize: "var(--font-size-sm)",
+              cursor: "pointer",
+              opacity: creatingBackup ? 0.6 : 1,
+            }}
+          >
+            {creatingBackup ? "Creating..." : "Create Backup"}
+          </button>
+        </div>
         <div style={{
           background: "var(--bg-surface)",
           borderRadius: "var(--border-radius)",
@@ -551,7 +581,7 @@ export function ProjectView() {
             </div>
           ) : backups.length === 0 ? (
             <div style={{ padding: "var(--space-lg)", color: "var(--text-muted)", textAlign: "center" }}>
-              No backups available. Backups are created automatically when the project is saved.
+              No backups yet. Backups are created automatically before important operations, or click Create Backup.
             </div>
           ) : (
             backups.map((b, i) => (
@@ -567,10 +597,10 @@ export function ProjectView() {
               >
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{ fontSize: "var(--font-size-sm)", fontWeight: 500 }}>
-                    {b.filename}
+                    {b.reason}
                   </div>
                   <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                    {new Date(b.modified * 1000).toLocaleString()} · {Math.round(b.size / 1024)} KB
+                    {b.timestamp ? new Date(b.timestamp).toLocaleString() : "Unknown"} · {Math.round(b.size / 1024)} KB{b.format === "legacy" ? " · Legacy" : ""}
                   </div>
                 </div>
                 <button
@@ -596,7 +626,7 @@ export function ProjectView() {
           color: "var(--text-muted)",
           lineHeight: 1.5,
         }}>
-          OpenAVC keeps the last 5 timestamped backups. Restoring replaces the current project and reloads.
+          Backups are created automatically before project replacement, AI changes, and cloud updates. Restoring replaces the current project and reloads.
         </p>
       </div>
 

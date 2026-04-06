@@ -75,11 +75,11 @@ The **Project Library** (visible at the bottom of the Program view) stores saved
 - **Import/Export**: download project files as `.avc` or `.zip`, upload files from other instances
 - **Delete**: remove a saved project from the library
 
-Each project save automatically creates a `.avc.bak` backup and keeps the last 5 timestamped backups, so opening a different project is always recoverable.
+OpenAVC automatically creates a backup before important operations like opening a different project, creating a blank project, AI changes, and cloud config pushes. Backups are ZIP files that include the project file, scripts, and assets, so restoring always returns you to a complete working state.
 
 ### Backups
 
-The **Backups** section at the bottom of the Program view lists automatic backup files with timestamps. If you need to revert to an earlier version, click **Restore** on any backup to replace the current project with that snapshot.
+The **Backups** section at the bottom of the Program view lists your backup history with the reason each was created. Click **Restore** on any backup to replace the current project with that snapshot. You can also click **Create Backup** to save a manual checkpoint at any time. A periodic auto-backup runs every 30 minutes if the project has been modified.
 
 ## Log View
 

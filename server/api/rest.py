@@ -1517,6 +1517,7 @@ async def open_from_library(request: Request) -> dict[str, Any]:
     """Replace the current project with a saved project from the library."""
     from server.api.models import LibraryOpenRequest
     from server.core.project_library import open_from_library as _open, sanitize_id
+    from server.core.backup_manager import create_backup
 
     engine = _get_engine()
     body = await request.json()
@@ -1524,6 +1525,9 @@ async def open_from_library(request: Request) -> dict[str, Any]:
 
     project_id = sanitize_id(data.project_id or data.project_name)
     scripts_dir = engine.project_path.parent / "scripts"
+
+    # Back up current project (including scripts) before replacing
+    create_backup(engine.project_path.parent, f"Before opening '{data.project_name}'")
 
     try:
         _open(data.library_id, engine.project_path, scripts_dir,
@@ -1545,12 +1549,16 @@ async def open_from_library(request: Request) -> dict[str, Any]:
 async def create_blank(request: Request) -> dict[str, Any]:
     """Reset to an empty project."""
     from server.core.project_library import create_blank_project, sanitize_id, replace_scripts
+    from server.core.backup_manager import create_backup
 
     engine = _get_engine()
     body = await request.json()
 
     project_name = body.get("project_name", "New Room")
     project_id = sanitize_id(body.get("project_id") or project_name)
+
+    # Back up current project before replacing with blank
+    create_backup(engine.project_path.parent, "Before creating blank project")
 
     project = create_blank_project(project_id, project_name)
     save_project(engine.project_path, project)
@@ -1581,46 +1589,66 @@ async def get_recent_logs(count: int = 100, category: str = "") -> list[dict[str
 
 
 @router.get("/backups")
-async def list_backups() -> list[dict[str, Any]]:
-    """List available project backups."""
+async def list_backups_endpoint() -> list[dict[str, Any]]:
+    """List available project backups (ZIP + legacy .avc.bak)."""
+    from server.core.backup_manager import list_backups
+
     engine = _get_engine()
     project_dir = engine.project_path.parent
-    backups = []
-    for f in sorted(project_dir.glob("*.avc.bak"), key=lambda p: p.stat().st_mtime, reverse=True):
-        stat = f.stat()
-        backups.append({
-            "filename": f.name,
-            "size": stat.st_size,
-            "modified": stat.st_mtime,
-        })
-    return backups
+    backups = list_backups(project_dir)
+    return [
+        {
+            "filename": b.filename,
+            "reason": b.reason,
+            "timestamp": b.timestamp,
+            "project_name": b.project_name,
+            "size": b.size_bytes,
+            "format": b.format,
+        }
+        for b in backups
+    ]
 
 
-@router.post("/backups/{filename}/restore")
+@router.post("/backups/create")
+async def create_backup_endpoint(request: Request) -> dict[str, Any]:
+    """Create a manual backup of the current project."""
+    from server.core.backup_manager import create_backup
+
+    engine = _get_engine()
+    body = await request.json() if request.headers.get("content-length", "0") != "0" else {}
+    reason = body.get("reason", "Manual backup")
+
+    path = create_backup(engine.project_path.parent, reason)
+    if not path:
+        raise HTTPException(status_code=404, detail="No project to back up")
+    return {"status": "created", "filename": path.name}
+
+
+@router.post("/backups/{filename:path}/restore")
 async def restore_backup(filename: str) -> dict[str, Any]:
-    """Restore a project from a backup file."""
-    import shutil
+    """Restore a project from a backup file (ZIP or legacy .avc.bak)."""
+    from server.core.backup_manager import create_backup, restore_from_backup
+
     engine = _get_engine()
     project_dir = engine.project_path.parent
+
+    # Resolve the backup path (supports both "backups/file.zip" and "file.avc.bak")
     backup_path = (project_dir / filename).resolve()
-    # Security: ensure the backup is in the project directory
+
+    # Security: ensure the backup is within the project directory tree
     try:
         backup_path.relative_to(project_dir.resolve())
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid backup filename")
     if not backup_path.exists():
         raise HTTPException(status_code=404, detail=f"Backup '{filename}' not found")
-    if not backup_path.name.endswith(".avc.bak"):
+    if not (backup_path.name.endswith(".zip") or backup_path.name.endswith(".avc.bak")):
         raise HTTPException(status_code=400, detail="Not a valid backup file")
-    # Create a pre-restore backup of current project before overwriting
-    if engine.project_path.exists():
-        from datetime import datetime
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        pre_restore = engine.project_path.with_suffix(f".pre_restore_{ts}.avc.bak")
-        shutil.copy2(engine.project_path, pre_restore)
-        log.info(f"Pre-restore backup created: {pre_restore.name}")
-    # Copy backup over the current project file
-    shutil.copy2(backup_path, engine.project_path)
+
+    # Create a backup before restoring
+    create_backup(project_dir, "Before restore")
+
+    restore_from_backup(backup_path, project_dir)
     await engine.reload_project()
     return {"status": "restored", "filename": filename}
 

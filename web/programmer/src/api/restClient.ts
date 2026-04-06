@@ -365,18 +365,30 @@ export async function getRecentLogs(
 
 export interface BackupInfo {
   filename: string;
+  reason: string;
+  timestamp: string;
+  project_name: string;
   size: number;
-  modified: number;
+  format: "zip" | "legacy";
 }
 
 export async function listBackups(): Promise<BackupInfo[]> {
   return request<BackupInfo[]>("/backups");
 }
 
+export async function createBackup(
+  reason?: string
+): Promise<{ status: string; filename: string }> {
+  return request("/backups/create", {
+    method: "POST",
+    body: JSON.stringify({ reason: reason || "Manual backup" }),
+  });
+}
+
 export async function restoreBackup(
   filename: string
 ): Promise<{ status: string; filename: string }> {
-  return request(`/backups/${filename}/restore`, { method: "POST" });
+  return request(`/backups/${encodeURIComponent(filename)}/restore`, { method: "POST" });
 }
 
 // --- Project Library ---
