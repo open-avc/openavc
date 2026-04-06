@@ -3,8 +3,13 @@
     "id": "warm-charcoal",
     "version": "1.0.0",
     "author": "OpenAVC",
-    "description": "Dark charcoal with amber and gold accents — warm and inviting for hospitality environments.",
-    "preview_colors": ["#1e1e1e", "#2a2a2a", "#FFA726", "#e0dcd5"],
+    "description": "Dark charcoal with amber and gold accents. Warm and inviting for hospitality environments.",
+    "preview_colors": [
+        "#1e1e1e",
+        "#2a2a2a",
+        "#FFA726",
+        "#e0dcd5"
+    ],
     "variables": {
         "panel_bg": "#1e1e1e",
         "panel_text": "#e0dcd5",

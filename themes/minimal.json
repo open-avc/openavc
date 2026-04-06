@@ -3,8 +3,13 @@
     "id": "minimal",
     "version": "1.0.0",
     "author": "OpenAVC",
-    "description": "White with thin borders and no fills — clean and architectural for modern spaces.",
-    "preview_colors": ["#ffffff", "#fafafa", "#607D8B", "#212121"],
+    "description": "White with thin borders and no fills. Clean and architectural for modern spaces.",
+    "preview_colors": [
+        "#ffffff",
+        "#fafafa",
+        "#607D8B",
+        "#212121"
+    ],
     "variables": {
         "panel_bg": "#ffffff",
         "panel_text": "#212121",

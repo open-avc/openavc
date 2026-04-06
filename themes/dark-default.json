@@ -3,8 +3,13 @@
     "id": "dark-default",
     "version": "1.0.0",
     "author": "OpenAVC",
-    "description": "Polished dark theme with navy background and blue accents — the standard OpenAVC look.",
-    "preview_colors": ["#1a1a2e", "#2a2a4a", "#2196F3", "#e0e0e0"],
+    "description": "Polished dark theme with navy background and blue accents. The standard OpenAVC look.",
+    "preview_colors": [
+        "#1a1a2e",
+        "#2a2a4a",
+        "#2196F3",
+        "#e0e0e0"
+    ],
     "variables": {
         "panel_bg": "#1a1a2e",
         "panel_text": "#e0e0e0",

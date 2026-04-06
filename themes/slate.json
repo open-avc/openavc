@@ -3,8 +3,13 @@
     "id": "slate",
     "version": "1.0.0",
     "author": "OpenAVC",
-    "description": "Blue-gray tones with teal accents — refined and neutral for conference rooms.",
-    "preview_colors": ["#1e2a3a", "#2d3e50", "#26A69A", "#cfd8dc"],
+    "description": "Blue-gray tones with teal accents. Refined and neutral for conference rooms.",
+    "preview_colors": [
+        "#1e2a3a",
+        "#2d3e50",
+        "#26A69A",
+        "#cfd8dc"
+    ],
     "variables": {
         "panel_bg": "#1e2a3a",
         "panel_text": "#cfd8dc",

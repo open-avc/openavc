@@ -3,8 +3,13 @@
     "id": "light-modern",
     "version": "1.0.0",
     "author": "OpenAVC",
-    "description": "Clean white and light gray with blue accents — ideal for schools, offices, and bright environments.",
-    "preview_colors": ["#f5f5f5", "#ffffff", "#1976D2", "#212121"],
+    "description": "Clean white and light gray with blue accents. Ideal for schools, offices, and bright environments.",
+    "preview_colors": [
+        "#f5f5f5",
+        "#ffffff",
+        "#1976D2",
+        "#212121"
+    ],
     "variables": {
         "panel_bg": "#f5f5f5",
         "panel_text": "#212121",

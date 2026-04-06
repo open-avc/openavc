@@ -8,6 +8,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Activity, Zap } from "lucide-react";
 import { useConnectionStore } from "../../store/connectionStore";
+import { showError } from "../../store/toastStore";
 import { usePluginStore } from "../../store/pluginStore";
 import { useLogStore } from "../../store/logStore";
 import type { PluginExtension } from "../../api/restClient";
@@ -474,11 +475,11 @@ function SurfaceViewRenderer({ ext }: { ext: PluginExtension }) {
   useEffect(() => {
     api.getPlugin(ext.plugin_id).then((detail) => {
       setPluginDetail(detail as unknown as Record<string, unknown>);
-    }).catch(console.error);
+    }).catch(() => showError(`Failed to load plugin details for '${ext.plugin_id}'`));
 
     api.getPluginConfig(ext.plugin_id).then((r) => {
       setConfig(r.config);
-    }).catch(console.error);
+    }).catch(() => showError(`Failed to load config for plugin '${ext.plugin_id}'`));
   }, [ext.plugin_id]);
 
   const handleConfigChange = useCallback(

@@ -219,6 +219,7 @@ export function ProjectView() {
       const file = input.files?.[0];
       if (!file) return;
       setBusy(true);
+      showInfo("Importing project...");
       try {
         const result = await api.importToLibrary(file);
         await refreshLibrary();

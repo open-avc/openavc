@@ -3,8 +3,13 @@
     "id": "midnight-blue",
     "version": "1.0.0",
     "author": "OpenAVC",
-    "description": "Deep navy with indigo buttons and sky blue accents — designed for corporate boardrooms.",
-    "preview_colors": ["#0a1628", "#0f1f3d", "#42a5f5", "#cfd8dc"],
+    "description": "Deep navy with indigo buttons and sky blue accents. Designed for corporate boardrooms.",
+    "preview_colors": [
+        "#0a1628",
+        "#0f1f3d",
+        "#42a5f5",
+        "#cfd8dc"
+    ],
     "variables": {
         "panel_bg": "#0a1628",
         "panel_text": "#cfd8dc",

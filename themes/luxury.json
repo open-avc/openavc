@@ -3,8 +3,13 @@
     "id": "luxury",
     "version": "1.0.0",
     "author": "OpenAVC",
-    "description": "Near-black with gold accents and serif-inspired typography — crafted for high-end residential.",
-    "preview_colors": ["#0d0d0d", "#1a1a1a", "#D4AF37", "#e8e0d0"],
+    "description": "Near-black with gold accents and serif-inspired typography. Crafted for high-end residential.",
+    "preview_colors": [
+        "#0d0d0d",
+        "#1a1a1a",
+        "#D4AF37",
+        "#e8e0d0"
+    ],
     "variables": {
         "panel_bg": "#0d0d0d",
         "panel_text": "#e8e0d0",

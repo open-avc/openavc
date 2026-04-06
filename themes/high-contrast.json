@@ -3,8 +3,13 @@
     "id": "high-contrast",
     "version": "1.0.0",
     "author": "OpenAVC",
-    "description": "Pure black with bright green and white — maximum readability for accessibility and industrial use.",
-    "preview_colors": ["#000000", "#111111", "#00E676", "#ffffff"],
+    "description": "Pure black with bright green and white. Maximum readability for accessibility and industrial use.",
+    "preview_colors": [
+        "#000000",
+        "#111111",
+        "#00E676",
+        "#ffffff"
+    ],
     "variables": {
         "panel_bg": "#000000",
         "panel_text": "#ffffff",
