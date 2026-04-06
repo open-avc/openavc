@@ -15,20 +15,45 @@ interface InlineColorPickerProps {
 export function InlineColorPicker({ value, onChange }: InlineColorPickerProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const swatchRef = useRef<HTMLDivElement>(null);
+  const [popoverPos, setPopoverPos] = useState<{ top?: number; bottom?: number; left: number }>({ left: 0 });
 
   useEffect(() => {
     if (!open) return;
     const handleClick = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     };
+    const handleScroll = (e: Event) => {
+      if (ref.current && ref.current.contains(e.target as Node)) return;
+      setOpen(false);
+    };
     document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
+    document.addEventListener("scroll", handleScroll, true);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("scroll", handleScroll, true);
+    };
   }, [open]);
+
+  const handleOpen = () => {
+    if (!open && swatchRef.current) {
+      const rect = swatchRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+      const popoverHeight = 150;
+      const flipUp = spaceBelow < popoverHeight && spaceAbove > spaceBelow;
+      setPopoverPos(flipUp
+        ? { bottom: window.innerHeight - rect.top + 4, left: rect.left }
+        : { top: rect.bottom + 4, left: rect.left });
+    }
+    setOpen(!open);
+  };
 
   return (
     <div ref={ref} style={{ position: "relative", display: "flex", alignItems: "center", gap: 4 }}>
       <div
-        onClick={() => setOpen(!open)}
+        ref={swatchRef}
+        onClick={handleOpen}
         style={{
           width: 22, height: 22, borderRadius: 4, flexShrink: 0,
           backgroundColor: value || "transparent",
@@ -43,7 +68,8 @@ export function InlineColorPicker({ value, onChange }: InlineColorPickerProps) {
       />
       {open && (
         <div style={{
-          position: "absolute", zIndex: 100, top: 28, left: 0,
+          position: "fixed", zIndex: 9999,
+          top: popoverPos.top, bottom: popoverPos.bottom, left: popoverPos.left,
           background: "var(--bg-elevated)", border: "1px solid var(--border-color)",
           borderRadius: "var(--border-radius)", padding: "var(--space-xs)",
           boxShadow: "var(--shadow-lg)",

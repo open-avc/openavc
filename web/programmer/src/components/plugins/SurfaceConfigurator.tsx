@@ -11,7 +11,7 @@
  *   custom — Arbitrary positioned controls. x/y/width/height positioning.
  *   matrix — Routing matrix (Dante, NDI). Dynamic rows/cols from state.
  */
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { X, Plus, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { useConnectionStore } from "../../store/connectionStore";
 import { useProjectStore } from "../../store/projectStore";
@@ -601,6 +601,28 @@ function RoutingMatrix({
   const [presetDropdownOpen, setPresetDropdownOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const triggerBtnRef = useRef<HTMLButtonElement>(null);
+  const [dropdownPos, setDropdownPos] = useState<{ top?: number; bottom?: number; left: number; width: number }>({ left: 0, width: 180 });
+
+  // Close preset dropdown on click outside or scroll
+  useEffect(() => {
+    if (!presetDropdownOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setPresetDropdownOpen(false);
+      }
+    };
+    const handleScroll = (e: Event) => {
+      if (dropdownRef.current && dropdownRef.current.contains(e.target as Node)) return;
+      setPresetDropdownOpen(false);
+    };
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("scroll", handleScroll, true);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("scroll", handleScroll, true);
+    };
+  }, [presetDropdownOpen]);
 
   // Get row/column labels from state
   const rowPrefix = (layout.rows_state_pattern ?? "").replace("*", "");
@@ -687,9 +709,21 @@ function RoutingMatrix({
           flexWrap: "wrap",
         }}>
           {/* Preset dropdown */}
-          <div style={{ position: "relative" }} ref={dropdownRef}>
+          <div ref={dropdownRef}>
             <button
-              onClick={() => setPresetDropdownOpen(!presetDropdownOpen)}
+              ref={triggerBtnRef}
+              onClick={() => {
+                if (!presetDropdownOpen && triggerBtnRef.current) {
+                  const rect = triggerBtnRef.current.getBoundingClientRect();
+                  const spaceBelow = window.innerHeight - rect.bottom;
+                  const spaceAbove = rect.top;
+                  const flipUp = spaceBelow < 220 && spaceAbove > spaceBelow;
+                  setDropdownPos(flipUp
+                    ? { bottom: window.innerHeight - rect.top + 4, left: rect.left, width: Math.max(rect.width, 180) }
+                    : { top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, 180) });
+                }
+                setPresetDropdownOpen(!presetDropdownOpen);
+              }}
               style={{
                 ...btnStyle,
                 border: "1px solid var(--border-color)",
@@ -709,16 +743,16 @@ function RoutingMatrix({
             </button>
             {presetDropdownOpen && (
               <div style={{
-                position: "absolute",
-                top: "100%",
-                left: 0,
-                marginTop: 4,
+                position: "fixed",
+                top: dropdownPos.top,
+                bottom: dropdownPos.bottom,
+                left: dropdownPos.left,
+                minWidth: dropdownPos.width,
                 background: "var(--bg-surface)",
                 border: "1px solid var(--border-color)",
                 borderRadius: "var(--border-radius)",
                 boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                zIndex: 100,
-                minWidth: 180,
+                zIndex: 9999,
                 maxHeight: 200,
                 overflow: "auto",
               }}>
