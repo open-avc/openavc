@@ -199,7 +199,7 @@ class MacroEngine:
                 )
 
             try:
-                await self._execute_step(step, context, _conditional_depth, macro_id)
+                await self._execute_step(step, context, _conditional_depth, macro_id, stop_on_error)
             except Exception as e:  # Catch-all: isolates individual step errors from halting the macro
                 step_detail = self._step_error_detail(step, i, total)
                 log.error(f"Macro step failed: {step_detail} — {e}")
@@ -290,6 +290,7 @@ class MacroEngine:
     async def _execute_step(
         self, step: dict[str, Any], context: dict[str, Any],
         _conditional_depth: int = 0, macro_id: str | None = None,
+        stop_on_error: bool = False,
     ) -> None:
         """Execute a single macro step."""
         action = step.get("action", "")
@@ -425,6 +426,7 @@ class MacroEngine:
                     log.debug(f"  Conditional: true, running {len(then_steps)} then-step(s)")
                     await self.execute_steps(
                         then_steps, context, macro_id,
+                        stop_on_error=stop_on_error,
                         _conditional_depth=_conditional_depth + 1,
                     )
             else:
@@ -433,6 +435,7 @@ class MacroEngine:
                     log.debug(f"  Conditional: false, running {len(else_steps)} else-step(s)")
                     await self.execute_steps(
                         else_steps, context, macro_id,
+                        stop_on_error=stop_on_error,
                         _conditional_depth=_conditional_depth + 1,
                     )
                 else:
