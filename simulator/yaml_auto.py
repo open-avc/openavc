@@ -492,18 +492,46 @@ class YAMLAutoSimulator(TCPSimulator):
         """Build SIMULATOR_INFO from driver definition."""
         state_vars = driver_def.get("state_variables", {})
         initial_state = {}
+        controls = []
         for key, var_def in state_vars.items():
             var_type = var_def.get("type", "string")
+            label = var_def.get("label", key.replace("_", " ").title())
             if var_type == "integer":
                 initial_state[key] = var_def.get("min", 0)
+                v_min = var_def.get("min")
+                v_max = var_def.get("max")
+                if v_min is not None and v_max is not None:
+                    controls.append({"type": "slider", "key": key, "label": label,
+                                     "min": v_min, "max": v_max})
+                else:
+                    controls.append({"type": "indicator", "key": key, "label": label})
             elif var_type == "number":
                 initial_state[key] = 0.0
+                v_min = var_def.get("min")
+                v_max = var_def.get("max")
+                if v_min is not None and v_max is not None:
+                    controls.append({"type": "slider", "key": key, "label": label,
+                                     "min": v_min, "max": v_max, "step": 0.1})
+                else:
+                    controls.append({"type": "indicator", "key": key, "label": label})
             elif var_type == "boolean":
                 initial_state[key] = False
+                controls.append({"type": "toggle", "key": key, "label": label})
+            elif var_type == "enum":
+                values = var_def.get("values", [])
+                initial_state[key] = values[0] if values else ""
+                if key == "power":
+                    controls.append({"type": "power", "key": key})
+                elif values:
+                    controls.append({"type": "select", "key": key, "label": label,
+                                     "options": values})
+                else:
+                    controls.append({"type": "indicator", "key": key, "label": label})
             else:
                 initial_state[key] = ""
+                controls.append({"type": "indicator", "key": key, "label": label})
 
-        return {
+        info: dict = {
             "driver_id": driver_def.get("id", "unknown"),
             "name": driver_def.get("name", "Unknown") + " Simulator",
             "category": driver_def.get("category", "generic"),
@@ -517,6 +545,12 @@ class YAMLAutoSimulator(TCPSimulator):
                 ),
             },
         }
+        # Auto-generated controls from state_variables. These are the Level 0
+        # default — if the simulator: section defines explicit controls, those
+        # replace these in _merge_simulator_section().
+        if controls:
+            info["controls"] = controls
+        return info
 
 
 # ── Data classes ──
