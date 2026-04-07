@@ -113,6 +113,9 @@ class SimulationManager:
             devices_config.append({
                 "device_id": device_id,
                 "driver_id": driver_id,
+                "device_name": cfg.get("name", device_id),
+                "real_host": device_cfg.get("host", ""),
+                "real_port": device_cfg.get("port", 0),
                 "port": 0,  # auto-allocate
                 "config": {k: v for k, v in device_cfg.items()
                            if k not in ("host", "port")},

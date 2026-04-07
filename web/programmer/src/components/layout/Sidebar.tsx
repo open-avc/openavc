@@ -70,6 +70,26 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
   const simulationActive = Boolean(useConnectionStore((s) => s.liveState["system.simulation_active"]));
   const simUiUrl = String(useConnectionStore((s) => s.liveState["system.simulation_ui_url"]) ?? "");
   const [simBusy, setSimBusy] = useState(false);
+  const [showSimConfirm, setShowSimConfirm] = useState(false);
+
+  const startSimulation = async () => {
+    setSimBusy(true);
+    try {
+      const res = await fetch("/api/simulation/start", { method: "POST" });
+      if (res.ok) {
+        const data = await res.json();
+        const url = data.ui_url || "http://localhost:19500";
+        window.open(url, "openavc-simulator");
+      } else {
+        const err = await res.json().catch(() => ({ detail: "Unknown error" }));
+        showError(err.detail || "Failed to start simulation");
+      }
+    } catch {
+      showError("Failed to connect to server");
+    } finally {
+      setSimBusy(false);
+    }
+  };
 
   return (
     <nav className={styles.sidebar}>
@@ -126,25 +146,22 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
         disabled={simBusy}
         onClick={async () => {
           if (simBusy) return;
-          setSimBusy(true);
-          try {
-            if (simulationActive) {
+          if (simulationActive) {
+            setSimBusy(true);
+            try {
               await fetch("/api/simulation/stop", { method: "POST" });
-            } else {
-              const res = await fetch("/api/simulation/start", { method: "POST" });
-              if (res.ok) {
-                const data = await res.json();
-                const url = data.ui_url || "http://localhost:19500";
-                window.open(url, "openavc-simulator");
-              } else {
-                const err = await res.json().catch(() => ({ detail: "Unknown error" }));
-                showError(err.detail || "Failed to start simulation");
-              }
+            } catch {
+              showError("Failed to stop simulation");
+            } finally {
+              setSimBusy(false);
             }
-          } catch {
-            showError("Failed to connect to server");
-          } finally {
-            setSimBusy(false);
+          } else {
+            // Show confirmation unless user has dismissed it
+            if (localStorage.getItem("sim_confirm_dismissed") !== "true") {
+              setShowSimConfirm(true);
+            } else {
+              await startSimulation();
+            }
           }
         }}
         aria-label={simulationActive ? "Stop Simulation" : simBusy ? "Starting..." : "Simulate Devices"}
@@ -161,6 +178,51 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
           {simulationActive ? "Stop Simulation" : simBusy ? "Starting Simulation..." : "Simulate Devices"}
         </span>
       </button>
+      {showSimConfirm && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 10000,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          background: "rgba(0,0,0,0.6)",
+        }} onClick={(e) => { if (e.target === e.currentTarget) setShowSimConfirm(false); }}>
+          <div style={{
+            background: "var(--bg-surface)", border: "1px solid var(--border-color)",
+            borderRadius: 8, padding: "24px 28px", maxWidth: 420, width: "90%",
+            boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+          }}>
+            <h3 style={{ margin: "0 0 12px", fontSize: 16 }}>Start Device Simulation</h3>
+            <p style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6, margin: "0 0 8px" }}>
+              This will redirect all device connections to simulated virtual devices on your local machine.
+            </p>
+            <ul style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.8, margin: "0 0 16px", paddingLeft: 18 }}>
+              <li>Devices will disconnect from real hardware</li>
+              <li>Only drivers with simulation support will respond</li>
+              <li>IP addresses and ports from your project are assumed correct</li>
+              <li>Stop simulation to reconnect to real devices</li>
+            </ul>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+              <input type="checkbox" id="sim-dismiss" style={{ accentColor: "var(--accent)" }} />
+              <label htmlFor="sim-dismiss" style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                Don't show this again
+              </label>
+            </div>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button onClick={() => setShowSimConfirm(false)} style={{
+                padding: "6px 16px", borderRadius: 4, fontSize: 13,
+                background: "var(--bg-hover)", color: "var(--text-secondary)",
+              }}>Cancel</button>
+              <button onClick={async () => {
+                const dismiss = (document.getElementById("sim-dismiss") as HTMLInputElement)?.checked;
+                if (dismiss) localStorage.setItem("sim_confirm_dismissed", "true");
+                setShowSimConfirm(false);
+                await startSimulation();
+              }} style={{
+                padding: "6px 16px", borderRadius: 4, fontSize: 13,
+                background: "var(--accent)", color: "#fff",
+              }}>Start Simulation</button>
+            </div>
+          </div>
+        </div>
+      )}
       {updateAvailable && (
         <button
           className={`${styles.navItem} ${activeView === "updates" ? styles.active : ""}`}
