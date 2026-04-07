@@ -13,6 +13,7 @@ import {
   Plug,
   ArrowUpCircle,
   Settings,
+  PlayCircle,
 } from "lucide-react";
 import { usePluginStore } from "../../store/pluginStore";
 import { useConnectionStore } from "../../store/connectionStore";
@@ -62,6 +63,7 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
   const connected = useConnectionStore((s) => s.connected);
   const updateAvailable = String(useConnectionStore((s) => s.liveState["system.update_available"]) ?? "");
   const dirty = useProjectStore((s) => s.dirty);
+  const simulationActive = Boolean(useConnectionStore((s) => s.liveState["system.simulation_active"]));
 
   return (
     <nav className={styles.sidebar}>
@@ -113,6 +115,35 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
         );
       })}
       <div className={styles.spacer} />
+      <button
+        className={styles.navItem}
+        onClick={async () => {
+          try {
+            if (simulationActive) {
+              await fetch("/api/simulation/stop", { method: "POST" });
+            } else {
+              await fetch("/api/simulation/start", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({}),
+              });
+              // Open simulator UI in new tab after a short delay
+              setTimeout(() => window.open("http://localhost:19500", "_blank"), 2500);
+            }
+          } catch { /* handled via state update */ }
+        }}
+        aria-label={simulationActive ? "Stop Simulation" : "Start Simulation"}
+        style={{
+          background: simulationActive ? "rgba(34, 197, 94, 0.15)" : undefined,
+          color: simulationActive ? "#22c55e" : undefined,
+          marginBottom: "var(--space-xs)",
+        }}
+      >
+        <PlayCircle size={20} />
+        <span className={styles.tooltip}>
+          {simulationActive ? "Simulation Active (click to stop)" : "Simulate Devices"}
+        </span>
+      </button>
       {updateAvailable && (
         <button
           className={`${styles.navItem} ${activeView === "updates" ? styles.active : ""}`}

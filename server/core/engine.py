@@ -62,6 +62,10 @@ class Engine:
         self.cloud_agent = None  # CloudAgent, initialized in start() if enabled
         self.update_manager = None  # UpdateManager, initialized in start()
 
+        # Simulation
+        from server.core.simulation import SimulationManager
+        self.simulation = SimulationManager(self)
+
         # Wire StateStore -> EventBus
         self.state.set_event_bus(self.events)
 
@@ -370,6 +374,10 @@ class Engine:
                 await self._periodic_backup_task
             except asyncio.CancelledError:
                 pass
+
+        # Stop simulation if active
+        if self.simulation.active:
+            await self.simulation.stop()
 
         # Disconnect all devices
         await self.devices.disconnect_all()

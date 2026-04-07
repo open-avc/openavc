@@ -1977,3 +1977,32 @@ async def get_update_history() -> list[dict[str, Any]]:
     """List past updates with timestamps."""
     mgr = _get_update_manager()
     return mgr.get_history()
+
+
+# ── Simulation ──
+
+
+@router.get("/simulation/status")
+async def simulation_status() -> dict[str, Any]:
+    """Get simulation status."""
+    return engine.simulation.status()
+
+
+@router.post("/simulation/start")
+async def simulation_start(body: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Start simulation for all devices (or specific device_ids)."""
+    device_ids = None
+    if body and "device_ids" in body:
+        device_ids = body["device_ids"]
+    try:
+        result = await engine.simulation.start(device_ids)
+        return result
+    except RuntimeError as e:
+        raise HTTPException(400, str(e))
+
+
+@router.post("/simulation/stop")
+async def simulation_stop() -> dict[str, str]:
+    """Stop simulation and restore real device connections."""
+    await engine.simulation.stop()
+    return {"status": "stopped"}
