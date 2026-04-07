@@ -326,6 +326,90 @@ class SimulationManager:
             except Exception as e:
                 log.warning("Failed to reconnect %s to real device: %s", device_id, e)
 
+    async def sync(self) -> None:
+        """Sync simulated devices with the current project.
+
+        Called after project reload. Starts simulators for new devices,
+        stops and restores connections for removed devices.
+        """
+        if not self._active or not self._process or self._process.returncode is not None:
+            return
+
+        dm = self.engine.devices
+        current_device_ids = set(dm._device_configs.keys())
+        simulated_ids = set(self._sim_ports.keys())
+
+        # New devices that need simulators
+        added = current_device_ids - simulated_ids
+        # Removed devices that need cleanup
+        removed = simulated_ids - current_device_ids
+
+        if not added and not removed:
+            return
+
+        import aiohttp
+
+        sim_api = self._sim_ui_url  # e.g., http://localhost:19500
+
+        # Stop simulators for removed devices
+        for device_id in removed:
+            log.info("Simulation sync: removing %s", device_id)
+            # Restore original connection if we have it
+            orig = self._original_configs.pop(device_id, None)
+            if orig:
+                driver = dm._devices.get(device_id)
+                if driver:
+                    driver.config["host"] = orig["host"]
+                    driver.config["port"] = orig["port"]
+            # Tell simulator to stop this device
+            try:
+                async with aiohttp.ClientSession() as session:
+                    await session.post(f"{sim_api}/api/devices/{device_id}/stop")
+            except Exception as e:
+                log.warning("Failed to stop simulator for removed device %s: %s", device_id, e)
+            self._sim_ports.pop(device_id, None)
+
+        # Start simulators for new devices
+        for device_id in added:
+            cfg = dm._device_configs.get(device_id)
+            if not cfg:
+                continue
+            driver_id = cfg.get("driver", "")
+            log.info("Simulation sync: adding %s (driver=%s)", device_id, driver_id)
+            try:
+                async with aiohttp.ClientSession() as session:
+                    resp = await session.post(
+                        f"{sim_api}/api/devices/{device_id}/start",
+                        json={"driver_id": driver_id, "port": 0},
+                    )
+                    if resp.status == 200:
+                        data = await resp.json()
+                        sim_port = data.get("port", 0)
+                        if sim_port:
+                            self._sim_ports[device_id] = sim_port
+                            # Redirect connection
+                            driver = dm._devices.get(device_id)
+                            if driver:
+                                self._original_configs[device_id] = {
+                                    "host": driver.config.get("host", ""),
+                                    "port": driver.config.get("port", 0),
+                                }
+                                driver.config["host"] = "127.0.0.1"
+                                driver.config["port"] = sim_port
+                                try:
+                                    await dm.reconnect_device(device_id)
+                                except Exception as e:
+                                    log.warning("Failed to reconnect %s to simulator: %s", device_id, e)
+                            log.info("Simulation sync: %s on port %d", device_id, sim_port)
+                    else:
+                        body = await resp.text()
+                        log.warning("Simulator refused device %s: %s", device_id, body[:200])
+            except Exception as e:
+                log.warning("Failed to start simulator for new device %s: %s", device_id, e)
+
+        if added or removed:
+            log.info("Simulation sync complete: +%d -%d devices", len(added), len(removed))
+
     def status(self) -> dict:
         """Get simulation status for the API."""
         return {

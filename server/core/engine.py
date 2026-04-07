@@ -416,6 +416,10 @@ class Engine:
         # Sync devices: remove deleted, add new, update changed
         await self._sync_devices()
 
+        # If simulation is active, sync simulated devices with the new project state
+        if self.simulation.active:
+            await self.simulation.sync()
+
         # Sync plugins: add new, remove deleted, restart changed
         await self._sync_plugins()
 
