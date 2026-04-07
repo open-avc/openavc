@@ -7,6 +7,7 @@ fake protocol servers. This module handles:
   - Spawning the simulator process with the right driver/device config
   - Swapping device connection addresses to localhost:sim_port
   - Restoring original connections when simulation stops
+  - Preventing duplicate simulator processes
 """
 
 from __future__ import annotations
@@ -37,6 +38,7 @@ class SimulationManager:
         self._sim_ports: dict[str, int] = {}  # device_id → sim port
         self._active = False
         self._sim_ui_url: str | None = None
+        self._starting = False  # prevents concurrent start attempts
 
     @property
     def active(self) -> bool:
@@ -55,17 +57,47 @@ class SimulationManager:
 
         Returns dict with device_id → sim_port mappings and the UI URL.
         """
+        # Prevent concurrent starts and double-starts
+        if self._starting:
+            raise RuntimeError("Simulation is already starting")
         if self._active:
             raise RuntimeError("Simulation is already active")
 
+        # Clean up any zombie process from a previous failed start
+        await self._cleanup_process()
+
+        self._starting = True
+        try:
+            return await self._do_start(device_ids)
+        except Exception:
+            # If start fails, clean up
+            self._starting = False
+            await self._cleanup_process()
+            self._active = False
+            self._sim_ports.clear()
+            raise
+        finally:
+            self._starting = False
+
+    async def _do_start(self, device_ids: list[str] | None) -> dict:
         dm = self.engine.devices
         project = self.engine.project
         if not project:
             raise RuntimeError("No project loaded")
 
+        # Check simulator exists
+        if not _SIMULATOR_DIR.exists():
+            raise RuntimeError(
+                f"Simulator directory not found at {_SIMULATOR_DIR}. "
+                "Install openavc-simulator alongside openavc."
+            )
+
         # Determine which devices to simulate
         if device_ids is None:
             device_ids = list(dm._device_configs.keys())
+
+        if not device_ids:
+            raise RuntimeError("No devices in project to simulate")
 
         # Build simulator config
         devices_config = []
@@ -90,14 +122,18 @@ class SimulationManager:
             raise RuntimeError("No devices to simulate")
 
         # Build driver paths
-        driver_paths = [str(_DRIVERS_DIR)]
+        driver_paths = []
+        if _DRIVERS_DIR.exists():
+            driver_paths.append(str(_DRIVERS_DIR))
         driver_repo = Path(__file__).parent.parent.parent / "driver_repo"
         if driver_repo.exists():
             driver_paths.append(str(driver_repo))
-        # Also include built-in driver definitions
         builtin_defs = Path(__file__).parent.parent / "drivers" / "definitions"
         if builtin_defs.exists():
             driver_paths.append(str(builtin_defs))
+
+        if not driver_paths:
+            raise RuntimeError("No driver paths found")
 
         sim_config = {
             "driver_paths": driver_paths,
@@ -111,33 +147,67 @@ class SimulationManager:
         )
         json.dump(sim_config, config_file)
         config_file.close()
+        config_path = config_file.name
 
         log.info("Starting simulator with %d devices...", len(devices_config))
+        log.info("Simulator dir: %s", _SIMULATOR_DIR)
+        log.info("Driver paths: %s", driver_paths)
+        log.info("Config file: %s", config_path)
 
         # Spawn the simulator process
         try:
             self._process = await asyncio.create_subprocess_exec(
-                sys.executable, "-m", "simulator", "--config", config_file.name,
+                sys.executable, "-m", "simulator", "--config", config_path,
                 cwd=str(_SIMULATOR_DIR),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-        except FileNotFoundError:
-            raise RuntimeError(
-                f"Simulator not found at {_SIMULATOR_DIR}. "
-                "Make sure openavc-simulator is installed."
-            )
+        except Exception as e:
+            raise RuntimeError(f"Failed to start simulator process: {e}")
 
-        # Wait for the simulator to start (watch stdout for port assignments)
-        # The simulator logs port assignments to stderr via uvicorn
-        # Give it a few seconds to start up
-        await asyncio.sleep(2.0)
+        # Wait for the simulator to start up
+        # Read stderr for startup messages (uvicorn logs to stderr)
+        try:
+            ready = False
+            start_output = []
+            for _ in range(40):  # Up to 4 seconds
+                await asyncio.sleep(0.1)
+                if self._process.returncode is not None:
+                    # Process exited — read all output for error message
+                    stderr = ""
+                    if self._process.stderr:
+                        stderr = (await self._process.stderr.read()).decode(errors="replace")
+                    stdout = ""
+                    if self._process.stdout:
+                        stdout = (await self._process.stdout.read()).decode(errors="replace")
+                    raise RuntimeError(
+                        f"Simulator exited with code {self._process.returncode}. "
+                        f"stderr: {stderr[:500]} stdout: {stdout[:500]}"
+                    )
+                # Check if stderr has "Uvicorn running" (means it's ready)
+                if self._process.stderr:
+                    try:
+                        chunk = await asyncio.wait_for(
+                            self._process.stderr.read(4096), timeout=0.05
+                        )
+                        if chunk:
+                            text = chunk.decode(errors="replace")
+                            start_output.append(text)
+                            if "Uvicorn running" in text or "Application startup complete" in text:
+                                ready = True
+                                break
+                    except asyncio.TimeoutError:
+                        pass
 
-        if self._process.returncode is not None:
-            stderr = ""
-            if self._process.stderr:
-                stderr = (await self._process.stderr.read()).decode()
-            raise RuntimeError(f"Simulator process exited immediately: {stderr[:500]}")
+            if not ready and self._process.returncode is None:
+                # Process is running but didn't report ready — assume it's ok
+                log.warning("Simulator started but readiness not confirmed; proceeding")
+                ready = True
+
+        except RuntimeError:
+            raise
+        except Exception as e:
+            raise RuntimeError(f"Error waiting for simulator startup: {e}")
 
         # Assign ports based on auto-allocation (19000 + index)
         for i, dev_cfg in enumerate(devices_config):
@@ -158,6 +228,7 @@ class SimulationManager:
 
         # Update system state
         self.engine.state.set("system.simulation_active", True, source="simulation")
+        self.engine.state.set("system.simulation_ui_url", self._sim_ui_url, source="simulation")
 
         return {
             "devices": dict(self._sim_ports),
@@ -175,16 +246,8 @@ class SimulationManager:
         await self._restore_connections()
 
         # Kill the simulator process
-        if self._process and self._process.returncode is None:
-            self._process.terminate()
-            try:
-                await asyncio.wait_for(self._process.wait(), timeout=5.0)
-            except asyncio.TimeoutError:
-                self._process.kill()
-                await self._process.wait()
-            log.info("Simulator process stopped")
+        await self._cleanup_process()
 
-        self._process = None
         self._sim_ports.clear()
         self._original_configs.clear()
         self._sim_ui_url = None
@@ -192,6 +255,24 @@ class SimulationManager:
 
         # Update system state
         self.engine.state.set("system.simulation_active", False, source="simulation")
+        self.engine.state.set("system.simulation_ui_url", None, source="simulation")
+
+    async def _cleanup_process(self) -> None:
+        """Terminate the simulator process if running."""
+        if self._process and self._process.returncode is None:
+            try:
+                self._process.terminate()
+                await asyncio.wait_for(self._process.wait(), timeout=5.0)
+            except asyncio.TimeoutError:
+                self._process.kill()
+                try:
+                    await self._process.wait()
+                except Exception:
+                    pass
+            except Exception:
+                pass
+            log.info("Simulator process stopped")
+        self._process = None
 
     async def _redirect_connections(self) -> None:
         """Swap device host/port to point at the simulator."""
@@ -213,7 +294,7 @@ class SimulationManager:
             driver.config["port"] = sim_port
 
             log.info(
-                "Redirected %s: %s:%s → 127.0.0.1:%d",
+                "Redirected %s: %s:%s -> 127.0.0.1:%d",
                 device_id,
                 self._original_configs[device_id]["host"],
                 self._original_configs[device_id]["port"],
@@ -249,6 +330,7 @@ class SimulationManager:
         """Get simulation status for the API."""
         return {
             "active": self._active,
+            "starting": self._starting,
             "ui_url": self._sim_ui_url,
             "devices": dict(self._sim_ports),
             "process_alive": (

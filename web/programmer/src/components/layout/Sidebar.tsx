@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Monitor,
   Cpu,
@@ -14,10 +15,13 @@ import {
   ArrowUpCircle,
   Settings,
   PlayCircle,
+  StopCircle,
+  Loader2,
 } from "lucide-react";
 import { usePluginStore } from "../../store/pluginStore";
 import { useConnectionStore } from "../../store/connectionStore";
 import { useProjectStore } from "../../store/projectStore";
+import { showError } from "../../store/toastStore";
 import styles from "../../styles/sidebar.module.css";
 
 export type ViewId =
@@ -64,6 +68,8 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
   const updateAvailable = String(useConnectionStore((s) => s.liveState["system.update_available"]) ?? "");
   const dirty = useProjectStore((s) => s.dirty);
   const simulationActive = Boolean(useConnectionStore((s) => s.liveState["system.simulation_active"]));
+  const simUiUrl = String(useConnectionStore((s) => s.liveState["system.simulation_ui_url"]) ?? "");
+  const [simBusy, setSimBusy] = useState(false);
 
   return (
     <nav className={styles.sidebar}>
@@ -117,31 +123,42 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
       <div className={styles.spacer} />
       <button
         className={styles.navItem}
+        disabled={simBusy}
         onClick={async () => {
+          if (simBusy) return;
+          setSimBusy(true);
           try {
             if (simulationActive) {
               await fetch("/api/simulation/stop", { method: "POST" });
             } else {
-              await fetch("/api/simulation/start", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({}),
-              });
-              // Open simulator UI in new tab after a short delay
-              setTimeout(() => window.open("http://localhost:19500", "_blank"), 2500);
+              const res = await fetch("/api/simulation/start", { method: "POST" });
+              if (res.ok) {
+                const data = await res.json();
+                const url = data.ui_url || "http://localhost:19500";
+                window.open(url, "openavc-simulator");
+              } else {
+                const err = await res.json().catch(() => ({ detail: "Unknown error" }));
+                showError(err.detail || "Failed to start simulation");
+              }
             }
-          } catch { /* handled via state update */ }
+          } catch {
+            showError("Failed to connect to server");
+          } finally {
+            setSimBusy(false);
+          }
         }}
-        aria-label={simulationActive ? "Stop Simulation" : "Start Simulation"}
+        aria-label={simulationActive ? "Stop Simulation" : simBusy ? "Starting..." : "Simulate Devices"}
         style={{
           background: simulationActive ? "rgba(34, 197, 94, 0.15)" : undefined,
           color: simulationActive ? "#22c55e" : undefined,
+          opacity: simBusy ? 0.6 : 1,
           marginBottom: "var(--space-xs)",
         }}
       >
-        <PlayCircle size={20} />
+        {simBusy ? <Loader2 size={20} style={{ animation: "spin 1s linear infinite" }} /> :
+         simulationActive ? <StopCircle size={20} /> : <PlayCircle size={20} />}
         <span className={styles.tooltip}>
-          {simulationActive ? "Simulation Active (click to stop)" : "Simulate Devices"}
+          {simulationActive ? "Stop Simulation" : simBusy ? "Starting Simulation..." : "Simulate Devices"}
         </span>
       </button>
       {updateAvailable && (

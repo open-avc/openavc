@@ -1989,11 +1989,15 @@ async def simulation_status() -> dict[str, Any]:
 
 
 @router.post("/simulation/start")
-async def simulation_start(body: dict[str, Any] | None = None) -> dict[str, Any]:
+async def simulation_start(request: Request) -> dict[str, Any]:
     """Start simulation for all devices (or specific device_ids)."""
     device_ids = None
-    if body and "device_ids" in body:
-        device_ids = body["device_ids"]
+    try:
+        body = await request.json()
+        if body and "device_ids" in body:
+            device_ids = body["device_ids"]
+    except Exception:
+        pass  # No body or invalid JSON — simulate all devices
     try:
         result = await _get_engine().simulation.start(device_ids)
         return result
