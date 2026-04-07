@@ -519,6 +519,7 @@ export interface CommunityDriver {
   author: string;
   transport: string;
   verified: boolean;
+  simulated?: boolean;
   description: string;
   protocols?: string[];
   ports?: number[];

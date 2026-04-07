@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Search, CheckCircle, Download, RefreshCw, AlertTriangle, Shield, X } from "lucide-react";
+import { Search, CheckCircle, Download, RefreshCw, AlertTriangle, Shield, X, PlayCircle } from "lucide-react";
 import { useDriverBuilderStore } from "../../store/driverBuilderStore";
 import type { CommunityDriver } from "../../api/types";
 
@@ -331,6 +331,11 @@ function DriverCard({
                 <Shield size={14} style={{ color: "var(--color-success)" }} />
               </span>
             )}
+            {driver.simulated && (
+              <span title="Simulator available" style={{ display: "flex", flexShrink: 0 }}>
+                <PlayCircle size={14} style={{ color: "var(--accent)" }} />
+              </span>
+            )}
           </div>
           <div
             style={{
@@ -529,6 +534,9 @@ function CommunityDriverDetail({
               <h2 style={{ margin: 0, fontSize: "1.25rem" }}>{driver.name}</h2>
               {driver.verified && (
                 <span title="Verified driver"><Shield size={16} style={{ color: "var(--color-success)" }} /></span>
+              )}
+              {driver.simulated && (
+                <span title="Simulator available"><PlayCircle size={16} style={{ color: "var(--accent)" }} /></span>
               )}
             </div>
             <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", marginTop: 4 }}>
