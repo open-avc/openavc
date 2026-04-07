@@ -219,7 +219,7 @@ class BaseSimulator(ABC):
 
     def to_info_dict(self) -> dict:
         """Serialize simulator info for the API."""
-        return {
+        info = {
             "device_id": self.device_id,
             "device_name": getattr(self, "_device_name", self.device_id),
             "real_host": getattr(self, "_real_host", ""),
@@ -237,6 +237,10 @@ class BaseSimulator(ABC):
                 for k, v in self._error_modes.items()
             },
         }
+        controls = self.SIMULATOR_INFO.get("controls")
+        if controls:
+            info["controls"] = controls
+        return info
 
 
 class StateMachine:

@@ -7,6 +7,7 @@ import { SwitcherPanel } from "./devices/SwitcherPanel";
 import { AudioPanel } from "./devices/AudioPanel";
 import { CameraPanel } from "./devices/CameraPanel";
 import { GenericPanel } from "./devices/GenericPanel";
+import { DynamicControls } from "./controls/DynamicControls";
 import {
   Projector,
   Monitor,
@@ -67,8 +68,14 @@ export function DeviceCard({ device }: { device: DeviceInfo }) {
         )}
       </div>
 
-      {/* Category-specific visual + controls */}
-      <Panel device={device} onStateChange={handleStateChange} />
+      {/* Declarative controls or category-specific panel */}
+      {device.controls && device.controls.length > 0 ? (
+        <div className="controls-panel">
+          <DynamicControls controls={device.controls} state={device.state} onStateChange={handleStateChange} />
+        </div>
+      ) : (
+        <Panel device={device} onStateChange={handleStateChange} />
+      )}
 
       {/* Error injection */}
       {errors.length > 0 && (

@@ -40,6 +40,11 @@ class YAMLAutoSimulator(TCPSimulator):
         self.SIMULATOR_INFO = self._build_info(driver_def)
         super().__init__(device_id, config)
 
+        # YAML drivers are text-based — always use flexible line reading
+        # so the simulator accepts \r, \n, or \r\n regardless of the
+        # response delimiter configured in the driver definition.
+        self._line_mode = True
+
         self._driver_def = driver_def
 
         # Build handlers from driver definition
@@ -88,6 +93,12 @@ class YAMLAutoSimulator(TCPSimulator):
             m = handler.pattern.match(text)
             if m:
                 return self._execute_explicit_handler(handler, m)
+
+        # Try script handlers (match: + handler: with inline Python)
+        for handler in self._script_handlers:
+            m = handler.pattern.match(text)
+            if m:
+                return self._execute_script_handler(handler, m)
 
         # Try auto-generated command handlers
         for handler in self._command_handlers:
@@ -149,6 +160,53 @@ class YAMLAutoSimulator(TCPSimulator):
             response_text = self._resolve_template(handler.respond, m)
             return response_text.encode()
 
+        return None
+
+    def _execute_script_handler(self, handler: ScriptHandler, m: re.Match) -> bytes | None:
+        """Execute a script handler (match: + handler: with inline Python).
+
+        Scripts get: match (regex match), state (proxy dict that notifies on
+        writes), config (device config), respond(text) (send response).
+        """
+        response_data: list[str] = []
+
+        def respond(text: str) -> None:
+            response_data.append(text)
+
+        # Wrap state in a proxy so writes go through set_state (triggers UI)
+        state_proxy = _StateProxy(self._state, self.set_state)
+
+        namespace = {
+            "match": m,
+            "state": state_proxy,
+            "config": self.config,
+            "respond": respond,
+            "int": int,
+            "float": float,
+            "str": str,
+            "bool": bool,
+            "max": max,
+            "min": min,
+            "format": format,
+            "round": round,
+            "abs": abs,
+            "len": len,
+            "True": True,
+            "False": False,
+            "None": None,
+        }
+
+        try:
+            exec(handler.code, {"__builtins__": {}}, namespace)  # noqa: S102
+        except Exception:
+            logger.exception(
+                "%s: script handler error for pattern %s",
+                self.device_id, handler.pattern.pattern,
+            )
+            return None
+
+        if response_data:
+            return response_data[0].encode()
         return None
 
     # ── Build handlers from driver definition ──
@@ -327,6 +385,11 @@ class YAMLAutoSimulator(TCPSimulator):
         for mode, mode_def in sim.get("error_modes", {}).items():
             self._error_modes[mode] = mode_def
 
+        # Add declarative controls schema
+        controls = sim.get("controls")
+        if controls:
+            self.SIMULATOR_INFO["controls"] = controls
+
         # Build state machines
         from simulator.base import StateMachine
         for name, sm_def in sim.get("state_machines", {}).items():
@@ -339,25 +402,41 @@ class YAMLAutoSimulator(TCPSimulator):
             )
             self._state[name] = sm_def["initial"]
 
-        # Build explicit command handlers
+        # Build command handlers from simulator: section
+        # Two formats supported:
+        #   receive: + respond:/set_state: → ExplicitHandler (template-based)
+        #   match: + handler: → ScriptHandler (inline Python)
         self._explicit_handlers: list[ExplicitHandler] = []
+        self._script_handlers: list[ScriptHandler] = []
         for handler_def in sim.get("command_handlers", []):
-            receive = handler_def.get("receive", "")
-            if not receive:
+            # Accept both "receive" and "match" as the pattern key
+            pattern_str = handler_def.get("receive") or handler_def.get("match", "")
+            if not pattern_str:
                 continue
             try:
-                pattern = re.compile(f"^{receive}$")
+                pattern = re.compile(f"^{pattern_str}$")
             except re.error:
-                logger.warning("Invalid regex in simulator command_handler: %s", receive)
+                logger.warning("Invalid regex in simulator command_handler: %s", pattern_str)
                 continue
-            self._explicit_handlers.append(ExplicitHandler(
-                pattern=pattern,
-                respond=handler_def.get("respond"),
-                set_state=handler_def.get("set_state", {}),
-            ))
 
-    # Ensure _explicit_handlers exists even without simulator: section
+            if "handler" in handler_def:
+                # Script handler — inline Python code
+                code = compile(handler_def["handler"], f"<sim:{self.driver_id}>", "exec")
+                self._script_handlers.append(ScriptHandler(
+                    pattern=pattern,
+                    code=code,
+                ))
+            else:
+                # Template handler — respond/set_state
+                self._explicit_handlers.append(ExplicitHandler(
+                    pattern=pattern,
+                    respond=handler_def.get("respond"),
+                    set_state=handler_def.get("set_state", {}),
+                ))
+
+    # Ensure handler lists exist even without simulator: section
     _explicit_handlers: list[ExplicitHandler] = []
+    _script_handlers: list[ScriptHandler] = []
 
     # ── Helpers ──
 
@@ -464,6 +543,35 @@ class ExplicitHandler:
         self.pattern = pattern
         self.respond = respond
         self.set_state = set_state
+
+
+class ScriptHandler:
+    """Script handler from simulator: command_handlers with inline Python."""
+    def __init__(self, pattern: re.Pattern, code: Any):
+        self.pattern = pattern
+        self.code = code
+
+
+class _StateProxy(dict):
+    """Dict proxy that routes writes through set_state for change notification."""
+
+    def __init__(self, state: dict, set_state_fn: Any):
+        super().__init__(state)
+        self._real = state
+        self._set_state = set_state_fn
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        self._set_state(key, value)
+        super().__setitem__(key, value)
+
+    def __getitem__(self, key: str) -> Any:
+        return self._real[key]
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return self._real.get(key, default)
+
+    def __contains__(self, key: object) -> bool:
+        return key in self._real
 
 
 class StateResponse:

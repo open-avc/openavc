@@ -471,3 +471,212 @@ input, select {
   border-radius: 2px;
   transition: height 0.3s;
 }
+
+/* ── Declarative Controls ── */
+
+.dynamic-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.ctrl-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+/* Power */
+.ctrl-power {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.ctrl-power-label {
+  font-size: 13px;
+  font-weight: 500;
+  flex: 1;
+}
+
+/* Select */
+.ctrl-select {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.ctrl-select-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Toggle — uses .ctrl-btn directly, no extra styles needed */
+
+/* Presets */
+.ctrl-presets {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+/* Group */
+.ctrl-group {
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  overflow: hidden;
+  width: 100%;
+}
+
+.ctrl-group-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  padding: 6px 10px;
+  background: var(--bg-hover);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.ctrl-group-content {
+  padding: 10px;
+}
+
+/* Indicator */
+.ctrl-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 0;
+  font-size: 13px;
+  width: 100%;
+}
+
+.ctrl-indicator-value {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.ctrl-indicator-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Matrix */
+.ctrl-matrix {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.matrix-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.matrix-row {
+  display: flex;
+  gap: 2px;
+}
+
+.matrix-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+
+.matrix-corner {
+  width: 48px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.matrix-header {
+  flex: 1;
+  height: 24px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.matrix-label {
+  width: 48px;
+  height: 24px;
+  flex-shrink: 0;
+  justify-content: flex-end;
+  padding-right: 6px;
+  color: var(--text-secondary);
+}
+
+.matrix-point {
+  flex: 1;
+  height: 24px;
+  border-radius: 3px;
+  background: var(--bg-hover);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.matrix-point:hover {
+  background: var(--accent-dim);
+}
+
+.matrix-point.active {
+  background: var(--accent);
+}
+
+/* Meters */
+.ctrl-meters {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.meters-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  height: 60px;
+}
+
+.meter-channel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  height: 100%;
+}
+
+.meter-channel .audio-meter-bar {
+  flex: 1;
+  width: 100%;
+}
+
+.meter-label {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+
+.meter-muted {
+  font-size: 9px;
+  color: var(--color-error);
+  font-weight: 600;
+}

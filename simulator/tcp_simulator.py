@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import uuid
 from abc import abstractmethod
 
@@ -20,16 +21,26 @@ logger = logging.getLogger(__name__)
 class TCPSimulator(BaseSimulator):
     """TCP protocol simulator. You implement handle_command(); the framework does the rest."""
 
+    # Line-ending bytes — protocols that use these get flexible line reading
+    _LINE_DELIMITERS = (b"\r\n", b"\r", b"\n")
+
     def __init__(self, device_id: str, config: dict | None = None):
         super().__init__(device_id, config)
         self._server: asyncio.Server | None = None
         self._clients: dict[str, asyncio.StreamWriter] = {}
         self._delimiter: bytes | None = None
+        self._line_mode = False  # True = flexible line reading
 
         # Determine delimiter from SIMULATOR_INFO or config
         delim = self.SIMULATOR_INFO.get("delimiter") or self.config.get("delimiter")
         if delim:
             self._delimiter = delim.encode() if isinstance(delim, str) else delim
+            # Most AV text protocols use line endings (\r\n, \r, \n).
+            # Drivers may send a different terminator than the response delimiter
+            # (e.g., Kramer sends \r, responses use \r\n). Use flexible line
+            # reading for these instead of strict readuntil.
+            if self._delimiter in self._LINE_DELIMITERS:
+                self._line_mode = True
 
     # ── Override points for subclasses ──
 
@@ -114,7 +125,54 @@ class TCPSimulator(BaseSimulator):
             self._server = None
         logger.info("%s stopped", self.name)
 
-    # ── Internal client handler ──
+    # ── Internal ──
+
+    async def _read_messages(
+        self, reader: asyncio.StreamReader
+    ) -> list[bytes] | None:
+        """Read one or more messages from the stream.
+
+        Returns:
+            list[bytes] — one or more messages to process
+            []          — timeout, no data (caller should continue)
+            None        — connection closed (caller should break)
+        """
+        if self._line_mode:
+            # Flexible line reading: accept \r, \n, or \r\n as terminators.
+            # Uses read() instead of readuntil() because drivers may send a
+            # different terminator than the response delimiter (e.g., Kramer
+            # sends \r but response delimiter is \r\n).
+            try:
+                raw = await asyncio.wait_for(reader.read(4096), timeout=30.0)
+            except asyncio.TimeoutError:
+                return []
+            if not raw:
+                return None
+            # Split on any combination of \r and \n, filter empties
+            parts = re.split(rb"[\r\n]+", raw)
+            return [p for p in parts if p]
+
+        if self._delimiter:
+            # Custom delimiter (non-line, e.g., "x" for LG, ">" for Shure)
+            try:
+                data = await asyncio.wait_for(
+                    reader.readuntil(self._delimiter),
+                    timeout=30.0,
+                )
+            except asyncio.IncompleteReadError:
+                return None
+            except asyncio.TimeoutError:
+                return []
+            return [data]
+
+        # No delimiter — binary mode, read available data
+        try:
+            data = await asyncio.wait_for(reader.read(4096), timeout=30.0)
+        except asyncio.TimeoutError:
+            return []
+        if not data:
+            return None
+        return [data]
 
     async def _handle_client(
         self,
@@ -136,67 +194,57 @@ class TCPSimulator(BaseSimulator):
 
             # Read loop
             while self._running:
-                if self._delimiter:
-                    try:
-                        data = await asyncio.wait_for(
-                            reader.readuntil(self._delimiter),
-                            timeout=30.0,
-                        )
-                    except asyncio.IncompleteReadError:
-                        break
-                    except asyncio.TimeoutError:
+                messages = await self._read_messages(reader)
+                if messages is None:
+                    break  # Connection closed
+                if not messages:
+                    continue  # Timeout, no data
+
+                disconnect = False
+                for data in messages:
+                    self.log_protocol("in", data, client_id)
+
+                    # Network conditions: check for drop
+                    if self._network_layer and self._network_layer.should_drop(self.device_id):
                         continue
-                else:
-                    # Binary mode — read available data
-                    try:
-                        data = await asyncio.wait_for(
-                            reader.read(4096),
-                            timeout=30.0,
-                        )
-                    except asyncio.TimeoutError:
-                        continue
-                    if not data:
+
+                    # Network conditions: check for random disconnect
+                    if self._network_layer and self._network_layer.should_disconnect(self.device_id):
+                        logger.info("%s: network instability — dropping connection", self.name)
+                        disconnect = True
                         break
 
-                self.log_protocol("in", data, client_id)
+                    # Check for no_response error behavior
+                    if self.has_error_behavior("no_response"):
+                        continue
 
-                # Network conditions: check for drop
-                if self._network_layer and self._network_layer.should_drop(self.device_id):
-                    continue
+                    # Apply network latency (before device response delay)
+                    if self._network_layer:
+                        await self._network_layer.apply_latency(self.device_id)
 
-                # Network conditions: check for random disconnect
-                if self._network_layer and self._network_layer.should_disconnect(self.device_id):
-                    logger.info("%s: network instability — dropping connection", self.name)
+                    # Apply command response delay
+                    delay = self._delays.get("command_response", 0)
+                    if delay > 0:
+                        await asyncio.sleep(delay)
+
+                    # Handle the command
+                    try:
+                        response = self.handle_command(data)
+                    except Exception:
+                        logger.exception("%s: error in handle_command", self.name)
+                        response = None
+
+                    # Check for corrupt_response error behavior
+                    if response and self.has_error_behavior("corrupt_response"):
+                        response = _corrupt_bytes(response)
+
+                    if response:
+                        writer.write(response)
+                        await writer.drain()
+                        self.log_protocol("out", response, client_id)
+
+                if disconnect:
                     break
-
-                # Check for no_response error behavior
-                if self.has_error_behavior("no_response"):
-                    continue
-
-                # Apply network latency (before device response delay)
-                if self._network_layer:
-                    await self._network_layer.apply_latency(self.device_id)
-
-                # Apply command response delay
-                delay = self._delays.get("command_response", 0)
-                if delay > 0:
-                    await asyncio.sleep(delay)
-
-                # Handle the command
-                try:
-                    response = self.handle_command(data)
-                except Exception:
-                    logger.exception("%s: error in handle_command", self.name)
-                    response = None
-
-                # Check for corrupt_response error behavior
-                if response and self.has_error_behavior("corrupt_response"):
-                    response = _corrupt_bytes(response)
-
-                if response:
-                    writer.write(response)
-                    await writer.drain()
-                    self.log_protocol("out", response, client_id)
 
         except (ConnectionError, OSError):
             pass

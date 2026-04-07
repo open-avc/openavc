@@ -4,6 +4,90 @@
 
 const BASE = "";  // Same origin — served by the simulator server
 
+// ── Declarative Controls Schema ──
+
+export interface PowerControlDef {
+  type: "power";
+  key: string;
+  label?: string;
+}
+
+export interface SelectControlDef {
+  type: "select";
+  key: string;
+  options: string[];
+  labels?: Record<string, string>;
+  label?: string;
+}
+
+export interface SliderControlDef {
+  type: "slider";
+  key: string;
+  min: number;
+  max: number;
+  step?: number;
+  label?: string;
+  unit?: string;
+}
+
+export interface ToggleControlDef {
+  type: "toggle";
+  key: string;
+  label: string;
+}
+
+export interface MatrixControlDef {
+  type: "matrix";
+  inputs: number;
+  outputs: number;
+  state_pattern: string;
+  label?: string;
+  input_labels?: string[];
+  output_labels?: string[];
+}
+
+export interface MeterControlDef {
+  type: "meters";
+  channels: number;
+  key_pattern: string;
+  mute_pattern?: string;
+  label?: string;
+}
+
+export interface PresetControlDef {
+  type: "presets";
+  key: string;
+  count?: number;
+  names?: string[];
+  label?: string;
+}
+
+export interface GroupControlDef {
+  type: "group";
+  label: string;
+  controls: ControlDef[];
+}
+
+export interface IndicatorControlDef {
+  type: "indicator";
+  key: string;
+  label: string;
+  color_map?: Record<string, string>;
+}
+
+export type ControlDef =
+  | PowerControlDef
+  | SelectControlDef
+  | SliderControlDef
+  | ToggleControlDef
+  | MatrixControlDef
+  | MeterControlDef
+  | PresetControlDef
+  | GroupControlDef
+  | IndicatorControlDef;
+
+// ── Device Info ──
+
 export interface DeviceInfo {
   device_id: string;
   device_name: string;
@@ -18,6 +102,7 @@ export interface DeviceInfo {
   state: Record<string, unknown>;
   active_errors: string[];
   available_errors: Record<string, { description: string }>;
+  controls?: ControlDef[];
 }
 
 export interface LogEntry {
