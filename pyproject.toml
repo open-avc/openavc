@@ -22,6 +22,7 @@ dependencies = [
     "httpx==0.28.1",             # BSD-3 - Async HTTP client (for HTTP transport)
     "croniter==6.2.2",           # MIT - Cron expression parser (pure Python)
     "defusedxml==0.7.1",         # PSF - Safe XML parsing (prevents XXE/billion laughs)
+    "aiohttp==3.11.18",          # Apache-2.0 - Async HTTP server (simulator HTTP device servers)
 ]
 
 [project.optional-dependencies]

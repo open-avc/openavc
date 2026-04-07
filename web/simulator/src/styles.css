@@ -1,0 +1,473 @@
+:root {
+  --bg-base: #0f1117;
+  --bg-surface: #1a1d27;
+  --bg-elevated: #242836;
+  --bg-hover: #2d3244;
+  --border-color: #363c4e;
+  --text-primary: #e4e6ed;
+  --text-secondary: #a0a5b8;
+  --text-muted: #6b7089;
+  --accent: #8AB493;
+  --accent-dim: rgba(138, 180, 147, 0.15);
+  --color-error: #ef4444;
+  --color-warning: #f59e0b;
+  --color-success: #22c55e;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.3);
+  --border-radius: 6px;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+button {
+  font-family: inherit;
+  border: none;
+  cursor: pointer;
+  background: none;
+  color: inherit;
+}
+
+input, select {
+  font-family: inherit;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: 4px 8px;
+  font-size: 13px;
+}
+
+/* ── Layout ── */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 20px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.header-title {
+  font-size: 16px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-title svg { color: var(--accent); }
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.connection-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.connection-dot.connected { background: var(--color-success); }
+.connection-dot.disconnected { background: var(--color-error); }
+
+/* ── Device Grid ── */
+
+.main-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.device-grid {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 20px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+  align-content: start;
+}
+
+.empty-state {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-muted);
+}
+
+.empty-state h3 { margin-bottom: 8px; color: var(--text-secondary); }
+
+/* ── Device Card ── */
+
+.device-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.device-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.device-card-header .icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  background: var(--accent-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.device-card-header .info { flex: 1; min-width: 0; }
+.device-card-header .info .name { font-weight: 600; font-size: 14px; }
+.device-card-header .info .driver {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.device-card-header .port-badge {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+/* ── State Panel ── */
+
+.state-panel {
+  padding: 10px 14px;
+}
+
+.state-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 0;
+  font-size: 13px;
+}
+
+.state-key {
+  color: var(--text-secondary);
+}
+
+.state-value {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.state-value.on { color: var(--color-success); }
+.state-value.off { color: var(--text-muted); }
+.state-value.warming { color: var(--color-warning); }
+
+/* ── Controls ── */
+
+.controls-panel {
+  padding: 10px 14px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ctrl-btn {
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  transition: background 0.15s;
+}
+
+.ctrl-btn:hover { background: var(--accent-dim); color: var(--accent); }
+.ctrl-btn.active { background: var(--accent); color: #fff; }
+
+.ctrl-slider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.ctrl-slider input[type="range"] {
+  flex: 1;
+  accent-color: var(--accent);
+}
+
+.ctrl-slider .value {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  min-width: 32px;
+  text-align: right;
+}
+
+/* ── Errors Panel ── */
+
+.errors-panel {
+  padding: 8px 14px;
+  border-top: 1px solid var(--border-color);
+}
+
+.errors-panel .label {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.error-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.error-toggle.active { color: var(--color-error); }
+
+.error-toggle input[type="checkbox"] {
+  accent-color: var(--color-error);
+}
+
+/* ── Protocol Log ── */
+
+.protocol-log {
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-surface);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.protocol-log-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.protocol-log-content {
+  height: 180px;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+  padding: 4px 0;
+}
+
+.log-entry {
+  display: flex;
+  gap: 8px;
+  padding: 0 14px;
+  white-space: nowrap;
+}
+
+.log-entry:hover { background: var(--bg-hover); }
+.log-time { color: var(--text-muted); min-width: 80px; }
+.log-device { color: var(--accent); min-width: 100px; overflow: hidden; text-overflow: ellipsis; }
+.log-dir { min-width: 16px; text-align: center; }
+.log-dir.in { color: #60a5fa; }
+.log-dir.out { color: #f59e0b; }
+.log-data { color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; }
+
+/* ── Network Conditions ── */
+
+.network-dropdown {
+  position: relative;
+}
+
+.network-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--border-radius);
+  font-size: 12px;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+
+.network-btn:hover { background: var(--accent-dim); color: var(--accent); }
+
+.network-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow-lg);
+  z-index: 100;
+  min-width: 180px;
+  padding: 4px 0;
+}
+
+.network-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.network-menu button:hover { background: var(--bg-hover); color: var(--text-primary); }
+.network-menu button.active { color: var(--accent); }
+
+/* ── Visual Indicators ── */
+
+.power-led {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+.power-led.on { background: var(--color-success); box-shadow: 0 0 6px var(--color-success); }
+.power-led.off { background: #333; }
+.power-led.warming { background: var(--color-warning); animation: pulse 1s ease-in-out infinite; }
+.power-led.cooling { background: var(--color-warning); opacity: 0.6; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; box-shadow: 0 0 8px var(--color-warning); }
+}
+
+/* ── Device Visual Panels ── */
+
+.device-visual {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.display-screen {
+  width: 100%;
+  aspect-ratio: 16/9;
+  border-radius: 4px;
+  border: 2px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.3s;
+}
+
+.display-screen.on {
+  background: #1e3a5f;
+  border-color: #3b82f6;
+  color: #93c5fd;
+}
+
+.display-screen.off {
+  background: #111;
+  border-color: #333;
+  color: #444;
+}
+
+.switcher-matrix {
+  width: 100%;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.switcher-ports {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.switcher-port {
+  padding: 3px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  text-align: center;
+  min-width: 28px;
+}
+
+.switcher-port.active { background: var(--accent-dim); color: var(--accent); }
+
+.switcher-route-arrow {
+  flex: 1;
+  text-align: center;
+  color: var(--accent);
+  font-size: 18px;
+}
+
+.audio-meters {
+  width: 100%;
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  height: 40px;
+  padding: 8px 0;
+}
+
+.audio-meter-bar {
+  flex: 1;
+  background: var(--bg-hover);
+  border-radius: 2px;
+  position: relative;
+  height: 100%;
+}
+
+.audio-meter-fill {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: height 0.3s;
+}

@@ -23,9 +23,10 @@ from server.utils.logger import get_logger
 
 log = get_logger(__name__)
 
-# Path to the simulator project (sibling of openavc/)
-_SIMULATOR_DIR = Path(__file__).parent.parent.parent.parent / "openavc-simulator"
-_DRIVERS_DIR = Path(__file__).parent.parent.parent.parent / "openavc-drivers"
+# Paths relative to the openavc repo root
+_REPO_ROOT = Path(__file__).parent.parent.parent  # openavc/
+_WORKSPACE_ROOT = _REPO_ROOT.parent               # openavc-dev/
+_DRIVERS_DIR = _WORKSPACE_ROOT / "openavc-drivers"
 
 
 class SimulationManager:
@@ -86,11 +87,13 @@ class SimulationManager:
         if not project:
             raise RuntimeError("No project loaded")
 
-        # Check simulator exists
-        if not _SIMULATOR_DIR.exists():
+        # Check simulator is available
+        try:
+            import simulator  # noqa: F401
+        except ImportError:
             raise RuntimeError(
-                f"Simulator directory not found at {_SIMULATOR_DIR}. "
-                "Install openavc-simulator alongside openavc."
+                "Simulator module not found. Make sure the simulator "
+                "package is installed (it should be included with OpenAVC)."
             )
 
         # Determine which devices to simulate
@@ -154,15 +157,13 @@ class SimulationManager:
         config_path = config_file.name
 
         log.info("Starting simulator with %d devices...", len(devices_config))
-        log.info("Simulator dir: %s", _SIMULATOR_DIR)
         log.info("Driver paths: %s", driver_paths)
         log.info("Config file: %s", config_path)
 
-        # Spawn the simulator process
+        # Spawn the simulator process (module is in the same repo)
         try:
             self._process = await asyncio.create_subprocess_exec(
                 sys.executable, "-m", "simulator", "--config", config_path,
-                cwd=str(_SIMULATOR_DIR),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )

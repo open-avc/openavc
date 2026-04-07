@@ -17,6 +17,8 @@ env/
 node_modules/
 web/panel/dist/
 web/programmer/dist/
+web/simulator/dist/
+web/simulator/node_modules/
 .vite/
 
 # IDE

@@ -1228,6 +1228,6 @@ pytest tests/test_my_driver.py -v
 
 ## Adding Simulation Support
 
-The [OpenAVC Simulator](https://github.com/open-avc/openavc-simulator) lets your driver work without real hardware by running a fake protocol server. YAML drivers get simulation automatically. Python drivers need a companion `_sim.py` file.
+The OpenAVC Simulator (included with OpenAVC at `simulator/`) lets your driver work without real hardware by running a fake protocol server. YAML drivers get simulation automatically. Python drivers need a companion `_sim.py` file.
 
 For the complete guide on writing simulators, see [Writing Simulators](https://github.com/open-avc/openavc-drivers/blob/main/docs/writing-simulators.md) in the driver repository.
