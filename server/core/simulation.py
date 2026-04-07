@@ -39,6 +39,7 @@ class SimulationManager:
         self._active = False
         self._sim_ui_url: str | None = None
         self._starting = False  # prevents concurrent start attempts
+        self._monitor_task: asyncio.Task | None = None
 
     @property
     def active(self) -> bool:
@@ -233,6 +234,9 @@ class SimulationManager:
         self.engine.state.set("system.simulation_active", True, source="simulation")
         self.engine.state.set("system.simulation_ui_url", self._sim_ui_url, source="simulation")
 
+        # Start monitoring the subprocess — if it dies externally, clean up
+        self._monitor_task = asyncio.ensure_future(self._monitor_process())
+
         return {
             "devices": dict(self._sim_ports),
             "ui_url": self._sim_ui_url,
@@ -244,6 +248,15 @@ class SimulationManager:
             return
 
         log.info("Stopping simulation...")
+
+        # Cancel process monitor
+        if self._monitor_task and not self._monitor_task.done():
+            self._monitor_task.cancel()
+            try:
+                await self._monitor_task
+            except asyncio.CancelledError:
+                pass
+        self._monitor_task = None
 
         # Restore original connections
         await self._restore_connections()
@@ -259,6 +272,26 @@ class SimulationManager:
         # Update system state
         self.engine.state.set("system.simulation_active", False, source="simulation")
         self.engine.state.set("system.simulation_ui_url", None, source="simulation")
+
+    async def _monitor_process(self) -> None:
+        """Watch the simulator subprocess. If it exits, clean up."""
+        try:
+            while self._active and self._process:
+                if self._process.returncode is not None:
+                    log.info("Simulator process exited externally (code %s)", self._process.returncode)
+                    # Process died — restore connections and reset state
+                    await self._restore_connections()
+                    self._process = None
+                    self._sim_ports.clear()
+                    self._original_configs.clear()
+                    self._sim_ui_url = None
+                    self._active = False
+                    self.engine.state.set("system.simulation_active", False, source="simulation")
+                    self.engine.state.set("system.simulation_ui_url", None, source="simulation")
+                    return
+                await asyncio.sleep(1.0)
+        except asyncio.CancelledError:
+            pass
 
     async def _cleanup_process(self) -> None:
         """Terminate the simulator process if running."""
