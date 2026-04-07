@@ -51,6 +51,8 @@ def main():
 
     output_path.write_text(skeleton, encoding="utf-8")
     print(f"Generated simulator skeleton: {output_path}")
+    print(f"\nAfter filling in the handler, validate with:")
+    print(f"  python -m simulator.validate {driver_path}")
 
 
 def extract_driver_info(driver_path: Path) -> dict | None:

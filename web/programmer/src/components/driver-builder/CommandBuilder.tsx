@@ -324,6 +324,8 @@ function ParamEditor({
           >
             <option value="string">String</option>
             <option value="integer">Integer</option>
+            <option value="number">Number</option>
+            <option value="boolean">Boolean</option>
             <option value="enum">Enum</option>
           </select>
           <button

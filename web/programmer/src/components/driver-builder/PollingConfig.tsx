@@ -45,6 +45,8 @@ export function PollingConfig({ draft, onUpdate }: PollingConfigProps) {
         }}
       >
         Configure periodic polling to query the device for status updates.
+        These are the command strings sent at each interval to ask the device
+        for its current state.
       </p>
 
       <div style={{ marginBottom: "var(--space-lg)" }}>
@@ -78,7 +80,10 @@ export function PollingConfig({ draft, onUpdate }: PollingConfigProps) {
             marginBottom: "var(--space-sm)",
           }}
         >
-          Command strings sent each poll cycle to request device status.
+          Command strings sent each poll cycle. Include the delimiter at the
+          end (e.g., <code>\r</code> or <code>\r\n</code>). You can use
+          config field placeholders like{" "}
+          <code>{"{set_id}"}</code>.
         </div>
 
         {queries.map((query: string, i: number) => (

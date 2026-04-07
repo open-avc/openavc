@@ -29,6 +29,16 @@ export function StateVariableEditor({
     onUpdate({ state_variables: next });
   };
 
+  const renameVariable = (oldName: string, newName: string) => {
+    const cleaned = newName.replace(/[^a-zA-Z0-9_]/g, "").toLowerCase();
+    if (!cleaned || cleaned === oldName || cleaned in vars) return;
+    const next: typeof vars = {};
+    for (const [k, v] of Object.entries(vars)) {
+      next[k === oldName ? cleaned : k] = v;
+    }
+    onUpdate({ state_variables: next });
+  };
+
   const updateVariable = (
     name: string,
     field: string,
@@ -81,51 +91,88 @@ export function StateVariableEditor({
       {varNames.map((name) => {
         const v = vars[name];
         return (
-          <div
-            key={name}
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr 1fr auto auto",
-              gap: "var(--space-sm)",
-              marginBottom: "var(--space-xs)",
-              alignItems: "center",
-            }}
-          >
-            <input
-              value={name}
-              readOnly
+          <div key={name} style={{ marginBottom: "var(--space-xs)" }}>
+            <div
               style={{
-                fontSize: "var(--font-size-sm)",
-                fontFamily: "var(--font-mono)",
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr 1fr auto auto",
+                gap: "var(--space-sm)",
+                alignItems: "center",
               }}
-            />
-            <input
-              value={v.label}
-              onChange={(e) => updateVariable(name, "label", e.target.value)}
-              style={{ fontSize: "var(--font-size-sm)" }}
-            />
-            <input
-              value={(v as any).help ?? ""}
-              onChange={(e) => updateVariable(name, "help", e.target.value)}
-              placeholder="Description..."
-              style={{ fontSize: "var(--font-size-sm)" }}
-            />
-            <select
-              value={v.type}
-              onChange={(e) => updateVariable(name, "type", e.target.value)}
-              style={{ width: 90, fontSize: "var(--font-size-sm)" }}
             >
-              <option value="string">String</option>
-              <option value="integer">Integer</option>
-              <option value="boolean">Boolean</option>
-              <option value="enum">Enum</option>
-            </select>
-            <button
-              onClick={() => removeVariable(name)}
-              style={{ padding: "2px", color: "var(--text-muted)" }}
-            >
-              <Trash2 size={14} />
-            </button>
+              <input
+                value={name}
+                onChange={(e) => renameVariable(name, e.target.value)}
+                style={{
+                  fontSize: "var(--font-size-sm)",
+                  fontFamily: "var(--font-mono)",
+                }}
+              />
+              <input
+                value={v.label}
+                onChange={(e) => updateVariable(name, "label", e.target.value)}
+                style={{ fontSize: "var(--font-size-sm)" }}
+              />
+              <input
+                value={(v as any).help ?? ""}
+                onChange={(e) => updateVariable(name, "help", e.target.value)}
+                placeholder="Description..."
+                style={{ fontSize: "var(--font-size-sm)" }}
+              />
+              <select
+                value={v.type}
+                onChange={(e) => updateVariable(name, "type", e.target.value)}
+                style={{ width: 100, fontSize: "var(--font-size-sm)" }}
+              >
+                <option value="string">String</option>
+                <option value="integer">Integer</option>
+                <option value="number">Number</option>
+                <option value="boolean">Boolean</option>
+                <option value="enum">Enum</option>
+              </select>
+              <button
+                onClick={() => removeVariable(name)}
+                style={{ padding: "2px", color: "var(--text-muted)" }}
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+            {v.type === "enum" && (
+              <div
+                style={{
+                  marginTop: "var(--space-xs)",
+                  marginLeft: "var(--space-sm)",
+                  paddingLeft: "var(--space-sm)",
+                  borderLeft: "2px solid var(--border-color)",
+                }}
+              >
+                <input
+                  value={(v.values ?? []).join(", ")}
+                  onChange={(e) => {
+                    const values = e.target.value
+                      .split(",")
+                      .map((s) => s.trim())
+                      .filter(Boolean);
+                    updateVariable(name, "values", values);
+                  }}
+                  placeholder="Comma-separated values, e.g.: off, on, warming, cooling"
+                  style={{
+                    width: "100%",
+                    fontSize: "var(--font-size-sm)",
+                    fontFamily: "var(--font-mono)",
+                  }}
+                />
+                <div
+                  style={{
+                    fontSize: "11px",
+                    color: "var(--text-muted)",
+                    marginTop: 2,
+                  }}
+                >
+                  Allowed values for this enum, separated by commas.
+                </div>
+              </div>
+            )}
           </div>
         );
       })}
