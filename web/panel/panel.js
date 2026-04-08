@@ -63,6 +63,10 @@ class PanelApp {
 
         this.ws.onclose = () => {
             this.setConnectionStatus(false);
+            // Clear all active hold-repeat timers — pointer-events: none
+            // blocks release events, so timers would run indefinitely
+            for (const t of Object.values(this.holdTimers)) clearInterval(t);
+            this.holdTimers = {};
             this.reconnectAttempts++;
             const retryEl = document.getElementById('reconnect-info');
             if (retryEl) {
@@ -2330,6 +2334,7 @@ class PanelApp {
                         } else if (autoSend) {
                             if (autoSendTimer) clearTimeout(autoSendTimer);
                             autoSendTimer = setTimeout(doSubmit, autoSendDelay);
+                            this.debounceTimers.push(autoSendTimer);
                         }
                     }
                 }
