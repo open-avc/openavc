@@ -102,6 +102,8 @@ In the Device View, select the projector and use the command testing panel. Choo
 
 Navigate to http://localhost:8080/panel in another tab. This is what end users see on a touchscreen. Press the buttons and watch commands flow through the system.
 
+**Accessing from a tablet or phone:** By default, the server only accepts connections from the local machine. To open the panel on another device (a tablet, phone, or another computer on the same network), go to **Settings** in the sidebar and change the **bind address** to `0.0.0.0`, then save and restart the server. The Dashboard will then show the panel URL you can open on any device on the same network.
+
 ## Next Steps
 
 - [Programmer Overview](programmer-overview.md). Learn the IDE and core concepts

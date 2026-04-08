@@ -165,10 +165,12 @@ When deploying multiple OpenAVC instances (e.g., one per room), ISC allows them 
 
 OpenAVC is typically deployed on an isolated AV VLAN where the controller is not reachable from the general corporate network. In this configuration, authentication is not required and is disabled by default. For deployments where the controller is reachable from a broader network, authentication should be enabled before exposing the interface.
 
-| Method | Configuration | Protects |
-|--------|--------------|----------|
-| HTTP Basic (password) | `OPENAVC_PROGRAMMER_PASSWORD` env var or `auth.programmer_password` in `system.json` | Programmer IDE, configuration API |
-| API key (token) | `OPENAVC_API_KEY` env var or `auth.api_key` in `system.json` | REST API, WebSocket API |
+| Method | Configuration | When to use |
+|--------|--------------|-------------|
+| HTTP Basic (password) | `OPENAVC_PROGRAMMER_PASSWORD` env var or `auth.programmer_password` in `system.json` | Set this when the server is network-accessible and you want to prevent unauthorized access to the Programmer IDE. The browser prompts for a password. This is for humans logging in via a browser. |
+| API key (token) | `OPENAVC_API_KEY` env var or `auth.api_key` in `system.json` | Set this if you have third-party integrations (control scripts, middleware, or external software) that connect to the REST API or WebSocket. Provide the key via the `X-API-Key` header. Not needed unless you are building custom integrations. |
+
+You do not need to set both. Either one protects the Programmer IDE and API endpoints. The password is for humans (browser login), the API key is for machines (HTTP headers). If both are set, either credential is accepted.
 
 When authentication is enabled:
 - The **Panel** (end-user touch interface) remains accessible without credentials

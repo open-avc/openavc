@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import socket
 import time
 from pathlib import Path
 from typing import Any
@@ -1089,6 +1090,20 @@ class Engine:
     def get_status(self) -> dict[str, Any]:
         """Return system status info."""
         uptime = time.time() - self._start_time if self._start_time else 0
+        # Detect network address for panel access URLs
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.settimeout(0.5)
+            s.connect(("8.8.8.8", 80))
+            local_ip = s.getsockname()[0]
+            s.close()
+        except Exception:
+            local_ip = "127.0.0.1"
+        try:
+            hostname = socket.gethostname()
+        except Exception:
+            hostname = ""
+
         status = {
             "status": "running" if self._running else "stopped",
             "version": __version__,
@@ -1106,6 +1121,10 @@ class Engine:
             "ws_clients": len(self._ws_clients),
             "isc_enabled": self.isc is not None,
             "cloud_enabled": self.cloud_agent is not None,
+            "hostname": hostname,
+            "local_ip": local_ip,
+            "http_port": config.HTTP_PORT,
+            "bind_address": config.BIND_ADDRESS,
         }
         if self.isc:
             status["isc_peers"] = sum(

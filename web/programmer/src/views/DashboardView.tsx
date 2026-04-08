@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Cpu, Zap, Cloud, FileCode, AlertTriangle, Clock, ArrowRight, ArrowUpCircle } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Cpu, Zap, Cloud, FileCode, AlertTriangle, Clock, ArrowRight, ArrowUpCircle, Monitor, Copy, Check, ExternalLink } from "lucide-react";
 import { ViewContainer } from "../components/layout/ViewContainer";
 import { DeviceStatusDot } from "../components/shared/DeviceStatusDot";
 import { useProjectStore } from "../store/projectStore";
@@ -9,6 +9,139 @@ import { useNavigationStore } from "../store/navigationStore";
 import { StatusCardSlot } from "../components/plugins/PluginExtensions";
 import * as api from "../api/restClient";
 import type { CloudStatus } from "../api/restClient";
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {});
+  }, [text]);
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      title="Copy to clipboard"
+      style={{
+        background: "none",
+        border: "none",
+        color: copied ? "var(--color-success)" : "var(--text-muted)",
+        cursor: "pointer",
+        padding: 4,
+        flexShrink: 0,
+      }}
+    >
+      {copied ? <Check size={14} /> : <Copy size={14} />}
+    </button>
+  );
+}
+
+function PanelAccessCard({ systemStatus }: { systemStatus: Record<string, unknown> | null }) {
+  if (!systemStatus) return null;
+
+  const localIp = String(systemStatus.local_ip ?? "");
+  const hostname = String(systemStatus.hostname ?? "");
+  const port = Number(systemStatus.http_port ?? 8080);
+  const bindAddress = String(systemStatus.bind_address ?? "127.0.0.1");
+
+  const isLocalOnly = bindAddress === "127.0.0.1" || bindAddress === "::1";
+
+  const panelUrl = localIp && !isLocalOnly
+    ? `http://${localIp}${port === 80 ? "" : ":" + String(port)}/panel`
+    : "";
+  const hostnameUrl = hostname && !isLocalOnly
+    ? `http://${hostname}${port === 80 ? "" : ":" + String(port)}/panel`
+    : "";
+
+  const cardStyle: React.CSSProperties = {
+    background: "var(--bg-surface)",
+    border: "1px solid var(--border-color)",
+    borderRadius: "var(--border-radius)",
+    padding: "var(--space-lg)",
+  };
+  const sectionTitle: React.CSSProperties = {
+    fontSize: "var(--font-size-sm)",
+    color: "var(--text-secondary)",
+    textTransform: "uppercase",
+    letterSpacing: "0.5px",
+    fontWeight: 600,
+    marginBottom: "var(--space-md)",
+  };
+
+  return (
+    <div style={{ marginBottom: "var(--space-xl)" }}>
+      <h3 style={sectionTitle}>
+        <span style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
+          <Monitor size={14} />
+          Panel Access
+        </span>
+      </h3>
+      <div style={cardStyle}>
+        {isLocalOnly ? (
+          <div style={{ fontSize: "var(--font-size-sm)" }}>
+            <div style={{ color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
+              The server is set to local-only access. To open the panel on a tablet or phone, go to{" "}
+              <strong
+                onClick={() => useNavigationStore.getState().navigateTo("settings")}
+                style={{ color: "var(--accent)", cursor: "pointer" }}
+              >
+                Settings
+              </strong>{" "}
+              and change the bind address to <code>0.0.0.0</code>.
+            </div>
+          </div>
+        ) : (
+          <div style={{ fontSize: "var(--font-size-sm)" }}>
+            <div style={{ color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
+              Open this URL on a tablet, phone, or any device on the same network:
+            </div>
+            {panelUrl && (
+              <div style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "var(--space-xs)",
+                background: "var(--bg-elevated, var(--bg-hover))",
+                borderRadius: "var(--border-radius)",
+                padding: "var(--space-sm) var(--space-md)",
+                marginBottom: hostnameUrl ? "var(--space-xs)" : 0,
+              }}>
+                <code style={{ flex: 1, fontSize: 13, fontFamily: "var(--font-mono)", wordBreak: "break-all" }}>
+                  {panelUrl}
+                </code>
+                <CopyButton text={panelUrl} />
+                <a
+                  href={panelUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Open in new tab"
+                  style={{ color: "var(--text-muted)", padding: 4, flexShrink: 0 }}
+                >
+                  <ExternalLink size={14} />
+                </a>
+              </div>
+            )}
+            {hostnameUrl && hostname !== localIp && (
+              <div style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "var(--space-xs)",
+                background: "var(--bg-elevated, var(--bg-hover))",
+                borderRadius: "var(--border-radius)",
+                padding: "var(--space-sm) var(--space-md)",
+              }}>
+                <code style={{ flex: 1, fontSize: 13, fontFamily: "var(--font-mono)", wordBreak: "break-all" }}>
+                  {hostnameUrl}
+                </code>
+                <CopyButton text={hostnameUrl} />
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export function DashboardView() {
   const project = useProjectStore((s) => s.project);
@@ -328,6 +461,9 @@ export function DashboardView() {
 
         {/* Right sidebar */}
         <div>
+          {/* Panel Access */}
+          <PanelAccessCard systemStatus={systemStatus} />
+
           {/* Tracked Variables */}
           {trackedVars.length > 0 && (
             <div style={{ marginBottom: "var(--space-xl)" }}>

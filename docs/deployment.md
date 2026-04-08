@@ -287,17 +287,23 @@ On the Raspberry Pi image, an `openavc-info.service` also displays the IP addres
 
 ## Authentication
 
-OpenAVC supports optional authentication. When no credentials are configured, everything is fully open.
+Authentication is optional. When the server is only accessible locally (bind address `127.0.0.1`), no credentials are needed. When the server is accessible on the network (`0.0.0.0`), you should set at least a programmer password to prevent unauthorized changes to your project.
 
-Authentication can be set via system.json or environment variables:
+The Panel UI is never password-protected. End users can always open the touch panel without logging in.
 
-| Setting | Environment Variable | Purpose |
-|---------|---------------------|---------|
-| `auth.programmer_password` | `OPENAVC_PROGRAMMER_PASSWORD` | Password for the Programmer IDE and protected API routes (HTTP Basic auth) |
-| `auth.api_key` | `OPENAVC_API_KEY` | Alternative token-based auth via `X-API-Key` header |
-| `auth.panel_lock_code` | `OPENAVC_PANEL_LOCK_CODE` | Reserved for future panel lock screen |
+### When to set each credential
 
-When configured:
+| Setting | Environment Variable | When to use it |
+|---------|---------------------|----------------|
+| `auth.programmer_password` | `OPENAVC_PROGRAMMER_PASSWORD` | **Set this when the server is network-accessible** and you want to prevent other people on the network from opening the Programmer IDE and modifying your project. The browser will prompt for a password. This is for humans logging in via a browser. |
+| `auth.api_key` | `OPENAVC_API_KEY` | **Set this if you have third-party integrations** (control scripts, middleware, or external software) that connect to the OpenAVC REST API or WebSocket. Provide the key to those systems via the `X-API-Key` header. Not needed unless you are building custom integrations. |
+| `auth.panel_lock_code` | `OPENAVC_PANEL_LOCK_CODE` | **Set this if the panel runs on a public-facing display** and you want to prevent users from navigating away from the touch panel UI. |
+
+You do not need to set both programmer password and API key. Either one protects the Programmer IDE and API. The password is for humans (browser login), the API key is for machines (HTTP headers). If both are set, either credential is accepted.
+
+### What gets protected
+
+When at least one credential is configured:
 - `/api/status`, `/api/health`, and `/api/templates` remain open (no auth)
 - All other REST endpoints require HTTP Basic or `X-API-Key`
 - The `/programmer` static files require HTTP Basic credentials

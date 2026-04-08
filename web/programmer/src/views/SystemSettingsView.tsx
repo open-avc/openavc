@@ -283,7 +283,7 @@ export function SystemSettingsView() {
         {noAuth && publicBind && (
           <div style={warningBox}>
             <AlertTriangle size={16} style={{ color: "rgb(255, 152, 0)", flexShrink: 0, marginTop: 2 }} />
-            <span>The server is accessible on the network with no authentication configured. Set a programmer password or API key to secure access.</span>
+            <span>The server is accessible on the network with no authentication. Anyone on your network can open the Programmer IDE and modify your project. Set a <strong>programmer password</strong> below to require a login.</span>
           </div>
         )}
 
@@ -299,7 +299,7 @@ export function SystemSettingsView() {
               onChange={(e) => update("network", "bind_address", e.target.value)}
             />
             <span style={helpText}>
-              Set to <code>0.0.0.0</code> if tablets or other devices need to access the panel. Use <code>127.0.0.1</code> for local-only access.
+              Controls whether other devices on the network can reach the server. Set to <code>0.0.0.0</code> to allow tablets, phones, and other computers to access the Panel UI. Use <code>127.0.0.1</code> to restrict access to this machine only.
             </span>
           </div>
           <div style={fieldRow}>
@@ -317,6 +317,16 @@ export function SystemSettingsView() {
         {/* Authentication */}
         <h3 style={sectionTitle}>Authentication</h3>
         <div style={cardStyle}>
+          <div style={{
+            fontSize: "var(--font-size-sm)",
+            color: "var(--text-secondary)",
+            marginBottom: "var(--space-lg)",
+            lineHeight: 1.5,
+          }}>
+            Authentication is optional. When the server is only accessible locally (bind address <code>127.0.0.1</code>), no credentials are needed.
+            When the server is accessible on the network (<code>0.0.0.0</code>), set at least one of the options below to prevent unauthorized access to the Programmer IDE and API.
+            The Panel UI is never password-protected so end users can always reach it.
+          </div>
           <div style={fieldRow}>
             <label style={labelStyle}>Programmer password</label>
             <PasswordField
@@ -324,7 +334,9 @@ export function SystemSettingsView() {
               placeholder="No password set"
               onChange={(v) => update("auth", "programmer_password", v)}
             />
-            <span style={helpText}>Required to access the Programmer IDE when the server is network-accessible.</span>
+            <span style={helpText}>
+              Protects the Programmer IDE with a browser login prompt. Set this if anyone else on your network could access the server and you want to prevent them from modifying the project. This is for humans logging in via a browser.
+            </span>
           </div>
           <div style={fieldRow}>
             <label style={labelStyle}>API key</label>
@@ -333,7 +345,9 @@ export function SystemSettingsView() {
               placeholder="No API key set"
               onChange={(v) => update("auth", "api_key", v)}
             />
-            <span style={helpText}>Used for REST API and WebSocket authentication.</span>
+            <span style={helpText}>
+              For third-party integrations. If you have external systems (control scripts, middleware, or other software) that connect to the OpenAVC REST API or WebSocket, set an API key here and provide it to those systems. Not needed unless you are building custom integrations.
+            </span>
           </div>
           <div style={fieldRow}>
             <label style={labelStyle}>Panel lock code</label>
@@ -342,7 +356,9 @@ export function SystemSettingsView() {
               placeholder="No lock code set"
               onChange={(v) => update("auth", "panel_lock_code", v)}
             />
-            <span style={helpText}>PIN code required to exit the touch panel UI.</span>
+            <span style={helpText}>
+              Prevents users from navigating away from the touch panel. Set a PIN here if the panel runs on a shared or public-facing display and you don't want people exiting it.
+            </span>
           </div>
         </div>
 
