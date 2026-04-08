@@ -83,6 +83,12 @@ jobs:
           npm ci
           npm run build
 
+      - name: Build Simulator UI
+        working-directory: web/simulator
+        run: |
+          npm ci
+          npm run build
+
       - name: Install Python build deps
         run: pip install pyinstaller infi.systray -r requirements.txt
 
@@ -132,6 +138,12 @@ jobs:
           npm ci
           npm run build
 
+      - name: Build Simulator UI
+        working-directory: web/simulator
+        run: |
+          npm ci
+          npm run build
+
       - name: Create archive
         run: |
           mkdir -p driver_repo plugin_repo projects/default
@@ -149,9 +161,14 @@ jobs:
             --exclude='web/programmer/node_modules' \
             --exclude='web/programmer/src' \
             --exclude='web/programmer/.env*' \
+            --exclude='web/simulator/node_modules' \
+            --exclude='web/simulator/src' \
+            --exclude='web/simulator/.env*' \
             server/ \
+            simulator/ \
             web/panel/ \
             web/programmer/dist/ \
+            web/simulator/dist/ \
             driver_repo/ \
             plugin_repo/ \
             themes/ \
@@ -191,6 +208,12 @@ jobs:
           npm ci
           npm run build
 
+      - name: Build Simulator UI
+        working-directory: web/simulator
+        run: |
+          npm ci
+          npm run build
+
       - name: Create archive
         run: |
           mkdir -p driver_repo plugin_repo projects/default
@@ -208,9 +231,14 @@ jobs:
             --exclude='web/programmer/node_modules' \
             --exclude='web/programmer/src' \
             --exclude='web/programmer/.env*' \
+            --exclude='web/simulator/node_modules' \
+            --exclude='web/simulator/src' \
+            --exclude='web/simulator/.env*' \
             server/ \
+            simulator/ \
             web/panel/ \
             web/programmer/dist/ \
+            web/simulator/dist/ \
             driver_repo/ \
             plugin_repo/ \
             themes/ \
@@ -303,6 +331,12 @@ jobs:
           npm ci
           npm run build
 
+      - name: Build Simulator UI
+        working-directory: web/simulator
+        run: |
+          npm ci
+          npm run build
+
       - name: Set up QEMU for ARM emulation
         run: |
           sudo apt-get update
@@ -330,9 +364,14 @@ jobs:
             --exclude='web/programmer/node_modules' \
             --exclude='web/programmer/src' \
             --exclude='web/programmer/.env*' \
+            --exclude='web/simulator/node_modules' \
+            --exclude='web/simulator/src' \
+            --exclude='web/simulator/.env*' \
             server/ \
+            simulator/ \
             web/panel/ \
             web/programmer/dist/ \
+            web/simulator/dist/ \
             driver_repo/ \
             plugin_repo/ \
             themes/ \

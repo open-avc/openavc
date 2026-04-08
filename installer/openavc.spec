@@ -23,6 +23,9 @@ datas = [
     # Frontend builds
     (str(PROJECT_ROOT / 'web' / 'panel'), 'web/panel'),
     (str(PROJECT_ROOT / 'web' / 'programmer' / 'dist'), 'web/programmer/dist'),
+    (str(PROJECT_ROOT / 'web' / 'simulator' / 'dist'), 'web/simulator/dist'),
+    # Simulator package (Python — runs as subprocess)
+    (str(PROJECT_ROOT / 'simulator'), 'simulator'),
     # Driver definitions (built-in YAML drivers)
     (str(PROJECT_ROOT / 'server' / 'drivers' / 'definitions'), 'server/drivers/definitions'),
     # Default drivers
@@ -143,6 +146,19 @@ hiddenimports = [
     'server.utils.logger',
     'server.utils.log_buffer',
     'server.middleware.rate_limit',
+    # Simulator package (launched as subprocess via python -m simulator)
+    'simulator',
+    'simulator.server',
+    'simulator.engine',
+    'simulator.api',
+    'simulator.base',
+    'simulator.tcp_simulator',
+    'simulator.http_simulator',
+    'simulator.yaml_auto',
+    'simulator.network_conditions',
+    'simulator.scaffold',
+    'simulator.validate',
+    'simulator._runtime',
     # httptools (C extension, sometimes missed)
     'httptools',
     'httptools.parser',
@@ -156,8 +172,11 @@ hiddenimports = [
     'croniter',
     # yaml
     'yaml',
-    # aiosqlite
-    'aiosqlite',
+    # aiohttp (simulator HTTP device servers)
+    'aiohttp',
+    'aiohttp.web',
+    'aiohttp.web_app',
+    'aiohttp.web_runner',
     # defusedxml
     'defusedxml',
     'defusedxml.ElementTree',

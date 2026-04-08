@@ -76,6 +76,9 @@ if [ -f "$REPO_ROOT/web/panel/package.json" ]; then
     (cd "$REPO_ROOT/web/panel" && npm ci --silent && npm run build) || { echo "ERROR: Panel UI build failed"; exit 1; }
 fi
 
+echo "Building Simulator UI..."
+(cd "$REPO_ROOT/web/simulator" && npm ci --silent && npm run build) || { echo "ERROR: Simulator UI build failed"; exit 1; }
+
 # --- Package server archive ---
 
 echo ""
@@ -100,9 +103,14 @@ tar czf "$OPENAVC_ARCHIVE" \
     --exclude='web/programmer/node_modules' \
     --exclude='web/programmer/src' \
     --exclude='web/programmer/.env*' \
+    --exclude='web/simulator/node_modules' \
+    --exclude='web/simulator/src' \
+    --exclude='web/simulator/.env*' \
     server/ \
+    simulator/ \
     web/panel/ \
     web/programmer/dist/ \
+    web/simulator/dist/ \
     driver_repo/ \
     plugin_repo/ \
     themes/ \

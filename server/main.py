@@ -7,6 +7,16 @@ Usage:
     python -m server.main
 """
 
+import sys
+
+# In frozen (PyInstaller) builds, this exe doubles as the simulator entry point.
+# simulation.py launches: sys.executable --simulator --config <path>
+if getattr(sys, 'frozen', False) and len(sys.argv) > 1 and sys.argv[1] == '--simulator':
+    sys.argv = [sys.argv[0]] + sys.argv[2:]  # strip the --simulator flag
+    from simulator.__main__ import main as _sim_main
+    _sim_main()
+    sys.exit(0)
+
 import base64
 import logging
 import os

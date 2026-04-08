@@ -22,9 +22,18 @@ echo.
 
 cd /d "%~dp0.."
 
-REM Step 1: Build frontend
+REM Step 1: Build frontends
 echo [1/5] Building Programmer UI...
 cd web\programmer
+call npm ci
+if errorlevel 1 (echo FAILED: npm ci & exit /b 1)
+call npm run build
+if errorlevel 1 (echo FAILED: npm run build & exit /b 1)
+cd ..\..
+echo       Done.
+echo.
+echo       Building Simulator UI...
+cd web\simulator
 call npm ci
 if errorlevel 1 (echo FAILED: npm ci & exit /b 1)
 call npm run build
@@ -69,5 +78,5 @@ echo.
 
 echo ============================================================
 echo  Build complete!
-echo  Installer: dist\OpenAVC-Setup-0.1.0.exe
+echo  Installer: dist\OpenAVC-Setup-0.4.1.exe
 echo ============================================================

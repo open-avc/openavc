@@ -12,7 +12,6 @@ pyserial==3.5                # BSD-3-Clause
 pyserial-asyncio==0.6        # BSD-3-Clause
 
 # Data
-aiosqlite==0.22.1            # MIT
 pydantic==2.11.1             # MIT
 pyyaml==6.0.3                # MIT
 
@@ -24,3 +23,6 @@ croniter==6.2.2              # MIT
 
 # Security
 defusedxml==0.7.1            # PSF
+
+# Async HTTP server (simulator HTTP device servers)
+aiohttp==3.13.5              # Apache-2.0

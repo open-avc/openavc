@@ -7,15 +7,17 @@
 #
 # Data is stored in /data (mount a volume to persist across restarts).
 
-# --- Stage 1: Build Programmer UI ---
+# --- Stage 1: Build frontends ---
 FROM node:20-alpine AS frontend
 WORKDIR /build
 COPY web/programmer/package*.json ./programmer/
-RUN cd programmer && npm ci
+COPY web/simulator/package*.json ./simulator/
+RUN cd programmer && npm ci && cd ../simulator && npm ci
 COPY web/programmer/ ./programmer/
+COPY web/simulator/ ./simulator/
 # Panel dir needed because the build copies icons.svg into it
 COPY web/panel/ ./panel/
-RUN cd programmer && npm run build
+RUN cd programmer && npm run build && cd ../simulator && npm run build
 
 # --- Stage 2: Production image ---
 FROM python:3.12-slim
@@ -29,8 +31,9 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy server code
+# Copy server code and simulator package
 COPY server/ ./server/
+COPY simulator/ ./simulator/
 COPY pyproject.toml .
 
 # Copy built frontend from stage 1
@@ -38,6 +41,9 @@ COPY --from=frontend /build/programmer/dist/ ./web/programmer/dist/
 
 # Copy Panel UI (includes icons.svg generated during programmer build)
 COPY --from=frontend /build/panel/ ./web/panel/
+
+# Copy built Simulator UI from stage 1
+COPY --from=frontend /build/simulator/dist/ ./web/simulator/dist/
 
 # Copy data files
 COPY themes/ ./themes/

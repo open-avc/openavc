@@ -15,7 +15,6 @@ dependencies = [
     "websockets==16.0",          # BSD-3 - WebSocket library
     "pyserial==3.5",             # BSD-3 - RS-232 serial communication
     "pyserial-asyncio==0.6",     # BSD-3 - Async serial support
-    "aiosqlite==0.22.1",         # MIT - Async SQLite
     "pydantic==2.11.1",          # MIT - Data validation
     "pyyaml==6.0.3",             # MIT - YAML parsing
     "httpx==0.28.1",             # BSD-3 - Async HTTP client (for HTTP transport)

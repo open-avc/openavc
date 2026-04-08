@@ -37,7 +37,7 @@ jobs:
         run: pytest tests/ -v --tb=short
 
   build-frontend:
-    name: Build Programmer UI
+    name: Build frontends
     runs-on: ubuntu-latest
 
     steps:
@@ -50,6 +50,12 @@ jobs:
 
       - name: Install and build Programmer UI
         working-directory: web/programmer
+        run: |
+          npm ci
+          npm run build
+
+      - name: Install and build Simulator UI
+        working-directory: web/simulator
         run: |
           npm ci
           npm run build

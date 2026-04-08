@@ -10,7 +10,7 @@
 ;   pyinstaller installer/tray.spec --noconfirm
 
 #define MyAppName "OpenAVC"
-#define MyAppVersion "0.1.0"
+#define MyAppVersion "0.4.1"
 #define MyAppPublisher "OpenAVC"
 #define MyAppURL "https://openavc.com"
 #define MyAppExeName "openavc-server.exe"

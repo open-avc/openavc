@@ -160,10 +160,18 @@ class SimulationManager:
         log.info("Driver paths: %s", driver_paths)
         log.info("Config file: %s", config_path)
 
-        # Spawn the simulator process (module is in the same repo)
+        # Spawn the simulator process.
+        # In frozen (PyInstaller) builds, sys.executable is the .exe itself,
+        # so we use --simulator flag which server/main.py dispatches to the
+        # simulator entry point. In normal Python, use -m simulator.
+        if getattr(sys, 'frozen', False):
+            cmd = [sys.executable, "--simulator", "--config", config_path]
+        else:
+            cmd = [sys.executable, "-m", "simulator", "--config", config_path]
+
         try:
             self._process = await asyncio.create_subprocess_exec(
-                sys.executable, "-m", "simulator", "--config", config_path,
+                *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
