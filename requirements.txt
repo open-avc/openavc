@@ -2,20 +2,17 @@
 # All licenses must be MIT-compatible (MIT, BSD, Apache-2.0, ISC, PSF)
 
 # Web framework
-fastapi==0.115.12            # MIT
-python-multipart==0.0.20     # Apache-2.0 (required by FastAPI for file uploads)
-uvicorn[standard]==0.34.2    # BSD-3-Clause
+fastapi==0.135.3             # MIT
+python-multipart==0.0.24     # Apache-2.0 (required by FastAPI for file uploads)
+uvicorn[standard]==0.44.0    # BSD-3-Clause
 websockets==16.0             # BSD-3-Clause
 
 # Device communication
 pyserial==3.5                # BSD-3-Clause
 pyserial-asyncio==0.6        # BSD-3-Clause
 
-# Discovery
-zeroconf==0.148.0            # Apache-2.0
-
 # Data
-aiosqlite==0.21.0            # MIT
+aiosqlite==0.22.1            # MIT
 pydantic==2.11.1             # MIT
 pyyaml==6.0.3                # MIT
 

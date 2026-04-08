@@ -9,20 +9,19 @@ authors = [
 ]
 
 dependencies = [
-    "fastapi==0.115.12",         # MIT - Web framework + WebSocket support
-    "python-multipart==0.0.20",  # Apache-2.0 - Required by FastAPI for file uploads
-    "uvicorn[standard]==0.34.2", # BSD-3 - ASGI server
+    "fastapi==0.135.3",          # MIT - Web framework + WebSocket support
+    "python-multipart==0.0.24",  # Apache-2.0 - Required by FastAPI for file uploads
+    "uvicorn[standard]==0.44.0", # BSD-3 - ASGI server
     "websockets==16.0",          # BSD-3 - WebSocket library
     "pyserial==3.5",             # BSD-3 - RS-232 serial communication
     "pyserial-asyncio==0.6",     # BSD-3 - Async serial support
-    "zeroconf==0.148.0",         # Apache-2.0 - mDNS discovery
-    "aiosqlite==0.21.0",         # MIT - Async SQLite
+    "aiosqlite==0.22.1",         # MIT - Async SQLite
     "pydantic==2.11.1",          # MIT - Data validation
     "pyyaml==6.0.3",             # MIT - YAML parsing
     "httpx==0.28.1",             # BSD-3 - Async HTTP client (for HTTP transport)
     "croniter==6.2.2",           # MIT - Cron expression parser (pure Python)
     "defusedxml==0.7.1",         # PSF - Safe XML parsing (prevents XXE/billion laughs)
-    "aiohttp==3.11.18",          # Apache-2.0 - Async HTTP server (simulator HTTP device servers)
+    "aiohttp==3.13.5",           # Apache-2.0 - Async HTTP server (simulator HTTP device servers)
 ]
 
 [project.optional-dependencies]

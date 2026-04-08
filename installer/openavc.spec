@@ -152,8 +152,6 @@ hiddenimports = [
     'serial.tools',
     'serial.tools.list_ports',
     'serial.tools.list_ports_windows',
-    # zeroconf
-    'zeroconf',
     # croniter
     'croniter',
     # yaml
