@@ -81,29 +81,31 @@ def _api_get(path: str, port: int, timeout: float = 3.0) -> dict | None:
 
 
 def _service_command(command: str) -> bool:
-    """Run an NSSM service command (start/stop/restart). Returns True on success."""
+    """Run an NSSM service command (start/stop/restart). Returns True on success.
+
+    Service control requires admin privileges on Windows. First tries without
+    elevation; if that fails, requests UAC elevation via ShellExecuteW.
+    """
     try:
         result = subprocess.run(
             [NSSM_PATH, command, SERVICE_NAME],
             capture_output=True,
             timeout=30,
         )
-        return result.returncode == 0
+        if result.returncode == 0:
+            return True
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
 
-
-def _is_service_installed() -> bool:
-    """Check if the OpenAVC service is installed via NSSM."""
+    # Non-zero exit — likely access denied. Retry with UAC elevation.
     try:
-        result = subprocess.run(
-            [NSSM_PATH, 'status', SERVICE_NAME],
-            capture_output=True,
-            timeout=10,
+        import ctypes
+        ret = ctypes.windll.shell32.ShellExecuteW(
+            None, 'runas', NSSM_PATH, f'{command} {SERVICE_NAME}', None, 0,
         )
-        # NSSM returns 0 for running, 3 for stopped, non-zero error for not installed
-        return result.returncode in (0, 3)
-    except (FileNotFoundError, subprocess.TimeoutExpired):
+        # ShellExecuteW returns > 32 on success
+        return ret > 32
+    except Exception:
         return False
 
 
@@ -114,7 +116,7 @@ class OpenAVCTray:
         self._port = _get_port()
         self._running = True
         self._server_status: str = 'unknown'  # 'running', 'stopped', 'unknown'
-        self._version: str = '0.1.0'
+        self._version: str = ''
         self._device_info: str = ''
         self._update_available: str = ''
 
@@ -145,15 +147,11 @@ class OpenAVCTray:
         webbrowser.open(f'http://localhost:{self._port}/panel')
 
     def _check_updates(self, systray):
-        result = _api_get('/api/system/updates/check', self._port, timeout=15)
-        if result is None:
-            # Server not reachable
-            return
-        if result.get('update_available'):
-            version = result.get('available_version', '?')
-            self._update_available = version
-            # Update the tooltip
-            systray.update(hover_text=self._build_tooltip())
+        """Trigger an update check, then open the Updates view in the browser."""
+        # Fire-and-forget: tell the server to check now
+        _api_get('/api/system/updates/check', self._port, timeout=15)
+        # Open the Programmer IDE Updates view so the user can see the result
+        webbrowser.open(f'http://localhost:{self._port}/programmer#/updates')
 
     def _start_service(self, systray):
         _service_command('start')
@@ -169,7 +167,8 @@ class OpenAVCTray:
 
     def _build_tooltip(self) -> str:
         """Build the tooltip text for the tray icon."""
-        parts = [f'OpenAVC v{self._version}']
+        title = f'OpenAVC v{self._version}' if self._version else 'OpenAVC'
+        parts = [title]
         if self._server_status == 'running':
             parts.append('Running')
             if self._device_info:
