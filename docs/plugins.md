@@ -179,6 +179,12 @@ Plugins are tracked in the project file just like drivers. When you export a pro
 
 ---
 
+## Using AI Assistants
+
+If you use an AI coding assistant (Claude, ChatGPT, Copilot, etc.), you can point it to the `AGENTS.md` file in the [community plugin repository](https://github.com/open-avc/openavc-plugins/blob/main/AGENTS.md). It contains the complete Plugin API, manifest format, configuration schema, and examples in a format optimized for LLM agents. The repository also includes a `validate.py` script that your assistant can use to check its work.
+
+---
+
 ## See Also
 
 - [Creating Plugins](creating-plugins.md). Developer guide for building your own plugins

@@ -1359,3 +1359,9 @@ For the complete simulator guide with all control types, state machines, and Pyt
 2. **Wrong protocol.** If you connect a text-protocol driver to a binary-protocol device (or vice versa), the device may reject the malformed data and close the connection.
 
 3. **Firewall or network issue.** The device may be accepting the TCP connection but dropping it due to a firewall rule or access list.
+
+---
+
+## Using AI Assistants
+
+If you use an AI coding assistant (Claude, ChatGPT, Copilot, etc.), you can point it to the `AGENTS.md` file in the [community driver repository](https://github.com/open-avc/openavc-drivers/blob/main/AGENTS.md). It contains the complete YAML schema, Python driver API, naming conventions, and examples in a format optimized for LLM agents. The repository also includes a `validate.py` script that your assistant can use to check its work.
