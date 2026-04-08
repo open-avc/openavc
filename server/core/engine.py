@@ -165,7 +165,7 @@ class Engine:
         startup_errors: list[str] = []
         for device in self.project.devices:
             try:
-                await self.devices.add_device(self._resolved_device_config(device))
+                await self.devices.add_device(self.resolved_device_config(device))
             except Exception as e:  # Catch-all: isolates individual device startup failures
                 startup_errors.append(f"Device '{device.id}': {e}")
                 log.error(f"Failed to add device '{device.id}': {e}")
@@ -454,13 +454,13 @@ class Engine:
         await self._reload_isc()
 
         # Push new UI definition to all connected panels
-        await self._broadcast_ws({
+        await self.broadcast_ws({
             "type": "ui.definition",
             "ui": self.project.ui.model_dump(mode="json"),
         })
 
         # Notify Programmer IDE to refetch project data
-        await self._broadcast_ws({
+        await self.broadcast_ws({
             "type": "project.reloaded",
             "revision": self._project_revision,
         })
@@ -468,7 +468,7 @@ class Engine:
         await self.events.emit("system.project.reloaded")
         log.info("Project reloaded")
 
-    def _resolved_device_config(self, device) -> dict:
+    def resolved_device_config(self, device) -> dict:
         """Get device config dict with connection table entries merged in."""
         cfg = device.model_dump() if hasattr(device, "model_dump") else dict(device)
         conn = self.project.connections.get(cfg["id"], {})
@@ -484,7 +484,7 @@ class Engine:
         # Build merged configs (device.config + connection table overrides)
         project_devices: dict[str, dict] = {}
         for d in self.project.devices:
-            project_devices[d.id] = self._resolved_device_config(d)
+            project_devices[d.id] = self.resolved_device_config(d)
 
         running_ids = set(self.devices._device_configs.keys())
         project_ids = set(project_devices.keys())
@@ -574,7 +574,7 @@ class Engine:
                 save_project(self.project_path, self.project)
             except (OSError, ValueError, TypeError) as e:
                 log.error(f"Failed to save plugin config for '{plugin_id}': {e}")
-                await self._broadcast_ws({
+                await self.broadcast_ws({
                     "type": "error",
                     "message": f"Failed to save plugin config: {e}",
                 })
@@ -693,7 +693,7 @@ class Engine:
             page_id = action_def.get("page", "")
             if page_id:
                 await self.events.emit(f"ui.page.{page_id}")
-                await self._broadcast_ws({
+                await self.broadcast_ws({
                     "type": "ui.navigate",
                     "page_id": page_id,
                 })
@@ -836,7 +836,7 @@ class Engine:
         self._ws_clients.discard(ws)
         log.info(f"WebSocket client disconnected ({len(self._ws_clients)} total)")
 
-    async def _broadcast_ws(self, message: dict[str, Any]) -> None:
+    async def broadcast_ws(self, message: dict[str, Any]) -> None:
         """Send a JSON message to all connected WebSocket clients."""
         if not self._ws_clients:
             return
@@ -872,25 +872,25 @@ class Engine:
 
     async def _on_script_error(self, event: str, payload: dict[str, Any]) -> None:
         """Forward script error events to WebSocket clients."""
-        await self._broadcast_ws({"type": "script.error", **payload})
+        await self.broadcast_ws({"type": "script.error", **payload})
 
     async def _on_trigger_event(self, event: str, payload: dict[str, Any]) -> None:
         """Forward trigger events to WebSocket clients."""
-        await self._broadcast_ws({"type": event, **payload})
+        await self.broadcast_ws({"type": event, **payload})
 
     async def _on_macro_event(self, event: str, payload: dict[str, Any]) -> None:
         """Forward macro lifecycle events to WebSocket clients."""
         # event is like "macro.progress.system_on" -> extract "progress"
         parts = event.split(".")
         event_type = parts[1] if len(parts) >= 2 else "unknown"
-        await self._broadcast_ws({
+        await self.broadcast_ws({
             "type": f"macro.{event_type}",
             **payload,
         })
 
     async def _on_plugin_event(self, event: str, payload: dict[str, Any]) -> None:
         """Forward plugin lifecycle events to WebSocket clients."""
-        await self._broadcast_ws({"type": event, **(payload or {})})
+        await self.broadcast_ws({"type": event, **(payload or {})})
 
     def _on_state_change(
         self, key: str, old_value: Any, new_value: Any, source: str
@@ -915,7 +915,7 @@ class Engine:
                 # pattern is safe if callers ever change.
                 batch = self._state_batch
                 self._state_batch = {}
-                await self._broadcast_ws({
+                await self.broadcast_ws({
                     "type": "state.update",
                     "changes": batch,
                 })
@@ -927,7 +927,7 @@ class Engine:
                 batch = self._state_batch
                 self._state_batch = {}
                 try:
-                    await self._broadcast_ws({
+                    await self.broadcast_ws({
                         "type": "state.update",
                         "changes": batch,
                     })

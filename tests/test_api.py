@@ -77,7 +77,7 @@ async def running_app():
     macros_data = [m.model_dump() for m in engine.project.macros]
     engine.macros.load_macros(macros_data)
     for device in engine.project.devices:
-        await engine.devices.add_device(engine._resolved_device_config(device))
+        await engine.devices.add_device(engine.resolved_device_config(device))
     engine._running = True
 
     rest.set_engine(engine)

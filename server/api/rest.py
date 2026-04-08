@@ -223,7 +223,7 @@ async def update_device(device_id: str, body: DeviceUpdateRequest) -> dict[str, 
     engine.project.devices[device_idx] = updated
     save_project(engine.project_path, engine.project)
     # Pass merged config (protocol + connection) to the device manager
-    resolved = engine._resolved_device_config(updated)
+    resolved = engine.resolved_device_config(updated)
     await engine.devices.update_device(device_id, resolved)
     return {"status": "updated", "device_id": device_id}
 
@@ -582,7 +582,7 @@ async def update_connection(device_id: str, request: Request) -> dict[str, Any]:
     # Hot-swap device with new connection info
     for i, d in enumerate(engine.project.devices):
         if d.id == device_id:
-            resolved = engine._resolved_device_config(d)
+            resolved = engine.resolved_device_config(d)
             await engine.devices.update_device(device_id, resolved)
             break
 
@@ -623,7 +623,7 @@ async def delete_connection(device_id: str) -> dict[str, Any]:
     # Re-sync the device with config defaults only
     for d in engine.project.devices:
         if d.id == device_id:
-            resolved = engine._resolved_device_config(d)
+            resolved = engine.resolved_device_config(d)
             await engine.devices.update_device(device_id, resolved)
             break
 
@@ -1645,7 +1645,7 @@ async def open_from_library(request: Request) -> dict[str, Any]:
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"Project '{data.library_id}' not found in library")
 
-    await engine._broadcast_ws({
+    await engine.broadcast_ws({
         "type": "project.replaced",
         "project_name": data.project_name,
         "source": "library",
@@ -1677,7 +1677,7 @@ async def create_blank(request: Request) -> dict[str, Any]:
     scripts_dir = engine.project_path.parent / "scripts"
     replace_scripts(scripts_dir, {})
 
-    await engine._broadcast_ws({
+    await engine.broadcast_ws({
         "type": "project.replaced",
         "project_name": project_name,
         "source": "blank",

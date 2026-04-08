@@ -2366,10 +2366,10 @@ class PanelApp {
             return el;
         }
 
-        // Resolve renderer URL from plugin extensions using URL constructor
+        // Resolve renderer URL using relative path (works through tunnels)
         const pathParts = location.pathname.split('/panel');
         const basePath = pathParts[0] || '';
-        const rendererUrl = new URL(`${basePath}/api/plugins/${encodeURIComponent(pluginId)}/panel/${encodeURIComponent(pluginType)}.html`, location.origin).href;
+        const rendererUrl = `${basePath}/api/plugins/${encodeURIComponent(pluginId)}/panel/${encodeURIComponent(pluginType)}.html`;
 
         const iframe = document.createElement('iframe');
         iframe.src = rendererUrl;
@@ -2408,13 +2408,12 @@ class PanelApp {
                 config: element.plugin_config || {},
                 theme: themeVars,
                 elementId: element.id,
-            }, window.location.origin);
+            }, '*');  // sandboxed iframe has opaque origin; source check provides security
         });
 
         // Listen for messages from plugin iframe
         const handler = (event) => {
             if (event.source !== iframe.contentWindow) return;
-            if (event.origin !== window.location.origin) return;
             const msg = event.data;
             if (!msg || !msg.type) return;
 
@@ -2457,7 +2456,7 @@ class PanelApp {
                     type: 'openavc:state',
                     key,
                     value,
-                }, window.location.origin);
+                }, '*');  // sandboxed iframe has opaque origin; source check provides security
             }
         }
     }

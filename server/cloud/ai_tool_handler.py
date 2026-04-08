@@ -401,7 +401,14 @@ class AIToolHandler:
             ],
             "variables": [v.model_dump(mode="json") for v in p.variables],
             "macros": [
-                {"id": m.id, "name": m.name, "step_count": len(m.steps), "trigger_count": len(m.triggers)}
+                {
+                    "id": m.id, "name": m.name, "step_count": len(m.steps),
+                    "trigger_count": len(m.triggers),
+                    "triggers": [
+                        {k: v for k, v in t.model_dump(mode="json").items() if v is not None}
+                        for t in m.triggers
+                    ],
+                }
                 for m in p.macros
             ],
             "pages": [
@@ -559,7 +566,7 @@ class AIToolHandler:
         save_project(engine.project_path, engine.project)
 
         # Hot-add via device manager with merged config
-        await engine.devices.add_device(engine._resolved_device_config(new_device))
+        await engine.devices.add_device(engine.resolved_device_config(new_device))
         await self._notify_project_changed()
 
         return {"status": "created", "id": device_id}
@@ -1356,8 +1363,8 @@ class AIToolHandler:
         get this broadcast automatically via engine.reload_project().
         """
         engine = self._get_engine()
-        if engine and hasattr(engine, "_broadcast_ws"):
-            await engine._broadcast_ws({"type": "project.reloaded"})
+        if engine and hasattr(engine, "broadcast_ws"):
+            await engine.broadcast_ws({"type": "project.reloaded"})
 
     # ===== PLUGINS =====
 
@@ -1413,7 +1420,7 @@ class AIToolHandler:
             return {"error": "plugin_id is required"}
 
         # Stop plugin if running
-        if plugin_id in engine.plugin_loader._instances:
+        if engine.plugin_loader.is_running(plugin_id):
             await engine.plugin_loader.stop_plugin(plugin_id)
 
         project_plugins = engine.project.plugins if engine.project else None
@@ -1433,8 +1440,7 @@ class AIToolHandler:
             save_project(engine.project_path, engine.project)
 
         # Clear missing plugin state if tracked
-        if plugin_id in engine.plugin_loader._missing_plugins:
-            del engine.plugin_loader._missing_plugins[plugin_id]
+        engine.plugin_loader.clear_missing(plugin_id)
 
         return result
 
@@ -1558,7 +1564,7 @@ class AIToolHandler:
         save_project(engine.project_path, engine.project)
 
         # Restart if running
-        if plugin_id in engine.plugin_loader._instances:
+        if engine.plugin_loader.is_running(plugin_id):
             await engine.plugin_loader.stop_plugin(plugin_id)
             await engine.plugin_loader.start_plugin(plugin_id, new_config)
 

@@ -66,7 +66,7 @@ def _make_engine():
     engine.macros = MagicMock()
     engine.macros.execute = AsyncMock()
     engine.handle_ui_event = AsyncMock()
-    engine._broadcast_ws = AsyncMock()
+    engine.broadcast_ws = AsyncMock()
     engine.reload_project = AsyncMock()
     engine.isc = None
     return engine
@@ -240,8 +240,8 @@ async def test_ui_page_broadcasts_navigation():
     with patch("server.api.ws._engine", engine):
         await _handle_message(ws, {"type": "ui.page", "page_id": "page2"}, "panel")
     engine.events.emit.assert_awaited_once_with("ui.page.page2")
-    engine._broadcast_ws.assert_awaited_once()
-    broadcast_msg = engine._broadcast_ws.call_args[0][0]
+    engine.broadcast_ws.assert_awaited_once()
+    broadcast_msg = engine.broadcast_ws.call_args[0][0]
     assert broadcast_msg["type"] == "ui.navigate"
     assert broadcast_msg["page_id"] == "page2"
 

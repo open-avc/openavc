@@ -309,7 +309,7 @@ async def _handle_message(
             return
         await _engine.events.emit(f"ui.page.{page_id}")
         # Broadcast page navigation to all connected clients (including sender)
-        await _engine._broadcast_ws({"type": "ui.navigate", "page_id": page_id})
+        await _engine.broadcast_ws({"type": "ui.navigate", "page_id": page_id})
 
     elif msg_type == "command":
         device_id = msg.get("device_id", "")

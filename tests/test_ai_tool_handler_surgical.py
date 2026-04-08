@@ -114,7 +114,7 @@ def mock_engine():
     engine.project_path.parent = MagicMock()
     engine.devices = MagicMock()
     engine.devices.add_device = AsyncMock()
-    engine._broadcast_ws = AsyncMock()
+    engine.broadcast_ws = AsyncMock()
     return engine
 
 

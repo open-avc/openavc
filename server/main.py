@@ -109,7 +109,7 @@ ai_proxy_api.set_engine(engine)
 
 # Wire discovery engine
 discovery_api.set_discovery_engine(discovery_engine)
-discovery_api.set_broadcast_fn(engine._broadcast_ws)
+discovery_api.set_broadcast_fn(engine.broadcast_ws)
 discovery_api.set_app_engine(engine)
 
 # Mount routers

@@ -501,6 +501,14 @@ class PluginLoader:
 
         return {"status": "ok", "message": "Running (no health check implemented)"}
 
+    def is_running(self, plugin_id: str) -> bool:
+        """Check if a plugin is currently running."""
+        return plugin_id in self._instances
+
+    def clear_missing(self, plugin_id: str) -> None:
+        """Remove a plugin from the missing-plugins tracker."""
+        self._missing_plugins.pop(plugin_id, None)
+
     # ──── Info & Status ────
 
     def list_plugins(self) -> list[dict[str, Any]]:
