@@ -295,9 +295,12 @@ class StartupSplashMiddleware(BaseHTTPMiddleware):
                 "error": request.app.state.engine_error,
             })
 
-        # Let other API routes through (they return 503 via _get_engine())
+        # Block API routes during startup (engine.project is None, etc.)
         if path.startswith("/api/"):
-            return await call_next(request)
+            return JSONResponse(
+                {"detail": "Server is starting up"},
+                status_code=503,
+            )
 
         # Serve splash page for all UI routes
         return HTMLResponse(_STARTUP_PAGE, status_code=503)
