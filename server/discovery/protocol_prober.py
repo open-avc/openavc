@@ -332,16 +332,18 @@ _BANNER_PROBES = [
 ]
 
 
-def probe_banner(banner: str) -> ProbeResult | None:
+def probe_banner(banner: str) -> list[ProbeResult]:
     """Try all banner-based probes against a banner string.
 
-    Returns the first match, or None.
+    Returns all matches (not just the first) so ambiguous banners
+    get scored correctly by the driver matcher.
     """
+    matches = []
     for probe_fn in _BANNER_PROBES:
         result = probe_fn(banner)
         if result:
-            return result
-    return None
+            matches.append(result)
+    return matches
 
 
 # ---------------------------------------------------------------------------
@@ -973,9 +975,8 @@ async def probe_device(
     # Banner-based probes (fast, no network call)
     if banners:
         for port, banner_text in banners.items():
-            banner_result = probe_banner(banner_text)
-            if banner_result:
-                results.append(banner_result)
+            banner_matches = probe_banner(banner_text)
+            results.extend(banner_matches)
 
     # Active port probes (requires network calls)
     probe_tasks = []

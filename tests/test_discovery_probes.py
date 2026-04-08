@@ -122,23 +122,23 @@ class TestShureBannerProbe:
 
 class TestProbeBannerDispatcher:
     def test_dispatches_extron(self):
-        result = probe_banner("(c) 2020 Extron Electronics DTP CrossPoint 84 V1.02")
-        assert result is not None
-        assert result.manufacturer == "Extron"
+        results = probe_banner("(c) 2020 Extron Electronics DTP CrossPoint 84 V1.02")
+        assert len(results) >= 1
+        assert results[0].manufacturer == "Extron"
 
     def test_dispatches_biamp(self):
-        result = probe_banner("#Tesira Text Protocol 1.20")
-        assert result is not None
-        assert result.manufacturer == "Biamp"
+        results = probe_banner("#Tesira Text Protocol 1.20")
+        assert len(results) >= 1
+        assert results[0].manufacturer == "Biamp"
 
-    def test_returns_none_for_unknown(self):
-        assert probe_banner("Unknown device banner text") is None
+    def test_returns_empty_for_unknown(self):
+        assert probe_banner("Unknown device banner text") == []
 
-    def test_returns_first_match(self):
+    def test_returns_all_matches(self):
         # Extron should match
-        result = probe_banner("(c) 2020 Extron Electronics IN1608 V1.00")
-        assert result is not None
-        assert result.manufacturer == "Extron"
+        results = probe_banner("(c) 2020 Extron Electronics IN1608 V1.00")
+        assert len(results) >= 1
+        assert results[0].manufacturer == "Extron"
 
 
 # ===== PJLink Probe Tests =====

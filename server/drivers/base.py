@@ -53,6 +53,15 @@ class BaseDriver(ABC):
         # Initialize state variables from DRIVER_INFO
         self._init_state_variables()
 
+    @property
+    def connected(self) -> bool:
+        """True only if both driver and transport report connected."""
+        if not self._connected:
+            return False
+        if self.transport is None:
+            return False
+        return getattr(self.transport, "connected", False)
+
     def _init_state_variables(self) -> None:
         """Register all state variables from DRIVER_INFO with default values."""
         state_vars = self.DRIVER_INFO.get("state_variables", {})
@@ -294,7 +303,10 @@ class BaseDriver(ABC):
                 self.events.emit(f"device.disconnected.{self.device_id}")
             )
         except RuntimeError:
-            pass
+            log.warning(
+                f"[{self.device_id}] No event loop during disconnect — "
+                f"polling may not stop cleanly"
+            )
 
     # --- Polling ---
 
@@ -323,8 +335,12 @@ class BaseDriver(ABC):
             while True:
                 try:
                     await self.poll()
-                except Exception:  # Catch-all: isolates driver subclass poll() errors
-                    log.exception(f"[{self.device_id}] Error during poll")
+                except (ConnectionError, TimeoutError, OSError):
+                    # Expected during network issues — log briefly and retry next cycle
+                    log.warning(f"[{self.device_id}] Poll failed (connection issue)")
+                except Exception:
+                    # Unexpected errors — log full traceback so driver bugs are visible
+                    log.exception(f"[{self.device_id}] Unexpected error during poll")
                 await asyncio.sleep(interval)
         except asyncio.CancelledError:
             return
@@ -333,11 +349,38 @@ class BaseDriver(ABC):
 
     def set_state(self, property_name: str, value: Any) -> None:
         """Set a state value under this device's namespace."""
+        # Warn if value type doesn't match declaration (helps catch driver bugs)
+        var_def = self.DRIVER_INFO.get("state_variables", {}).get(property_name)
+        if var_def and value is not None:
+            declared = var_def.get("type", "string")
+            if declared == "integer" and not isinstance(value, int):
+                log.debug(
+                    f"[{self.device_id}] State '{property_name}' declared as "
+                    f"integer but got {type(value).__name__}: {value!r}"
+                )
+            elif declared == "boolean" and not isinstance(value, bool):
+                log.debug(
+                    f"[{self.device_id}] State '{property_name}' declared as "
+                    f"boolean but got {type(value).__name__}: {value!r}"
+                )
+            elif declared == "enum" and "values" in var_def:
+                if str(value) not in [str(v) for v in var_def["values"]]:
+                    log.debug(
+                        f"[{self.device_id}] State '{property_name}' value "
+                        f"{value!r} not in declared enum values {var_def['values']}"
+                    )
         self.state.set(
             f"device.{self.device_id}.{property_name}",
             value,
             source=f"device.{self.device_id}",
         )
+
+    def set_states(self, updates: dict[str, Any]) -> None:
+        """Set multiple state values atomically (listeners see all changes at once)."""
+        namespaced = {
+            f"device.{self.device_id}.{k}": v for k, v in updates.items()
+        }
+        self.state.set_batch(namespaced, source=f"device.{self.device_id}")
 
     def get_state(self, property_name: str) -> Any:
         """Get a state value from this device's namespace."""

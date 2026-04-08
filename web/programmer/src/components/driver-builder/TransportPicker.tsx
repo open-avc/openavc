@@ -30,6 +30,7 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
         >
           <option value="tcp">TCP</option>
           <option value="serial">Serial</option>
+          <option value="http">HTTP / REST API</option>
         </select>
         <div
           style={{
@@ -38,11 +39,13 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
             marginTop: "var(--space-xs)",
           }}
         >
-          Choose TCP for network devices or Serial for RS-232/RS-485 devices.
+          {draft.transport === "http"
+            ? "Choose HTTP for devices with REST APIs (JSON, SOAP, etc.)."
+            : "Choose TCP for network devices, Serial for RS-232/RS-485, or HTTP for REST API devices."}
         </div>
       </div>
 
-      <div style={rowStyle}>
+      {draft.transport !== "http" && <div style={rowStyle}>
         <label style={labelStyle}>Message Delimiter</label>
         <select
           value={draft.delimiter}
@@ -69,7 +72,108 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
             <span> Current value is a custom delimiter: <code>{draft.delimiter}</code></span>
           )}
         </div>
-      </div>
+      </div>}
+
+      {draft.transport === "http" && (
+        <>
+          <div style={rowStyle}>
+            <label style={labelStyle}>Default Port</label>
+            <input
+              type="number"
+              value={
+                (draft.default_config.port as number | undefined) ?? 80
+              }
+              onChange={(e) =>
+                onUpdate({
+                  default_config: {
+                    ...draft.default_config,
+                    port: parseInt(e.target.value) || 80,
+                  },
+                })
+              }
+              style={{ width: 120 }}
+            />
+          </div>
+          <div style={rowStyle}>
+            <label style={labelStyle}>Authentication</label>
+            <select
+              value={
+                (draft.default_config.auth_type as string | undefined) ?? "none"
+              }
+              onChange={(e) =>
+                onUpdate({
+                  default_config: {
+                    ...draft.default_config,
+                    auth_type: e.target.value,
+                  },
+                })
+              }
+              style={{ width: "100%" }}
+            >
+              <option value="none">None</option>
+              <option value="basic">HTTP Basic Auth</option>
+              <option value="digest">HTTP Digest Auth</option>
+              <option value="bearer">Bearer Token</option>
+              <option value="api_key">API Key (custom header)</option>
+            </select>
+            <div
+              style={{
+                fontSize: "11px",
+                color: "var(--text-muted)",
+                marginTop: "var(--space-xs)",
+              }}
+            >
+              Users configure credentials per device. This sets the auth method.
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: "var(--space-lg)", ...rowStyle }}>
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "var(--space-xs)",
+                fontSize: "var(--font-size-sm)",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={(draft.default_config.ssl as boolean | undefined) ?? false}
+                onChange={(e) =>
+                  onUpdate({
+                    default_config: {
+                      ...draft.default_config,
+                      ssl: e.target.checked,
+                    },
+                  })
+                }
+              />
+              Use HTTPS
+            </label>
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "var(--space-xs)",
+                fontSize: "var(--font-size-sm)",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={(draft.default_config.verify_ssl as boolean | undefined) ?? false}
+                onChange={(e) =>
+                  onUpdate({
+                    default_config: {
+                      ...draft.default_config,
+                      verify_ssl: e.target.checked,
+                    },
+                  })
+                }
+              />
+              Verify SSL Certificate
+            </label>
+          </div>
+        </>
+      )}
 
       {draft.transport === "tcp" && (
         <>
@@ -147,8 +251,8 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
         </>
       )}
 
-      {/* Inter-command delay */}
-      <div style={rowStyle}>
+      {/* Inter-command delay — TCP and serial only */}
+      {draft.transport !== "http" && <div style={rowStyle}>
         <label style={labelStyle}>Inter-Command Delay (seconds)</label>
         <input
           type="number"
@@ -177,7 +281,7 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
           Minimum delay between commands. Some devices need this to avoid
           command flooding (e.g., Extron recommends 0.1s).
         </div>
-      </div>
+      </div>}
 
       {/* Config schema editor */}
       <ConfigSchemaEditor draft={draft} onUpdate={onUpdate} />

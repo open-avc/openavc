@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import yaml from "js-yaml";
 import type { DriverDefinition, DriverInfo, CommunityDriver, InstalledDriver } from "../api/types";
 import * as api from "../api/restClient";
 
@@ -160,8 +161,13 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => ({
     const { definitions } = get();
     const def = definitions.find((d) => d.id === id);
     if (!def) return;
-    const json = JSON.stringify(def, null, 2);
-    const blob = new Blob([json], { type: "application/x-avcdriver" });
+    // Export as YAML to match community driver format
+    const content = yaml.dump(def, {
+      lineWidth: 120,
+      noCompatMode: true,
+      quotingType: '"',
+    });
+    const blob = new Blob([content], { type: "application/x-avcdriver" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;

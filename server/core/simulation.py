@@ -214,13 +214,38 @@ class SimulationManager:
         except Exception as e:
             raise RuntimeError(f"Error waiting for simulator startup: {e}")
 
-        # Assign ports based on auto-allocation (19000 + index)
-        for i, dev_cfg in enumerate(devices_config):
-            device_id = dev_cfg["device_id"]
-            sim_port = 19000 + i
-            self._sim_ports[device_id] = sim_port
-
         self._sim_ui_url = f"http://localhost:{sim_config['ui_port']}"
+
+        # Query the simulator API for actual port assignments instead of
+        # assuming sequential allocation (ports may differ if some are busy)
+        try:
+            import aiohttp
+            async with aiohttp.ClientSession() as session:
+                for attempt in range(10):
+                    try:
+                        resp = await session.get(
+                            f"{self._sim_ui_url}/api/devices", timeout=aiohttp.ClientTimeout(total=2)
+                        )
+                        if resp.status == 200:
+                            data = await resp.json()
+                            for dev in data.get("devices", []):
+                                did = dev.get("device_id")
+                                port = dev.get("port")
+                                if did and port:
+                                    self._sim_ports[did] = port
+                            break
+                    except Exception:
+                        await asyncio.sleep(0.3)
+        except Exception as e:
+            log.warning("Could not query simulator for port assignments: %s", e)
+
+        # Fallback: if API query failed, use sequential assignment
+        if not self._sim_ports:
+            log.warning("Falling back to sequential port assignment")
+            for i, dev_cfg in enumerate(devices_config):
+                device_id = dev_cfg["device_id"]
+                self._sim_ports[device_id] = 19000 + i
+
         self._active = True
 
         # Redirect device connections

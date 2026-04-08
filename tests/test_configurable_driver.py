@@ -193,9 +193,9 @@ def test_response_with_value_map():
 def test_coerce_value():
     """Type coercion helper works correctly."""
     assert ConfigurableDriver._coerce_value("42", "integer") == 42
-    assert ConfigurableDriver._coerce_value("bad", "integer") == 0
+    assert ConfigurableDriver._coerce_value("bad", "integer") == "bad"  # returns raw on failure
     assert ConfigurableDriver._coerce_value("3.14", "float") == 3.14
-    assert ConfigurableDriver._coerce_value("bad", "float") == 0.0
+    assert ConfigurableDriver._coerce_value("bad", "float") == "bad"  # returns raw on failure
     assert ConfigurableDriver._coerce_value("1", "boolean") is True
     assert ConfigurableDriver._coerce_value("true", "boolean") is True
     assert ConfigurableDriver._coerce_value("0", "boolean") is False

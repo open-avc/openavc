@@ -108,6 +108,49 @@ class StateStore:
         for key, value in updates.items():
             self.set(key, value, source)
 
+    def set_batch(self, updates: dict[str, Any], source: str = "system") -> None:
+        """
+        Atomically set multiple values — all state is updated before any
+        notifications fire. Listeners and triggers see the complete batch,
+        not partial intermediate states.
+        """
+        # Phase 1: apply all changes, collect what actually changed
+        changes: list[tuple[str, Any, Any]] = []  # (key, old_value, new_value)
+        for key, value in updates.items():
+            old_value = self._store.get(key)
+            if old_value == value and type(old_value) is type(value):
+                continue
+            self._store[key] = value
+            self._history.append(HistoryEntry(key, old_value, value, source))
+            changes.append((key, old_value, value))
+
+        if not changes:
+            return
+
+        # Phase 2: notify listeners (state is fully updated at this point)
+        for key, old_value, new_value in changes:
+            if log.isEnabledFor(10):
+                log.debug(f"State: {key} = {new_value!r} (was {old_value!r}, source={source})")
+            self._notify_listeners(key, old_value, new_value, source)
+
+        # Phase 3: emit events
+        if self._event_bus is not None:
+            try:
+                loop = asyncio.get_running_loop()
+                for key, old_value, new_value in changes:
+                    payload = {
+                        "key": key,
+                        "old_value": old_value,
+                        "new_value": new_value,
+                        "source": source,
+                    }
+                    for event_name in ("state.changed", f"state.changed.{key}"):
+                        task = loop.create_task(self._event_bus.emit(event_name, payload))
+                        self._pending_event_tasks.add(task)
+                        task.add_done_callback(self._pending_event_tasks.discard)
+            except RuntimeError:
+                pass
+
     def subscribe(self, pattern: str, callback: Callable) -> str:
         """
         Subscribe to state changes matching a glob pattern.

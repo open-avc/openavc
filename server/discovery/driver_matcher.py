@@ -177,9 +177,10 @@ class DriverMatcher:
         if not device.mac or not hint.mac_prefixes:
             return None
 
-        mac_prefix = device.mac[:8].lower()
+        # Normalize to colon-separated lowercase (handles both "00:05:a6" and "00-05-a6")
+        mac_prefix = device.mac.replace("-", ":")[:8].lower()
         for prefix in hint.mac_prefixes:
-            if mac_prefix == prefix.lower():
+            if mac_prefix == prefix.replace("-", ":").lower():
                 return f"MAC prefix {mac_prefix} matches hint"
 
         return None

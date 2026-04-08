@@ -46,7 +46,8 @@ class ConfigurableDriver(BaseDriver):
         self._definition: dict[str, Any] = getattr(self.__class__, "_definition", {})
         super().__init__(*args, **kwargs)
 
-        # Pre-compile response patterns
+        # Pre-compile response patterns (substitute config values first so
+        # patterns like 'cv "{level_control}" ...' resolve to actual names)
         self._compiled_responses: list[tuple[re.Pattern[str], list[dict[str, Any]]]] = []
         for resp in self._definition.get("responses", []):
             try:
@@ -54,7 +55,8 @@ class ConfigurableDriver(BaseDriver):
                 raw_pattern = resp.get("pattern", "") or resp.get("match", "")
                 if not raw_pattern:
                     continue
-                pattern = re.compile(raw_pattern)
+                resolved = self._safe_substitute(raw_pattern, self.config)
+                pattern = re.compile(resolved)
 
                 # Accept both "mappings" (detailed) and "set" (shorthand) formats
                 mappings = resp.get("mappings", [])
@@ -429,12 +431,14 @@ class ConfigurableDriver(BaseDriver):
             try:
                 return int(raw)
             except ValueError:
-                return 0
+                log.warning("Cannot coerce %r to integer, returning raw string", raw)
+                return raw
         elif value_type == "float":
             try:
                 return float(raw)
             except ValueError:
-                return 0.0
+                log.warning("Cannot coerce %r to float, returning raw string", raw)
+                return raw
         elif value_type == "boolean":
             return raw.lower() in ("1", "true", "yes", "on")
         return raw  # string

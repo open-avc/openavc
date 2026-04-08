@@ -376,6 +376,10 @@ export interface ProjectConfig {
 export interface DriverCommandDef {
   label: string;
   string: string;
+  send?: string;
+  method?: string;
+  path?: string;
+  body?: string;
   params: Record<string, { type: string; required?: boolean; values?: string[]; help?: string }>;
   help?: string;
 }
@@ -390,6 +394,39 @@ export interface DriverResponseMapping {
 export interface DriverResponseDef {
   pattern: string;
   mappings: DriverResponseMapping[];
+}
+
+export interface DriverDiscoveryHints {
+  ports?: number[];
+  mac_prefixes?: string[];
+  protocols?: string[];
+  mdns_services?: string[];
+  hostname_patterns?: string[];
+}
+
+export interface DriverDeviceSettingDef {
+  label: string;
+  type: string;
+  help?: string;
+  state_key?: string;
+  default?: unknown;
+  setup?: boolean;
+  unique?: boolean;
+  values?: string[];
+  write?: {
+    send?: string;
+    method?: string;
+    path?: string;
+    body?: string;
+  };
+}
+
+export interface DriverSimulatorDef {
+  initial_state?: Record<string, unknown>;
+  delays?: Record<string, number>;
+  controls?: Array<Record<string, unknown>>;
+  command_handlers?: Array<Record<string, unknown>>;
+  error_modes?: Record<string, { behavior: string; description?: string; state?: Record<string, unknown> }>;
 }
 
 export interface DriverDefinition {
@@ -409,6 +446,10 @@ export interface DriverDefinition {
   responses: DriverResponseDef[];
   polling: { interval?: number; queries?: string[] };
   frame_parser?: { type: string; [key: string]: unknown } | null;
+  discovery?: DriverDiscoveryHints;
+  device_settings?: Record<string, DriverDeviceSettingDef>;
+  simulator?: DriverSimulatorDef;
+  help?: { overview?: string; setup?: string };
 }
 
 // --- API response types ---

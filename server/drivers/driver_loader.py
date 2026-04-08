@@ -51,16 +51,56 @@ def validate_driver_definition(driver_def: dict[str, Any]) -> list[str]:
     if transport and transport not in ("tcp", "serial", "udp", "http"):
         errors.append(f"Unsupported transport: {transport}")
 
-    # Validate response patterns compile
+    # Validate response patterns compile and don't have catastrophic backtracking
     for i, resp in enumerate(driver_def.get("responses", [])):
         pattern = resp.get("pattern", "") or resp.get("match", "")
         if not pattern:
             errors.append(f"Response {i}: missing pattern or match")
         else:
             try:
-                re.compile(pattern)
+                compiled = re.compile(pattern)
+                # Heuristic: detect nested quantifiers that cause exponential
+                # backtracking (e.g., (.+)+, (.*)*). Test with a short non-matching
+                # string — if it takes measurably long, warn.
+                if re.search(r'[+*]\)[+*?]', pattern):
+                    import time as _time
+                    test_str = "a" * 25
+                    t0 = _time.monotonic()
+                    compiled.search(test_str)
+                    elapsed = _time.monotonic() - t0
+                    if elapsed > 0.1:
+                        errors.append(
+                            f"Response {i}: regex '{pattern}' has nested "
+                            f"quantifiers that may cause catastrophic backtracking"
+                        )
             except re.error as e:
                 errors.append(f"Response {i}: invalid regex '{pattern}': {e}")
+
+    # Validate commands structure
+    for cmd_name, cmd_def in driver_def.get("commands", {}).items():
+        if not isinstance(cmd_def, dict):
+            errors.append(f"Command '{cmd_name}': must be a dict")
+            continue
+        # TCP/serial commands need send/string, HTTP commands need path/method
+        has_send = cmd_def.get("send") or cmd_def.get("string")
+        has_http = cmd_def.get("path") or cmd_def.get("method")
+        if not has_send and not has_http:
+            errors.append(
+                f"Command '{cmd_name}': must have 'send' (TCP/serial) "
+                f"or 'path'/'method' (HTTP)"
+            )
+
+    # Validate state_variables structure
+    valid_types = {"string", "integer", "number", "boolean", "enum", "float"}
+    for var_name, var_def in driver_def.get("state_variables", {}).items():
+        if not isinstance(var_def, dict):
+            errors.append(f"State variable '{var_name}': must be a dict")
+            continue
+        var_type = var_def.get("type", "")
+        if var_type and var_type not in valid_types:
+            errors.append(f"State variable '{var_name}': unknown type '{var_type}'")
+        if not var_def.get("label"):
+            errors.append(f"State variable '{var_name}': missing 'label'")
 
     return errors
 

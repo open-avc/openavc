@@ -70,11 +70,13 @@ When you add or remove devices while simulation is active, the simulator automat
 
 ## Which Drivers Support Simulation
 
-All YAML drivers (`.avcdriver`) work automatically — the simulator reverses their command and response definitions to generate protocol handlers. Python drivers need a companion simulator file (`_sim.py`).
+All YAML drivers (`.avcdriver`) get basic simulation automatically — the simulator reverses their command and response definitions to generate protocol handlers. This handles simple request/response patterns out of the box. For more realistic behavior (correct state tracking, conditional responses, realistic delays), add a `simulator:` section to your `.avcdriver` file. All community drivers include this section.
 
-Check the Browse Drivers view for the simulator badge (play icon) to see which community drivers include simulation support.
+Python drivers need a companion simulator file (`_sim.py`) placed alongside the driver.
 
-For information on adding simulation support to your own drivers, see [Writing Simulators](https://github.com/open-avc/openavc-drivers/blob/main/docs/writing-simulators.md).
+Check the Browse Drivers view for the simulator badge (play icon) to see which community drivers include enhanced simulation support.
+
+For information on adding simulation support to your own drivers, see the Writing Simulators guide in the driver repository documentation.
 
 ## API Reference
 

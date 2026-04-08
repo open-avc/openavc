@@ -248,55 +248,52 @@ state_variables:
 commands:
   set_input:
     label: Set Input
-    string: "{input}!\r\n"           # e.g., "3!\r\n" to select input 3
+    send: "{input}!\r\n"             # e.g., "3!\r\n" to select input 3
     help: Route a specific input to all outputs.
     params:
       input: { type: integer, required: true, help: "Input number (1-based)" }
 
   set_volume:
     label: Set Volume
-    string: "{level}V\r\n"           # e.g., "45V\r\n" to set volume to 45
+    send: "{level}V\r\n"             # e.g., "45V\r\n" to set volume to 45
     help: Set the audio volume level.
     params:
       level: { type: integer, required: true, help: "Volume level 0-100" }
 
   mute_on:
     label: Mute On
-    string: "1Z\r\n"
+    send: "1Z\r\n"
     help: Mute the audio output.
     params: {}
 
   mute_off:
     label: Mute Off
-    string: "0Z\r\n"
+    send: "0Z\r\n"
     help: Unmute the audio output.
     params: {}
 
   query_input:
     label: Query Input
-    string: "!\r\n"                  # Response: "In3 All"
+    send: "!\r\n"                    # Response: "In3 All"
     params: {}
 
   query_volume:
     label: Query Volume
-    string: "V\r\n"                  # Response: "Vol45"
+    send: "V\r\n"                    # Response: "Vol45"
     params: {}
 
 responses:
   # "In3 All" -> input = 3
-  - pattern: 'In(\d+) All'
-    mappings:
-      - { group: 1, state: input, type: integer }
+  - match: 'In(\d+) All'
+    set: { input: "$1" }
 
   # "Vol45" -> volume = 45
-  - pattern: 'Vol(\d+)'
-    mappings:
-      - { group: 1, state: volume, type: integer }
+  - match: 'Vol(\d+)'
+    set: { volume: "$1" }
 
   # "Amt1" -> mute = true, "Amt0" -> mute = false
-  - pattern: 'Amt(\d+)'
-    mappings:
-      - { group: 1, state: mute, type: boolean }
+  - match: 'Amt(\d+)'
+    set: { mute: "$1" }
 
 polling:
   interval: 15
@@ -315,7 +312,7 @@ Notice how much cleaner this is compared to JSON: comments explain the protocol,
 |-------|----------|-------------|
 | `id` | Yes | Unique driver identifier. Lowercase, underscores. |
 | `name` | Yes | Human-readable display name. |
-| `transport` | Yes | `"tcp"` or `"serial"`. |
+| `transport` | Yes | `"tcp"`, `"serial"`, or `"http"`. |
 | `manufacturer` | No | Manufacturer name. Default: `"Generic"`. |
 | `category` | No | One of: `projector`, `display`, `switcher`, `scaler`, `audio`, `camera`, `lighting`, `relay`, `utility`, `other`. |
 | `version` | No | Semantic version. Default: `"1.0.0"`. |
@@ -435,44 +432,55 @@ The optional `help` field provides a description shown in the Driver Builder UI 
 
 #### `commands` entry
 
-```json
-"set_input": {
-  "label": "Set Input",
-  "string": "{input}!\\r",
-  "help": "Switch the active input source on the switcher.",
-  "params": {
-    "input": { "type": "integer", "required": true, "help": "Input number (1-based)" }
-  }
-}
+```yaml
+set_input:
+  label: Set Input
+  send: "{input}!\r"
+  help: Switch the active input source on the switcher.
+  params:
+    input: { type: integer, required: true, help: "Input number (1-based)" }
 ```
 
-- `string`: The raw bytes to send. `{param_name}` placeholders are substituted at runtime. Supported escape sequences: `\r`, `\n`, `\t`, `\\`, `\xHH` (hex byte).
+- `send`: The raw bytes to send. `{param_name}` placeholders are substituted at runtime. Config values like `{set_id}` are also available. Supported escape sequences: `\r`, `\n`, `\t`, `\\`, `\xHH` (hex byte). (The key `string` is accepted as an alias.)
 - `help`: Optional description of what the command does. Shown in the Programmer IDE command testing panel, macro editor, UI builder, and used by the AI assistant to understand commands.
-- `params`: Parameter definitions. Each key matches a `{placeholder}` in the string. Each parameter can include an optional `help` field describing what values are expected.
+- `params`: Parameter definitions. Each key matches a `{placeholder}` in the send string. Each parameter can include an optional `help` field describing what values are expected.
 
 #### `responses` entry
 
-```json
-{
-  "pattern": "POWR=(\\d)",
-  "mappings": [
-    {
-      "group": 1,
-      "state": "power",
-      "type": "string",
-      "map": { "0": "off", "1": "on" }
-    }
-  ]
-}
+The shorthand `set` format is recommended (cleaner, matches community driver conventions):
+
+```yaml
+# Shorthand — set state variables directly from capture groups
+- match: 'In(\d+) All'
+  set: { input: "$1" }
+
+# With a value map — translate raw values to friendly names
+- match: 'POWR=(\d)'
+  set: { power: "$1" }
+  # In the verbose format, value maps are supported:
+  # mappings:
+  #   - { group: 1, state: power, type: string, map: { "0": "off", "1": "on" } }
 ```
 
-- `pattern`: A regular expression. Use capture groups `()` to extract values.
+- `match`: A regular expression. Use capture groups `()` to extract values. (The key `pattern` is accepted as an alias.)
+- `set`: Maps capture groups to state variables. `"$1"` refers to the first capture group, `"$2"` to the second, etc. Literal strings without `$` set a static value.
+
+**Verbose format** (used when you need type conversion or value maps):
+
+```yaml
+- match: 'POWR=(\d)'
+  mappings:
+    - { group: 1, state: power, type: string, map: { "0": "off", "1": "on" } }
+```
+
 - `mappings[].group`: Which regex capture group (1-based).
 - `mappings[].state`: Which state variable to update.
 - `mappings[].type`: How to convert the captured text: `string`, `integer`, `float`, `boolean`.
 - `mappings[].map` (optional): A lookup table. If the captured value is a key in this object, the mapped value is used instead.
 
 Responses are checked in order. The first matching pattern wins.
+
+**Config values in patterns**: You can use config value placeholders like `{level_control}` in response patterns. They are resolved when the driver connects. This is useful for protocols like QSC Q-SYS where responses include user-configured control names.
 
 #### `polling` section
 
@@ -1179,18 +1187,14 @@ DRIVER_INFO = {
 
 For serial drivers, use the `SIM:` prefix as the port name (e.g., `SIM:test`). This creates a simulated serial connection that accepts sends without error.
 
-For TCP drivers, you can run a simple echo server or one of the included simulators:
+For TCP and HTTP drivers, use the built-in device simulator. Start simulation from the Programmer IDE toolbar or with the REST API:
 
 ```bash
-# PJLink simulator (built-in)
-python -m tests.simulators.pjlink_simulator
-
-# Samsung MDC simulator (built-in)
-python -m tests.simulators.samsung_mdc_simulator
-
-# vMix simulator (built-in)
-python -m tests.simulators.vmix_simulator
+# Start the simulator as a standalone process
+python -m simulator --config sim_config.json
 ```
+
+The simulator auto-generates behavior for all YAML drivers. For more realistic simulation, add a `simulator:` section to your driver (see "Adding Simulation Support" above).
 
 ### With the server
 
@@ -1228,6 +1232,130 @@ pytest tests/test_my_driver.py -v
 
 ## Adding Simulation Support
 
-The OpenAVC Simulator (included with OpenAVC at `simulator/`) lets your driver work without real hardware by running a fake protocol server. YAML drivers get simulation automatically. Python drivers need a companion `_sim.py` file.
+The OpenAVC Simulator (included with OpenAVC at `simulator/`) lets your driver work without real hardware by running a fake protocol server. YAML drivers get basic simulation automatically. Python drivers need a companion `_sim.py` file.
 
-For the complete guide on writing simulators, see [Writing Simulators](https://github.com/open-avc/openavc-drivers/blob/main/docs/writing-simulators.md) in the driver repository.
+### YAML Drivers: Add a `simulator` Section
+
+All YAML drivers auto-generate basic simulation from their commands and responses. For more realistic behavior, add a `simulator:` section to your `.avcdriver` file:
+
+```yaml
+simulator:
+  initial_state:
+    input: 1
+    volume: 50
+    mute: false
+
+  delays:
+    command_response: 0.03   # seconds before responding
+
+  controls:
+    - type: slider
+      key: volume
+      label: Volume
+      min: 0
+      max: 100
+      step: 1
+    - type: toggle
+      key: mute
+      label: Mute
+    - type: select
+      key: input
+      label: Input
+      options: ["1", "2", "3", "4"]
+
+  command_handlers:
+    # Simple template: match a pattern, set state, respond
+    - receive: '(\d+)!'
+      set_state: { input: "{1}" }
+      respond: "In{1} All\r\n"
+
+    # Script handler: inline Python for complex logic
+    - match: '(\d+)V'
+      handler: |
+        level = int(match.group(1))
+        level = max(0, min(100, level))
+        state["volume"] = level
+        respond(f"Vol{level}\r\n")
+
+  error_modes:
+    communication_timeout:
+      behavior: no_response
+      description: "Device stops responding to all commands"
+```
+
+**Key sections:**
+
+| Section | Purpose |
+|---------|---------|
+| `initial_state` | Default values when simulation starts |
+| `delays` | Response timing (makes simulation feel realistic) |
+| `controls` | UI controls in the Simulator dashboard (sliders, toggles, buttons) |
+| `command_handlers` | How the simulator responds to commands |
+| `error_modes` | Failure scenarios for testing error handling |
+
+**Control types:** `power`, `slider`, `toggle`, `select`, `matrix`, `indicator`, `meters`, `presets`, `group`.
+
+For the complete simulator guide with all control types, state machines, and Python simulators, see the Writing Simulators documentation in the driver repository.
+
+---
+
+## Troubleshooting
+
+### State variables not updating
+
+**Symptom:** Commands send successfully but state variables stay at their default values.
+
+**Common causes:**
+
+1. **Wrong delimiter.** If the delimiter doesn't match what the device sends, messages are never split correctly and response patterns never see a complete line. Check your device's protocol manual. Try `\r\n`, `\r`, and `\n`. Use the Live Test tab to see raw responses.
+
+2. **Response pattern doesn't match.** Open the device log in the Programmer IDE and look at the `RX` lines. Copy the exact text and test your regex pattern against it. Common mistakes:
+   - Forgetting to escape special regex characters (`.`, `(`, `)`, `+`, `*`)
+   - Pattern expects `"Vol45"` but device sends `"Vol 45"` (extra space)
+   - Pattern is case-sensitive but device sends mixed case
+
+3. **Wrong capture group number.** `$1` refers to the first set of parentheses in the pattern. If your pattern is `Vol(\d+)\s+(\w+)` and you want the second group, use `$2`.
+
+4. **Type coercion mismatch.** If the type is `integer` but the captured value is `"abc"`, it silently becomes `0`. Check that the captured text is actually numeric.
+
+5. **Config placeholders in patterns.** If your response pattern uses config values like `{level_control}`, make sure the config field exists and has a value. These are substituted before the regex is compiled.
+
+### Commands not sending or silently failing
+
+**Symptom:** Clicking a command in the UI does nothing, or the device doesn't respond.
+
+**Common causes:**
+
+1. **Device not connected.** Check the connection status in the Devices view. If it shows disconnected, verify the IP address and port.
+
+2. **Missing parameter.** If a command uses `{input}` but the parameter isn't provided, the command may fail silently. Check that all required parameters are filled in.
+
+3. **Wrong escape sequences.** The command string `{input}!\r` needs the `\r` to be inside quotes in YAML. In the Driver Builder UI, escape sequences are handled automatically.
+
+4. **Inter-command delay too high.** If you set a long delay (e.g., 5 seconds), commands queue and appear unresponsive.
+
+### Driver doesn't appear in the Add Device dialog
+
+**Symptom:** You saved a driver but it doesn't show up when adding a device.
+
+**Common causes:**
+
+1. **Validation error on save.** Check the error message in the Driver Builder. Common issues: missing `id` or `name`, invalid transport type, malformed regex in a response pattern.
+
+2. **Duplicate driver ID.** If another driver already has the same ID, the save will fail with a 409 Conflict error. Driver IDs must be unique across all sources (built-in, community, user-created).
+
+3. **Python driver missing DRIVER_INFO.** For Python drivers, the file must contain a class that inherits from `BaseDriver` and has a `DRIVER_INFO` dict with at least `id`, `name`, and `transport`.
+
+4. **File not in the right directory.** Drivers must be in `driver_repo/` (or `server/drivers/definitions/` for built-in drivers). The directory is scanned at startup.
+
+### Device reconnects constantly
+
+**Symptom:** The device connects, then immediately disconnects and reconnects in a loop.
+
+**Common causes:**
+
+1. **Authentication failing.** Some devices close the connection if authentication fails. Check if the device requires a password or API key.
+
+2. **Wrong protocol.** If you connect a text-protocol driver to a binary-protocol device (or vice versa), the device may reject the malformed data and close the connection.
+
+3. **Firewall or network issue.** The device may be accepting the TCP connection but dropping it due to a firewall rule or access list.

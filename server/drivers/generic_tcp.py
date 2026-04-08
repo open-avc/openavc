@@ -10,6 +10,7 @@ command strings directly in the project configuration.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from server.drivers.base import BaseDriver
@@ -117,12 +118,14 @@ class GenericTCPDriver(BaseDriver):
             log.warning(f"[{self.device_id}] Unknown command: {command}")
             return
 
-        # Substitute parameters: "{input}" -> params["input"]
-        try:
-            formatted = raw_cmd.format(**params)
-        except KeyError as e:
-            log.error(f"[{self.device_id}] Missing param {e} for command '{command}'")
-            return
+        # Substitute parameters using safe substitution (unknown placeholders preserved)
+        def _replace(m: re.Match) -> str:
+            key = m.group(1)
+            if key in params:
+                return str(params[key])
+            return m.group(0)
+
+        formatted = re.sub(r"\{(\w+)\}", _replace, raw_cmd)
 
         # Encode and send (handle escape sequences like \r\n)
         data = formatted.encode().decode("unicode_escape").encode()

@@ -6,6 +6,9 @@ import { CommandBuilder } from "./CommandBuilder";
 import { ResponseBuilder } from "./ResponseBuilder";
 import { PollingConfig } from "./PollingConfig";
 import { StateVariableEditor } from "./StateVariableEditor";
+import { DiscoveryHintsEditor } from "./DiscoveryHintsEditor";
+import { DeviceSettingsEditor } from "./DeviceSettingsEditor";
+import { SimulatorEditor } from "./SimulatorEditor";
 import { LiveTestPanel } from "./LiveTestPanel";
 
 type TabId =
@@ -15,6 +18,9 @@ type TabId =
   | "commands"
   | "responses"
   | "polling"
+  | "discovery"
+  | "settings"
+  | "simulator"
   | "test";
 
 interface DriverEditorProps {
@@ -47,6 +53,9 @@ export function DriverEditor({
     { id: "commands", label: "Commands" },
     { id: "responses", label: "Responses" },
     { id: "polling", label: "Polling" },
+    { id: "discovery", label: "Discovery" },
+    { id: "settings", label: "Device Settings" },
+    { id: "simulator", label: "Simulator" },
     { id: "test", label: "Live Test" },
   ];
 
@@ -319,6 +328,18 @@ export function DriverEditor({
 
         {activeTab === "polling" && (
           <PollingConfig draft={draft} onUpdate={onUpdate} />
+        )}
+
+        {activeTab === "discovery" && (
+          <DiscoveryHintsEditor draft={draft} onUpdate={onUpdate} />
+        )}
+
+        {activeTab === "settings" && (
+          <DeviceSettingsEditor draft={draft} onUpdate={onUpdate} />
+        )}
+
+        {activeTab === "simulator" && (
+          <SimulatorEditor draft={draft} onUpdate={onUpdate} />
         )}
 
         {activeTab === "test" && <LiveTestPanel draft={draft} />}

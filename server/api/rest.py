@@ -1328,6 +1328,54 @@ async def update_driver_definition(driver_id: str, body: DriverDefinitionRequest
     return {"status": "updated", "id": driver_def["id"]}
 
 
+@router.patch("/driver-definitions/{driver_id}")
+async def patch_driver_definition(driver_id: str, body: dict) -> dict:
+    """Partially update a driver definition (merge provided fields)."""
+    from server.drivers.driver_loader import (
+        delete_driver_definition,
+        list_driver_definitions as _list,
+        save_driver_definition,
+        validate_driver_definition,
+    )
+    from server.drivers.configurable import create_configurable_driver_class
+    from server.core.device_manager import register_driver
+
+    dirs = _get_driver_dirs()
+
+    # Find existing definition
+    existing = _list(dirs)
+    current = next((d for d in existing if d.get("id") == driver_id), None)
+    if current is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Driver definition '{driver_id}' not found",
+        )
+
+    # Merge: shallow merge top-level keys from body into current
+    merged = {**current, **body}
+    # Don't allow changing ID via PATCH
+    merged["id"] = driver_id
+
+    # Validate merged result
+    errors = validate_driver_definition(merged)
+    if errors:
+        raise HTTPException(
+            status_code=422,
+            detail={"errors": errors, "message": f"{len(errors)} validation error(s) in driver definition"},
+        )
+
+    # Delete old and save merged
+    delete_driver_definition(driver_id, dirs)
+    save_dir = dirs[1]  # driver_repo/
+    save_driver_definition(merged, save_dir)
+
+    # Re-register
+    driver_class = create_configurable_driver_class(merged)
+    register_driver(driver_class)
+
+    return {"status": "updated", "id": driver_id}
+
+
 @router.delete("/driver-definitions/{driver_id}")
 async def delete_driver_definition_endpoint(driver_id: str) -> dict:
     """Delete a JSON driver definition."""
@@ -1353,10 +1401,13 @@ async def test_driver_command(driver_id: str, body: TestCommandRequest) -> dict:
     import asyncio
     from server.transport.tcp import TCPTransport
 
+    if body.transport == "http":
+        return await _test_http_command(body)
+
     if body.transport != "tcp":
         raise HTTPException(
             status_code=422,
-            detail="Only TCP test connections are supported currently",
+            detail="Only TCP and HTTP test connections are supported",
         )
 
     delimiter = body.delimiter.encode().decode("unicode_escape").encode()
@@ -1391,6 +1442,39 @@ async def test_driver_command(driver_id: str, body: TestCommandRequest) -> dict:
         "response": response_text,
         "error": error_text,
     }
+
+
+async def _test_http_command(body: TestCommandRequest) -> dict:
+    """Test an HTTP command against a device."""
+    import httpx
+
+    # command_string is the URL path, e.g. "/api/status" or "GET /api/power"
+    cmd = body.command_string.strip()
+    method = "GET"
+    path = cmd
+    if " " in cmd:
+        parts = cmd.split(None, 1)
+        if parts[0].upper() in ("GET", "POST", "PUT", "DELETE", "PATCH"):
+            method = parts[0].upper()
+            path = parts[1]
+
+    scheme = "https" if body.port == 443 else "http"
+    url = f"{scheme}://{body.host}:{body.port}{path}"
+
+    try:
+        async with httpx.AsyncClient(
+            timeout=body.timeout, verify=False
+        ) as client:
+            resp = await client.request(method, url)
+            return {
+                "success": True,
+                "response": f"HTTP {resp.status_code}\n{resp.text[:2000]}",
+                "error": None,
+            }
+    except httpx.TimeoutException:
+        return {"success": False, "response": None, "error": "HTTP request timed out"}
+    except Exception as e:
+        return {"success": False, "response": None, "error": str(e)}
 
 
 # --- Logs ---

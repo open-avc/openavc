@@ -1,5 +1,6 @@
-import { Plus, Trash2 } from "lucide-react";
-import type { DriverDefinition, DriverResponseDef } from "../../api/types";
+import { useState } from "react";
+import { Plus, Trash2, ChevronDown, ChevronRight } from "lucide-react";
+import type { DriverDefinition, DriverResponseDef, DriverResponseMapping } from "../../api/types";
 
 function _ordinal(n: number): string {
   if (n === 1) return "1st";
@@ -205,6 +206,14 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
               >
                 <Trash2 size={12} />
               </button>
+              <ValueMapEditor
+                mapping={mapping}
+                onChange={(updated) => {
+                  const next = [...resp.mappings];
+                  next[mi] = updated;
+                  updateResponse(i, { ...resp, mappings: next });
+                }}
+              />
             </div>
           ))}
           <button
@@ -246,6 +255,115 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
       >
         <Plus size={14} /> Add Response Pattern
       </button>
+    </div>
+  );
+}
+
+
+function ValueMapEditor({
+  mapping,
+  onChange,
+}: {
+  mapping: DriverResponseMapping;
+  onChange: (updated: DriverResponseMapping) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const map = mapping.map ?? {};
+  const entries = Object.entries(map);
+  const hasMap = entries.length > 0;
+
+  const toggleMap = () => {
+    if (open && !hasMap) {
+      setOpen(false);
+      return;
+    }
+    setOpen(!open);
+  };
+
+  const addEntry = () => {
+    onChange({ ...mapping, map: { ...map, "": "" } });
+    if (!open) setOpen(true);
+  };
+
+  const removeEntry = (key: string) => {
+    const next = { ...map };
+    delete next[key];
+    onChange({ ...mapping, map: Object.keys(next).length > 0 ? next : undefined });
+  };
+
+  const updateEntry = (oldKey: string, newKey: string, value: string) => {
+    const next: Record<string, string> = {};
+    for (const [k, v] of Object.entries(map)) {
+      next[k === oldKey ? newKey : k] = k === oldKey ? value : v;
+    }
+    onChange({ ...mapping, map: next });
+  };
+
+  return (
+    <div style={{ gridColumn: "1 / -1", width: "100%" }}>
+      <button
+        onClick={hasMap ? toggleMap : addEntry}
+        style={{
+          fontSize: "11px",
+          color: "var(--text-muted)",
+          display: "flex",
+          alignItems: "center",
+          gap: 2,
+          padding: "2px 0",
+        }}
+      >
+        {hasMap ? (
+          <>
+            {open ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+            {entries.length} value map{entries.length !== 1 ? "s" : ""}
+          </>
+        ) : (
+          <span style={{ color: "var(--accent)" }}>+ Value Map</span>
+        )}
+      </button>
+      {open && (
+        <div
+          style={{
+            marginTop: "var(--space-xs)",
+            padding: "var(--space-sm)",
+            background: "var(--bg-hover)",
+            borderRadius: "var(--border-radius)",
+          }}
+        >
+          <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "var(--space-xs)" }}>
+            Map raw values to friendly names (e.g., &quot;01&quot; → &quot;on&quot;)
+          </div>
+          {entries.map(([key, value], i) => (
+            <div key={i} style={{ display: "flex", gap: 4, marginBottom: 2, alignItems: "center" }}>
+              <input
+                value={key}
+                onChange={(e) => updateEntry(key, e.target.value, value)}
+                placeholder="raw"
+                style={{ width: 80, fontFamily: "var(--font-mono)", fontSize: "11px" }}
+              />
+              <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>→</span>
+              <input
+                value={value}
+                onChange={(e) => updateEntry(key, key, e.target.value)}
+                placeholder="mapped"
+                style={{ width: 80, fontFamily: "var(--font-mono)", fontSize: "11px" }}
+              />
+              <button
+                onClick={() => removeEntry(key)}
+                style={{ padding: 1, color: "var(--text-muted)" }}
+              >
+                <Trash2 size={10} />
+              </button>
+            </div>
+          ))}
+          <button
+            onClick={addEntry}
+            style={{ fontSize: "11px", color: "var(--accent)", padding: "2px 0" }}
+          >
+            + Add
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -113,6 +113,11 @@ class DeviceManager:
         self._reconnect_tasks: dict[str, asyncio.Task] = {}
         self._orphaned_devices: dict[str, dict[str, Any]] = {}  # devices with missing drivers
 
+        # Auto-reconnect when a device transport drops mid-session
+        self.events.on(
+            "device.disconnected.*", self._on_device_disconnected
+        )
+
     async def add_device(self, device_config: dict[str, Any]) -> None:
         """
         Instantiate a driver, register its state variables, and connect.
@@ -451,6 +456,26 @@ class DeviceManager:
 
     # --- Reconnection ---
 
+    async def _on_device_disconnected(self, event: str, payload: dict[str, Any]) -> None:
+        """Handle device.disconnected.* events — trigger auto-reconnect."""
+        # Extract device_id from event name: "device.disconnected.<id>"
+        parts = event.split(".", 2)
+        if len(parts) < 3:
+            return
+        device_id = parts[2]
+
+        # Only reconnect if device still exists and isn't being removed
+        if device_id not in self._devices:
+            return
+
+        # Check the device isn't disabled
+        config = self._device_configs.get(device_id, {})
+        if not config.get("enabled", True):
+            return
+
+        log.info(f"[{device_id}] Transport disconnected — starting auto-reconnect")
+        self._start_reconnect(device_id)
+
     def _start_reconnect(self, device_id: str) -> None:
         """Start a background reconnect loop for a device."""
         if device_id in self._reconnect_tasks:
@@ -465,16 +490,17 @@ class DeviceManager:
         if task and not task.done():
             task.cancel()
 
-    async def _reconnect_loop(self, device_id: str) -> None:
+    async def _reconnect_loop(self, device_id: str, max_attempts: int = 120) -> None:
         """
         Background task that attempts to reconnect a disconnected device.
         Exponential backoff: 2s, 4s, 8s, 16s, 30s max.
+        Gives up after max_attempts (default 120 = ~1 hour at 30s intervals).
         """
         delays = [2, 4, 8, 16, 30]
         attempt = 0
 
         try:
-            while True:
+            while attempt < max_attempts:
                 # Check device still exists before each attempt
                 driver = self._devices.get(device_id)
                 if driver is None:
@@ -483,7 +509,7 @@ class DeviceManager:
 
                 delay = delays[min(attempt, len(delays) - 1)]
                 log.info(
-                    f"[{device_id}] Reconnect attempt {attempt + 1} in {delay}s..."
+                    f"[{device_id}] Reconnect attempt {attempt + 1}/{max_attempts} in {delay}s..."
                 )
                 await asyncio.sleep(delay)
 
@@ -493,6 +519,9 @@ class DeviceManager:
                     return
 
                 try:
+                    # Stop polling before reconnect to prevent race conditions
+                    # (poll firing while transport is being replaced)
+                    await driver.stop_polling()
                     await driver.connect()
                     log.info(f"[{device_id}] Reconnected successfully")
                     # Apply pending settings after successful reconnect
@@ -501,6 +530,16 @@ class DeviceManager:
                 except Exception as e:
                     log.warning(f"[{device_id}] Reconnect failed: {e}")
                     attempt += 1
+
+            # Exhausted all attempts
+            log.warning(
+                f"[{device_id}] Gave up reconnecting after {max_attempts} attempts. "
+                f"Use the Reconnect button or restart the server to try again."
+            )
+            self.state.set(
+                f"device.{device_id}.reconnect_failed", True,
+                source="device_manager",
+            )
         except asyncio.CancelledError:
             log.debug(f"[{device_id}] Reconnect cancelled")
         finally:
