@@ -15,18 +15,11 @@ from pathlib import Path
 def get_version() -> str:
     """Read the version string from pyproject.toml.
 
-    Uses importlib.metadata first (works in installed packages and PyInstaller bundles).
-    Falls back to parsing pyproject.toml directly for development environments.
+    Reads pyproject.toml directly when available (development and source installs).
+    Falls back to importlib.metadata for frozen (PyInstaller) builds where
+    pyproject.toml is not present.
     """
-    # Try importlib.metadata (works for installed packages and frozen apps)
-    if sys.version_info >= (3, 10):
-        from importlib.metadata import PackageNotFoundError, version
-        try:
-            return version("openavc")
-        except PackageNotFoundError:
-            pass
-
-    # Fallback: parse pyproject.toml directly (development mode)
+    # Parse pyproject.toml directly — always accurate for source/dev environments
     pyproject_path = Path(__file__).resolve().parent.parent / "pyproject.toml"
     if pyproject_path.exists():
         text = pyproject_path.read_text(encoding="utf-8")
@@ -36,6 +29,14 @@ def get_version() -> str:
                 # Parse: version = "0.1.0"
                 _, _, value = stripped.partition("=")
                 return value.strip().strip('"').strip("'")
+
+    # Fallback: importlib.metadata (frozen/PyInstaller builds)
+    if sys.version_info >= (3, 10):
+        from importlib.metadata import PackageNotFoundError, version
+        try:
+            return version("openavc")
+        except PackageNotFoundError:
+            pass
 
     return "0.0.0"
 
