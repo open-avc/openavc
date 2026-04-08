@@ -180,6 +180,10 @@ hiddenimports = [
     # defusedxml
     'defusedxml',
     'defusedxml.ElementTree',
+    # ifaddr (network interface detection for discovery)
+    'ifaddr',
+    # psutil (system metrics for cloud heartbeat)
+    'psutil',
     # httpx
     'httpx',
     'httpcore',

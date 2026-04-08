@@ -24,5 +24,11 @@ croniter==6.2.2              # MIT
 # Security
 defusedxml==0.7.1            # PSF
 
+# Network interface detection (discovery subnet auto-detect)
+ifaddr==0.2.0                # MIT
+
+# System metrics (cloud heartbeat: CPU, memory, disk, temperature)
+psutil==7.2.2                # BSD-3-Clause
+
 # Async HTTP server (simulator HTTP device servers)
 aiohttp==3.13.5              # Apache-2.0

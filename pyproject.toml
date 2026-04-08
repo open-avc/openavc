@@ -20,6 +20,8 @@ dependencies = [
     "httpx==0.28.1",             # BSD-3 - Async HTTP client (for HTTP transport)
     "croniter==6.2.2",           # MIT - Cron expression parser (pure Python)
     "defusedxml==0.7.1",         # PSF - Safe XML parsing (prevents XXE/billion laughs)
+    "ifaddr==0.2.0",             # MIT - Network interface detection (discovery subnet auto-detect)
+    "psutil==7.2.2",             # BSD-3 - System metrics (cloud heartbeat: CPU, memory, disk, temperature)
     "aiohttp==3.13.5",           # Apache-2.0 - Async HTTP server (simulator HTTP device servers)
 ]
 

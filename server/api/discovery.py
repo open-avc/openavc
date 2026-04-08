@@ -180,7 +180,7 @@ async def start_scan(req: ScanRequest) -> dict[str, Any]:
     except RuntimeError as e:
         raise _api_error(409, "A scan is already in progress", e)
     except ValueError as e:
-        raise _api_error(400, "Invalid scan parameters", e)
+        raise _api_error(400, str(e) or "Invalid scan parameters", e)
 
     status = engine.get_status()
     return {
