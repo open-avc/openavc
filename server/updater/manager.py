@@ -356,13 +356,13 @@ class UpdateManager:
 
         Caches the current installer for rollback, then launches the new one.
         """
-        from server.system_config import APP_DIR
+        from server.system_config import INSTALL_DIR
 
         cache_dir = self._data_dir / "update-cache"
         cache_dir.mkdir(parents=True, exist_ok=True)
 
         # Cache the current installer for rollback
-        current_installer = APP_DIR / "unins000.exe"
+        current_installer = INSTALL_DIR / "unins000.exe"
         if current_installer.exists():
             # Find the current version's setup exe if cached from a prior update
             # The Inno Setup uninstaller is always present but we cache the full setup

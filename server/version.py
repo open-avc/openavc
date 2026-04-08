@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import sys
 from functools import lru_cache
-from pathlib import Path
 
 
 @lru_cache(maxsize=1)
@@ -20,7 +19,8 @@ def get_version() -> str:
     pyproject.toml is not present.
     """
     # Parse pyproject.toml directly — always accurate for source/dev environments
-    pyproject_path = Path(__file__).resolve().parent.parent / "pyproject.toml"
+    from server.system_config import PYPROJECT_PATH
+    pyproject_path = PYPROJECT_PATH
     if pyproject_path.exists():
         text = pyproject_path.read_text(encoding="utf-8")
         for line in text.splitlines():

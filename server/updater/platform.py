@@ -15,6 +15,8 @@ import sys
 from enum import Enum
 from pathlib import Path
 
+from server.system_config import INSTALL_DIR, _is_docker
+
 
 class DeploymentType(str, Enum):
     WINDOWS_INSTALLER = "windows_installer"
@@ -22,21 +24,6 @@ class DeploymentType(str, Enum):
     DOCKER = "docker"
     GIT_DEV = "git_dev"
     UNKNOWN = "unknown"
-
-
-def _is_docker() -> bool:
-    """Detect if running inside a Docker container."""
-    if Path("/.dockerenv").exists():
-        return True
-    try:
-        cgroup = Path("/proc/1/cgroup")
-        if cgroup.exists():
-            text = cgroup.read_text(encoding="utf-8", errors="ignore")
-            if "docker" in text or "containerd" in text:
-                return True
-    except OSError:
-        pass
-    return False
 
 
 def _is_git_checkout(app_dir: Path) -> bool:
@@ -61,6 +48,16 @@ def _is_linux_package(app_dir: Path) -> bool:
     return str(app_dir).startswith("/opt/openavc") and (app_dir / "venv").is_dir()
 
 
+def get_install_dir() -> Path:
+    """Get the installation directory.
+
+    In a PyInstaller frozen bundle, __file__ resolves inside _internal/
+    which doesn't contain installer artifacts like unins000.exe. Use the
+    directory containing the executable instead.
+    """
+    return INSTALL_DIR
+
+
 def detect_deployment_type(app_dir: Path | None = None) -> DeploymentType:
     """Detect how OpenAVC was deployed.
 
@@ -68,7 +65,7 @@ def detect_deployment_type(app_dir: Path | None = None) -> DeploymentType:
     then installer-specific markers, then git, then unknown.
     """
     if app_dir is None:
-        app_dir = Path(__file__).resolve().parent.parent.parent
+        app_dir = INSTALL_DIR
 
     if _is_docker():
         return DeploymentType.DOCKER

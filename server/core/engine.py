@@ -719,10 +719,10 @@ class Engine:
         Called after project load to pick up any drivers installed after
         the initial startup load.
         """
-        from server.config import BASE_DIR
         from server.drivers.driver_loader import load_all_drivers
+        from server.system_config import DRIVER_REPO_DIR
 
-        driver_repo = BASE_DIR / "driver_repo"
+        driver_repo = DRIVER_REPO_DIR
         if driver_repo.exists():
             loaded = load_all_drivers([driver_repo])
             if loaded:

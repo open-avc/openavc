@@ -2016,14 +2016,14 @@ class AIToolHandler:
             return None
 
     def _get_driver_repo_dir(self) -> Path:
-        from server.config import BASE_DIR
-        return BASE_DIR / "driver_repo"
+        from server.system_config import DRIVER_REPO_DIR
+        return DRIVER_REPO_DIR
 
     def _get_driver_dirs(self) -> list[Path]:
-        from server.config import BASE_DIR
+        from server.system_config import DRIVER_DEFINITIONS_DIR, DRIVER_REPO_DIR
         return [
-            BASE_DIR / "server" / "drivers" / "definitions",
-            BASE_DIR / "driver_repo",
+            DRIVER_DEFINITIONS_DIR,
+            DRIVER_REPO_DIR,
         ]
 
     async def _send_result(

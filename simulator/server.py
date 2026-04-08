@@ -10,6 +10,7 @@ Serves:
 from __future__ import annotations
 
 import logging
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -104,9 +105,14 @@ app.include_router(api_router)
 app.add_websocket_route("/ws", ws_endpoint)
 
 # Static UI (if built)
-# Try new location (openavc/web/simulator/dist) then fall back to old (../web/dist)
-ui_dir = Path(__file__).parent.parent / "web" / "simulator" / "dist"
+# In frozen (PyInstaller) builds, resources are inside sys._MEIPASS.
+# Otherwise, resolve relative to the simulator package.
+if getattr(sys, "frozen", False):
+    _sim_base = Path(sys._MEIPASS)
+else:
+    _sim_base = Path(__file__).parent.parent
+ui_dir = _sim_base / "web" / "simulator" / "dist"
 if not ui_dir.exists():
-    ui_dir = Path(__file__).parent.parent / "web" / "dist"
+    ui_dir = _sim_base / "web" / "dist"
 if ui_dir.exists():
     app.mount("/", StaticFiles(directory=str(ui_dir), html=True), name="ui")

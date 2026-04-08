@@ -26,6 +26,7 @@ from server.core.plugin_loader import (
     register_plugin_class,
     unregister_plugin_class,
 )
+from server.system_config import PLUGIN_REPO_DIR
 from server.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -37,9 +38,6 @@ COMMUNITY_REPO_URL = (
 COMMUNITY_API_URL = (
     "https://api.github.com/repos/open-avc/openavc-plugins/contents"
 )
-
-# Plugin repo directory
-PLUGIN_REPO_DIR = Path(__file__).resolve().parent.parent.parent / "plugin_repo"
 
 
 def _sanitize_filename(name: str) -> str:

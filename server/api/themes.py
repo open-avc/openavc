@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import JSONResponse
 
 from server.api.auth import require_programmer_auth
+from server.system_config import THEMES_DIR as BUILTIN_THEMES_DIR
 from server.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -22,7 +23,6 @@ router = APIRouter(prefix="/api", dependencies=[Depends(require_programmer_auth)
 
 _engine = None
 
-BUILTIN_THEMES_DIR = Path(__file__).resolve().parent.parent.parent / "themes"
 THEME_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9\-]{0,63}$")
 
 REQUIRED_FIELDS = {"name", "id", "version", "variables"}

@@ -18,8 +18,47 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-# Application root (the openavc/ repo directory)
-APP_DIR = Path(__file__).resolve().parent.parent
+
+# ---------------------------------------------------------------------------
+# Path resolution — single source of truth for all deployment targets
+# ---------------------------------------------------------------------------
+# Two distinct concepts:
+#   APP_DIR     — bundle/resource root (web assets, themes, drivers, etc.)
+#                 Dev: openavc/ repo root.  Frozen: _internal/ (sys._MEIPASS).
+#   INSTALL_DIR — installer artifact root (unins000.exe, nssm.exe)
+#                 Dev: same as APP_DIR.  Frozen: exe's parent directory.
+# ---------------------------------------------------------------------------
+
+def _resolve_app_dir() -> Path:
+    """Resolve the application resource root."""
+    if getattr(sys, "frozen", False):
+        # PyInstaller bundles resources into _internal/ (sys._MEIPASS)
+        return Path(sys._MEIPASS)
+    return Path(__file__).resolve().parent.parent
+
+
+def _resolve_install_dir() -> Path:
+    """Resolve the installation directory (where the installer placed files)."""
+    if getattr(sys, "frozen", False):
+        # The .exe lives in the install dir (parent of _internal/)
+        return Path(sys.executable).resolve().parent
+    return _resolve_app_dir()
+
+
+APP_DIR = _resolve_app_dir()
+INSTALL_DIR = _resolve_install_dir()
+
+# Derived resource paths (all relative to APP_DIR)
+DRIVER_REPO_DIR = APP_DIR / "driver_repo"
+PLUGIN_REPO_DIR = APP_DIR / "plugin_repo"
+THEMES_DIR = APP_DIR / "themes"
+DRIVER_DEFINITIONS_DIR = APP_DIR / "server" / "drivers" / "definitions"
+WEB_PANEL_DIR = APP_DIR / "web" / "panel"
+WEB_PROGRAMMER_DIR = APP_DIR / "web" / "programmer" / "dist"
+WEB_SIMULATOR_DIR = APP_DIR / "web" / "simulator" / "dist"
+SEED_TEMPLATES_DIR = APP_DIR / "server" / "templates"
+USER_TEMPLATES_DIR = APP_DIR / "user_templates"
+PYPROJECT_PATH = APP_DIR / "pyproject.toml"
 
 # Default system.json schema
 DEFAULTS: dict[str, Any] = {
@@ -82,6 +121,8 @@ ENV_OVERRIDES: dict[tuple[str, str], tuple[str, type]] = {
 
 def _is_dev_environment() -> bool:
     """Detect if running from a source/development checkout."""
+    if getattr(sys, "frozen", False):
+        return False
     return (APP_DIR / "pyproject.toml").exists() and (APP_DIR / "server").is_dir()
 
 
@@ -209,17 +250,17 @@ class SystemConfig:
     @property
     def plugin_repo_path(self) -> Path:
         """Path to the plugin repository directory."""
-        return APP_DIR / "plugin_repo"
+        return PLUGIN_REPO_DIR
 
     @property
     def driver_repo_path(self) -> Path:
         """Path to the driver repository directory."""
-        return APP_DIR / "driver_repo"
+        return DRIVER_REPO_DIR
 
     @property
     def themes_dir(self) -> Path:
         """Path to the themes directory."""
-        return APP_DIR / "themes"
+        return THEMES_DIR
 
     def load(self) -> None:
         """Load configuration: defaults -> system.json -> env vars."""

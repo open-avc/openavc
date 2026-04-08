@@ -438,8 +438,9 @@ def build_driver_dependencies(project: ProjectConfig) -> list[DriverDependency]:
 
 def _get_driver_source(driver_id: str) -> str:
     """Determine if a driver is builtin, community, or user-created."""
-    definitions_dir = Path(__file__).parent.parent / "drivers" / "definitions"
-    driver_repo_dir = Path(__file__).parent.parent.parent / "driver_repo"
+    from server.system_config import DRIVER_DEFINITIONS_DIR, DRIVER_REPO_DIR
+    definitions_dir = DRIVER_DEFINITIONS_DIR
+    driver_repo_dir = DRIVER_REPO_DIR
 
     # Check built-in definitions
     for f in definitions_dir.glob("*.avcdriver"):
@@ -491,7 +492,8 @@ def build_plugin_dependencies(project: ProjectConfig) -> list[PluginDependency]:
 
 def _get_plugin_source(plugin_id: str) -> str:
     """Determine if a plugin is community or user-created."""
-    plugin_repo_dir = Path(__file__).parent.parent.parent / "plugin_repo"
+    from server.system_config import PLUGIN_REPO_DIR
+    plugin_repo_dir = PLUGIN_REPO_DIR
     if plugin_repo_dir.is_dir():
         plugin_dir = plugin_repo_dir / plugin_id
         if plugin_dir.is_dir():

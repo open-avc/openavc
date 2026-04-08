@@ -84,14 +84,12 @@ def _load_builtin_drivers() -> None:
 
     # Load .avcdriver YAML definitions and .py Python drivers from
     # both the built-in definitions directory and driver_repo/
-    from pathlib import Path
-
     from server.drivers.driver_loader import load_all_drivers
+    from server.system_config import DRIVER_DEFINITIONS_DIR, DRIVER_REPO_DIR
 
-    project_root = Path(__file__).parent.parent.parent
     driver_dirs = [
-        project_root / "server" / "drivers" / "definitions",
-        project_root / "driver_repo",
+        DRIVER_DEFINITIONS_DIR,
+        DRIVER_REPO_DIR,
     ]
     loaded = load_all_drivers(driver_dirs)
     if loaded:

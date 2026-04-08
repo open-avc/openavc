@@ -16,16 +16,15 @@ import asyncio
 import json
 import sys
 import tempfile
-from pathlib import Path
 from typing import Any
 
+from server.system_config import APP_DIR, DRIVER_DEFINITIONS_DIR, DRIVER_REPO_DIR
 from server.utils.logger import get_logger
 
 log = get_logger(__name__)
 
-# Paths relative to the openavc repo root
-_REPO_ROOT = Path(__file__).parent.parent.parent  # openavc/
-_WORKSPACE_ROOT = _REPO_ROOT.parent               # openavc-dev/
+# Workspace paths (dev-only — openavc-drivers sibling repo)
+_WORKSPACE_ROOT = APP_DIR.parent
 _DRIVERS_DIR = _WORKSPACE_ROOT / "openavc-drivers"
 
 
@@ -132,12 +131,10 @@ class SimulationManager:
         driver_paths = []
         if _DRIVERS_DIR.exists():
             driver_paths.append(str(_DRIVERS_DIR))
-        driver_repo = Path(__file__).parent.parent.parent / "driver_repo"
-        if driver_repo.exists():
-            driver_paths.append(str(driver_repo))
-        builtin_defs = Path(__file__).parent.parent / "drivers" / "definitions"
-        if builtin_defs.exists():
-            driver_paths.append(str(builtin_defs))
+        if DRIVER_REPO_DIR.exists():
+            driver_paths.append(str(DRIVER_REPO_DIR))
+        if DRIVER_DEFINITIONS_DIR.exists():
+            driver_paths.append(str(DRIVER_DEFINITIONS_DIR))
 
         if not driver_paths:
             raise RuntimeError("No driver paths found")

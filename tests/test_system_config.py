@@ -2,14 +2,25 @@
 
 import json
 import os
+import sys
+from pathlib import Path
 from unittest.mock import patch
 
 
 from server.system_config import (
+    APP_DIR,
+    DRIVER_DEFINITIONS_DIR,
+    DRIVER_REPO_DIR,
+    INSTALL_DIR,
+    PLUGIN_REPO_DIR,
+    PYPROJECT_PATH,
+    THEMES_DIR,
     SystemConfig,
     _deep_merge,
     _is_dev_environment,
     _parse_env_value,
+    _resolve_app_dir,
+    _resolve_install_dir,
     get_system_config,
     reset_system_config,
 )
@@ -204,7 +215,72 @@ class TestSingleton:
         reset_system_config()
 
 
+class TestPathResolution:
+    """Tests for centralized path resolution (APP_DIR, INSTALL_DIR, derived paths)."""
+
+    def test_app_dir_points_to_repo_root_in_dev(self):
+        """In dev mode, APP_DIR is the openavc/ repo root."""
+        assert (APP_DIR / "pyproject.toml").exists()
+        assert (APP_DIR / "server").is_dir()
+
+    def test_install_dir_equals_app_dir_in_dev(self):
+        """In dev mode, INSTALL_DIR is the same as APP_DIR."""
+        assert INSTALL_DIR == APP_DIR
+
+    def test_derived_paths_relative_to_app_dir(self):
+        """All derived path constants are under APP_DIR."""
+        assert DRIVER_REPO_DIR == APP_DIR / "driver_repo"
+        assert PLUGIN_REPO_DIR == APP_DIR / "plugin_repo"
+        assert THEMES_DIR == APP_DIR / "themes"
+        assert DRIVER_DEFINITIONS_DIR == APP_DIR / "server" / "drivers" / "definitions"
+        assert PYPROJECT_PATH == APP_DIR / "pyproject.toml"
+
+    def test_resolve_app_dir_frozen(self):
+        """When frozen, _resolve_app_dir returns sys._MEIPASS."""
+        fake_meipass = "/fake/bundle/_internal"
+        with patch.object(sys, "frozen", True, create=True), \
+             patch.object(sys, "_MEIPASS", fake_meipass, create=True):
+            result = _resolve_app_dir()
+        assert result == Path(fake_meipass)
+
+    def test_resolve_install_dir_frozen(self):
+        """When frozen, _resolve_install_dir returns the exe's parent directory."""
+        fake_exe = str(Path("/fake/install/openavc-server.exe").resolve())
+        expected = Path(fake_exe).parent
+        with patch.object(sys, "frozen", True, create=True), \
+             patch.object(sys, "executable", fake_exe):
+            result = _resolve_install_dir()
+        assert result == expected
+
+    def test_resolve_install_dir_different_from_app_dir_frozen(self):
+        """In frozen builds, INSTALL_DIR (exe parent) != APP_DIR (_MEIPASS)."""
+        fake_meipass = "/fake/install/_internal"
+        fake_exe = str(Path("/fake/install/openavc-server.exe").resolve())
+        with patch.object(sys, "frozen", True, create=True), \
+             patch.object(sys, "_MEIPASS", fake_meipass, create=True), \
+             patch.object(sys, "executable", fake_exe):
+            app = _resolve_app_dir()
+            install = _resolve_install_dir()
+        assert app == Path(fake_meipass)
+        assert install == Path(fake_exe).parent
+        assert app != install
+
+    def test_systemconfig_properties_use_constants(self, tmp_path):
+        """SystemConfig path properties delegate to module-level constants."""
+        cfg = SystemConfig()
+        cfg._data_dir = tmp_path
+        cfg._file_path = tmp_path / "system.json"
+        assert cfg.driver_repo_path == DRIVER_REPO_DIR
+        assert cfg.plugin_repo_path == PLUGIN_REPO_DIR
+        assert cfg.themes_dir == THEMES_DIR
+
+
 class TestDevEnvironmentDetection:
     def test_detects_dev_from_pyproject(self):
         # We're running tests from the repo, so this should be True
         assert _is_dev_environment() is True
+
+    def test_returns_false_when_frozen(self):
+        """Frozen builds are never dev environments."""
+        with patch.object(sys, "frozen", True, create=True):
+            assert _is_dev_environment() is False

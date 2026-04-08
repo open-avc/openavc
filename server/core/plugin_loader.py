@@ -130,7 +130,8 @@ class PluginLoader:
         Returns dict of plugin_id -> plugin_class for all discovered plugins.
         """
         if plugin_repo_dir is None:
-            plugin_repo_dir = Path(__file__).parent.parent.parent / "plugin_repo"
+            from server.system_config import PLUGIN_REPO_DIR
+            plugin_repo_dir = PLUGIN_REPO_DIR
 
         if not plugin_repo_dir.is_dir():
             log.debug(f"Plugin repo directory not found: {plugin_repo_dir}")

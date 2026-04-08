@@ -77,6 +77,12 @@ def _rate_limit_test(endpoint_key: str) -> None:
 # --- System ---
 
 
+@open_router.get("/startup-status")
+async def startup_status() -> dict[str, Any]:
+    """Returns whether the engine has finished initializing."""
+    return {"ready": True, "error": None}
+
+
 @open_router.get("/status")
 async def get_status() -> dict[str, Any]:
     """System status, uptime, project info."""
@@ -708,9 +714,9 @@ COMMUNITY_REPO_URL = "https://raw.githubusercontent.com/open-avc/openavc-drivers
 
 
 def _get_driver_repo_dir() -> Path:
-    """Get the driver_repo/ directory path (always at openavc root)."""
-    from server.config import BASE_DIR
-    return BASE_DIR / "driver_repo"
+    """Get the driver_repo/ directory path."""
+    from server.system_config import DRIVER_REPO_DIR
+    return DRIVER_REPO_DIR
 
 
 @router.get("/drivers/community")
@@ -1211,10 +1217,10 @@ async def get_script_errors() -> dict[str, str]:
 
 def _get_driver_dirs() -> list[Path]:
     """Get directories containing driver definitions."""
-    from server.config import BASE_DIR
+    from server.system_config import DRIVER_DEFINITIONS_DIR, DRIVER_REPO_DIR
     return [
-        BASE_DIR / "server" / "drivers" / "definitions",
-        BASE_DIR / "driver_repo",
+        DRIVER_DEFINITIONS_DIR,
+        DRIVER_REPO_DIR,
     ]
 
 

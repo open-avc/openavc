@@ -28,11 +28,16 @@ from server.core.project_loader import (
     UISettings,
     save_project,
 )
+from server.system_config import (
+    DRIVER_REPO_DIR as _DRIVER_REPO_DIR,
+    PLUGIN_REPO_DIR as _PLUGIN_REPO_DIR,
+    SEED_TEMPLATES_DIR,
+)
 from server.utils.logger import get_logger
 
 log = get_logger(__name__)
 
-_SEED_DIR = Path(__file__).resolve().parent.parent / "templates"
+_SEED_DIR = SEED_TEMPLATES_DIR
 _MAX_IMPORT_SIZE = 10 * 1024 * 1024  # 10 MB
 
 
@@ -422,7 +427,7 @@ def _find_driver_files(driver_deps: list[dict]) -> list[tuple[str, Path]]:
 
     Returns list of (filename, filepath) tuples.
     """
-    driver_repo = Path(__file__).resolve().parent.parent.parent / "driver_repo"
+    driver_repo = _DRIVER_REPO_DIR
     if not driver_repo.exists():
         return []
 
@@ -447,7 +452,7 @@ def _find_plugin_files(plugin_deps: list[dict]) -> list[tuple[str, Path]]:
 
     Returns list of (archive_path, filepath) tuples for all plugin files.
     """
-    plugin_repo = Path(__file__).resolve().parent.parent.parent / "plugin_repo"
+    plugin_repo = _PLUGIN_REPO_DIR
     if not plugin_repo.exists():
         return []
 
@@ -597,7 +602,7 @@ def _install_bundled_drivers(zf: zipfile.ZipFile) -> list[str]:
     )
     from server.core.device_manager import register_driver
 
-    driver_repo = Path(__file__).resolve().parent.parent.parent / "driver_repo"
+    driver_repo = _DRIVER_REPO_DIR
     driver_repo.mkdir(exist_ok=True)
     installed: list[str] = []
 
@@ -642,7 +647,7 @@ def _install_bundled_plugins(zf: zipfile.ZipFile) -> list[str]:
     Returns list of installed plugin IDs.
     """
 
-    plugin_repo = Path(__file__).resolve().parent.parent.parent / "plugin_repo"
+    plugin_repo = _PLUGIN_REPO_DIR
     plugin_repo.mkdir(exist_ok=True)
     installed: list[str] = []
 
