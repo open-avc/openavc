@@ -9,19 +9,46 @@ function _ordinal(n: number): string {
   return `${n}th`;
 }
 
+/** Read the pattern from whichever key is present. */
+function getPattern(resp: DriverResponseDef): string {
+  return resp.pattern ?? resp.match ?? "";
+}
+
+/** Read mappings, converting set shorthand if needed. */
+function getMappings(resp: DriverResponseDef): DriverResponseMapping[] {
+  if (resp.mappings) return resp.mappings;
+  if (!resp.set) return [];
+  // Convert {input: "$1"} → [{group: 1, state: "input", type: "string"}]
+  const mappings: DriverResponseMapping[] = [];
+  for (const [stateKey, valueExpr] of Object.entries(resp.set)) {
+    if (typeof valueExpr === "string" && valueExpr.startsWith("$")) {
+      const group = parseInt(valueExpr.slice(1), 10) || 0;
+      mappings.push({ group, state: stateKey, type: "string" });
+    } else {
+      mappings.push({ group: 0, state: stateKey, type: "string" });
+    }
+  }
+  return mappings;
+}
+
+/** Build a response def in the canonical match/set format used by .avcdriver YAML. */
+function buildResponse(pattern: string, mappings: DriverResponseMapping[]): DriverResponseDef {
+  return { match: pattern, mappings };
+}
+
 interface ResponseBuilderProps {
   draft: DriverDefinition;
   onUpdate: (partial: Partial<DriverDefinition>) => void;
 }
 
 export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
-  const responses = draft.responses;
+  const responses = draft.responses ?? [];
 
   const addResponse = () => {
     onUpdate({
       responses: [
         ...responses,
-        { pattern: "", mappings: [{ group: 1, state: "", type: "string" }] },
+        buildResponse("", [{ group: 1, state: "", type: "string" }]),
       ],
     });
   };
@@ -79,7 +106,10 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
         Group 1, which you map to your <em>volume</em> state variable.
       </div>
 
-      {responses.map((resp, i) => (
+      {responses.map((resp, i) => {
+        const pattern = getPattern(resp);
+        const mappings = getMappings(resp);
+        return (
         <div
           key={i}
           style={{
@@ -117,20 +147,20 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
           <div style={{ marginBottom: "var(--space-md)" }}>
             <label style={labelStyle}>Regex Pattern</label>
             <input
-              value={resp.pattern}
+              value={pattern}
               onChange={(e) =>
-                updateResponse(i, { ...resp, pattern: e.target.value })
+                updateResponse(i, buildResponse(e.target.value, mappings))
               }
               placeholder="e.g., In(\d+) All"
               style={{
                 width: "100%",
                 fontFamily: "var(--font-mono)",
                 fontSize: "var(--font-size-sm)",
-                borderColor: resp.pattern && (() => { try { new RegExp(resp.pattern); return false; } catch { return true; } })()
+                borderColor: pattern && (() => { try { new RegExp(pattern); return false; } catch { return true; } })()
                   ? "var(--color-error, #f44336)" : undefined,
               }}
             />
-            {resp.pattern && (() => { try { new RegExp(resp.pattern); return null; } catch (e) { return (
+            {pattern && (() => { try { new RegExp(pattern); return null; } catch (e) { return (
               <div style={{ fontSize: 11, color: "var(--color-error, #f44336)", marginTop: 2 }}>
                 Invalid regex: {String(e).replace("SyntaxError: ", "")}
               </div>
@@ -146,7 +176,7 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
           >
             Extract captured values into state variables:
           </div>
-          {resp.mappings.map((mapping, mi) => (
+          {mappings.map((mapping, mi) => (
             <div
               key={mi}
               style={{
@@ -170,9 +200,9 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
               <select
                 value={mapping.state}
                 onChange={(e) => {
-                  const next = [...resp.mappings];
+                  const next = [...mappings];
                   next[mi] = { ...mapping, state: e.target.value };
-                  updateResponse(i, { ...resp, mappings: next });
+                  updateResponse(i, buildResponse(pattern, next));
                 }}
                 style={{ flex: 1, fontSize: "var(--font-size-sm)" }}
               >
@@ -186,9 +216,9 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
               <select
                 value={mapping.type ?? "string"}
                 onChange={(e) => {
-                  const next = [...resp.mappings];
+                  const next = [...mappings];
                   next[mi] = { ...mapping, type: e.target.value };
-                  updateResponse(i, { ...resp, mappings: next });
+                  updateResponse(i, buildResponse(pattern, next));
                 }}
                 style={{ width: 90, fontSize: "var(--font-size-sm)" }}
               >
@@ -199,8 +229,8 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
               </select>
               <button
                 onClick={() => {
-                  const next = resp.mappings.filter((_, j) => j !== mi);
-                  updateResponse(i, { ...resp, mappings: next });
+                  const next = mappings.filter((_, j) => j !== mi);
+                  updateResponse(i, buildResponse(pattern, next));
                 }}
                 style={{ padding: "2px", color: "var(--text-muted)" }}
               >
@@ -209,9 +239,9 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
               <ValueMapEditor
                 mapping={mapping}
                 onChange={(updated) => {
-                  const next = [...resp.mappings];
+                  const next = [...mappings];
                   next[mi] = updated;
-                  updateResponse(i, { ...resp, mappings: next });
+                  updateResponse(i, buildResponse(pattern, next));
                 }}
               />
             </div>
@@ -219,16 +249,13 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
           <button
             onClick={() => {
               const nextGroup =
-                resp.mappings.length > 0
-                  ? Math.max(...resp.mappings.map((m) => m.group)) + 1
+                mappings.length > 0
+                  ? Math.max(...mappings.map((m) => m.group)) + 1
                   : 1;
-              updateResponse(i, {
-                ...resp,
-                mappings: [
-                  ...resp.mappings,
-                  { group: nextGroup, state: "", type: "string" },
-                ],
-              });
+              updateResponse(i, buildResponse(pattern, [
+                ...mappings,
+                { group: nextGroup, state: "", type: "string" },
+              ]));
             }}
             style={{
               fontSize: "var(--font-size-sm)",
@@ -239,7 +266,8 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
             + Add Mapping
           </button>
         </div>
-      ))}
+        );
+      })}
 
       <button
         onClick={addResponse}

@@ -1850,6 +1850,7 @@ function AddDeviceDialog({
     return vals;
   });
   const [error, setError] = useState("");
+  const [isAdding, setIsAdding] = useState(false);
   const [setupDeviceId, setSetupDeviceId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -1891,10 +1892,11 @@ function AddDeviceDialog({
       devices: [...(project?.devices ?? []), newDevice],
     });
 
-    await save();
+    save();
 
     // Show setup dialog if driver has setup settings
     if (hasSetupSettings) {
+      setIsAdding(true);
       setSetupDeviceId(deviceId);
     } else {
       onClose();
@@ -2009,7 +2011,7 @@ function AddDeviceDialog({
             placeholder="e.g., projector_room_1"
             style={{
               width: "100%",
-              borderColor: deviceId && project?.devices.some((d) => d.id === deviceId)
+              borderColor: deviceId && !isAdding && project?.devices.some((d) => d.id === deviceId)
                 ? "var(--color-error, #ef4444)" : undefined,
             }}
           />
@@ -2018,7 +2020,7 @@ function AddDeviceDialog({
             {deviceId && (
               <span style={{ marginLeft: 6 }}>
                 Your ID: <code style={{ fontFamily: "var(--font-mono)", color: "var(--text-primary)" }}>{deviceId}</code>
-                {project?.devices.some((d) => d.id === deviceId) && (
+                {!isAdding && project?.devices.some((d) => d.id === deviceId) && (
                   <span style={{ color: "var(--color-error, #ef4444)", marginLeft: 6 }}>Already exists</span>
                 )}
               </span>

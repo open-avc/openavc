@@ -392,8 +392,12 @@ export interface DriverResponseMapping {
 }
 
 export interface DriverResponseDef {
-  pattern: string;
-  mappings: DriverResponseMapping[];
+  // YAML .avcdriver format uses match/set, Driver Builder UI uses pattern/mappings.
+  // Both are accepted; the runtime handles either.
+  pattern?: string;
+  match?: string;
+  mappings?: DriverResponseMapping[];
+  set?: Record<string, string>;
 }
 
 export interface DriverDiscoveryHints {
