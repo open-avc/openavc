@@ -1,0 +1,156 @@
+name: Raspberry Pi Image
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  pi-image:
+    name: Build Pi image
+    # Skip prereleases — Pi images are only built for stable releases
+    if: ${{ !github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      VERSION: ${{ github.event.release.tag_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Build Programmer UI
+        working-directory: web/programmer
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build Simulator UI
+        working-directory: web/simulator
+        run: |
+          npm ci
+          npm run build
+
+      - name: Strip leading v from version
+        id: ver
+        run: echo "version=${VERSION#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU for ARM emulation
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static binfmt-support
+          # pi-gen's build-docker.sh checks "which qemu-aarch64" (not qemu-aarch64-static)
+          sudo ln -sf /usr/bin/qemu-aarch64-static /usr/bin/qemu-aarch64
+
+      - name: Clone pi-gen (arm64 branch)
+        run: git clone --depth 1 --branch arm64 https://github.com/RPi-Distro/pi-gen.git installer/pi-image/pi-gen
+
+      - name: Package server archive
+        run: |
+          mkdir -p driver_repo plugin_repo projects/default
+          mkdir -p installer/pi-image/stage-openavc/01-install-openavc/files
+          tar czf installer/pi-image/stage-openavc/01-install-openavc/files/openavc.tar.gz \
+            --exclude='__pycache__' \
+            --exclude='*.pyc' \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='.env' \
+            --exclude='tests' \
+            --exclude='.pytest_cache' \
+            --exclude='.ruff_cache' \
+            --exclude='installer/pi-image/pi-gen' \
+            --exclude='web/programmer/node_modules' \
+            --exclude='web/programmer/src' \
+            --exclude='web/programmer/.env*' \
+            --exclude='web/simulator/node_modules' \
+            --exclude='web/simulator/src' \
+            --exclude='web/simulator/.env*' \
+            server/ \
+            simulator/ \
+            web/panel/ \
+            web/programmer/dist/ \
+            web/simulator/dist/ \
+            driver_repo/ \
+            plugin_repo/ \
+            themes/ \
+            requirements.txt \
+            pyproject.toml
+
+      - name: Configure pi-gen
+        env:
+          SEMVER: ${{ steps.ver.outputs.version }}
+        run: |
+          cd installer/pi-image
+
+          # Copy config and inject version
+          cp config pi-gen/config
+          sed -i "s/__VERSION__/${SEMVER}/g" pi-gen/config
+
+          # Copy custom stage
+          rm -rf pi-gen/stage-openavc
+          cp -r stage-openavc pi-gen/stage-openavc
+
+          # Fix permissions
+          find pi-gen/stage-openavc -name "*.sh" -exec chmod +x {} \;
+          chmod +x pi-gen/stage-openavc/prerun.sh
+
+          # Skip stages 4 and 5
+          touch pi-gen/stage4/SKIP pi-gen/stage4/SKIP_IMAGES
+          touch pi-gen/stage5/SKIP pi-gen/stage5/SKIP_IMAGES
+
+          # Only generate image after our custom stage
+          touch pi-gen/stage0/SKIP_IMAGES
+          touch pi-gen/stage1/SKIP_IMAGES
+          touch pi-gen/stage2/SKIP_IMAGES
+          touch pi-gen/stage3/SKIP_IMAGES
+
+      - name: Build Pi image
+        run: |
+          cd installer/pi-image/pi-gen
+          PRESERVE_CONTAINER=0 ./build-docker.sh
+
+      - name: Collect image
+        env:
+          SEMVER: ${{ steps.ver.outputs.version }}
+        run: |
+          IMG=$(ls installer/pi-image/pi-gen/deploy/*.img.xz 2>/dev/null | tail -1)
+          if [ -z "$IMG" ]; then
+            echo "ERROR: No image found in deploy/"
+            exit 1
+          fi
+          cp "$IMG" "openavc-${SEMVER}-pi.img.xz"
+
+      - name: Upload Pi image to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SEMVER: ${{ steps.ver.outputs.version }}
+        run: |
+          PI_IMAGE="openavc-${SEMVER}-pi.img.xz"
+
+          # Download existing checksums, append Pi image, re-upload
+          gh release download "$VERSION" --pattern "SHA256SUMS.txt" --dir . || true
+          if [ -f SHA256SUMS.txt ]; then
+            sha256sum "$PI_IMAGE" >> SHA256SUMS.txt
+            gh release upload "$VERSION" SHA256SUMS.txt --clobber
+          else
+            sha256sum "$PI_IMAGE" > SHA256SUMS.txt
+            gh release upload "$VERSION" SHA256SUMS.txt
+          fi
+
+          # Upload the Pi image
+          gh release upload "$VERSION" "$PI_IMAGE"
+
+      - name: Trigger marketing site rebuild
+        run: |
+          curl -s -X POST "${{ secrets.SITE_DEPLOY_HOOK }}"
+        env:
+          SITE_DEPLOY_HOOK: ${{ secrets.SITE_DEPLOY_HOOK }}
