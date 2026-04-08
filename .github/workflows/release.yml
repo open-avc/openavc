@@ -351,6 +351,12 @@ jobs:
           generate_release_notes: true
           files: release/*
 
+      - name: Trigger Pi image build
+        if: ${{ needs.version.outputs.prerelease == 'false' }}
+        run: gh workflow run release-pi.yml --ref "v$VERSION" -f "tag=v$VERSION"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Trigger marketing site rebuild
         if: ${{ needs.version.outputs.prerelease == 'false' }}
         run: |

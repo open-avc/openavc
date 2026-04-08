@@ -1,8 +1,13 @@
 name: Raspberry Pi Image
 
 on:
-  release:
-    types: [published]
+  # Dispatched by release.yml after creating the GitHub Release.
+  # (release: published events from GITHUB_TOKEN don't trigger other workflows)
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag (e.g. v0.5.2)
+        required: true
 
 permissions:
   contents: write
@@ -13,16 +18,14 @@ env:
 jobs:
   pi-image:
     name: Build Pi image
-    # Skip prereleases — Pi images are only built for stable releases
-    if: ${{ !github.event.release.prerelease }}
     runs-on: ubuntu-latest
     timeout-minutes: 150
     env:
-      VERSION: ${{ github.event.release.tag_name }}
+      VERSION: ${{ inputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ inputs.tag }}
 
       - uses: actions/setup-node@v4
         with:
