@@ -372,8 +372,8 @@ export function ProjectView() {
           <input style={inputStyle} value={project.project.id} readOnly />
         </div>
         <div style={fieldStyle}>
-          <label style={labelStyle}>OpenAVC Version</label>
-          <input style={inputStyle} value={project.openavc_version} readOnly />
+          <label style={labelStyle}>Project Format</label>
+          <input style={inputStyle} value={"v" + project.openavc_version} readOnly />
         </div>
         {project.project.created && (
           <div style={fieldStyle}>

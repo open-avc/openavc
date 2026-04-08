@@ -243,7 +243,7 @@ export function DashboardView() {
             <div>
               <div style={{ fontSize: "var(--font-size-lg)", fontWeight: 600 }}>{String(project.project.name)}</div>
               <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
-                {"OpenAVC " + String(project.openavc_version)}
+                {"OpenAVC v" + String(systemStatus?.version ?? "")}
               </div>
             </div>
             {uptimeSeconds != null && (
