@@ -223,21 +223,19 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
           </div>
         </div>
       )}
-      {updateAvailable && (
-        <button
-          className={`${styles.navItem} ${activeView === "updates" ? styles.active : ""}`}
-          onClick={() => onViewChange("updates")}
-          aria-label={"Update available: v" + updateAvailable}
-          style={{
-            background: activeView === "updates" ? undefined : "rgba(33, 150, 243, 0.1)",
-            color: "var(--accent)",
-            marginBottom: "var(--space-sm)",
-          }}
-        >
-          <ArrowUpCircle size={20} />
-          <span className={styles.tooltip}>{"Update available: v" + updateAvailable}</span>
-        </button>
-      )}
+      <button
+        className={`${styles.navItem} ${activeView === "updates" ? styles.active : ""}`}
+        onClick={() => onViewChange("updates")}
+        aria-label={updateAvailable ? "Update available: v" + updateAvailable : "Updates"}
+        style={{
+          background: updateAvailable && activeView !== "updates" ? "rgba(33, 150, 243, 0.1)" : undefined,
+          color: updateAvailable ? "var(--accent)" : undefined,
+          marginBottom: "var(--space-sm)",
+        }}
+      >
+        <ArrowUpCircle size={20} />
+        <span className={styles.tooltip}>{updateAvailable ? "Update available: v" + updateAvailable : "Updates"}</span>
+      </button>
       <div className={styles.connectionStatus} role="status" aria-label={connected ? "Server connected" : "Server disconnected"}>
         <div
           className={styles.statusDot}

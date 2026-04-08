@@ -420,6 +420,7 @@ export function SystemSettingsView() {
               value={upd.auto_check_interval_hours}
               onChange={(e) => update("updates", "auto_check_interval_hours", parseInt(e.target.value) || 24)}
             />
+            <span style={helpText}>How often to check for new versions.</span>
           </div>
           <div style={toggleRow}>
             <div>

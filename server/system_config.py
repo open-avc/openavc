@@ -46,7 +46,7 @@ DEFAULTS: dict[str, Any] = {
     "updates": {
         "check_enabled": True,
         "channel": "stable",
-        "auto_check_interval_hours": 24,
+        "auto_check_interval_hours": 1,
         "auto_backup_before_update": True,
         "notify_only": False,
     },

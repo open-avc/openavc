@@ -517,7 +517,7 @@ class UpdateManager:
         """Get update history."""
         return list(self._history)
 
-    async def start_auto_check(self, interval_hours: int = 24) -> None:
+    async def start_auto_check(self, interval_hours: int = 1) -> None:
         """Start periodic background update checks."""
         if self._auto_check_task and not self._auto_check_task.done():
             return  # Already running
@@ -531,15 +531,22 @@ class UpdateManager:
         interval_hours = cfg.get("updates", "auto_check_interval_hours", interval_hours)
 
         async def _periodic_check():
+            # Check shortly after startup
+            await asyncio.sleep(30)
+            try:
+                await self.check_for_updates()
+            except Exception as e:
+                log.warning("Update check failed: %s", e)
+
             while True:
                 await asyncio.sleep(interval_hours * 3600)
                 try:
                     await self.check_for_updates()
                 except Exception as e:
-                    log.warning("Periodic update check failed: %s", e)
+                    log.warning("Update check failed: %s", e)
 
         self._auto_check_task = asyncio.create_task(_periodic_check())
-        log.info("Automatic update check scheduled every %d hours", interval_hours)
+        log.info("Automatic update check every %d hour(s)", interval_hours)
 
     async def stop_auto_check(self) -> None:
         """Stop periodic background update checks and maintenance window task."""
