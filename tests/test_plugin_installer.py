@@ -14,8 +14,14 @@ import pytest
 
 from server.core.plugin_installer import (
     CommunityPluginCache,
+    _install_deps_from_pypi,
     _install_pip_deps,
+    _normalize_pkg_name,
+    _parse_requirement,
+    _read_wheel_deps,
     _register_installed_plugin,
+    _resolve_version,
+    _version_tuple,
     install_plugin,
     list_installed_plugins,
     uninstall_plugin,
@@ -559,6 +565,179 @@ class TestInstallPipDeps:
             await _install_pip_deps("bad_syntax", plugin_dir)
 
         mock_run.assert_not_called()
+
+
+# ═══════════════════════════════════════════════════════════
+#  PyPI Wheel Download Tests (frozen environment path)
+# ═══════════════════════════════════════════════════════════
+
+
+class TestParseRequirement:
+
+    def test_name_only(self):
+        assert _parse_requirement("requests") == ("requests", "")
+
+    def test_version_gte(self):
+        assert _parse_requirement("pillow>=10.0") == ("pillow", ">=10.0")
+
+    def test_version_eq(self):
+        assert _parse_requirement("some-lib==2.1.0") == ("some-lib", "==2.1.0")
+
+    def test_whitespace(self):
+        assert _parse_requirement("  mylib >= 1.0 ") == ("mylib", ">= 1.0")
+
+
+class TestNormalizePkgName:
+
+    def test_underscores(self):
+        assert _normalize_pkg_name("My_Package") == "my-package"
+
+    def test_dots(self):
+        assert _normalize_pkg_name("zope.interface") == "zope-interface"
+
+    def test_already_normalized(self):
+        assert _normalize_pkg_name("requests") == "requests"
+
+
+class TestVersionTuple:
+
+    def test_simple(self):
+        assert _version_tuple("1.2.3") == (1, 2, 3)
+
+    def test_two_part(self):
+        assert _version_tuple("10.0") == (10, 0)
+
+    def test_invalid(self):
+        # Non-numeric parts are filtered out, resulting in an empty tuple
+        assert _version_tuple("abc") == ()
+
+
+class TestResolveVersion:
+
+    def test_gte(self):
+        releases = {
+            "1.0.0": [{"url": "x"}],
+            "2.0.0": [{"url": "x"}],
+            "3.0.0": [{"url": "x"}],
+        }
+        assert _resolve_version(releases, ">=2.0.0") == "3.0.0"
+
+    def test_eq(self):
+        releases = {
+            "1.0.0": [{"url": "x"}],
+            "2.0.0": [{"url": "x"}],
+        }
+        assert _resolve_version(releases, "==1.0.0") == "1.0.0"
+
+    def test_skips_prerelease(self):
+        releases = {
+            "1.0.0": [{"url": "x"}],
+            "2.0.0a1": [{"url": "x"}],
+        }
+        assert _resolve_version(releases, ">=1.0.0") == "1.0.0"
+
+    def test_no_match(self):
+        releases = {"1.0.0": [{"url": "x"}]}
+        assert _resolve_version(releases, ">=5.0.0") is None
+
+
+class TestReadWheelDeps:
+
+    def test_reads_requires_dist(self):
+        buf = BytesIO()
+        with zipfile.ZipFile(buf, "w") as whl:
+            whl.writestr("pkg-1.0.dist-info/METADATA", (
+                "Metadata-Version: 2.1\n"
+                "Name: pkg\n"
+                "Requires-Dist: dep-a\n"
+                "Requires-Dist: dep-b (>=2.0)\n"
+                'Requires-Dist: optional-dep ; extra == "test"\n'
+            ))
+        with zipfile.ZipFile(BytesIO(buf.getvalue())) as whl:
+            deps = _read_wheel_deps(whl)
+        assert "dep-a" in deps
+        assert "dep-b (>=2.0)" in deps
+        assert not any("optional" in d for d in deps)
+
+    def test_no_metadata(self):
+        buf = BytesIO()
+        with zipfile.ZipFile(buf, "w") as whl:
+            whl.writestr("pkg/__init__.py", "")
+        with zipfile.ZipFile(BytesIO(buf.getvalue())) as whl:
+            assert _read_wheel_deps(whl) == []
+
+
+class TestInstallDepsFromPyPI:
+
+    async def test_downloads_and_extracts_wheel(self, plugin_repo):
+        """When frozen, downloads a wheel and extracts into .deps/."""
+        deps_dir = plugin_repo / ".deps"
+        deps_dir.mkdir()
+
+        # Build a fake wheel (zip with a Python module + METADATA)
+        buf = BytesIO()
+        with zipfile.ZipFile(buf, "w") as whl:
+            whl.writestr("fake_pkg/__init__.py", "VERSION = '1.0'")
+            whl.writestr("fake_pkg-1.0.dist-info/METADATA", (
+                "Metadata-Version: 2.1\n"
+                "Name: fake-pkg\n"
+            ))
+        wheel_bytes = buf.getvalue()
+
+        # Mock PyPI JSON response
+        pypi_json = {
+            "info": {"version": "1.0.0"},
+            "releases": {
+                "1.0.0": [{
+                    "packagetype": "bdist_wheel",
+                    "filename": "fake_pkg-1.0.0-py3-none-any.whl",
+                    "url": "https://files.example.com/fake_pkg-1.0.0-py3-none-any.whl",
+                }]
+            },
+        }
+
+        async def mock_get(url, **kwargs):
+            resp = MagicMock()
+            resp.raise_for_status = MagicMock()
+            resp.status_code = 200
+            if "pypi.org" in url:
+                resp.json.return_value = pypi_json
+            else:
+                resp.content = wheel_bytes
+            return resp
+
+        mock_client = AsyncMock()
+        mock_client.get = mock_get
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("server.core.plugin_installer.httpx.AsyncClient", return_value=mock_client):
+            await _install_deps_from_pypi(["fake-pkg"], deps_dir, "test_plugin")
+
+        assert (deps_dir / "fake_pkg" / "__init__.py").exists()
+
+    async def test_frozen_path_used_when_frozen(self, plugin_repo):
+        """_install_pip_deps uses PyPI download when sys.frozen is True."""
+        plugin_dir = plugin_repo / "deps_plugin"
+        plugin_dir.mkdir()
+        (plugin_dir / "deps_plugin.py").write_text(
+            PLUGIN_WITH_DEPS_SOURCE, encoding="utf-8"
+        )
+
+        with (
+            patch("server.core.plugin_installer.sys") as mock_sys,
+            patch("server.core.plugin_installer._install_deps_from_pypi") as mock_pypi,
+        ):
+            mock_sys.frozen = True
+            mock_sys.version_info = MagicMock(major=3, minor=12)
+            mock_sys.platform = "win32"
+            await _install_pip_deps("deps_plugin", plugin_dir)
+
+        mock_pypi.assert_called_once()
+        # Verify the parsed deps were passed through
+        call_deps = mock_pypi.call_args[0][0]
+        assert "some-library>=1.0" in call_deps
+        assert "another-lib" in call_deps
 
 
 # ═══════════════════════════════════════════════════════════
