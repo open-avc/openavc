@@ -42,7 +42,7 @@ Each entry in the array represents one physical button:
   "bg_color": "#1a1a2e", // Per-button default background color, hex (optional)
   "text_color": "#e0e0e0", // Per-button default text color, hex (optional)
   "bindings": {          // Action and feedback configuration
-    "press": {
+    "press": [{            // MUST be an array of action objects
       "action": "macro",           // Action type: "macro", "device.command", "state.set", "navigate"
       "macro": "macro_name"        // For macro action
       // OR for device.command:
@@ -56,7 +56,7 @@ Each entry in the array represents one physical button:
       // "mode": "toggle",  — requires toggle_key, toggle_value, off_action
       // "mode": "hold_repeat", — requires hold_repeat_ms (default 200)
       // "mode": "tap_hold", — requires hold_action, hold_threshold_ms (default 500)
-    },
+    }],
     "feedback": {         // Visual feedback based on state (optional)
       "source": "state",
       "key": "device.my_device.power",   // State key to watch
@@ -72,6 +72,531 @@ Each entry in the array represents one physical button:
 Color priority: feedback style > per-button defaults > global plugin config defaults.
 Only include fields you need. Unassigned buttons can be omitted from the array.
 """
+
+
+# --- Binding normalization and validation ---
+
+_ACTION_SLOTS = frozenset(("press", "release", "hold", "change", "submit", "route", "select"))
+
+
+def _normalize_bindings(bindings: dict) -> dict:
+    """Normalize UI element bindings to canonical format.
+
+    Action slots (press, release, hold) must be arrays of action objects.
+    The AI sometimes sends them as plain objects — wrap in an array.
+    """
+    for slot in _ACTION_SLOTS:
+        val = bindings.get(slot)
+        if isinstance(val, dict):
+            bindings[slot] = [val]
+    return bindings
+_NON_ACTION_SLOTS = frozenset((
+    "feedback", "text", "color", "variable", "value",
+    "visible_when", "selected", "items", "meter",
+))
+_VALID_VISIBLE_WHEN_OPS = frozenset((
+    "eq", "ne", "gt", "lt", "gte", "lte", "truthy", "falsy",
+))
+_VALID_TEXT_SOURCES = frozenset(("state", "macro_progress", "conditional"))
+_VALID_FEEDBACK_STATE_PROPS = frozenset((
+    "label", "bg_color", "text_color", "icon", "icon_color",
+    "button_image", "opacity",
+))
+_VALID_ACTION_TYPES = frozenset((
+    "macro", "device.command", "state.set", "navigate", "page",
+    "script.call", "value_map",
+))
+_VALID_MODES = frozenset(("tap", "toggle", "hold_repeat", "tap_hold"))
+
+# Required fields per action type (beyond "action" itself)
+_ACTION_REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
+    "macro": ("macro",),
+    "device.command": ("device", "command"),
+    "state.set": ("key",),
+    "navigate": ("page",),
+    "page": ("page",),
+    "script.call": ("function",),
+    "value_map": ("map",),
+}
+
+
+def _validate_action(action: dict, path: str) -> str | None:
+    """Validate a single action object. Returns error string or None."""
+    action_type = action.get("action", "")
+    if not action_type:
+        return f"{path}: missing 'action' field"
+    if action_type not in _VALID_ACTION_TYPES:
+        return (
+            f"{path}: action type '{action_type}' is not valid. "
+            f"Use: macro, device.command, state.set, navigate, script.call, value_map"
+        )
+    required = _ACTION_REQUIRED_FIELDS.get(action_type, ())
+    for field in required:
+        if field not in action or action[field] is None or action[field] == "":
+            return f"{path}: {action_type} action requires '{field}'"
+    if action_type == "value_map" and not isinstance(action.get("map"), dict):
+        return f"{path}: value_map action requires 'map' to be an object"
+    return None
+
+
+def _validate_bindings(bindings: dict, project: Any = None) -> str | None:
+    """Validate UI element bindings after normalization.
+
+    Returns an error message string on failure, or None if valid.
+    The project parameter enables soft reference checks (warn-level).
+    """
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    for slot in _ACTION_SLOTS:
+        val = bindings.get(slot)
+        if val is None:
+            continue
+        if not isinstance(val, list):
+            errors.append(f"'{slot}' must be an array of action objects, got {type(val).__name__}")
+            continue
+        for i, item in enumerate(val):
+            if not isinstance(item, dict):
+                errors.append(f"{slot}[{i}]: expected an action object, got {type(item).__name__}")
+                continue
+            err = _validate_action(item, f"{slot}[{i}]")
+            if err:
+                errors.append(err)
+
+    # Mode-specific validation on the first press action
+    press = bindings.get("press")
+    if isinstance(press, list) and press and isinstance(press[0], dict):
+        first = press[0]
+        mode = first.get("mode", "tap")
+        if mode and mode not in _VALID_MODES:
+            errors.append(
+                f"press[0]: mode '{mode}' is not valid. Use: tap, toggle, hold_repeat, tap_hold"
+            )
+        elif mode == "toggle":
+            if "toggle_key" not in first or not first["toggle_key"]:
+                errors.append("press[0]: toggle mode requires 'toggle_key'")
+            if "off_action" not in first or not isinstance(first.get("off_action"), dict):
+                errors.append("press[0]: toggle mode requires 'off_action' (an action object)")
+            elif first.get("off_action"):
+                err = _validate_action(first["off_action"], "press[0].off_action")
+                if err:
+                    errors.append(err)
+        elif mode == "tap_hold":
+            if "hold_action" not in first or not isinstance(first.get("hold_action"), dict):
+                errors.append("press[0]: tap_hold mode requires 'hold_action' (an action object)")
+            elif first.get("hold_action"):
+                err = _validate_action(first["hold_action"], "press[0].hold_action")
+                if err:
+                    errors.append(err)
+
+    # Non-action slots: type check + content validation
+    for slot in _NON_ACTION_SLOTS:
+        val = bindings.get(slot)
+        if val is None:
+            continue
+        if isinstance(val, list):
+            errors.append(f"'{slot}' must be an object, not an array")
+            continue
+        if not isinstance(val, dict):
+            errors.append(f"'{slot}' must be an object, got {type(val).__name__}")
+            continue
+
+    # feedback: must have key; validate structure
+    fb = bindings.get("feedback")
+    if isinstance(fb, dict):
+        if not fb.get("key"):
+            errors.append("feedback: missing 'key' (state key to watch)")
+        if "states" in fb:
+            # Multi-state feedback
+            if not isinstance(fb["states"], dict):
+                errors.append("feedback.states must be an object mapping state values to style props")
+            else:
+                # Anti-pattern #8: properties nested in style object
+                for state_name, state_val in fb["states"].items():
+                    if isinstance(state_val, dict) and "style" in state_val:
+                        errors.append(
+                            f"feedback.states.{state_name}: properties (label, bg_color, etc.) "
+                            f"must be flat, not nested inside 'style'"
+                        )
+                        break
+        elif "condition" in fb:
+            # Binary feedback
+            if not isinstance(fb["condition"], dict):
+                errors.append("feedback.condition must be an object (e.g. {\"equals\": \"on\"})")
+
+    # text: must have source; validate per source type
+    txt = bindings.get("text")
+    if isinstance(txt, dict):
+        source = txt.get("source", "")
+        if not source:
+            errors.append("text: missing 'source' (state, macro_progress, or conditional)")
+        elif source not in _VALID_TEXT_SOURCES:
+            errors.append(
+                f"text: source '{source}' is not valid. "
+                f"Use: state, macro_progress, conditional"
+            )
+        elif source == "state" and not txt.get("key"):
+            errors.append("text: state source requires 'key'")
+        elif source == "macro_progress" and not txt.get("macro"):
+            errors.append("text: macro_progress source requires 'macro'")
+        elif source == "conditional":
+            for field in ("condition", "text_true", "text_false"):
+                if field not in txt:
+                    errors.append(f"text: conditional source requires '{field}'")
+
+    # color: must have key and map
+    clr = bindings.get("color")
+    if isinstance(clr, dict):
+        if not clr.get("key"):
+            errors.append("color: missing 'key' (state key to watch)")
+        if "map" not in clr or not isinstance(clr.get("map"), dict):
+            errors.append("color: missing 'map' (object mapping values to colors)")
+
+    # variable: must have key
+    var = bindings.get("variable")
+    if isinstance(var, dict) and not var.get("key"):
+        errors.append("variable: missing 'key' (state key for two-way binding)")
+
+    # value: must have key
+    val_binding = bindings.get("value")
+    if isinstance(val_binding, dict) and not val_binding.get("key"):
+        errors.append("value: missing 'key' (state key to display)")
+
+    # visible_when: must have key; validate operator
+    vw = bindings.get("visible_when")
+    if isinstance(vw, dict):
+        if not vw.get("key"):
+            errors.append("visible_when: missing 'key' (state key to evaluate)")
+        op = vw.get("operator")
+        if op and op not in _VALID_VISIBLE_WHEN_OPS:
+            errors.append(
+                f"visible_when: operator '{op}' is not valid. "
+                f"Use: eq, ne, gt, lt, gte, lte, truthy, falsy"
+            )
+
+    # selected: must have key
+    sel = bindings.get("selected")
+    if isinstance(sel, dict) and not sel.get("key"):
+        errors.append("selected: missing 'key' (state key for selection tracking)")
+
+    # items: must have key
+    itm = bindings.get("items")
+    if isinstance(itm, dict) and not itm.get("key"):
+        errors.append("items: missing 'key' (state key providing item data)")
+
+    # Soft reference checks — collect warnings but don't block
+    if project and not errors:
+        macro_ids = {m.id for m in project.macros} if hasattr(project, "macros") else set()
+        device_ids = {d.id for d in project.devices} if hasattr(project, "devices") else set()
+
+        for slot in _ACTION_SLOTS:
+            val = bindings.get(slot)
+            if not isinstance(val, list):
+                continue
+            for i, item in enumerate(val):
+                if not isinstance(item, dict):
+                    continue
+                if item.get("action") == "macro" and item.get("macro"):
+                    if item["macro"] not in macro_ids:
+                        warnings.append(f"{slot}[{i}]: macro '{item['macro']}' not found in project")
+                if item.get("action") == "device.command" and item.get("device"):
+                    if item["device"] not in device_ids:
+                        warnings.append(f"{slot}[{i}]: device '{item['device']}' not found in project")
+
+    if errors:
+        return "Binding validation failed: " + "; ".join(errors)
+
+    if warnings:
+        log.warning("Binding reference warnings: %s", "; ".join(warnings))
+
+    return None
+
+
+# --- Macro step and trigger validation ---
+
+_VALID_STEP_ACTIONS = frozenset((
+    "device.command", "group.command", "delay", "state.set",
+    "macro", "event.emit", "conditional",
+))
+_STEP_REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
+    "device.command": ("device", "command"),
+    "group.command": ("group", "command"),
+    "delay": ("seconds",),
+    "state.set": ("key",),
+    "macro": ("macro",),
+    "event.emit": ("event",),
+    "conditional": ("condition",),
+}
+_VALID_TRIGGER_TYPES = frozenset(("schedule", "state_change", "event", "startup"))
+_VALID_CONDITION_OPS = frozenset((
+    "eq", "ne", "gt", "lt", "gte", "lte", "truthy", "falsy",
+))
+_VALID_STATE_TRIGGER_OPS = frozenset((
+    "any", "eq", "ne", "gt", "lt", "gte", "lte", "truthy", "falsy",
+))
+_VALID_OVERLAP_MODES = frozenset(("skip", "queue", "allow"))
+
+
+def _validate_macro_step(step: dict, path: str) -> list[str]:
+    """Validate a single macro step. Returns list of error strings."""
+    errors: list[str] = []
+    action = step.get("action", "")
+    if not action:
+        errors.append(f"{path}: missing 'action' field")
+        return errors
+    if action not in _VALID_STEP_ACTIONS:
+        errors.append(
+            f"{path}: step action '{action}' is not valid. "
+            f"Use: device.command, group.command, delay, state.set, macro, event.emit, conditional"
+        )
+        return errors
+
+    required = _STEP_REQUIRED_FIELDS.get(action, ())
+    for field in required:
+        val = step.get(field)
+        if val is None or val == "":
+            errors.append(f"{path}: {action} step requires '{field}'")
+
+    if action == "delay":
+        seconds = step.get("seconds")
+        if seconds is not None and (not isinstance(seconds, (int, float)) or seconds < 0):
+            errors.append(f"{path}: delay 'seconds' must be a non-negative number")
+
+    if action == "conditional":
+        cond = step.get("condition")
+        if isinstance(cond, dict):
+            if not cond.get("key"):
+                errors.append(f"{path}: conditional condition requires 'key'")
+            op = cond.get("operator", "eq")
+            if op not in _VALID_CONDITION_OPS:
+                errors.append(f"{path}: condition operator '{op}' is not valid")
+        # Recursively validate then/else steps
+        for branch in ("then_steps", "else_steps"):
+            branch_steps = step.get(branch)
+            if isinstance(branch_steps, list):
+                for i, sub in enumerate(branch_steps):
+                    if isinstance(sub, dict):
+                        errors.extend(_validate_macro_step(sub, f"{path}.{branch}[{i}]"))
+
+    # Validate skip_if guard
+    skip_if = step.get("skip_if")
+    if isinstance(skip_if, dict):
+        if not skip_if.get("key"):
+            errors.append(f"{path}: skip_if requires 'key'")
+        op = skip_if.get("operator", "eq")
+        if op not in _VALID_CONDITION_OPS:
+            errors.append(f"{path}: skip_if operator '{op}' is not valid")
+
+    return errors
+
+
+def _validate_trigger(trigger: dict, path: str) -> list[str]:
+    """Validate a single trigger definition. Returns list of error strings."""
+    errors: list[str] = []
+    ttype = trigger.get("type", "")
+    if not ttype:
+        errors.append(f"{path}: missing 'type' field")
+        return errors
+    if ttype not in _VALID_TRIGGER_TYPES:
+        errors.append(
+            f"{path}: trigger type '{ttype}' is not valid. "
+            f"Use: schedule, state_change, event, startup"
+        )
+        return errors
+
+    if ttype == "schedule":
+        cron = trigger.get("cron")
+        if not cron or not isinstance(cron, str):
+            errors.append(f"{path}: schedule trigger requires 'cron' (string)")
+        elif cron:
+            parts = cron.strip().split()
+            if len(parts) not in (5, 6):
+                errors.append(f"{path}: cron expression must have 5 or 6 fields, got {len(parts)}")
+    elif ttype == "state_change":
+        if not trigger.get("state_key"):
+            errors.append(f"{path}: state_change trigger requires 'state_key'")
+        op = trigger.get("state_operator")
+        if op and op not in _VALID_STATE_TRIGGER_OPS:
+            errors.append(
+                f"{path}: state_operator '{op}' is not valid. "
+                f"Use: any, eq, ne, gt, lt, gte, lte, truthy, falsy"
+            )
+    elif ttype == "event":
+        if not trigger.get("event_pattern"):
+            errors.append(f"{path}: event trigger requires 'event_pattern'")
+
+    overlap = trigger.get("overlap")
+    if overlap and overlap not in _VALID_OVERLAP_MODES:
+        errors.append(f"{path}: overlap '{overlap}' is not valid. Use: skip, queue, allow")
+
+    # Validate guard conditions
+    conditions = trigger.get("conditions")
+    if isinstance(conditions, list):
+        for i, c in enumerate(conditions):
+            if isinstance(c, dict):
+                if not c.get("key"):
+                    errors.append(f"{path}.conditions[{i}]: missing 'key'")
+                op = c.get("operator", "eq")
+                if op not in _VALID_CONDITION_OPS:
+                    errors.append(f"{path}.conditions[{i}]: operator '{op}' is not valid")
+
+    return errors
+
+
+def _validate_macro(steps: list, triggers: list, project: Any = None) -> str | None:
+    """Validate macro steps and triggers. Returns error string or None."""
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    if isinstance(steps, list):
+        for i, step in enumerate(steps):
+            if isinstance(step, dict):
+                errors.extend(_validate_macro_step(step, f"steps[{i}]"))
+            else:
+                errors.append(f"steps[{i}]: expected an object, got {type(step).__name__}")
+
+    if isinstance(triggers, list):
+        for i, trigger in enumerate(triggers):
+            if isinstance(trigger, dict):
+                errors.extend(_validate_trigger(trigger, f"triggers[{i}]"))
+            else:
+                errors.append(f"triggers[{i}]: expected an object, got {type(trigger).__name__}")
+
+    # Soft reference checks
+    if project and not errors:
+        macro_ids = {m.id for m in project.macros} if hasattr(project, "macros") else set()
+        device_ids = {d.id for d in project.devices} if hasattr(project, "devices") else set()
+        group_ids = {g.id for g in project.device_groups} if hasattr(project, "device_groups") else set()
+
+        def _check_step_refs(step: dict, path: str) -> None:
+            action = step.get("action", "")
+            if action == "device.command" and step.get("device"):
+                if step["device"] not in device_ids:
+                    warnings.append(f"{path}: device '{step['device']}' not found in project")
+            if action == "group.command" and step.get("group"):
+                if step["group"] not in group_ids:
+                    warnings.append(f"{path}: device group '{step['group']}' not found in project")
+            if action == "macro" and step.get("macro"):
+                if step["macro"] not in macro_ids:
+                    warnings.append(f"{path}: macro '{step['macro']}' not found in project")
+            for branch in ("then_steps", "else_steps"):
+                for i, sub in enumerate(step.get(branch) or []):
+                    if isinstance(sub, dict):
+                        _check_step_refs(sub, f"{path}.{branch}[{i}]")
+
+        if isinstance(steps, list):
+            for i, step in enumerate(steps):
+                if isinstance(step, dict):
+                    _check_step_refs(step, f"steps[{i}]")
+
+    if errors:
+        return "Macro validation failed: " + "; ".join(errors)
+    if warnings:
+        log.warning("Macro reference warnings: %s", "; ".join(warnings))
+    return None
+
+
+# --- Variable validation ---
+
+_VALID_VARIABLE_TYPES = frozenset(("string", "number", "boolean"))
+
+
+def _validate_variable(var_type: str, default: Any = None) -> str | None:
+    """Validate variable type and default value. Returns error string or None."""
+    if var_type not in _VALID_VARIABLE_TYPES:
+        return (
+            f"Variable type '{var_type}' is not valid. "
+            f"Use: string, number, boolean"
+        )
+    if default is not None:
+        if var_type == "number" and not isinstance(default, (int, float)):
+            return f"Variable type is 'number' but default '{default}' is {type(default).__name__}"
+        if var_type == "boolean" and not isinstance(default, bool):
+            return f"Variable type is 'boolean' but default '{default}' is {type(default).__name__}"
+        if var_type == "string" and not isinstance(default, str):
+            return f"Variable type is 'string' but default '{default}' is {type(default).__name__}"
+    return None
+
+
+# --- Script syntax validation ---
+
+def _validate_script_syntax(source: str, filename: str = "<script>") -> str | None:
+    """Validate Python script syntax. Returns error string or None."""
+    try:
+        compile(source, filename, "exec")
+    except SyntaxError as e:
+        line_info = f" (line {e.lineno})" if e.lineno else ""
+        return f"Python syntax error{line_info}: {e.msg}"
+    return None
+
+
+# --- Plugin config schema validation ---
+
+_SCHEMA_TYPE_VALIDATORS: dict[str, type | tuple[type, ...]] = {
+    "string": (str,),
+    "integer": (int,),
+    "number": (int, float),
+    "boolean": (bool,),
+}
+
+
+def _validate_plugin_config(config: dict, schema: dict) -> str | None:
+    """Validate plugin config against its CONFIG_SCHEMA.
+
+    Returns error string or None. Only checks required fields and basic types.
+    """
+    errors: list[str] = []
+    for key, field_def in schema.items():
+        if not isinstance(field_def, dict):
+            continue
+
+        # Group fields — recurse
+        if field_def.get("type") == "group":
+            sub_schema = field_def.get("fields", {})
+            sub_config = config.get(key, {})
+            if isinstance(sub_schema, dict) and isinstance(sub_config, dict):
+                err = _validate_plugin_config(sub_config, sub_schema)
+                if err:
+                    errors.append(err)
+            continue
+
+        # Required field check
+        if field_def.get("required") and key not in config:
+            if "default" not in field_def:
+                errors.append(f"Missing required config field '{key}'")
+                continue
+
+        # Type check for present values
+        value = config.get(key)
+        if value is not None:
+            expected_type = field_def.get("type", "")
+            valid_types = _SCHEMA_TYPE_VALIDATORS.get(expected_type)
+            if valid_types and not isinstance(value, valid_types):
+                errors.append(
+                    f"Config field '{key}' should be {expected_type}, "
+                    f"got {type(value).__name__}"
+                )
+
+    if errors:
+        return "Plugin config validation failed: " + "; ".join(errors)
+    return None
+
+
+# --- State key validation ---
+
+_VALID_STATE_PREFIXES = ("device.", "var.", "ui.", "system.", "plugin.")
+
+
+def _validate_state_key(key: str) -> str | None:
+    """Validate state key format. Returns error string or None."""
+    if not key:
+        return "State key cannot be empty"
+    if not any(key.startswith(p) for p in _VALID_STATE_PREFIXES):
+        return (
+            f"State key '{key}' has an invalid prefix. "
+            f"Must start with: device., var., ui., system., plugin."
+        )
+    return None
 
 
 class AIToolHandler:
@@ -498,6 +1023,10 @@ class AIToolHandler:
         if device_idx is None:
             return {"error": f"Device '{device_id}' not found"}
         existing = engine.project.devices[device_idx]
+        if "driver" in input and input["driver"] != existing.driver:
+            from server.core.device_manager import _DRIVER_REGISTRY
+            if input["driver"] not in _DRIVER_REGISTRY:
+                log.warning("update_device: driver '%s' not in registry (may not be loaded yet)", input["driver"])
         updated = DeviceConfig(
             id=device_id,
             driver=input.get("driver", existing.driver),
@@ -540,6 +1069,12 @@ class AIToolHandler:
         if any(d.id == device_id for d in engine.project.devices):
             return {"error": f"Device '{device_id}' already exists"}
 
+        driver_id = input.get("driver", "")
+        if driver_id:
+            from server.core.device_manager import _DRIVER_REGISTRY
+            if driver_id not in _DRIVER_REGISTRY:
+                log.warning("add_device: driver '%s' not in registry (may not be loaded yet)", driver_id)
+
         from server.core.project_loader import DeviceConfig, save_project
         from server.core.project_migration import CONNECTION_FIELDS
 
@@ -555,7 +1090,7 @@ class AIToolHandler:
 
         new_device = DeviceConfig(
             id=device_id,
-            driver=input.get("driver", ""),
+            driver=driver_id,
             name=input.get("name", device_id),
             config=protocol_config,
             enabled=input.get("enabled", True),
@@ -580,11 +1115,18 @@ class AIToolHandler:
             return {"error": "Group ID is required"}
         if any(g.id == group_id for g in engine.project.device_groups):
             return {"error": f"Group '{group_id}' already exists"}
+        device_ids = input.get("device_ids", [])
+        if device_ids:
+            project_device_ids = {d.id for d in engine.project.devices}
+            unknown = [did for did in device_ids if did not in project_device_ids]
+            if unknown:
+                return {"error": f"Device(s) not found in project: {', '.join(unknown)}"}
+
         from server.core.project_loader import DeviceGroup, save_project
         new_group = DeviceGroup(
             id=group_id,
             name=input.get("name", group_id),
-            device_ids=input.get("device_ids", []),
+            device_ids=device_ids,
         )
         engine.project.device_groups.append(new_group)
         save_project(engine.project_path, engine.project)
@@ -607,6 +1149,11 @@ class AIToolHandler:
             return {"error": f"Group '{group_id}' not found"}
         from server.core.project_loader import save_project
         existing = engine.project.device_groups[group_idx]
+        if "device_ids" in input:
+            project_device_ids = {d.id for d in engine.project.devices}
+            unknown = [did for did in input["device_ids"] if did not in project_device_ids]
+            if unknown:
+                return {"error": f"Device(s) not found in project: {', '.join(unknown)}"}
         if "name" in input:
             existing.name = input["name"]
         if "device_ids" in input:
@@ -642,11 +1189,17 @@ class AIToolHandler:
         if any(v.id == var_id for v in engine.project.variables):
             return {"error": f"Variable '{var_id}' already exists"}
 
+        var_type = input.get("type", "string")
+        default = input.get("default")
+        err = _validate_variable(var_type, default)
+        if err:
+            return {"error": f"Variable '{var_id}': {err}"}
+
         from server.core.project_loader import VariableConfig, save_project
         new_var = VariableConfig(
             id=var_id,
-            type=input.get("type", "string"),
-            default=input.get("default"),
+            type=var_type,
+            default=default,
             label=input.get("label", ""),
             dashboard=input.get("dashboard", False),
             persist=input.get("persist", False),
@@ -677,6 +1230,15 @@ class AIToolHandler:
 
         from server.core.project_loader import save_project
         existing = engine.project.variables[var_idx]
+
+        # Validate before mutating
+        check_type = input.get("type", existing.type)
+        check_default = input.get("default", existing.default)
+        if "type" in input or "default" in input:
+            err = _validate_variable(check_type, check_default)
+            if err:
+                return {"error": f"Variable '{var_id}': {err}"}
+
         if "type" in input:
             existing.type = input["type"]
         if "default" in input:
@@ -727,12 +1289,18 @@ class AIToolHandler:
         if any(m.id == macro_id for m in engine.project.macros):
             return {"error": f"Macro '{macro_id}' already exists"}
 
+        steps = input.get("steps", [])
+        triggers = input.get("triggers", [])
+        err = _validate_macro(steps, triggers, engine.project)
+        if err:
+            return {"error": f"Macro '{macro_id}': {err}"}
+
         from server.core.project_loader import MacroConfig, save_project
         new_macro = MacroConfig(
             id=macro_id,
             name=input.get("name", macro_id),
-            steps=input.get("steps", []),
-            triggers=input.get("triggers", []),
+            steps=steps,
+            triggers=triggers,
             stop_on_error=input.get("stop_on_error", False),
         )
         engine.project.macros.append(new_macro)
@@ -759,11 +1327,23 @@ class AIToolHandler:
 
         from server.core.project_loader import MacroConfig, save_project
         existing = engine.project.macros[macro_idx]
+        steps = input["steps"] if "steps" in input else existing.steps
+        triggers = input["triggers"] if "triggers" in input else existing.triggers
+        # Only validate fields that are being changed
+        if "steps" in input or "triggers" in input:
+            err = _validate_macro(
+                input.get("steps", []) if "steps" in input else [],
+                input.get("triggers", []) if "triggers" in input else [],
+                engine.project,
+            )
+            if err:
+                return {"error": f"Macro '{macro_id}': {err}"}
+
         updated = MacroConfig(
             id=macro_id,
             name=input.get("name", existing.name),
-            steps=input["steps"] if "steps" in input else existing.steps,
-            triggers=input["triggers"] if "triggers" in input else existing.triggers,
+            steps=steps,
+            triggers=triggers,
             stop_on_error=input.get("stop_on_error", existing.stop_on_error),
         )
         engine.project.macros[macro_idx] = updated
@@ -926,6 +1506,11 @@ class AIToolHandler:
 
         from server.core.project_loader import UIElement, save_project
         for el_data in elements:
+            if "bindings" in el_data and isinstance(el_data["bindings"], dict):
+                el_data["bindings"] = _normalize_bindings(el_data["bindings"])
+                err = _validate_bindings(el_data["bindings"], engine.project)
+                if err:
+                    return {"error": f"Element '{el_data.get('id', '?')}': {err}"}
             page.elements.append(UIElement(**el_data))
         save_project(engine.project_path, engine.project)
 
@@ -955,6 +1540,15 @@ class AIToolHandler:
         if target_el is None:
             return {"error": f"UI element '{element_id}' not found"}
 
+        # Validate bindings BEFORE mutating any fields (avoid partial updates)
+        if "bindings" in input:
+            bindings = input["bindings"]
+            if isinstance(bindings, dict):
+                bindings = _normalize_bindings(bindings)
+                err = _validate_bindings(bindings, engine.project)
+                if err:
+                    return {"error": f"Element '{element_id}': {err}"}
+
         if "label" in input:
             target_el.label = input["label"]
         if "text" in input:
@@ -965,7 +1559,7 @@ class AIToolHandler:
         if "style" in input:
             target_el.style = input["style"]
         if "bindings" in input:
-            target_el.bindings = input["bindings"]
+            target_el.bindings = bindings if isinstance(input["bindings"], dict) else input["bindings"]
 
         from server.core.project_loader import save_project
         save_project(engine.project_path, engine.project)
@@ -1021,6 +1615,11 @@ class AIToolHandler:
         from server.core.project_loader import MasterElement, save_project
         el_data = {k: v for k, v in input.items() if k != "id"}
         el_data["id"] = element_id
+        if "bindings" in el_data and isinstance(el_data["bindings"], dict):
+            el_data["bindings"] = _normalize_bindings(el_data["bindings"])
+            err = _validate_bindings(el_data["bindings"], engine.project)
+            if err:
+                return {"error": f"Master element '{element_id}': {err}"}
         new_el = MasterElement(**el_data)
         engine.project.ui.master_elements.append(new_el)
         save_project(engine.project_path, engine.project)
@@ -1163,6 +1762,11 @@ class AIToolHandler:
             if s.id == script_id:
                 return {"error": f"Script '{script_id}' already exists"}
 
+        if source:
+            err = _validate_script_syntax(source, filename)
+            if err:
+                return {"error": f"Script '{script_id}': {err}"}
+
         scripts_dir = engine.project_path.parent / "scripts"
         scripts_dir.mkdir(parents=True, exist_ok=True)
         path = scripts_dir / filename
@@ -1184,6 +1788,10 @@ class AIToolHandler:
         source = input.get("source", "")
         for s in engine.project.scripts:
             if s.id == script_id:
+                if source:
+                    err = _validate_script_syntax(source, s.file)
+                    if err:
+                        return {"error": f"Script '{script_id}': {err}"}
                 scripts_dir = engine.project_path.parent / "scripts"
                 path = scripts_dir / s.file
                 path.parent.mkdir(parents=True, exist_ok=True)
@@ -1339,6 +1947,9 @@ class AIToolHandler:
 
     async def _set_state_value(self, input: dict) -> Any:
         key = input.get("key", "")
+        err = _validate_state_key(key)
+        if err:
+            return {"error": err}
         value = input.get("value")
         self._agent.state.set(key, value, source="ai")
         return {"key": key, "value": value}
@@ -1557,6 +2168,16 @@ class AIToolHandler:
 
         if plugin_id not in engine.project.plugins:
             return {"error": f"Plugin '{plugin_id}' not in project"}
+
+        # Validate config against plugin's CONFIG_SCHEMA if available
+        from server.core.plugin_loader import _PLUGIN_CLASS_REGISTRY
+        plugin_class = _PLUGIN_CLASS_REGISTRY.get(plugin_id)
+        if plugin_class:
+            schema = getattr(plugin_class, "CONFIG_SCHEMA", None)
+            if schema and isinstance(schema, dict):
+                err = _validate_plugin_config(new_config, schema)
+                if err:
+                    return {"error": f"Plugin '{plugin_id}': {err}"}
 
         from server.core.project_loader import save_project
 
@@ -1921,9 +2542,11 @@ class AIToolHandler:
                     bindings = el.bindings if hasattr(el, "bindings") and el.bindings else {}
                     if isinstance(bindings, dict):
                         for slot, binding in bindings.items():
-                            if isinstance(binding, dict):
-                                if binding.get("action") == "macro" and binding.get("macro") == ref_id:
+                            actions = binding if isinstance(binding, list) else [binding] if isinstance(binding, dict) else []
+                            for act in actions:
+                                if isinstance(act, dict) and act.get("action") == "macro" and act.get("macro") == ref_id:
                                     result["bindings"].append({"page_id": page.id, "element_id": el.id, "slot": slot})
+                                    break
             # Check scripts
             for s in p.scripts:
                 try:
@@ -1950,8 +2573,11 @@ class AIToolHandler:
                     bindings = el.bindings if hasattr(el, "bindings") and el.bindings else {}
                     if isinstance(bindings, dict):
                         for slot, binding in bindings.items():
-                            if isinstance(binding, dict) and binding.get("device") == ref_id:
-                                result["bindings"].append({"page_id": page.id, "element_id": el.id, "slot": slot})
+                            actions = binding if isinstance(binding, list) else [binding] if isinstance(binding, dict) else []
+                            for act in actions:
+                                if isinstance(act, dict) and act.get("device") == ref_id:
+                                    result["bindings"].append({"page_id": page.id, "element_id": el.id, "slot": slot})
+                                    break
             # Check scripts
             for s in p.scripts:
                 try:
@@ -1972,8 +2598,11 @@ class AIToolHandler:
                     bindings = el.bindings if hasattr(el, "bindings") and el.bindings else {}
                     if isinstance(bindings, dict):
                         for slot, binding in bindings.items():
-                            if isinstance(binding, dict) and binding.get("key") in (ref_id, state_key):
-                                result["bindings"].append({"page_id": page.id, "element_id": el.id, "slot": slot})
+                            actions = binding if isinstance(binding, list) else [binding] if isinstance(binding, dict) else []
+                            for act in actions:
+                                if isinstance(act, dict) and act.get("key") in (ref_id, state_key):
+                                    result["bindings"].append({"page_id": page.id, "element_id": el.id, "slot": slot})
+                                    break
             # Check triggers
             for m in p.macros:
                 for t in m.triggers:
