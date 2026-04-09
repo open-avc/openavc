@@ -7,18 +7,22 @@ A tour of the OpenAVC Programmer IDE: what each section does and how to approach
 ## Overview
 
 The Programmer IDE is a web-based design environment with these sidebar sections:
-- **Dashboard**: System status at a glance
-- **Program**: Create and manage projects
-- **Devices**: Add equipment, test commands, browse drivers, and discover devices
+- **Dashboard**: System status at a glance, panel access URLs, tracked variables
+- **Program**: Create and manage projects, backups, import/export
+- **Devices**: Add equipment, test commands, browse drivers, device groups, and network discovery
 - **State**: Variables, device states, and activity feed
 - **UI Builder**: Visual drag-and-drop panel designer
-- **Macros**: Build command sequences without code
+- **Macros**: Build command sequences and triggers without code
 - **Scripts**: Python scripting with Monaco editor
 - **Plugins**: Install, enable, and configure plugins (MQTT, Stream Deck, etc.)
-- **Inter-System**: Inter-system communication
-- **AI Assistant**: AI-powered help and automation
+- **Inter-System**: Communication between OpenAVC instances
+- **AI Assistant**: AI-powered help and automation (requires cloud connection)
 - **Cloud**: Cloud platform connection and monitoring
 - **Log**: Real-time system log and state changes
+- **Settings**: Server configuration (port, bind address, logging)
+- **Updates**: Check for and install OpenAVC updates
+
+At the bottom of the sidebar, the **Simulate Devices** button (play icon) starts the device simulator so you can test your project without real hardware. See [Device Simulator](simulator.md) for details.
 
 If you have used Crestron SIMPL or Extron Global Configurator, the workflow will feel familiar: add hardware, define logic, build a touch panel, and test it live. The difference is that everything runs in a browser and there is no proprietary hardware required.
 
@@ -47,13 +51,17 @@ Before diving into the IDE features, it helps to understand three core concepts:
 
 The Dashboard is the landing page of the Programmer IDE, giving you a system status overview at a glance.
 
+- **Summary cards**: connected device count, active triggers, enabled scripts, and cloud connection status
 - **Device grid**: shows all configured devices with color-coded connection indicators (green = connected, red = disconnected, gray = disabled)
 - **Active triggers**: lists triggers that are currently enabled so you can see what automation is running
-- **Script count and trigger count**: quick summary of how much logic is in the project
 - **Cloud status**: shows whether the system is paired to OpenAVC Cloud and the connection state
 - **Uptime**: how long the server has been running since last restart
+- **Panel Access**: shows the URLs you can use to open the Panel UI on tablets, phones, or other devices on the network (e.g., `http://192.168.1.100:8080/panel`). If the server is bound to localhost only, it tells you how to enable network access in Settings.
 - **Tracked variables**: any variable with "Show on Dashboard" enabled displays its live value here, useful for monitoring room state without opening the Variables view
+- **ISC status**: if Inter-System Communication is enabled, shows connected peer instances
 - **Recent activity**: a feed of recent system log entries so you can spot errors or confirm actions without switching to the Log view
+- **Update notification**: when a new version of OpenAVC is available, a card appears with a link to the Updates view
+- **Getting Started guide**: when the project is empty, the Dashboard shows a quick-start guide to help you begin
 
 ## Program
 
@@ -103,6 +111,29 @@ Timestamped list of all state changes showing:
 
 This tab is essential for debugging bindings and triggers. If a button feedback is not updating, check here to see if the variable is actually changing. If a trigger is not firing, verify that the state change you expect is actually happening.
 
+## Settings
+
+The Settings view configures the server itself: networking, authentication, and logging. Changes here are saved to `system.json` in the data directory and persist across restarts and updates.
+
+- **Bind address**: controls whether OpenAVC accepts connections from other devices on the network. Default is `127.0.0.1` (localhost only). Change to `0.0.0.0` to allow access from tablets, phones, and other computers.
+- **Port**: HTTP port (default 8080)
+- **Programmer password**: protects the Programmer IDE and API when the server is network-accessible
+- **API key**: for third-party integrations connecting via REST or WebSocket
+- **Log level**: debug, info, warning, or error
+
+See the [Deployment Guide](deployment.md) for the full configuration reference and environment variable overrides.
+
+## Updates
+
+The Updates view shows the currently installed version and checks for new releases.
+
+- **Check for updates**: queries GitHub Releases for new versions
+- **Install**: downloads and applies the update with automatic backup
+- **Rollback**: reverts to the previous version if an update causes problems
+- **Update channel**: switch between Stable (final releases only) and Beta (includes pre-releases)
+
+An update indicator appears in the sidebar when a new version is available. See [System Updates](updates.md) for details.
+
 ## Typical Workflow
 
 Here is the recommended order for building a new room:
@@ -126,3 +157,7 @@ Steps 4-7 are iterative. You will go back and forth between macros, variables, a
 - [Macros and Triggers](macros-and-triggers.md). Command sequences and automation conditions.
 - [Variables and State](variables-and-state.md). User variables, device states, and activity monitoring.
 - [Scripting Guide](scripting-guide.md). Complete Python scripting API.
+- [Device Simulator](simulator.md). Test without real hardware.
+- [Plugins](plugins.md). Install and configure system plugins.
+- [Deployment Guide](deployment.md). Production deployment and configuration.
+- [System Updates](updates.md). Update management and rollback.

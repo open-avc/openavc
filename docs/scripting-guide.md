@@ -16,9 +16,9 @@ Every script imports from the `openavc` module, which is injected by the Script 
 
 ```python
 from openavc import (
-    on_event, on_state_change,               # Decorators
-    devices, state, events, macros, log, isc, # Proxy objects
-    delay, after, every, cancel_timer         # Timer functions
+    on_event, on_state_change,                        # Decorators
+    devices, state, events, macros, log, isc,         # Proxy objects
+    delay, after, every, cancel_timer, cancel_all_timers,  # Timer functions
 )
 ```
 
@@ -279,6 +279,15 @@ timer_id = every(60, check_status)
 cancel_timer(timer_id)
 ```
 
+### cancel_all_timers()
+
+Cancel all active timers at once. Returns the number of timers cancelled. Useful for cleanup when stopping a script or switching modes.
+
+```python
+count = cancel_all_timers()
+log.info(f"Cancelled {count} timers")
+```
+
 ## State Key Conventions
 
 | Pattern | Example | Description |
@@ -294,17 +303,21 @@ cancel_timer(timer_id)
 |---------|-------------|
 | `ui.press.<element_id>` | Button pressed |
 | `ui.release.<element_id>` | Button released |
-| `ui.change.<element_id>` | Slider or select value changed (payload includes value) |
+| `ui.hold.<element_id>` | Button held past threshold |
+| `ui.change.<element_id>` | Slider or select value changed (payload includes `value`) |
+| `ui.submit.<element_id>` | Text input or keypad submitted (payload includes `value`) |
 | `ui.page.<page_id>` | Page navigation |
-| `ui.submit.<element_id>` | Text input submitted |
 | `device.connected.<device_id>` | Device connected |
 | `device.disconnected.<device_id>` | Device disconnected |
-| `device.error.<device_id>` | Device communication error |
-| `schedule.<schedule_id>` | Scheduled event fired |
+| `device.error.<device_id>` | Device communication error (payload includes `error`) |
 | `macro.completed.<macro_id>` | Macro finished executing |
 | `system.started` | System startup complete |
 | `system.stopping` | System shutting down |
+| `system.project.reloaded` | Project reloaded (after save, import, or cloud push) |
+| `isc.*.<event>` | Event from a remote OpenAVC instance |
 | `custom.<anything>` | User-defined events |
+
+> **Note on schedules:** Scheduled actions are handled via triggers, not events. A schedule trigger directly executes its macro when the cron expression matches. To run a script on a schedule, create a macro that calls a script function and attach a schedule trigger to it.
 
 ## Complete Examples
 
@@ -314,7 +327,7 @@ cancel_timer(timer_id)
 from openavc import on_event, devices, state, log, delay
 
 @on_event("ui.press.btn_system_on")
-async def system_on(event, payload):
+async def system_on(event):
     log.info("System ON triggered")
     state.set("var.room_active", True)
 
@@ -328,7 +341,7 @@ async def system_on(event, payload):
     await devices.send("dsp1", "set_fader", {"channel": "room_mic", "level": -12.0})
 
 @on_event("ui.press.btn_system_off")
-async def system_off(event, payload):
+async def system_off(event):
     await devices.send("screen_relay", "open", {"channel": 1})
     await delay(5)
     await devices.send("projector_main", "power_off")
@@ -343,25 +356,11 @@ async def system_off(event, payload):
 from openavc import on_event, devices
 
 @on_event("ui.change.vol_slider")
-async def volume_changed(event, payload):
+async def volume_changed(event):
     # UI slider: 0-100, DSP expects: -100.0 to 0.0 dB
-    # payload["value"] contains the slider value
-    db = (payload["value"] / 100.0) * 100.0 - 100.0
+    # event.value contains the slider value
+    db = (event.value / 100.0) * 100.0 - 100.0
     await devices.send("dsp1", "set_fader", {"channel": "program", "level": db})
-```
-
-### Scheduled Shutdown
-
-```python
-from openavc import on_event, state, log
-
-@on_event("schedule.daily_shutdown")
-async def nightly_shutdown(event, payload):
-    if state.get("var.room_active"):
-        log.info("Auto-shutdown: room is active, shutting down")
-        await system_off(event, payload)
-    else:
-        log.info("Auto-shutdown: room already off")
 ```
 
 ### State-Reactive Logic
@@ -385,26 +384,20 @@ async def projector_state_changed(key, old_value, new_value):
 ### Recurring Status Check with Timer
 
 ```python
-from openavc import on_event, devices, state, log, every, cancel_timer
-
-_poll_timer = None
+from openavc import on_event, state, log, every, cancel_all_timers
 
 @on_event("system.started")
-async def start_polling(event, payload):
-    global _poll_timer
-
+async def start_polling(event):
     async def poll_occupancy():
         occupied = state.get("device.sensor1.occupied", False)
         if not occupied and state.get("var.room_active"):
             log.warning("Room active but unoccupied -- consider auto-shutdown")
 
-    _poll_timer = every(300, poll_occupancy)
+    every(300, poll_occupancy)
 
 @on_event("system.stopping")
-async def stop_polling(event, payload):
-    global _poll_timer
-    if _poll_timer:
-        cancel_timer(_poll_timer)
+async def stop_polling(event):
+    cancel_all_timers()
 ```
 
 ## Tips

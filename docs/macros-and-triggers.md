@@ -57,11 +57,22 @@ Use the **Conditional** step type to add if/else logic to a macro without writin
 A conditional step checks a state value and runs one set of steps if the condition is true, and optionally a different set if false. For example: "If the projector is already on, skip the power-on and warmup delay."
 
 1. Add a **Conditional** step
-2. Set the **If** condition: pick a state key, operator (equals, not equals, greater than, less than, truthy, falsy), and value
+2. Set the **If** condition: pick a state key, operator, and value. Available operators:
+
+| Operator | Aliases | Description |
+|----------|---------|-------------|
+| `eq` | `equals`, `==` | Equal to |
+| `ne` | `not_equals`, `!=` | Not equal to |
+| `gt` | `greater_than`, `>` | Greater than |
+| `lt` | `less_than`, `<` | Less than |
+| `gte` | `greater_or_equal`, `>=` | Greater than or equal to |
+| `lte` | `less_or_equal`, `<=` | Less than or equal to |
+| `truthy` | | Value is truthy (non-empty, non-zero, non-null) |
+| `falsy` | | Value is falsy (empty, zero, null, false) |
 3. Add steps to the **Then** block (runs when condition is true)
 4. Optionally add steps to the **Else** block (runs when condition is false)
 
-Conditionals can be nested (a conditional inside a conditional) up to 5 levels deep. For most rooms, one level is enough.
+Conditionals can be nested (a conditional inside a conditional) up to 5 levels deep. Macros that call other macros via "Run Macro" steps can nest up to 10 levels deep. For most rooms, one level of each is enough.
 
 ## Skip If Guards
 
@@ -137,7 +148,7 @@ Trigger safety features prevent runaway automation:
 - **Debounce.** Prevent rapid re-firing (configurable milliseconds).
 - **Delay + re-check.** Wait, then verify the condition is still true before executing.
 - **Cooldown.** Minimum interval between executions.
-- **Guard conditions.** Additional state conditions that must all be true (supports operator aliases like `"equals"`, `"=="`, `">="` in addition to the standard `"eq"`, `"ne"`, `"gt"`, etc.).
+- **Guard conditions.** Additional state conditions that must all be true. Supports the same operators as conditional steps (`eq`, `ne`, `gt`, `lt`, `gte`, `lte`, `truthy`, `falsy`) and their aliases.
 - **Overlap prevention.** Will not start a new execution if the previous one is still running.
 - **Stop on error.** Set `stop_on_error: true` on a macro to halt execution if any step fails (default is to continue).
 

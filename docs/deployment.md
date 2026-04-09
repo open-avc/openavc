@@ -20,32 +20,29 @@ All modes are functionally identical. Serial port control (RS-232/485) requires 
 
 ## Installation
 
-See [Getting Started](getting-started.md) for detailed installation steps. The short version:
+See [Getting Started](getting-started.md) for detailed installation steps covering all four methods:
 
-```bash
-git clone https://github.com/open-avc/openavc.git
-cd openavc
-pip install -r requirements.txt
-cd web/programmer && npm install && npm run build && cd ../..
-```
-
-> **Installers available:** Download the Windows installer from [GitHub Releases](https://github.com/open-avc/openavc/releases), or install on Linux with one command:
-> ```bash
-> curl -sSL https://get.openavc.com | sudo bash
-> ```
+| Method | Install Command / Action |
+|--------|--------------------------|
+| **Windows Installer** | Download from [GitHub Releases](https://github.com/open-avc/openavc/releases) and run the `.exe` |
+| **Docker** | `docker run -d -p 8080:8080 -v openavc-data:/data openavc/openavc:latest` |
+| **Linux** | `curl -sSL https://get.openavc.com \| sudo bash` |
+| **From Source** | `git clone`, `pip install`, `npm run build`, `python -m server.main` |
 
 ## Network Configuration
 
-| Port | Protocol | Purpose |
-|------|----------|---------|
-| 8080 | HTTP/WS | Web UI, REST API, WebSocket |
+| Port | Protocol | Purpose | Required? |
+|------|----------|---------|-----------|
+| 8080 | HTTP/WS | Web UI, REST API, WebSocket | Yes |
+| 19500 | HTTP/WS | Simulator UI (development/testing only) | No |
+| 19872 | UDP | ISC auto-discovery (multi-instance setups only) | No |
 
 Ensure port 8080 is accessible from:
 - Touchscreens and tablets (Panel UI)
 - Programmer workstations (Programmer IDE)
 - Any external integrations using the REST API
 
-For mDNS discovery (ISC), allow multicast traffic on the AV VLAN.
+For multi-instance setups using ISC auto-discovery, allow UDP broadcast on port 19872 within the same subnet. For cross-subnet ISC, configure peer addresses manually and allow TCP on each instance's HTTP port.
 
 ## Data Directory
 
@@ -143,7 +140,7 @@ You can also read and modify system configuration through the REST API:
 - `GET /api/system/config` returns the current configuration (sensitive fields redacted)
 - `PATCH /api/system/config` updates individual sections and saves to disk
 
-> **Bind address security:** The default bind address is `127.0.0.1` (localhost only). To allow network access from other devices, set `bind_address` to `0.0.0.0`. When bound to `0.0.0.0` without authentication configured, the server logs a prominent warning at startup.
+> **Bind address security:** The default bind address is `127.0.0.1` (localhost only) for Linux and from-source installations. The Windows installer and Docker pre-configure `0.0.0.0` (network-accessible) since these deployments typically serve touch panels on other devices. To allow network access, set `bind_address` to `0.0.0.0` in system.json or via the `OPENAVC_BIND` environment variable. When bound to `0.0.0.0` without authentication configured, the server logs a prominent warning at startup.
 
 ## Updates
 
@@ -317,7 +314,7 @@ When at least one credential is configured:
 ```json
 {
     "status": "healthy",
-    "version": "0.1.0",
+    "version": "0.5.2",
     "uptime_seconds": 3600.5,
     "devices": { "total": 5, "connected": 4, "error": 1 },
     "cloud": { "connected": true }
@@ -335,3 +332,6 @@ When at least one credential is configured:
 
 - [Getting Started](getting-started.md). Installation and first run
 - [Programmer Overview](programmer-overview.md). IDE walkthrough
+- [System Updates](updates.md). Update management and rollback
+- [Network & Security Cut Sheet](it-network-guide.md). IT network requirements and firewall rules
+- [Device Simulator](simulator.md). Test without real hardware

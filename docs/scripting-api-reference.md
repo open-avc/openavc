@@ -8,10 +8,10 @@ Quick reference for the `openavc` module available in all OpenAVC scripts.
 
 ```python
 from openavc import (
-    on_event, on_state_change,               # Decorators
-    devices, state, events, macros, log, isc, # Proxy objects
-    delay, after, every, cancel_timer,        # Timer functions
-    Event,                                    # Event class
+    on_event, on_state_change,                        # Decorators
+    devices, state, events, macros, log, isc,         # Proxy objects
+    delay, after, every, cancel_timer, cancel_all_timers,  # Timer functions
+    Event,                                            # Event class
 )
 ```
 
@@ -206,6 +206,14 @@ Cancel a timer created by `after()` or `every()`. Returns `True` if cancelled, `
 cancelled = cancel_timer(timer_id)
 ```
 
+### cancel_all_timers() -> int
+
+Cancel all active timers at once. Returns the number of timers cancelled.
+
+```python
+count = cancel_all_timers()
+```
+
 ---
 
 ## Event Types
@@ -223,12 +231,14 @@ Events fired by the system that scripts can listen for with `@on_event`.
 | `device.connected.<device_id>` | `device_id` | Device connected |
 | `device.disconnected.<device_id>` | `device_id` | Device disconnected |
 | `device.error.<device_id>` | `device_id`, `error` | Device communication error |
-| `schedule.<schedule_id>` | `schedule_id` | Scheduled event fired |
 | `macro.completed.<macro_id>` | `macro_id` | Macro finished executing |
 | `system.started` | (none) | System startup complete |
 | `system.stopping` | (none) | System shutting down |
+| `system.project.reloaded` | (none) | Project reloaded |
 | `isc.*.<event>` | `source_instance`, ... | Event from a remote instance |
 | `custom.<anything>` | (user-defined) | User-defined events |
+
+> **Note on schedules:** Scheduled actions are handled by triggers that directly execute macros, not by events. To run a script on a schedule, create a macro with a "Script Function" step and add a schedule trigger to it.
 
 ---
 

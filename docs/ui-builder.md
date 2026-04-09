@@ -7,9 +7,12 @@ Design touch panel pages for your AV spaces using the visual UI Builder.
 ## Layout
 
 **Left panel: Element Palette.** Drag elements onto the canvas. Use the search box at the top to filter elements by name. Hover over an element to see a preview thumbnail before dragging.
-- **Controls**: Button, Slider, Select, Text Input
-- **Display**: Label, Status LED, Image, Spacer
+- **Controls**: Button, Slider, Select, Text Input, Fader, Keypad
+- **Display**: Label, Status LED, Image, Spacer, Gauge, Level Meter, Clock, List, Matrix
+- **Layout**: Group
 - **Navigation**: Page Nav, Camera Preset
+
+The palette also includes a **Templates** section with pre-built element combos (see [Element Templates](#element-templates) below).
 
 Toggle the palette with **Ctrl+E**.
 

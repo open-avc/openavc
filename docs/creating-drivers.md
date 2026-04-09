@@ -30,7 +30,7 @@ All three methods produce drivers that work identically at runtime. Choose the s
 
 ## Method 1: Driver Builder UI
 
-The Driver Builder is a visual tool inside the Programmer IDE. Open it by clicking the **Driver Library** icon (hard drive) in the sidebar.
+The Driver Builder is a visual tool inside the Programmer IDE. Open it by clicking **Devices** in the sidebar, then selecting the **Drivers** tab and clicking the **Create** tab.
 
 ### Step-by-step Walkthrough
 

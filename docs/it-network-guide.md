@@ -45,9 +45,12 @@ OpenAVC runs on an existing server, VM, or Docker host. It controls AV equipment
 | Port | Protocol | Purpose | Required? |
 |------|----------|---------|-----------|
 | **8080** | TCP (HTTP) | Web interface and REST API | Yes |
+| **19500** | TCP (HTTP) | Device Simulator UI (development/testing only) | No |
 | **19872** | UDP | ISC auto-discovery (multi-instance setups only) | No |
 
 **Port 8080** is the only port that must be accessible for a standard single-room deployment. This is configurable via the `OPENAVC_PORT` environment variable or `system.json`.
+
+**Port 19500** is used by the device simulator during development and testing. It is only active when the simulator is running. It does not need to be accessible from other machines.
 
 **Port 19872** is used only when multiple OpenAVC instances need to discover each other on the same LAN (inter-system communication). It can be disabled entirely.
 
@@ -378,11 +381,19 @@ OpenAVC does not use UPnP port mapping, NAT traversal, or any technique that mod
 
 If you want to try OpenAVC before committing to a deployment, you can have it running on any Windows or Linux machine in under five minutes. The fastest way to evaluate it is on a PC you already have.
 
-### Option 1: Try it on any PC (no network impact)
+### Option 1: Windows Installer (no network impact)
 
-1. Install Python 3.11+ on any Windows or Linux machine (a room PC, your laptop, a lab machine)
+1. Download the installer from [github.com/open-avc/openavc/releases](https://github.com/open-avc/openavc/releases)
+2. Run the `.exe` installer
+3. Open `http://localhost:8080/programmer` in a browser
+
+OpenAVC is running as a Windows service. It generates zero network traffic until you add and connect to AV devices. You can explore the full Programmer interface, build a project, and test with the built-in simulator without any AV hardware. The touch panel UI is at `http://localhost:8080/panel`.
+
+### Option 1b: From source (any platform, no network impact)
+
+1. Install Python 3.11+ and Node.js 18+ on any Windows or Linux machine
 2. Download OpenAVC from [github.com/open-avc/openavc](https://github.com/open-avc/openavc)
-3. Open a terminal in the downloaded directory and run the following commands:
+3. Open a terminal in the downloaded directory and run:
 
 ```
 cd openavc
@@ -393,7 +404,7 @@ python -m server.main
 
 4. Open `http://localhost:8080/programmer` in a browser on the same machine
 
-At this point OpenAVC is running on localhost only. It generates zero network traffic. You can explore the full Programmer interface, build a project, configure devices, and test automation logic without any AV hardware connected. The touch panel UI is at `http://localhost:8080/panel` on the same machine.
+At this point OpenAVC is running on localhost only. It generates zero network traffic.
 
 ### Option 2: Connect to AV devices
 
@@ -430,7 +441,7 @@ No. All data is stored in JSON files on the local filesystem. There is no Postgr
 No. OpenAVC is a lightweight application, not an appliance. It runs alongside other software on any Windows or Linux machine. The most common deployment is on a PC already in the room (lectern PC, digital signage machine, room scheduling display, etc.). It can also run on an existing server, VM, or Docker host. Resource usage is minimal (typically under 100 MB RAM, negligible CPU when idle).
 
 **Does it modify the host system?**
-No. It does not install system services (unless using the optional Windows installer), modify firewall rules, create users, or change network settings. It reads and writes only within its own data directory.
+Minimally. The Windows installer creates a Windows service (via NSSM) and adds a firewall rule for port 8080. The Linux install script creates a systemd service and an `openavc` user. Docker and from-source installations make no system modifications. In all cases, application data is confined to a single data directory.
 
 **What if we block all outbound internet?**
 OpenAVC will work normally. Update checks will fail silently and cloud features (if configured) will be dormant. All AV control, automation, and UI functionality is fully local.

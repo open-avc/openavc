@@ -94,6 +94,10 @@ Each plugin shows a status indicator:
 | Missing | Yellow triangle | Project references a plugin that isn't installed |
 | Incompatible | Orange triangle | Plugin is installed but doesn't support the current platform |
 
+### Error Recovery
+
+If a plugin crashes or repeatedly fails its health check, OpenAVC automatically disables it after 10 consecutive callback failures to protect system stability. The plugin shows an "Error" status with a description of the failure. You can view the error details in the plugin's detail view and re-enable the plugin after addressing the issue.
+
 ### Missing Plugins
 
 When you open a project that uses a plugin you don't have installed, the plugin list shows it with a yellow warning icon and "(not installed)" label. The detail view shows a banner:

@@ -89,3 +89,8 @@ To disable the background update check (the system will never check GitHub on it
 Set `updates.check_enabled` to `false` in system.json, or set the environment variable `OPENAVC_UPDATE_CHECK=false`.
 
 You can still check manually from the Programmer IDE at any time.
+
+## See Also
+
+- [Deployment Guide](deployment.md). Production deployment and system configuration
+- [Getting Started](getting-started.md). Installation methods
