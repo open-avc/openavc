@@ -1109,7 +1109,7 @@ export async function importTheme(file: File): Promise<{ status: string; id: str
 // --- System Config ---
 
 export interface SystemConfig {
-  network: { http_port: number; bind_address: string };
+  network: { http_port: number; bind_address: string; control_interface: string };
   auth: { programmer_password: string; api_key: string; panel_lock_code: string };
   isc: { enabled: boolean; discovery_enabled: boolean; auth_key: string };
   logging: { level: string; file_enabled: boolean; max_size_mb: number; max_files: number };
@@ -1129,4 +1129,17 @@ export async function updateSystemConfig(
     method: "PATCH",
     body: JSON.stringify(data),
   });
+}
+
+// --- Network Adapters ---
+
+export interface NetworkAdapter {
+  name: string;
+  ip: string;
+  subnet: string;
+  mac: string;
+}
+
+export async function getNetworkAdapters(): Promise<{ adapters: NetworkAdapter[] }> {
+  return request("/network/adapters");
 }

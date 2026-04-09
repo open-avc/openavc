@@ -27,8 +27,69 @@ _VIRTUAL_ADAPTER_PATTERNS = re.compile(
 )
 
 
-def get_local_subnets() -> list[str]:
+def get_network_adapters() -> list[dict[str, str]]:
+    """Return all physical network adapters with IP and subnet info.
+
+    Returns list of dicts, e.g.:
+        [{"name": "Ethernet 2", "ip": "192.168.1.50", "subnet": "192.168.1.0/24", "mac": "aa:bb:cc:dd:ee:ff"}, ...]
+
+    Excludes loopback, link-local, virtual adapters, and IPv6.
+    """
+    adapters: list[dict[str, str]] = []
+    try:
+        import ifaddr
+
+        for adapter in ifaddr.get_adapters():
+            if _VIRTUAL_ADAPTER_PATTERNS.search(adapter.nice_name):
+                continue
+            for ip_info in adapter.ips:
+                if not isinstance(ip_info.ip, str):
+                    continue  # Skip IPv6 tuples
+                addr = ip_info.ip
+                if addr.startswith("127.") or addr.startswith("169.254."):
+                    continue
+                try:
+                    prefix = ip_info.network_prefix
+                    network = ipaddress.IPv4Network(f"{addr}/{prefix}", strict=False)
+                    adapters.append({
+                        "name": adapter.nice_name,
+                        "ip": addr,
+                        "subnet": str(network),
+                    })
+                except (ValueError, TypeError):
+                    continue
+    except ImportError:
+        log.warning("ifaddr not installed -- cannot detect network adapters")
+    except OSError as exc:
+        log.warning("Failed to detect network adapters: %s", exc)
+
+    # Enrich with MAC addresses via psutil (if available)
+    try:
+        import psutil
+        mac_map: dict[str, str] = {}
+        for name, addrs in psutil.net_if_addrs().items():
+            for addr in addrs:
+                if addr.family.name == "AF_LINK":
+                    mac_map[name] = addr.address
+                    break
+        for entry in adapters:
+            entry["mac"] = mac_map.get(entry["name"], "")
+    except ImportError:
+        for entry in adapters:
+            entry.setdefault("mac", "")
+    except OSError:
+        for entry in adapters:
+            entry.setdefault("mac", "")
+
+    return adapters
+
+
+def get_local_subnets(interface_ip: str | None = None) -> list[str]:
     """Detect subnets from local network interfaces.
+
+    Args:
+        interface_ip: If set, only return the subnet for this specific IP.
+            If empty or None, return all physical adapter subnets.
 
     Returns list of CIDR strings, e.g., ["192.168.1.0/24"].
     Excludes loopback, link-local, and virtual adapter addresses.
@@ -46,6 +107,9 @@ def get_local_subnets() -> list[str]:
                     continue  # Skip IPv6 tuples
                 addr = ip_info.ip
                 if addr.startswith("127.") or addr.startswith("169.254."):
+                    continue
+                # If filtering by interface IP, skip non-matching adapters
+                if interface_ip and addr != interface_ip:
                     continue
                 try:
                     prefix = ip_info.network_prefix

@@ -112,6 +112,7 @@ class ScanStatus:
         self.duration: float = 0.0
         self.subnets: list[str] = []
         self.total_hosts_scanned: int = 0
+        self.active_adapter: dict[str, str] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -127,6 +128,7 @@ class ScanStatus:
             "duration": round(self.duration, 2),
             "subnets": self.subnets,
             "total_hosts_scanned": self.total_hosts_scanned,
+            "active_adapter": self.active_adapter,
         }
 
 
@@ -150,6 +152,11 @@ class DiscoveryEngine:
             "gentle_mode": False,
             "scan_depth": "standard",
         }
+
+    def _get_control_interface(self) -> str:
+        """Read the control_interface setting from system config."""
+        from server.system_config import get_system_config
+        return get_system_config().get("network", "control_interface") or ""
 
     def load_driver_hints_from_registry(self, registry: list[dict[str, Any]]) -> None:
         """Load driver hints from the driver registry for matching.
@@ -188,8 +195,9 @@ class DiscoveryEngine:
         return self.scan_status.to_dict()
 
     def get_subnets(self) -> list[str]:
-        """Auto-detect local subnets."""
-        return get_local_subnets()
+        """Auto-detect local subnets (filtered to control interface if set)."""
+        control_ip = self._get_control_interface()
+        return get_local_subnets(interface_ip=control_ip or None)
 
     def clear_results(self) -> None:
         """Clear all discovery results."""
@@ -257,8 +265,11 @@ class DiscoveryEngine:
             self._scan_counter += 1
             scan_id = f"scan_{self._scan_counter}_{int(time.time())}"
 
-            # Determine target subnets
-            targets = subnets if subnets else get_local_subnets()
+            # Determine target subnets (filtered to control interface if set)
+            control_ip = self._get_control_interface()
+            targets = subnets if subnets else get_local_subnets(
+                interface_ip=control_ip or None
+            )
             if extra_subnets:
                 for s in extra_subnets:
                     if s not in targets:
@@ -273,6 +284,18 @@ class DiscoveryEngine:
             self.scan_status.status = "running"
             self.scan_status.started_at = time.time()
             self.scan_status.subnets = targets
+
+            # Store active adapter info for UI display
+            if control_ip:
+                from server.discovery.network_scanner import get_network_adapters
+                for adapter in get_network_adapters():
+                    if adapter["ip"] == control_ip:
+                        self.scan_status.active_adapter = {
+                            "name": adapter["name"],
+                            "ip": adapter["ip"],
+                            "subnet": adapter["subnet"],
+                        }
+                        break
 
             # Mark previously found devices as stale — they'll be removed at the
             # end of the scan if not re-discovered.  This gives the full pipeline

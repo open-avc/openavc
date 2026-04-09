@@ -38,6 +38,7 @@ class TCPTransport:
         frame_parser: FrameParser | None = None,
         ssl_context: ssl_module.SSLContext | None = None,
         name: str | None = None,
+        local_addr: tuple[str, int] | None = None,
     ):
         self.host = host
         self.port = port
@@ -48,6 +49,7 @@ class TCPTransport:
         self._inter_command_delay = inter_command_delay
         self._ssl_context = ssl_context
         self._name = name or f"{host}:{port}"
+        self._local_addr = local_addr
 
         # Resolve frame parser:
         # 1. Explicit frame_parser param takes priority
@@ -84,6 +86,7 @@ class TCPTransport:
         ssl: bool = False,
         ssl_verify: bool = True,
         name: str | None = None,
+        local_addr: tuple[str, int] | None = None,
     ) -> "TCPTransport":
         """
         Factory method. Creates a TCPTransport and connects.
@@ -103,6 +106,8 @@ class TCPTransport:
             ssl_verify: Verify server certificate (default True).
             name: Optional label for log messages (e.g. device_id).
                   Defaults to host:port.
+            local_addr: Optional (ip, port) tuple to bind the outgoing
+                        connection to a specific network adapter.
 
         Returns:
             Connected TCPTransport instance.
@@ -119,7 +124,7 @@ class TCPTransport:
 
         transport = cls(
             host, port, on_data, on_disconnect, delimiter, timeout,
-            inter_command_delay, frame_parser, ssl_context, name,
+            inter_command_delay, frame_parser, ssl_context, name, local_addr,
         )
         await transport._connect()
         return transport
@@ -130,6 +135,7 @@ class TCPTransport:
             self._reader, self._writer = await asyncio.wait_for(
                 asyncio.open_connection(
                     self.host, self.port, ssl=self._ssl_context,
+                    local_addr=self._local_addr,
                 ),
                 timeout=self._timeout,
             )

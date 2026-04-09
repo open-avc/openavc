@@ -65,6 +65,7 @@ DEFAULTS: dict[str, Any] = {
     "network": {
         "http_port": 8080,
         "bind_address": "127.0.0.1",
+        "control_interface": "",
     },
     "auth": {
         "programmer_password": "",
@@ -106,6 +107,7 @@ DEFAULTS: dict[str, Any] = {
 ENV_OVERRIDES: dict[tuple[str, str], tuple[str, type]] = {
     ("network", "http_port"): ("OPENAVC_PORT", int),
     ("network", "bind_address"): ("OPENAVC_BIND", str),
+    ("network", "control_interface"): ("OPENAVC_CONTROL_INTERFACE", str),
     ("auth", "programmer_password"): ("OPENAVC_PROGRAMMER_PASSWORD", str),
     ("auth", "api_key"): ("OPENAVC_API_KEY", str),
     ("auth", "panel_lock_code"): ("OPENAVC_PANEL_LOCK_CODE", str),

@@ -70,6 +70,7 @@ class HTTPClientTransport:
         default_headers: dict[str, str] | None = None,
         timeout: float = 10.0,
         name: str | None = None,
+        local_address: str | None = None,
     ):
         """
         Args:
@@ -85,6 +86,8 @@ class HTTPClientTransport:
                         for self-signed certs (common on AV devices).
             default_headers: Headers sent with every request.
             timeout: Default request timeout in seconds.
+            local_address: Optional IP to bind outgoing connections to a
+                           specific network adapter.
         """
         self.base_url = base_url.rstrip("/")
         self.auth_type = auth_type
@@ -93,6 +96,7 @@ class HTTPClientTransport:
         self.default_headers = default_headers or {}
         self.timeout = timeout
         self._name = name or base_url
+        self._local_address = local_address
 
         self._client: httpx.AsyncClient | None = None
         self._last_response: HTTPResponse | None = None
@@ -119,12 +123,17 @@ class HTTPClientTransport:
             token = self.credentials.get("token", "")
             headers["Authorization"] = f"Bearer {token}"
 
+        transport = None
+        if self._local_address:
+            transport = httpx.AsyncHTTPTransport(local_address=self._local_address)
+
         self._client = httpx.AsyncClient(
             base_url=self.base_url,
             auth=auth,
             headers=headers,
             verify=self.verify_ssl,
             timeout=httpx.Timeout(self.timeout),
+            transport=transport,
         )
 
         log.info(

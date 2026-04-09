@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
-import { Save, AlertTriangle, Eye, EyeOff } from "lucide-react";
+import { Save, AlertTriangle, Eye, EyeOff, RefreshCw } from "lucide-react";
 import { ViewContainer } from "../components/layout/ViewContainer";
 import { showError, showSuccess } from "../store/toastStore";
 import * as api from "../api/restClient";
-import type { SystemConfig } from "../api/restClient";
+import type { SystemConfig, NetworkAdapter } from "../api/restClient";
 
 const REDACTED = "***";
 
@@ -180,10 +180,21 @@ export function SystemSettingsView() {
   const [dirty, setDirty] = useState<Partial<SystemConfig>>({});
   const [saving, setSaving] = useState(false);
   const [restartNeeded, setRestartNeeded] = useState(false);
+  const [adapters, setAdapters] = useState<NetworkAdapter[]>([]);
+  const [adaptersLoading, setAdaptersLoading] = useState(false);
+
+  const loadAdapters = useCallback(() => {
+    setAdaptersLoading(true);
+    api.getNetworkAdapters()
+      .then((r) => setAdapters(r.adapters))
+      .catch(() => {})
+      .finally(() => setAdaptersLoading(false));
+  }, []);
 
   useEffect(() => {
     api.getSystemConfig().then(setConfig).catch((e) => showError("Failed to load config: " + e));
-  }, []);
+    loadAdapters();
+  }, [loadAdapters]);
 
   // Track which fields the user has changed
   const update = useCallback(
@@ -192,8 +203,8 @@ export function SystemSettingsView() {
         ...prev,
         [section]: { ...(prev[section] as Record<string, unknown> ?? {}), [key]: value },
       }));
-      // Track restart-required changes
-      if (section === "network") setRestartNeeded(true);
+      // Track restart-required changes (bind_address/port need restart, control_interface does not)
+      if (section === "network" && (key === "bind_address" || key === "http_port")) setRestartNeeded(true);
     },
     [],
   );
@@ -311,6 +322,45 @@ export function SystemSettingsView() {
               value={net.http_port}
               onChange={(e) => update("network", "http_port", parseInt(e.target.value) || 8080)}
             />
+          </div>
+          <div style={fieldRow}>
+            <label style={labelStyle} htmlFor="cfg-control-interface">Control interface</label>
+            <div style={{ display: "flex", gap: "var(--space-sm)", alignItems: "center" }}>
+              <select
+                id="cfg-control-interface"
+                style={{ ...selectStyle, flex: 1 }}
+                value={net.control_interface ?? ""}
+                onChange={(e) => update("network", "control_interface", e.target.value)}
+              >
+                <option value="">Auto (use default route)</option>
+                {adapters.map((a) => (
+                  <option key={a.ip} value={a.ip}>
+                    {a.name} — {a.ip} ({a.subnet})
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={loadAdapters}
+                disabled={adaptersLoading}
+                title="Refresh adapter list"
+                style={{
+                  background: "none",
+                  border: "1px solid var(--border-color)",
+                  borderRadius: "var(--border-radius)",
+                  color: "var(--text-secondary)",
+                  cursor: "pointer",
+                  padding: "var(--space-sm)",
+                  display: "flex",
+                  alignItems: "center",
+                }}
+              >
+                <RefreshCw size={14} style={adaptersLoading ? { animation: "spin 1s linear infinite" } : undefined} />
+              </button>
+            </div>
+            <span style={helpText}>
+              Which network adapter OpenAVC uses to communicate with AV devices and run discovery scans. Changes take effect on the next device connection or scan. Does not require a restart.
+            </span>
           </div>
         </div>
 

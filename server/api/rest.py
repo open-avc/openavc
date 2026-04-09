@@ -2023,6 +2023,16 @@ async def update_system_config(request: Request) -> dict[str, Any]:
     return {"success": True, "updated_sections": updated_sections}
 
 
+# --- Network Adapters ---
+
+
+@router.get("/network/adapters")
+async def get_network_adapters() -> dict[str, Any]:
+    """List available network adapters for control interface selection."""
+    from server.discovery.network_scanner import get_network_adapters as _get_adapters
+    return {"adapters": _get_adapters()}
+
+
 # --- Update System ---
 
 

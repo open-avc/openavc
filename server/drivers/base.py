@@ -91,6 +91,10 @@ class BaseDriver(ABC):
         frame_parser = self._create_frame_parser()
         delimiter = self._resolve_delimiter()
 
+        # Get control interface binding (if configured)
+        from server.system_config import get_system_config
+        control_ip = get_system_config().get("network", "control_interface")
+
         if transport_type == "tcp":
             from server.transport.tcp import TCPTransport
 
@@ -107,6 +111,7 @@ class BaseDriver(ABC):
                 frame_parser=frame_parser,
                 inter_command_delay=delay,
                 name=self.device_id,
+                local_addr=(control_ip, 0) if control_ip else None,
             )
         elif transport_type == "serial":
             from server.transport.serial_transport import SerialTransport
@@ -163,6 +168,7 @@ class BaseDriver(ABC):
                 default_headers=self.config.get("default_headers", {}),
                 timeout=self.config.get("timeout", 10.0),
                 name=self.device_id,
+                local_address=control_ip or None,
             )
             await self.transport.open()
         else:

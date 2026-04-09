@@ -112,6 +112,10 @@ export function DiscoveryPanel() {
   const [gentleMode, setGentleMode] = useState(false);
   const [scanDepth, setScanDepth] = useState<api.ScanDepth>("standard");
 
+  // Active control interface
+  const [controlInterface, setControlInterface] = useState("");
+  const [adapterLabel, setAdapterLabel] = useState("");
+
   // Load subnets + config on mount
   useEffect(() => {
     api.discoveryGetSubnets().then((r) => setSubnets(r.subnets)).catch(console.error);
@@ -130,6 +134,18 @@ export function DiscoveryPanel() {
       }
       if (r.port_labels) setPortLabels(r.port_labels);
     }).catch(console.error);
+    // Load control interface info for adapter indicator
+    api.getSystemConfig().then((cfg) => {
+      const ip = cfg.network?.control_interface || "";
+      setControlInterface(ip);
+      if (ip) {
+        api.getNetworkAdapters().then((r) => {
+          const match = r.adapters.find((a) => a.ip === ip);
+          if (match) setAdapterLabel(`${match.name} (${match.ip}/${match.subnet.split("/")[1] || "24"})`);
+          else setAdapterLabel(ip);
+        }).catch(() => setAdapterLabel(ip));
+      }
+    }).catch(() => {});
   }, [setDevices, setStatus, setPortLabels]);
 
   const handleStartScan = useCallback(async () => {
@@ -375,6 +391,30 @@ export function DiscoveryPanel() {
 
           <button className="btn btn-sm btn-primary" onClick={handleSaveSettings} style={{ marginTop: "var(--space-sm)" }}>
             Save Settings
+          </button>
+        </div>
+      )}
+
+      {/* Active adapter indicator */}
+      {!showSettings && (
+        <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
+          <Wifi size={12} />
+          <span>Scanning on: {controlInterface ? adapterLabel || controlInterface : "Auto (default route)"}</span>
+          <span style={{ color: "var(--text-muted)" }}>&middot;</span>
+          <button
+            type="button"
+            onClick={() => useNavigationStore.getState().navigateTo("settings")}
+            style={{
+              background: "none",
+              border: "none",
+              color: "var(--accent)",
+              cursor: "pointer",
+              padding: 0,
+              fontSize: "inherit",
+              textDecoration: "underline",
+            }}
+          >
+            Change in Settings
           </button>
         </div>
       )}

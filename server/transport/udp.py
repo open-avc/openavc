@@ -21,15 +21,25 @@ class UDPTransport:
         self._protocol: _UDPProtocol | None = None
         self._name = name or "udp"
 
-    async def open(self, allow_broadcast: bool = True) -> None:
-        """Open a UDP socket."""
+    async def open(
+        self,
+        allow_broadcast: bool = True,
+        local_addr: str | None = None,
+    ) -> None:
+        """Open a UDP socket.
+
+        Args:
+            allow_broadcast: Allow sending broadcast datagrams.
+            local_addr: Optional IP to bind to a specific network adapter.
+        """
         loop = asyncio.get_running_loop()
+        bind_addr = local_addr or "0.0.0.0"
         self._transport, self._protocol = await loop.create_datagram_endpoint(
             lambda: _UDPProtocol(self._name),
-            local_addr=("0.0.0.0", 0),
+            local_addr=(bind_addr, 0),
             allow_broadcast=allow_broadcast,
         )
-        log.debug(f"[{self._name}] UDP socket opened")
+        log.debug(f"[{self._name}] UDP socket opened (bound to {bind_addr})")
 
     async def send(self, data: bytes, host: str, port: int) -> None:
         """Send a UDP datagram to a specific host and port."""
