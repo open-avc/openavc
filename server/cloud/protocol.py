@@ -51,6 +51,7 @@ DIAGNOSTIC_RESULT = "diagnostic_result"
 PONG = "pong"
 AI_TOOL_RESULT = "ai_tool_result"
 PROJECT_DATA = "project_data"
+DEVICE_COMMANDS_DATA = "device_commands_data"
 GAP_REPORT = "gap_report"
 
 # Steady-state downstream (cloud → agent)
@@ -72,6 +73,7 @@ PING = "ping"
 ALERT_RULES_UPDATE = "alert_rules_update"
 AI_TOOL_CALL = "ai_tool_call"
 GET_PROJECT = "get_project"
+GET_DEVICE_COMMANDS = "get_device_commands"
 
 # Sets for validation
 HANDSHAKE_TYPES = {
@@ -82,7 +84,7 @@ HANDSHAKE_TYPES = {
 UPSTREAM_TYPES = {
     HEARTBEAT, STATE_BATCH, ALERT, ALERT_RESOLVED, LOG,
     COMMAND_RESULT, TUNNEL_READY, DIAGNOSTIC_RESULT, PONG,
-    AI_TOOL_RESULT, PROJECT_DATA, GAP_REPORT,
+    AI_TOOL_RESULT, PROJECT_DATA, DEVICE_COMMANDS_DATA, GAP_REPORT,
 }
 
 DOWNSTREAM_TYPES = {
@@ -90,7 +92,7 @@ DOWNSTREAM_TYPES = {
     CAPABILITIES_UPDATE, THROTTLE, ERROR, COMMAND, CONFIG_PUSH,
     DIAGNOSTIC, SOFTWARE_UPDATE, TUNNEL_OPEN, TUNNEL_CLOSE,
     RESTART, PING, ALERT_RULES_UPDATE, AI_TOOL_CALL,
-    GET_PROJECT,
+    GET_PROJECT, GET_DEVICE_COMMANDS,
 }
 
 # Message priority for buffer overflow (lower = dropped first)
@@ -105,6 +107,7 @@ MESSAGE_PRIORITY = {
     DIAGNOSTIC_RESULT: 5,
     AI_TOOL_RESULT: 5,
     PROJECT_DATA: 5,
+    DEVICE_COMMANDS_DATA: 5,
     GAP_REPORT: 7,
     PONG: 6,
     # Downstream message priorities (for buffer overflow decisions)

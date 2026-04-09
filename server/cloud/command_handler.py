@@ -12,8 +12,8 @@ from typing import Any, TYPE_CHECKING
 
 from server.cloud.protocol import (
     COMMAND, CONFIG_PUSH, RESTART, DIAGNOSTIC, SOFTWARE_UPDATE,
-    GET_PROJECT,
-    COMMAND_RESULT, PROJECT_DATA,
+    GET_PROJECT, GET_DEVICE_COMMANDS,
+    COMMAND_RESULT, PROJECT_DATA, DEVICE_COMMANDS_DATA,
     extract_payload,
 )
 from server.utils.logger import get_logger
@@ -90,6 +90,8 @@ class CommandHandler:
                 await self._handle_software_update(payload, request_id, user_name)
             elif msg_type == GET_PROJECT:
                 await self._handle_get_project(payload, request_id, user_name)
+            elif msg_type == GET_DEVICE_COMMANDS:
+                await self._handle_get_device_commands(payload, request_id, user_name)
             else:
                 await self._send_result(request_id, False, error=f"Unknown command type: {msg_type}")
         except Exception as e:
@@ -337,6 +339,51 @@ class CommandHandler:
         except Exception as e:
             log.exception("Error reading project file")
             await self._agent.send_message(PROJECT_DATA, {
+                "request_id": request_id,
+                "success": False,
+                "error": str(e),
+            })
+
+    async def _handle_get_device_commands(
+        self, payload: dict[str, Any], request_id: str, user_name: str
+    ) -> None:
+        """Handle a get_device_commands request — return device list with available commands."""
+        log.info(f"Cloud get_device_commands: {user_name}")
+
+        try:
+            devices = self._devices.list_devices()
+            # For each device with commands, include the full command definitions
+            result_devices = []
+            for dev in devices:
+                entry: dict[str, Any] = {
+                    "id": dev["id"],
+                    "name": dev.get("name", dev["id"]),
+                    "driver": dev.get("driver", ""),
+                    "connected": dev.get("connected", False),
+                }
+                # Get full command info (not just names) from get_device_info
+                try:
+                    info = self._devices.get_device_info(dev["id"])
+                    commands = info.get("commands", {})
+                    # Simplify command definitions for the cloud
+                    entry["commands"] = {
+                        cmd_name: {
+                            "params": cmd_def.get("params", []) if isinstance(cmd_def, dict) else [],
+                        }
+                        for cmd_name, cmd_def in commands.items()
+                    }
+                except Exception:
+                    entry["commands"] = {}
+                result_devices.append(entry)
+
+            await self._agent.send_message(DEVICE_COMMANDS_DATA, {
+                "request_id": request_id,
+                "success": True,
+                "devices": result_devices,
+            })
+        except Exception as e:
+            log.exception("Error getting device commands")
+            await self._agent.send_message(DEVICE_COMMANDS_DATA, {
                 "request_id": request_id,
                 "success": False,
                 "error": str(e),
