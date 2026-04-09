@@ -354,6 +354,7 @@ jobs:
 
       - name: Trigger Pi image build
         if: ${{ needs.version.outputs.prerelease == 'false' }}
+        continue-on-error: true
         run: gh workflow run release-pi.yml --ref "v$VERSION" -f "tag=v$VERSION"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
