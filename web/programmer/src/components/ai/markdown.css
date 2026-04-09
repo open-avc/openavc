@@ -1,0 +1,116 @@
+/* Markdown rendering inside AI chat bubbles */
+
+.md-content {
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+/* Remove margin from first/last elements so bubble padding is consistent */
+.md-content > :first-child { margin-top: 0; }
+.md-content > :last-child { margin-bottom: 0; }
+
+/* Paragraphs */
+.md-content p {
+  margin: 0.5em 0;
+}
+
+/* Headings — scaled down for chat context */
+.md-content h1,
+.md-content h2,
+.md-content h3,
+.md-content h4 {
+  margin: 0.75em 0 0.35em;
+  line-height: 1.3;
+  color: var(--text-primary);
+}
+.md-content h1 { font-size: 1.15em; }
+.md-content h2 { font-size: 1.1em; }
+.md-content h3 { font-size: 1.05em; }
+.md-content h4 { font-size: 1em; }
+
+/* Bold / italic */
+.md-content strong { color: var(--text-primary); }
+
+/* Inline code */
+.md-content code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Code blocks */
+.md-content pre {
+  margin: 0.5em 0;
+  padding: var(--space-sm) var(--space-md);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.25);
+  overflow-x: auto;
+}
+.md-content pre code {
+  padding: 0;
+  background: none;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* Tables */
+.md-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.5em 0;
+  font-size: 11px;
+}
+.md-content th,
+.md-content td {
+  padding: 4px 8px;
+  border: 1px solid var(--border-color);
+  text-align: left;
+}
+.md-content th {
+  background: rgba(255, 255, 255, 0.05);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.md-content tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* Lists */
+.md-content ul,
+.md-content ol {
+  margin: 0.4em 0;
+  padding-left: 1.5em;
+}
+.md-content li {
+  margin: 0.15em 0;
+}
+.md-content li > p {
+  margin: 0.2em 0;
+}
+
+/* Blockquotes */
+.md-content blockquote {
+  margin: 0.5em 0;
+  padding: 2px 0 2px var(--space-md);
+  border-left: 3px solid var(--accent);
+  color: var(--text-secondary);
+}
+
+/* Horizontal rules */
+.md-content hr {
+  border: none;
+  border-top: 1px solid var(--border-color);
+  margin: 0.75em 0;
+}
+
+/* Links */
+.md-content a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.md-content a:hover {
+  text-decoration: underline;
+}

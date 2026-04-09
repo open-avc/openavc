@@ -1,6 +1,7 @@
 import { Bot, User, Undo2 } from "lucide-react";
 import type { Message, ContentBlock } from "../../store/aiChatStore";
 import { ToolCallBlock } from "./ToolCallBlock";
+import { MarkdownContent } from "./MarkdownContent";
 
 interface ChatMessageProps {
   message: Message;
@@ -14,12 +15,12 @@ const bubbleBase: React.CSSProperties = {
   fontSize: "var(--font-size-sm)",
   lineHeight: 1.6,
   maxWidth: "85%",
-  whiteSpace: "pre-wrap",
   wordBreak: "break-word",
 };
 
 const userBubble: React.CSSProperties = {
   ...bubbleBase,
+  whiteSpace: "pre-wrap",
   background: "var(--accent)",
   color: "#fff",
   marginLeft: "auto",
@@ -35,22 +36,13 @@ const assistantBubble: React.CSSProperties = {
 function renderBlocks(blocks: ContentBlock[], streaming?: boolean) {
   return blocks.map((block, idx) => {
     if (block.type === "text") {
+      const isLast = idx === blocks.length - 1;
       return (
         <div key={`text-${idx}`} style={assistantBubble}>
-          {block.text}
-          {streaming && idx === blocks.length - 1 && (
-            <span
-              style={{
-                display: "inline-block",
-                width: 6,
-                height: 14,
-                background: "var(--accent)",
-                marginLeft: 2,
-                verticalAlign: "text-bottom",
-                animation: "blink 1s step-end infinite",
-              }}
-            />
-          )}
+          <MarkdownContent
+            content={block.text}
+            streaming={streaming && isLast}
+          />
         </div>
       );
     }
@@ -97,18 +89,12 @@ export function ChatMessage({ message, canUndo, onUndo }: ChatMessageProps) {
         ) : (
           /* Fallback: single bubble (user messages, or assistant without blocks) */
           <div style={isUser ? userBubble : assistantBubble}>
-            {message.content}
-            {message.streaming && !hasBlocks && (
-              <span
-                style={{
-                  display: "inline-block",
-                  width: 6,
-                  height: 14,
-                  background: "var(--accent)",
-                  marginLeft: 2,
-                  verticalAlign: "text-bottom",
-                  animation: "blink 1s step-end infinite",
-                }}
+            {isUser ? (
+              message.content
+            ) : (
+              <MarkdownContent
+                content={message.content}
+                streaming={message.streaming && !hasBlocks}
               />
             )}
           </div>
