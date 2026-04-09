@@ -12,7 +12,8 @@ from typing import Any, TYPE_CHECKING
 
 from server.cloud.protocol import (
     COMMAND, CONFIG_PUSH, RESTART, DIAGNOSTIC, SOFTWARE_UPDATE,
-    COMMAND_RESULT,
+    GET_PROJECT,
+    COMMAND_RESULT, PROJECT_DATA,
     extract_payload,
 )
 from server.utils.logger import get_logger
@@ -87,6 +88,8 @@ class CommandHandler:
                 await self._handle_diagnostic(payload, request_id, user_name)
             elif msg_type == SOFTWARE_UPDATE:
                 await self._handle_software_update(payload, request_id, user_name)
+            elif msg_type == GET_PROJECT:
+                await self._handle_get_project(payload, request_id, user_name)
             else:
                 await self._send_result(request_id, False, error=f"Unknown command type: {msg_type}")
         except Exception as e:
@@ -297,6 +300,47 @@ class CommandHandler:
                 request_id, False,
                 error=f"Update failed: {e}",
             )
+
+    async def _handle_get_project(
+        self, payload: dict[str, Any], request_id: str, user_name: str
+    ) -> None:
+        """Handle a get_project request — read the current project file and send it back."""
+        log.info(f"Cloud get_project: {user_name}")
+
+        if not self._project_path:
+            await self._agent.send_message(PROJECT_DATA, {
+                "request_id": request_id,
+                "success": False,
+                "error": "Project path not configured",
+            })
+            return
+
+        try:
+            import json
+            from pathlib import Path
+
+            project_path = Path(self._project_path)
+            if not project_path.exists():
+                await self._agent.send_message(PROJECT_DATA, {
+                    "request_id": request_id,
+                    "success": False,
+                    "error": "Project file not found",
+                })
+                return
+
+            project_json = json.loads(project_path.read_text(encoding="utf-8"))
+            await self._agent.send_message(PROJECT_DATA, {
+                "request_id": request_id,
+                "success": True,
+                "project_json": project_json,
+            })
+        except Exception as e:
+            log.exception("Error reading project file")
+            await self._agent.send_message(PROJECT_DATA, {
+                "request_id": request_id,
+                "success": False,
+                "error": str(e),
+            })
 
     async def _send_result(
         self, request_id: str, success: bool,
