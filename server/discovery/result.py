@@ -75,7 +75,7 @@ class DiscoveredDevice:
             "firmware": self.firmware,
             "serial_number": self.serial_number,
             "open_ports": self.open_ports,
-            "banners": self.banners,
+            "banners": {str(k): v for k, v in self.banners.items()},
             "sources": self.sources,
             "protocols": self.protocols,
             "mdns_services": self.mdns_services,

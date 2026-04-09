@@ -195,13 +195,30 @@ def verify_auth_proof(
 
 # --- Canonical JSON ---
 
+def _normalize_keys(obj: Any) -> Any:
+    """Recursively convert dict keys to strings.
+
+    json.dumps converts int keys to strings during serialization, but
+    sort_keys=True sorts the *original* Python keys before conversion.
+    Integer keys sort numerically (22, 80, 443) while string keys sort
+    lexicographically ("22", "443", "80"), producing different canonical
+    output. Normalizing to strings first ensures consistent ordering
+    that matches post-JSON-round-trip data.
+    """
+    if isinstance(obj, dict):
+        return {str(k): _normalize_keys(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_normalize_keys(item) for item in obj]
+    return obj
+
+
 def canonical_json(obj: dict[str, Any]) -> bytes:
     """
     Serialize a dict to canonical JSON bytes for signature computation.
 
     Canonical form: sorted keys, no extra whitespace, ensure_ascii=False,
-    UTF-8 encoded. This produces deterministic output so both sides
-    compute the same signature.
+    UTF-8 encoded. Dict keys are normalized to strings first so that
+    sort order is consistent regardless of key types.
 
     Args:
         obj: The message dict (without the 'sig' field).
@@ -210,7 +227,7 @@ def canonical_json(obj: dict[str, Any]) -> bytes:
         UTF-8 encoded canonical JSON bytes.
     """
     return json.dumps(
-        obj,
+        _normalize_keys(obj),
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=False,
