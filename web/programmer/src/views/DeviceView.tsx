@@ -476,8 +476,12 @@ export function DeviceView() {
           )}
 
           {deviceConfigs.length === 0 ? (
-            <p style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}>
+            <p style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)", lineHeight: 1.6 }}>
               No devices configured. Click &quot;Add Device&quot; to get started.
+              <br />
+              <a href="https://docs.openavc.com/devices-and-drivers" target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)", fontSize: 12 }}>
+                Learn about devices and drivers
+              </a>
             </p>
           ) : filteredDevices.length === 0 ? (
             <p style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}>

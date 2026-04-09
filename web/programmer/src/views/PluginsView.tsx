@@ -1302,9 +1302,15 @@ export function PluginsView() {
               </div>
             )}
             {!loading && filtered.length === 0 && (
-              <div style={{ padding: "var(--space-lg)", textAlign: "center", color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}>
+              <div style={{ padding: "var(--space-lg)", textAlign: "center", color: "var(--text-muted)", fontSize: "var(--font-size-sm)", lineHeight: 1.6 }}>
                 {plugins.length === 0
-                  ? "No plugins installed. Add plugins to plugin_repo/ to get started."
+                  ? <>
+                      No plugins installed. Click the <strong>Browse</strong> tab to find and install plugins.
+                      <br /><br />
+                      <a href="https://docs.openavc.com/plugins" target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>
+                        Learn about plugins
+                      </a>
+                    </>
                   : "No matching plugins."}
               </div>
             )}

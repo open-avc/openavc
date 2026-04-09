@@ -351,6 +351,12 @@ export function DashboardView() {
                   </div>
                 ))}
               </div>
+              <div style={{ marginTop: "var(--space-md)", fontSize: 12, color: "var(--text-muted)" }}>
+                New to OpenAVC?{" "}
+                <a href="https://docs.openavc.com/getting-started" target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>
+                  Read the Getting Started guide
+                </a>
+              </div>
             </div>
           )}
 

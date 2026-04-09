@@ -97,6 +97,10 @@ export function MacroList({ macros, selectedId, onSelect, onAdd, onDelete }: Mac
                 No macros yet.
                 <br />
                 Click <strong>+</strong> to create one.
+                <br /><br />
+                <a href="https://docs.openavc.com/macros-and-triggers" target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>
+                  Learn about macros and triggers
+                </a>
               </>
             ) : (
               <>No macros match "{search}".</>

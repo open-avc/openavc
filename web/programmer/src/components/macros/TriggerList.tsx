@@ -225,6 +225,10 @@ export function TriggerList({ triggers, devices, allMacros, onUpdate }: TriggerL
           No triggers — this macro can only run manually or from a UI button.
           <br />
           Add a trigger to automate it with schedules, state changes, or events.
+          <br /><br />
+          <a href="https://docs.openavc.com/macros-and-triggers#triggers" target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>
+            Learn about triggers
+          </a>
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>

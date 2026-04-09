@@ -314,14 +314,19 @@ export function Canvas({
                 gridColumn: "1 / -1",
                 gridRow: "1 / -1",
                 display: "flex",
+                flexDirection: "column",
                 alignItems: "center",
                 justifyContent: "center",
                 color: "var(--text-muted)",
                 fontSize: "var(--font-size-lg)",
                 pointerEvents: "none",
+                gap: "var(--space-sm)",
               }}
             >
-              Drag elements from the palette to get started
+              <span>Drag elements from the palette to get started</span>
+              <a href="https://docs.openavc.com/ui-builder" target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)", fontSize: "var(--font-size-sm)", pointerEvents: "auto" }}>
+                Learn about the UI Builder
+              </a>
             </div>
           )}
         </div>

@@ -168,6 +168,10 @@ export function ScriptFileTree({
                 No scripts yet.
                 <br />
                 Click <strong>+</strong> to create one, or use a <strong>template</strong> to get started.
+                <br /><br />
+                <a href="https://docs.openavc.com/scripting-guide" target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>
+                  Read the scripting guide
+                </a>
               </>
             ) : (
               <>No scripts match "{search}".</>

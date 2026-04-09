@@ -511,6 +511,10 @@ function VariablesSubTab() {
                   <br /><br />
                   Click <strong>New Variable</strong> above, or create one
                   from any macro or UI binding editor.
+                  <br /><br />
+                  <a href="https://docs.openavc.com/variables-and-state" target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>
+                    Learn about variables and state
+                  </a>
                 </>
               ) : (
                 <>No variables match &ldquo;{search}&rdquo;.</>
