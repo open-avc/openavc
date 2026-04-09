@@ -123,6 +123,13 @@ class Handshake:
         hardware = platform.node()
         python_ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
 
+        # Detect deployment type for cloud-managed updates
+        try:
+            from server.updater.platform import detect_deployment_type
+            deployment_type = detect_deployment_type().value
+        except Exception:
+            deployment_type = "unknown"
+
         hello_msg = build_hello(
             system_id=self.system_id,
             version=self.version,
@@ -131,7 +138,7 @@ class Handshake:
             capabilities=self.capabilities,
             os_info=os_info,
             hardware=hardware,
-            deployment_mode="standalone",
+            deployment_mode=deployment_type,
             python_version=python_ver,
         )
         log.debug("Handshake: sending hello")
