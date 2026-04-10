@@ -616,7 +616,9 @@ class Engine:
         # Toggle off: look for off_action inside the first press action that has one
         if not binding and event_type == "toggle_off":
             press_actions = bindings.get("press")
-            if isinstance(press_actions, list):
+            if isinstance(press_actions, dict) and "off_action" in press_actions:
+                binding = [press_actions["off_action"]]
+            elif isinstance(press_actions, list):
                 for act in press_actions:
                     if isinstance(act, dict) and "off_action" in act:
                         binding = [act["off_action"]]
@@ -625,7 +627,9 @@ class Engine:
         # Hold: look for hold_action inside the first press action that has one
         if not binding and event_type == "hold":
             press_actions = bindings.get("press")
-            if isinstance(press_actions, list):
+            if isinstance(press_actions, dict) and "hold_action" in press_actions:
+                binding = [press_actions["hold_action"]]
+            elif isinstance(press_actions, list):
                 for act in press_actions:
                     if isinstance(act, dict) and "hold_action" in act:
                         binding = [act["hold_action"]]

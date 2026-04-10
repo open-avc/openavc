@@ -116,8 +116,7 @@ export function onMessage(handler: MessageHandler): () => void {
 
 /** Command types worth queuing during disconnect (stale state updates aren't). */
 const QUEUEABLE_TYPES = new Set([
-  "command", "macro.execute", "state.set", "ui.press", "ui.release",
-  "ui.hold", "ui.toggle_off", "ui.change", "ui.page",
+  "command", "macro.execute", "state.set",
 ]);
 
 export function send(msg: Record<string, unknown>): void {

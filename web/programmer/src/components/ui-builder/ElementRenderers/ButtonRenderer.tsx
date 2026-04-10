@@ -1,6 +1,6 @@
 import type { UIElement } from "../../../api/types";
 import type { FeedbackBinding } from "../uiBuilderHelpers";
-import * as wsClient from "../../../api/wsClient";
+
 import { getAssetUrl } from "../../../api/restClient";
 import { buildElementStyle } from "./styleHelpers";
 import { IconTextLayout } from "./ElementIcon";
@@ -99,33 +99,10 @@ export function ButtonRenderer({ element, previewMode, liveState }: Props) {
     }
   }
 
-  const handleMouseDown = () => {
-    if (!previewMode) return;
-    const press = element.bindings?.press as Record<string, unknown> | undefined;
-    const mode = press?.mode as string || "tap";
-
-    if (mode === "toggle" && press?.toggle_key) {
-      const stateValue = liveState[press.toggle_key as string];
-      const toggleValue = press.toggle_value;
-      const isActive = stateValue !== undefined && toggleValue !== undefined &&
-        String(stateValue).toLowerCase() === String(toggleValue).toLowerCase();
-      wsClient.send({ type: isActive ? "ui.toggle_off" : "ui.press", element_id: element.id });
-    } else {
-      wsClient.send({ type: "ui.press", element_id: element.id });
-    }
-  };
-
-  const handleMouseUp = () => {
-    if (!previewMode) return;
-    wsClient.send({ type: "ui.release", element_id: element.id });
-  };
-
   const showLabel = displayMode !== "image" && displayMode !== "icon_only";
 
   return (
     <div
-      onMouseDown={handleMouseDown}
-      onMouseUp={handleMouseUp}
       style={css}
     >
       <IconTextLayout

@@ -1,6 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
 import type { UIElement } from "../../../api/types";
-import * as wsClient from "../../../api/wsClient";
 
 interface Props {
   element: UIElement;
@@ -8,93 +6,10 @@ interface Props {
   liveState: Record<string, unknown>;
 }
 
-export function KeypadRenderer({ element, previewMode }: Props) {
-  const [buffer, setBuffer] = useState("");
-  const autoSendTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
+export function KeypadRenderer({ element }: Props) {
   const maxDigits = element.digits ?? 4;
-  const autoSend = element.auto_send ?? false;
-  const autoSendDelay = element.auto_send_delay_ms ?? 1500;
   const keypadStyle = element.keypad_style ?? "numeric";
   const showDisplay = element.show_display ?? true;
-
-  // Reset buffer when leaving preview mode
-  useEffect(() => {
-    if (!previewMode) {
-      setBuffer("");
-      if (autoSendTimerRef.current) {
-        clearTimeout(autoSendTimerRef.current);
-        autoSendTimerRef.current = null;
-      }
-    }
-  }, [previewMode]);
-
-  // Clean up timer on unmount
-  useEffect(() => {
-    return () => {
-      if (autoSendTimerRef.current) {
-        clearTimeout(autoSendTimerRef.current);
-      }
-    };
-  }, []);
-
-  const submitValue = useCallback(
-    (value: string) => {
-      if (!value) return;
-      wsClient.send({
-        type: "ui.submit",
-        element_id: element.id,
-        value,
-      });
-      setBuffer("");
-      if (autoSendTimerRef.current) {
-        clearTimeout(autoSendTimerRef.current);
-        autoSendTimerRef.current = null;
-      }
-    },
-    [element.id],
-  );
-
-  const handleDigit = useCallback(
-    (digit: string) => {
-      if (!previewMode) return;
-      setBuffer((prev) => {
-        if (prev.length >= maxDigits) return prev;
-        const next = prev + digit;
-        // Auto-submit when max digits reached
-        if (autoSend && next.length >= maxDigits) {
-          // Use setTimeout so the state update completes first
-          setTimeout(() => submitValue(next), 0);
-          return next;
-        }
-        // Auto-submit after delay
-        if (autoSend) {
-          if (autoSendTimerRef.current) {
-            clearTimeout(autoSendTimerRef.current);
-          }
-          autoSendTimerRef.current = setTimeout(() => {
-            submitValue(next);
-          }, autoSendDelay);
-        }
-        return next;
-      });
-    },
-    [previewMode, maxDigits, autoSend, autoSendDelay, submitValue],
-  );
-
-  const handleClear = useCallback(() => {
-    if (!previewMode) return;
-    setBuffer("");
-    if (autoSendTimerRef.current) {
-      clearTimeout(autoSendTimerRef.current);
-      autoSendTimerRef.current = null;
-    }
-  }, [previewMode]);
-
-  const handleEnter = useCallback(() => {
-    if (!previewMode) return;
-    submitValue(buffer);
-  }, [previewMode, buffer, submitValue]);
 
   // Build button grid rows
   const rows: string[][] = [
@@ -105,9 +20,7 @@ export function KeypadRenderer({ element, previewMode }: Props) {
   const bottomRow =
     keypadStyle === "phone" ? ["*", "0", "#"] : ["C", "0", "\u23CE"];
 
-  const displayText = previewMode
-    ? buffer || ""
-    : "\u2014".repeat(maxDigits);
+  const displayText = "\u2014".repeat(maxDigits);
 
   const textColor = String(element.style.text_color || "#ffffff");
   const fontSize = element.style.font_size
@@ -187,81 +100,30 @@ export function KeypadRenderer({ element, previewMode }: Props) {
           >
             {row.map((key) => {
               const isAction = key === "C" || key === "\u23CE";
-              let onClick: (() => void) | undefined;
-              if (previewMode) {
-                if (key === "C") onClick = handleClear;
-                else if (key === "\u23CE") onClick = handleEnter;
-                else onClick = () => handleDigit(key);
-              }
-
               return (
-                <KeypadButton
+                <div
                   key={key}
-                  label={key}
-                  onClick={onClick}
-                  previewMode={previewMode}
-                  isAction={isAction}
-                  textColor={textColor}
-                />
+                  style={{
+                    flex: 1,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    background: "#3a3a3a",
+                    borderRadius: "6px",
+                    color: isAction ? "#90caf9" : textColor,
+                    fontSize: "14px",
+                    fontWeight: isAction ? 600 : 500,
+                    userSelect: "none",
+                    minHeight: 0,
+                  }}
+                >
+                  {key}
+                </div>
               );
             })}
           </div>
         ))}
       </div>
-    </div>
-  );
-}
-
-/** Individual keypad button with hover effect. */
-function KeypadButton({
-  label,
-  onClick,
-  previewMode,
-  isAction,
-  textColor,
-}: {
-  label: string;
-  onClick?: () => void;
-  previewMode: boolean;
-  isAction: boolean;
-  textColor: string;
-}) {
-  const [hovered, setHovered] = useState(false);
-  const [pressed, setPressed] = useState(false);
-
-  const bg = pressed && previewMode
-    ? "#555555"
-    : hovered && previewMode
-      ? "#4a4a4a"
-      : "#3a3a3a";
-
-  return (
-    <div
-      onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => {
-        setHovered(false);
-        setPressed(false);
-      }}
-      onMouseDown={() => setPressed(true)}
-      onMouseUp={() => setPressed(false)}
-      style={{
-        flex: 1,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: bg,
-        borderRadius: "6px",
-        color: isAction ? "#90caf9" : textColor,
-        fontSize: "14px",
-        fontWeight: isAction ? 600 : 500,
-        cursor: previewMode ? "pointer" : "default",
-        userSelect: "none",
-        transition: "background 0.1s",
-        minHeight: 0,
-      }}
-    >
-      {label}
     </div>
   );
 }

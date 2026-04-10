@@ -11,7 +11,7 @@ class PanelApp {
         this.state = {};
         this.uiDef = null;
         this.uiSettings = {};
-        this.currentPage = 'main';
+        this.currentPage = new URLSearchParams(window.location.search).get('page') || 'main';
         this.locked = false;
         this.snapshotReceived = false;
         this.idleTimer = null;

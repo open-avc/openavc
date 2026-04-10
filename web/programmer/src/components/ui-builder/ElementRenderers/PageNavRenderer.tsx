@@ -1,5 +1,4 @@
 import type { UIElement } from "../../../api/types";
-import * as wsClient from "../../../api/wsClient";
 import { buildElementStyle } from "./styleHelpers";
 import { IconTextLayout } from "./ElementIcon";
 
@@ -9,12 +8,7 @@ interface Props {
   liveState: Record<string, unknown>;
 }
 
-export function PageNavRenderer({ element, previewMode }: Props) {
-  const handleClick = () => {
-    if (!previewMode || !element.target_page) return;
-    wsClient.send({ type: "ui.page", page_id: element.target_page });
-  };
-
+export function PageNavRenderer({ element }: Props) {
   const css = buildElementStyle(element.style, {
     display: "flex",
     alignItems: "center",
@@ -23,14 +17,13 @@ export function PageNavRenderer({ element, previewMode }: Props) {
     fontSize: "14px",
     border: "1px solid rgba(255,255,255,0.1)",
     borderRadius: "8px",
-    cursor: previewMode ? "pointer" : "default",
     width: "100%",
     height: "100%",
     userSelect: "none",
   });
 
   return (
-    <div onClick={handleClick} style={css}>
+    <div style={css}>
       <IconTextLayout
         icon={element.icon}
         iconPosition={element.icon_position}

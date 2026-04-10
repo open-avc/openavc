@@ -125,6 +125,45 @@ export function Canvas({
     ? (pageType === "sidebar" ? screenHeight : (page.overlay?.height ?? 300))
     : screenHeight;
 
+  // Preview mode: show the real /panel in an iframe — zero duplicated logic
+  if (previewMode) {
+    return (
+      <div
+        style={{
+          flex: 1,
+          overflow: "auto",
+          background: "var(--bg-base)",
+          padding: "var(--space-lg)",
+        }}
+      >
+        <div
+          style={{
+            width: overlayWidth,
+            height: overlayHeight,
+            transform: `scale(${zoom})`,
+            transformOrigin: "top center",
+            flexShrink: 0,
+            margin: "auto",
+          }}
+        >
+          <iframe
+            key={page.id}
+            src={`/panel?page=${encodeURIComponent(page.id)}`}
+            style={{
+              width: "100%",
+              height: "100%",
+              border: "none",
+              borderRadius: isOverlay ? "12px" : "8px",
+              boxShadow: isOverlay
+                ? "0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.1)"
+                : "0 4px 24px rgba(0,0,0,0.5)",
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       style={{
@@ -149,7 +188,7 @@ export function Canvas({
           data-canvas-grid=""
           onClick={handleCanvasClick}
           onContextMenu={(e) => {
-            if (!previewMode) e.preventDefault();
+            e.preventDefault();
           }}
           style={{
             display: "grid",
@@ -198,11 +237,11 @@ export function Canvas({
           )}
 
           {/* Grid overlay */}
-          {showGrid && !previewMode && (
+          {showGrid && (
             <GridOverlay columns={page.grid.columns} rows={page.grid.rows} gap={page.grid_gap ?? 8} />
           )}
           {/* Grid dimension label */}
-          {showGrid && !previewMode && (
+          {showGrid && (
             <div
               style={{
                 position: "absolute",
@@ -228,51 +267,45 @@ export function Canvas({
                 <div
                   key={`master-${el.id}`}
                   onClick={(e) => {
-                    if (!previewMode) {
-                      e.stopPropagation();
-                      selectMasterElement(el.id);
-                    }
+                    e.stopPropagation();
+                    selectMasterElement(el.id);
                   }}
                   onContextMenu={(e) => {
-                    if (!previewMode) {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setContextMenu({ x: e.clientX, y: e.clientY, elementId: el.id, isMaster: true });
-                    }
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setContextMenu({ x: e.clientX, y: e.clientY, elementId: el.id, isMaster: true });
                   }}
                   style={{
                     gridColumn: `${el.grid_area.col} / span ${el.grid_area.col_span}`,
                     gridRow: `${el.grid_area.row} / span ${el.grid_area.row_span}`,
-                    opacity: previewMode ? 1 : 0.6,
+                    opacity: 0.6,
                     pointerEvents: "auto",
                     zIndex: 0,
                     position: "relative",
-                    cursor: previewMode ? "default" : "pointer",
+                    cursor: "pointer",
                     outline: isMasterSelected ? "2px solid #9C27B0" : "none",
                     outlineOffset: 1,
                     borderRadius: 4,
                   }}
-                  title={previewMode ? undefined : `Global element: ${el.id}`}
+                  title={`Global element: ${el.id}`}
                 >
-                  <RenderElement element={el} previewMode={previewMode} liveState={liveState} themeDefaults={themeElementDefaults} />
-                  {!previewMode && (
-                    <div
-                      style={{
-                        position: "absolute",
-                        top: 2,
-                        left: 4,
-                        fontSize: 9,
-                        padding: "1px 4px",
-                        borderRadius: 3,
-                        background: "rgba(156,39,176,0.7)",
-                        color: "#fff",
-                        pointerEvents: "none",
-                        zIndex: 1,
-                      }}
-                    >
-                      Global
-                    </div>
-                  )}
+                  <RenderElement element={el} previewMode={false} liveState={liveState} themeDefaults={themeElementDefaults} />
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: 2,
+                      left: 4,
+                      fontSize: 9,
+                      padding: "1px 4px",
+                      borderRadius: 3,
+                      background: "rgba(156,39,176,0.7)",
+                      color: "#fff",
+                      pointerEvents: "none",
+                      zIndex: 1,
+                    }}
+                  >
+                    Global
+                  </div>
                 </div>
               );
             })}
@@ -285,7 +318,7 @@ export function Canvas({
               pageId={page.id}
               selected={selectedElementIds.includes(el.id)}
               multiSelected={selectedElementIds.length > 1 && selectedElementIds.includes(el.id)}
-              previewMode={previewMode}
+              previewMode={false}
               columns={page.grid.columns}
               rows={page.grid.rows}
               liveState={liveState}
@@ -298,7 +331,7 @@ export function Canvas({
           ))}
 
           {/* Snap guides (alignment lines for selected element) */}
-          {!previewMode && selectedElementId && page.elements.length > 1 && (
+          {selectedElementId && page.elements.length > 1 && (
             <SnapGuides
               elements={page.elements}
               selectedId={selectedElementId}
@@ -308,7 +341,7 @@ export function Canvas({
           )}
 
           {/* Empty state */}
-          {page.elements.length === 0 && !previewMode && (
+          {page.elements.length === 0 && (
             <div
               style={{
                 gridColumn: "1 / -1",

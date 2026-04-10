@@ -1,6 +1,4 @@
-import { useState } from "react";
 import type { UIElement } from "../../../api/types";
-import * as wsClient from "../../../api/wsClient";
 
 interface Props {
   element: UIElement;
@@ -10,11 +8,10 @@ interface Props {
 
 /**
  * Resolve the current route map: output index (1-based) -> input index (1-based).
- * In design mode, returns a diagonal demo (output N -> input N).
+ * Uses live state if available, otherwise returns a diagonal demo.
  */
 function resolveRoutes(
   element: UIElement,
-  previewMode: boolean,
   liveState: Record<string, unknown>,
   outputCount: number,
   inputCount: number,
@@ -22,7 +19,7 @@ function resolveRoutes(
   const routes = new Map<number, number>();
   const pattern = element.matrix_config?.route_key_pattern;
 
-  if (previewMode && pattern) {
+  if (pattern) {
     for (let out = 1; out <= outputCount; out++) {
       const key = pattern.replace("*", String(out));
       const val = liveState[key];
@@ -30,12 +27,13 @@ function resolveRoutes(
         routes.set(out, Number(val));
       }
     }
-  } else {
-    // Demo: diagonal routing
-    for (let out = 1; out <= outputCount; out++) {
-      if (out <= inputCount) {
-        routes.set(out, out);
-      }
+    if (routes.size > 0) return routes;
+  }
+
+  // Demo: diagonal routing
+  for (let out = 1; out <= outputCount; out++) {
+    if (out <= inputCount) {
+      routes.set(out, out);
     }
   }
 
@@ -51,15 +49,14 @@ function resolveLabels(
   staticLabels: string[] | undefined,
   keyPattern: string | undefined,
   liveState: Record<string, unknown>,
-  previewMode: boolean,
   prefix: string,
 ): string[] {
   const labels: string[] = [];
   for (let i = 1; i <= count; i++) {
     let label: string | undefined;
 
-    // Try state key pattern first (only in preview mode)
-    if (previewMode && keyPattern) {
+    // Try state key pattern first
+    if (keyPattern) {
       const key = keyPattern.replace("*", String(i));
       const val = liveState[key];
       if (val !== undefined && val !== null && String(val).trim() !== "") {
@@ -82,22 +79,7 @@ function resolveLabels(
   return labels;
 }
 
-function handleCrosspointClick(
-  element: UIElement,
-  previewMode: boolean,
-  inputIndex: number,
-  outputIndex: number,
-) {
-  if (!previewMode) return;
-  wsClient.send({
-    type: "ui.route",
-    element_id: element.id,
-    input: inputIndex,
-    output: outputIndex,
-  });
-}
-
-export function MatrixRenderer({ element, previewMode, liveState }: Props) {
+export function MatrixRenderer({ element, liveState }: Props) {
   const config = element.matrix_config ?? {};
   const inputCount = config.input_count ?? 4;
   const outputCount = config.output_count ?? 4;
@@ -114,7 +96,6 @@ export function MatrixRenderer({ element, previewMode, liveState }: Props) {
 
   const routes = resolveRoutes(
     element,
-    previewMode,
     liveState,
     outputCount,
     inputCount,
@@ -125,7 +106,6 @@ export function MatrixRenderer({ element, previewMode, liveState }: Props) {
     config.input_labels,
     config.input_key_pattern,
     liveState,
-    previewMode,
     "In",
   );
 
@@ -134,7 +114,6 @@ export function MatrixRenderer({ element, previewMode, liveState }: Props) {
     config.output_labels,
     config.output_key_pattern,
     liveState,
-    previewMode,
     "Out",
   );
 
@@ -144,7 +123,6 @@ export function MatrixRenderer({ element, previewMode, liveState }: Props) {
     return (
       <ListView
         element={element}
-        previewMode={previewMode}
         inputCount={inputCount}
         outputCount={outputCount}
         inputLabels={inputLabels}
@@ -294,15 +272,6 @@ export function MatrixRenderer({ element, previewMode, liveState }: Props) {
                     activeColor={activeColor}
                     inactiveColor={inactiveColor}
                     cellSize={cellSize}
-                    previewMode={previewMode}
-                    onClick={() =>
-                      handleCrosspointClick(
-                        element,
-                        previewMode,
-                        inputNum,
-                        outputNum,
-                      )
-                    }
                   />,
                 ];
               }
@@ -314,15 +283,6 @@ export function MatrixRenderer({ element, previewMode, liveState }: Props) {
                   activeColor={activeColor}
                   inactiveColor={inactiveColor}
                   cellSize={cellSize}
-                  previewMode={previewMode}
-                  onClick={() =>
-                    handleCrosspointClick(
-                      element,
-                      previewMode,
-                      inputNum,
-                      outputNum,
-                    )
-                  }
                 />
               );
             });
@@ -339,27 +299,21 @@ function CrosspointCell({
   activeColor,
   inactiveColor,
   cellSize,
-  previewMode,
-  onClick,
 }: {
   isActive: boolean;
   activeColor: string;
   inactiveColor: string;
   cellSize: number;
-  previewMode: boolean;
-  onClick: () => void;
 }) {
   const dotSize = isActive ? Math.max(12, cellSize * 0.45) : Math.max(8, cellSize * 0.25);
 
   return (
     <div
-      onClick={onClick}
       style={{
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         backgroundColor: "rgba(255,255,255,0.03)",
-        cursor: previewMode ? "pointer" : "default",
         minWidth: cellSize,
         minHeight: cellSize,
       }}
@@ -381,10 +335,9 @@ function CrosspointCell({
   );
 }
 
-/** List view: each output is a row with a dropdown to select the routed input. */
+/** List view: each output is a row with a dropdown showing the routed input. */
 function ListView({
   element,
-  previewMode,
   inputCount,
   outputCount,
   inputLabels,
@@ -393,7 +346,6 @@ function ListView({
   activeColor,
 }: {
   element: UIElement;
-  previewMode: boolean;
   inputCount: number;
   outputCount: number;
   inputLabels: string[];
@@ -401,20 +353,6 @@ function ListView({
   routes: Map<number, number>;
   activeColor: string;
 }) {
-  // Track local selections for immediate feedback
-  const [localRoutes, setLocalRoutes] = useState<Map<number, number>>(
-    new Map(),
-  );
-
-  const handleChange = (outputNum: number, inputNum: number) => {
-    setLocalRoutes((prev) => {
-      const next = new Map(prev);
-      next.set(outputNum, inputNum);
-      return next;
-    });
-    handleCrosspointClick(element, previewMode, inputNum, outputNum);
-  };
-
   return (
     <div
       style={{
@@ -455,9 +393,7 @@ function ListView({
       >
         {outputLabels.map((outLabel, outIdx) => {
           const outputNum = outIdx + 1;
-          // Prefer live state routes, fall back to local selection
-          const currentInput =
-            routes.get(outputNum) ?? localRoutes.get(outputNum) ?? 0;
+          const currentInput = routes.get(outputNum) ?? 0;
 
           return (
             <div
@@ -496,10 +432,7 @@ function ListView({
 
               <select
                 value={currentInput}
-                onChange={(e) =>
-                  handleChange(outputNum, parseInt(e.target.value, 10))
-                }
-                disabled={!previewMode}
+                disabled
                 style={{
                   flex: 1,
                   minWidth: 0,
@@ -512,7 +445,6 @@ function ListView({
                       : "rgba(255,255,255,0.05)",
                   color: "#dddddd",
                   fontSize: 11,
-                  cursor: previewMode ? "pointer" : "default",
                 }}
               >
                 <option value={0}>-- None --</option>

@@ -1,5 +1,4 @@
 import type { UIElement } from "../../../api/types";
-import * as wsClient from "../../../api/wsClient";
 import { buildElementStyle } from "./styleHelpers";
 import { IconTextLayout } from "./ElementIcon";
 
@@ -11,18 +10,7 @@ interface Props {
 
 export function CameraPresetRenderer({
   element,
-  previewMode,
 }: Props) {
-  const handlePress = () => {
-    if (!previewMode) return;
-    wsClient.send({ type: "ui.press", element_id: element.id });
-  };
-
-  const handleRelease = () => {
-    if (!previewMode) return;
-    wsClient.send({ type: "ui.release", element_id: element.id });
-  };
-
   const presetNum = element.preset_number ?? "";
 
   const css = buildElementStyle(element.style, {
@@ -31,7 +19,6 @@ export function CameraPresetRenderer({
     alignItems: "center",
     justifyContent: "center",
     gap: "4px",
-    cursor: previewMode ? "pointer" : "default",
     userSelect: "none",
     width: "100%",
     height: "100%",
@@ -51,8 +38,6 @@ export function CameraPresetRenderer({
 
   return (
     <div
-      onMouseDown={handlePress}
-      onMouseUp={handleRelease}
       style={css}
     >
       <IconTextLayout

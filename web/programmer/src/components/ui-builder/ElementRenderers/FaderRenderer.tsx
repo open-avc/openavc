@@ -1,7 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useRef } from "react";
 import type { UIElement } from "../../../api/types";
 import type { ValueBinding } from "../uiBuilderHelpers";
-import * as wsClient from "../../../api/wsClient";
 
 interface Props {
   element: UIElement;
@@ -48,7 +47,7 @@ function darkenHex(hex: string, factor: number): string {
   return `rgb(${Math.round(r * factor)}, ${Math.round(g * factor)}, ${Math.round(b * factor)})`;
 }
 
-export function FaderRenderer({ element, previewMode, liveState }: Props) {
+export function FaderRenderer({ element, liveState }: Props) {
   const min = element.min ?? -80;
   const max = element.max ?? 10;
   const step = element.step ?? 0.5;
@@ -63,7 +62,6 @@ export function FaderRenderer({ element, previewMode, liveState }: Props) {
   const trackBg = darkenHex(bgColor.startsWith("#") ? bgColor : "#2a2a2a", 0.6);
   const trackBorder = darkenHex(textColor.startsWith("#") ? textColor : "#cccccc", 0.4);
   const handleColor = darkenHex(textColor.startsWith("#") ? textColor : "#888888", 0.65);
-  const handleActive = darkenHex(textColor.startsWith("#") ? textColor : "#aaaaaa", 0.8);
   const fillColor = darkenHex(textColor.startsWith("#") ? textColor : "#4a6a8a", 0.5);
   const meterBg = trackBg;
 
@@ -76,19 +74,11 @@ export function FaderRenderer({ element, previewMode, liveState }: Props) {
   const stateKey = valBinding?.key;
   const meterKey = meterBinding?.key;
 
-  const [localValue, setLocalValue] = useState(() => defaultValue(min, max));
-  const [dragging, setDragging] = useState(false);
   const trackRef = useRef<HTMLDivElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Reset local value when leaving preview or when range changes
-  useEffect(() => {
-    if (!previewMode) setLocalValue(defaultValue(min, max));
-  }, [previewMode, min, max]);
 
   // Determine the displayed value
-  let displayValue = localValue;
-  if (previewMode && stateKey && !dragging) {
+  let displayValue = defaultValue(min, max);
+  if (stateKey) {
     const sv = liveState[stateKey];
     if (sv !== undefined && sv !== null) {
       displayValue = Number(sv);
@@ -97,87 +87,12 @@ export function FaderRenderer({ element, previewMode, liveState }: Props) {
 
   // Meter value (optional VU-style indicator alongside the track)
   let meterFraction: number | null = null;
-  if (previewMode && meterKey) {
+  if (meterKey) {
     const mv = liveState[meterKey];
     if (mv !== undefined && mv !== null) {
       meterFraction = valueToFraction(Number(mv), min, max);
     }
   }
-
-  // --- Send change with debounce ---
-  const sendChange = useCallback(
-    (val: number) => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => {
-        wsClient.send({
-          type: "ui.change",
-          element_id: element.id,
-          value: val,
-        });
-      }, 50);
-    },
-    [element.id],
-  );
-
-  // Cleanup debounce timer
-  useEffect(() => {
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, []);
-
-  // --- Drag logic ---
-  const computeValueFromEvent = useCallback(
-    (clientX: number, clientY: number): number => {
-      const track = trackRef.current;
-      if (!track) return localValue;
-      const rect = track.getBoundingClientRect();
-      let fraction: number;
-      if (orientation === "horizontal") {
-        fraction = (clientX - rect.left) / rect.width;
-      } else {
-        // Vertical: top = max, bottom = min
-        fraction = 1 - (clientY - rect.top) / rect.height;
-      }
-      fraction = Math.max(0, Math.min(1, fraction));
-      return fractionToValue(fraction, min, max, step);
-    },
-    [min, max, step, orientation, localValue],
-  );
-
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      if (!previewMode) return;
-      e.preventDefault();
-      e.stopPropagation();
-      setDragging(true);
-      const val = computeValueFromEvent(e.clientX, e.clientY);
-      setLocalValue(val);
-      sendChange(val);
-    },
-    [previewMode, computeValueFromEvent, sendChange],
-  );
-
-  useEffect(() => {
-    if (!dragging) return;
-
-    const onMouseMove = (e: MouseEvent) => {
-      const val = computeValueFromEvent(e.clientX, e.clientY);
-      setLocalValue(val);
-      sendChange(val);
-    };
-
-    const onMouseUp = () => {
-      setDragging(false);
-    };
-
-    document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mouseup", onMouseUp);
-    return () => {
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
-    };
-  }, [dragging, computeValueFromEvent, sendChange]);
 
   // --- Scale marks ---
   const scaleMarks = DB_SCALE_MARKS.filter((v) => v >= min && v <= max);
@@ -282,13 +197,13 @@ export function FaderRenderer({ element, previewMode, liveState }: Props) {
               justifyContent: "center",
               alignItems: "stretch",
               position: "relative",
-              cursor: previewMode ? "pointer" : "default",
+              cursor: "default",
             }}
           >
             {/* Track groove */}
             <div
               ref={trackRef}
-              onMouseDown={handleMouseDown}
+
               style={{
                 width: 6,
                 backgroundColor: trackBg,
@@ -313,7 +228,7 @@ export function FaderRenderer({ element, previewMode, liveState }: Props) {
 
               {/* Handle */}
               <div
-                onMouseDown={handleMouseDown}
+  
                 style={{
                   position: "absolute",
                   bottom: `${fraction * 100}%`,
@@ -321,10 +236,10 @@ export function FaderRenderer({ element, previewMode, liveState }: Props) {
                   transform: "translate(-50%, 50%)",
                   width: 40,
                   height: 24,
-                  backgroundColor: dragging ? handleActive : handleColor,
+                  backgroundColor: handleColor,
                   borderRadius: 3,
                   border: `1px solid ${trackBorder}`,
-                  cursor: previewMode ? "grab" : "default",
+                  cursor: "default",
                   boxShadow: "0 1px 3px rgba(0,0,0,0.4)",
                   // Groove lines on the handle (mixing console style)
                   backgroundImage: `repeating-linear-gradient(
@@ -467,14 +382,13 @@ export function FaderRenderer({ element, previewMode, liveState }: Props) {
             alignItems: "center",
             justifyContent: "stretch",
             position: "relative",
-            cursor: previewMode ? "pointer" : "default",
+            cursor: "default",
             flex: 1,
           }}
         >
           {/* Track groove */}
           <div
             ref={trackRef}
-            onMouseDown={handleMouseDown}
             style={{
               height: 6,
               width: "100%",
@@ -500,7 +414,7 @@ export function FaderRenderer({ element, previewMode, liveState }: Props) {
 
             {/* Handle */}
             <div
-              onMouseDown={handleMouseDown}
+
               style={{
                 position: "absolute",
                 left: `${fraction * 100}%`,
@@ -508,10 +422,10 @@ export function FaderRenderer({ element, previewMode, liveState }: Props) {
                 transform: "translate(-50%, -50%)",
                 width: 24,
                 height: 40,
-                backgroundColor: dragging ? handleActive : handleColor,
+                backgroundColor: handleColor,
                 borderRadius: 3,
                 border: `1px solid ${trackBorder}`,
-                cursor: previewMode ? "grab" : "default",
+                cursor: "default",
                 boxShadow: "0 1px 3px rgba(0,0,0,0.4)",
                 backgroundImage: `repeating-linear-gradient(
                   90deg,

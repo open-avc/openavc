@@ -1,6 +1,4 @@
-import { useState, useEffect } from "react";
 import type { UIElement } from "../../../api/types";
-import * as wsClient from "../../../api/wsClient";
 
 interface Props {
   element: UIElement;
@@ -8,37 +6,18 @@ interface Props {
   liveState: Record<string, unknown>;
 }
 
-export function TextInputRenderer({ element, previewMode, liveState }: Props) {
-  const [localValue, setLocalValue] = useState("");
-
-  // Reset local value when exiting preview mode
-  useEffect(() => {
-    if (!previewMode) setLocalValue("");
-  }, [previewMode]);
-
+export function TextInputRenderer({ element, liveState }: Props) {
   const varBinding = element.bindings.variable as { key?: string } | undefined;
   const valBinding = element.bindings.value as { key?: string } | undefined;
   const stateKey = varBinding?.key || valBinding?.key;
 
-  let displayValue = localValue;
-  if (previewMode && stateKey) {
+  let displayValue = "";
+  if (stateKey) {
     const stateValue = liveState[stateKey];
     if (stateValue !== undefined && stateValue !== null) {
       displayValue = String(stateValue);
     }
   }
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    setLocalValue(val);
-    if (previewMode) {
-      wsClient.send({
-        type: "ui.change",
-        element_id: element.id,
-        value: val,
-      });
-    }
-  };
 
   return (
     <div
@@ -60,9 +39,8 @@ export function TextInputRenderer({ element, previewMode, liveState }: Props) {
       <input
         type="text"
         value={displayValue}
-        onChange={handleChange}
+        readOnly
         placeholder={element.placeholder || ""}
-        disabled={!previewMode}
         style={{
           width: "100%",
           padding: "6px 8px",
@@ -73,7 +51,6 @@ export function TextInputRenderer({ element, previewMode, liveState }: Props) {
           fontSize: element.style.font_size
             ? `${element.style.font_size}px`
             : "14px",
-          cursor: previewMode ? "text" : "default",
         }}
       />
     </div>
