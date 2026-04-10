@@ -61,10 +61,10 @@ Each entry in the array represents one physical button:
       "source": "state",
       "key": "device.my_device.power",   // State key to watch
       "condition": { "equals": true },   // When this matches, button shows active style
-      "style_active": { "bg_color": "#2e7d32", "text_color": "#ffffff", "icon": "power" },
-      "style_inactive": { "bg_color": "#c62828", "text_color": "#ffffff", "icon": "power-off" },
-      "label_active": "ON",              // Override label when active (optional)
-      "label_inactive": "OFF"            // Override label when inactive (optional)
+      "style_active": { "bg_color": "#ff0606", "text_color": "#ffffff" },
+      "style_inactive": { "bg_color": "#56aa02", "text_color": "#ffffff" },
+      "label_active": "OFF",             // Condition matches (device IS on) — show what pressing WILL DO
+      "label_inactive": "ON"            // Condition doesn't match (device is off) — show what pressing WILL DO
     }
   }
 }

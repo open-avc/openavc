@@ -36,6 +36,7 @@ interface ButtonBindingEditorProps {
   onLabelChange?: (label: string) => void;
   showRelease?: boolean;
   showLabel?: boolean;
+  showToggleLabels?: boolean;
 }
 
 export function ButtonBindingEditor({
@@ -46,6 +47,7 @@ export function ButtonBindingEditor({
   onLabelChange,
   showRelease = false,
   showLabel = true,
+  showToggleLabels = false,
 }: ButtonBindingEditorProps) {
   const [expandedSlot, setExpandedSlot] = useState<string | null>(null);
 
@@ -314,14 +316,14 @@ export function ButtonBindingEditor({
                 )}
               </div>
             )}
-            {toggleKey && (
+            {toggleKey && showToggleLabels && (
               <div style={{ display: "flex", gap: "var(--space-sm)" }}>
                 <div style={{ flex: 1 }}>
                   <label style={hintStyle}>On Label</label>
                   <input
                     value={toggleOnLabel}
                     onChange={(e) => updatePress({ on_label: e.target.value })}
-                    placeholder="e.g. ON"
+                    placeholder="e.g. Turn Off"
                     style={inputStyle}
                   />
                 </div>
@@ -330,7 +332,7 @@ export function ButtonBindingEditor({
                   <input
                     value={toggleOffLabel}
                     onChange={(e) => updatePress({ off_label: e.target.value })}
-                    placeholder="e.g. OFF"
+                    placeholder="e.g. Turn On"
                     style={inputStyle}
                   />
                 </div>

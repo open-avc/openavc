@@ -1033,6 +1033,7 @@ function ControlAssignmentPanel({
           }
           onLabelChange={(label) => onUpdate({ label: label || undefined })}
           showLabel={true}
+          showToggleLabels={true}
         />
       ) : (
         <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Loading project...</div>
