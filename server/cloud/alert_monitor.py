@@ -372,16 +372,18 @@ class AlertMonitor:
 
 def _compare(value: Any, operator: str, threshold: Any) -> bool:
     """Compare a value against a threshold using the given operator."""
+    import re
+
     try:
         # Handle None explicitly
         if value is None:
-            return operator == "=" and threshold is None
+            return operator in ("=", "==") and threshold is None
         if threshold is None:
             return operator == "!=" and value is not None
 
         # Handle booleans — compare as strings to avoid bool/int confusion
         if isinstance(value, bool) or isinstance(threshold, bool):
-            if operator == "=":
+            if operator in ("=", "=="):
                 return str(value).lower() == str(threshold).lower()
             if operator == "!=":
                 return str(value).lower() != str(threshold).lower()
@@ -398,11 +400,17 @@ def _compare(value: Any, operator: str, threshold: Any) -> bool:
                 return v >= t
             if operator == "<=":
                 return v <= t
-        if operator == "=":
+        if operator in ("=", "=="):
             return str(value) == str(threshold)
         if operator == "!=":
             return str(value) != str(threshold)
-    except (TypeError, ValueError):
+        if operator == "contains":
+            return str(threshold) in str(value)
+        if operator == "not_contains":
+            return str(threshold) not in str(value)
+        if operator == "matches":
+            return bool(re.search(str(threshold), str(value)))
+    except (TypeError, ValueError, re.error):
         return False
     return False
 

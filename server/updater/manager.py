@@ -120,7 +120,7 @@ class UpdateManager:
         return ""
 
     async def _download_update(self, release: ReleaseInfo) -> Path:
-        """Download the platform-specific update artifact.
+        """Download the platform-specific update artifact from GitHub release assets.
 
         Returns the path to the downloaded file.
         """
@@ -129,15 +129,27 @@ class UpdateManager:
         if not artifact_url:
             raise RuntimeError(f"Artifact '{artifact_name}' not found in release assets")
 
-        checksum_url = self._find_asset_url(release, "SHA256SUMS.txt")
+        artifact_path = await self._download_artifact(artifact_url, artifact_name)
 
-        # Prepare download directory
+        # Verify checksum via SHA256SUMS.txt from release assets
+        checksum_url = self._find_asset_url(release, "SHA256SUMS.txt")
+        if checksum_url:
+            await self._verify_checksum(checksum_url=checksum_url,
+                                        artifact_path=artifact_path, artifact_name=artifact_name)
+        else:
+            log.warning("No SHA256SUMS.txt in release, skipping checksum verification")
+
+        return artifact_path
+
+    async def _download_artifact(self, url: str, filename: str) -> Path:
+        """Download a file from a URL with progress tracking and resume support.
+
+        Returns the path to the downloaded file.
+        """
         download_dir = self._data_dir / "update-cache"
         download_dir.mkdir(parents=True, exist_ok=True)
-        artifact_path = download_dir / artifact_name
+        artifact_path = download_dir / filename
 
-        # Check available disk space (require at least 500 MB)
-        import shutil
         disk = shutil.disk_usage(str(download_dir))
         if disk.free < 500 * 1024 * 1024:
             free_mb = disk.free // (1024 * 1024)
@@ -145,11 +157,11 @@ class UpdateManager:
                 f"Insufficient disk space for update: {free_mb} MB free, need at least 500 MB"
             )
 
-        log.info("Downloading update artifact: %s", artifact_url)
+        log.info("Downloading update artifact: %s", url)
 
-        # Download artifact with progress tracking and resume support
         headers: dict[str, str] = {}
         downloaded = 0
+        total = 0
         file_mode = "wb"
         if artifact_path.exists():
             downloaded = artifact_path.stat().st_size
@@ -158,21 +170,18 @@ class UpdateManager:
             log.info("Resuming download from byte %d", downloaded)
 
         async with httpx.AsyncClient(timeout=300.0, follow_redirects=True) as client:
-            async with client.stream("GET", artifact_url, headers=headers) as response:
+            async with client.stream("GET", url, headers=headers) as response:
                 if response.status_code == 416:
-                    # Range not satisfiable — file already complete or server doesn't support range
                     log.info("Download already complete (416), re-downloading")
                     downloaded = 0
                     file_mode = "wb"
-                    # Fall through to re-download without Range header below
                 elif response.status_code == 206:
-                    # Partial content — resume working
                     total = downloaded + int(response.headers.get("content-length", 0))
                 else:
                     response.raise_for_status()
                     total = int(response.headers.get("content-length", 0))
                     downloaded = 0
-                    file_mode = "wb"  # Server doesn't support range, start over
+                    file_mode = "wb"
 
                 with open(artifact_path, file_mode) as f:
                     async for chunk in response.aiter_bytes(chunk_size=65536):
@@ -183,14 +192,6 @@ class UpdateManager:
                             self._set_state("system.update_progress", pct)
 
         log.info("Downloaded: %s (%d bytes)", artifact_path.name, artifact_path.stat().st_size)
-
-        # Download and verify checksum
-        if checksum_url:
-            await self._verify_checksum(checksum_url=checksum_url,
-                                        artifact_path=artifact_path, artifact_name=artifact_name)
-        else:
-            log.warning("No SHA256SUMS.txt in release, skipping checksum verification")
-
         return artifact_path
 
     async def _verify_checksum(self, *, checksum_url: str, artifact_path: Path,
@@ -350,6 +351,103 @@ class UpdateManager:
             return {"success": False, "error": error_msg}
         finally:
             self._update_in_progress = False
+
+    async def apply_cloud_update(
+        self, target_version: str, update_url: str,
+        checksum_sha256: str | None = None,
+    ) -> dict[str, Any]:
+        """Download and apply an update using a cloud-provided URL and checksum.
+
+        Unlike apply_update() which discovers artifacts from GitHub Releases,
+        this method uses the exact URL and checksum the cloud platform provides.
+        """
+        if self._update_in_progress:
+            return {"success": False, "error": "Update already in progress"}
+
+        if not can_self_update(self._deployment_type):
+            return {
+                "success": False,
+                "error": "This deployment type does not support self-update.",
+                "instructions": update_instructions(self._deployment_type, target_version),
+            }
+
+        self._update_in_progress = True
+        self._set_state("system.update_error", "")
+
+        try:
+            # Step 1: Backup
+            self._set_state("system.update_status", "backing_up")
+            from server.updater.backup import create_backup, cleanup_old_backups
+            backup_path = create_backup(self._data_dir, __version__)
+            cleanup_old_backups(self._data_dir)
+            log.info("Pre-update backup created: %s", backup_path)
+
+            # Step 2: Download from cloud-provided URL
+            # Derive filename from URL path (GitHub URLs end with the artifact name)
+            from urllib.parse import urlparse
+            url_path = urlparse(update_url).path
+            filename = url_path.rsplit("/", 1)[-1] if "/" in url_path else f"update-{target_version}"
+
+            self._set_state("system.update_status", "downloading")
+            self._set_state("system.update_progress", 0)
+            artifact_path = await self._download_artifact(update_url, filename)
+            self._set_state("system.update_progress", 100)
+
+            # Step 3: Verify checksum if provided
+            if checksum_sha256:
+                self._set_state("system.update_status", "verifying")
+                self._verify_hash(artifact_path, checksum_sha256)
+
+            # Step 4: Write pending-update marker
+            from server.updater.rollback import write_pending_marker
+            write_pending_marker(self._data_dir, __version__, target_version)
+
+            # Step 5: Apply (platform-specific)
+            self._set_state("system.update_status", "applying")
+            if self._deployment_type == DeploymentType.WINDOWS_INSTALLER:
+                self._apply_windows(artifact_path, target_version)
+            elif self._deployment_type == DeploymentType.LINUX_PACKAGE:
+                await self._apply_linux(artifact_path)
+
+            # Step 6: Record success and restart
+            self._add_history_entry(__version__, target_version, "success")
+
+            self._set_state("system.update_status", "restarting")
+            log.info("Update to v%s applied (cloud URL), restarting...", target_version)
+
+            asyncio.get_event_loop().call_later(1.0, self._restart_process)
+
+            return {"success": True, "message": f"Update to v{target_version} started"}
+
+        except Exception as e:
+            error_msg = f"Update failed: {e}"
+            log.exception(error_msg)
+            self._set_state("system.update_status", "error")
+            self._set_state("system.update_error", error_msg)
+            self._add_history_entry(__version__, target_version, "failed", error_msg)
+            return {"success": False, "error": error_msg}
+        finally:
+            self._update_in_progress = False
+
+    def _verify_hash(self, artifact_path: Path, expected_hash: str) -> None:
+        """Verify a downloaded artifact against a known SHA-256 hash."""
+        sha256 = hashlib.sha256()
+        with open(artifact_path, "rb") as f:
+            while True:
+                chunk = f.read(65536)
+                if not chunk:
+                    break
+                sha256.update(chunk)
+        actual_hash = sha256.hexdigest().lower()
+        expected_hash = expected_hash.lower()
+
+        if actual_hash != expected_hash:
+            artifact_path.unlink(missing_ok=True)
+            raise RuntimeError(
+                f"Checksum mismatch: expected {expected_hash[:16]}..., got {actual_hash[:16]}..."
+            )
+
+        log.info("Checksum verified for %s", artifact_path.name)
 
     def _apply_windows(self, artifact_path: Path, new_version: str) -> None:
         """Apply update on Windows via silent installer execution.

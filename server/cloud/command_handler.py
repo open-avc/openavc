@@ -235,12 +235,14 @@ class CommandHandler:
     ) -> None:
         """Handle a software update request from the cloud.
 
-        Triggers a check-and-apply flow through UpdateManager.
-        For non-self-updating deployments (Docker, git), acknowledges
-        but does not attempt to apply.
+        When the cloud provides an update_url, downloads directly from that URL
+        and verifies against the provided checksum. Otherwise falls back to
+        checking GitHub Releases independently.
         """
         target_version = payload.get("target_version", "")
         auto_restart = payload.get("auto_restart", True)
+        update_url = payload.get("update_url", "")
+        checksum_sha256 = payload.get("checksum_sha256")
         log.info(
             f"Cloud software update: {user_name} → version={target_version}"
         )
@@ -252,7 +254,6 @@ class CommandHandler:
             "request_id": request_id,
         })
 
-        # Use UpdateManager to check and apply
         try:
             from server.updater.platform import can_self_update, detect_deployment_type
 
@@ -265,9 +266,6 @@ class CommandHandler:
                 )
                 return
 
-            # Run check
-            check_result = await self._update_manager.check_for_updates()
-
             if not can_self_update(deployment_type):
                 await self._send_result(
                     request_id, True,
@@ -275,25 +273,38 @@ class CommandHandler:
                 )
                 return
 
-            if not check_result.get("update_available"):
+            if not auto_restart:
                 await self._send_result(
                     request_id, True,
-                    result="System is already up to date.",
+                    result=f"Update to {target_version} available. auto_restart=false, waiting for manual apply.",
                 )
                 return
 
-            # Apply the update
-            if auto_restart:
-                apply_result = await self._update_manager.apply_update()
+            # Cloud provided a direct URL — use it instead of checking GitHub
+            if update_url:
+                apply_result = await self._update_manager.apply_cloud_update(
+                    target_version, update_url, checksum_sha256,
+                )
                 await self._send_result(
                     request_id, apply_result.get("success", False),
                     result=apply_result.get("message"),
                     error=apply_result.get("error"),
                 )
             else:
+                # Fallback: no URL provided, check GitHub independently
+                check_result = await self._update_manager.check_for_updates()
+                if not check_result.get("update_available"):
+                    await self._send_result(
+                        request_id, True,
+                        result="System is already up to date.",
+                    )
+                    return
+
+                apply_result = await self._update_manager.apply_update()
                 await self._send_result(
-                    request_id, True,
-                    result=f"Update to {target_version} available. auto_restart=false, waiting for manual apply.",
+                    request_id, apply_result.get("success", False),
+                    result=apply_result.get("message"),
+                    error=apply_result.get("error"),
                 )
 
         except Exception as e:

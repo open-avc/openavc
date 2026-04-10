@@ -125,6 +125,39 @@ def test_compare_neq():
     assert _compare("on", "!=", "on") is False
 
 
+def test_compare_double_eq():
+    """== operator works the same as ="""
+    assert _compare("on", "==", "on") is True
+    assert _compare("off", "==", "on") is False
+    assert _compare(10, "==", 10) is True
+    assert _compare(None, "==", None) is True
+    assert _compare(True, "==", True) is True
+    assert _compare(True, "==", False) is False
+
+
+def test_compare_contains():
+    assert _compare("error: device offline", "contains", "offline") is True
+    assert _compare("error: device offline", "contains", "timeout") is False
+    assert _compare("HDMI1", "contains", "HDMI") is True
+    assert _compare(12345, "contains", "234") is True  # coerced to str
+
+
+def test_compare_not_contains():
+    assert _compare("all systems normal", "not_contains", "error") is True
+    assert _compare("error detected", "not_contains", "error") is False
+
+
+def test_compare_matches():
+    assert _compare("error code 42", "matches", r"code \d+") is True
+    assert _compare("no match here", "matches", r"code \d+") is False
+    assert _compare("HDMI1", "matches", r"^HDMI\d$") is True
+
+
+def test_compare_matches_invalid_regex():
+    """Invalid regex pattern returns False, doesn't crash."""
+    assert _compare("test", "matches", r"[invalid") is False
+
+
 def test_compare_invalid_values():
     assert _compare("abc", ">", 5) is False
     assert _compare(None, ">", 5) is False
