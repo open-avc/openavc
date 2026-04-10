@@ -24,7 +24,7 @@ from server.cloud.protocol import (
     CONFIG_UPDATE, CAPABILITIES_UPDATE, THROTTLE, ERROR,
     COMMAND, CONFIG_PUSH, RESTART, DIAGNOSTIC,
     SOFTWARE_UPDATE, TUNNEL_OPEN, TUNNEL_CLOSE, ALERT_RULES_UPDATE,
-    AI_TOOL_CALL, GAP_REPORT,
+    AI_TOOL_CALL, GAP_REPORT, GET_PROJECT, GET_DEVICE_COMMANDS,
     build_pong, build_signed_message,
     parse_message, is_handshake_message,
     extract_payload, ProtocolError,
@@ -473,9 +473,9 @@ class CloudAgent:
                 gap_msg = build_signed_message(
                     GAP_REPORT,
                     {"missing_from": gap_start, "missing_to": gap_end},
-                    session_id=self._session.session_id if self._session else "",
-                    signing_key=self._session.signing_key if self._session else b"",
                     seq=self._sequencer.next_seq,
+                    session_token=self._session.session_token if self._session else "",
+                    signing_key=self._session.signing_key if self._session else b"",
                 )
                 self._sequencer.assign_seq(gap_msg)
                 await self._send_raw(gap_msg)
@@ -503,7 +503,7 @@ class CloudAgent:
             self._handle_throttle(msg)
         elif msg_type == ERROR:
             self._handle_error(msg)
-        elif msg_type in (COMMAND, CONFIG_PUSH, RESTART, DIAGNOSTIC):
+        elif msg_type in (COMMAND, CONFIG_PUSH, RESTART, DIAGNOSTIC, GET_PROJECT, GET_DEVICE_COMMANDS):
             if self._command_handler:
                 await self._command_handler.handle(msg)
         elif msg_type == AI_TOOL_CALL:
