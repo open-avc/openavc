@@ -656,6 +656,7 @@ export interface DiscoveryConfig {
   snmp_community: string;
   gentle_mode: boolean;
   scan_depth: ScanDepth;
+  max_subnet_size: number;
 }
 
 export async function discoveryStartScan(options?: {
@@ -665,6 +666,7 @@ export async function discoveryStartScan(options?: {
   snmp_community?: string;
   gentle_mode?: boolean;
   scan_depth?: ScanDepth;
+  max_subnet_size?: number;
   timeout?: number;
 }): Promise<{ scan_id: string; status: string; subnets: string[] }> {
   return request("/discovery/scan", {

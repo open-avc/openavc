@@ -22,7 +22,8 @@ _IS_WINDOWS = platform.system() == "Windows"
 _VIRTUAL_ADAPTER_PATTERNS = re.compile(
     r"hyper-v|virtualbox|vmware|vmnet|docker|veth|wsl|"
     r"vEthernet|ham|loopback|pseudo|teredo|isatap|"
-    r"vpn|tap-|tun\d|wireguard|nordlynx|mullvad",
+    r"vpn|tap-|tun\d|wireguard|nordlynx|mullvad|"
+    r"br-[0-9a-f]|cni\d|flannel|calico|virbr|podman",
     re.IGNORECASE,
 )
 
@@ -127,17 +128,27 @@ def get_local_subnets(interface_ip: str | None = None) -> list[str]:
     return subnets
 
 
-def _parse_cidr(cidr: str) -> list[str]:
-    """Expand a CIDR range to a list of host IPs (excluding network and broadcast)."""
+def _parse_cidr(cidr: str, min_prefix: int = 20) -> list[str]:
+    """Expand a CIDR range to a list of host IPs (excluding network and broadcast).
+
+    Args:
+        min_prefix: Minimum prefix length allowed. Subnets larger than this
+            (smaller prefix number) are skipped. Default /20 (~4K hosts).
+    """
     try:
         network = ipaddress.IPv4Network(cidr, strict=False)
     except ValueError:
         log.warning("Invalid CIDR: %s", cidr)
         return []
 
-    # For very large subnets, cap to avoid accidental scans of huge ranges
-    if network.prefixlen < 20:
-        log.warning("Subnet %s too large (/%d), skipping. Max is /20.", cidr, network.prefixlen)
+    # Safety: skip subnets larger than the configured limit
+    if network.prefixlen < min_prefix:
+        log.warning(
+            "Subnet %s too large (/%d), skipping (limit is /%d). "
+            "Increase 'Max subnet size' in Discovery Settings, or set a specific "
+            "control interface in System Settings.",
+            cidr, network.prefixlen, min_prefix,
+        )
         return []
 
     return [str(ip) for ip in network.hosts()]
@@ -149,6 +160,7 @@ async def ping_sweep(
     timeout: float = 1.0,
     on_found: Callable[[str], Awaitable[None]] | None = None,
     on_progress: Callable[[int, int], Awaitable[None]] | None = None,
+    min_prefix: int = 20,
 ) -> list[str]:
     """Ping all addresses in the given subnets. Returns list of responding IPs.
 
@@ -158,10 +170,11 @@ async def ping_sweep(
     Args:
         on_found: Called with IP when a host responds.
         on_progress: Called with (completed_count, total_count) after each host.
+        min_prefix: Minimum CIDR prefix length. Subnets larger than this are skipped.
     """
     all_ips: list[str] = []
     for cidr in subnets:
-        all_ips.extend(_parse_cidr(cidr))
+        all_ips.extend(_parse_cidr(cidr, min_prefix=min_prefix))
 
     if not all_ips:
         return []

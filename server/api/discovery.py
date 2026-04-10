@@ -119,6 +119,7 @@ class ScanRequest(BaseModel):
     snmp_community: str = "public"
     gentle_mode: bool = False
     scan_depth: ScanDepth = "standard"
+    max_subnet_size: int = 20  # Min CIDR prefix (/20=4K hosts, /16=65K)
     timeout: float | None = None  # None = auto from scan_depth
 
 
@@ -127,6 +128,7 @@ class DiscoveryConfigRequest(BaseModel):
     snmp_community: str = "public"
     gentle_mode: bool = False
     scan_depth: ScanDepth = "standard"
+    max_subnet_size: int = 20
 
 
 class AddDeviceRequest(BaseModel):
@@ -154,6 +156,8 @@ async def start_scan(req: ScanRequest) -> dict[str, Any]:
     engine.config["snmp_community"] = req.snmp_community
     engine.config["gentle_mode"] = req.gentle_mode
     engine.config["scan_depth"] = req.scan_depth
+    max_prefix = max(8, min(24, req.max_subnet_size))  # Clamp to /8../24
+    engine.config["max_subnet_size"] = max_prefix
 
     # Validate subnet inputs
     import ipaddress
@@ -163,8 +167,11 @@ async def start_scan(req: ScanRequest) -> dict[str, Any]:
     for subnet in all_subnets:
         try:
             net = ipaddress.ip_network(subnet, strict=False)
-            if net.prefixlen < 20:
-                raise HTTPException(status_code=400, detail=f"Subnet {subnet} too large (min prefix /20)")
+            if net.prefixlen < max_prefix:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Subnet {subnet} too large (min prefix /{max_prefix})",
+                )
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Invalid CIDR: {subnet}")
 
@@ -273,6 +280,7 @@ async def update_config(req: DiscoveryConfigRequest) -> dict[str, str]:
     engine.config["snmp_community"] = req.snmp_community
     engine.config["gentle_mode"] = req.gentle_mode
     engine.config["scan_depth"] = req.scan_depth
+    engine.config["max_subnet_size"] = max(8, min(24, req.max_subnet_size))
     return {"status": "ok"}
 
 

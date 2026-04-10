@@ -111,6 +111,7 @@ export function DiscoveryPanel() {
   const [snmpCommunity, setSnmpCommunity] = useState("public");
   const [gentleMode, setGentleMode] = useState(false);
   const [scanDepth, setScanDepth] = useState<api.ScanDepth>("standard");
+  const [maxSubnetSize, setMaxSubnetSize] = useState(20);
 
   // Active control interface
   const [controlInterface, setControlInterface] = useState("");
@@ -124,6 +125,7 @@ export function DiscoveryPanel() {
       setSnmpCommunity(c.snmp_community);
       setGentleMode(c.gentle_mode);
       if (c.scan_depth) setScanDepth(c.scan_depth);
+      if (c.max_subnet_size) setMaxSubnetSize(c.max_subnet_size);
     }).catch(console.error);
     // If there are existing results, load them
     api.discoveryGetResults().then((r) => {
@@ -156,6 +158,7 @@ export function DiscoveryPanel() {
         snmp_community: snmpCommunity,
         gentle_mode: gentleMode,
         scan_depth: scanDepth,
+        max_subnet_size: maxSubnetSize,
       });
       // Only set running after API confirms the scan started
       setStatus("running");
@@ -163,7 +166,7 @@ export function DiscoveryPanel() {
       setStatus("idle");
       showError(String(e));
     }
-  }, [extraSubnet, snmpEnabled, snmpCommunity, gentleMode, scanDepth, setStatus]);
+  }, [extraSubnet, snmpEnabled, snmpCommunity, gentleMode, scanDepth, maxSubnetSize, setStatus]);
 
   const handleStopScan = useCallback(async () => {
     await api.discoveryStopScan();
@@ -176,9 +179,9 @@ export function DiscoveryPanel() {
   }, [clear]);
 
   const handleSaveSettings = useCallback(async () => {
-    await api.discoveryUpdateConfig({ snmp_enabled: snmpEnabled, snmp_community: snmpCommunity, gentle_mode: gentleMode, scan_depth: scanDepth });
+    await api.discoveryUpdateConfig({ snmp_enabled: snmpEnabled, snmp_community: snmpCommunity, gentle_mode: gentleMode, scan_depth: scanDepth, max_subnet_size: maxSubnetSize });
     setShowSettings(false);
-  }, [snmpEnabled, snmpCommunity, gentleMode, scanDepth]);
+  }, [snmpEnabled, snmpCommunity, gentleMode, scanDepth, maxSubnetSize]);
 
   const handleExport = useCallback(async () => {
     try {
@@ -380,6 +383,20 @@ export function DiscoveryPanel() {
                 placeholder="e.g. 10.1.2.0/24"
                 style={{ marginLeft: "var(--space-xs)", width: 160 }}
               />
+            </label>
+            <label>
+              Max subnet size
+              <select
+                value={maxSubnetSize}
+                onChange={(e) => setMaxSubnetSize(Number(e.target.value))}
+                style={{ marginLeft: "var(--space-xs)", width: 160 }}
+              >
+                <option value={24}>/24 (254 hosts)</option>
+                <option value={22}>/22 (~1K hosts)</option>
+                <option value={20}>/20 (~4K hosts)</option>
+                <option value={18}>/18 (~16K hosts)</option>
+                <option value={16}>/16 (~65K hosts)</option>
+              </select>
             </label>
           </div>
 

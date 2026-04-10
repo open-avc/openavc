@@ -151,6 +151,7 @@ class DiscoveryEngine:
             "snmp_community": "public",
             "gentle_mode": False,
             "scan_depth": "standard",
+            "max_subnet_size": 20,  # Min CIDR prefix (/20 = ~4K hosts, /16 = ~65K)
         }
 
     def _get_control_interface(self) -> str:
@@ -267,6 +268,10 @@ class DiscoveryEngine:
 
             # Determine target subnets (filtered to control interface if set)
             control_ip = self._get_control_interface()
+            if control_ip:
+                log.info("Control interface set to %s — filtering subnets to this adapter", control_ip)
+            else:
+                log.info("No control interface set — scanning all physical adapters")
             targets = subnets if subnets else get_local_subnets(
                 interface_ip=control_ip or None
             )
@@ -274,6 +279,8 @@ class DiscoveryEngine:
                 for s in extra_subnets:
                     if s not in targets:
                         targets.append(s)
+
+            log.info("Discovery target subnets: %s", targets)
 
             if not targets:
                 raise ValueError("No subnets to scan. Specify subnets manually.")
@@ -412,6 +419,7 @@ class DiscoveryEngine:
                 concurrency=ping_concurrency,
                 on_found=on_ping_found,
                 on_progress=on_ping_progress,
+                min_prefix=self.config.get("max_subnet_size", 20),
             )
             self.scan_status.total_hosts_scanned = ping_total
 
