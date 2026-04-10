@@ -365,3 +365,16 @@ jobs:
           curl -s -X POST "${{ secrets.SITE_DEPLOY_HOOK }}"
         env:
           SITE_DEPLOY_HOOK: ${{ secrets.SITE_DEPLOY_HOOK }}
+
+      - name: Notify Discord
+        if: ${{ needs.version.outputs.prerelease == 'false' }}
+        run: |
+          RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/v${VERSION}"
+          curl -s -H "Content-Type: application/json" -d "{
+            \"embeds\": [{
+              \"title\": \"OpenAVC v${VERSION} Released\",
+              \"url\": \"${RELEASE_URL}\",
+              \"color\": 5682323,
+              \"description\": \"A new version of OpenAVC is available.\\n\\n[View release notes and downloads](${RELEASE_URL})\"
+            }]
+          }" "${{ secrets.DISCORD_WEBHOOK }}"
