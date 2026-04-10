@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
-import { Search, CheckCircle, Download, RefreshCw, AlertTriangle, Shield, X, PlayCircle } from "lucide-react";
+import { Search, CheckCircle, Download, RefreshCw, AlertTriangle, Shield, X, PlayCircle, ArrowUpCircle, Loader2 } from "lucide-react";
 import { useDriverBuilderStore } from "../../store/driverBuilderStore";
+import { hasUpdate } from "../../api/types";
 import type { CommunityDriver } from "../../api/types";
 
 const COMMUNITY_BASE_URL =
@@ -53,6 +54,7 @@ export function CommunityBrowser() {
   }, [loadCommunityDrivers, loadInstalledDrivers]);
 
   const installedIdSet = new Set(installedDrivers.map((d) => d.id));
+  const installedVersions = new Map(installedDrivers.map((d) => [d.id, d.version ?? ""]));
 
   const filteredDrivers = communityDrivers.filter((driver) => {
     // Category filter
@@ -85,6 +87,30 @@ export function CommunityBrowser() {
       });
       try {
         await useDriverBuilderStore.getState().installDriver(driver.id, fileUrl);
+      } catch (e) {
+        setInstallErrors((prev) => ({ ...prev, [driver.id]: String(e) }));
+      } finally {
+        setInstallingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(driver.id);
+          return next;
+        });
+      }
+    },
+    []
+  );
+
+  const handleUpdate = useCallback(
+    async (driver: CommunityDriver) => {
+      const fileUrl = `${COMMUNITY_BASE_URL}${driver.file}`;
+      setInstallingIds((prev) => new Set(prev).add(driver.id));
+      setInstallErrors((prev) => {
+        const next = { ...prev };
+        delete next[driver.id];
+        return next;
+      });
+      try {
+        await useDriverBuilderStore.getState().updateDriver(driver.id, fileUrl);
       } catch (e) {
         setInstallErrors((prev) => ({ ...prev, [driver.id]: String(e) }));
       } finally {
@@ -225,7 +251,9 @@ export function CommunityBrowser() {
                 installed={installedIdSet.has(driver.id)}
                 installing={installingIds.has(driver.id)}
                 installError={installErrors[driver.id] || null}
+                updateAvailable={hasUpdate(installedVersions.get(driver.id) ?? "", driver.version)}
                 onInstall={handleInstall}
+                onUpdate={handleUpdate}
                 onSelect={setSelectedDriver}
               />
             ))}
@@ -257,7 +285,9 @@ export function CommunityBrowser() {
           installed={installedIdSet.has(selectedDriver.id)}
           installing={installingIds.has(selectedDriver.id)}
           installError={installErrors[selectedDriver.id] || null}
+          updateAvailable={hasUpdate(installedVersions.get(selectedDriver.id) ?? "", selectedDriver.version)}
           onInstall={handleInstall}
+          onUpdate={handleUpdate}
           onClose={() => setSelectedDriver(null)}
         />
       )}
@@ -272,14 +302,18 @@ function DriverCard({
   installed,
   installing,
   installError,
+  updateAvailable,
   onInstall,
+  onUpdate,
   onSelect,
 }: {
   driver: CommunityDriver;
   installed: boolean;
   installing: boolean;
   installError: string | null;
+  updateAvailable: boolean;
   onInstall: (driver: CommunityDriver) => void;
+  onUpdate: (driver: CommunityDriver) => void;
   onSelect: (driver: CommunityDriver) => void;
 }) {
   const [hovered, setHovered] = useState(false);
@@ -425,22 +459,61 @@ function DriverCard({
       {/* Action button */}
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
         {installed ? (
-          <span
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "4px",
-              padding: "var(--space-xs) var(--space-md)",
-              borderRadius: "4px",
-              fontSize: "var(--font-size-sm)",
-              color: "var(--color-success)",
-              background: "rgba(76,175,80,0.12)",
-              fontWeight: 500,
-            }}
-          >
-            <CheckCircle size={14} />
-            Installed
-          </span>
+          updateAvailable && !installing ? (
+            <button
+              onClick={(e) => { e.stopPropagation(); onUpdate(driver); }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "4px",
+                padding: "var(--space-xs) var(--space-md)",
+                borderRadius: "4px",
+                fontSize: "var(--font-size-sm)",
+                background: "#007acc",
+                color: "#fff",
+                border: "none",
+                cursor: "pointer",
+                fontWeight: 500,
+              }}
+            >
+              <ArrowUpCircle size={14} />
+              Update
+            </button>
+          ) : installing ? (
+            <span
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "4px",
+                padding: "var(--space-xs) var(--space-md)",
+                borderRadius: "4px",
+                fontSize: "var(--font-size-sm)",
+                color: "var(--text-muted)",
+                background: "var(--bg-hover)",
+                fontWeight: 500,
+              }}
+            >
+              <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />
+              Updating...
+            </span>
+          ) : (
+            <span
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "4px",
+                padding: "var(--space-xs) var(--space-md)",
+                borderRadius: "4px",
+                fontSize: "var(--font-size-sm)",
+                color: "var(--color-success)",
+                background: "rgba(76,175,80,0.12)",
+                fontWeight: 500,
+              }}
+            >
+              <CheckCircle size={14} />
+              Installed
+            </span>
+          )
         ) : (
           <button
             onClick={(e) => { e.stopPropagation(); onInstall(driver); }}
@@ -489,14 +562,18 @@ function CommunityDriverDetail({
   installed,
   installing,
   installError,
+  updateAvailable,
   onInstall,
+  onUpdate,
   onClose,
 }: {
   driver: CommunityDriver;
   installed: boolean;
   installing: boolean;
   installError: string | null;
+  updateAvailable: boolean;
   onInstall: (driver: CommunityDriver) => void;
+  onUpdate: (driver: CommunityDriver) => void;
   onClose: () => void;
 }) {
   const catColor = CATEGORY_COLORS[driver.category.toLowerCase()] || "#888";
@@ -689,22 +766,61 @@ function CommunityDriverDetail({
         {/* Action */}
         <div style={{ marginTop: "var(--space-lg)", display: "flex", justifyContent: "flex-end" }}>
           {installed ? (
-            <span
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "4px",
-                padding: "var(--space-sm) var(--space-lg)",
-                borderRadius: "4px",
-                fontSize: "var(--font-size-sm)",
-                color: "var(--color-success)",
-                background: "rgba(76,175,80,0.12)",
-                fontWeight: 500,
-              }}
-            >
-              <CheckCircle size={14} />
-              Installed
-            </span>
+            updateAvailable && !installing ? (
+              <button
+                onClick={() => onUpdate(driver)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  padding: "var(--space-sm) var(--space-lg)",
+                  borderRadius: "4px",
+                  fontSize: "var(--font-size-sm)",
+                  background: "#007acc",
+                  color: "#fff",
+                  border: "none",
+                  cursor: "pointer",
+                  fontWeight: 500,
+                }}
+              >
+                <ArrowUpCircle size={14} />
+                Update
+              </button>
+            ) : installing ? (
+              <span
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  padding: "var(--space-sm) var(--space-lg)",
+                  borderRadius: "4px",
+                  fontSize: "var(--font-size-sm)",
+                  color: "var(--text-muted)",
+                  background: "var(--bg-hover)",
+                  fontWeight: 500,
+                }}
+              >
+                <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />
+                Updating...
+              </span>
+            ) : (
+              <span
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  padding: "var(--space-sm) var(--space-lg)",
+                  borderRadius: "4px",
+                  fontSize: "var(--font-size-sm)",
+                  color: "var(--color-success)",
+                  background: "rgba(76,175,80,0.12)",
+                  fontWeight: 500,
+                }}
+              >
+                <CheckCircle size={14} />
+                Installed
+              </span>
+            )
           ) : (
             <button
               onClick={() => onInstall(driver)}

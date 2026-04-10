@@ -878,6 +878,7 @@ async def list_installed_community_drivers() -> dict[str, Any]:
                     "name": data.get("name", filepath.stem),
                     "format": "avcdriver",
                     "filename": filepath.name,
+                    "version": data.get("version", ""),
                 })
         except (yaml.YAMLError, OSError):
             installed.append({
@@ -885,6 +886,7 @@ async def list_installed_community_drivers() -> dict[str, Any]:
                 "name": filepath.stem,
                 "format": "avcdriver",
                 "filename": filepath.name,
+                "version": "",
             })
 
     # Scan .py files
@@ -895,6 +897,7 @@ async def list_installed_community_drivers() -> dict[str, Any]:
         driver_name = filepath.stem.replace("_", " ").title()
 
         # Try to extract actual info from the loaded registry
+        driver_version = ""
         from server.core.device_manager import _DRIVER_REGISTRY
         for reg_id, cls in _DRIVER_REGISTRY.items():
             info = cls.DRIVER_INFO
@@ -904,6 +907,7 @@ async def list_installed_community_drivers() -> dict[str, Any]:
             ):
                 driver_id = info["id"]
                 driver_name = info.get("name", driver_name)
+                driver_version = info.get("version", "")
                 break
 
         installed.append({
@@ -911,6 +915,7 @@ async def list_installed_community_drivers() -> dict[str, Any]:
             "name": driver_name,
             "format": "python",
             "filename": filepath.name,
+            "version": driver_version,
         })
 
     return {"drivers": installed}
@@ -968,6 +973,100 @@ async def uninstall_driver(driver_id: str) -> dict[str, Any]:
     await refresh_all_device_matches()
 
     return {"status": "uninstalled", "driver_id": driver_id}
+
+
+@router.post("/drivers/installed/{driver_id}/update")
+async def update_driver(driver_id: str, request: Request) -> dict[str, Any]:
+    """Update an installed community driver to a newer version."""
+    import httpx
+    from server.core.device_manager import register_driver, unregister_driver
+    from server.drivers.driver_loader import (
+        load_driver_file,
+        load_python_driver_file,
+    )
+    from server.drivers.configurable import create_configurable_driver_class
+
+    driver_repo = _get_driver_repo_dir()
+    if not driver_repo.exists():
+        raise HTTPException(status_code=404, detail="Driver not found")
+
+    body = await request.json()
+    file_url = body.get("file_url")
+    if not file_url:
+        raise HTTPException(status_code=422, detail="file_url is required")
+
+    # Find the existing file
+    old_file = None
+    for filepath in list(driver_repo.glob("*.avcdriver")) + list(driver_repo.glob("*.py")):
+        if filepath.name.startswith("_"):
+            continue
+        if filepath.stem == driver_id:
+            old_file = filepath
+            break
+        try:
+            if filepath.suffix == ".avcdriver":
+                import yaml
+                data = yaml.safe_load(filepath.read_text(encoding="utf-8"))
+                if isinstance(data, dict) and data.get("id") == driver_id:
+                    old_file = filepath
+                    break
+        except (yaml.YAMLError, OSError):
+            continue
+
+    if not old_file:
+        raise HTTPException(status_code=404, detail=f"Driver '{driver_id}' not found in driver_repo")
+
+    # Determine file type from URL
+    if file_url.endswith(".avcdriver"):
+        ext = ".avcdriver"
+    elif file_url.endswith(".py"):
+        ext = ".py"
+    else:
+        raise HTTPException(status_code=422, detail="URL must point to a .avcdriver or .py file")
+
+    # Download new version
+    safe_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in driver_id)
+    new_filename = f"{safe_id}{ext}"
+    new_filepath = driver_repo / new_filename
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(file_url)
+            resp.raise_for_status()
+            new_content = resp.text
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=502, detail=f"GitHub returned {e.response.status_code}")
+    except httpx.RequestError as e:
+        raise _api_error(502, f"Failed to download driver '{driver_id}'", e)
+
+    # Unregister old, delete old file, write new
+    unregister_driver(driver_id)
+    if old_file != new_filepath:
+        old_file.unlink(missing_ok=True)
+    new_filepath.write_text(new_content, encoding="utf-8")
+
+    # Load and register new version
+    try:
+        if ext == ".avcdriver":
+            driver_def = load_driver_file(new_filepath)
+            if driver_def is None:
+                raise HTTPException(status_code=422, detail="Invalid driver definition file")
+            driver_class = create_configurable_driver_class(driver_def)
+            register_driver(driver_class)
+        else:
+            driver_class = load_python_driver_file(new_filepath)
+            if driver_class is None:
+                raise HTTPException(status_code=422, detail="No valid driver class found in Python file")
+            register_driver(driver_class)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise _api_error(500, f"Failed to load updated driver '{driver_id}'", e)
+
+    from server.api.discovery import refresh_all_device_matches
+    await refresh_all_device_matches()
+
+    return {"status": "updated", "driver_id": driver_id, "file": new_filename}
 
 
 # --- State History ---

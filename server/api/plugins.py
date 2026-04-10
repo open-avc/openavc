@@ -343,7 +343,7 @@ async def install_plugin_endpoint(plugin_id: str, request: Request) -> dict[str,
 
 @router.post("/plugins/{plugin_id}/update")
 async def update_plugin_endpoint(plugin_id: str, request: Request) -> dict[str, Any]:
-    """Update an installed plugin to a newer version."""
+    """Update an installed plugin to a newer version, preserving config."""
     from server.core.plugin_installer import update_plugin
 
     body = await request.json()
@@ -351,8 +351,27 @@ async def update_plugin_endpoint(plugin_id: str, request: Request) -> dict[str, 
     if not file_url:
         raise HTTPException(status_code=422, detail="file_url is required")
 
+    engine = _get_engine()
+
     try:
+        # Stop plugin if running (must happen before files are deleted)
+        was_running = plugin_id in engine.plugin_loader._instances
+        if was_running:
+            await engine.plugin_loader.stop_plugin(plugin_id)
+
+        # Update files (rmtree + reinstall) — project config is untouched
         result = await update_plugin(plugin_id, file_url)
+
+        # Restart with existing config if it was running
+        restarted = False
+        if was_running and engine.project and plugin_id in engine.project.plugins:
+            config = engine.project.plugins[plugin_id].config
+            try:
+                restarted = await engine.plugin_loader.start_plugin(plugin_id, config)
+            except Exception as e:
+                log.warning(f"Plugin '{plugin_id}' updated but failed to restart: {e}")
+
+        result["restarted"] = restarted
         return result
     except ValueError as e:
         raise _api_error(404, f"Plugin '{plugin_id}' not found", e)

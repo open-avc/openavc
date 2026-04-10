@@ -543,6 +543,16 @@ export async function uninstallDriver(
   return request(`/drivers/installed/${driverId}`, { method: "DELETE" });
 }
 
+export async function updateCommunityDriver(
+  driverId: string,
+  fileUrl: string
+): Promise<{ status: string }> {
+  return request(`/drivers/installed/${driverId}/update`, {
+    method: "POST",
+    body: JSON.stringify({ file_url: fileUrl }),
+  });
+}
+
 // --- Cloud Connection ---
 
 export interface CloudStatus {

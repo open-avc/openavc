@@ -55,6 +55,7 @@ interface DriverBuilderState {
   loadInstalledDrivers: () => Promise<void>;
   installDriver: (driverId: string, fileUrl: string) => Promise<void>;
   uninstallDriver: (driverId: string) => Promise<void>;
+  updateDriver: (driverId: string, fileUrl: string) => Promise<void>;
 }
 
 export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => ({
@@ -224,6 +225,15 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => ({
     await Promise.all([
       get().loadRegisteredDrivers(),
       get().loadInstalledDrivers(),
+    ]);
+  },
+
+  updateDriver: async (driverId, fileUrl) => {
+    await api.updateCommunityDriver(driverId, fileUrl);
+    await Promise.all([
+      get().loadRegisteredDrivers(),
+      get().loadInstalledDrivers(),
+      get().loadDefinitions(),
     ]);
   },
 }));

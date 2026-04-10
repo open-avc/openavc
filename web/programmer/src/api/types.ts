@@ -576,4 +576,19 @@ export interface InstalledDriver {
   format: string;
   filename: string;
   source: string;  // 'builtin' | 'community' | 'user'
+  version: string;
+}
+
+/** Compare semver strings. Returns true if `available` is newer than `installed`. */
+export function hasUpdate(installed: string, available: string): boolean {
+  if (!installed || !available) return false;
+  const a = installed.split(".").map(Number);
+  const b = available.split(".").map(Number);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const ai = a[i] || 0;
+    const bi = b[i] || 0;
+    if (bi > ai) return true;
+    if (bi < ai) return false;
+  }
+  return false;
 }

@@ -3,9 +3,10 @@
  * install/uninstall. Mirrors CommunityBrowser for drivers.
  */
 import { useState, useEffect } from "react";
-import { Search, Download, Trash2, CheckCircle, Shield, Loader2, RefreshCw, AlertTriangle } from "lucide-react";
+import { Search, Download, Trash2, CheckCircle, Shield, Loader2, RefreshCw, AlertTriangle, ArrowUpCircle } from "lucide-react";
 import { usePluginStore } from "../../store/pluginStore";
 import type { CommunityPlugin } from "../../api/restClient";
+import { hasUpdate } from "../../api/types";
 
 const COMMUNITY_BASE_URL =
   "https://raw.githubusercontent.com/open-avc/openavc-plugins/main/";
@@ -33,6 +34,7 @@ export function BrowsePlugins() {
   const installingIds = usePluginStore((s) => s.installingIds);
   const loadCommunity = usePluginStore((s) => s.loadCommunity);
   const installCommunityPlugin = usePluginStore((s) => s.installCommunityPlugin);
+  const updateCommunityPlugin = usePluginStore((s) => s.updateCommunityPlugin);
   const uninstallPlugin = usePluginStore((s) => s.uninstallPlugin);
 
   const [search, setSearch] = useState("");
@@ -44,6 +46,7 @@ export function BrowsePlugins() {
   }, [loadCommunity]);
 
   const installedIds = new Set(installedPlugins.map((p) => p.id));
+  const installedVersions = new Map(installedPlugins.map((p) => [p.id, p.version]));
 
   const filtered = communityPlugins.filter((p) => {
     if (category !== "All" && (categoryMap[p.category] ?? p.category) !== category) {
@@ -80,6 +83,20 @@ export function BrowsePlugins() {
       await uninstallPlugin(pluginId);
     } catch (e) {
       setInstallError((prev) => ({ ...prev, [pluginId]: String(e) }));
+    }
+  };
+
+  const handleUpdate = async (plugin: CommunityPlugin) => {
+    setInstallError((prev) => {
+      const next = { ...prev };
+      delete next[plugin.id];
+      return next;
+    });
+    try {
+      const fileUrl = `${COMMUNITY_BASE_URL}${plugin.file}`;
+      await updateCommunityPlugin(plugin.id, fileUrl);
+    } catch (e) {
+      setInstallError((prev) => ({ ...prev, [plugin.id]: String(e) }));
     }
   };
 
@@ -210,8 +227,10 @@ export function BrowsePlugins() {
               plugin={plugin}
               installed={installedIds.has(plugin.id)}
               installing={installingIds.has(plugin.id)}
+              updateAvailable={hasUpdate(installedVersions.get(plugin.id) ?? "", plugin.version)}
               error={installError[plugin.id]}
               onInstall={() => handleInstall(plugin)}
+              onUpdate={() => handleUpdate(plugin)}
               onUninstall={() => handleUninstall(plugin.id)}
             />
           ))}
@@ -239,15 +258,19 @@ function PluginCard({
   plugin,
   installed,
   installing,
+  updateAvailable,
   error,
   onInstall,
+  onUpdate,
   onUninstall,
 }: {
   plugin: CommunityPlugin;
   installed: boolean;
   installing: boolean;
+  updateAvailable: boolean;
   error?: string;
   onInstall: () => void;
+  onUpdate: () => void;
   onUninstall: () => void;
 }) {
   return (
@@ -331,18 +354,53 @@ function PluginCard({
       <div style={{ marginTop: "auto" }}>
         {installed ? (
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "var(--space-xs)",
-                fontSize: "var(--font-size-sm)",
-                color: "var(--color-success)",
-              }}
-            >
-              <CheckCircle size={14} />
-              Installed
-            </span>
+            {updateAvailable && !installing ? (
+              <button
+                onClick={onUpdate}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "var(--space-xs)",
+                  padding: "var(--space-xs) var(--space-sm)",
+                  borderRadius: "var(--border-radius)",
+                  background: "var(--accent)",
+                  border: "none",
+                  color: "var(--text-on-accent)",
+                  fontSize: "var(--font-size-sm)",
+                  fontWeight: 500,
+                  cursor: "pointer",
+                }}
+              >
+                <ArrowUpCircle size={14} />
+                Update
+              </button>
+            ) : installing ? (
+              <span
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "var(--space-xs)",
+                  fontSize: "var(--font-size-sm)",
+                  color: "var(--text-muted)",
+                }}
+              >
+                <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />
+                Updating...
+              </span>
+            ) : (
+              <span
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "var(--space-xs)",
+                  fontSize: "var(--font-size-sm)",
+                  color: "var(--color-success)",
+                }}
+              >
+                <CheckCircle size={14} />
+                Installed
+              </span>
+            )}
             <button
               onClick={onUninstall}
               style={{
