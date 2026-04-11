@@ -22,6 +22,12 @@ RUN cd programmer && npm run build && cd ../simulator && npm run build
 # --- Stage 2: Production image ---
 FROM python:3.12-slim
 
+# Discovery needs `ping` and `ip` (slim image does not include them).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    iputils-ping \
+    iproute2 \
+    && rm -rf /var/lib/apt/lists/*
+
 # Create non-root user
 RUN groupadd -r openavc && useradd -r -g openavc -d /app -s /usr/sbin/nologin openavc
 
