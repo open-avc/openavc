@@ -304,20 +304,25 @@ log.info(f"Cancelled {count} timers")
 | `ui.press.<element_id>` | Button pressed |
 | `ui.release.<element_id>` | Button released |
 | `ui.hold.<element_id>` | Button held past threshold |
+| `ui.toggle_off.<element_id>` | Toggle button turned off |
 | `ui.change.<element_id>` | Slider or select value changed (payload includes `value`) |
+| `ui.route.<element_id>` | Matrix route changed (payload includes `input`, `output`) |
 | `ui.submit.<element_id>` | Text input or keypad submitted (payload includes `value`) |
-| `ui.page.<page_id>` | Page navigation |
+| `ui.page.<page_id>` | Page navigation (no payload) |
 | `device.connected.<device_id>` | Device connected |
 | `device.disconnected.<device_id>` | Device disconnected |
 | `device.error.<device_id>` | Device communication error (payload includes `error`) |
+| `macro.started.<macro_id>` | Macro began executing |
 | `macro.completed.<macro_id>` | Macro finished executing |
+| `macro.cancelled.<macro_id>` | Macro was cancelled |
+| `macro.error.<macro_id>` | Macro failed (payload includes `error`) |
 | `system.started` | System startup complete |
 | `system.stopping` | System shutting down |
 | `system.project.reloaded` | Project reloaded (after save, import, or cloud push) |
 | `isc.*.<event>` | Event from a remote OpenAVC instance |
 | `custom.<anything>` | User-defined events |
 
-> **Note on schedules:** Scheduled actions are handled via triggers, not events. A schedule trigger directly executes its macro when the cron expression matches. To run a script on a schedule, create a macro that calls a script function and attach a schedule trigger to it.
+> **Note on schedules:** Scheduled actions are handled via triggers, not events. A schedule trigger directly executes its macro when the cron expression matches. To run a script on a schedule, create a macro with an Emit Event step that fires a custom event, handle that event in your script with `@on_event`, and attach a schedule trigger to the macro.
 
 ## Complete Examples
 
@@ -403,7 +408,7 @@ async def stop_polling(event):
 ## Tips
 
 - **All handler functions must be `async`**. Use `await` for device commands and delays.
-- **Script errors**: if a handler throws an unhandled exception, the error is logged and a `script.error` event is broadcast to all WebSocket clients with `script_id`, `handler`, `error`, and `traceback` fields. The system continues running. One broken handler does not take down the server.
+- **Script errors**: if a handler throws an unhandled exception, the error is logged and a `script.error` event is broadcast to all WebSocket clients with `script_id`, `handler`, `event`, `error`, and `traceback` fields. The system continues running. One broken handler does not take down the server.
 - **Error handling**: wrap device commands in `try`/`except` if the device might be offline.
 - **Hot reload**: click Run in the Script Editor to reload a script without restarting the server.
 - **No sandbox**: scripts run in the server process with full Python access. This is intentional. The programmer IS the system administrator (same trust model as Crestron SIMPL# or Q-SYS Lua).

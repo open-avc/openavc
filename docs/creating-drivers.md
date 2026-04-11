@@ -71,7 +71,7 @@ Define the properties you want to read from the device. Each state variable beco
 | `volume` | Volume | Volume level 0-100 | Integer |
 | `mute` | Mute | Audio mute state | Boolean |
 
-Types: `string`, `integer`, `boolean`, `enum`.
+Types: `string`, `integer`, `number`, `float`, `boolean`, `enum`.
 
 The **Help Text** column is optional but recommended. It's shown in the Driver Builder and used by the AI assistant to understand what each variable represents.
 
@@ -314,7 +314,7 @@ Notice how much cleaner this is compared to JSON: comments explain the protocol,
 |-------|----------|-------------|
 | `id` | Yes | Unique driver identifier. Lowercase, underscores. |
 | `name` | Yes | Human-readable display name. |
-| `transport` | Yes | `"tcp"`, `"serial"`, or `"http"`. |
+| `transport` | Yes | `"tcp"`, `"serial"`, `"http"`, or `"udp"`. |
 | `manufacturer` | No | Manufacturer name. Default: `"Generic"`. |
 | `category` | No | One of: `projector`, `display`, `switcher`, `scaler`, `audio`, `camera`, `lighting`, `relay`, `utility`, `other`. |
 | `version` | No | Semantic version. Default: `"1.0.0"`. |
@@ -345,7 +345,7 @@ Notice how much cleaner this is compared to JSON: comments explain the protocol,
 }
 ```
 
-Types: `string`, `integer`, `number`, `enum`, `object`. For `enum`, add a `"values"` array.
+Types: `string`, `integer`, `number`, `float`, `boolean`, `enum`. For `enum`, add a `"values"` array.
 
 #### `device_settings` entry
 
@@ -371,7 +371,7 @@ device_settings:
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `type` | Yes | `string`, `integer`, `number`, `boolean`, or `enum`. |
+| `type` | Yes | `string`, `integer`, `number`, `float`, `boolean`, or `enum`. |
 | `label` | Yes | Human-readable label shown in the Programmer IDE. |
 | `help` | Yes | Inline help text explaining what the setting does. |
 | `state_key` | No | Which state variable provides the current value. Defaults to the setting key. |
@@ -428,7 +428,7 @@ async def set_device_setting(self, key: str, value: Any) -> Any:
 }
 ```
 
-Types: `string`, `integer`, `boolean`, `enum`.
+Types: `string`, `integer`, `number`, `float`, `boolean`, `enum`.
 
 The optional `help` field provides a description shown in the Driver Builder UI and available to the AI assistant.
 
@@ -1331,7 +1331,7 @@ For the complete simulator guide with all control types, state machines, and Pyt
 
 3. **Wrong capture group number.** `$1` refers to the first set of parentheses in the pattern. If your pattern is `Vol(\d+)\s+(\w+)` and you want the second group, use `$2`.
 
-4. **Type coercion mismatch.** If the type is `integer` but the captured value is `"abc"`, it silently becomes `0`. Check that the captured text is actually numeric.
+4. **Type coercion mismatch.** If the type is `integer` but the captured value is `"abc"`, it falls back to storing the raw string and logs a warning. Check that the captured text is actually numeric.
 
 5. **Config placeholders in patterns.** If your response pattern uses config values like `{level_control}`, make sure the config field exists and has a value. These are substituted before the regex is compiled.
 

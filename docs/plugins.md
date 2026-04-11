@@ -64,15 +64,16 @@ Click a plugin in the Installed list to open its detail view. The **Configuratio
 
 Settings include standard field types (text, numbers, toggles, dropdowns) and OpenAVC-specific types:
 
-| Field Type | Description |
-|------------|-------------|
-| Text | Free-form string input |
-| Number | Integer or decimal with optional min/max |
-| Toggle | On/off boolean |
-| Dropdown | Select from a list of options |
-| State Key | Pick a state key from the system (e.g., `device.projector.power`) |
-| Macro | Pick a macro from the project |
-| Device | Pick a device from the project |
+| Field Type | Schema Type | Description |
+|------------|-------------|-------------|
+| Text | `string` | Free-form string input |
+| Integer | `integer` | Whole number with optional min/max |
+| Decimal | `float` | Decimal number with optional min/max/step |
+| Toggle | `boolean` | On/off boolean |
+| Dropdown | `select` | Select from a list of options |
+| State Key | `state_key` | Pick a state key from the system (e.g., `device.projector.power`) |
+| Macro | `macro_ref` | Pick a macro from the project |
+| Device | `device_ref` | Pick a device from the project |
 
 Configuration changes are auto-saved. If the plugin is running, it restarts automatically with the new settings.
 
@@ -165,11 +166,10 @@ For audio/video routing plugins (Dante, NDI). Shows a grid of inputs (columns) a
 
 ## Uninstalling Plugins
 
-1. **Disable** the plugin first (if it's running)
-2. Go to the **Browse** tab
-3. Click **Uninstall** on the plugin
+1. Go to the **Installed** tab
+2. Click **Uninstall** on the plugin
 
-The plugin files are removed from `plugin_repo/` and its configuration is removed from the project. Uninstalling a running plugin is blocked. You must disable it first.
+If the plugin is currently running, it is automatically stopped before being removed. The plugin files are removed from `plugin_repo/` and its configuration is removed from the project.
 
 ---
 

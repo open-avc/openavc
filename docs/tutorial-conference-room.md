@@ -41,7 +41,7 @@ No real AV hardware is required. The PJLink simulator responds to power and inpu
 ## Step 1: Create a New Project
 
 1. Click **Program** in the sidebar.
-2. Click **New** in the Project Library at the bottom.
+2. Click **New** at the top of the Program view.
 3. Enter the project name: `Conference Room 201`.
 4. Click **Create**.
 
@@ -57,7 +57,7 @@ OpenAVC creates a `.avc` project file and a `scripts/` folder. The project file 
 4. Set the Device ID to `projector_main`.
 5. Set the Display Name to `Main Projector`.
 6. Set the Host to `localhost` and Port to `4352` (the simulator address).
-7. Click **Add**.
+7. Click **Add Device**.
 
 The device should connect immediately. You will see a green indicator next to it in the device list, meaning the simulator is responding.
 
@@ -68,7 +68,7 @@ The device should connect immediately. You will see a green indicator next to it
 3. Set the Device ID to `switcher_main`.
 4. Set the Display Name to `Video Switcher`.
 5. Leave the Host as the default. Since there is no real switcher on the network, this device will show a red indicator (disconnected). That is expected and fine for this tutorial.
-6. Click **Add**.
+6. Click **Add Device**.
 
 ### A note on Device IDs
 
@@ -99,7 +99,7 @@ Variables track room-level state that no single device reports. Click **State** 
 ### Create room_active
 
 1. Click **New Variable**.
-2. Set the Name to `room_active`.
+2. Set the ID to `room_active`.
 3. Set the Type to **boolean**.
 4. Set the Default Value to `false`.
 5. Click **Create**.
@@ -109,7 +109,7 @@ This variable tracks whether the room is in active use. Macros will set it, and 
 ### Create current_source
 
 1. Click **New Variable**.
-2. Set the Name to `current_source`.
+2. Set the ID to `current_source`.
 3. Set the Type to **string**.
 4. Set the Default Value to empty (leave blank).
 5. Click **Create**.
@@ -119,17 +119,17 @@ This tracks which input source is currently selected (laptop, blu-ray, etc.). So
 ### Create projector_status
 
 1. Click **New Variable**.
-2. Set the Name to `projector_status`.
+2. Set the ID to `projector_status`.
 3. Set the Type to **string**.
 4. Set the Default Value to `Off`.
-5. In the Source section, select **Bound to state key**.
-6. Choose `device.projector_main.power` as the source key.
-7. Add a value map:
+5. Click **Create**, then select the new variable in the list to open its detail panel.
+6. In the Source section, select **Bound to state key**.
+7. Choose `device.projector_main.power` as the source key.
+8. Add a value map:
    - `on` -> `Ready`
    - `off` -> `Off`
    - `warming` -> `Warming Up`
    - `cooling` -> `Cooling Down`
-8. Click **Create**.
 
 This variable automatically mirrors the projector's power state but translates the raw values into friendly text. When the projector reports `warming`, the variable reads `Warming Up`. No code, no polling. The binding handles it reactively. This is similar to how you would use an analog-to-serial join in Crestron, but without the signal routing.
 
@@ -248,7 +248,7 @@ The LED gives an instant visual indicator of projector state without reading any
 
 ### Create the page
 
-Click the **+** tab at the top of the canvas to add a new page. Name it `Audio`.
+Click the **Add** dropdown in the toolbar and select **Page** to add a new page. Name it `Audio`.
 
 ### Add a volume fader
 
@@ -259,7 +259,7 @@ Click the **+** tab at the top of the canvas to add a new page. Name it `Audio`.
 
 1. Drag a **Button** onto the Audio page.
 2. Set the Label to `Mute`.
-3. Set the **Mode** to **Toggle**.
+3. Set the **Button Mode** to **Toggle**.
 4. In a real system, you would set the toggle state key to `device.dsp_main.mute`, the On Action to a mute command, and the Off Action to an unmute command. For this tutorial, just set the label so you can see the layout.
 
 ### Add navigation from Main to Audio
@@ -276,7 +276,7 @@ Now users can tap "Audio" on the Main page to navigate to the Audio page. To get
 
 Go back to the `system_off` macro by clicking **Macros** in the sidebar and selecting it.
 
-1. Click the **Triggers** tab in the macro editor.
+1. In the macro editor, find the **Triggers** section above the steps.
 2. Click **Add Trigger**.
 3. Set the Type to **Schedule**.
 4. Use the visual cron builder to select:

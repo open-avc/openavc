@@ -25,7 +25,7 @@ The fastest way to get started on Windows.
 
 - Installs to `C:\Program Files\OpenAVC`
 - Stores project data in `C:\ProgramData\OpenAVC`
-- Creates a Windows service (`openavc`) that starts automatically on boot
+- Creates a Windows service (`OpenAVC`) that starts automatically on boot
 - Adds a system tray app for quick access to the web interface
 - Opens Windows Firewall for port 8080
 - Creates Start Menu and optional Desktop shortcuts

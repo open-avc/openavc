@@ -105,11 +105,12 @@ Build custom drivers without code using the visual editor:
 
 1. **General.** Name, manufacturer, model, category, description.
 2. **Transport.** TCP, serial, or HTTP connection settings (port, baud rate, auth, etc.).
-3. **Commands.** Define commands with send strings and parameter substitution.
-4. **Responses.** Regex-based response parsing to extract state from device replies.
-5. **Polling.** Automatic status queries on a timer (power, input, lamp hours).
-6. **State Variables.** Declare what state the driver exposes with types and defaults.
-7. **Import/Export.** Save as `.avcdriver` file for sharing or backup.
+3. **State Variables.** Declare what state the driver exposes with types and defaults.
+4. **Commands.** Define commands with send strings and parameter substitution.
+5. **Responses.** Regex-based response parsing to extract state from device replies.
+6. **Polling.** Automatic status queries on a timer (power, input, lamp hours).
+7. **Device Settings.** Configurable values that live on the hardware (NDI name, video format, etc.).
+8. **Simulator.** Define simulated behavior for testing without real hardware.
 
 For most IP-controlled devices with a documented protocol, the Driver Builder can produce a working driver in 15-30 minutes. For serial devices, set the transport to serial and define the baud rate, data bits, and stop bits in the Transport tab.
 
@@ -167,9 +168,9 @@ Click a device card to see full details. If a matching driver is found:
 ### Scan Options
 
 - **Scan Depth.** Choose how deep the scanner goes:
-  - **Quick.** Fast re-scan. Basic port scanning and protocol probes.
-  - **Standard** (recommended). Full scan with TLS certificate inspection, SSH banner identification, NetBIOS/SMB for Windows device names, SNMP Entity MIB for detailed hardware info, and HTTP authentication realm parsing.
-  - **Thorough.** Extended port range and longer passive listening window. Takes longer but finds everything on the network.
+  - **Quick.** Fast re-scan. Ping sweep, port scanning, protocol probes, and short passive listening window. Skips NetBIOS name resolution and SNMP Entity MIB.
+  - **Standard** (recommended). Full scan including NetBIOS/SMB for Windows device names and SNMP Entity MIB for detailed hardware info. Longer passive listening window for mDNS and SSDP devices.
+  - **Thorough.** Extended port range, longest passive listening window. Takes longer but finds everything on the network.
 - **SNMP.** Enable SNMP v2c queries for richer device identification (community string configurable).
 - **Reduce network load.** Slows down the scan to reduce traffic. Use this on networks with strict IDS/IPS policies or where IT has asked you to scan carefully.
 - **Extra Subnets.** Add subnets beyond the auto-detected ones.

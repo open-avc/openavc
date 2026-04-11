@@ -145,7 +145,7 @@ The schedule trigger includes a visual cron builder with two modes: a **field-by
 
 Trigger safety features prevent runaway automation:
 
-- **Debounce.** Prevent rapid re-firing (configurable milliseconds).
+- **Debounce.** Prevent rapid re-firing (configurable seconds).
 - **Delay + re-check.** Wait, then verify the condition is still true before executing.
 - **Cooldown.** Minimum interval between executions.
 - **Guard conditions.** Additional state conditions that must all be true. Supports the same operators as conditional steps (`eq`, `ne`, `gt`, `lt`, `gte`, `lte`, `truthy`, `falsy`) and their aliases.

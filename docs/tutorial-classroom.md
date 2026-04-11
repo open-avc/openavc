@@ -43,7 +43,7 @@ If your automation needs any of the items in the right column, reach for a scrip
 
 Create a new project and add the three devices. You have done this before, so here is the quick version:
 
-1. Click **Projects** in the sidebar, then **New Project**
+1. Click **Program** in the sidebar, then **New**
 2. Name it `classroom_101`
 3. Click **Devices** in the sidebar, then **Add Device**
 4. Add a PJLink projector. Set the ID to `projector_main`, enter the IP address, and use the PJLink driver.
@@ -82,7 +82,7 @@ Before anything else, here is what each part means:
 - `state.set(...)` saves a value that the UI and other scripts can read.
 - `await devices.send(...)` sends a command to a device. The `await` keyword means "wait for this to finish before continuing."
 
-Click **Run** at the top of the editor. This hot-reloads the script without restarting the server. You should see "Script loaded" in the console panel.
+Click **Save & Reload** at the top of the editor. This saves and hot-reloads the script without restarting the server. You should see "Script loaded" in the console panel.
 
 ## Step 3: Add a Delay and Sequence
 
@@ -222,7 +222,7 @@ If you do not have an occupancy sensor, you can still test this pattern by check
 Now create the panel page that connects to your script handlers.
 
 1. Click **UI Builder** in the sidebar
-2. Click **Add Page** and name it `Main`
+2. Click the **Add** dropdown in the toolbar, select **Page**, and name it `Main`
 
 Add these elements by dragging from the Element Palette:
 
@@ -253,7 +253,7 @@ Switch to **Preview Mode** (toggle at the top of the canvas) to test. Press the 
 
 ## Step 9: Test Everything
 
-1. Click **Run** in the Script Editor to hot-reload your script
+1. Click **Save & Reload** in the Code view to hot-reload your script
 2. Open the Panel UI in another tab: `http://localhost:8080/panel`
 3. Press **System On** and watch the Script Console for log output
 4. Move the volume slider and verify the dB calculation in the logs
@@ -344,7 +344,7 @@ async def stop_monitoring(event):
 - **Use `await delay()`, never `time.sleep()`**. `time.sleep()` freezes the entire system.
 - **Parameters are dicts**. Write `{"input": "hdmi1"}`, not `input="hdmi1"`.
 - **Script errors are safe**. A broken handler logs an error but does not crash the server.
-- **Click Run to hot-reload**. No need to restart the server when editing scripts.
+- **Click Save & Reload to hot-reload**. No need to restart the server when editing scripts.
 - **Use the console**. `log.info()`, `log.warning()`, and `log.error()` all appear in the Script Console.
 
 ## What's Next

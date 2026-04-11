@@ -74,7 +74,7 @@ The Program view shows:
 
 To start a new room, click **Program** in the sidebar, give it a name (e.g., "Board Room 201"), and save. This creates the `.avc` file and a `scripts/` folder for any Python automation you add later.
 
-The **Project Library** (visible at the bottom of the Program view) stores saved project files for reuse. OpenAVC ships with three starter projects (Simple Projector, Conference Room, Classroom) that you can open, modify, or delete like any other project.
+The **Project Library** (visible at the bottom of the Program view) stores saved project files for reuse. OpenAVC ships with four starter projects (Simple Projector, Conference Room, Classroom, Advanced AV Suite) that you can open, modify, or delete like any other project.
 
 - **New**: start with a blank project
 - **Save As**: save the current project to the library for later reuse

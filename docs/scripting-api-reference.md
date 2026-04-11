@@ -182,20 +182,22 @@ Async sleep. Must be awaited. Pauses the current handler without blocking the sy
 await delay(15)  # Wait 15 seconds
 ```
 
-### after(seconds, callback) -> str
+### after(seconds, callback, *args) -> str
 
-Schedule a function to run once after a delay. Returns a timer ID for cancellation. Non-blocking.
+Schedule a function to run once after a delay. Returns a timer ID for cancellation. Non-blocking. Extra positional arguments are passed to the callback.
 
 ```python
 timer_id = after(15, my_function)
+timer_id = after(5, set_input, "hdmi1")  # passes "hdmi1" to set_input()
 ```
 
-### every(seconds, callback) -> str
+### every(seconds, callback, *args) -> str
 
-Schedule a function to run repeatedly at an interval. Returns a timer ID. Non-blocking.
+Schedule a function to run repeatedly at an interval. Returns a timer ID. Non-blocking. Extra positional arguments are passed to the callback.
 
 ```python
 timer_id = every(60, check_status)
+timer_id = every(30, poll_device, "projector_main")  # passes "projector_main" to poll_device()
 ```
 
 ### cancel_timer(timer_id) -> bool
@@ -225,20 +227,25 @@ Events fired by the system that scripts can listen for with `@on_event`.
 | `ui.press.<element_id>` | `element_id` | Button pressed |
 | `ui.release.<element_id>` | `element_id` | Button released |
 | `ui.hold.<element_id>` | `element_id` | Button held past threshold |
+| `ui.toggle_off.<element_id>` | `element_id` | Toggle button turned off |
 | `ui.change.<element_id>` | `element_id`, `value` | Slider or select value changed |
+| `ui.route.<element_id>` | `element_id`, `input`, `output` | Matrix route changed |
 | `ui.submit.<element_id>` | `element_id`, `value` | Text input or keypad submitted |
-| `ui.page.<page_id>` | `page_id` | Page navigation |
-| `device.connected.<device_id>` | `device_id` | Device connected |
-| `device.disconnected.<device_id>` | `device_id` | Device disconnected |
+| `ui.page.<page_id>` | (none) | Page navigation |
+| `device.connected.<device_id>` | (none) | Device connected |
+| `device.disconnected.<device_id>` | (none) | Device disconnected |
 | `device.error.<device_id>` | `device_id`, `error` | Device communication error |
-| `macro.completed.<macro_id>` | `macro_id` | Macro finished executing |
+| `macro.started.<macro_id>` | `macro_id`, `name`, `total_steps` | Macro began executing |
+| `macro.completed.<macro_id>` | `macro_id`, `name` | Macro finished executing |
+| `macro.cancelled.<macro_id>` | `macro_id`, `name` | Macro was cancelled |
+| `macro.error.<macro_id>` | `macro_id`, `name`, `error` | Macro failed |
 | `system.started` | (none) | System startup complete |
 | `system.stopping` | (none) | System shutting down |
 | `system.project.reloaded` | (none) | Project reloaded |
 | `isc.*.<event>` | `source_instance`, ... | Event from a remote instance |
 | `custom.<anything>` | (user-defined) | User-defined events |
 
-> **Note on schedules:** Scheduled actions are handled by triggers that directly execute macros, not by events. To run a script on a schedule, create a macro with a "Script Function" step and add a schedule trigger to it.
+> **Note on schedules:** Scheduled actions are handled by triggers that directly execute macros, not by events. To run a script on a schedule, create a macro with an "Emit Event" step that fires a custom event, handle that event in your script with `@on_event`, and add a schedule trigger to the macro.
 
 ---
 

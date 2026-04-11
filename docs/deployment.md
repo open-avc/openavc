@@ -81,7 +81,8 @@ System-level configuration controls the server itself: networking, authenticatio
 {
     "network": {
         "http_port": 8080,
-        "bind_address": "127.0.0.1"
+        "bind_address": "127.0.0.1",
+        "control_interface": ""
     },
     "auth": {
         "programmer_password": "",
@@ -102,7 +103,7 @@ System-level configuration controls the server itself: networking, authenticatio
     "updates": {
         "check_enabled": true,
         "channel": "stable",
-        "auto_check_interval_hours": 24,
+        "auto_check_interval_hours": 1,
         "auto_backup_before_update": true,
         "notify_only": false
     },
@@ -126,6 +127,7 @@ System-level configuration controls the server itself: networking, authenticatio
 |---|---|---|
 | `network.http_port` | `OPENAVC_PORT` | `8080` |
 | `network.bind_address` | `OPENAVC_BIND` | `127.0.0.1` |
+| `network.control_interface` | `OPENAVC_CONTROL_INTERFACE` | `""` |
 | `auth.programmer_password` | `OPENAVC_PROGRAMMER_PASSWORD` | `""` |
 | `auth.api_key` | `OPENAVC_API_KEY` | `""` |
 | `auth.panel_lock_code` | `OPENAVC_PANEL_LOCK_CODE` | `""` |
@@ -134,6 +136,8 @@ System-level configuration controls the server itself: networking, authenticatio
 | `updates.channel` | `OPENAVC_UPDATE_CHANNEL` | `stable` |
 | `cloud.enabled` | `OPENAVC_CLOUD_ENABLED` | `false` |
 | `cloud.endpoint` | `OPENAVC_CLOUD_ENDPOINT` | `wss://cloud.openavc.com/agent/v1` |
+| `cloud.system_key` | `OPENAVC_CLOUD_SYSTEM_KEY` | `""` |
+| `cloud.system_id` | `OPENAVC_CLOUD_SYSTEM_ID` | `""` |
 
 You can also read and modify system configuration through the REST API:
 
@@ -144,7 +148,7 @@ You can also read and modify system configuration through the REST API:
 
 ## Updates
 
-OpenAVC checks for updates automatically (every 24 hours by default) via the GitHub Releases API. No data is sent to GitHub.
+OpenAVC checks for updates automatically (every hour by default) via the GitHub Releases API. No data is sent to GitHub.
 
 **Check for updates:** `GET /api/system/updates/check`
 
@@ -184,9 +188,11 @@ Restart=always
 RestartSec=5
 Environment=OPENAVC_DATA_DIR=/var/lib/openavc
 Environment=OPENAVC_LOG_DIR=/var/log/openavc
+Environment=OPENAVC_PROJECT=/var/lib/openavc/projects/default/project.avc
+Environment=OPENAVC_BIND=0.0.0.0
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/var/lib/openavc /var/log/openavc
+ReadWritePaths=/var/lib/openavc /var/log/openavc /opt/openavc/driver_repo /opt/openavc/plugin_repo
 ProtectHome=true
 PrivateTmp=true
 
@@ -301,7 +307,7 @@ You do not need to set both programmer password and API key. Either one protects
 ### What gets protected
 
 When at least one credential is configured:
-- `/api/status`, `/api/health`, and `/api/templates` remain open (no auth)
+- `/api/status`, `/api/health`, and `/api/library` remain open (no auth)
 - All other REST endpoints require HTTP Basic or `X-API-Key`
 - The `/programmer` static files require HTTP Basic credentials
 - Panel WebSocket connections remain open; programmer WebSocket connections require a `?token=` query param or `X-API-Key` header

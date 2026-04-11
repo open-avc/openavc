@@ -67,9 +67,9 @@ Standard 5-field cron expressions (minute, hour, day-of-month, month, day-of-wee
 
 Schedule triggers execute macros, not scripts directly. To run a script function on a schedule:
 
-1. Create a macro
-2. Add a **Script Function** step, selecting the function you want to call
-3. Add a **Schedule** trigger with your cron expression
+1. Create a macro with an **Emit Event** step that fires a custom event (e.g., `custom.hourly_check`)
+2. In your script, use `@on_event("custom.hourly_check")` to handle it
+3. Add a **Schedule** trigger to the macro with your cron expression
 
 This keeps all scheduling visible in one place (the Triggers tab) rather than split between macros and scripts.
 

@@ -88,10 +88,14 @@ The simulator exposes a REST API at `http://localhost:19500/api/`:
 | `/api/available` | GET | Discovered drivers |
 | `/api/devices` | GET | Running simulator instances |
 | `/api/devices/{id}` | GET | Single device state |
+| `/api/devices/{id}/start` | POST | Start simulating a device |
+| `/api/devices/{id}/stop` | POST | Stop simulating a device |
 | `/api/devices/{id}/state` | POST | Change device state |
 | `/api/devices/{id}/errors/{mode}` | POST | Inject or clear an error |
+| `/api/devices/{id}/log` | GET | Protocol log for a device |
 | `/api/network` | GET/POST | Network condition settings |
 | `/api/network/preset` | POST | Apply a named preset |
+| `/api/shutdown` | POST | Shut down the simulator process |
 | `/ws` | WebSocket | Real-time state and protocol updates |
 
 ## See Also

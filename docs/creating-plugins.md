@@ -86,7 +86,7 @@ EXTENSIONS = {
 | `renderer` | Yes | Always `"iframe"` |
 | `renderer_url` | Yes | Path to the HTML file (relative to the plugin's `panel/` directory) |
 | `default_size` | Yes | Default grid size when dragged onto the canvas: `{"col_span": N, "row_span": N}` |
-| `config_schema` | No | Array of configuration fields for the IDE Properties panel (same field types as plugin config: text, number, toggle, select, state_key, macro, device) |
+| `config_schema` | No | Array of configuration fields for the IDE Properties panel (same field types as plugin config: `string`, `integer`, `float`, `boolean`, `select`, `state_key`, `macro_ref`, `device_ref`) |
 
 ### File Structure
 
