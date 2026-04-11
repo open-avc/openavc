@@ -8,7 +8,7 @@ Python scripting API for OpenAVC automation.
 
 OpenAVC scripts are Python files that react to events and state changes. They run inside the OpenAVC process with full access to devices, state, and the event bus.
 
-Scripts live in `projects/<name>/scripts/` and are registered in the project's `.avc` file. Use the Monaco editor in the Programmer IDE to write and test scripts.
+Scripts live in `projects/<name>/scripts/` and are registered in the project's `.avc` file. Use the **Code** view in the Programmer IDE to write and test scripts.
 
 ## The openavc Module
 

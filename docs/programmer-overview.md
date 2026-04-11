@@ -13,7 +13,7 @@ The Programmer IDE is a web-based design environment with these sidebar sections
 - **State**: Variables, device states, and activity feed
 - **UI Builder**: Visual drag-and-drop panel designer
 - **Macros**: Build command sequences and triggers without code
-- **Scripts**: Python scripting with Monaco editor
+- **Code**: Python scripting and driver editing with Monaco editor
 - **Plugins**: Install, enable, and configure plugins (MQTT, Stream Deck, etc.)
 - **Inter-System**: Communication between OpenAVC instances
 - **AI Assistant**: AI-powered help and automation (requires cloud connection)

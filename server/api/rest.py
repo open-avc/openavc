@@ -20,6 +20,7 @@ from server.api.models import (
     DeviceUpdateRequest,
     DriverDefinitionRequest,
     PendingSettingsRequest,
+    PythonDriverCreateRequest,
     StateSetRequest,
     ScriptCreateRequest,
     TestCommandRequest,
@@ -1580,6 +1581,176 @@ async def _test_http_command(body: TestCommandRequest) -> dict:
         return {"success": False, "response": None, "error": "HTTP request timed out"}
     except Exception as e:
         return {"success": False, "response": None, "error": str(e)}
+
+
+# --- Python Drivers ---
+
+
+def _safe_driver_path(driver_id: str) -> Path:
+    """Resolve a driver ID to a safe file path in driver_repo/."""
+    from server.system_config import DRIVER_REPO_DIR
+
+    # Sanitize: only allow alphanumeric + underscore + hyphen
+    import re
+    if not re.match(r'^[a-zA-Z0-9_-]+$', driver_id):
+        raise HTTPException(status_code=400, detail="Invalid driver ID: only alphanumeric, underscore, and hyphen allowed")
+
+    filepath = DRIVER_REPO_DIR / f"{driver_id}.py"
+
+    # Ensure path stays within driver_repo/
+    try:
+        filepath.resolve().relative_to(DRIVER_REPO_DIR.resolve())
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid driver ID")
+
+    return filepath
+
+
+@router.get("/python-drivers")
+async def list_python_drivers() -> dict:
+    """List all Python driver files in driver_repo/."""
+    from server.drivers.driver_loader import list_python_drivers as _list
+    from server.system_config import DRIVER_REPO_DIR
+
+    drivers = _list([DRIVER_REPO_DIR])
+
+    # Add devices_using info from device manager
+    engine = _get_engine()
+    for driver in drivers:
+        driver["devices_using"] = engine.devices.get_devices_using_driver(driver["id"])
+
+    return {"drivers": drivers}
+
+
+@router.get("/python-drivers/{driver_id}/source")
+async def get_python_driver_source(driver_id: str) -> dict:
+    """Read the source code of a Python driver file."""
+    filepath = _safe_driver_path(driver_id)
+
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail=f"Python driver '{driver_id}' not found")
+
+    try:
+        source = filepath.read_text(encoding="utf-8")
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read driver file: {e}")
+
+    return {"id": driver_id, "filename": filepath.name, "source": source}
+
+
+@router.put("/python-drivers/{driver_id}/source")
+async def save_python_driver_source(driver_id: str, body: dict) -> dict:
+    """Save the source code of a Python driver file."""
+    filepath = _safe_driver_path(driver_id)
+    source = body.get("source")
+    if source is None:
+        raise HTTPException(status_code=422, detail="Missing 'source' field")
+
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail=f"Python driver '{driver_id}' not found")
+
+    try:
+        filepath.write_text(source, encoding="utf-8")
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save driver file: {e}")
+
+    return {"status": "saved", "id": driver_id}
+
+
+@router.post("/python-drivers")
+async def create_python_driver(body: PythonDriverCreateRequest) -> dict:
+    """Create a new Python driver file."""
+    from server.system_config import DRIVER_REPO_DIR
+
+    filepath = _safe_driver_path(body.id)
+
+    # Ensure driver_repo/ exists
+    DRIVER_REPO_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Atomic creation: 'x' mode fails if the file already exists
+    try:
+        with open(filepath, "x", encoding="utf-8") as f:
+            f.write(body.source)
+    except FileExistsError:
+        raise HTTPException(status_code=409, detail=f"Python driver '{body.id}' already exists")
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create driver file: {e}")
+
+    # Try to load and register immediately
+    from server.drivers.driver_loader import load_python_driver_file
+    from server.core.device_manager import register_driver
+
+    driver_class = load_python_driver_file(filepath)
+    if driver_class:
+        register_driver(driver_class)
+
+    return {"status": "created", "id": body.id}
+
+
+@router.delete("/python-drivers/{driver_id}")
+async def delete_python_driver(driver_id: str) -> dict:
+    """Delete a Python driver file."""
+    filepath = _safe_driver_path(driver_id)
+
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail=f"Python driver '{driver_id}' not found")
+
+    # Check if devices are using this driver
+    engine = _get_engine()
+    using = engine.devices.get_devices_using_driver(driver_id)
+    if using:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot delete driver '{driver_id}': used by devices: {', '.join(using)}",
+        )
+
+    # Remove file
+    filepath.unlink()
+
+    # Unregister from driver registry
+    from server.core.device_manager import unregister_driver
+    unregister_driver(driver_id)
+
+    # Clean up sys.modules
+    import sys
+    module_name = f"openavc_driver_{driver_id}"
+    sys.modules.pop(module_name, None)
+
+    log.info(f"Deleted Python driver: {driver_id}")
+    return {"status": "deleted", "id": driver_id}
+
+
+@router.post("/python-drivers/{driver_id}/reload")
+async def reload_python_driver_endpoint(driver_id: str) -> dict:
+    """Hot-reload a Python driver and reconnect affected devices."""
+    filepath = _safe_driver_path(driver_id)
+
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail=f"Python driver '{driver_id}' not found")
+
+    from server.drivers.driver_loader import reload_python_driver
+
+    result = reload_python_driver(filepath)
+
+    if result["status"] == "error":
+        return result
+
+    # Reconnect devices using this driver
+    engine = _get_engine()
+    new_driver_id = result["driver_id"]
+    old_driver_id = result.get("old_driver_id")
+
+    reconnected: list[str] = []
+
+    # Reconnect devices using the new driver ID
+    reconnected.extend(await engine.devices.reload_driver(new_driver_id))
+
+    # If the driver ID changed, also reconnect devices using the old ID
+    if old_driver_id and old_driver_id != new_driver_id:
+        reconnected.extend(await engine.devices.reload_driver(old_driver_id))
+
+    result["devices_reconnected"] = reconnected
+    return result
 
 
 # --- Logs ---

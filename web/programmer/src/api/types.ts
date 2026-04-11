@@ -274,6 +274,17 @@ export interface ScriptConfig {
   description: string;
 }
 
+export interface PythonDriverInfo {
+  id: string;
+  filename: string;
+  name: string;
+  manufacturer: string;
+  category: string;
+  loaded: boolean;
+  load_error: string | null;
+  devices_using: string[];
+}
+
 export interface ScheduleConfig {
   id: string;
   type: string;

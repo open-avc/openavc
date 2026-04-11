@@ -53,7 +53,7 @@ const navItems: { id: ViewId; label: string; icon: typeof Monitor }[] = [
   { id: "variables", label: "State", icon: Variable },
   { id: "ui-builder", label: "UI Builder", icon: Layout },
   { id: "macros", label: "Macros", icon: Zap },
-  { id: "scripts", label: "Scripts", icon: FileCode },
+  { id: "scripts", label: "Code", icon: FileCode },
   { id: "plugins", label: "Plugins", icon: Plug },
   { id: "isc", label: "Inter-System", icon: Network },
   { id: "ai", label: "AI Assistant", icon: Bot },

@@ -52,6 +52,11 @@ def unregister_driver(driver_id: str) -> bool:
     return removed
 
 
+def is_driver_registered(driver_id: str) -> bool:
+    """Check if a driver ID is registered in the global registry."""
+    return driver_id in _DRIVER_REGISTRY
+
+
 def get_driver_registry() -> list[dict[str, Any]]:
     """Return metadata for all registered drivers."""
     return [
@@ -376,6 +381,57 @@ class DeviceManager:
                 "current_value": current_value,
             }
         return result
+
+    async def reload_driver(self, driver_id: str) -> list[str]:
+        """
+        Reconnect all devices using a given driver after it has been reloaded.
+
+        Finds all active devices using the specified driver_id, disconnects them,
+        and re-adds them so they pick up the new driver class from the registry.
+        Also retries any orphaned devices that were waiting for this driver.
+
+        Returns a list of device IDs that were reconnected.
+        """
+        reconnected: list[str] = []
+
+        # Find active devices using this driver
+        affected = [
+            (did, cfg)
+            for did, cfg in self._device_configs.items()
+            if cfg.get("driver") == driver_id and did in self._devices
+        ]
+
+        for device_id, config in affected:
+            try:
+                await self.remove_device(device_id)
+                await self.add_device(config)
+                reconnected.append(device_id)
+                log.info(f"Reconnected device '{device_id}' after driver reload")
+            except Exception:
+                log.exception(f"Failed to reconnect '{device_id}' after driver reload")
+
+        # Retry orphaned devices that were waiting for this driver
+        orphaned_for_driver = [
+            did for did, cfg in self._orphaned_devices.items()
+            if cfg.get("driver") == driver_id
+        ]
+        for device_id in orphaned_for_driver:
+            try:
+                activated = await self.retry_orphaned_device(device_id)
+                if activated:
+                    reconnected.append(device_id)
+                    log.info(f"Activated orphaned device '{device_id}' after driver reload")
+            except Exception:
+                log.exception(f"Failed to activate orphaned device '{device_id}'")
+
+        return reconnected
+
+    def get_devices_using_driver(self, driver_id: str) -> list[str]:
+        """Return list of device IDs that use the given driver."""
+        return [
+            did for did, cfg in self._device_configs.items()
+            if cfg.get("driver") == driver_id
+        ]
 
     async def connect_all(self) -> list[str]:
         """Connect all devices (called at startup). Returns list of failed device IDs."""

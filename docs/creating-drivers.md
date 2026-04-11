@@ -8,6 +8,8 @@ OpenAVC supports three ways to create device drivers, from easiest to most power
 
 All three methods produce drivers that work identically at runtime. Choose the simplest method that covers your device's protocol.
 
+Python drivers can be created and edited directly in the **Code** view of the Programmer IDE with hot-reload support, so you can write, test, and iterate without restarting the server.
+
 | Method | Skill Level | Best For |
 |--------|-------------|----------|
 | Driver Builder UI | Beginner | Text-based protocols (Extron SIS, Kramer, generic RS-232) |
@@ -811,15 +813,28 @@ class MySwitcherDriver(BaseDriver):
 - `set_state("input", 3)` writes to `device.<device_id>.input` in the state store.
 - **All sent and received data is automatically logged** in the device log. No logging code needed. See "Device Log" below.
 
-### Installing a Python Driver
+### Creating Python Drivers in the Code View
 
-Place your `.py` driver file in the `driver_repo/` directory. OpenAVC scans this directory at startup and dynamically loads any Python file that contains a `BaseDriver` subclass with a valid `DRIVER_INFO` dict.
+The easiest way to create a Python driver is in the Programmer IDE:
 
-You can also install Python drivers through the Programmer IDE:
+1. Click **Code** in the sidebar
+2. Under **Python Drivers**, click **+**
+3. Fill in the driver ID, name, manufacturer, category, and transport
+4. Select a template (TCP, HTTP, Serial, Polling, or Minimal)
+5. Click **Create Driver**
+
+The editor opens with a pre-filled template. Edit the code, then click **Save & Reload Driver** (or press Ctrl+Shift+R) to hot-reload the driver without restarting the server. If the code has errors, the old driver stays active and the error is shown in the console.
+
+### Installing Python Drivers
+
+You can also install Python drivers from other sources:
 - **Browse Community** tab: click Install on any Python driver
 - **Import from File:** upload a `.py` file from your computer
+- **Manual:** place the `.py` file directly in `driver_repo/`
 
-After installation or restart, the driver appears in the "Add Device" dialog.
+OpenAVC scans `driver_repo/` at startup and dynamically loads any Python file that contains a `BaseDriver` subclass with a valid `DRIVER_INFO` dict. Drivers created in the Code view are also saved to `driver_repo/`.
+
+After installation, the driver appears in the "Add Device" dialog.
 
 ### Full Example: Binary Protocol (Samsung MDC)
 

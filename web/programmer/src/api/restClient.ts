@@ -12,6 +12,7 @@ import type {
   LibraryProject,
   LibraryProjectDetail,
   PluginInfo,
+  PythonDriverInfo,
   SchemaField,
 } from "./types";
 
@@ -348,6 +349,57 @@ export interface ScriptFunction {
 
 export async function getScriptFunctions(): Promise<ScriptFunction[]> {
   return request<ScriptFunction[]>("/scripts/functions");
+}
+
+// --- Python Drivers ---
+
+export async function getPythonDrivers(): Promise<{ drivers: PythonDriverInfo[] }> {
+  return request("/python-drivers");
+}
+
+export async function getPythonDriverSource(
+  id: string
+): Promise<{ id: string; filename: string; source: string }> {
+  return request(`/python-drivers/${id}/source`);
+}
+
+export async function savePythonDriverSource(
+  id: string,
+  source: string
+): Promise<{ status: string }> {
+  return request(`/python-drivers/${id}/source`, {
+    method: "PUT",
+    body: JSON.stringify({ source }),
+  });
+}
+
+export async function createPythonDriver(data: {
+  id: string;
+  source: string;
+}): Promise<{ status: string; id: string }> {
+  return request("/python-drivers", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deletePythonDriver(
+  id: string
+): Promise<{ status: string }> {
+  return request(`/python-drivers/${id}`, { method: "DELETE" });
+}
+
+export async function reloadPythonDriver(
+  id: string
+): Promise<{
+  status: string;
+  driver_id?: string;
+  devices_reconnected?: string[];
+  error?: string;
+  line?: number;
+  old_driver_preserved?: boolean;
+}> {
+  return request(`/python-drivers/${id}/reload`, { method: "POST" });
 }
 
 // --- Logs ---

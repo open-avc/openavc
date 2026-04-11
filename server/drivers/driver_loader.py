@@ -348,6 +348,213 @@ def list_driver_definitions(directories: list[Path | str]) -> list[dict[str, Any
     return definitions
 
 
+def list_python_drivers(directories: list[Path | str]) -> list[dict[str, Any]]:
+    """
+    List all Python driver files (.py) from the given directories.
+
+    Returns metadata for each file without doing a full import — uses AST
+    parsing to extract DRIVER_INFO safely.
+    """
+    import ast
+
+    from server.core.device_manager import is_driver_registered
+
+    drivers: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+
+    for dir_path in directories:
+        dir_path = Path(dir_path)
+        if not dir_path.exists():
+            continue
+
+        for filepath in sorted(dir_path.glob("*.py")):
+            if filepath.name.startswith("_"):
+                continue
+
+            entry: dict[str, Any] = {
+                "id": filepath.stem,
+                "filename": filepath.name,
+                "name": filepath.stem,
+                "manufacturer": "",
+                "category": "",
+                "loaded": False,
+                "load_error": None,
+                "devices_using": [],
+            }
+
+            # Try AST extraction for DRIVER_INFO metadata
+            try:
+                source = filepath.read_text(encoding="utf-8")
+                tree = ast.parse(source)
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.ClassDef):
+                        for item in node.body:
+                            if (
+                                isinstance(item, ast.Assign)
+                                and len(item.targets) == 1
+                                and isinstance(item.targets[0], ast.Name)
+                                and item.targets[0].id == "DRIVER_INFO"
+                                and isinstance(item.value, ast.Dict)
+                            ):
+                                info = _ast_dict_to_simple(item.value)
+                                if info.get("id"):
+                                    entry["id"] = info["id"]
+                                if info.get("name"):
+                                    entry["name"] = info["name"]
+                                if info.get("manufacturer"):
+                                    entry["manufacturer"] = info["manufacturer"]
+                                if info.get("category"):
+                                    entry["category"] = info["category"]
+                                break
+                        break  # Only check first class
+            except Exception:
+                pass  # Fall back to filename-based defaults
+
+            driver_id = entry["id"]
+            if driver_id in seen_ids:
+                continue
+            seen_ids.add(driver_id)
+
+            # Check if loaded in registry
+            if is_driver_registered(driver_id):
+                entry["loaded"] = True
+            else:
+                # Check if there was a load error by trying module lookup
+                module_name = f"openavc_driver_{filepath.stem}"
+                if module_name not in sys.modules:
+                    entry["load_error"] = "Not loaded"
+
+            drivers.append(entry)
+
+    return drivers
+
+
+def _ast_dict_to_simple(node: Any) -> dict[str, str | int | float | bool]:
+    """Extract simple key-value pairs from an AST Dict node."""
+    import ast
+
+    result: dict[str, str | int | float | bool] = {}
+    if not isinstance(node, ast.Dict):
+        return result
+    for key, value in zip(node.keys, node.values):
+        if isinstance(key, ast.Constant) and isinstance(key.value, str):
+            if isinstance(value, ast.Constant) and isinstance(value.value, (str, int, float, bool)):
+                result[key.value] = value.value
+    return result
+
+
+def reload_python_driver(
+    filepath: Path,
+) -> dict[str, Any]:
+    """
+    Hot-reload a Python driver from disk.
+
+    Safety: validates the new code by importing into a temporary module first.
+    If the new code fails to import, the old driver stays active.
+
+    Returns a dict with status, driver_id, and any errors.
+    Does NOT handle device reconnection — that's the caller's responsibility.
+    """
+    from server.core.device_manager import register_driver, unregister_driver
+    from server.drivers.base import BaseDriver
+
+    stem = filepath.stem
+    module_name = f"openavc_driver_{stem}"
+    temp_module_name = f"_openavc_driver_validate_{stem}"
+
+    # --- Step 1: Validate new code by importing into a temp module ---
+    new_driver_class = None
+    try:
+        spec = importlib.util.spec_from_file_location(temp_module_name, filepath)
+        if spec is None or spec.loader is None:
+            return {"status": "error", "error": f"Could not create module spec for {filepath}"}
+
+        temp_module = importlib.util.module_from_spec(spec)
+        sys.modules[temp_module_name] = temp_module
+        spec.loader.exec_module(temp_module)
+
+        # Find BaseDriver subclass
+        for _name, obj in inspect.getmembers(temp_module, inspect.isclass):
+            if (
+                issubclass(obj, BaseDriver)
+                and obj is not BaseDriver
+                and obj.__module__ == temp_module_name
+            ):
+                if hasattr(obj, "DRIVER_INFO") and obj.DRIVER_INFO.get("id"):
+                    new_driver_class = obj
+                    break
+    except SyntaxError as e:
+        return {
+            "status": "error",
+            "error": f"SyntaxError: {e.msg} ({filepath.name}, line {e.lineno})",
+            "line": e.lineno,
+            "old_driver_preserved": True,
+        }
+    except Exception as e:
+        # Try to extract line number from traceback
+        import traceback
+        tb_lines = traceback.format_exception(type(e), e, e.__traceback__)
+        line_num = None
+        for tb_line in tb_lines:
+            import re as _re
+            match = _re.search(r'line (\d+)', tb_line)
+            if match and str(filepath) in tb_line:
+                line_num = int(match.group(1))
+        return {
+            "status": "error",
+            "error": f"{type(e).__name__}: {e}",
+            "line": line_num,
+            "old_driver_preserved": True,
+        }
+    finally:
+        # Clean up temp module
+        sys.modules.pop(temp_module_name, None)
+
+    if new_driver_class is None:
+        return {
+            "status": "error",
+            "error": "No BaseDriver subclass with DRIVER_INFO found",
+            "old_driver_preserved": True,
+        }
+
+    new_driver_id = new_driver_class.DRIVER_INFO["id"]
+
+    # --- Step 2: Find old driver ID from this file (may differ if ID changed) ---
+    old_driver_id = None
+    if module_name in sys.modules:
+        old_module = sys.modules[module_name]
+        for _name, obj in inspect.getmembers(old_module, inspect.isclass):
+            if (
+                issubclass(obj, BaseDriver)
+                and obj is not BaseDriver
+                and obj.__module__ == module_name
+            ):
+                if hasattr(obj, "DRIVER_INFO") and obj.DRIVER_INFO.get("id"):
+                    old_driver_id = obj.DRIVER_INFO["id"]
+                    break
+
+    # --- Step 3: Remove old module and load properly ---
+    sys.modules.pop(module_name, None)
+
+    final_class = load_python_driver_file(filepath)
+    if final_class is None:
+        # This shouldn't happen since validation passed, but handle it
+        return {"status": "error", "error": "Failed to load driver after validation passed"}
+
+    # --- Step 4: Unregister old and register new ---
+    if old_driver_id and old_driver_id != new_driver_id:
+        unregister_driver(old_driver_id)
+    register_driver(final_class)
+
+    log.info(f"Hot-reloaded Python driver: {new_driver_id} from {filepath.name}")
+
+    return {
+        "status": "reloaded",
+        "driver_id": new_driver_id,
+        "old_driver_id": old_driver_id,
+    }
+
+
 # --- Backward compatibility aliases ---
 # These map old names to new names so existing code doesn't break during transition
 load_json_driver = load_driver_file

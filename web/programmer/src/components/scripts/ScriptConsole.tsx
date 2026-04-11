@@ -10,7 +10,20 @@ const LEVEL_COLORS: Record<string, string> = {
   ERROR: "#ef4444",
 };
 
-export function ScriptConsole() {
+interface ScriptConsoleProps {
+  /** Filter logs by category. Defaults to "script". Pass "driver" + filterSource to filter driver logs. */
+  filterCategory?: string;
+  /** Additional filter: match log source field (e.g. "openavc_driver_lg_webos"). */
+  filterSource?: string;
+  /** Placeholder text when no entries. */
+  emptyText?: string;
+}
+
+export function ScriptConsole({
+  filterCategory = "script",
+  filterSource,
+  emptyText = "Script output will appear here. Click Save & Reload or press Ctrl+Shift+R.",
+}: ScriptConsoleProps) {
   const entries = useLogStore((s) => s.logEntries);
   const paused = useLogStore((s) => s.logPaused);
   const setPaused = useLogStore((s) => s.setLogPaused);
@@ -19,10 +32,19 @@ export function ScriptConsole() {
   const [localPaused, setLocalPaused] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
 
-  // Filter to script entries only
+  // Filter entries by category and optionally by source
   const scriptEntries = useMemo(
-    () => entries.filter((e) => e.category === "script"),
-    [entries]
+    () => entries.filter((e) => {
+      if (filterCategory === "driver") {
+        // For driver mode, show driver logs + programmer reload logs
+        const isDriverLog = e.source?.startsWith("openavc_driver_") || e.category === "driver";
+        const isReloadLog = e.source === "openavc.programmer" && e.message?.includes("Driver");
+        const isSourceMatch = !filterSource || e.source === filterSource;
+        return (isDriverLog && isSourceMatch) || isReloadLog;
+      }
+      return e.category === filterCategory;
+    }),
+    [entries, filterCategory, filterSource]
   );
 
   // Auto-scroll
@@ -89,7 +111,7 @@ export function ScriptConsole() {
       >
         {scriptEntries.length === 0 ? (
           <div style={{ color: "var(--text-muted)", padding: "var(--space-sm)" }}>
-            Script output will appear here. Click Save &amp; Reload or press Ctrl+Shift+R.
+            {emptyText}
           </div>
         ) : (
           scriptEntries.map((e, i) => (

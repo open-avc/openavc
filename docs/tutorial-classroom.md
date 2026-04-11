@@ -56,7 +56,7 @@ If you do not have real hardware, the devices will show as disconnected. That is
 
 Now create a script file:
 
-1. Click **Scripts** in the sidebar
+1. Click **Code** in the sidebar
 2. Click **New Script**
 3. Name it `room_control`
 4. The Monaco code editor opens with a blank file

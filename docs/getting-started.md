@@ -165,7 +165,7 @@ The sidebar has these sections:
 - **State.** Variables, device states, and activity feed.
 - **UI Builder.** Visual drag-and-drop panel designer.
 - **Macros.** Sequence-based automation with triggers.
-- **Scripts.** Python scripting with Monaco editor.
+- **Code.** Python scripting and driver editing with Monaco editor.
 - **Plugins.** Install and configure system plugins.
 - **Inter-System.** Communication between OpenAVC instances.
 - **AI Assistant.** AI-powered help and automation (requires cloud connection).

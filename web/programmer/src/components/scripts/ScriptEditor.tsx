@@ -16,12 +16,16 @@ interface ScriptEditorProps {
   onEditorReady?: (editor: any) => void;
   /** Runtime errors to display as markers in the editor. */
   runtimeErrors?: RuntimeError[];
+  /** Editor mode — controls IntelliSense and diagnostics. */
+  editorMode?: "script" | "driver";
 }
 
-export function ScriptEditor({ source, onChange, onCreateVariable, onEditorReady, runtimeErrors }: ScriptEditorProps) {
+export function ScriptEditor({ source, onChange, onCreateVariable, onEditorReady, runtimeErrors, editorMode = "script" }: ScriptEditorProps) {
   const disposablesRef = useRef<{ dispose(): void }[]>([]);
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
+  const editorModeRef = useRef(editorMode);
+  useEffect(() => { editorModeRef.current = editorMode; }, [editorMode]);
 
   // Run diagnostics whenever source or project variables change
   const variables = useProjectStore((s) => s.project?.variables) ?? [];
@@ -342,6 +346,176 @@ export function ScriptEditor({ source, onChange, onCreateVariable, onEditorReady
     });
 
     disposablesRef.current.push(disposable);
+
+    // Register driver-mode completions (self.*, self.transport.*, BaseDriver methods)
+    const driverDisposable = monaco.languages.registerCompletionItemProvider("python", {
+      triggerCharacters: [".", '"', "'"],
+      provideCompletionItems: (model: any, position: any) => {
+        // Only provide driver completions when in driver mode
+        const fullSource = model.getValue();
+        const isDriver = editorModeRef.current === "driver" || fullSource.includes("BaseDriver") || fullSource.includes("DRIVER_INFO");
+        if (!isDriver) return { suggestions: [] };
+
+        const textUntilPosition = model.getValueInRange({
+          startLineNumber: position.lineNumber,
+          startColumn: 1,
+          endLineNumber: position.lineNumber,
+          endColumn: position.column,
+        });
+
+        const suggestions: any[] = [];
+        const range = {
+          startLineNumber: position.lineNumber,
+          startColumn: position.column,
+          endLineNumber: position.lineNumber,
+          endColumn: position.column,
+        };
+
+        // self.* completions
+        if (textUntilPosition.match(/self\.\s*$/)) {
+          suggestions.push(
+            {
+              label: "set_state",
+              kind: monaco.languages.CompletionItemKind.Method,
+              insertText: 'set_state("${1:property}", ${2:value})',
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              detail: "(property: str, value) -> None",
+              documentation: { value: 'Set a device state variable. Auto-namespaced to device.{device_id}.{property}.\n\n```python\nself.set_state("power", True)\nself.set_state("input", "hdmi1")\n```' },
+              range,
+            },
+            {
+              label: "get_state",
+              kind: monaco.languages.CompletionItemKind.Method,
+              insertText: 'get_state("${1:property}")',
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              detail: "(property: str) -> Any",
+              documentation: { value: 'Read a device state variable.\n\n```python\npower = self.get_state("power")\n```' },
+              range,
+            },
+            {
+              label: "set_states",
+              kind: monaco.languages.CompletionItemKind.Method,
+              insertText: 'set_states(${1:updates})',
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              detail: "(updates: dict) -> None",
+              documentation: { value: 'Set multiple state variables atomically.\n\n```python\nself.set_states({"power": True, "input": "hdmi1"})\n```' },
+              range,
+            },
+            {
+              label: "transport",
+              kind: monaco.languages.CompletionItemKind.Property,
+              insertText: "transport",
+              detail: "Transport instance (TCP, serial, HTTP)",
+              range,
+            },
+            {
+              label: "config",
+              kind: monaco.languages.CompletionItemKind.Property,
+              insertText: "config",
+              detail: "dict — device configuration from project",
+              range,
+            },
+            {
+              label: "device_id",
+              kind: monaco.languages.CompletionItemKind.Property,
+              insertText: "device_id",
+              detail: "str — unique device identifier",
+              range,
+            },
+            {
+              label: "events",
+              kind: monaco.languages.CompletionItemKind.Property,
+              insertText: "events",
+              detail: "EventBus — emit and listen for events",
+              range,
+            },
+            {
+              label: "connected",
+              kind: monaco.languages.CompletionItemKind.Property,
+              insertText: "connected",
+              detail: "bool — True if transport is connected",
+              range,
+            },
+          );
+        }
+
+        // self.transport.* completions
+        if (textUntilPosition.match(/self\.transport\.\s*$/)) {
+          suggestions.push(
+            {
+              label: "send",
+              kind: monaco.languages.CompletionItemKind.Method,
+              insertText: "send(${1:data})",
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              detail: "(data: bytes) -> None",
+              documentation: { value: 'Send raw bytes to the device.\n\n```python\nawait self.transport.send(b"POWER ON\\r\\n")\n```' },
+              range,
+            },
+            {
+              label: "send_and_wait",
+              kind: monaco.languages.CompletionItemKind.Method,
+              insertText: "send_and_wait(${1:data}, timeout=${2:5.0})",
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              detail: "(data: bytes, timeout: float) -> bytes",
+              documentation: { value: 'Send data and wait for a response.\n\n```python\nresponse = await self.transport.send_and_wait(b"STATUS?\\r\\n", timeout=3.0)\n```' },
+              range,
+            },
+            {
+              label: "close",
+              kind: monaco.languages.CompletionItemKind.Method,
+              insertText: "close()",
+              detail: "() -> None",
+              documentation: { value: "Close the transport connection." },
+              range,
+            },
+            {
+              label: "connected",
+              kind: monaco.languages.CompletionItemKind.Property,
+              insertText: "connected",
+              detail: "bool — transport connection state",
+              range,
+            },
+          );
+        }
+
+        // self.events.* completions
+        if (textUntilPosition.match(/self\.events\.\s*$/)) {
+          suggestions.push(
+            {
+              label: "emit",
+              kind: monaco.languages.CompletionItemKind.Method,
+              insertText: 'emit("${1:event_name}")',
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              detail: "(event: str, payload?: dict) -> None",
+              range,
+            },
+          );
+        }
+
+        // Import completions for drivers
+        if (textUntilPosition.match(/from server\.drivers\.base import\s/)) {
+          suggestions.push({
+            label: "BaseDriver",
+            kind: monaco.languages.CompletionItemKind.Class,
+            insertText: "BaseDriver",
+            range,
+          });
+        }
+
+        if (textUntilPosition.match(/from server\.utils\.logger import\s/)) {
+          suggestions.push({
+            label: "get_logger",
+            kind: monaco.languages.CompletionItemKind.Function,
+            insertText: "get_logger",
+            range,
+          });
+        }
+
+        return { suggestions };
+      },
+    });
+
+    disposablesRef.current.push(driverDisposable);
 
     // Run initial diagnostics
     const currentVarIds = useProjectStore.getState().project?.variables.map((v) => v.id) ?? [];

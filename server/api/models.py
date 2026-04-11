@@ -90,6 +90,11 @@ class TestCommandRequest(BaseModel):
     timeout: float = 5.0
 
 
+class PythonDriverCreateRequest(BaseModel):
+    id: str
+    source: str
+
+
 class CommunityDriverInstallRequest(BaseModel):
     driver_id: str
     file_url: str
