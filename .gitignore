@@ -20,6 +20,7 @@ web/programmer/dist/
 web/simulator/dist/
 web/simulator/node_modules/
 .vite/
+*.tsbuildinfo
 
 # IDE
 .vscode/
