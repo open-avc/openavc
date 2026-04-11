@@ -19,7 +19,7 @@ Environment=OPENAVC_BIND=0.0.0.0
 # Security hardening
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/var/lib/openavc /var/log/openavc
+ReadWritePaths=/var/lib/openavc /var/log/openavc /opt/openavc/driver_repo /opt/openavc/plugin_repo
 ProtectHome=true
 PrivateTmp=true
 
