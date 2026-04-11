@@ -510,7 +510,7 @@ export function SystemSettingsView() {
           <div style={toggleRow}>
             <div>
               <div style={{ fontSize: "var(--font-size-sm)" }}>Kiosk mode</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Launch the Panel UI fullscreen on an attached display (e.g. Raspberry Pi with HDMI touchscreen).</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Launch the Panel UI fullscreen on an attached display (e.g. Raspberry Pi with HDMI touchscreen). Requires a reboot of the device to take effect.</div>
             </div>
             <Toggle checked={kiosk.enabled} onChange={(v) => update("kiosk", "enabled", v)} />
           </div>

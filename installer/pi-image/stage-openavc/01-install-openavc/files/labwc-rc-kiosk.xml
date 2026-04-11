@@ -1,17 +1,13 @@
 <?xml version="1.0"?>
 <!--
-  labwc configuration overlay for OpenAVC kiosk mode.
-  Merged into ~/.config/labwc/rc.xml when kiosk is enabled.
+  labwc configuration for the OpenAVC user session.
 
-  - Hides the cursor after 1 second of inactivity (touch panels)
+  - Disables touch mouse emulation so native touch scrolling works
+    (RPi OS defaults to mouseEmulation=yes which breaks swipe scroll)
   - Removes window decorations from Chromium (clean fullscreen)
 -->
 <labwc_config>
-  <core>
-    <cursor>
-      <hideTimeout>1000</hideTimeout>
-    </cursor>
-  </core>
+  <touch deviceName="" mouseEmulation="no"/>
   <windowRules>
     <windowRule identifier="chromium">
       <serverDecoration>no</serverDecoration>

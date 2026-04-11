@@ -19,9 +19,10 @@ usermod -aG video,input,dialout "$OPENAVC_USER" 2>/dev/null || true
 # --- Enable services ---
 
 systemctl enable openavc.service
-systemctl enable openavc-panel.service
+# Note: openavc-panel.service is NOT enabled. The kiosk is launched from
+# the labwc autostart instead, which runs inside the graphical session
+# and has proper access to the Wayland display.
 systemctl enable openavc-firstboot.service
-systemctl enable openavc-info.service
 systemctl enable avahi-daemon.service
 
 # Create first-boot marker
@@ -37,10 +38,13 @@ touch "$DATA_DIR/.firstboot"
 # Raspberry Pi OS uses lightdm for display management
 LIGHTDM_CONF="/etc/lightdm/lightdm.conf"
 if [ -f "$LIGHTDM_CONF" ]; then
-    # Enable auto-login in lightdm
-    sed -i "s/^#autologin-user=.*/autologin-user=$OPENAVC_USER/" "$LIGHTDM_CONF"
-    # If the line doesn't exist, add it under [Seat:*]
-    if ! grep -q "^autologin-user=" "$LIGHTDM_CONF"; then
+    # Set auto-login user — handles both commented and uncommented lines
+    # (Pi OS may already have autologin-user=rpi-first-boot-wizard set)
+    if grep -q "^autologin-user=" "$LIGHTDM_CONF"; then
+        sed -i "s/^autologin-user=.*/autologin-user=$OPENAVC_USER/" "$LIGHTDM_CONF"
+    elif grep -q "^#autologin-user=" "$LIGHTDM_CONF"; then
+        sed -i "s/^#autologin-user=.*/autologin-user=$OPENAVC_USER/" "$LIGHTDM_CONF"
+    else
         sed -i "/^\[Seat:\*\]/a autologin-user=$OPENAVC_USER" "$LIGHTDM_CONF"
     fi
 fi
@@ -50,36 +54,54 @@ if command -v raspi-config &> /dev/null; then
     raspi-config nonint do_boot_behaviour B4 2>/dev/null || true
 fi
 
+# Disable the Raspberry Pi OS first-boot wizard. It hijacks the graphical
+# session (runs labwc as its own user) which prevents auto-login as openavc
+# and blocks the kiosk launcher. Everything it configures is already set by
+# pi-gen (user, password, locale, SSH).
+rm -f /etc/xdg/autostart/piwiz.desktop
+
 # --- Kiosk display integration ---
 
-# Set up labwc autostart for the openavc user.
-# The panel-kiosk.sh script checks system.json at runtime, so this autostart
-# entry is always present but the script exits immediately if kiosk is disabled.
+# --- labwc display configuration ---
+#
+# RPi OS runs labwc via labwc-pi which passes -m (merge-config), so both
+# the system autostart (/etc/xdg/labwc/autostart) and user autostart run.
+# We must strip the desktop shell from the system autostart, otherwise
+# pcmanfm (wallpaper + icons) and wf-panel-pi (taskbar) appear before
+# Chromium loads, and users can interact with them.
+
 OPENAVC_HOME="/home/$OPENAVC_USER"
 LABWC_DIR="$OPENAVC_HOME/.config/labwc"
 mkdir -p "$LABWC_DIR"
 
-# Append our kiosk launcher to labwc autostart
-AUTOSTART_FILE="$LABWC_DIR/autostart"
-KIOSK_LINE="/opt/openavc/scripts/panel-kiosk.sh &"
-if [ -f "$AUTOSTART_FILE" ]; then
-    # Append if not already present
-    if ! grep -qF "$KIOSK_LINE" "$AUTOSTART_FILE"; then
-        echo "" >> "$AUTOSTART_FILE"
-        echo "# OpenAVC panel kiosk (checks system.json, exits if disabled)" >> "$AUTOSTART_FILE"
-        echo "$KIOSK_LINE" >> "$AUTOSTART_FILE"
-    fi
-else
-    # Create autostart with default Pi OS entries + our kiosk line
-    cat > "$AUTOSTART_FILE" << 'AUTOSTART'
-# Raspberry Pi OS default autostart
-pcmanfm --desktop --profile LXDE-pi &
-lxpanel --profile LXDE-pi &
+# Replace system autostart: remove desktop shell, keep display detection
+SYSTEM_AUTOSTART="/etc/xdg/labwc/autostart"
+if [ -f "$SYSTEM_AUTOSTART" ]; then
+    cat > "$SYSTEM_AUTOSTART" << 'SYSAUTO'
+# OpenAVC: desktop shell removed (no pcmanfm, no wf-panel-pi)
+/usr/bin/kanshi &
+SYSAUTO
+fi
 
-# OpenAVC panel kiosk (checks system.json, exits if disabled)
+# User autostart: launch OpenAVC display (panel or info screen)
+cat > "$LABWC_DIR/autostart" << 'AUTOSTART'
 /opt/openavc/scripts/panel-kiosk.sh &
 AUTOSTART
-fi
+
+# User rc.xml: disable touch mouse emulation for native swipe scrolling,
+# and remove window decorations from Chromium
+cat > "$LABWC_DIR/rc.xml" << 'RCXML'
+<?xml version="1.0"?>
+<labwc_config>
+  <touch deviceName="" mouseEmulation="no"/>
+  <windowRules>
+    <windowRule identifier="chromium">
+      <serverDecoration>no</serverDecoration>
+      <skipTaskbar>yes</skipTaskbar>
+    </windowRule>
+  </windowRules>
+</labwc_config>
+RCXML
 
 chown -R "$OPENAVC_USER:$OPENAVC_USER" "$OPENAVC_HOME/.config"
 
