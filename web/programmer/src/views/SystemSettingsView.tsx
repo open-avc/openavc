@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Save, AlertTriangle, Eye, EyeOff, RefreshCw } from "lucide-react";
 import { ViewContainer } from "../components/layout/ViewContainer";
+import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import { showError, showSuccess } from "../store/toastStore";
 import * as api from "../api/restClient";
 import type { SystemConfig, NetworkAdapter } from "../api/restClient";
@@ -180,6 +181,8 @@ export function SystemSettingsView() {
   const [dirty, setDirty] = useState<Partial<SystemConfig>>({});
   const [saving, setSaving] = useState(false);
   const [restartNeeded, setRestartNeeded] = useState(false);
+  const [showRebootDialog, setShowRebootDialog] = useState(false);
+  const [kioskAvailable, setKioskAvailable] = useState(false);
   const [adapters, setAdapters] = useState<NetworkAdapter[]>([]);
   const [adaptersLoading, setAdaptersLoading] = useState(false);
 
@@ -193,6 +196,7 @@ export function SystemSettingsView() {
 
   useEffect(() => {
     api.getSystemConfig().then(setConfig).catch((e) => showError("Failed to load config: " + e));
+    api.getSystemVersion().then((v) => setKioskAvailable(v.kiosk_available)).catch(() => {});
     loadAdapters();
   }, [loadAdapters]);
 
@@ -233,6 +237,8 @@ export function SystemSettingsView() {
 
     if (Object.keys(payload).length === 0) return;
 
+    const hasKioskChanges = "kiosk" in payload;
+
     setSaving(true);
     try {
       await api.updateSystemConfig(payload as Partial<SystemConfig>);
@@ -241,6 +247,7 @@ export function SystemSettingsView() {
       const fresh = await api.getSystemConfig();
       setConfig(fresh);
       setDirty({});
+      if (hasKioskChanges && kioskAvailable) setShowRebootDialog(true);
     } catch (e) {
       showError("Failed to save: " + String(e));
     } finally {
@@ -268,6 +275,7 @@ export function SystemSettingsView() {
   }
 
   return (
+    <>
     <ViewContainer
       title="System Settings"
       actions={
@@ -504,13 +512,14 @@ export function SystemSettingsView() {
           </div>
         </div>
 
-        {/* Kiosk */}
+        {/* Kiosk — only shown on Pi/kiosk-capable deployments */}
+        {kioskAvailable && <>
         <h3 style={sectionTitle}>Kiosk</h3>
         <div style={cardStyle}>
           <div style={toggleRow}>
             <div>
               <div style={{ fontSize: "var(--font-size-sm)" }}>Kiosk mode</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Launch the Panel UI fullscreen on an attached display (e.g. Raspberry Pi with HDMI touchscreen). Requires a reboot of the device to take effect.</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Launch the Panel UI fullscreen on an attached display (e.g. Raspberry Pi with HDMI touchscreen).</div>
             </div>
             <Toggle checked={kiosk.enabled} onChange={(v) => update("kiosk", "enabled", v)} />
           </div>
@@ -531,7 +540,31 @@ export function SystemSettingsView() {
             <Toggle checked={kiosk.cursor_visible} onChange={(v) => update("kiosk", "cursor_visible", v)} />
           </div>
         </div>
+        </>}
       </div>
     </ViewContainer>
+
+    {showRebootDialog && (
+      <ConfirmDialog
+        title="Reboot Required"
+        message="Kiosk display settings require a reboot to take effect. Reboot now?"
+        confirmLabel="Reboot Now"
+        cancelLabel="Later"
+        onConfirm={async () => {
+          setShowRebootDialog(false);
+          try {
+            await api.rebootSystem();
+            showSuccess("Device is rebooting...");
+          } catch {
+            showError("Reboot not available. Restart the device manually.");
+          }
+        }}
+        onCancel={() => {
+          setShowRebootDialog(false);
+          showSuccess("Settings saved. Reboot the device for changes to take effect.");
+        }}
+      />
+    )}
+    </>
   );
 }

@@ -16,6 +16,10 @@ chown -R "$OPENAVC_USER:$OPENAVC_USER" /var/log/openavc
 # Add openavc user to video and input groups (needed for display + touch)
 usermod -aG video,input,dialout "$OPENAVC_USER" 2>/dev/null || true
 
+# Allow passwordless reboot from the server (used by Programmer UI reboot button)
+echo "$OPENAVC_USER ALL=(ALL) NOPASSWD: /sbin/reboot" > /etc/sudoers.d/openavc-reboot
+chmod 440 /etc/sudoers.d/openavc-reboot
+
 # --- Enable services ---
 
 systemctl enable openavc.service

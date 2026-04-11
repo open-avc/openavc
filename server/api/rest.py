@@ -2236,6 +2236,7 @@ async def cloud_unpair() -> dict[str, Any]:
 async def get_system_version() -> dict[str, Any]:
     """Current version info, platform, and update channel."""
     import platform as plat
+    from pathlib import Path
     from server.version import __version__
     from server.system_config import get_system_config
     cfg = get_system_config()
@@ -2243,6 +2244,7 @@ async def get_system_version() -> dict[str, Any]:
         "version": __version__,
         "channel": cfg.get("updates", "channel", "stable"),
         "platform": plat.system().lower(),
+        "kiosk_available": Path("/opt/openavc/scripts/panel-kiosk.sh").exists(),
     }
 
 
@@ -2301,6 +2303,39 @@ async def get_network_adapters() -> dict[str, Any]:
     """List available network adapters for control interface selection."""
     from server.discovery.network_scanner import get_network_adapters as _get_adapters
     return {"adapters": _get_adapters()}
+
+
+@router.post("/system/reboot")
+async def reboot_system() -> dict[str, str]:
+    """Reboot the host machine. Only works on Linux where the openavc user has passwordless sudo reboot."""
+    import asyncio
+    import platform
+    from pathlib import Path
+    from server.utils.logger import get_logger
+    log = get_logger(__name__)
+
+    if platform.system() != "Linux":
+        raise HTTPException(status_code=501, detail="Reboot is only supported on Linux deployments")
+
+    if Path("/.dockerenv").exists():
+        raise HTTPException(status_code=501, detail="Reboot is not supported in Docker containers")
+
+    # Only allow reboot if our sudoers entry was installed (Pi image sets this up)
+    if not Path("/etc/sudoers.d/openavc-reboot").exists():
+        raise HTTPException(status_code=501, detail="Reboot not available. Restart the device manually.")
+
+    log.info("System reboot requested via API")
+
+    async def _delayed_reboot():
+        await asyncio.sleep(1)
+        proc = await asyncio.create_subprocess_exec(
+            "sudo", "reboot",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        await proc.communicate()
+
+    asyncio.create_task(_delayed_reboot())
+    return {"status": "rebooting"}
 
 
 # --- Update System ---

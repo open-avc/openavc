@@ -1182,6 +1182,15 @@ export interface SystemConfig {
   kiosk: { enabled: boolean; target_url: string; cursor_visible: boolean };
 }
 
+export async function getSystemVersion(): Promise<{
+  version: string;
+  channel: string;
+  platform: string;
+  kiosk_available: boolean;
+}> {
+  return request("/system/version");
+}
+
 export async function getSystemConfig(): Promise<SystemConfig> {
   return request("/system/config");
 }
@@ -1193,6 +1202,10 @@ export async function updateSystemConfig(
     method: "PATCH",
     body: JSON.stringify(data),
   });
+}
+
+export async function rebootSystem(): Promise<{ status: string }> {
+  return request("/system/reboot", { method: "POST" });
 }
 
 // --- Network Adapters ---
