@@ -161,6 +161,7 @@ async def ping_sweep(
     on_found: Callable[[str], Awaitable[None]] | None = None,
     on_progress: Callable[[int, int], Awaitable[None]] | None = None,
     min_prefix: int = 20,
+    source_ip: str = "",
 ) -> list[str]:
     """Ping all addresses in the given subnets. Returns list of responding IPs.
 
@@ -171,6 +172,7 @@ async def ping_sweep(
         on_found: Called with IP when a host responds.
         on_progress: Called with (completed_count, total_count) after each host.
         min_prefix: Minimum CIDR prefix length. Subnets larger than this are skipped.
+        source_ip: Bind pings to this source address on multi-homed hosts.
     """
     all_ips: list[str] = []
     for cidr in subnets:
@@ -180,7 +182,10 @@ async def ping_sweep(
         return []
 
     total = len(all_ips)
-    log.info("Ping sweep: %d addresses across %d subnet(s)", total, len(subnets))
+    if source_ip:
+        log.info("Ping sweep: %d addresses across %d subnet(s) (source: %s)", total, len(subnets), source_ip)
+    else:
+        log.info("Ping sweep: %d addresses across %d subnet(s)", total, len(subnets))
 
     alive: list[str] = []
     semaphore = asyncio.Semaphore(concurrency)
@@ -189,7 +194,7 @@ async def ping_sweep(
     async def _ping_one(ip: str) -> None:
         nonlocal completed
         async with semaphore:
-            if await _ping(ip, timeout):
+            if await _ping(ip, timeout, source_ip=source_ip):
                 alive.append(ip)
                 if on_found:
                     await on_found(ip)
@@ -202,12 +207,24 @@ async def ping_sweep(
     return sorted(alive, key=lambda x: ipaddress.IPv4Address(x))
 
 
-async def _ping(ip: str, timeout: float = 1.0) -> bool:
-    """Ping a single IP address. Returns True if it responds."""
+async def _ping(ip: str, timeout: float = 1.0, source_ip: str = "") -> bool:
+    """Ping a single IP address. Returns True if it responds.
+
+    Args:
+        source_ip: If set, bind the ping to this source address (``-S`` on
+            Windows, ``-I`` on Linux).  Needed on multi-homed hosts where
+            the kernel might pick a Docker/VPN source and get filtered.
+    """
     if _IS_WINDOWS:
-        cmd = ["ping", "-n", "1", "-w", str(int(timeout * 1000)), ip]
+        cmd = ["ping", "-n", "1", "-w", str(int(timeout * 1000))]
+        if source_ip:
+            cmd.extend(["-S", source_ip])
+        cmd.append(ip)
     else:
-        cmd = ["ping", "-c", "1", "-W", str(max(1, int(timeout))), ip]
+        cmd = ["ping", "-c", "1", "-W", str(max(1, int(timeout)))]
+        if source_ip:
+            cmd.extend(["-I", source_ip])
+        cmd.append(ip)
 
     try:
         proc = await asyncio.create_subprocess_exec(

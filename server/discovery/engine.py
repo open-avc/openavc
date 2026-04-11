@@ -369,6 +369,7 @@ class DiscoveryEngine:
         ping_concurrency = 10 if gentle else 50
         snmp_enabled = self.config.get("snmp_enabled", True)
         snmp_community = self.config.get("snmp_community", "public")
+        control_ip = self._get_control_interface()
 
         # --- Phase 1: Subnet Detection (already done) ---
         await self._set_phase(1, "subnet_detection", "Detecting network interfaces...")
@@ -420,6 +421,7 @@ class DiscoveryEngine:
                 on_found=on_ping_found,
                 on_progress=on_ping_progress,
                 min_prefix=self.config.get("max_subnet_size", 20),
+                source_ip=control_ip,
             )
             self.scan_status.total_hosts_scanned = ping_total
 
