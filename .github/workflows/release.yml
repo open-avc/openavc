@@ -349,7 +349,7 @@ jobs:
           name: OpenAVC v${{ env.VERSION }}
           draft: false
           prerelease: ${{ needs.version.outputs.prerelease }}
-          generate_release_notes: true
+          body_path: .github/RELEASE_NOTES.md
           files: release/*
 
       - name: Trigger Pi image build
@@ -369,12 +369,11 @@ jobs:
       - name: Notify Discord
         if: ${{ needs.version.outputs.prerelease == 'false' }}
         run: |
-          RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/v${VERSION}"
-          curl -s -H "Content-Type: application/json" -d "{
-            \"embeds\": [{
-              \"title\": \"OpenAVC v${VERSION} Released\",
-              \"url\": \"${RELEASE_URL}\",
-              \"color\": 5682323,
-              \"description\": \"A new version of OpenAVC is available.\\n\\n[View release notes and downloads](${RELEASE_URL})\"
-            }]
-          }" "${{ secrets.DISCORD_WEBHOOK }}"
+          NOTES=$(jq -Rs . < .github/RELEASE_NOTES.md)
+          DOWNLOAD_URL="https://openavc.com/download"
+          jq -n --arg title "OpenAVC v${VERSION} Released" \
+                --arg url "$DOWNLOAD_URL" \
+                --argjson color 5682323 \
+                --argjson notes "$NOTES" \
+                '{embeds: [{title: $title, url: $url, color: $color, description: ($notes + "\n\n[Download](https://openavc.com/download)")}]}' \
+          | curl -s -H "Content-Type: application/json" -d @- "${{ secrets.DISCORD_WEBHOOK }}"
