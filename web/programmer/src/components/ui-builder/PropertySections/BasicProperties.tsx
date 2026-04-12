@@ -524,7 +524,7 @@ export function BasicProperties({
       {element.type === "clock" && (
         <>
           <FieldRow label="Mode">
-            <select value={element.clock_mode || "time"} onChange={(e) => onChange({ clock_mode: e.target.value })} style={{ flex: 1 }}>
+            <select value={element.clock_mode || "time"} onChange={(e) => onChange({ clock_mode: e.target.value, format: "" })} style={{ flex: 1 }}>
               <option value="time">Time</option>
               <option value="date">Date</option>
               <option value="datetime">Date + Time</option>
@@ -534,7 +534,7 @@ export function BasicProperties({
             </select>
           </FieldRow>
           <FieldRow label="Format">
-            <input value={element.format || ""} onChange={(e) => onChange({ format: e.target.value })} placeholder="h:mm A" style={{ flex: 1 }} />
+            <input value={element.format || ""} onChange={(e) => onChange({ format: e.target.value })} placeholder={{ time: "h:mm A", date: "MMM D, YYYY", datetime: "MMM D, YYYY h:mm A", countdown: "HH:mm:ss", elapsed: "HH:mm:ss", meeting: "mm:ss" }[element.clock_mode || "time"] || "h:mm A"} style={{ flex: 1 }} />
           </FieldRow>
           {element.clock_mode === "meeting" && (
             <FieldRow label="Duration">

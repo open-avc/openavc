@@ -256,7 +256,6 @@ export function createDefaultElement(
       return {
         ...base,
         clock_mode: "time",
-        format: "h:mm A",
         grid_area: { col, row, col_span: 3, row_span: 1 },
         style: { font_size: 24 },
       };
