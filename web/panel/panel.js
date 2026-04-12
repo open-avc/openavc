@@ -2144,7 +2144,8 @@ class PanelApp {
         this.elementMap[element.id] = { el, elementDef: element };
 
         const mode = element.clock_mode || 'time';
-        const format = element.format || 'h:mm A';
+        const defaultFormats = { time: 'h:mm A', date: 'MMM D, YYYY', datetime: 'MMM D, YYYY h:mm A', countdown: 'HH:mm:ss', elapsed: 'HH:mm:ss', meeting: 'mm:ss' };
+        const format = element.format || defaultFormats[mode] || 'h:mm A';
         const timezone = element.timezone || undefined;
         const durationMin = element.duration_minutes || 60;
 
