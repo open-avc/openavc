@@ -1,0 +1,2 @@
+# Elgato Stream Deck USB HID access for non-root users
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0fd9", MODE="0666"

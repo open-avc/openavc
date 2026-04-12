@@ -681,8 +681,11 @@ def _check_native_dep(dep: dict) -> bool:
         deps_dir = PLUGIN_REPO_DIR / ".deps"
         if (deps_dir / lib_name).exists():
             return True
-        # Check system paths
+        # Check system paths — find_library expects name without 'lib' prefix
+        # and extension (e.g. "hidapi-libusb" not "libhidapi-libusb.so")
         base = os.path.splitext(lib_name)[0]
+        if base.startswith("lib"):
+            base = base[3:]
         return ctypes.util.find_library(base) is not None
 
     return False

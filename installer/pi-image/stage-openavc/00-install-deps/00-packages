@@ -6,3 +6,4 @@ unclutter
 avahi-daemon
 avahi-utils
 curl
+libhidapi-libusb0

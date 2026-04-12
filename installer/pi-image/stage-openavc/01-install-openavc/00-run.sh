@@ -46,6 +46,11 @@ fi
 install -m 644 "$FILES_DIR/openavc-http.service.avahi" \
     "${ROOTFS_DIR}/etc/avahi/services/openavc-http.service"
 
+# Install udev rule for Stream Deck USB access
+mkdir -p "${ROOTFS_DIR}/etc/udev/rules.d"
+install -m 644 "$FILES_DIR/99-streamdeck.rules" \
+    "${ROOTFS_DIR}/etc/udev/rules.d/99-streamdeck.rules"
+
 # Copy labwc kiosk config overlay
 mkdir -p "${ROOTFS_DIR}/etc/skel/.config/labwc"
 install -m 644 "$FILES_DIR/labwc-autostart" \
