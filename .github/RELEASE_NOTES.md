@@ -1,25 +1,14 @@
-## UI Builder and Panel Rendering Unified
+## Stream Deck on Linux
 
-The Programmer IDE builder and the touch panel now share a single CSS source of truth for element styling. Every element in the builder looks identical to the deployed panel, including theme colors, border radius, fonts, and spacing. No more visual drift between what you design and what you deploy.
+The Stream Deck plugin now works on Linux without any manual setup. The HIDAPI native library is downloaded automatically when you install the plugin, matching the seamless experience on Windows. Pi images ship with the library and USB access rules pre-installed.
 
-## Slider Enhancements
+If something does go wrong, the Programmer UI now shows clear instructions instead of a cryptic Python error.
 
-Sliders now support vertical orientation, configurable thumb size, and an optional value display. Switching orientation automatically adjusts the element's grid dimensions. The track now shows a fill bar indicating the current position.
+## Panel Fixes
 
-## Binding Incomplete Fix
+- Fixed the clock element ignoring Date and DateTime display modes (always showing time-only)
+- Fixed images not loading when using uploaded assets (assets:// URLs)
 
-Fixed an issue where action bindings on sliders, keypads, matrices, and other non-button elements always showed "Incomplete" even when fully configured.
+## Builder Fixes
 
-## Panel Connection Status
-
-The "Connected" indicator on the touch panel now fades out after a few seconds. "Disconnected" stays visible the entire time the panel is offline.
-
-## Pi Kiosk Improvements
-
-Fixed Chromium not filling the display on Raspberry Pi kiosk deployments. Added a reboot button to kiosk settings. Fixed touch scrolling and boot experience issues.
-
-## Deployment Fixes
-
-- Fixed driver and plugin installation failing on Linux deployments due to read-only filesystem paths
-- Fixed device discovery ping sweep failing on multi-homed hosts (Docker, VPN)
-- Docker image now includes ping and IP utilities for discovery
+- Fixed icons not rendering in Simple (On/Off) visual feedback mode
