@@ -107,6 +107,8 @@ export function UIBuilderView() {
   const dragElementType = useRef<string | null>(null);
   const draggedElement = useRef<UIElement | null>(null);
   const dragCellSize = useRef<{ w: number; h: number }>({ w: 60, h: 50 });
+  // Grid offset between pointer and element's top-left at drag start (in grid cells)
+  const dragGridOffset = useRef<{ col: number; row: number }>({ col: 0, row: 0 });
 
   // Auto-select first page if none selected
   useEffect(() => {
@@ -541,6 +543,40 @@ export function UIBuilderView() {
         const cols = cp?.grid.columns || 12;
         const rows = cp?.grid.rows || 8;
         dragCellSize.current = { w: rect.width / cols, h: rect.height / rows };
+
+        // Calculate grid offset: how far the pointer is from the element's top-left
+        if (data?.source === "canvas" && draggedElement.current) {
+          // For canvas drags, compute pointer offset within the element (in grid cells)
+          const pointerCol = Math.floor(
+            ((pointerEvent.clientX - rect.left) / rect.width) * cols,
+          ) + 1;
+          const pointerRow = Math.floor(
+            ((pointerEvent.clientY - rect.top) / rect.height) * rows,
+          ) + 1;
+          dragGridOffset.current = {
+            col: pointerCol - draggedElement.current.grid_area.col,
+            row: pointerRow - draggedElement.current.grid_area.row,
+          };
+        } else if (draggedElement.current) {
+          // For palette/template drags, the DragOverlay is anchored to the
+          // palette button's top-left. The pointer offset within the overlay
+          // equals the click offset within the palette button. Convert that
+          // pixel offset to grid cells so the element lands where the overlay
+          // appeared.
+          const activeRect = event.active.rect.current.initial;
+          const cellW = dragCellSize.current.w;
+          const cellH = dragCellSize.current.h;
+          dragGridOffset.current = {
+            col: activeRect && cellW > 0
+              ? Math.floor((pointerEvent.clientX - activeRect.left) / cellW)
+              : 0,
+            row: activeRect && cellH > 0
+              ? Math.floor((pointerEvent.clientY - activeRect.top) / cellH)
+              : 0,
+          };
+        } else {
+          dragGridOffset.current = { col: 0, row: 0 };
+        }
       }
     },
     [setActiveDragSource, pages, selectedPageId],
@@ -570,24 +606,17 @@ export function UIBuilderView() {
       const pointerY = dragStartPointer.current.y + delta.y;
 
       const { columns, rows } = currentPage.grid;
-      const col = Math.max(
-        1,
-        Math.min(
-          columns,
-          Math.floor(
-            ((pointerX - canvasRect.left) / canvasRect.width) * columns,
-          ) + 1,
-        ),
-      );
-      const row = Math.max(
-        1,
-        Math.min(
-          rows,
-          Math.floor(
-            ((pointerY - canvasRect.top) / canvasRect.height) * rows,
-          ) + 1,
-        ),
-      );
+      // Raw grid cell under the pointer
+      const rawCol = Math.floor(
+        ((pointerX - canvasRect.left) / canvasRect.width) * columns,
+      ) + 1;
+      const rawRow = Math.floor(
+        ((pointerY - canvasRect.top) / canvasRect.height) * rows,
+      ) + 1;
+      // Adjust for pointer offset within the element (canvas drags maintain
+      // the click position; palette drags center the element under the pointer)
+      const col = Math.max(1, Math.min(columns, rawCol - dragGridOffset.current.col));
+      const row = Math.max(1, Math.min(rows, rawRow - dragGridOffset.current.row));
 
       if (data.source === "palette" && data.elementType) {
         // Create new element — collect IDs from ALL pages to avoid cross-page collisions
