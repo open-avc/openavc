@@ -2725,8 +2725,9 @@ class PanelApp {
                 element.textContent = elementDef.label;
             }
 
-            // Update icon if specified
-            if (appearance.icon !== undefined || appearance.icon_color !== undefined) {
+            // Rebuild icon+text layout if element has any icon (from appearance or base element)
+            const resolvedIcon = appearance.icon || elementDef.icon || elementDef.style?.icon;
+            if (resolvedIcon) {
                 const iconDef = {
                     ...elementDef,
                     icon: appearance.icon || elementDef.icon,
@@ -2757,17 +2758,6 @@ class PanelApp {
 
         this.applyStyle(element, style);
 
-        // Update icon if specified in active/inactive style
-        const appliedStyle = isActive ? activeStyle : inactiveStyle;
-        if (appliedStyle.icon !== undefined || appliedStyle.icon_color !== undefined) {
-            const iconDef = {
-                ...elementDef,
-                icon: appliedStyle.icon || elementDef.icon,
-                icon_color: appliedStyle.icon_color || elementDef.icon_color,
-            };
-            this.renderElementContent(element, iconDef);
-        }
-
         // Image button active/inactive swap
         if (isActive && elementDef.button_image_active) {
             const url = this.resolveAssetUrl(elementDef.button_image_active);
@@ -2777,7 +2767,8 @@ class PanelApp {
             element.style.backgroundImage = `url(${url})`;
         }
 
-        // Conditional labels
+        // Conditional labels — must run BEFORE renderElementContent so
+        // the icon+text layout rebuild captures the updated text
         if (isActive && binding.label_active) {
             element.textContent = binding.label_active;
         } else if (!isActive && binding.label_inactive) {
@@ -2786,6 +2777,18 @@ class PanelApp {
             element.textContent = style.label;
         } else if (elementDef.label) {
             element.textContent = elementDef.label;
+        }
+
+        // Rebuild icon+text layout if element has any icon (from feedback or base element)
+        const appliedStyle = isActive ? activeStyle : inactiveStyle;
+        const resolvedIcon = appliedStyle.icon || elementDef.icon || elementDef.style?.icon;
+        if (resolvedIcon) {
+            const iconDef = {
+                ...elementDef,
+                icon: appliedStyle.icon || elementDef.icon,
+                icon_color: appliedStyle.icon_color || elementDef.icon_color,
+            };
+            this.renderElementContent(element, iconDef);
         }
     }
 
