@@ -93,7 +93,8 @@ cat > "$LABWC_DIR/autostart" << 'AUTOSTART'
 AUTOSTART
 
 # User rc.xml: disable touch mouse emulation for native swipe scrolling,
-# and remove window decorations from Chromium
+# remove window decorations from Chromium, and force fullscreen on first map
+# (workaround for labwc/Chromium race condition — labwc issue #1994)
 cat > "$LABWC_DIR/rc.xml" << 'RCXML'
 <?xml version="1.0"?>
 <labwc_config>
@@ -102,6 +103,9 @@ cat > "$LABWC_DIR/rc.xml" << 'RCXML'
     <windowRule identifier="chromium">
       <serverDecoration>no</serverDecoration>
       <skipTaskbar>yes</skipTaskbar>
+      <onFirstMap>
+        <action name="ToggleFullscreen"/>
+      </onFirstMap>
     </windowRule>
   </windowRules>
 </labwc_config>

@@ -113,7 +113,6 @@ else
     padding: 1.5rem;
   }
   .container {
-    max-width: 540px;
     width: 100%;
     text-align: center;
   }
@@ -244,11 +243,12 @@ echo "Launching Chromium: $CHROMIUM_URL"
 exec chromium \
     --ozone-platform=wayland \
     --kiosk \
+    --start-maximized \
+    --start-fullscreen \
     --noerrdialogs \
     --disable-infobars \
     --disable-translate \
     --no-first-run \
-    --start-fullscreen \
     --check-for-update-interval=31536000 \
     --autoplay-policy=no-user-gesture-required \
     --disable-features=TranslateUI \

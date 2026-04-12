@@ -12,6 +12,9 @@
     <windowRule identifier="chromium">
       <serverDecoration>no</serverDecoration>
       <skipTaskbar>yes</skipTaskbar>
+      <onFirstMap>
+        <action name="ToggleFullscreen"/>
+      </onFirstMap>
     </windowRule>
   </windowRules>
 </labwc_config>
