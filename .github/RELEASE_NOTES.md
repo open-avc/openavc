@@ -1,15 +1,25 @@
-## Python Driver Editor
+## UI Builder and Panel Rendering Unified
 
-Create and edit Python drivers directly in the Programmer IDE's Code view. New drivers can be started from templates for common protocols (TCP, HTTP, serial), and changes are hot-reloaded without restarting the server.
+The Programmer IDE builder and the touch panel now share a single CSS source of truth for element styling. Every element in the builder looks identical to the deployed panel, including theme colors, border radius, fonts, and spacing. No more visual drift between what you design and what you deploy.
 
-## In-Place Driver and Plugin Upgrades
+## Slider Enhancements
 
-Installed drivers and plugins can now be updated in place from the community library. No need to uninstall and reinstall when a new version is available.
+Sliders now support vertical orientation, configurable thumb size, and an optional value display. Switching orientation automatically adjusts the element's grid dimensions. The track now shows a fill bar indicating the current position.
 
-## Discovery Improvements
+## Binding Incomplete Fix
 
-Device discovery no longer scans Docker bridge interfaces and other virtual subnets. A configurable subnet limit prevents runaway scans on machines with many network interfaces.
+Fixed an issue where action bindings on sliders, keypads, matrices, and other non-button elements always showed "Incomplete" even when fully configured.
 
-## Toggle UX Fix
+## Panel Connection Status
 
-Fixed an issue where toggle buttons in the panel editor were missing format labels and showing configuration fields that didn't apply.
+The "Connected" indicator on the touch panel now fades out after a few seconds. "Disconnected" stays visible the entire time the panel is offline.
+
+## Pi Kiosk Improvements
+
+Fixed Chromium not filling the display on Raspberry Pi kiosk deployments. Added a reboot button to kiosk settings. Fixed touch scrolling and boot experience issues.
+
+## Deployment Fixes
+
+- Fixed driver and plugin installation failing on Linux deployments due to read-only filesystem paths
+- Fixed device discovery ping sweep failing on multi-homed hosts (Docker, VPN)
+- Docker image now includes ping and IP utilities for discovery
