@@ -98,8 +98,19 @@ class PanelApp {
     }
 
     setConnectionStatus(connected) {
+        if (this._statusHideTimer) {
+            clearTimeout(this._statusHideTimer);
+            this._statusHideTimer = null;
+        }
+
         this.statusEl.textContent = connected ? 'Connected' : 'Disconnected';
         this.statusEl.className = connected ? 'connected' : 'disconnected';
+
+        if (connected) {
+            this._statusHideTimer = setTimeout(() => {
+                this.statusEl.classList.add('hidden');
+            }, 3000);
+        }
 
         // Offline overlay
         const overlay = document.getElementById('offline-overlay');

@@ -72,6 +72,10 @@ button.panel-element {
     background: var(--panel-success);
     color: #fff;
 }
+#connection-status.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
 #connection-status.disconnected {
     background: var(--panel-danger);
     color: #fff;
