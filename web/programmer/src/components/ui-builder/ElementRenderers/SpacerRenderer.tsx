@@ -6,27 +6,25 @@ interface Props {
   previewMode: boolean;
 }
 
+/**
+ * SpacerRenderer — mirrors panel.js renderSpacer().
+ * Uses .panel-spacer from panel-elements.css.
+ */
 export function SpacerRenderer({ element, previewMode }: Props) {
-  const css = buildElementStyle(element.style, {
-    width: "100%",
-    height: "100%",
-  });
-
-  if (!element.style.bg_color && !element.style.background_gradient) {
-    css.backgroundColor = "transparent";
-  }
+  // Per-element style overrides (gradient, etc.)
+  const overrides = buildElementStyle(element.style);
 
   // Show a visible indicator in edit mode so the spacer can be found
   if (!previewMode && !element.style.bg_color) {
-    css.border = "1px dashed rgba(255,255,255,0.2)";
-    css.borderRadius = "4px";
-    css.display = "flex";
-    css.alignItems = "center";
-    css.justifyContent = "center";
+    overrides.border = "1px dashed rgba(255,255,255,0.2)";
+    overrides.borderRadius = "4px";
   }
 
   return (
-    <div style={css}>
+    <div
+      className="panel-element panel-spacer"
+      style={{ width: "100%", height: "100%", ...overrides }}
+    >
       {!previewMode && !element.style.bg_color && (
         <span style={{ fontSize: 9, color: "rgba(255,255,255,0.25)", pointerEvents: "none" }}>
           Spacer

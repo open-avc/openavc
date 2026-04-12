@@ -8,22 +8,19 @@ interface Props {
   liveState: Record<string, unknown>;
 }
 
+/**
+ * PageNavRenderer — mirrors panel.js renderPageNav().
+ * Uses .panel-page-nav from panel-elements.css.
+ */
 export function PageNavRenderer({ element }: Props) {
-  const css = buildElementStyle(element.style, {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    color: "#2196F3",
-    fontSize: "14px",
-    border: "1px solid rgba(255,255,255,0.1)",
-    borderRadius: "8px",
-    width: "100%",
-    height: "100%",
-    userSelect: "none",
-  });
+  // Per-element style overrides
+  const overrides = buildElementStyle(element.style);
 
   return (
-    <div style={css}>
+    <div
+      className="panel-element panel-page-nav"
+      style={{ width: "100%", height: "100%", ...overrides }}
+    >
       <IconTextLayout
         icon={element.icon}
         iconPosition={element.icon_position}

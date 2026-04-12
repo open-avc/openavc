@@ -12,10 +12,6 @@ interface ListItem {
   value: string;
 }
 
-/**
- * Resolve the list items: prefer state-driven items (from key_pattern binding),
- * fall back to static element.items.
- */
 function resolveItems(
   element: UIElement,
   liveState: Record<string, unknown>,
@@ -26,7 +22,6 @@ function resolveItems(
 
   if (itemsBinding?.key_pattern) {
     const pattern = itemsBinding.key_pattern;
-    // Convert glob pattern "var.source_list.*" to a prefix match
     const prefix = pattern.replace(/\.\*$/, ".");
     const items: ListItem[] = [];
 
@@ -45,9 +40,6 @@ function resolveItems(
   return element.items ?? [];
 }
 
-/**
- * Resolve the currently selected value(s) from live state.
- */
 function resolveSelected(
   element: UIElement,
   liveState: Record<string, unknown>,
@@ -59,7 +51,6 @@ function resolveSelected(
   if (selectedBinding?.key) {
     const val = liveState[selectedBinding.key];
     if (val !== undefined && val !== null) {
-      // Support comma-separated values for multi_select
       const strVal = String(val);
       if (strVal.includes(",")) {
         return new Set(strVal.split(",").map((s) => s.trim()));
@@ -71,34 +62,15 @@ function resolveSelected(
   return new Set();
 }
 
-const scrollbarStyles = `
-  .oavc-list-scroll::-webkit-scrollbar {
-    width: 6px;
-  }
-  .oavc-list-scroll::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  .oavc-list-scroll::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 3px;
-  }
-  .oavc-list-scroll::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.35);
-  }
-`;
-
+/**
+ * ListRenderer — mirrors panel.js renderList().
+ * Uses .panel-list, .list-label, .list-scroll, .list-item from panel-elements.css.
+ */
 export function ListRenderer({ element, liveState }: Props) {
   const listStyle = (element.list_style as string) || "selectable";
   const itemHeight = element.item_height ?? 44;
   const itemBg = String(element.style.item_bg ?? "#2a2a4e");
   const itemActiveBg = String(element.style.item_active_bg ?? "#42a5f5");
-  const borderRadius = element.style.border_radius
-    ? `${element.style.border_radius}px`
-    : "6px";
-  const fontSize = element.style.font_size
-    ? `${element.style.font_size}px`
-    : "14px";
-  const textColor = String(element.style.text_color || "#ffffff");
 
   const items = useMemo(
     () => resolveItems(element, liveState),
@@ -110,7 +82,6 @@ export function ListRenderer({ element, liveState }: Props) {
     [element, liveState],
   );
 
-  // In design mode for "selectable", auto-select first item for preview
   const effectiveSelected = useMemo(() => {
     if (liveSelected.size > 0) return liveSelected;
     if (listStyle === "selectable" && items.length > 0) {
@@ -124,48 +95,14 @@ export function ListRenderer({ element, liveState }: Props) {
 
   return (
     <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        width: "100%",
-        height: "100%",
-        boxSizing: "border-box",
-        overflow: "hidden",
-      }}
+      className="panel-element panel-list"
+      style={{ width: "100%", height: "100%" }}
     >
-      <style>{scrollbarStyles}</style>
-
-      {/* Label */}
       {element.label && (
-        <div
-          style={{
-            fontSize: 12,
-            color: "#cccccc",
-            padding: "6px 8px 2px",
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            flexShrink: 0,
-          }}
-        >
-          {element.label}
-        </div>
+        <div className="list-label">{element.label}</div>
       )}
 
-      {/* Scrollable list area */}
-      <div
-        className="oavc-list-scroll"
-        style={{
-          flex: 1,
-          overflowY: "auto",
-          overflowX: "hidden",
-          padding: "4px",
-          boxSizing: "border-box",
-          display: "flex",
-          flexDirection: "column",
-          gap: "2px",
-        }}
-      >
+      <div className="list-scroll">
         {items.length === 0 && (
           <div
             style={{
@@ -188,22 +125,11 @@ export function ListRenderer({ element, liveState }: Props) {
           return (
             <div
               key={`${item.value}-${idx}`}
+              className={`list-item${isActive ? " active" : ""}`}
               style={{
                 height: itemHeight,
                 minHeight: itemHeight,
-                display: "flex",
-                alignItems: "center",
-                padding: "8px 12px",
-                borderRadius,
                 backgroundColor: isActive ? itemActiveBg : itemBg,
-                color: isActive ? "#ffffff" : textColor,
-                fontSize,
-                userSelect: "none",
-                boxSizing: "border-box",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                flexShrink: 0,
               }}
             >
               {item.label}

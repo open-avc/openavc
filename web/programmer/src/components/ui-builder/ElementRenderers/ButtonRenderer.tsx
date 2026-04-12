@@ -1,5 +1,4 @@
 import type { UIElement } from "../../../api/types";
-import type { FeedbackBinding } from "../uiBuilderHelpers";
 
 import { getAssetUrl } from "../../../api/restClient";
 import { buildElementStyle } from "./styleHelpers";
@@ -9,7 +8,6 @@ interface MultiStateFeedback {
   key?: string;
   states?: Record<string, Record<string, unknown>>;
   default_state?: string;
-  // Legacy fields
   condition?: { equals?: unknown };
   style_active?: Record<string, string>;
   style_inactive?: Record<string, string>;
@@ -27,6 +25,10 @@ function resolveAssetRef(ref: string | undefined): string {
   return ref;
 }
 
+/**
+ * ButtonRenderer — mirrors panel.js renderButton().
+ * Uses .panel-button from panel-elements.css.
+ */
 export function ButtonRenderer({ element, previewMode, liveState }: Props) {
   let activeStyle = { ...element.style };
   let activeLabel = element.label || "";
@@ -41,7 +43,6 @@ export function ButtonRenderer({ element, previewMode, liveState }: Props) {
       const stateValue = liveState[fb.key];
 
       if (fb.states) {
-        // Multi-state feedback
         const stateKey = stateValue != null ? String(stateValue) : fb.default_state || "";
         const stateAppearance = fb.states[stateKey] || fb.states[fb.default_state || ""] || {};
         if (stateAppearance.bg_color) activeStyle = { ...activeStyle, bg_color: stateAppearance.bg_color };
@@ -53,7 +54,6 @@ export function ButtonRenderer({ element, previewMode, liveState }: Props) {
         if (stateAppearance.icon_color) activeIconColor = String(stateAppearance.icon_color);
         if (stateAppearance.button_image) activeButtonImage = String(stateAppearance.button_image);
       } else {
-        // Legacy binary feedback
         const isActive = stateValue == fb.condition?.equals;
         if (isActive && fb.style_active) {
           activeStyle = { ...activeStyle, ...fb.style_active };
@@ -64,38 +64,19 @@ export function ButtonRenderer({ element, previewMode, liveState }: Props) {
     }
   }
 
-  const css = buildElementStyle(activeStyle, {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    cursor: previewMode ? "pointer" : "default",
-    userSelect: "none",
-    width: "100%",
-    height: "100%",
-    fontWeight: "500",
-    wordBreak: "break-word",
-  });
-
-  // Defaults if not set by style
-  if (!activeStyle.bg_color && !activeStyle.background_gradient) {
-    css.backgroundColor = "#424242";
-  }
-  if (!activeStyle.text_color) css.color = "#CCCCCC";
-  if (!activeStyle.border_radius) css.borderRadius = "8px";
-  if (!activeStyle.padding && !activeStyle.padding_horizontal && !activeStyle.padding_vertical) {
-    css.padding = "8px";
-  }
+  // Per-element style overrides
+  const overrides = buildElementStyle(activeStyle);
 
   // Display mode: image buttons
   const displayMode = element.display_mode || "text";
   const imgSrc = resolveAssetRef(activeButtonImage);
   if ((displayMode === "image" || displayMode === "image_text") && imgSrc) {
-    css.backgroundImage = `url(${imgSrc})`;
-    css.backgroundSize = element.image_fit || "cover";
-    css.backgroundPosition = "center";
-    css.backgroundRepeat = "no-repeat";
+    overrides.backgroundImage = `url(${imgSrc})`;
+    overrides.backgroundSize = element.image_fit || "cover";
+    overrides.backgroundPosition = "center";
+    overrides.backgroundRepeat = "no-repeat";
     if (displayMode === "image_text") {
-      css.textShadow = "0 1px 3px rgba(0,0,0,0.8)";
+      overrides.textShadow = "0 1px 3px rgba(0,0,0,0.8)";
     }
   }
 
@@ -103,7 +84,8 @@ export function ButtonRenderer({ element, previewMode, liveState }: Props) {
 
   return (
     <div
-      style={css}
+      className="panel-element panel-button"
+      style={{ width: "100%", height: "100%", ...overrides }}
     >
       <IconTextLayout
         icon={activeIcon}

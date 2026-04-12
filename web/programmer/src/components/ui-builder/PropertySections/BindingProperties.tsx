@@ -381,21 +381,26 @@ export function BindingProperties({
     meter: "Read-only state key for the fader's meter display.",
   };
 
-  const isBindingIncomplete = (slot: string, binding: Record<string, unknown> | undefined): boolean => {
+  const isActionIncomplete = (action: Record<string, unknown>): boolean => {
+    if (action.action === "device.command") return !action.device || !action.command;
+    if (action.action === "macro") return !action.macro;
+    if (action.action === "state.set") return !action.key;
+    if (action.action === "navigate") return !action.page;
+    return !action.action;
+  };
+
+  const isBindingIncomplete = (slot: string, binding: Record<string, unknown> | Record<string, unknown>[] | undefined): boolean => {
     if (!binding) return false;
     if (slot === "press" || slot === "release" || slot === "hold" || slot === "change" || slot === "submit" || slot === "route" || slot === "select") {
-      if (binding.action === "device.command") return !binding.device || !binding.command;
-      if (binding.action === "macro") return !binding.macro;
-      if (binding.action === "state.set") return !binding.key;
-      if (binding.action === "navigate") return !binding.page;
-      return !binding.action;
+      const actions = Array.isArray(binding) ? binding : [binding];
+      return actions.some(isActionIncomplete);
     }
-    if (slot === "feedback") return !binding.key;
-    if (slot === "text") return !binding.key;
-    if (slot === "variable") return !binding.key;
-    if (slot === "selected") return !binding.key;
-    if (slot === "items") return !binding.key_pattern;
-    if (slot === "meter") return !binding.key;
+    if (slot === "feedback") return !(binding as Record<string, unknown>).key;
+    if (slot === "text") return !(binding as Record<string, unknown>).key;
+    if (slot === "variable") return !(binding as Record<string, unknown>).key;
+    if (slot === "selected") return !(binding as Record<string, unknown>).key;
+    if (slot === "items") return !(binding as Record<string, unknown>).key_pattern;
+    if (slot === "meter") return !(binding as Record<string, unknown>).key;
     return false;
   };
 

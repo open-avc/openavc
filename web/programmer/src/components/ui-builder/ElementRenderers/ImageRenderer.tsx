@@ -8,35 +8,23 @@ interface Props {
   liveState: Record<string, unknown>;
 }
 
+/**
+ * ImageRenderer — mirrors panel.js renderImage().
+ * Uses .panel-image from panel-elements.css.
+ */
 export function ImageRenderer({ element }: Props) {
   const src = element.src || "";
 
-  const css = buildElementStyle(element.style, {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: "100%",
-    height: "100%",
-    overflow: "hidden",
-  });
-
-  if (!element.style.bg_color && !element.style.background_gradient) {
-    css.backgroundColor = "transparent";
-  }
-  if (!element.style.border_radius) css.borderRadius = "8px";
+  // Per-element style overrides (bg, border, etc.)
+  const overrides = buildElementStyle(element.style);
 
   return (
-    <div style={css}>
+    <div
+      className="panel-element panel-image"
+      style={{ width: "100%", height: "100%", ...overrides }}
+    >
       {src ? (
-        <img
-          src={src}
-          alt={element.label || ""}
-          style={{
-            width: "100%",
-            height: "100%",
-            objectFit: "contain",
-          }}
-        />
+        <img src={src} alt={element.label || ""} />
       ) : (
         <div
           style={{

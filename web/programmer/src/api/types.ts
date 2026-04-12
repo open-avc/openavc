@@ -152,8 +152,9 @@ export interface UIElement {
   unit?: string;
   arc_angle?: number;
   zones?: Array<{ from: number; to: number; color: string }>;
-  // Level meter / Fader
+  // Slider / Level meter / Fader
   orientation?: string;
+  thumb_size?: number;
   // Clock
   clock_mode?: string;
   format?: string;

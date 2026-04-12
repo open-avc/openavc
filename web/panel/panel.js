@@ -745,14 +745,30 @@ class PanelApp {
 
     renderSlider(element) {
         const el = document.createElement('div');
-        el.className = 'panel-element panel-slider';
+        const isVertical = element.orientation === 'vertical';
+        el.className = 'panel-element panel-slider' + (isVertical ? ' panel-slider-vertical' : '');
         el.dataset.elementId = element.id;
+
+        // Thumb size CSS variable
+        el.style.setProperty('--thumb-size', (element.thumb_size ?? 44) + 'px');
 
         if (element.label) {
             const label = document.createElement('label');
             label.textContent = element.label;
             el.appendChild(label);
         }
+
+        // Track wrapper (contains track background, fill, and the range input)
+        const wrapper = document.createElement('div');
+        wrapper.className = 'slider-track-wrapper';
+
+        const track = document.createElement('div');
+        track.className = 'slider-track';
+
+        const fill = document.createElement('div');
+        fill.className = 'slider-fill';
+        track.appendChild(fill);
+        wrapper.appendChild(track);
 
         const input = document.createElement('input');
         input.type = 'range';
@@ -766,9 +782,37 @@ class PanelApp {
         const initialValue = sliderBinding?.key ? this.state[sliderBinding.key] : undefined;
         input.value = (initialValue !== undefined && initialValue !== null) ? initialValue : (element.min ?? 0);
 
+        // Update fill from current value
+        const updateFill = () => {
+            const min = parseFloat(input.min);
+            const max = parseFloat(input.max);
+            const pct = max > min ? ((parseFloat(input.value) - min) / (max - min)) * 100 : 0;
+            if (isVertical) {
+                fill.style.height = pct + '%';
+            } else {
+                fill.style.width = pct + '%';
+            }
+        };
+        updateFill();
+
+        // Value display element
+        let valueDisplay = null;
+        const showValue = element.style?.show_value === true;
+        if (showValue) {
+            valueDisplay = document.createElement('div');
+            valueDisplay.className = 'slider-value';
+            const step = element.step ?? 1;
+            valueDisplay.textContent = step < 1 ? parseFloat(input.value).toFixed(1) : input.value;
+        }
+
         // Debounced change handler
         let changeTimeout = null;
         input.addEventListener('input', () => {
+            updateFill();
+            if (valueDisplay) {
+                const step = element.step ?? 1;
+                valueDisplay.textContent = step < 1 ? parseFloat(input.value).toFixed(1) : input.value;
+            }
             if (changeTimeout) clearTimeout(changeTimeout);
             changeTimeout = setTimeout(() => {
                 this.send({
@@ -780,7 +824,9 @@ class PanelApp {
             this.debounceTimers.push(changeTimeout);
         });
 
-        el.appendChild(input);
+        wrapper.appendChild(input);
+        el.appendChild(wrapper);
+        if (valueDisplay) el.appendChild(valueDisplay);
 
         // Variable binding (two-way) or value binding (read-only)
         const valueBinding = (element.bindings && element.bindings.variable) || (element.bindings && element.bindings.value);
@@ -790,6 +836,9 @@ class PanelApp {
                 element: input,
                 elementDef: element,
                 binding: valueBinding,
+                fill,
+                valueDisplay,
+                isVertical,
             });
         }
 
@@ -2780,10 +2829,26 @@ class PanelApp {
     }
 
     evaluateSliderValue(b) {
-        const { element, binding } = b;
+        const { element, binding, fill, valueDisplay, isVertical } = b;
         const value = this.state[binding.key];
         if (value !== undefined && value !== null) {
             element.value = value;
+            // Update fill bar
+            if (fill) {
+                const min = parseFloat(element.min);
+                const max = parseFloat(element.max);
+                const pct = max > min ? ((parseFloat(value) - min) / (max - min)) * 100 : 0;
+                if (isVertical) {
+                    fill.style.height = pct + '%';
+                } else {
+                    fill.style.width = pct + '%';
+                }
+            }
+            // Update value display
+            if (valueDisplay) {
+                const step = parseFloat(element.step) || 1;
+                valueDisplay.textContent = step < 1 ? parseFloat(value).toFixed(1) : String(Math.round(parseFloat(value)));
+            }
         }
     }
 

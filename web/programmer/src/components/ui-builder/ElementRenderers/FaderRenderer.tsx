@@ -109,16 +109,8 @@ export function FaderRenderer({ element, liveState }: Props) {
   if (orientation === "vertical") {
     return (
       <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          width: "100%",
-          height: "100%",
-          padding: "8px 4px",
-          boxSizing: "border-box",
-          userSelect: "none",
-        }}
+        className="panel-element panel-fader"
+        style={{ width: "100%", height: "100%", boxSizing: "border-box", userSelect: "none" }}
       >
         {/* Label */}
         {element.label && (
@@ -305,16 +297,8 @@ export function FaderRenderer({ element, liveState }: Props) {
   // --- Horizontal layout ---
   return (
     <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "center",
-        width: "100%",
-        height: "100%",
-        padding: "4px 8px",
-        boxSizing: "border-box",
-        userSelect: "none",
-      }}
+      className="panel-element panel-fader"
+      style={{ width: "100%", height: "100%", flexDirection: "column", justifyContent: "center", padding: "4px 8px", boxSizing: "border-box", userSelect: "none" }}
     >
       {/* Label */}
       {element.label && (

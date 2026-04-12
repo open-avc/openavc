@@ -7,6 +7,10 @@ interface Props {
   liveState: Record<string, unknown>;
 }
 
+/**
+ * StatusLedRenderer — mirrors panel.js renderStatusLed().
+ * Uses .panel-status-led + .led-dot from panel-elements.css.
+ */
 export function StatusLedRenderer({ element, previewMode, liveState }: Props) {
   let color = "#9E9E9E";
   let glowing = false;
@@ -24,25 +28,12 @@ export function StatusLedRenderer({ element, previewMode, liveState }: Props) {
 
   return (
     <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        width: "100%",
-        height: "100%",
-      }}
+      className="panel-element panel-status-led"
+      style={{ width: "100%", height: "100%" }}
     >
       <div
-        style={{
-          width: 20,
-          height: 20,
-          borderRadius: "50%",
-          backgroundColor: color,
-          boxShadow: glowing
-            ? `0 0 10px ${color}`
-            : "0 0 6px rgba(0,0,0,0.3)",
-          transition: "background-color 0.3s, box-shadow 0.3s",
-        }}
+        className={`led-dot${glowing ? " active" : ""}`}
+        style={{ backgroundColor: color }}
       />
     </div>
   );

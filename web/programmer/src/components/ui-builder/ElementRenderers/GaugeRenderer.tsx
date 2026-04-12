@@ -219,31 +219,11 @@ export function GaugeRenderer({ element, previewMode, liveState }: Props) {
 
   return (
     <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        width: "100%",
-        height: "100%",
-        padding: "4px",
-        boxSizing: "border-box",
-      }}
+      className="panel-element panel-gauge"
+      style={{ width: "100%", height: "100%" }}
     >
       {element.label && (
-        <div
-          style={{
-            fontSize: Math.max(10, fontSize - 2),
-            color: textColor,
-            opacity: 0.8,
-            marginBottom: 2,
-            textAlign: "center",
-            lineHeight: 1.2,
-            flexShrink: 0,
-          }}
-        >
-          {element.label}
-        </div>
+        <div className="gauge-label">{element.label}</div>
       )}
       <svg
         viewBox={`0 0 ${size} ${size}`}

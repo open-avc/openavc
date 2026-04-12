@@ -13,10 +13,6 @@ const MONTH_ABBREV = [
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
 
-/**
- * Get a Date object adjusted for the given IANA timezone.
- * Uses Intl.DateTimeFormat to extract the parts in the target zone.
- */
 function getDateInTimezone(date: Date, timezone?: string): Date {
   if (!timezone) return date;
   try {
@@ -47,20 +43,6 @@ function getDateInTimezone(date: Date, timezone?: string): Date {
   }
 }
 
-/**
- * Format a Date using a simple token-based format string.
- *
- * Supported tokens:
- *   h   - 12-hour (no pad)   hh  - 12-hour (zero-padded)
- *   H   - 24-hour (no pad)   HH  - 24-hour (zero-padded)
- *   mm  - minutes (zero-padded)
- *   ss  - seconds (zero-padded)
- *   A   - AM/PM              a   - am/pm
- *   M   - month (no pad)     MM  - month (zero-padded)
- *   MMM - month abbreviated (e.g. "Jan")
- *   D   - day (no pad)       DD  - day (zero-padded)
- *   YYYY - four-digit year
- */
 function formatTime(date: Date, format: string): string {
   const hours24 = date.getHours();
   const hours12 = hours24 % 12 || 12;
@@ -73,12 +55,10 @@ function formatTime(date: Date, format: string): string {
 
   const pad = (n: number): string => (n < 10 ? `0${n}` : String(n));
 
-  // Replace tokens from longest to shortest to avoid partial matches
   let result = format;
   result = result.replace(/YYYY/g, String(year));
   result = result.replace(/MMM/g, MONTH_ABBREV[month - 1]);
   result = result.replace(/MM/g, pad(month));
-  // Single M: only replace when not preceded/followed by another M
   result = result.replace(/(?<!M)M(?!M)/g, String(month));
   result = result.replace(/DD/g, pad(day));
   result = result.replace(/(?<!D)D(?!D)/g, String(day));
@@ -129,14 +109,17 @@ function getFormattedTime(
       return "00:45:00";
     case "elapsed":
       return "01:23:45";
-    case "meeting": {
+    case "meeting":
       return "45:00";
-    }
     default:
       return formatTime(adjusted, format);
   }
 }
 
+/**
+ * ClockRenderer — mirrors panel.js renderClock().
+ * Uses .panel-clock + .clock-display from panel-elements.css.
+ */
 export function ClockRenderer({ element, previewMode }: Props) {
   const mode = element.clock_mode || "time";
   const format = element.format || DEFAULT_FORMATS[mode] || DEFAULT_FORMATS.time;
@@ -152,10 +135,8 @@ export function ClockRenderer({ element, previewMode }: Props) {
       return;
     }
 
-    // Update immediately
     setDisplay(getFormattedTime(mode, format, timezone));
 
-    // Tick every second for live modes
     if (mode === "time" || mode === "date" || mode === "datetime") {
       const interval = setInterval(() => {
         setDisplay(getFormattedTime(mode, format, timezone));
@@ -164,20 +145,15 @@ export function ClockRenderer({ element, previewMode }: Props) {
     }
   }, [previewMode, mode, format, timezone]);
 
-  const css = buildElementStyle(element.style, {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: "100%",
-    height: "100%",
-  });
-
-  if (!element.style.text_color) css.color = "#ffffff";
-  if (!element.style.font_size) css.fontSize = "16px";
+  // Per-element style overrides
+  const overrides = buildElementStyle(element.style);
 
   return (
-    <div style={css}>
-      {display}
+    <div
+      className="panel-element panel-clock"
+      style={{ width: "100%", height: "100%", ...overrides }}
+    >
+      <div className="clock-display">{display}</div>
     </div>
   );
 }

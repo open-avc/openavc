@@ -8,37 +8,18 @@ interface Props {
   liveState: Record<string, unknown>;
 }
 
-export function CameraPresetRenderer({
-  element,
-}: Props) {
+/**
+ * CameraPresetRenderer — mirrors panel.js renderCameraPreset().
+ * Panel uses .panel-button class for camera presets.
+ */
+export function CameraPresetRenderer({ element }: Props) {
   const presetNum = element.preset_number ?? "";
-
-  const css = buildElementStyle(element.style, {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "4px",
-    userSelect: "none",
-    width: "100%",
-    height: "100%",
-    fontWeight: "500",
-  });
-
-  // Defaults
-  if (!element.style.bg_color && !element.style.background_gradient) {
-    css.backgroundColor = "#424242";
-  }
-  if (!element.style.text_color) css.color = "#CCCCCC";
-  if (!element.style.border_radius) css.borderRadius = "8px";
-  if (!element.style.font_size) css.fontSize = "14px";
-  if (!element.style.padding && !element.style.padding_horizontal && !element.style.padding_vertical) {
-    css.padding = "8px";
-  }
+  const overrides = buildElementStyle(element.style);
 
   return (
     <div
-      style={css}
+      className="panel-element panel-button"
+      style={{ width: "100%", height: "100%", flexDirection: "column", gap: 2, ...overrides }}
     >
       <IconTextLayout
         icon={element.icon}

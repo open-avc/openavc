@@ -1,5 +1,4 @@
 import type { UIElement } from "../../../api/types";
-import type { TextBinding } from "../uiBuilderHelpers";
 import { buildElementStyle } from "./styleHelpers";
 import { IconTextLayout } from "./ElementIcon";
 
@@ -9,6 +8,10 @@ interface Props {
   liveState: Record<string, unknown>;
 }
 
+/**
+ * LabelRenderer — mirrors panel.js renderLabel().
+ * Uses .panel-label from panel-elements.css.
+ */
 export function LabelRenderer({ element, previewMode, liveState }: Props) {
   let displayText = element.text || "";
 
@@ -28,20 +31,8 @@ export function LabelRenderer({ element, previewMode, liveState }: Props) {
     }
   }
 
-  const css = buildElementStyle(element.style, {
-    display: "flex",
-    alignItems: "center",
-    width: "100%",
-    height: "100%",
-  });
-
-  // Defaults
-  if (!element.style.text_color) css.color = "#ffffff";
-  if (!element.style.font_weight) css.fontWeight = "normal";
-  if (!element.style.text_align) css.textAlign = "left";
-  if (!element.style.padding && !element.style.padding_horizontal && !element.style.padding_vertical) {
-    css.padding = "4px 8px";
-  }
+  // Per-element style overrides (bg_color, text_color, font_size, etc.)
+  const overrides = buildElementStyle(element.style);
 
   // Rich text: convert **bold** and *italic* to HTML
   const useRich = !!element.style.white_space;
@@ -56,7 +47,10 @@ export function LabelRenderer({ element, previewMode, liveState }: Props) {
   }
 
   return (
-    <div style={css}>
+    <div
+      className="panel-element panel-label"
+      style={{ width: "100%", height: "100%", ...overrides }}
+    >
       {useRich ? (
         <span dangerouslySetInnerHTML={{ __html: richHtml }} />
       ) : (

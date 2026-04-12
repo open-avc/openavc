@@ -198,7 +198,7 @@ export function BasicProperties({
         </FieldRow>
       )}
 
-      {/* Slider min/max/step */}
+      {/* Slider min/max/step/orientation/thumb/show value */}
       {element.type === "slider" && (
         <>
           <FieldRow label="Min">
@@ -226,6 +226,47 @@ export function BasicProperties({
               min={0.01}
               step={0.1}
             />
+          </FieldRow>
+          <FieldRow label="Orientation">
+            <select
+              value={element.orientation || "horizontal"}
+              onChange={(e) => {
+                const newOrientation = e.target.value;
+                const oldOrientation = element.orientation || "horizontal";
+                const patch: Partial<typeof element> = { orientation: newOrientation };
+                // Swap grid dimensions when switching orientation
+                if (newOrientation !== oldOrientation) {
+                  const ga = element.grid_area;
+                  patch.grid_area = { ...ga, col_span: ga.row_span, row_span: ga.col_span };
+                }
+                onChange(patch);
+              }}
+              style={{ flex: 1 }}
+            >
+              <option value="horizontal">Horizontal</option>
+              <option value="vertical">Vertical</option>
+            </select>
+          </FieldRow>
+          <FieldRow label="Thumb Size">
+            <input
+              type="number"
+              value={element.thumb_size ?? 44}
+              onChange={(e) => onChange({ thumb_size: Number(e.target.value) })}
+              style={{ flex: 1 }}
+              min={16}
+              max={80}
+              step={2}
+            />
+          </FieldRow>
+          <FieldRow label="Show Value">
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={(element.style?.show_value as boolean) ?? false}
+                onChange={(e) => onChange({ style: { ...element.style, show_value: e.target.checked } })}
+              />
+              Display current value
+            </label>
           </FieldRow>
         </>
       )}

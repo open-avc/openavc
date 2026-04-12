@@ -136,42 +136,14 @@ export function MatrixRenderer({ element, liveState }: Props) {
   // Crosspoint view
   return (
     <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        width: "100%",
-        height: "100%",
-        boxSizing: "border-box",
-        overflow: "hidden",
-      }}
+      className="panel-element panel-matrix"
+      style={{ width: "100%", height: "100%" }}
     >
-      {/* Label */}
       {element.label && (
-        <div
-          style={{
-            fontSize: 12,
-            color: "#cccccc",
-            padding: "6px 8px 2px",
-            textAlign: "center",
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            flexShrink: 0,
-          }}
-        >
-          {element.label}
-        </div>
+        <div className="matrix-label">{element.label}</div>
       )}
 
-      {/* Scrollable grid area */}
-      <div
-        style={{
-          flex: 1,
-          overflow: "auto",
-          padding: "4px",
-          boxSizing: "border-box",
-        }}
-      >
+      <div className="matrix-scroll">
         <div
           style={{
             display: "grid",
@@ -355,42 +327,14 @@ function ListView({
 }) {
   return (
     <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        width: "100%",
-        height: "100%",
-        boxSizing: "border-box",
-        overflow: "hidden",
-      }}
+      className="panel-element panel-matrix"
+      style={{ width: "100%", height: "100%" }}
     >
-      {/* Label */}
       {element.label && (
-        <div
-          style={{
-            fontSize: 12,
-            color: "#cccccc",
-            padding: "6px 8px 2px",
-            textAlign: "center",
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            flexShrink: 0,
-          }}
-        >
-          {element.label}
-        </div>
+        <div className="matrix-label">{element.label}</div>
       )}
 
-      {/* Scrollable list area */}
-      <div
-        style={{
-          flex: 1,
-          overflow: "auto",
-          padding: "4px 8px",
-          boxSizing: "border-box",
-        }}
-      >
+      <div className="matrix-scroll" style={{ padding: "4px 8px" }}>
         {outputLabels.map((outLabel, outIdx) => {
           const outputNum = outIdx + 1;
           const currentInput = routes.get(outputNum) ?? 0;

@@ -8,6 +8,9 @@ import { CanvasElement } from "./CanvasElement";
 import { RenderElement } from "./ElementRenderers/renderElement";
 import { moveElementInPage } from "./uiBuilderHelpers";
 
+// Shared panel element styles — single source of truth for element rendering
+import "../../../../panel/panel-elements.css";
+
 /** Check if two grid areas overlap. */
 function areasOverlap(a: GridArea, b: GridArea): boolean {
   const aRight = a.col + a.col_span;
@@ -34,6 +37,22 @@ function findOverlappingIds(elements: UIElement[]): Set<string> {
   return ids;
 }
 
+/** Map theme variable keys to CSS custom property names. */
+const THEME_VAR_MAP: Record<string, string> = {
+  panel_bg: "--panel-bg",
+  panel_text: "--panel-text",
+  accent: "--panel-accent",
+  button_bg: "--panel-button-bg",
+  button_text: "--panel-button-text",
+  button_active_bg: "--panel-button-active-bg",
+  button_active_text: "--panel-button-active-text",
+  danger: "--panel-danger",
+  success: "--panel-success",
+  warning: "--panel-warning",
+  grid_gap: "--panel-grid-gap",
+  border_radius: "--panel-border-radius",
+};
+
 interface CanvasProps {
   page: UIPage;
   previewMode: boolean;
@@ -43,6 +62,7 @@ interface CanvasProps {
   screenHeight: number;
   masterElements?: MasterElement[];
   themeElementDefaults?: Record<string, Record<string, unknown>>;
+  themeVariables?: Record<string, unknown>;
 }
 
 export function Canvas({
@@ -54,6 +74,7 @@ export function Canvas({
   masterElements,
   screenHeight,
   themeElementDefaults,
+  themeVariables,
 }: CanvasProps) {
   const gridRef = useRef<HTMLDivElement>(null);
   const { setNodeRef } = useDroppable({ id: "canvas-drop" });
@@ -72,6 +93,20 @@ export function Canvas({
   const update = useProjectStore((s) => s.update);
 
   const liveState = useConnectionStore((s) => s.liveState);
+
+  // Build CSS custom properties from theme variables for the canvas wrapper
+  const panelCssVars = useMemo(() => {
+    const vars: Record<string, string> = {};
+    if (themeVariables) {
+      for (const [key, cssVar] of Object.entries(THEME_VAR_MAP)) {
+        const val = themeVariables[key];
+        if (val != null) {
+          vars[cssVar] = typeof val === "number" ? val + "px" : String(val);
+        }
+      }
+    }
+    return vars;
+  }, [themeVariables]);
 
   // Detect overlapping elements (only in edit mode)
   const overlappingIds = useMemo(
@@ -191,6 +226,7 @@ export function Canvas({
             e.preventDefault();
           }}
           style={{
+            ...panelCssVars,
             display: "grid",
             gridTemplateColumns: `repeat(${page.grid.columns}, 1fr)`,
             gridTemplateRows: `repeat(${page.grid.rows}, 1fr)`,
@@ -204,7 +240,9 @@ export function Canvas({
             boxShadow: isOverlay
               ? "0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.1)"
               : "0 4px 24px rgba(0,0,0,0.5)",
-          }}
+            fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
+            color: "var(--panel-text)",
+          } as React.CSSProperties}
         >
           {/* Page background layers */}
           {page.background?.image && (

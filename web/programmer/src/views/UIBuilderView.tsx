@@ -94,6 +94,7 @@ export function UIBuilderView() {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showPalette, setShowPalette] = useState(true);
   const [themeElementDefaults, setThemeElementDefaults] = useState<Record<string, Record<string, unknown>>>({});
+  const [themeVariables, setThemeVariables] = useState<Record<string, unknown>>({});
   const [themes, setThemes] = useState<{ id: string; name: string; version: string; author: string; description: string; preview_colors: string[]; source: string }[]>([]);
 
   // Load themes list
@@ -122,8 +123,9 @@ export function UIBuilderView() {
       .then((res) => (res.ok ? res.json() : null))
       .then((theme) => {
         setThemeElementDefaults(theme?.element_defaults || {});
+        setThemeVariables(theme?.variables || {});
       })
-      .catch(() => setThemeElementDefaults({}));
+      .catch(() => { setThemeElementDefaults({}); setThemeVariables({}); });
   }, [themeId]);
 
   // Listen for server-initiated page navigation (preview mode)
@@ -802,6 +804,7 @@ export function UIBuilderView() {
                 screenHeight={screenHeight}
                 masterElements={project?.ui?.master_elements}
                 themeElementDefaults={themeElementDefaults}
+                themeVariables={themeVariables}
               />
             ) : (
               <div

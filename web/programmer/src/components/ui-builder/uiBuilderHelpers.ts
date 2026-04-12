@@ -51,7 +51,7 @@ export interface ElementTypeInfo {
 
 export const ELEMENT_TYPES: ElementTypeInfo[] = [
   { type: "button", label: "Button", category: "controls", description: "Tap/hold to trigger actions, with multi-state feedback" },
-  { type: "slider", label: "Slider", category: "controls", description: "Horizontal control for numeric values (volume, brightness)" },
+  { type: "slider", label: "Slider", category: "controls", description: "Drag control for numeric values (volume, brightness), horizontal or vertical" },
   { type: "fader", label: "Fader", category: "controls", description: "Vertical mixing-console style fader with dB scale and meter" },
   { type: "select", label: "Select", category: "controls", description: "Dropdown to pick from a list of options" },
   { type: "text_input", label: "Text Input", category: "controls", description: "Text field for user input (names, IP addresses, codes)" },
