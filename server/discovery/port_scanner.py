@@ -40,35 +40,37 @@ async def scan_host_ports(
     ip: str,
     ports: list[int] | None = None,
     timeout: float = 1.0,
-    concurrency: int = 5,
+    stagger_ms: float = 20.0,
 ) -> list[int]:
     """Probe TCP ports on a single host. Returns list of open ports.
 
     If ``ports`` is None, uses the default AV_PORTS table.
 
-    ``concurrency`` limits simultaneous connection attempts per host.
-    Embedded AV devices (projectors, DSPs, switchers) have limited TCP
-    stacks that drop connections when too many SYNs arrive at once.
+    ``stagger_ms`` adds a small delay between connection starts to avoid
+    blasting embedded AV devices with too many SYN packets at once.
+    All connections still overlap — this just spreads the initial burst.
     """
     if ports is None:
         ports = list(AV_PORTS.keys())
 
-    sem = asyncio.Semaphore(concurrency)
+    async def _check(port: int, delay: float) -> int | None:
+        if delay > 0:
+            await asyncio.sleep(delay)
+        try:
+            _, writer = await asyncio.wait_for(
+                asyncio.open_connection(ip, port),
+                timeout=timeout,
+            )
+            writer.close()
+            await writer.wait_closed()
+            return port
+        except (asyncio.TimeoutError, ConnectionRefusedError, OSError):
+            return None
 
-    async def _check(port: int) -> int | None:
-        async with sem:
-            try:
-                _, writer = await asyncio.wait_for(
-                    asyncio.open_connection(ip, port),
-                    timeout=timeout,
-                )
-                writer.close()
-                await writer.wait_closed()
-                return port
-            except (asyncio.TimeoutError, ConnectionRefusedError, OSError):
-                return None
-
-    results = await asyncio.gather(*[_check(p) for p in ports])
+    stagger = stagger_ms / 1000.0
+    results = await asyncio.gather(
+        *[_check(p, i * stagger) for i, p in enumerate(ports)]
+    )
     return sorted(p for p in results if p is not None)
 
 
