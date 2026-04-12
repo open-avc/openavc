@@ -970,7 +970,7 @@ class PanelApp {
 
         if (element.src) {
             const img = document.createElement('img');
-            img.src = element.src;
+            img.src = this.resolveAssetUrl(element.src);
             img.alt = element.label || 'Panel image';
             img.loading = 'lazy';
             img.onerror = () => {

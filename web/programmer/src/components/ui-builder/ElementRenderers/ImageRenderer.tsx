@@ -1,5 +1,6 @@
 import type { UIElement } from "../../../api/types";
 import { Image } from "lucide-react";
+import { getAssetUrl } from "../../../api/restClient";
 import { buildElementStyle } from "./styleHelpers";
 
 interface Props {
@@ -8,12 +9,18 @@ interface Props {
   liveState: Record<string, unknown>;
 }
 
+function resolveAssetRef(ref: string | undefined): string {
+  if (!ref) return "";
+  if (ref.startsWith("assets://")) return getAssetUrl(ref.slice("assets://".length));
+  return ref;
+}
+
 /**
  * ImageRenderer — mirrors panel.js renderImage().
  * Uses .panel-image from panel-elements.css.
  */
 export function ImageRenderer({ element }: Props) {
-  const src = element.src || "";
+  const src = resolveAssetRef(element.src || "");
 
   // Per-element style overrides (bg, border, etc.)
   const overrides = buildElementStyle(element.style);
