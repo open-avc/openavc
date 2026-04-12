@@ -55,10 +55,12 @@ export function ButtonRenderer({ element, previewMode, liveState }: Props) {
         if (stateAppearance.button_image) activeButtonImage = String(stateAppearance.button_image);
       } else {
         const isActive = stateValue == fb.condition?.equals;
-        if (isActive && fb.style_active) {
-          activeStyle = { ...activeStyle, ...fb.style_active };
-        } else if (!isActive && fb.style_inactive) {
-          activeStyle = { ...activeStyle, ...fb.style_inactive };
+        const appliedFb = isActive ? fb.style_active : fb.style_inactive;
+        if (appliedFb) {
+          activeStyle = { ...activeStyle, ...appliedFb };
+          if (appliedFb.icon) activeIcon = String(appliedFb.icon);
+          if (appliedFb.icon_color) activeIconColor = String(appliedFb.icon_color);
+          if (appliedFb.button_image) activeButtonImage = String(appliedFb.button_image);
         }
       }
     }

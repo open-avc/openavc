@@ -2756,6 +2756,17 @@ class PanelApp {
 
         this.applyStyle(element, style);
 
+        // Update icon if specified in active/inactive style
+        const appliedStyle = isActive ? activeStyle : inactiveStyle;
+        if (appliedStyle.icon !== undefined || appliedStyle.icon_color !== undefined) {
+            const iconDef = {
+                ...elementDef,
+                icon: appliedStyle.icon || elementDef.icon,
+                icon_color: appliedStyle.icon_color || elementDef.icon_color,
+            };
+            this.renderElementContent(element, iconDef);
+        }
+
         // Image button active/inactive swap
         if (isActive && elementDef.button_image_active) {
             const url = this.resolveAssetUrl(elementDef.button_image_active);
