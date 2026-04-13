@@ -88,11 +88,20 @@ class TunnelHandler:
 
             log.info(f"Tunnel {tunnel_id} ready")
 
-        except Exception:
+        except Exception as e:
             # Catch-all: tunnel setup involves WS connect + protocol; any failure should be isolated
             log.exception(f"Failed to open tunnel {tunnel_id}")
             # Clean up partial state
             self._tunnels.pop(tunnel_id, None)
+            # Notify cloud so it doesn't show the tunnel as active
+            try:
+                from server.cloud.protocol import TUNNEL_FAILED
+                await self._agent.send_message(TUNNEL_FAILED, {
+                    "tunnel_id": tunnel_id,
+                    "reason": str(e),
+                })
+            except Exception:
+                pass  # Best-effort notification
 
     async def handle_tunnel_close(self, msg: dict[str, Any]) -> None:
         """Handle a tunnel_close message from the cloud."""
