@@ -3,8 +3,8 @@ OpenAVC Cloud — Agent-side alert rule evaluation.
 
 Subscribes to the StateStore for state changes, evaluates alert rules
 (pushed from the cloud), and sends alert/alert_resolved messages when
-conditions are met or cleared. Also evaluates built-in system resource
-alerts (disk, memory, CPU, device offline).
+conditions are met or cleared. System resource alerts (disk, memory, CPU)
+are managed as cloud-configurable rules, not hardcoded thresholds.
 """
 
 from __future__ import annotations
@@ -25,21 +25,14 @@ if TYPE_CHECKING:
 
 log = get_logger(__name__)
 
-# Built-in system resource thresholds (always active)
-_BUILTIN_THRESHOLDS: dict[str, tuple[str, float, str, str]] = {
-    # state_key: (category, threshold, severity, message_template)
-    "system.disk_percent": ("system", 90.0, "critical", "Disk usage above 90%"),
-    "system.memory_percent": ("system", 90.0, "critical", "Memory usage above 90%"),
-    "system.cpu_percent": ("system", 95.0, "warning", "CPU usage sustained above 95%"),
-}
-
 
 class AlertMonitor:
     """
     Evaluates alert rules against local state and fires alerts upstream.
 
-    Custom rules are received from the cloud via the ``cloud.alert_rules_update``
-    event. Built-in rules for system resources are always active.
+    All rules (including system resource alerts) are received from the cloud
+    via the ``cloud.alert_rules_update`` event and are fully configurable
+    from the cloud portal.
     """
 
     def __init__(
@@ -88,7 +81,10 @@ class AlertMonitor:
         )
         self._check_task = asyncio.create_task(self._periodic_check_loop())
         self._send_task = asyncio.create_task(self._send_loop())
-        log.info("Alert monitor: started")
+        if not self._rules:
+            log.info("Alert monitor: started (no rules loaded, waiting for cloud push)")
+        else:
+            log.info("Alert monitor: started with %d rule(s)", len(self._rules))
 
     async def stop(self) -> None:
         """Stop the alert monitor."""
@@ -130,7 +126,7 @@ class AlertMonitor:
             if len(parts) >= 2:
                 self._last_state_times[parts[1]] = time.time()
 
-        # Evaluate threshold rules
+        # Evaluate threshold and pattern rules (all rules come from cloud push)
         for rule in self._rules:
             if not rule.get("enabled", True):
                 continue
@@ -140,33 +136,16 @@ class AlertMonitor:
             elif rule_type == "pattern":
                 self._evaluate_pattern(rule, key, new_value)
 
-        # Also evaluate built-in thresholds
-        if key in _BUILTIN_THRESHOLDS:
-            category, threshold, severity, msg_template = _BUILTIN_THRESHOLDS[key]
-            alert_key = f"builtin:{key}"
-            try:
-                val = float(new_value)
-            except (TypeError, ValueError):
-                return
-
-            if val > threshold and alert_key not in self._active_alerts:
-                alert_id = str(uuid.uuid4())
-                self._active_alerts[alert_key] = alert_id
-                self._queue_send(ALERT, {
-                    "alert_id": alert_id,
-                    "severity": severity,
-                    "category": category,
-                    "message": f"{msg_template} (current: {val:.1f}%)",
-                    "detail": {"key": key, "value": val, "threshold": threshold},
-                })
-            elif val <= threshold and alert_key in self._active_alerts:
-                resolved_id = self._active_alerts.pop(alert_key)
-                self._queue_send(ALERT_RESOLVED, {"alert_id": resolved_id})
-
     # --- Rule Evaluation ---
 
     def _evaluate_threshold(self, rule: dict, key: str, value: Any) -> None:
-        """Check if a threshold rule triggers or resolves."""
+        """Check if a threshold rule triggers or resolves.
+
+        Supports hysteresis via an optional ``resolve_value`` in the condition.
+        When present, the alert fires when ``value <op> threshold`` but only
+        resolves when the value crosses ``resolve_value`` in the opposite
+        direction.  For example, fire at disk > 90% but resolve at disk < 85%.
+        """
         condition = rule.get("condition", {})
         pattern = condition.get("key", "")
         if not fnmatch(key, pattern):
@@ -186,6 +165,7 @@ class AlertMonitor:
             device_id = _extract_device_id(key)
             self._queue_send(ALERT, {
                 "alert_id": alert_id,
+                "rule_id": rule["id"],
                 "severity": rule.get("severity", "warning"),
                 "category": rule.get("category", "device"),
                 "device_id": device_id,
@@ -193,8 +173,12 @@ class AlertMonitor:
                 "detail": {"rule_id": rule["id"], "key": key, "value": value, "threshold": threshold},
             })
         elif not triggered and alert_key in self._active_alerts:
-            resolved_id = self._active_alerts.pop(alert_key)
-            self._queue_send(ALERT_RESOLVED, {"alert_id": resolved_id})
+            # Hysteresis: use resolve_value if set, otherwise same as threshold
+            resolve_value = condition.get("resolve_value", threshold)
+            resolved = _check_resolved(value, operator, resolve_value)
+            if resolved:
+                resolved_id = self._active_alerts.pop(alert_key)
+                self._queue_send(ALERT_RESOLVED, {"alert_id": resolved_id})
 
     def _evaluate_pattern(self, rule: dict, key: str, value: Any) -> None:
         """Check pattern rules (value matches for N seconds)."""
@@ -343,7 +327,7 @@ class AlertMonitor:
                 self._pattern_timers.pop(alert_key, None)
 
         self._rules = rules
-        log.info("Alert monitor: updated to %d custom rule(s)", len(rules))
+        log.info("Alert monitor: updated to %d rule(s)", len(rules))
 
     # --- Helpers ---
 
@@ -413,6 +397,26 @@ def _compare(value: Any, operator: str, threshold: Any) -> bool:
     except (TypeError, ValueError, re.error):
         return False
     return False
+
+
+def _check_resolved(value: Any, fire_operator: str, resolve_value: Any) -> bool:
+    """Check if a value has crossed the resolve threshold (opposite of fire).
+
+    For ``>``, resolved means ``value < resolve_value``.
+    For ``<``, resolved means ``value > resolve_value``.
+    For equality operators, resolved means the value no longer matches.
+    """
+    _INVERSE = {
+        ">": "<",
+        ">=": "<=",
+        "<": ">",
+        "<=": ">=",
+    }
+    inverse_op = _INVERSE.get(fire_operator)
+    if inverse_op:
+        return _compare(value, inverse_op, resolve_value)
+    # For non-numeric operators (=, !=, contains, etc.) resolve when no longer triggered
+    return not _compare(value, fire_operator, resolve_value)
 
 
 def _extract_device_id(key: str) -> str | None:
