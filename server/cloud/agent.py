@@ -354,7 +354,12 @@ class CloudAgent:
             await asyncio.gather(self._recv_task, self._heartbeat_task)
 
         finally:
-            # Clean up on disconnect
+            # Clean up on disconnect — stop subsystems so they re-initialize
+            # (and re-send initial state snapshot) on the next connection.
+            if self._state_relay:
+                await self._state_relay.stop()
+            if self._alert_monitor:
+                await self._alert_monitor.stop()
             if self._ws:
                 try:
                     await self._ws.close()
