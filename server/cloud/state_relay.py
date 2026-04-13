@@ -53,6 +53,11 @@ class StateRelay:
             return
 
         self._running = True
+
+        # Send full state snapshot so the cloud has current values for keys
+        # that were set before the relay started (e.g. device.*.connected).
+        await self._send_initial_snapshot()
+
         self._sub_id = self._state.subscribe("*", self._on_state_change)
         self._flush_task = asyncio.create_task(self._flush_loop())
         log.info("State relay: started")
@@ -74,6 +79,39 @@ class StateRelay:
             self._flush_task = None
 
         log.info("State relay: stopped")
+
+    async def _send_initial_snapshot(self) -> None:
+        """Send all current state values to the cloud as the first batch.
+
+        This ensures the cloud has device.*.connected and other state keys
+        that were set before the relay started listening for changes.
+        """
+        snapshot = self._state.snapshot()
+        if not snapshot:
+            return
+
+        now = time.time()
+        changes = []
+        for key, value in snapshot.items():
+            # Skip cloud-internal and ISC state
+            if key.startswith("system.cloud.") or key.startswith("isc."):
+                continue
+            changes.append({
+                "key": key,
+                "value": value,
+                "ts": self._format_ts(now),
+            })
+
+        if not changes:
+            return
+
+        # Send in chunks to respect max batch size
+        max_size = self._agent._config.get("state_batch_max_size", 500)
+        for i in range(0, len(changes), max_size):
+            chunk = changes[i:i + max_size]
+            await self._agent.send_message(STATE_BATCH, {"changes": chunk})
+
+        log.info("State relay: sent initial snapshot (%d keys)", len(changes))
 
     def _on_state_change(
         self, key: str, old_value: Any, new_value: Any, source: str
