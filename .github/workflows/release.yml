@@ -67,6 +67,7 @@ jobs:
     runs-on: windows-latest
     env:
       VERSION: ${{ needs.version.outputs.version }}
+      SIGNING_ENABLED: ${{ secrets.AZURE_TENANT_ID }}
     steps:
       - uses: actions/checkout@v4
 
@@ -97,7 +98,7 @@ jobs:
         run: pyinstaller installer/openavc.spec --noconfirm --clean
 
       - name: Sign server executable
-        if: ${{ secrets.AZURE_TENANT_ID != '' }}
+        if: env.SIGNING_ENABLED != ''
         uses: azure/trusted-signing-action@v0.5.0
         with:
           azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -116,7 +117,7 @@ jobs:
         run: pyinstaller installer/tray.spec --noconfirm --clean
 
       - name: Sign tray executable
-        if: ${{ secrets.AZURE_TENANT_ID != '' }}
+        if: env.SIGNING_ENABLED != ''
         uses: azure/trusted-signing-action@v0.5.0
         with:
           azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -143,7 +144,7 @@ jobs:
         run: iscc installer/setup.iss
 
       - name: Sign installer
-        if: ${{ secrets.AZURE_TENANT_ID != '' }}
+        if: env.SIGNING_ENABLED != ''
         uses: azure/trusted-signing-action@v0.5.0
         with:
           azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
