@@ -7,7 +7,7 @@
 
 services:
   openavc:
-    image: openavc/openavc:latest
+    image: ghcr.io/open-avc/openavc:latest
     container_name: openavc
     ports:
       - "8080:8080"

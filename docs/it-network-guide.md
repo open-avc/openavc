@@ -419,7 +419,7 @@ docker run -d \
   -p 8080:8080 \
   -e OPENAVC_PROGRAMMER_PASSWORD=your-password \
   -v openavc-data:/data \
-  openavc/openavc
+  ghcr.io/open-avc/openavc
 ```
 
 Access at `http://<host-ip>:8080/programmer`. Docker deployments accept network connections by default. The container's network requirements are identical to a bare-metal installation.

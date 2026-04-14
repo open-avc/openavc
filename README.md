@@ -74,7 +74,7 @@ Flash the pre-built image to an SD card with [Raspberry Pi Imager](https://www.r
 
 ### Docker
 ```bash
-docker run -d --name openavc -p 8080:8080 -v openavc-data:/data openavc/openavc:latest
+docker run -d --name openavc -p 8080:8080 -v openavc-data:/data ghcr.io/open-avc/openavc:latest
 ```
 
 ### Linux

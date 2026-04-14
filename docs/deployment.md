@@ -25,7 +25,7 @@ See [Getting Started](getting-started.md) for detailed installation steps coveri
 | Method | Install Command / Action |
 |--------|--------------------------|
 | **Windows Installer** | Download from [GitHub Releases](https://github.com/open-avc/openavc/releases) and run the `.exe` |
-| **Docker** | `docker run -d -p 8080:8080 -v openavc-data:/data openavc/openavc:latest` |
+| **Docker** | `docker run -d -p 8080:8080 -v openavc-data:/data ghcr.io/open-avc/openavc:latest` |
 | **Linux** | `curl -sSL https://get.openavc.com \| sudo bash` |
 | **From Source** | `git clone`, `pip install`, `npm run build`, `python -m server.main` |
 
@@ -214,7 +214,7 @@ Run OpenAVC in a container with persistent data stored in a named volume:
 ```yaml
 services:
   openavc:
-    image: openavc/openavc:latest
+    image: ghcr.io/open-avc/openavc:latest
     container_name: openavc
     ports:
       - "8080:8080"
@@ -240,11 +240,11 @@ For multi-space deployments, use separate containers with different ports and da
 ```yaml
 services:
   room-101:
-    image: openavc/openavc:latest
+    image: ghcr.io/open-avc/openavc:latest
     ports: ["8081:8080"]
     volumes: ["room-101-data:/data"]
   room-102:
-    image: openavc/openavc:latest
+    image: ghcr.io/open-avc/openavc:latest
     ports: ["8082:8080"]
     volumes: ["room-102-data:/data"]
 ```

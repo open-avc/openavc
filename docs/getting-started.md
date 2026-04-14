@@ -44,7 +44,7 @@ docker run -d \
   -p 8080:8080 \
   -v openavc-data:/data \
   --restart unless-stopped \
-  openavc/openavc:latest
+  ghcr.io/open-avc/openavc:latest
 ```
 
 Or with Docker Compose:
@@ -52,7 +52,7 @@ Or with Docker Compose:
 ```yaml
 services:
   openavc:
-    image: openavc/openavc:latest
+    image: ghcr.io/open-avc/openavc:latest
     container_name: openavc
     ports:
       - "8080:8080"
