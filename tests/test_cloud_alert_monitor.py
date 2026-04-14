@@ -291,12 +291,26 @@ async def test_threshold_no_duplicate_fire():
 
 @pytest.mark.asyncio
 async def test_builtin_cpu_alert():
-    """Built-in CPU alert fires when value exceeds 95%."""
+    """CPU alert fires when cloud-pushed rule threshold is exceeded."""
     agent = MockAgent()
     state = MockStateStore()
     events = MockEventBus()
     monitor = AlertMonitor(agent, state, events)
     await monitor.start()
+
+    # Push a CPU threshold rule (as the cloud would)
+    events._handlers.get("cloud.alert_rules_update", [None])[0](
+        "cloud.alert_rules_update",
+        {"rules": [{
+            "id": "cpu-rule-1",
+            "name": "High CPU usage",
+            "rule_type": "threshold",
+            "condition": {"key": "system.cpu_percent", "operator": ">", "value": 95},
+            "severity": "warning",
+            "category": "system",
+            "enabled": True,
+        }]}
+    )
 
     # Simulate CPU spike via state change
     state.set("system.cpu_percent", 97.0)
