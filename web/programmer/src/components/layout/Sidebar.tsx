@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { getTunnelPrefix } from "../../api/restClient";
 import {
   Monitor,
   Cpu,
@@ -75,7 +76,7 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
   const startSimulation = async () => {
     setSimBusy(true);
     try {
-      const res = await fetch("/api/simulation/start", { method: "POST" });
+      const res = await fetch(`${getTunnelPrefix()}/api/simulation/start`, { method: "POST" });
       if (res.ok) {
         const data = await res.json();
         const url = data.ui_url || "http://localhost:19500";
@@ -149,7 +150,7 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
           if (simulationActive) {
             setSimBusy(true);
             try {
-              await fetch("/api/simulation/stop", { method: "POST" });
+              await fetch(`${getTunnelPrefix()}/api/simulation/stop`, { method: "POST" });
             } catch {
               showError("Failed to stop simulation");
             } finally {

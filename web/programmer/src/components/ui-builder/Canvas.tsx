@@ -1,6 +1,7 @@
 import { useRef, useCallback, useMemo } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import type { UIPage, UIElement, MasterElement, GridArea } from "../../api/types";
+import { getTunnelPrefix } from "../../api/restClient";
 import { useUIBuilderStore } from "../../store/uiBuilderStore";
 import { useProjectStore } from "../../store/projectStore";
 import { useConnectionStore } from "../../store/connectionStore";
@@ -252,7 +253,7 @@ export function Canvas({
                 inset: 0,
                 zIndex: 0,
                 pointerEvents: "none",
-                backgroundImage: `url("/api/projects/default/assets/${(page.background.image || "").replace("assets://", "")}")`,
+                backgroundImage: `url("${getTunnelPrefix()}/api/projects/default/assets/${(page.background.image || "").replace("assets://", "")}")`,
                 backgroundSize: page.background.image_size || "cover",
                 backgroundPosition: page.background.image_position || "center",
                 backgroundRepeat: "no-repeat",

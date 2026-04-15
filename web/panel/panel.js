@@ -3303,8 +3303,10 @@ class PanelApp {
     resolveAssetUrl(ref) {
         if (!ref) return '';
         if (ref.startsWith('assets://')) {
-            // Resolve to project asset endpoint
-            return `/api/projects/default/assets/${ref.slice('assets://'.length)}`;
+            // Derive base path so asset URLs route through cloud tunnel
+            const pathParts = location.pathname.split('/panel');
+            const basePath = pathParts[0] || '';
+            return `${basePath}/api/projects/default/assets/${ref.slice('assets://'.length)}`;
         }
         return ref;
     }

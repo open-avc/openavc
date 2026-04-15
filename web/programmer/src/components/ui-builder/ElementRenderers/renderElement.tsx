@@ -1,4 +1,5 @@
 import type { UIElement } from "../../../api/types";
+import { getTunnelPrefix } from "../../../api/restClient";
 import { ButtonRenderer } from "./ButtonRenderer";
 import { LabelRenderer } from "./LabelRenderer";
 import { SliderRenderer } from "./SliderRenderer";
@@ -202,7 +203,7 @@ function PluginElementRenderer({
 
   if (previewMode && pluginId && pluginType) {
     // In preview mode, render actual iframe
-    const src = `/api/plugins/${pluginId}/panel/${pluginType}.html`;
+    const src = `${getTunnelPrefix()}/api/plugins/${pluginId}/panel/${pluginType}.html`;
     return (
       <div
         style={{

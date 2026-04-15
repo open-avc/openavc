@@ -51,11 +51,17 @@ class TunnelHandler:
 
     async def handle_tunnel_open(self, msg: dict[str, Any]) -> None:
         """Handle a tunnel_open message from the cloud."""
+        from server import config
+
         payload = msg.get("payload", {})
         tunnel_id = payload.get("tunnel_id", "")
-        target_port = payload.get("target_port", 8080)
         tunnel_token = payload.get("tunnel_token", "")
         tunnel_data_url = payload.get("tunnel_data_url", "")
+
+        # Always proxy to the local server's actual port, not the cloud-provided
+        # default.  The user may have changed OPENAVC_PORT, and the agent is
+        # always proxying to itself.
+        target_port = config.HTTP_PORT
 
         if not tunnel_id or not tunnel_data_url:
             log.error("Tunnel open: missing tunnel_id or tunnel_data_url")

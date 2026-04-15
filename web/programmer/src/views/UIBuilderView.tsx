@@ -16,7 +16,7 @@ import {
 } from "react-resizable-panels";
 import type { UIElement, UIPage, UISettings, GridArea, MasterElement } from "../api/types";
 import * as wsClient from "../api/wsClient";
-import { listThemes } from "../api/restClient";
+import { listThemes, getTunnelPrefix } from "../api/restClient";
 import { showError } from "../store/toastStore";
 import { useProjectStore } from "../store/projectStore";
 import { useUIBuilderStore } from "../store/uiBuilderStore";
@@ -121,7 +121,7 @@ export function UIBuilderView() {
   const themeId = project?.ui?.settings?.theme_id;
   useEffect(() => {
     const id = themeId || "dark-default";
-    fetch(`/api/themes/${id}`)
+    fetch(`${getTunnelPrefix()}/api/themes/${id}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((theme) => {
         setThemeElementDefaults(theme?.element_defaults || {});

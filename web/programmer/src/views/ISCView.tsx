@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { getTunnelPrefix } from "../api/restClient";
 import {
   Network,
   Wifi,
@@ -60,9 +61,10 @@ export function ISCView() {
 
   const fetchStatus = useCallback(async () => {
     try {
+      const prefix = getTunnelPrefix();
       const [statusRes, peersRes] = await Promise.all([
-        fetch("/api/isc/status").then((r) => r.json()),
-        fetch("/api/isc/instances").then((r) => r.json()),
+        fetch(`${prefix}/api/isc/status`).then((r) => r.json()),
+        fetch(`${prefix}/api/isc/instances`).then((r) => r.json()),
       ]);
       setStatus(statusRes);
       setPeers(Array.isArray(peersRes) ? peersRes : []);
