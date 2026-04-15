@@ -53,9 +53,9 @@ interface DriverBuilderState {
   loadRegisteredDrivers: () => Promise<void>;
   loadCommunityDrivers: () => Promise<void>;
   loadInstalledDrivers: () => Promise<void>;
-  installDriver: (driverId: string, fileUrl: string) => Promise<void>;
+  installDriver: (driverId: string, fileUrl: string, minPlatformVersion?: string) => Promise<void>;
   uninstallDriver: (driverId: string) => Promise<void>;
-  updateDriver: (driverId: string, fileUrl: string) => Promise<void>;
+  updateDriver: (driverId: string, fileUrl: string, minPlatformVersion?: string) => Promise<void>;
 }
 
 export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => ({
@@ -205,9 +205,9 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => ({
     }
   },
 
-  installDriver: async (driverId, fileUrl) => {
+  installDriver: async (driverId, fileUrl, minPlatformVersion) => {
     try {
-      await api.installCommunityDriver(driverId, fileUrl);
+      await api.installCommunityDriver(driverId, fileUrl, minPlatformVersion);
       // Refresh all lists
       await Promise.all([
         get().loadRegisteredDrivers(),
@@ -228,8 +228,8 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => ({
     ]);
   },
 
-  updateDriver: async (driverId, fileUrl) => {
-    await api.updateCommunityDriver(driverId, fileUrl);
+  updateDriver: async (driverId, fileUrl, minPlatformVersion) => {
+    await api.updateCommunityDriver(driverId, fileUrl, minPlatformVersion);
     await Promise.all([
       get().loadRegisteredDrivers(),
       get().loadInstalledDrivers(),

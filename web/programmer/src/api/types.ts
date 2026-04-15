@@ -580,6 +580,7 @@ export interface CommunityDriver {
   description: string;
   protocols?: string[];
   ports?: number[];
+  min_platform_version?: string;
 }
 
 export interface InstalledDriver {

@@ -743,6 +743,29 @@ async def install_community_driver(body: CommunityDriverInstallRequest) -> dict[
     )
     from server.drivers.configurable import create_configurable_driver_class
 
+    # Check minimum platform version requirement
+    if body.min_platform_version:
+        from server.version import __version__
+
+        def _parse_semver(v: str) -> tuple[int, ...]:
+            return tuple(int(x) for x in v.split(".")[:3] if x.isdigit())
+
+        try:
+            current = _parse_semver(__version__)
+            required = _parse_semver(body.min_platform_version)
+            if current < required:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"This driver requires OpenAVC {body.min_platform_version} or later. "
+                        f"You are running {__version__}. Please update OpenAVC first."
+                    ),
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            pass  # If version parsing fails, allow the install
+
     driver_repo = _get_driver_repo_dir()
     driver_repo.mkdir(parents=True, exist_ok=True)
 
@@ -995,6 +1018,30 @@ async def update_driver(driver_id: str, request: Request) -> dict[str, Any]:
     file_url = body.get("file_url")
     if not file_url:
         raise HTTPException(status_code=422, detail="file_url is required")
+
+    # Check minimum platform version requirement
+    min_ver = body.get("min_platform_version")
+    if min_ver:
+        from server.version import __version__
+
+        def _parse_semver(v: str) -> tuple[int, ...]:
+            return tuple(int(x) for x in v.split(".")[:3] if x.isdigit())
+
+        try:
+            current = _parse_semver(__version__)
+            required = _parse_semver(min_ver)
+            if current < required:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"This driver version requires OpenAVC {min_ver} or later. "
+                        f"You are running {__version__}. Please update OpenAVC first."
+                    ),
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            pass
 
     # Find the existing file
     old_file = None

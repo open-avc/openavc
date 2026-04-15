@@ -98,6 +98,7 @@ class PythonDriverCreateRequest(BaseModel):
 class CommunityDriverInstallRequest(BaseModel):
     driver_id: str
     file_url: str
+    min_platform_version: str | None = None
 
 
 # --- Project Library ---

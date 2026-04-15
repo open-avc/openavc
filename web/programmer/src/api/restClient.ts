@@ -569,11 +569,16 @@ export async function fetchCommunityDrivers(): Promise<CommunityDriver[]> {
 
 export async function installCommunityDriver(
   driverId: string,
-  fileUrl: string
+  fileUrl: string,
+  minPlatformVersion?: string
 ): Promise<void> {
   await request("/drivers/install", {
     method: "POST",
-    body: JSON.stringify({ driver_id: driverId, file_url: fileUrl }),
+    body: JSON.stringify({
+      driver_id: driverId,
+      file_url: fileUrl,
+      min_platform_version: minPlatformVersion || null,
+    }),
   });
 }
 
@@ -603,11 +608,15 @@ export async function uninstallDriver(
 
 export async function updateCommunityDriver(
   driverId: string,
-  fileUrl: string
+  fileUrl: string,
+  minPlatformVersion?: string
 ): Promise<{ status: string }> {
   return request(`/drivers/installed/${driverId}/update`, {
     method: "POST",
-    body: JSON.stringify({ file_url: fileUrl }),
+    body: JSON.stringify({
+      file_url: fileUrl,
+      min_platform_version: minPlatformVersion || null,
+    }),
   });
 }
 

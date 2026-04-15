@@ -86,7 +86,7 @@ export function CommunityBrowser() {
         return next;
       });
       try {
-        await useDriverBuilderStore.getState().installDriver(driver.id, fileUrl);
+        await useDriverBuilderStore.getState().installDriver(driver.id, fileUrl, driver.min_platform_version);
       } catch (e) {
         setInstallErrors((prev) => ({ ...prev, [driver.id]: String(e) }));
       } finally {
@@ -110,7 +110,7 @@ export function CommunityBrowser() {
         return next;
       });
       try {
-        await useDriverBuilderStore.getState().updateDriver(driver.id, fileUrl);
+        await useDriverBuilderStore.getState().updateDriver(driver.id, fileUrl, driver.min_platform_version);
       } catch (e) {
         setInstallErrors((prev) => ({ ...prev, [driver.id]: String(e) }));
       } finally {
