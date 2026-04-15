@@ -29,6 +29,7 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
           style={{ width: "100%" }}
         >
           <option value="tcp">TCP</option>
+          <option value="udp">UDP</option>
           <option value="serial">Serial</option>
           <option value="http">HTTP / REST API</option>
         </select>
@@ -41,11 +42,13 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
         >
           {draft.transport === "http"
             ? "Choose HTTP for devices with REST APIs (JSON, SOAP, etc.)."
-            : "Choose TCP for network devices, Serial for RS-232/RS-485, or HTTP for REST API devices."}
+            : draft.transport === "udp"
+            ? "Choose UDP for devices that use datagram-based protocols (JSON-over-UDP, video wall controllers, etc.). Each command is sent as a single packet."
+            : "Choose TCP for network devices, UDP for datagram protocols, Serial for RS-232/RS-485, or HTTP for REST API devices."}
         </div>
       </div>
 
-      {draft.transport !== "http" && <div style={rowStyle}>
+      {draft.transport !== "http" && draft.transport !== "udp" && <div style={rowStyle}>
         <label style={labelStyle}>Message Delimiter</label>
         <select
           value={draft.delimiter}
@@ -198,6 +201,29 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
         </>
       )}
 
+      {draft.transport === "udp" && (
+        <>
+          <div style={rowStyle}>
+            <label style={labelStyle}>Default Port</label>
+            <input
+              type="number"
+              value={
+                (draft.default_config.port as number | undefined) ?? 6000
+              }
+              onChange={(e) =>
+                onUpdate({
+                  default_config: {
+                    ...draft.default_config,
+                    port: parseInt(e.target.value) || 6000,
+                  },
+                })
+              }
+              style={{ width: 120 }}
+            />
+          </div>
+        </>
+      )}
+
       {draft.transport === "serial" && (
         <>
           <div style={rowStyle}>
@@ -251,7 +277,7 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
         </>
       )}
 
-      {/* Inter-command delay — TCP and serial only */}
+      {/* Inter-command delay — TCP, UDP, and serial */}
       {draft.transport !== "http" && <div style={rowStyle}>
         <label style={labelStyle}>Inter-Command Delay (seconds)</label>
         <input

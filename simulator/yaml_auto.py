@@ -7,10 +7,14 @@ that handles incoming commands, updates state, and generates responses.
 Works at two levels:
   Level 0: Pure auto-gen from commands + responses + state_variables
   Level 1: Enhanced with explicit simulator: section (merged on top)
+
+Supports TCP (default) and UDP transports. UDP drivers get a datagram
+server instead of a TCP stream server.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from pathlib import Path
@@ -24,7 +28,12 @@ logger = logging.getLogger(__name__)
 
 
 class YAMLAutoSimulator(TCPSimulator):
-    """Auto-generated simulator from a .avcdriver definition."""
+    """Auto-generated simulator from a .avcdriver definition.
+
+    Inherits from TCPSimulator for TCP/serial drivers. For UDP drivers,
+    start() and stop() are overridden to use a UDP datagram server instead.
+    The handle_command() logic is identical for both transports.
+    """
 
     # Set dynamically per instance (not class-level)
     SIMULATOR_INFO: dict = {}
@@ -46,6 +55,10 @@ class YAMLAutoSimulator(TCPSimulator):
         self._line_mode = True
 
         self._driver_def = driver_def
+
+        # UDP transport support — overrides TCP server with UDP datagram server
+        self._is_udp = driver_def.get("transport") == "udp"
+        self._udp_transport: asyncio.DatagramTransport | None = None
 
         # Build handlers from driver definition
         self._command_handlers: list[CommandHandler] = []
@@ -80,6 +93,75 @@ class YAMLAutoSimulator(TCPSimulator):
         with open(path, encoding="utf-8") as f:
             driver_def = yaml.safe_load(f)
         return cls(device_id=device_id, config=config, driver_def=driver_def)
+
+    # ── UDP transport overrides ──
+
+    async def start(self, port: int) -> None:
+        """Start the simulator server (TCP or UDP based on driver transport)."""
+        if not self._is_udp:
+            await super().start(port)
+            return
+
+        # UDP mode — start a datagram server instead of TCP
+        self._port = port
+        loop = asyncio.get_running_loop()
+        self._udp_transport, _ = await loop.create_datagram_endpoint(
+            lambda: _YAMLAutoUDPProtocol(self),
+            local_addr=("127.0.0.1", port),
+        )
+        self._running = True
+        logger.info(
+            "%s started on UDP port %d (driver: %s)",
+            self.name, port, self.driver_id,
+        )
+
+    async def stop(self) -> None:
+        """Stop the simulator server."""
+        if not self._is_udp:
+            await super().stop()
+            return
+
+        self._running = False
+        if self._udp_transport:
+            self._udp_transport.close()
+            self._udp_transport = None
+        logger.info("%s stopped", self.name)
+
+    def _handle_udp_datagram(self, data: bytes, addr: tuple[str, int]) -> None:
+        """Process an incoming UDP datagram and send response."""
+        self.log_protocol("in", data)
+
+        if self._network_layer and self._network_layer.should_drop(self.device_id):
+            return
+        if self.has_error_behavior("no_response"):
+            return
+
+        asyncio.ensure_future(self._handle_udp_datagram_async(data, addr))
+
+    async def _handle_udp_datagram_async(
+        self, data: bytes, addr: tuple[str, int]
+    ) -> None:
+        """Async handler for UDP datagram processing (supports delays)."""
+        if self._network_layer:
+            await self._network_layer.apply_latency(self.device_id)
+
+        delay = self._delays.get("command_response", 0)
+        if delay > 0:
+            await asyncio.sleep(delay)
+
+        try:
+            response = self.handle_command(data)
+        except Exception:
+            logger.exception("%s: error in handle_command", self.name)
+            response = None
+
+        if response and self.has_error_behavior("corrupt_response"):
+            from simulator.udp_simulator import _corrupt_bytes
+            response = _corrupt_bytes(response)
+
+        if response and self._udp_transport:
+            self._udp_transport.sendto(response, addr)
+            self.log_protocol("out", response)
 
     # ── Protocol handling ──
 
@@ -181,6 +263,7 @@ class YAMLAutoSimulator(TCPSimulator):
             "state": state_proxy,
             "config": self.config,
             "respond": respond,
+            "re": re,
             "int": int,
             "float": float,
             "str": str,
@@ -204,7 +287,12 @@ class YAMLAutoSimulator(TCPSimulator):
         }
 
         try:
-            exec(handler.code, {"__builtins__": {}}, namespace)  # noqa: S102
+            # Use a single dict for both globals and locals so nested function
+            # definitions (def get_int, etc.) can see variables set by earlier
+            # lines in the handler (e.g., 'text'). Python closures in exec
+            # only see globals, not exec-locals.
+            exec_ns = {"__builtins__": {}, **namespace}
+            exec(handler.code, exec_ns, exec_ns)  # noqa: S102
         except Exception:
             logger.exception(
                 "%s: script handler error for pattern %s",
@@ -753,3 +841,20 @@ def _infer_state_var(cmd_name: str, state_vars: set[str]) -> str | None:
         return alias_target
 
     return None
+
+
+class _YAMLAutoUDPProtocol(asyncio.DatagramProtocol):
+    """Internal protocol handler that routes UDP datagrams to YAMLAutoSimulator."""
+
+    def __init__(self, simulator: YAMLAutoSimulator):
+        self._simulator = simulator
+
+    def datagram_received(self, data: bytes, addr: tuple[str, int]) -> None:
+        self._simulator._handle_udp_datagram(data, addr)
+
+    def error_received(self, exc: Exception) -> None:
+        logger.warning("YAML auto UDP simulator error: %s", exc)
+
+    def connection_lost(self, exc: Exception | None) -> None:
+        if exc:
+            logger.debug("YAML auto UDP connection lost: %s", exc)

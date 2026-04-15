@@ -136,6 +136,24 @@ class BaseDriver(ABC):
                 stopbits=stopbits,
                 name=self.device_id,
             )
+        elif transport_type == "udp":
+            from server.transport.udp import UDPTransport
+
+            host = self.config.get("host", "")
+            port = self.config.get("port", 6000)
+            delay = self.config.get("inter_command_delay", 0.0)
+
+            self.transport = UDPTransport(
+                host=host,
+                port=port,
+                on_data=self.on_data_received,
+                on_disconnect=self._handle_transport_disconnect,
+                inter_command_delay=delay,
+                name=self.device_id,
+            )
+            await self.transport.open(
+                local_addr=control_ip or None,
+            )
         elif transport_type == "http":
             from server.transport.http_client import HTTPClientTransport
 

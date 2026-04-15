@@ -107,15 +107,12 @@ class ConfigurableDriver(BaseDriver):
             return None
 
         # Substitute {param} placeholders — merge config values so drivers
-        # can use config fields like {set_id} or {level_instance_tag} in commands
+        # can use config fields like {set_id} or {level_instance_tag} in commands.
+        # Uses _safe_substitute to handle JSON protocols (UDP) where literal
+        # braces must be preserved — only {name} tokens matching known params
+        # are replaced, all other braces are left alone.
         all_params = {**self.config, **params}
-        try:
-            formatted = raw.format(**all_params)
-        except KeyError as e:
-            log.error(
-                f"[{self.device_id}] Missing param {e} for command '{command}'"
-            )
-            return None
+        formatted = self._safe_substitute(raw, all_params)
 
         # Encode (handle explicit escape sequences only — safe subset)
         data = _safe_encode_escapes(formatted)
@@ -374,7 +371,9 @@ class ConfigurableDriver(BaseDriver):
         polling = self._definition.get("polling", {})
         queries = polling.get("queries", [])
 
-        is_http = self._definition.get("transport") == "http"
+        transport_type = self._definition.get("transport")
+        is_http = transport_type == "http"
+        is_udp = transport_type == "udp"
 
         for query in queries:
             try:
@@ -389,6 +388,15 @@ class ConfigurableDriver(BaseDriver):
                         response = await self.transport.get(formatted)
                         if response.text:
                             await self.on_data_received(response.text.encode("utf-8"))
+                elif is_udp:
+                    # For UDP: query can be a command name or a raw JSON string
+                    commands = self._definition.get("commands", {})
+                    if query in commands:
+                        await self.send_command(query)
+                    else:
+                        formatted = self._safe_substitute(query, self.config) if "{" in query else query
+                        data = _safe_encode_escapes(formatted)
+                        await self.transport.send(data)
                 else:
                     # TCP/serial: raw protocol string
                     formatted = self._safe_substitute(query, self.config) if "{" in query else query

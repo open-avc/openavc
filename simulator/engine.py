@@ -21,6 +21,7 @@ import yaml
 from simulator.base import BaseSimulator
 from simulator.tcp_simulator import TCPSimulator
 from simulator.http_simulator import HTTPSimulator
+from simulator.udp_simulator import UDPSimulator
 from simulator.yaml_auto import YAMLAutoSimulator
 from simulator.network_conditions import NetworkConditionLayer
 
@@ -151,7 +152,7 @@ class SimulatorManager:
         for _name, obj in inspect.getmembers(module, inspect.isclass):
             if (
                 issubclass(obj, BaseSimulator)
-                and obj not in (BaseSimulator, TCPSimulator, HTTPSimulator)
+                and obj not in (BaseSimulator, TCPSimulator, HTTPSimulator, UDPSimulator)
                 and hasattr(obj, "SIMULATOR_INFO")
                 and obj.SIMULATOR_INFO.get("driver_id")
             ):
