@@ -44,27 +44,27 @@ async def test_open_sets_is_open():
     assert not t.is_open
     await t.open()
     assert t.is_open
-    t.close()
+    await t.close()
 
 
 async def test_close_clears_is_open():
     t = UDPTransport(name="test")
     await t.open()
-    t.close()
+    await t.close()
     assert not t.is_open
 
 
 async def test_close_before_open_is_safe():
     t = UDPTransport(name="test")
-    t.close()  # Should not raise
+    await t.close()  # Should not raise
     assert not t.is_open
 
 
 async def test_double_close_is_safe():
     t = UDPTransport(name="test")
     await t.open()
-    t.close()
-    t.close()  # Should not raise
+    await t.close()
+    await t.close()  # Should not raise
     assert not t.is_open
 
 
@@ -76,11 +76,11 @@ async def test_send_to_host_port(udp_receiver):
     t = UDPTransport(name="test")
     await t.open()
 
-    await t.send(b"hello", "127.0.0.1", port)
+    await t.send_to(b"hello", "127.0.0.1", port)
     await asyncio.sleep(0.05)
 
     assert receiver.packets == [b"hello"]
-    t.close()
+    await t.close()
 
 
 async def test_send_multiple_packets(udp_receiver):
@@ -88,18 +88,18 @@ async def test_send_multiple_packets(udp_receiver):
     t = UDPTransport(name="test")
     await t.open()
 
-    await t.send(b"one", "127.0.0.1", port)
-    await t.send(b"two", "127.0.0.1", port)
+    await t.send_to(b"one", "127.0.0.1", port)
+    await t.send_to(b"two", "127.0.0.1", port)
     await asyncio.sleep(0.05)
 
     assert receiver.packets == [b"one", b"two"]
-    t.close()
+    await t.close()
 
 
 async def test_send_without_open_raises():
     t = UDPTransport(name="test")
     with pytest.raises(ConnectionError, match="UDP socket not open"):
-        await t.send(b"data", "127.0.0.1", 9999)
+        await t.send_to(b"data", "127.0.0.1", 9999)
 
 
 # --- Broadcast ---
@@ -118,7 +118,7 @@ async def test_broadcast_sends_to_255_255_255_255(udp_receiver):
     _, port = udp_receiver
     await t.broadcast(b"\xff" * 6, port)
 
-    t.close()
+    await t.close()
 
 
 async def test_broadcast_without_open_raises():
