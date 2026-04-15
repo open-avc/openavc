@@ -1,7 +1,7 @@
-## Cloud Connectivity
+## UDP Transport
 
-Improved reliability of the cloud agent connection. The state relay and alert monitor now properly re-initialize when the cloud connection drops and reconnects, ensuring device state and alert rules are restored without requiring a service restart. Added reporting when tunnel connections fail on the agent side.
+UDP is now a first-class transport option for drivers. YAML drivers can use `transport: udp` with configurable local/remote ports, broadcast support, and hex encoding. The Driver Builder UI includes UDP configuration, and the simulator supports UDP device simulation. This enables drivers for protocols like Wake-on-LAN, Art-Net, and other datagram-based AV control.
 
-## Alert System
+## Cloud Tunnel Fixes
 
-System resource alerts (disk, memory, CPU) are now managed by the cloud platform instead of being hardcoded in the agent. Thresholds, severity, and enable/disable are all configurable from the cloud portal. Threshold alerts now support hysteresis to prevent repeated notifications when a value fluctuates near the boundary.
+Fixed an issue where the Panel and Programmer UIs would fail to load through cloud remote access tunnels when the server runs on a non-default port. Images and other assets now load correctly through tunnels.
