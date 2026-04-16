@@ -20,7 +20,7 @@ from server.core.device_manager import DeviceManager
 from server.core.event_bus import EventBus
 from server.core.macro_engine import MacroEngine
 from server.core.plugin_loader import PluginLoader
-from server.core.project_loader import ProjectConfig, load_project, save_project
+from server.core.project_loader import ProjectConfig, ProjectMeta, load_project, save_project
 from server.core.script_engine import ScriptEngine
 from server.core.state_persister import StatePersister
 from server.core.state_store import StateStore
@@ -124,8 +124,8 @@ class Engine:
         self.state.set("system.update_progress", 0, source="system")
         self.state.set("system.update_error", "", source="system")
 
-        # Load project
-        self.project = load_project(self.project_path)
+        # Load project — with corruption recovery
+        self.project = self._load_project_safe()
 
         # Load project-level drivers (community drivers installed via IDE)
         self._load_project_drivers()
@@ -717,6 +717,56 @@ class Engine:
                     return element
         return None
 
+    def _load_project_safe(self) -> ProjectConfig:
+        """Load project.avc with corruption recovery.
+
+        If the project file is missing, corrupted, or fails validation:
+        1. Try restoring from the most recent backup
+        2. If no backup works, create a minimal empty project so the server starts
+        """
+        from server.core.backup_manager import list_backups, restore_from_backup
+
+        project_dir = self.project_path.parent
+
+        # Happy path — load normally
+        try:
+            return load_project(self.project_path)
+        except FileNotFoundError:
+            log.warning(f"Project file not found: {self.project_path}")
+        except json.JSONDecodeError as e:
+            log.error(f"Project file is corrupted (invalid JSON): {e}")
+        except Exception as e:
+            log.error(f"Project file failed to load: {e}")
+
+        # Try restoring from backups, newest first
+        backups = list_backups(project_dir)
+        for backup in backups:
+            backup_path = project_dir / backup.filename
+            log.info(f"Attempting restore from backup: {backup.filename}")
+            try:
+                restore_from_backup(backup_path, project_dir)
+                project = load_project(self.project_path)
+                log.info(f"Successfully restored project from backup: {backup.filename}")
+                return project
+            except Exception as e:
+                log.warning(f"Backup restore failed ({backup.filename}): {e}")
+                continue
+
+        # No backups worked — create minimal empty project
+        log.warning("No backups available. Creating empty recovery project.")
+        from datetime import datetime, timezone
+        empty = ProjectConfig(
+            project=ProjectMeta(
+                id="recovery",
+                name="Recovery Project",
+                description="Auto-created after project corruption. Use File > Open to load a project.",
+                created=datetime.now(timezone.utc).isoformat(),
+                modified=datetime.now(timezone.utc).isoformat(),
+            )
+        )
+        save_project(self.project_path, empty)
+        return empty
+
     def _load_project_drivers(self) -> None:
         """Reload drivers from the global driver_repo/ directory.
 
@@ -846,7 +896,7 @@ class Engine:
             return
         text = json.dumps(message)
         disconnected = []
-        for ws in self._ws_clients:
+        for ws in list(self._ws_clients):
             try:
                 await ws.send_text(text)
             except Exception:  # WebSocket send can raise any connection-related error

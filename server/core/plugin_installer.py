@@ -45,6 +45,18 @@ def _sanitize_filename(name: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_\-.]", "", name)
 
 
+def _safe_zip_target(base_dir: Path, relative_path: str) -> Path | None:
+    """Resolve a zip entry path safely, rejecting path traversal.
+
+    Returns the resolved target path if it's inside base_dir, or None if
+    the path would escape (e.g. via '../').
+    """
+    target = (base_dir / relative_path).resolve()
+    if not target.is_relative_to(base_dir.resolve()):
+        return None
+    return target
+
+
 # ──── Community Index Cache ────
 
 
@@ -126,10 +138,11 @@ async def install_plugin(plugin_id: str, file_url: str) -> dict[str, Any]:
                 with zipfile.ZipFile(BytesIO(resp.content)) as zf:
                     for name in zf.namelist():
                         parts = name.split("/", 1)
-                        if len(parts) > 1:
-                            target = plugin_dir / parts[1]
-                        else:
-                            target = plugin_dir / name
+                        relative = parts[1] if len(parts) > 1 else name
+                        target = _safe_zip_target(plugin_dir, relative)
+                        if target is None:
+                            log.warning(f"Skipping zip entry with unsafe path: {name}")
+                            continue
                         if name.endswith("/"):
                             target.mkdir(parents=True, exist_ok=True)
                         else:
@@ -291,9 +304,16 @@ async def _install_deps_from_pypi(
                     for name in whl.namelist():
                         # Skip .dist-info/RECORD (file hashes) — not needed
                         if name.endswith("/"):
-                            (deps_dir / name).mkdir(parents=True, exist_ok=True)
+                            target = _safe_zip_target(deps_dir, name)
+                            if target is None:
+                                log.warning(f"Skipping wheel entry with unsafe path: {name}")
+                                continue
+                            target.mkdir(parents=True, exist_ok=True)
                         else:
-                            target = deps_dir / name
+                            target = _safe_zip_target(deps_dir, name)
+                            if target is None:
+                                log.warning(f"Skipping wheel entry with unsafe path: {name}")
+                                continue
                             target.parent.mkdir(parents=True, exist_ok=True)
                             target.write_bytes(whl.read(name))
 
