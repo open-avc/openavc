@@ -101,6 +101,9 @@ DEFAULTS: dict[str, Any] = {
         "target_url": "http://localhost:8080/panel",
         "cursor_visible": False,
     },
+    "discovery": {
+        "advertise": True,
+    },
 }
 
 # Mapping: (section, key) -> (env_var, type)
@@ -118,6 +121,7 @@ ENV_OVERRIDES: dict[tuple[str, str], tuple[str, type]] = {
     ("cloud", "endpoint"): ("OPENAVC_CLOUD_ENDPOINT", str),
     ("cloud", "system_key"): ("OPENAVC_CLOUD_SYSTEM_KEY", str),
     ("cloud", "system_id"): ("OPENAVC_CLOUD_SYSTEM_ID", str),
+    ("discovery", "advertise"): ("OPENAVC_MDNS_ADVERTISE", bool),
 }
 
 

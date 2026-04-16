@@ -62,6 +62,7 @@ class Engine:
         self.isc = None  # ISCManager, initialized in start() if enabled
         self.cloud_agent = None  # CloudAgent, initialized in start() if enabled
         self.update_manager = None  # UpdateManager, initialized in start()
+        self.mdns_advertiser = None  # MDNSAdvertiser, initialized in start() if enabled
 
         # Simulation
         from server.core.simulation import SimulationManager
@@ -239,6 +240,9 @@ class Engine:
         # Inter-System Communication
         await self._start_isc()
 
+        # mDNS Service Advertisement
+        await self._start_mdns_advertiser()
+
         # Cloud Agent (apply saved pairing config before starting)
         from server.cloud.config import apply_saved_cloud_config
         apply_saved_cloud_config()
@@ -348,6 +352,11 @@ class Engine:
             await self.cloud_agent.stop()
             self.cloud_agent = None
 
+        # Stop mDNS advertiser
+        if self.mdns_advertiser:
+            await self.mdns_advertiser.stop()
+            self.mdns_advertiser = None
+
         # Stop ISC
         if self.isc:
             await self.isc.stop()
@@ -452,6 +461,10 @@ class Engine:
 
         # Reload ISC config
         await self._reload_isc()
+
+        # Update mDNS advertiser with new project name
+        if self.mdns_advertiser:
+            self.mdns_advertiser.update_name(self.project.project.name)
 
         # Push new UI definition to all connected panels
         await self.broadcast_ws({
@@ -1073,6 +1086,28 @@ class Engine:
         elif not self.isc and isc_should_run:
             # ISC was off but project enabled it
             await self._start_isc()
+
+    # --- mDNS Advertiser helpers ---
+
+    async def _start_mdns_advertiser(self) -> None:
+        """Start mDNS service advertisement if enabled in system config."""
+        if not config.MDNS_ADVERTISE:
+            return
+        try:
+            from server.core.isc import get_or_create_instance_id
+            from server.discovery.mdns_advertiser import MDNSAdvertiser
+
+            instance_id = get_or_create_instance_id(self.project_path)
+            self.mdns_advertiser = MDNSAdvertiser(
+                instance_name=self.project.project.name,
+                instance_id=instance_id,
+                http_port=config.HTTP_PORT,
+                version=__version__,
+            )
+            await self.mdns_advertiser.start()
+        except Exception:
+            log.exception("mDNS advertiser: failed to start — continuing without advertisement")
+            self.mdns_advertiser = None
 
     # --- Cloud Agent helpers ---
 

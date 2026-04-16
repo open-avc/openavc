@@ -57,6 +57,9 @@ PANEL_LOCK_CODE: str = _cfg.get("auth", "panel_lock_code", "")
 # Inter-System Communication
 ISC_ENABLED: bool = _cfg.get("isc", "enabled", True)
 
+# mDNS Service Advertisement
+MDNS_ADVERTISE: bool = _cfg.get("discovery", "advertise", True)
+
 # Rate Limiting (not in system.json, env-only for now)
 RATE_LIMIT_ENABLED = os.environ.get("OPENAVC_RATE_LIMIT_ENABLED", "true").lower() == "true"
 RATE_LIMIT_OPEN_PER_MINUTE = _safe_int("OPENAVC_RATE_LIMIT_OPEN", 120)
