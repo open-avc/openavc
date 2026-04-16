@@ -176,9 +176,45 @@ class StateStore:
         log.debug(f"State subscription {sub_id[:8]}... on pattern '{pattern}'")
         return sub_id
 
-    def delete(self, key: str) -> None:
-        """Remove a key from the store entirely (not just set to None)."""
-        self._store.pop(key, None)
+    def delete(self, key: str, source: str = "system") -> None:
+        """Remove a key from the store entirely (not just set to None).
+
+        Unlike set(key, None), this removes the key from the store so
+        get(key) returns the default.  Fires the same listener and EventBus
+        notifications as set() so that downstream consumers (state relay,
+        triggers, WebSocket broadcast) learn about the removal.
+        """
+        if key not in self._store:
+            return  # Key doesn't exist — nothing to notify
+
+        old_value = self._store.pop(key)
+
+        self._history.append(HistoryEntry(key, old_value, None, source))
+
+        if log.isEnabledFor(10):  # DEBUG = 10
+            log.debug(f"State: {key} deleted (was {old_value!r}, source={source})")
+
+        # Notify listeners (key is already removed from _store at this point,
+        # which lets consumers distinguish delete from set-to-None by checking
+        # whether the key still exists in the store)
+        self._notify_listeners(key, old_value, None, source)
+
+        # Emit events on the EventBus
+        if self._event_bus is not None:
+            payload = {
+                "key": key,
+                "old_value": old_value,
+                "new_value": None,
+                "source": source,
+            }
+            try:
+                loop = asyncio.get_running_loop()
+                for event_name in ("state.changed", f"state.changed.{key}"):
+                    task = loop.create_task(self._event_bus.emit(event_name, payload))
+                    self._pending_event_tasks.add(task)
+                    task.add_done_callback(self._pending_event_tasks.discard)
+            except RuntimeError:
+                pass
 
     def unsubscribe(self, sub_id: str) -> None:
         """Remove a subscription by ID. Cleans up empty pattern entries."""

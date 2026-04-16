@@ -940,11 +940,18 @@ class TestStateRelay:
 
         await relay.stop()
 
-        # At least one batch should have been sent
-        assert len(sent) >= 1
+        # First message is the initial snapshot (empty, with snapshot flag),
+        # followed by at least one incremental batch with the state change.
+        assert len(sent) >= 2
         assert sent[0][0] == STATE_BATCH
-        changes = sent[0][1]["changes"]
-        assert any(c["key"] == "var.test" and c["value"] == 42 for c in changes)
+        assert sent[0][1].get("snapshot") is True
+
+        # Find the incremental batch containing our state change
+        all_changes = []
+        for msg_type, payload in sent[1:]:
+            assert msg_type == STATE_BATCH
+            all_changes.extend(payload.get("changes", []))
+        assert any(c["key"] == "var.test" and c["value"] == 42 for c in all_changes)
 
 
 # ===========================================================================
