@@ -50,3 +50,4 @@ target-version = "py311"
 "server/main.py" = ["E402"]
 "server/api/rest.py" = ["E402"]
 "server/core/project_loader.py" = ["E402"]
+"server/cloud/ai_tool_handler.py" = ["E402"]
