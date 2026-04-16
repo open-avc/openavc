@@ -1,0 +1,39 @@
+name: Test Signing
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test code signing
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create dummy executable
+        shell: bash
+        run: |
+          cp /c/Windows/System32/whoami.exe test-sign.exe
+
+      - name: Test signing
+        uses: azure/trusted-signing-action@v0.5.0
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: https://eus.codesigning.azure.net/
+          trusted-signing-account-name: openavc
+          certificate-profile-name: ${{ secrets.AZURE_CERT_PROFILE_NAME }}
+          files-folder: .
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Verify signature
+        shell: powershell
+        run: |
+          $sig = Get-AuthenticodeSignature -FilePath test-sign.exe
+          Write-Host "Status: $($sig.Status)"
+          Write-Host "Signer: $($sig.SignerCertificate.Subject)"
+          if ($sig.Status -ne "Valid") { exit 1 }
