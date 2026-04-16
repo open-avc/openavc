@@ -956,7 +956,7 @@ class AIToolHandler:
             if isinstance(plugins, list):
                 result["plugins"] = plugins
         except Exception:
-            pass
+            log.warning("Failed to list plugins for AI status", exc_info=True)
 
         # Active theme
         active_theme = getattr(p.ui, "theme", None)
@@ -2319,7 +2319,7 @@ class AIToolHandler:
                 theme["_source"] = "custom"
                 return theme
         except Exception:
-            pass
+            log.debug("Failed to load custom theme '%s'", theme_id, exc_info=True)
 
         return {"error": f"Theme '{theme_id}' not found"}
 
@@ -2340,6 +2340,7 @@ class AIToolHandler:
         try:
             custom = (_custom_themes_dir() / f"{theme_id}.json").exists()
         except Exception:
+            log.debug("Failed to check custom themes directory", exc_info=True)
             custom = False
 
         if not builtin and not custom:
@@ -2361,6 +2362,7 @@ class AIToolHandler:
         try:
             assets_dir = _assets_dir()
         except Exception:
+            log.debug("Assets directory not available", exc_info=True)
             return {"assets": [], "total_size": 0}
 
         assets = []
@@ -2384,6 +2386,7 @@ class AIToolHandler:
         try:
             assets_dir = _assets_dir()
         except Exception:
+            log.debug("Assets directory not available", exc_info=True)
             return {"error": "Assets directory not available"}
 
         # Sanitize: use only the filename part
@@ -2556,8 +2559,8 @@ class AIToolHandler:
                         content = script_path.read_text(encoding="utf-8")
                         if ref_id in content:
                             result["scripts"].append({"script_id": s.id, "file": s.file})
-                except Exception:
-                    pass
+                except (OSError, UnicodeDecodeError):
+                    log.debug("Failed to read script '%s' for reference check", s.file)
 
         elif ref_type == "device":
             # Check macros for device commands
@@ -2587,8 +2590,8 @@ class AIToolHandler:
                         content = script_path.read_text(encoding="utf-8")
                         if ref_id in content:
                             result["scripts"].append({"script_id": s.id, "file": s.file})
-                except Exception:
-                    pass
+                except (OSError, UnicodeDecodeError):
+                    log.debug("Failed to read script '%s' for reference check", s.file)
 
         elif ref_type == "variable":
             state_key = f"var.{ref_id}"
@@ -2618,8 +2621,8 @@ class AIToolHandler:
                         content = script_path.read_text(encoding="utf-8")
                         if ref_id in content:
                             result["scripts"].append({"script_id": s.id, "file": s.file})
-                except Exception:
-                    pass
+                except (OSError, UnicodeDecodeError):
+                    log.debug("Failed to read script '%s' for reference check", s.file)
 
         # Remove empty lists
         return {k: v for k, v in result.items() if v}

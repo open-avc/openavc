@@ -764,7 +764,7 @@ async def install_community_driver(body: CommunityDriverInstallRequest) -> dict[
         except HTTPException:
             raise
         except Exception:
-            pass  # If version parsing fails, allow the install
+            log.debug("Version check skipped (parsing failed), allowing install", exc_info=True)
 
     driver_repo = _get_driver_repo_dir()
     driver_repo.mkdir(parents=True, exist_ok=True)
@@ -1041,7 +1041,7 @@ async def update_driver(driver_id: str, request: Request) -> dict[str, Any]:
         except HTTPException:
             raise
         except Exception:
-            pass
+            log.debug("Version check skipped (parsing failed), allowing update", exc_info=True)
 
     # Find the existing file
     old_file = None

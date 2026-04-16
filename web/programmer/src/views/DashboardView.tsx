@@ -149,15 +149,16 @@ export function DashboardView() {
   const [cloudStatus, setCloudStatus] = useState<CloudStatus | null>(null);
   const [systemStatus, setSystemStatus] = useState<Record<string, unknown> | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.getCloudStatus().then(s => setCloudStatus(s)).catch(console.error);
-    api.getSystemStatus().then(s => setSystemStatus(s)).catch(console.error);
-    const interval = setInterval(() => {
-      api.getSystemStatus().then(s => setSystemStatus(s)).catch(console.error);
-      api.getCloudStatus().then(s => setCloudStatus(s)).catch(console.error);
-      setRefreshTick(t => t + 1); // trigger re-read of activity feed
-    }, 30000);
+    const fetchAll = () => {
+      api.getSystemStatus().then(s => { setSystemStatus(s); setFetchError(null); }).catch(e => setFetchError(`Unable to reach server: ${e.message || e}`));
+      api.getCloudStatus().then(s => setCloudStatus(s)).catch(() => {});
+      setRefreshTick(t => t + 1);
+    };
+    fetchAll();
+    const interval = setInterval(fetchAll, 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -235,6 +236,11 @@ export function DashboardView() {
 
   return (
     <ViewContainer title="Dashboard">
+      {fetchError && (
+        <div style={{ background: "var(--status-error-bg, #3a1a1a)", color: "var(--status-error, #ff6b6b)", padding: "var(--space-sm) var(--space-md)", borderRadius: "var(--radius-md)", marginBottom: "var(--space-md)", fontSize: "var(--font-sm)" }}>
+          {fetchError}
+        </div>
+      )}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: "var(--space-xl)", maxWidth: 1100 }}>
         {/* Main column */}
         <div>
