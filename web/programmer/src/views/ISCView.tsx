@@ -91,7 +91,7 @@ export function ISCView() {
     update({
       isc: { ...project.isc, enabled: !enabled },
     });
-    setTimeout(() => useProjectStore.getState().save(), 100);
+    useProjectStore.getState().debouncedSave();
   }, [project, enabled, update]);
 
   const handleAddPattern = useCallback(() => {
@@ -102,7 +102,7 @@ export function ISCView() {
       isc: { ...project.isc, shared_state: [...sharedState, pattern] },
     });
     setNewPattern("");
-    setTimeout(() => useProjectStore.getState().save(), 100);
+    useProjectStore.getState().debouncedSave();
   }, [project, newPattern, sharedState, update]);
 
   const handleRemovePattern = useCallback(
@@ -114,7 +114,7 @@ export function ISCView() {
           shared_state: sharedState.filter((p) => p !== pattern),
         },
       });
-      setTimeout(() => useProjectStore.getState().save(), 100);
+      useProjectStore.getState().debouncedSave();
     },
     [project, sharedState, update]
   );
@@ -127,7 +127,7 @@ export function ISCView() {
       isc: { ...project.isc, peers: [...manualPeers, addr] },
     });
     setNewPeer("");
-    setTimeout(() => useProjectStore.getState().save(), 100);
+    useProjectStore.getState().debouncedSave();
   }, [project, newPeer, manualPeers, update]);
 
   const handleRemovePeer = useCallback(
@@ -139,7 +139,7 @@ export function ISCView() {
           peers: manualPeers.filter((p) => p !== addr),
         },
       });
-      setTimeout(() => useProjectStore.getState().save(), 100);
+      useProjectStore.getState().debouncedSave();
     },
     [project, manualPeers, update]
   );
@@ -149,7 +149,7 @@ export function ISCView() {
     update({
       isc: { ...project.isc, auth_key: authKey },
     });
-    setTimeout(() => useProjectStore.getState().save(), 100);
+    useProjectStore.getState().debouncedSave();
   }, [project, authKey, update]);
 
   const connectedCount = peers.filter((p) => p.connected).length;

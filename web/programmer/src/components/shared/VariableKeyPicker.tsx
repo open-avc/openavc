@@ -241,7 +241,7 @@ export function VariableKeyPicker({
     setShowCreate(false);
     setOpen(false);
     setSearch("");
-    setTimeout(() => useProjectStore.getState().save(), 100);
+    useProjectStore.getState().debouncedSave();
   };
 
   const hasLiveData = Object.keys(liveState).length > 0;

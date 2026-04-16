@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { Plus, Trash2, HardDrive, X, Link, Pencil, LayoutDashboard } from "lucide-react";
 import { CopyButton } from "../../components/shared/CopyButton";
 import { ConfirmDialog } from "../../components/shared/ConfirmDialog";
@@ -122,7 +122,7 @@ export function VariablesSubTab() {
             `Delete ${unused.length} unused variable(s)`
           );
           if (selectedId && ids.has(selectedId)) setSelectedId(null);
-          setTimeout(() => useProjectStore.getState().save(), 100);
+          useProjectStore.getState().debouncedSave();
           setPendingConfirm(null);
         },
       });
@@ -155,7 +155,7 @@ export function VariablesSubTab() {
     setNewDesc("");
     setShowCreate(false);
     setSelectedId(id);
-    setTimeout(() => useProjectStore.getState().save(), 100);
+    useProjectStore.getState().debouncedSave();
   }, [variables, newType, newLabel, newDefault, update]);
 
   const handleCreate = useCallback(() => {
@@ -197,34 +197,22 @@ export function VariablesSubTab() {
           setPendingConfirm(null);
           updateWithUndo({ variables: variables.filter((v) => v.id !== id) }, `Delete variable "${id}"`);
           if (selectedId === id) setSelectedId(null);
-          setTimeout(() => useProjectStore.getState().save(), 100);
+          useProjectStore.getState().debouncedSave();
         },
       });
     },
     [variables, usageMap, selectedId, update]
   );
 
-  const varSaveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const handleUpdate = useCallback(
     (id: string, patch: Partial<VariableConfig>) => {
       update({
         variables: variables.map((v) => (v.id === id ? { ...v, ...patch } : v)),
       });
-      clearTimeout(varSaveTimer.current);
-      varSaveTimer.current = setTimeout(() => useProjectStore.getState().save(), 1500);
+      useProjectStore.getState().debouncedSave(1500);
     },
     [variables, update]
   );
-
-  // Flush pending save on unmount to prevent data loss
-  useEffect(() => {
-    return () => {
-      if (varSaveTimer.current) {
-        clearTimeout(varSaveTimer.current);
-        useProjectStore.getState().save();
-      }
-    };
-  }, []);
 
   const handleStartRename = useCallback((oldId: string) => {
     const usages = usageMap.get(oldId) ?? [];
@@ -294,7 +282,7 @@ export function VariablesSubTab() {
     );
     setSelectedId(safeNewId);
     setRenameTarget(null);
-    setTimeout(() => useProjectStore.getState().save(), 100);
+    useProjectStore.getState().debouncedSave();
   }, [renameTarget, project, variables, updateWithUndo]);
 
   const selectedVar = variables.find((v) => v.id === selectedId);

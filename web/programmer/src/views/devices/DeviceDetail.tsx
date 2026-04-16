@@ -81,7 +81,7 @@ export function DeviceDetail({
       d.id === deviceId ? { ...d, enabled: !isEnabled } : d
     );
     update({ devices: updatedDevices });
-    setTimeout(() => useProjectStore.getState().save(), 100);
+    useProjectStore.getState().debouncedSave();
   };
 
   const handleReconnect = async () => {

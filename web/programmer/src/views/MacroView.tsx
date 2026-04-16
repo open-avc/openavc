@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { ViewContainer } from "../components/layout/ViewContainer";
 import { MacroList } from "../components/macros/MacroList";
 import { MacroEditor } from "../components/macros/MacroEditor";
@@ -40,7 +40,7 @@ export function MacroView() {
     update({ macros: [...macros, newMacro] });
     setSelectedId(id);
     // Auto-save
-    setTimeout(() => useProjectStore.getState().save(), 100);
+    useProjectStore.getState().debouncedSave();
   }, [project, macros, update]);
 
   const handleDelete = useCallback(
@@ -55,37 +55,22 @@ export function MacroView() {
       const macro = macros.find((m) => m.id === id);
       updateWithUndo({ macros: macros.filter((m) => m.id !== id) }, `Delete macro "${macro?.name || id}"`);
       if (selectedId === id) setSelectedId(null);
-      setTimeout(() => useProjectStore.getState().save(), 100);
+      useProjectStore.getState().debouncedSave();
       setConfirmDeleteId(null);
     },
     [macros, selectedId, updateWithUndo]
   );
 
-  const macroSaveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const handleUpdate = useCallback(
     (updated: MacroConfig) => {
       const current = useProjectStore.getState().project?.macros ?? [];
       update({
         macros: current.map((m) => (m.id === updated.id ? updated : m)),
       });
-      // Debounced auto-save (timer stored in ref to survive useCallback recreation)
-      clearTimeout(macroSaveTimer.current);
-      macroSaveTimer.current = setTimeout(() => {
-        useProjectStore.getState().save();
-      }, 1500);
+      useProjectStore.getState().debouncedSave(1500);
     },
     [update]
   );
-
-  // Flush pending save on unmount to prevent data loss
-  useEffect(() => {
-    return () => {
-      if (macroSaveTimer.current) {
-        clearTimeout(macroSaveTimer.current);
-        useProjectStore.getState().save();
-      }
-    };
-  }, []);
 
   // Show preview before converting (9.6)
   const handleConvertToScript = useCallback(() => {

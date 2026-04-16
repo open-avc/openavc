@@ -8,7 +8,6 @@ export function DeviceGroupsPanel() {
   const project = useProjectStore((s) => s.project);
   const update = useProjectStore((s) => s.update);
   const updateWithUndo = useProjectStore((s) => s.updateWithUndo);
-  const save = useProjectStore((s) => s.save);
 
   const groups = project?.device_groups ?? [];
   const devices = project?.devices ?? [];
@@ -35,7 +34,7 @@ export function DeviceGroupsPanel() {
     setNewGroupName("");
     setShowCreate(false);
     setSelectedGroupId(id);
-    setTimeout(() => save(), 100);
+    useProjectStore.getState().debouncedSave();
   };
 
   const handleDelete = (groupId: string) => {
@@ -43,7 +42,7 @@ export function DeviceGroupsPanel() {
     updateWithUndo({ device_groups: groups.filter((g) => g.id !== groupId) }, `Delete group "${group?.name || groupId}"`);
     if (selectedGroupId === groupId) setSelectedGroupId(null);
     setDeleteConfirm(null);
-    setTimeout(() => save(), 100);
+    useProjectStore.getState().debouncedSave();
   };
 
   const handleUpdateGroup = (groupId: string, patch: Partial<DeviceGroup>) => {
@@ -52,7 +51,7 @@ export function DeviceGroupsPanel() {
         g.id === groupId ? { ...g, ...patch } : g
       ),
     });
-    setTimeout(() => save(), 500);
+    useProjectStore.getState().debouncedSave();
   };
 
   const toggleDevice = (groupId: string, deviceId: string) => {

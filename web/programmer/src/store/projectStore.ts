@@ -9,6 +9,9 @@ interface UndoEntry {
 
 const MAX_UNDO = 50;
 
+// Module-level debounce timer for debouncedSave
+let _saveTimer: ReturnType<typeof setTimeout> | undefined;
+
 interface ProjectStore {
   project: ProjectConfig | null;
   loading: boolean;
@@ -25,6 +28,8 @@ interface ProjectStore {
 
   load: () => Promise<void>;
   save: (retryCount?: number) => Promise<void>;
+  debouncedSave: (delay?: number) => void;
+  flushSave: () => void;
   update: (patch: Partial<ProjectConfig>) => void;
   updateWithUndo: (patch: Partial<ProjectConfig>, description: string) => void;
   updateProject: (patch: Partial<ProjectConfig["project"]>) => void;
@@ -89,6 +94,19 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       } else {
         set({ error: String(e), saving: false });
       }
+    }
+  },
+
+  debouncedSave: (delay = 500) => {
+    clearTimeout(_saveTimer);
+    _saveTimer = setTimeout(() => { _saveTimer = undefined; get().save(); }, delay);
+  },
+
+  flushSave: () => {
+    if (_saveTimer) {
+      clearTimeout(_saveTimer);
+      _saveTimer = undefined;
+      get().save();
     }
   },
 
@@ -163,7 +181,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     });
 
     // Auto-save after undo
-    setTimeout(() => get().save(), 100);
+    get().debouncedSave(100);
   },
 
   redo: () => {
@@ -187,6 +205,6 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     });
 
     // Auto-save after redo
-    setTimeout(() => get().save(), 100);
+    get().debouncedSave(100);
   },
 }));
