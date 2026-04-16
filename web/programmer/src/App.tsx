@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import { Sidebar } from "./components/layout/Sidebar";
 import { ErrorBoundary } from "./components/shared/ErrorBoundary";
+import { ViewErrorBoundary } from "./components/shared/ViewErrorBoundary";
 import ToastContainer from "./components/shared/ToastContainer";
 import { ShortcutsPanel } from "./components/shared/ShortcutsPanel";
 import { DashboardView } from "./views/DashboardView";
@@ -96,41 +97,53 @@ function App() {
   );
 
   const renderView = () => {
+    let view: React.ReactNode;
+    let viewName: string;
+
     switch (activeView) {
       case "dashboard":
-        return <DashboardView />;
+        view = <DashboardView />; viewName = "Dashboard"; break;
       case "project":
-        return <ProjectView />;
+        view = <ProjectView />; viewName = "Project"; break;
       case "devices":
-        return <DeviceView />;
+        view = <DeviceView />; viewName = "Devices"; break;
       case "variables":
-        return <VariablesView />;
+        view = <VariablesView />; viewName = "State"; break;
       case "log":
-        return <LogView />;
+        view = <LogView />; viewName = "Log"; break;
       case "ui-builder":
-        return <UIBuilderView />;
+        view = <UIBuilderView />; viewName = "UI Builder"; break;
       case "macros":
-        return <MacroView />;
+        view = <MacroView />; viewName = "Macros"; break;
       case "scripts":
-        return <ScriptView />;
+        view = <ScriptView />; viewName = "Scripts"; break;
       case "plugins":
-        return <PluginsView />;
+        view = <PluginsView />; viewName = "Plugins"; break;
       case "isc":
-        return <ISCView />;
+        view = <ISCView />; viewName = "ISC"; break;
       case "ai":
-        return <AIChatView />;
+        view = <AIChatView />; viewName = "AI Chat"; break;
       case "cloud":
-        return <CloudSettingsView />;
+        view = <CloudSettingsView />; viewName = "Cloud"; break;
       case "settings":
-        return <SystemSettingsView />;
+        view = <SystemSettingsView />; viewName = "Settings"; break;
       case "updates":
-        return <UpdatesView />;
+        view = <UpdatesView />; viewName = "Updates"; break;
       default:
         if (activeView.startsWith("plugin-view:")) {
-          return <PluginExtensionView viewKey={activeView.slice("plugin-view:".length)} />;
+          const key = activeView.slice("plugin-view:".length);
+          view = <PluginExtensionView viewKey={key} />;
+          viewName = `Plugin: ${key}`;
+          break;
         }
         return null;
     }
+
+    return (
+      <ViewErrorBoundary viewName={viewName} key={activeView}>
+        {view}
+      </ViewErrorBoundary>
+    );
   };
 
   const conflictDetected = useProjectStore((s) => s.conflictDetected);
