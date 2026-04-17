@@ -7,7 +7,6 @@ from pathlib import Path
 import pytest
 
 from server.core.backup_manager import (
-    BackupInfo,
     cleanup_backups,
     create_backup,
     list_backups,
@@ -260,7 +259,6 @@ class TestRestoreFromBackup:
             restore_from_backup(bad_file, project_dir)
 
     def test_legacy_backup_restore(self, project_dir: Path):
-        import shutil
         # Create a legacy .avc.bak file
         legacy_data = {"project": {"id": "test", "name": "Legacy"}}
         legacy_path = project_dir / "project.20240101_120000.avc.bak"

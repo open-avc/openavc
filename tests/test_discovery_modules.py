@@ -1,13 +1,12 @@
 """Comprehensive unit tests for discovery modules: oui_database, driver_matcher, hints."""
 
 import re
-import pytest
 
 from server.discovery.oui_database import OUIDatabase
 from server.discovery.oui_data import AV_OUI_TABLE, NON_AV_CATEGORIES
 from server.discovery.driver_matcher import DriverMatcher, CommunityDriverMatcher
 from server.discovery.hints import DriverHint, load_driver_hints
-from server.discovery.result import DiscoveredDevice, DriverMatch
+from server.discovery.result import DiscoveredDevice
 
 
 # =============================================================================

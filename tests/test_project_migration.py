@@ -2,7 +2,6 @@
 
 import copy
 
-import pytest
 
 from server.core.project_migration import (
     CURRENT_VERSION,

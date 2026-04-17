@@ -227,7 +227,6 @@ async def test_reconnect_loop_stops_if_device_removed(dm, core):
     dm._devices["test_dev"] = driver
 
     call_count = 0
-    original_sleep = asyncio.sleep
 
     async def mock_sleep(delay):
         nonlocal call_count
