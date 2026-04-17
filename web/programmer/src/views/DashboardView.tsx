@@ -1,7 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
-import { Cpu, Zap, Cloud, FileCode, AlertTriangle, Clock, ArrowRight, ArrowUpCircle, Monitor, Copy, Check, ExternalLink } from "lucide-react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { Cpu, Zap, Cloud, FileCode, AlertTriangle, Clock, ArrowRight, ArrowUpCircle, Monitor, Copy, Check, ExternalLink, QrCode } from "lucide-react";
+import qrcode from "qrcode-generator";
 import { ViewContainer } from "../components/layout/ViewContainer";
 import { DeviceStatusDot } from "../components/shared/DeviceStatusDot";
+import { Dialog } from "../components/shared/Dialog";
 import { useProjectStore } from "../store/projectStore";
 import { useConnectionStore } from "../store/connectionStore";
 import { useLogStore } from "../store/logStore";
@@ -37,7 +39,75 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
+function QRCodeDialog({ url, onClose }: { url: string; onClose: () => void }) {
+  const svgMarkup = useMemo(() => {
+    const qr = qrcode(0, "M");
+    qr.addData(url);
+    qr.make();
+    return qr.createSvgTag({ cellSize: 8, margin: 2, scalable: true });
+  }, [url]);
+
+  return (
+    <Dialog title="Scan to connect" onClose={onClose}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--space-md)" }}>
+        <div style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)", textAlign: "center" }}>
+          Scan with a phone or tablet camera to open this OpenAVC system.
+        </div>
+        <div
+          style={{ width: 260, height: 260, background: "#fff", padding: "var(--space-sm)", borderRadius: "var(--border-radius)" }}
+          dangerouslySetInnerHTML={{ __html: svgMarkup }}
+        />
+        <code style={{ fontSize: 12, fontFamily: "var(--font-mono)", color: "var(--text-muted)", wordBreak: "break-all", textAlign: "center" }}>
+          {url}
+        </code>
+        <div style={{
+          display: "flex",
+          gap: "var(--space-md)",
+          fontSize: "var(--font-size-sm)",
+          flexWrap: "wrap",
+          justifyContent: "center",
+        }}>
+          <a
+            href="https://docs.openavc.com/panel-app-kiosk-android"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: "var(--accent)", textDecoration: "none" }}
+          >
+            Android kiosk guide
+          </a>
+          <a
+            href="https://docs.openavc.com/panel-app-kiosk-ios"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: "var(--accent)", textDecoration: "none" }}
+          >
+            iOS kiosk guide
+          </a>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          style={{
+            marginTop: "var(--space-sm)",
+            padding: "var(--space-sm) var(--space-lg)",
+            background: "var(--accent)",
+            color: "#fff",
+            border: "none",
+            borderRadius: "var(--border-radius)",
+            cursor: "pointer",
+            fontSize: "var(--font-size-sm)",
+            fontWeight: 500,
+          }}
+        >
+          Close
+        </button>
+      </div>
+    </Dialog>
+  );
+}
+
 function PanelAccessCard({ systemStatus }: { systemStatus: Record<string, unknown> | null }) {
+  const [qrOpen, setQrOpen] = useState(false);
   if (!systemStatus) return null;
 
   const localIp = String(systemStatus.local_ip ?? "");
@@ -52,6 +122,9 @@ function PanelAccessCard({ systemStatus }: { systemStatus: Record<string, unknow
     : "";
   const hostnameUrl = hostname && !isLocalOnly
     ? `http://${hostname}${port === 80 ? "" : ":" + String(port)}/panel`
+    : "";
+  const pairUrl = localIp && !isLocalOnly
+    ? `http://${localIp}${port === 80 ? "" : ":" + String(port)}/pair`
     : "";
 
   const cardStyle: React.CSSProperties = {
@@ -136,9 +209,32 @@ function PanelAccessCard({ systemStatus }: { systemStatus: Record<string, unknow
                 <CopyButton text={hostnameUrl} />
               </div>
             )}
+            {panelUrl && (
+              <button
+                type="button"
+                onClick={() => setQrOpen(true)}
+                style={{
+                  marginTop: "var(--space-md)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "var(--space-xs)",
+                  padding: "var(--space-xs) var(--space-md)",
+                  background: "var(--bg-hover)",
+                  color: "var(--text-primary)",
+                  border: "1px solid var(--border-color)",
+                  borderRadius: "var(--border-radius)",
+                  cursor: "pointer",
+                  fontSize: "var(--font-size-sm)",
+                }}
+              >
+                <QrCode size={14} />
+                Show QR code
+              </button>
+            )}
           </div>
         )}
       </div>
+      {qrOpen && pairUrl && <QRCodeDialog url={pairUrl} onClose={() => setQrOpen(false)} />}
     </div>
   );
 }

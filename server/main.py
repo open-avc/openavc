@@ -34,6 +34,7 @@ from starlette.responses import HTMLResponse, JSONResponse, Response
 
 from server import config
 from server.api import rest, ws, isc_ws, discovery as discovery_api, plugins as plugins_api, assets as assets_api, themes as themes_api, ai_proxy as ai_proxy_api
+from server.api.routes import pair as pair_routes
 from server.core.engine import Engine
 from server.discovery.engine import DiscoveryEngine
 from server.utils.logger import get_logger
@@ -151,6 +152,7 @@ app.include_router(assets_api.open_router)
 app.include_router(assets_api.router)
 app.include_router(themes_api.router)
 app.include_router(ai_proxy_api.router)
+app.include_router(pair_routes.router)
 
 # CORS — allow same-origin and localhost by default.
 # Additional origins can be set via OPENAVC_CORS_ORIGINS (comma-separated).
