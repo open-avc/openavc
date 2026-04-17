@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { MessageSquare, Plus, Trash2, Undo2, Square, Search, CloudOff, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Plus, Trash2, Undo2, Square, Search, CloudOff, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { ViewContainer } from "../components/layout/ViewContainer";
 import { ChatMessage as ChatMessageComponent } from "../components/ai/ChatMessage";
 import { ChatInput } from "../components/ai/ChatInput";

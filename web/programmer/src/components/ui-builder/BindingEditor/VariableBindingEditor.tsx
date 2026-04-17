@@ -1,17 +1,14 @@
-import type { ProjectConfig } from "../../../api/types";
 import { VariableKeyPicker } from "../../shared/VariableKeyPicker";
 import { useConnectionStore } from "../../../store/connectionStore";
 
 interface VariableBindingEditorProps {
   value: Record<string, unknown> | null;
-  project: ProjectConfig;
   onChange: (value: Record<string, unknown>) => void;
   onClear: () => void;
 }
 
 export function VariableBindingEditor({
   value,
-  project,
   onChange,
   onClear,
 }: VariableBindingEditorProps) {

@@ -12,7 +12,7 @@
  *   matrix — Routing matrix (Dante, NDI). Dynamic rows/cols from state.
  */
 import { useState, useCallback, useRef, useEffect } from "react";
-import { X, Plus, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import { X, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { useConnectionStore } from "../../store/connectionStore";
 import { useProjectStore } from "../../store/projectStore";
 import { ButtonBindingEditor } from "../shared/ButtonBindingEditor";
@@ -371,7 +371,6 @@ function StripSurface({
           return (
             <FaderControl
               key={i}
-              index={i}
               label={ctrl?.label ?? `Ch ${i + 1}`}
               selected={isSelected}
               onClick={() => onSelectControl(String(i))}
@@ -409,13 +408,11 @@ function StripSurface({
 // ──── Fader Control ────
 
 function FaderControl({
-  index,
   label,
   selected,
   onClick,
   assignment,
 }: {
-  index: number;
   label: string;
   selected: boolean;
   onClick: () => void;
@@ -515,7 +512,6 @@ function CustomSurface({
               }}
             >
               <FaderControl
-                index={i}
                 label={ctrl.label ?? `Fader ${i + 1}`}
                 selected={isSelected}
                 onClick={() => {}}

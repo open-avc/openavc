@@ -8,7 +8,6 @@ import { BindingProperties } from "./PropertySections/BindingProperties";
 import { VisibilityProperties } from "./PropertySections/VisibilityProperties";
 import { AssetPicker } from "./AssetPicker";
 import { ThemeEditor } from "./ThemeEditor";
-import { getTheme } from "../../api/restClient";
 
 interface ThemeSummary {
   id: string;
@@ -56,7 +55,6 @@ export function PropertiesPanel({
 
   // Theme tab (12.5) — always accessible via toggle
   if (showThemeTab && themes && themes.length > 0) {
-    const settings = project?.ui?.settings;
     return (
       <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
         <button
@@ -1249,7 +1247,7 @@ function ThemeSection({
             currentThemeId={currentThemeId}
             onThemeChange={onThemeChange}
             onRefreshThemes={onRefreshThemes || (() => {})}
-            onApplyOverrides={(overrides) => {
+            onApplyOverrides={(_overrides) => {
               // Theme overrides are handled by the settings update flow
               // This is a pass-through - the parent handles the actual update
             }}

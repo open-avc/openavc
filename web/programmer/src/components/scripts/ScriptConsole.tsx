@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo, useState, useCallback } from "react";
+import { useEffect, useRef, useMemo, useState } from "react";
 import { Trash2, Pause, Play } from "lucide-react";
 import { useLogStore } from "../../store/logStore";
 import { useNavigationStore } from "../../store/navigationStore";
@@ -25,8 +25,6 @@ export function ScriptConsole({
   emptyText = "Script output will appear here. Click Save & Reload or press Ctrl+Shift+R.",
 }: ScriptConsoleProps) {
   const entries = useLogStore((s) => s.logEntries);
-  const paused = useLogStore((s) => s.logPaused);
-  const setPaused = useLogStore((s) => s.setLogPaused);
   const clear = useLogStore((s) => s.clearLogEntries);
 
   const [localPaused, setLocalPaused] = useState(false);

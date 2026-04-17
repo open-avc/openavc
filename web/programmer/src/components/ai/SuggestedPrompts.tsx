@@ -17,7 +17,6 @@ function getPromptCards(): PromptCard[] {
 
   const deviceCount = project?.devices?.length ?? 0;
   const macroCount = project?.macros?.length ?? 0;
-  const pageCount = project?.ui?.pages?.length ?? 0;
 
   if (deviceCount === 0) {
     // Empty project

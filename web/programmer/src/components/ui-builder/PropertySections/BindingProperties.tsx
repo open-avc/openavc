@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Play, AlertTriangle, HelpCircle } from "lucide-react";
-import type { UIElement, UIPage } from "../../../api/types";
+import type { UIElement } from "../../../api/types";
 import type { ProjectConfig } from "../../../api/types";
 import { BINDING_SLOTS } from "../uiBuilderHelpers";
 import { ButtonBindingEditor } from "../../shared/ButtonBindingEditor";
@@ -144,7 +144,6 @@ export function BindingProperties({
         return (
           <VariableBindingEditor
             value={binding || null}
-            project={project}
             onChange={(v) => handleBindingChange(slot, v)}
             onClear={() => handleBindingChange(slot, null)}
           />

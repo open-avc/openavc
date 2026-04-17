@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { RefreshCw, Download, RotateCcw, CheckCircle, XCircle, Loader, ArrowUpCircle } from "lucide-react";
+import { RefreshCw, Download, RotateCcw, CheckCircle, XCircle, Loader } from "lucide-react";
 import { ViewContainer } from "../components/layout/ViewContainer";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import { useConnectionStore } from "../store/connectionStore";

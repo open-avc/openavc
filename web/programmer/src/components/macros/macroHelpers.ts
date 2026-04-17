@@ -1,4 +1,4 @@
-import type { MacroStep, MacroConfig, DeviceConfig, DeviceGroup, TriggerConfig } from "../../api/types";
+import type { MacroStep, MacroConfig, DeviceConfig } from "../../api/types";
 
 export interface StepTypeInfo {
   action: string;
@@ -91,7 +91,6 @@ export function getStepType(action: string): StepTypeInfo | undefined {
 
 export function macroToScript(
   macro: MacroConfig,
-  devices: DeviceConfig[]
 ): string {
   const triggers = macro.triggers ?? [];
   const hasTriggers = triggers.length > 0;

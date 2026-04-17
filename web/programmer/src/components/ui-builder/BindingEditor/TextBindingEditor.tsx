@@ -27,8 +27,6 @@ export function TextBindingEditor({
 
   const [mode, setMode] = useState<TextMode>(currentMode);
 
-  const _unused = project; // project passed for API compat, VariableKeyPicker reads from store
-
   const handleModeChange = (newMode: TextMode) => {
     setMode(newMode);
     if (newMode === "static") {

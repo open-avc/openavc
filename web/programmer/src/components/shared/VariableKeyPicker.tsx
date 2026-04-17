@@ -532,20 +532,6 @@ const triggerStyle: React.CSSProperties = {
   gap: 4,
 };
 
-const dropdownStyle: React.CSSProperties = {
-  position: "absolute",
-  top: "100%",
-  left: 0,
-  right: 0,
-  marginTop: 2,
-  background: "var(--bg-elevated)",
-  border: "1px solid var(--border-color)",
-  borderRadius: "var(--border-radius)",
-  boxShadow: "var(--shadow-lg)",
-  zIndex: 100,
-  minWidth: 320,
-};
-
 const searchInputStyle: React.CSSProperties = {
   width: "100%",
   padding: "4px 6px",

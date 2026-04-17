@@ -19,8 +19,6 @@ export function SliderBindingEditor({
   const valueKey = String(value?.key || "");
   const liveValue = useConnectionStore((s) => valueKey ? s.liveState[valueKey] : undefined);
 
-  const isValueBinding =
-    value && !value.action && (value.key || value.source === "state");
   const isChangeBinding = value && value.action;
 
   if (isChangeBinding) {
@@ -90,12 +88,6 @@ const labelStyle: React.CSSProperties = {
   fontSize: 11,
   color: "var(--text-muted)",
   marginBottom: 2,
-};
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "4px 6px",
-  fontSize: "var(--font-size-sm)",
 };
 
 const helpStyle: React.CSSProperties = {

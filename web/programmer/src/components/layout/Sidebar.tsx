@@ -69,7 +69,6 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
   const updateAvailable = String(useConnectionStore((s) => s.liveState["system.update_available"]) ?? "");
   const dirty = useProjectStore((s) => s.dirty);
   const simulationActive = Boolean(useConnectionStore((s) => s.liveState["system.simulation_active"]));
-  const simUiUrl = String(useConnectionStore((s) => s.liveState["system.simulation_ui_url"]) ?? "");
   const [simBusy, setSimBusy] = useState(false);
   const [showSimConfirm, setShowSimConfirm] = useState(false);
 

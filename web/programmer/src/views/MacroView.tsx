@@ -14,7 +14,6 @@ export function MacroView() {
   const project = useProjectStore((s) => s.project);
   const update = useProjectStore((s) => s.update);
   const updateWithUndo = useProjectStore((s) => s.updateWithUndo);
-  const save = useProjectStore((s) => s.save);
 
   // Consume pending focus from navigation store (on mount)
   const [selectedId, setSelectedId] = useState<string | null>(() => {
@@ -75,11 +74,11 @@ export function MacroView() {
   // Show preview before converting (9.6)
   const handleConvertToScript = useCallback(() => {
     if (!selectedMacro || !project) return;
-    const source = macroToScript(selectedMacro, devices);
+    const source = macroToScript(selectedMacro);
     const scriptId = selectedMacro.id.replace(/^macro_/, "script_");
     const fileName = `${scriptId}.py`;
     setScriptPreview({ source, scriptId, fileName });
-  }, [selectedMacro, project, devices]);
+  }, [selectedMacro, project]);
 
   const handleConfirmConvert = useCallback(async () => {
     if (!scriptPreview || !selectedMacro) return;

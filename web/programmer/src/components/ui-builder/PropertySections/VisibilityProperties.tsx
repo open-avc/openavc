@@ -1,4 +1,3 @@
-import { useState } from "react";
 import type { StepCondition } from "../../../api/types";
 import { ConditionEditor } from "../../macros/ConditionEditor";
 

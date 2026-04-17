@@ -350,7 +350,7 @@ export function MacroEditor({
   const [expandedStep, setExpandedStep] = useState<number | null>(null);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
-  const [clipboardRevision, setClipboardRevision] = useState(0); // force re-render on copy
+  const [, setClipboardRevision] = useState(0); // force re-render on copy
 
   const macroProgress = useLogStore((s) => s.macroProgress);
   const isRunning =

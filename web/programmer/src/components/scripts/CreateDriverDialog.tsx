@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { DRIVER_TEMPLATES, type DriverTemplate } from "./driverTemplates";
+import { DRIVER_TEMPLATES } from "./driverTemplates";
 
 interface CreateDriverDialogProps {
   onSubmit: (id: string, source: string) => void;

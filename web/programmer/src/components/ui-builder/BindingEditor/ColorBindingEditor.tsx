@@ -331,12 +331,6 @@ const labelStyle: React.CSSProperties = {
   marginBottom: 2,
 };
 
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "4px 6px",
-  fontSize: "var(--font-size-sm)",
-};
-
 const helpStyle: React.CSSProperties = {
   fontSize: 11,
   color: "var(--text-muted)",

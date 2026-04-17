@@ -181,7 +181,6 @@ interface ThemeEditorProps {
 }
 
 export function ThemeEditor({
-  themes,
   currentThemeId,
   onThemeChange,
   onRefreshThemes,

@@ -17,18 +17,6 @@ function valueToFraction(value: number, min: number, max: number): number {
   return Math.max(0, Math.min(1, (value - min) / (max - min)));
 }
 
-/** Map a 0..1 fraction back to a value in [min, max], snapped to step. */
-function fractionToValue(
-  fraction: number,
-  min: number,
-  max: number,
-  step: number,
-): number {
-  const raw = min + fraction * (max - min);
-  const snapped = Math.round(raw / step) * step;
-  return Math.max(min, Math.min(max, parseFloat(snapped.toFixed(6))));
-}
-
 /** Pick a sensible default position when not in preview mode. */
 function defaultValue(min: number, max: number): number {
   // Use 0 if it's within the range (common for dB faders)

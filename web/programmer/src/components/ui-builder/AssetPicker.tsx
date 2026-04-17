@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { Upload, Trash2, X, Image } from "lucide-react";
+import { Trash2, X, Image } from "lucide-react";
 import * as api from "../../api/restClient";
 import { useProjectStore } from "../../store/projectStore";
 

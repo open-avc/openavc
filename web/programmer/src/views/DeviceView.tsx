@@ -44,13 +44,6 @@ export function DeviceView() {
   const [bulkMode, setBulkMode] = useState(false);
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState<{ message: React.ReactNode } | null>(null);
 
-  // When a device is added from Discovery, switch to devices tab and select it
-  const handleDeviceAddedFromDiscovery = useCallback((deviceId: string) => {
-    reloadProject();
-    setSubTab("devices");
-    setSelectedId(deviceId);
-  }, [reloadProject]);
-
   // Listen for focus changes (e.g., "Go to Device" from discovery)
   useEffect(() => {
     return useNavigationStore.subscribe((state) => {
@@ -101,11 +94,6 @@ export function DeviceView() {
       if (!groups.has(g)) groups.set(g, []);
       groups.get(g)!.push(dev);
     }
-    const sorted = [...groups.keys()].sort((a, b) => {
-      if (!a) return 1;
-      if (!b) return -1;
-      return a.localeCompare(b);
-    });
     // Compute status counts from live state (snapshot read)
     const ls = useConnectionStore.getState().liveState;
     let online = 0, offline = 0, orphanedCount = 0;

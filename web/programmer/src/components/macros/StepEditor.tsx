@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
-import type { MacroStep, MacroConfig, DeviceConfig, DeviceInfo, StepCondition } from "../../api/types";
+import type { MacroStep, MacroConfig, DeviceConfig, DeviceInfo } from "../../api/types";
 import { useProjectStore } from "../../store/projectStore";
-import { useConnectionStore } from "../../store/connectionStore";
 import { VariableKeyPicker } from "../shared/VariableKeyPicker";
 import { ConditionEditor } from "./ConditionEditor";
 import { STEP_TYPES, getStepType } from "./macroHelpers";
@@ -99,7 +98,6 @@ export function StepEditor({ step, macros, currentMacroId, onChange }: StepEdito
           step={step}
           macros={macros}
           currentMacroId={currentMacroId}
-          devices={devices}
           onChange={onChange}
         />
       );
@@ -357,7 +355,6 @@ function GroupCommandEditor({
   onChange: (patch: Partial<MacroStep>) => void;
 }) {
   const groups = useProjectStore((s) => s.project?.device_groups) ?? [];
-  const devices = useProjectStore((s) => s.project?.devices) ?? [];
 
   const selectedGroup = groups.find((g) => g.id === step.group);
 
@@ -662,13 +659,11 @@ function ConditionalEditor({
   step,
   macros,
   currentMacroId,
-  devices,
   onChange,
 }: {
   step: MacroStep;
   macros: MacroConfig[];
   currentMacroId: string;
-  devices: DeviceConfig[];
   onChange: (updated: MacroStep) => void;
 }) {
   const condition = step.condition ?? { key: "", operator: "eq", value: "" };
@@ -731,7 +726,6 @@ function ConditionalEditor({
             <InlineStepCard
               key={i}
               step={s}
-              index={i}
               macros={macros}
               currentMacroId={currentMacroId}
               onChange={(updated) => updateThenStep(i, updated)}
@@ -750,7 +744,6 @@ function ConditionalEditor({
             <InlineStepCard
               key={i}
               step={s}
-              index={i}
               macros={macros}
               currentMacroId={currentMacroId}
               onChange={(updated) => updateElseStep(i, updated)}
@@ -767,14 +760,12 @@ function ConditionalEditor({
 /** Compact step card used inside conditional then/else lists */
 function InlineStepCard({
   step,
-  index,
   macros,
   currentMacroId,
   onChange,
   onDelete,
 }: {
   step: MacroStep;
-  index: number;
   macros: MacroConfig[];
   currentMacroId: string;
   onChange: (updated: MacroStep) => void;

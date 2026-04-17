@@ -11,7 +11,6 @@ export interface RuntimeError {
 interface ScriptEditorProps {
   source: string;
   onChange: (source: string) => void;
-  onCreateVariable?: (id: string) => void;
   /** Called when the Monaco editor instance is ready, for external line navigation. */
   onEditorReady?: (editor: any) => void;
   /** Runtime errors to display as markers in the editor. */
@@ -20,7 +19,7 @@ interface ScriptEditorProps {
   editorMode?: "script" | "driver";
 }
 
-export function ScriptEditor({ source, onChange, onCreateVariable, onEditorReady, runtimeErrors, editorMode = "script" }: ScriptEditorProps) {
+export function ScriptEditor({ source, onChange, onEditorReady, runtimeErrors, editorMode = "script" }: ScriptEditorProps) {
   const disposablesRef = useRef<{ dispose(): void }[]>([]);
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);

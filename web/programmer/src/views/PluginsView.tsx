@@ -182,7 +182,6 @@ function SchemaFormRenderer({
         return (
           <SchemaFieldInput
             key={key}
-            fieldKey={key}
             field={field}
             value={values[key]}
             onChange={(v) => onChange(key, v)}
@@ -596,12 +595,10 @@ function CommandRefPicker({
 }
 
 function SchemaFieldInput({
-  fieldKey,
   field,
   value,
   onChange,
 }: {
-  fieldKey: string;
   field: SchemaField;
   value: unknown;
   onChange: (value: unknown) => void;

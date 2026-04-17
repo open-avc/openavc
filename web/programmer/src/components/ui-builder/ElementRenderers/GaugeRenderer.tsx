@@ -64,7 +64,6 @@ export function GaugeRenderer({ element, previewMode, liveState }: Props) {
   const showTicks = (element.style.show_ticks as boolean) ?? true;
   const tickCount = (element.style.tick_count as number) ?? 5;
   const textColor = (element.style.text_color as string) ?? "#ffffff";
-  const fontSize = (element.style.font_size as number) ?? 14;
 
   // Resolve value from binding or use demo
   let value: number;

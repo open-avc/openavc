@@ -1,11 +1,9 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Trash2, Pause, Play } from "lucide-react";
 import { ViewContainer } from "../components/layout/ViewContainer";
 import { useConnectionStore } from "../store/connectionStore";
 import { useLogStore } from "../store/logStore";
-import type { LogEntry } from "../store/logStore";
 import * as api from "../api/restClient";
-import type { StateHistoryEntry } from "../api/types";
 import { useProjectStore } from "../store/projectStore";
 
 type TabId = "log" | "state";

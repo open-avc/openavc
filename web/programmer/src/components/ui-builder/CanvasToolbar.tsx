@@ -21,8 +21,6 @@ import {
   FolderOpen,
   FolderPlus,
   Copy,
-  Pencil,
-  Trash2,
   Undo2,
   Redo2,
   Check,

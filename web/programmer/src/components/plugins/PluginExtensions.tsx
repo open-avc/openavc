@@ -276,7 +276,6 @@ export function DevicePanelSlot({
   category?: string;
 }) {
   const devicePanels = usePluginStore((s) => s.extensions.device_panels);
-  const liveState = useConnectionStore((s) => s.liveState);
 
   // Filter panels that match this device
   const matching = devicePanels.filter((panel) => {

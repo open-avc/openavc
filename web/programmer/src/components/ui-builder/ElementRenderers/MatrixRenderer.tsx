@@ -123,8 +123,6 @@ export function MatrixRenderer({ element, liveState }: Props) {
     return (
       <ListView
         element={element}
-        inputCount={inputCount}
-        outputCount={outputCount}
         inputLabels={inputLabels}
         outputLabels={outputLabels}
         routes={routes}
@@ -310,16 +308,12 @@ function CrosspointCell({
 /** List view: each output is a row with a dropdown showing the routed input. */
 function ListView({
   element,
-  inputCount,
-  outputCount,
   inputLabels,
   outputLabels,
   routes,
   activeColor,
 }: {
   element: UIElement;
-  inputCount: number;
-  outputCount: number;
   inputLabels: string[];
   outputLabels: string[];
   routes: Map<number, number>;

@@ -39,12 +39,10 @@ interface ISCPeer {
 export function ISCView() {
   const project = useProjectStore((s) => s.project);
   const update = useProjectStore((s) => s.update);
-  const save = useProjectStore((s) => s.save);
   const liveState = useConnectionStore((s) => s.liveState);
 
   const [status, setStatus] = useState<ISCStatus>({ enabled: false });
   const [peers, setPeers] = useState<ISCPeer[]>([]);
-  const [loading, setLoading] = useState(false);
 
   // Config editing
   const [newPattern, setNewPattern] = useState("");

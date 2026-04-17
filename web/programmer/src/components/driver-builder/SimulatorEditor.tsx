@@ -14,13 +14,6 @@ export function SimulatorEditor({ draft, onUpdate }: SimulatorEditorProps) {
     onUpdate({ simulator: { ...sim, ...partial } });
   };
 
-  const labelStyle: React.CSSProperties = {
-    display: "block",
-    fontSize: "var(--font-size-sm)",
-    color: "var(--text-secondary)",
-    marginBottom: "var(--space-xs)",
-  };
-
   const rowStyle: React.CSSProperties = {
     marginBottom: "var(--space-md)",
   };
@@ -164,7 +157,7 @@ export function SimulatorEditor({ draft, onUpdate }: SimulatorEditorProps) {
 
       {/* Error Modes */}
       <div style={rowStyle}>
-        <ErrorModesEditor sim={sim} onUpdate={update} labelStyle={labelStyle} />
+        <ErrorModesEditor sim={sim} onUpdate={update} />
       </div>
 
       {/* Raw YAML for advanced features */}
@@ -202,11 +195,9 @@ export function SimulatorEditor({ draft, onUpdate }: SimulatorEditorProps) {
 function ErrorModesEditor({
   sim,
   onUpdate,
-  labelStyle,
 }: {
   sim: DriverSimulatorDef;
   onUpdate: (partial: Partial<DriverSimulatorDef>) => void;
-  labelStyle: React.CSSProperties;
 }) {
   const [newMode, setNewMode] = useState("");
   const errorModes = sim.error_modes ?? {};

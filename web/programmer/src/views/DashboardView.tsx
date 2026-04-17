@@ -148,7 +148,7 @@ export function DashboardView() {
   const liveState = useConnectionStore((s) => s.liveState);
   const [cloudStatus, setCloudStatus] = useState<CloudStatus | null>(null);
   const [systemStatus, setSystemStatus] = useState<Record<string, unknown> | null>(null);
-  const [refreshTick, setRefreshTick] = useState(0);
+  const [, setRefreshTick] = useState(0);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   useEffect(() => {
