@@ -178,9 +178,14 @@ async def install_plugin(plugin_id: str, file_url: str) -> dict[str, Any]:
 
 
 async def _download_github_directory(
-    client: httpx.AsyncClient, repo_path: str, dest_dir: Path
+    client: httpx.AsyncClient, repo_path: str, dest_dir: Path,
+    *, _depth: int = 0, _max_depth: int = 5,
 ) -> None:
     """Recursively download a directory from GitHub using the Contents API."""
+    if _depth >= _max_depth:
+        log.warning(f"Skipping directory at depth {_depth} (max {_max_depth}): {repo_path}")
+        return
+
     api_url = f"{COMMUNITY_API_URL}/{repo_path}?ref=main"
     resp = await client.get(api_url)
     resp.raise_for_status()
@@ -204,7 +209,8 @@ async def _download_github_directory(
             sub_dir = dest_dir / name
             sub_dir.mkdir(parents=True, exist_ok=True)
             await _download_github_directory(
-                client, f"{repo_path}/{name}", sub_dir
+                client, f"{repo_path}/{name}", sub_dir,
+                _depth=_depth + 1, _max_depth=_max_depth,
             )
 
 

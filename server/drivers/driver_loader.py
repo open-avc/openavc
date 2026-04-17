@@ -60,19 +60,26 @@ def validate_driver_definition(driver_def: dict[str, Any]) -> list[str]:
             try:
                 compiled = re.compile(pattern)
                 # Heuristic: detect nested quantifiers that cause exponential
-                # backtracking (e.g., (.+)+, (.*)*). Test with a short non-matching
-                # string — if it takes measurably long, warn.
+                # backtracking (e.g., (.+)+, (.*)*). Test with multiple non-matching
+                # strings — if any take measurably long, warn.
                 if re.search(r'[+*]\)[+*?]', pattern):
                     import time as _time
-                    test_str = "a" * 25
-                    t0 = _time.monotonic()
-                    compiled.search(test_str)
-                    elapsed = _time.monotonic() - t0
-                    if elapsed > 0.1:
-                        errors.append(
-                            f"Response {i}: regex '{pattern}' has nested "
-                            f"quantifiers that may cause catastrophic backtracking"
-                        )
+                    test_strings = [
+                        "a" * 25,
+                        "x" * 25 + "!",
+                        "0123456789" * 3,
+                        "\t \n" * 10,
+                    ]
+                    for test_str in test_strings:
+                        t0 = _time.monotonic()
+                        compiled.search(test_str)
+                        elapsed = _time.monotonic() - t0
+                        if elapsed > 0.1:
+                            errors.append(
+                                f"Response {i}: regex '{pattern}' has nested "
+                                f"quantifiers that may cause catastrophic backtracking"
+                            )
+                            break
             except re.error as e:
                 errors.append(f"Response {i}: invalid regex '{pattern}': {e}")
 

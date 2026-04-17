@@ -253,6 +253,11 @@ class CloudAgent:
         """Single connection attempt: connect, handshake, run."""
         self.state.set("system.cloud.status", "connecting", source="cloud")
 
+        # Clear stale throttles from previous connection
+        for event in self._throttles.values():
+            event.set()
+        self._throttles.clear()
+
         # Connect WebSocket
         self._ws = await websockets.connect(
             self._endpoint,
