@@ -201,9 +201,11 @@ class UIElement(BaseModel):
     icon_size: int | None = None  # px (12-64, default 24)
     icon_color: str | None = None  # hex color, inherits text_color if not set
     display_mode: str | None = None  # text, icon_text, icon_only, image, image_text
-    button_image: str | None = None  # asset ref or URL for default/inactive image
-    button_image_active: str | None = None  # asset ref or URL for active image
+    button_image: str | None = None  # asset ref or URL for the button image
     image_fit: str | None = None  # cover, contain, fill
+    image_blend_mode: str | None = None  # CSS blend mode (multiply, screen, etc.) or "mask"
+    image_opacity: float | None = None  # 0.0-1.0
+    frameless: bool | None = None  # hide bg_color, border, box_shadow (image-as-button look)
     # Element-specific properties (vary by type, all optional)
     unit: str | None = None  # gauge, fader: unit label (°F, dB, %)
     arc_angle: float | None = None  # gauge: arc sweep in degrees

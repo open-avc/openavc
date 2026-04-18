@@ -13,6 +13,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { useProjectStore } from "../../../store/projectStore";
 import { useConnectionStore } from "../../../store/connectionStore";
 import { IconPicker } from "../IconPicker";
+import { AssetPicker } from "../AssetPicker";
 import { InlineColorPicker } from "../../shared/InlineColorPicker";
 
 interface FeedbackBindingEditorProps {
@@ -21,6 +22,8 @@ interface FeedbackBindingEditorProps {
   onClear: () => void;
   /** Show conditional label fields (for Stream Deck / physical buttons) */
   showConditionalLabel?: boolean;
+  /** Show per-state image picker (for image-capable buttons) */
+  showImageField?: boolean;
 }
 
 export function FeedbackBindingEditor({
@@ -28,6 +31,7 @@ export function FeedbackBindingEditor({
   onChange,
   onClear,
   showConditionalLabel = false,
+  showImageField = false,
 }: FeedbackBindingEditorProps) {
   const project = useProjectStore((s) => s.project);
   const liveState = useConnectionStore.getState().liveState;
@@ -421,6 +425,15 @@ export function FeedbackBindingEditor({
                     onChange={(v) => handleUpdateStateAppearance(sk, { icon: v || undefined })}
                   />
                 </div>
+                {showImageField && (
+                  <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
+                    <span style={{ ...colorLabelStyle, width: 56 }}>Image</span>
+                    <AssetPicker
+                      value={String(appearance.button_image || "")}
+                      onChange={(v) => handleUpdateStateAppearance(sk, { button_image: v || undefined })}
+                    />
+                  </div>
+                )}
 
                 {/* Preview */}
                 <div style={{
@@ -574,6 +587,15 @@ export function FeedbackBindingEditor({
                 onChange={(v) => handleChange({ style_active: { ...styleActive, icon: v || undefined } })}
               />
             </div>
+            {showImageField && (
+              <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
+                <span style={{ ...colorLabelStyle, width: 56 }}>Image</span>
+                <AssetPicker
+                  value={styleActive.button_image || ""}
+                  onChange={(v) => handleChange({ style_active: { ...styleActive, button_image: v || undefined } })}
+                />
+              </div>
+            )}
             {/* Preview */}
             <div style={{
               display: "flex", alignItems: "center", justifyContent: "center",
@@ -626,6 +648,15 @@ export function FeedbackBindingEditor({
                 onChange={(v) => handleChange({ style_inactive: { ...styleInactive, icon: v || undefined } })}
               />
             </div>
+            {showImageField && (
+              <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
+                <span style={{ ...colorLabelStyle, width: 56 }}>Image</span>
+                <AssetPicker
+                  value={styleInactive.button_image || ""}
+                  onChange={(v) => handleChange({ style_inactive: { ...styleInactive, button_image: v || undefined } })}
+                />
+              </div>
+            )}
             {/* Preview */}
             <div style={{
               display: "flex", alignItems: "center", justifyContent: "center",

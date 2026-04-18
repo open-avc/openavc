@@ -108,7 +108,15 @@ function AssetBrowserModal({
       for (const el of page.elements) {
         if (el.src?.startsWith("assets://")) used.add(el.src.replace("assets://", ""));
         if (el.button_image?.startsWith("assets://")) used.add(el.button_image.replace("assets://", ""));
-        if (el.button_image_active?.startsWith("assets://")) used.add(el.button_image_active.replace("assets://", ""));
+        // Per-state images (multi-state feedback)
+        const fb = (el.bindings as { feedback?: { states?: Record<string, { button_image?: string }>; style_active?: { button_image?: string }; style_inactive?: { button_image?: string } } })?.feedback;
+        if (fb?.states) {
+          for (const state of Object.values(fb.states)) {
+            if (state?.button_image?.startsWith("assets://")) used.add(state.button_image.replace("assets://", ""));
+          }
+        }
+        if (fb?.style_active?.button_image?.startsWith("assets://")) used.add(fb.style_active.button_image.replace("assets://", ""));
+        if (fb?.style_inactive?.button_image?.startsWith("assets://")) used.add(fb.style_inactive.button_image.replace("assets://", ""));
         const bg = page.background;
         if (bg && typeof bg === "object" && (bg as any).image?.startsWith("assets://")) used.add((bg as any).image.replace("assets://", ""));
       }

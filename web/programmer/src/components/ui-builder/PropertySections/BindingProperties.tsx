@@ -219,6 +219,7 @@ export function BindingProperties({
             value={binding || null}
             onChange={(v) => handleBindingChange(slot, v)}
             onClear={() => handleBindingChange(slot, null)}
+            showImageField={element.type === "button"}
           />
         );
       }

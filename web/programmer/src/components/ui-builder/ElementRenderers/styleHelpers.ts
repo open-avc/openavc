@@ -140,3 +140,81 @@ export function buildElementStyle(
 
   return css;
 }
+
+interface ImageEffectOptions {
+  fit?: string;
+  blend?: string;
+  opacity?: number;
+  tintColor?: string;
+}
+
+/**
+ * Apply button image effect (plain, blend, or mask) to a base style.
+ * Mirrors panel.js applyImageEffect. The tint color lives on the image layer
+ * (via background-blend-mode or mask fill) so frameless buttons can still tint
+ * without a visible button background.
+ */
+export function applyImageEffectStyles(
+  baseStyle: CSSProperties,
+  imageUrl: string,
+  options: ImageEffectOptions = {},
+): { buttonStyle: CSSProperties; layerStyle?: CSSProperties } {
+  const buttonStyle: CSSProperties = { ...baseStyle };
+  const fit = options.fit || "cover";
+  const blend = options.blend || "none";
+  const opacity = options.opacity != null ? Number(options.opacity) : 1;
+  // Use explicit tintColor; fall back to currentColor rather than reading baseStyle.backgroundColor
+  // (which may have been just cleared by frameless).
+  const tintColor = options.tintColor || "currentColor";
+  const sizeCss = fit === "fill" ? "100% 100%" : fit;
+
+  const isMask = blend === "mask";
+  const needsBlend = blend && blend !== "none" && blend !== "normal" && !isMask;
+  const needsLayer = needsBlend || isMask || opacity < 1;
+
+  if (!needsLayer) {
+    buttonStyle.backgroundImage = `url(${imageUrl})`;
+    buttonStyle.backgroundSize = sizeCss;
+    buttonStyle.backgroundPosition = "center";
+    buttonStyle.backgroundRepeat = "no-repeat";
+    return { buttonStyle };
+  }
+
+  buttonStyle.backgroundImage = "none";
+  buttonStyle.position = "relative";
+  // Isolation + z-index: -1 on the layer places it above the button's own background
+  // but below text/icons (which paint in document order above negative-z stacking contexts).
+  buttonStyle.isolation = "isolate";
+
+  const layerStyle: CSSProperties = {
+    position: "absolute",
+    inset: 0,
+    pointerEvents: "none",
+    zIndex: -1,
+    backgroundSize: sizeCss,
+    backgroundPosition: "center",
+    backgroundRepeat: "no-repeat",
+  };
+  if (opacity < 1) layerStyle.opacity = opacity;
+
+  if (isMask) {
+    const maskUrl = `url(${imageUrl})`;
+    layerStyle.backgroundColor = tintColor;
+    layerStyle.WebkitMaskImage = maskUrl;
+    layerStyle.maskImage = maskUrl;
+    layerStyle.WebkitMaskSize = sizeCss;
+    layerStyle.maskSize = sizeCss;
+    layerStyle.WebkitMaskPosition = "center";
+    layerStyle.maskPosition = "center";
+    layerStyle.WebkitMaskRepeat = "no-repeat";
+    layerStyle.maskRepeat = "no-repeat";
+  } else if (needsBlend) {
+    layerStyle.backgroundImage = `url(${imageUrl})`;
+    layerStyle.backgroundColor = tintColor;
+    layerStyle.backgroundBlendMode = blend as CSSProperties["backgroundBlendMode"];
+  } else {
+    layerStyle.backgroundImage = `url(${imageUrl})`;
+  }
+
+  return { buttonStyle, layerStyle };
+}

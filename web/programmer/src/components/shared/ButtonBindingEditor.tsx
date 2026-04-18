@@ -408,6 +408,7 @@ export function ButtonBindingEditor({
                     onChange={(v) => updateFeedback(v)}
                     onClear={() => updateFeedback(null)}
                     showConditionalLabel={true}
+                    showImageField={true}
                   />
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>

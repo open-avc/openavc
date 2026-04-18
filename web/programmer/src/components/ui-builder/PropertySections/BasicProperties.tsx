@@ -119,12 +119,6 @@ export function BasicProperties({
               onChange={(v) => onChange({ button_image: v || undefined })}
             />
           </FieldRow>
-          <FieldRow label="Active Img">
-            <AssetPicker
-              value={element.button_image_active || ""}
-              onChange={(v) => onChange({ button_image_active: v || undefined })}
-            />
-          </FieldRow>
           <FieldRow label="Fit">
             <select
               value={element.image_fit || "cover"}
@@ -136,6 +130,53 @@ export function BasicProperties({
               <option value="fill">Fill</option>
             </select>
           </FieldRow>
+          {element.button_image && (
+            <>
+              <FieldRow label="Frameless">
+                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={!!element.frameless}
+                    onChange={(e) => onChange({ frameless: e.target.checked || undefined })}
+                  />
+                  Hide background and border (image-as-button)
+                </label>
+              </FieldRow>
+              <FieldRow label="Effect">
+                <select
+                  value={element.image_blend_mode || "none"}
+                  onChange={(e) => onChange({ image_blend_mode: e.target.value === "none" ? undefined : e.target.value })}
+                  style={{ flex: 1 }}
+                  title="How the image reacts to the button's background color"
+                >
+                  <option value="none">None</option>
+                  <option value="multiply">Tint (darker)</option>
+                  <option value="screen">Tint (lighter)</option>
+                  <option value="mask">Recolor shape</option>
+                </select>
+              </FieldRow>
+              {element.image_blend_mode && element.image_blend_mode !== "none" && (
+                <TintSourceStrip element={element} onChange={onChange} />
+              )}
+              <FieldRow label="Opacity">
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={element.image_opacity ?? 1}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value);
+                    onChange({ image_opacity: v >= 1 ? undefined : v });
+                  }}
+                  style={{ flex: 1 }}
+                />
+                <span style={{ fontSize: 11, color: "var(--text-muted)", minWidth: 32, textAlign: "right" }}>
+                  {Math.round((element.image_opacity ?? 1) * 100)}%
+                </span>
+              </FieldRow>
+            </>
+          )}
         </>
       )}
 
@@ -1235,6 +1276,113 @@ function GaugeZonesEditor({
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+interface TintSourceStripProps {
+  element: UIElement;
+  onChange: (patch: Partial<UIElement>) => void;
+}
+
+function TintSourceStrip({ element, onChange }: TintSourceStripProps) {
+  const fb = (element.bindings?.feedback ?? null) as
+    | {
+        states?: Record<string, { bg_color?: string }>;
+        style_active?: { bg_color?: string };
+        style_inactive?: { bg_color?: string };
+      }
+    | null;
+
+  const baseBg = (element.style?.bg_color as string | undefined);
+  const fallback = baseBg || "#424242";
+
+  type Swatch = { name: string; color: string };
+  let swatches: Swatch[] = [];
+  let hasBinding = false;
+
+  if (fb?.states) {
+    hasBinding = true;
+    for (const [name, appearance] of Object.entries(fb.states)) {
+      swatches.push({ name, color: appearance?.bg_color || fallback });
+    }
+  } else if (fb?.style_active || fb?.style_inactive) {
+    hasBinding = true;
+    swatches.push({ name: "off", color: fb.style_inactive?.bg_color || fallback });
+    swatches.push({ name: "on", color: fb.style_active?.bg_color || "#2196F3" });
+  } else {
+    swatches.push({ name: "base", color: fallback });
+  }
+
+  const createDefaultBinding = () => {
+    onChange({
+      bindings: {
+        ...(element.bindings || {}),
+        feedback: {
+          source: "state",
+          key: "",
+          states: {
+            off: { bg_color: fallback },
+            on: { bg_color: "#2196F3" },
+          },
+          default_state: "off",
+        },
+      },
+    });
+  };
+
+  return (
+    <div style={{ padding: "0 0 6px 90px", display: "flex", flexDirection: "column", gap: 4 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Tints using:</span>
+        {swatches.map((s) => (
+          <div key={s.name} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <div
+              style={{
+                width: 16,
+                height: 16,
+                background: s.color,
+                border: "1px solid var(--border-color)",
+                borderRadius: 3,
+              }}
+              title={s.color}
+            />
+            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{s.name}</span>
+          </div>
+        ))}
+        {!hasBinding && (
+          <button
+            onClick={createDefaultBinding}
+            style={{
+              padding: "2px 8px",
+              fontSize: 11,
+              color: "var(--accent)",
+              background: "transparent",
+              border: "1px solid var(--accent)",
+              borderRadius: 3,
+              cursor: "pointer",
+            }}
+            title="Create a feedback binding with on/off state colors"
+          >
+            + Add state colors
+          </button>
+        )}
+      </div>
+      {element.image_blend_mode === "mask" && !element.frameless && (
+        <div style={{ fontSize: 10, color: "var(--warning, #ff9800)", lineHeight: 1.4 }}>
+          Recolor shape reuses the button's background color to fill the image, so the logo blends into the button rectangle. Turn on Frameless to see the shape clearly.
+        </div>
+      )}
+      {!hasBinding && (
+        <div style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.4 }}>
+          Image tints with the button's background. Add state colors so the image reacts to a state change.
+        </div>
+      )}
+      {hasBinding && fb?.states && Object.keys(fb.states).length > 0 && !(element.bindings?.feedback as { key?: string })?.key && (
+        <div style={{ fontSize: 10, color: "var(--warning, #ff9800)", lineHeight: 1.4 }}>
+          Pick a state key in the Bindings panel to wire this up.
+        </div>
+      )}
     </div>
   );
 }

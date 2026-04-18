@@ -147,7 +147,24 @@ Buttons support five display modes, selectable in the Properties panel:
 | **Image** | Background image fills the button |
 | **Image + Text** | Background image with text overlay |
 
-For image modes, upload assets using the Asset Picker and select a default image. Optionally set an **active image** that swaps in when feedback is active (e.g., a lit-up button graphic when the projector is on). The **Image Fit** control (`cover`, `contain`, `fill`) determines how the image scales within the button area.
+For image modes, upload an asset using the Asset Picker. The **Image Fit** control (`cover`, `contain`, `fill`) determines how the image scales within the button area.
+
+### Image Effects
+
+When a button has an image, two extra controls tune how it reacts to the button's background color:
+
+| Style | What it does | Best for |
+|-------|--------------|----------|
+| **None** | Image renders as-is | Photos and artwork you don't want tinted |
+| **Tint (darker)** | Image blends with the button's background using multiply. Dark tints read best | Full-color images on saturated backgrounds |
+| **Tint (lighter)** | Image blends with the button's background using screen. Light tints read best | Dark images on lighter backgrounds |
+| **Recolor shape** | Fills the image shape with the button's background color. Everything outside the shape becomes transparent | Monochrome logos, icons, SVG silhouettes |
+
+**Opacity** fades only the image, not text or icons on top of it.
+
+The key to making a single image react to state: add a **Feedback binding** and set a different `Background` color for each state. The image automatically retints using whichever background color is active. Upload one logo, set *Recolor shape*, pick the theme active color for the ON state, and the logo colors itself as the button turns on and off. Use *Tint (darker)* for colored artwork you want to modulate with the active color.
+
+When you genuinely need two different images (e.g. a play icon vs a pause icon), set `Image` in each state card of the feedback binding instead of relying on tinting.
 
 ### Direct UI Control from Macros and Scripts
 

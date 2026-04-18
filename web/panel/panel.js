@@ -559,29 +559,39 @@ class PanelApp {
         el.setAttribute('aria-label', element.label || element.id);
 
         // Apply static styles (theme defaults merged)
-        this.applyStyle(el, this.getThemedStyle('button', element.style));
+        const themedStyle = this.getThemedStyle('button', element.style);
+        this.applyStyle(el, themedStyle);
 
-        // Display mode: image buttons
+        // Frameless: hide chrome so the image acts as the button
+        if (element.frameless) this.applyFrameless(el);
+
         const displayMode = element.display_mode || 'text';
-        if ((displayMode === 'image' || displayMode === 'image_text') && element.button_image) {
-            const url = this.resolveAssetUrl(element.button_image);
-            el.style.backgroundImage = `url(${url})`;
-            el.style.backgroundSize = element.image_fit || 'cover';
-            el.style.backgroundPosition = 'center';
-            el.style.backgroundRepeat = 'no-repeat';
-            if (displayMode === 'image') {
-                el.textContent = '';
-            } else {
-                // image_text: add text shadow for readability
-                el.style.textShadow = '0 1px 3px rgba(0,0,0,0.8)';
-            }
-        } else if (displayMode === 'icon_only') {
+        const showImage = (displayMode === 'image' || displayMode === 'image_text') && element.button_image;
+
+        // Clear label text for image-only/icon-only modes BEFORE content/layer rendering
+        if (displayMode === 'image' || displayMode === 'icon_only') {
             el.textContent = '';
-            if (!element.icon_position) element.icon_position = 'center';
+        }
+        if (displayMode === 'icon_only' && !element.icon_position) {
+            element.icon_position = 'center';
         }
 
-        // Render icon+text content
+        // Render icon+text content first (may call el.textContent = '' internally to rebuild).
+        // Image layer must be prepended AFTER this so content rendering can't wipe it.
         this.renderElementContent(el, element);
+
+        // Image effect last so its DOM layer isn't removed by other content rendering paths
+        if (showImage) {
+            this.applyImageEffect(el, element.button_image, {
+                fit: element.image_fit,
+                blend: element.image_blend_mode,
+                opacity: element.image_opacity,
+                tintColor: themedStyle.bg_color,
+            });
+            if (displayMode === 'image_text') {
+                el.style.textShadow = '0 1px 3px rgba(0,0,0,0.8)';
+            }
+        }
 
         // Register in element map for ui.* overrides
         this.elementMap[element.id] = { el, elementDef: element };
@@ -2650,10 +2660,10 @@ class PanelApp {
             const { el, elementDef } = entry;
             const prefix = `ui.${elementId}.`;
 
-            // Check for label override
+            // Check for label override (preserve image layer and other element children)
             const labelOverride = this.state[prefix + 'label'];
             if (labelOverride !== undefined && labelOverride !== null) {
-                el.textContent = String(labelOverride);
+                this._setLabelText(el, String(labelOverride));
             }
 
             // Check for style overrides
@@ -2710,6 +2720,8 @@ class PanelApp {
         const { element, elementDef, binding } = b;
         const stateValue = this.state[binding.key];
         const baseStyle = elementDef.style || {};
+        const displayMode = elementDef.display_mode || 'text';
+        const suppressLabel = displayMode === 'image' || displayMode === 'icon_only';
 
         // Multi-state feedback (new)
         if (binding.states) {
@@ -2717,12 +2729,19 @@ class PanelApp {
             const appearance = binding.states[stateKey] || binding.states[binding.default_state || ''] || {};
             const style = { ...baseStyle, ...appearance };
             this.applyStyle(element, style);
+            // Re-apply frameless so state bg_color changes don't reintroduce chrome
+            if (elementDef.frameless) this.applyFrameless(element);
+            // Retint the image layer so tint tracks state bg_color
+            if (style.bg_color) this.updateImageTint(element, style.bg_color);
 
-            // Update label
-            if (appearance.label !== undefined) {
-                element.textContent = String(appearance.label);
+            // Update label (suppressed when display mode hides text).
+            // Remove only text nodes so we don't wipe the image layer (an element child).
+            if (suppressLabel) {
+                this._removeTextNodes(element);
+            } else if (appearance.label !== undefined) {
+                this._setLabelText(element, String(appearance.label));
             } else if (elementDef.label) {
-                element.textContent = elementDef.label;
+                this._setLabelText(element, elementDef.label);
             }
 
             // Rebuild icon+text layout if element has any icon (from appearance or base element)
@@ -2736,10 +2755,14 @@ class PanelApp {
                 this.renderElementContent(element, iconDef);
             }
 
-            // Swap button image if specified
-            if (appearance.button_image) {
-                const url = this.resolveAssetUrl(String(appearance.button_image));
-                element.style.backgroundImage = `url(${url})`;
+            // Swap button image if state overrides it (10% case: genuinely different image per state)
+            if (appearance.button_image && elementDef.button_image !== appearance.button_image) {
+                this.applyImageEffect(element, appearance.button_image, {
+                    fit: elementDef.image_fit,
+                    blend: elementDef.image_blend_mode,
+                    opacity: elementDef.image_opacity,
+                    tintColor: style.bg_color,
+                });
             }
             return;
         }
@@ -2757,26 +2780,34 @@ class PanelApp {
             : { ...baseStyle, ...inactiveStyle };
 
         this.applyStyle(element, style);
+        if (elementDef.frameless) this.applyFrameless(element);
+        if (style.bg_color) this.updateImageTint(element, style.bg_color);
 
-        // Image button active/inactive swap
-        if (isActive && elementDef.button_image_active) {
-            const url = this.resolveAssetUrl(elementDef.button_image_active);
-            element.style.backgroundImage = `url(${url})`;
-        } else if (!isActive && elementDef.button_image) {
-            const url = this.resolveAssetUrl(elementDef.button_image);
-            element.style.backgroundImage = `url(${url})`;
+        // Per-state image override (legacy feedback)
+        const stateImage = (isActive ? activeStyle.button_image : inactiveStyle.button_image);
+        if (stateImage && elementDef.button_image !== stateImage) {
+            this.applyImageEffect(element, stateImage, {
+                fit: elementDef.image_fit,
+                blend: elementDef.image_blend_mode,
+                opacity: elementDef.image_opacity,
+                tintColor: style.bg_color,
+            });
         }
 
         // Conditional labels — must run BEFORE renderElementContent so
-        // the icon+text layout rebuild captures the updated text
-        if (isActive && binding.label_active) {
-            element.textContent = binding.label_active;
+        // the icon+text layout rebuild captures the updated text.
+        // Suppressed when display mode hides text.
+        // Remove only text nodes to preserve the image layer (an element child).
+        if (suppressLabel) {
+            this._removeTextNodes(element);
+        } else if (isActive && binding.label_active) {
+            this._setLabelText(element, binding.label_active);
         } else if (!isActive && binding.label_inactive) {
-            element.textContent = binding.label_inactive;
+            this._setLabelText(element, binding.label_inactive);
         } else if (style.label !== undefined) {
-            element.textContent = style.label;
+            this._setLabelText(element, style.label);
         } else if (elementDef.label) {
-            element.textContent = elementDef.label;
+            this._setLabelText(element, elementDef.label);
         }
 
         // Rebuild icon+text layout if element has any icon (from feedback or base element)
@@ -3311,6 +3342,145 @@ class PanelApp {
         return ref;
     }
 
+    /**
+     * Remove text nodes from an element, leaving element children intact.
+     * Used to suppress labels on image/icon-only buttons without wiping the image layer.
+     */
+    _removeTextNodes(el) {
+        Array.from(el.childNodes).forEach((n) => {
+            if (n.nodeType === Node.TEXT_NODE) n.remove();
+        });
+    }
+
+    /**
+     * Set or replace an element's label text without touching element children
+     * (icons, image layer). Removes existing text nodes and appends a new one.
+     */
+    _setLabelText(el, text) {
+        this._removeTextNodes(el);
+        if (text != null && text !== '') {
+            el.appendChild(document.createTextNode(String(text)));
+        }
+    }
+
+    /**
+     * Hide button chrome (bg_color, border, box_shadow) so an image acts as the button.
+     * Uses only longhand CSS properties so subsequent backgroundImage assignments
+     * (from applyImageEffect) aren't wiped out by a shorthand reset.
+     */
+    applyFrameless(el) {
+        el.style.backgroundColor = 'transparent';
+        el.style.backgroundImage = 'none';
+        el.style.borderWidth = '0';
+        el.style.borderStyle = 'none';
+        el.style.borderColor = 'transparent';
+        el.style.boxShadow = 'none';
+    }
+
+    /**
+     * Apply a button image with optional blend mode and opacity effects.
+     * Idempotent: safe to call repeatedly as state changes.
+     *
+     * Tint color (passed via options.tintColor) lives on the image layer, not
+     * the button itself, so frameless buttons can still tint/mask without
+     * depending on the visible button background. Falls back to the button's
+     * current bg_color if no tintColor is given.
+     */
+    applyImageEffect(el, imageRef, options = {}) {
+        const url = this.resolveAssetUrl(imageRef);
+        if (!url) return;
+        const fit = options.fit || 'cover';
+        const blend = options.blend || 'none';
+        const opacity = options.opacity != null ? Number(options.opacity) : 1;
+        // Fall back to currentColor so mask/blend modes always render something even
+        // if no bg_color is set on the element or in theme.
+        // Use the explicit tintColor if given; fall back to currentColor (text color) rather than
+        // reading el.style.backgroundColor, because frameless may have just set it to transparent.
+        const tintColor = options.tintColor || 'currentColor';
+        const sanitizedUrl = this._sanitizeCssUrl(url);
+        const sizeCss = this._sanitizeCssValue(fit === 'fill' ? '100% 100%' : fit);
+
+        // Remove any existing image layer
+        const existingLayer = el.querySelector(':scope > .panel-button-image-layer');
+        if (existingLayer) existingLayer.remove();
+
+        // Clear any mask previously applied to the button itself (legacy path)
+        el.style.webkitMaskImage = '';
+        el.style.maskImage = '';
+
+        const needsBlend = blend && blend !== 'none' && blend !== 'normal' && blend !== 'mask';
+        const isMask = blend === 'mask';
+        const needsLayer = needsBlend || isMask || opacity < 1;
+
+        if (!needsLayer) {
+            // Simple background image on the button, no effect layer
+            el.style.backgroundImage = `url("${sanitizedUrl}")`;
+            el.style.backgroundSize = sizeCss;
+            el.style.backgroundPosition = 'center';
+            el.style.backgroundRepeat = 'no-repeat';
+            // Clear isolation if previously set from another render
+            el.style.isolation = '';
+            return;
+        }
+
+        // Image effect runs on a child layer. Use isolation + negative z-index so the
+        // layer paints above the button's own background but below text/icons, without
+        // needing to wrap every text node or content element.
+        el.style.backgroundImage = 'none';
+        el.style.position = 'relative';
+        el.style.isolation = 'isolate';
+
+        const layer = document.createElement('div');
+        layer.className = 'panel-button-image-layer';
+        layer.style.position = 'absolute';
+        layer.style.inset = '0';
+        layer.style.pointerEvents = 'none';
+        layer.style.zIndex = '-1';
+        if (opacity < 1) layer.style.opacity = String(opacity);
+
+        if (isMask) {
+            // Mask mode: tint color fills the image shape. Button chrome untouched.
+            layer.style.backgroundColor = tintColor;
+            layer.style.webkitMaskImage = `url("${sanitizedUrl}")`;
+            layer.style.maskImage = `url("${sanitizedUrl}")`;
+            layer.style.webkitMaskSize = sizeCss;
+            layer.style.maskSize = sizeCss;
+            layer.style.webkitMaskPosition = 'center';
+            layer.style.maskPosition = 'center';
+            layer.style.webkitMaskRepeat = 'no-repeat';
+            layer.style.maskRepeat = 'no-repeat';
+        } else if (needsBlend) {
+            // Blend mode: layer holds both image and tint color, composited via background-blend-mode.
+            // This makes the tint self-contained on the layer so frameless buttons still tint.
+            layer.style.backgroundImage = `url("${sanitizedUrl}")`;
+            layer.style.backgroundColor = tintColor;
+            layer.style.backgroundSize = sizeCss;
+            layer.style.backgroundPosition = 'center';
+            layer.style.backgroundRepeat = 'no-repeat';
+            layer.style.backgroundBlendMode = blend;
+        } else {
+            // Opacity-only: plain image layer, no blend
+            layer.style.backgroundImage = `url("${sanitizedUrl}")`;
+            layer.style.backgroundSize = sizeCss;
+            layer.style.backgroundPosition = 'center';
+            layer.style.backgroundRepeat = 'no-repeat';
+        }
+        el.prepend(layer);
+    }
+
+    /**
+     * Update just the tint color on an existing image layer without recreating it.
+     * Called during feedback state changes to retint in place.
+     */
+    updateImageTint(el, tintColor) {
+        const layer = el.querySelector(':scope > .panel-button-image-layer');
+        if (!layer) return;
+        // Only layers with a mask or blend mode use tint color
+        if (layer.style.maskImage || layer.style.webkitMaskImage || layer.style.backgroundBlendMode) {
+            layer.style.backgroundColor = tintColor;
+        }
+    }
+
     renderIcon(iconName, size, color) {
         if (!iconName) return null;
 
@@ -3354,10 +3524,22 @@ class PanelApp {
         const iconPos = element.style?.icon_position || element.icon_position || 'left';
         const iconSize = element.style?.icon_size || element.icon_size || 24;
         const iconColor = element.style?.icon_color || element.icon_color || null;
-        const labelText = el.textContent;
 
-        // Clear existing content
+        // Preserve the image layer (an element child) when rebuilding content.
+        const imageLayer = el.querySelector(':scope > .panel-button-image-layer');
+
+        // Capture label text from text nodes only (not from layer or other children)
+        let labelText = '';
+        Array.from(el.childNodes).forEach((n) => {
+            if (n.nodeType === Node.TEXT_NODE) labelText += n.textContent;
+            else if (n.nodeType === Node.ELEMENT_NODE && n !== imageLayer && n.tagName === 'SPAN') {
+                labelText += n.textContent;
+            }
+        });
+
+        // Clear existing content, then restore the image layer as first child
         el.textContent = '';
+        if (imageLayer) el.prepend(imageLayer);
 
         const iconEl = this.renderIcon(icon, iconSize, iconColor);
         if (!iconEl) return;

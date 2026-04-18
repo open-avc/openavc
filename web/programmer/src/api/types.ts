@@ -151,8 +151,10 @@ export interface UIElement {
   icon_color?: string;
   display_mode?: string;
   button_image?: string;
-  button_image_active?: string;
   image_fit?: string;
+  image_blend_mode?: string;
+  image_opacity?: number;
+  frameless?: boolean;
   // Gauge
   unit?: string;
   arc_angle?: number;
