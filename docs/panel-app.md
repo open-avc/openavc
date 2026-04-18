@@ -2,7 +2,7 @@
 
 > **Status: in development.** The OpenAVC Panel apps for Android and iOS are being built. This guide describes how they'll work when they ship. Install links, store listings, and GitHub Releases will go live once the apps are tested and published. If you reached this page from a QR code, use **Open Panel** to view the web panel in your browser in the meantime.
 
-The OpenAVC Panel app turns an Android or iOS tablet into a dedicated touch panel for an OpenAVC system. It wraps the same web panel you can reach from any browser, but adds the things a browser on a wall-mounted tablet can't do: automatic server discovery, QR pairing, kiosk lockdown, and boot-to-panel auto-start.
+The OpenAVC Panel app turns an Android or iOS tablet into a dedicated touch panel for an OpenAVC system. It wraps the same web panel you can reach from any browser, but adds the things a browser on a wall-mounted tablet can't do: automatic server discovery, QR pairing, dedicated-panel lockdown, and boot-to-panel auto-start.
 
 ## When to Use the App Instead of a Browser
 
@@ -10,7 +10,7 @@ The OpenAVC Panel app turns an Android or iOS tablet into a dedicated touch pane
 |---|---|---|
 | Wall-mounted tablet in a conference space | Yes | No |
 | Employee's personal phone, occasional use | No | Yes |
-| Kiosk that must survive end-user tampering | Yes | No |
+| Dedicated panel that must survive end-user tampering | Yes | No |
 | Tablet that auto-launches the panel on power-up | Yes | No |
 | Quick check of room state from your laptop | No | Yes |
 
@@ -53,18 +53,20 @@ Once you've paired successfully, the app remembers the server and reconnects aut
 If you move the tablet to a different space or rebuild the OpenAVC system:
 
 - In a normal install, tap the Back gesture to get the Close / Change server / Keep using this one dialog, then tap **Change server**.
-- In a kiosk install, triple-tap the top-left corner of the screen, enter the admin PIN, then tap **Change server** in the admin sheet.
+- In a dedicated-panel install, triple-tap the top-left corner of the screen, enter the admin PIN, then tap **Change server** in the admin sheet.
 
-## Kiosk Mode
+## Dedicated Panel Mode
 
-The app runs in kiosk-suitable full screen from day one. For locked-down unattended use (receptionless conference spaces, lecture halls, worship spaces), you can take it further and lock the tablet completely to the panel so users can't exit to the home screen or open other apps.
+The app runs in dedicated-panel-suitable full screen from day one. For locked-down unattended use (receptionless conference spaces, lecture halls, worship spaces), you can take it further and lock the tablet completely to the panel so users can't exit to the home screen or open other apps.
 
 Setup differs by platform:
 
-- [Android kiosk guide](panel-app-kiosk-android.md)
-- [iOS kiosk guide](panel-app-kiosk-ios.md)
+- [Android dedicated panel guide](panel-app-dedicated-android.md)
+- [iOS dedicated panel guide](panel-app-dedicated-ios.md)
 
-Both guides open with what you get for free before explaining what full kiosk adds, so you can decide how much effort is worth it for your install.
+Both guides open with what you get for free before explaining what full lockdown adds, so you can decide how much effort is worth it for your install.
+
+> The Android platform's own developer documentation calls this "kiosk mode" or "Lock Task Mode." Same feature. We call it dedicated panel mode because that's what AV integrators call these tablets.
 
 ## Troubleshooting
 

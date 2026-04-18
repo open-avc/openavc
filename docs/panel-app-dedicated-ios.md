@@ -1,14 +1,16 @@
-# iOS Kiosk Setup
+# iOS Dedicated Panel Setup
 
-> **Status: in development.** The OpenAVC Panel app for iOS is being built. This guide describes the kiosk flow the app will support when it ships. The App Store listing will go live once the app is tested and published. Use this page to plan your install.
+> **Status: in development.** The OpenAVC Panel app for iOS is being built. This guide describes the setup flow the app will support when it ships. The App Store listing will go live once the app is tested and published. Use this page to plan your install.
 
 This guide covers locking an iPad (or iPhone) to the OpenAVC Panel app. It applies to the iOS build of the OpenAVC Panel app.
 
-Apple is much more restrictive than Android about kiosk-style lockdown. There is no equivalent to Android's Device Owner for individual consumers. Instead, there are three tiers of lockdown, each with real tradeoffs. Pick the tier that matches how determined your users are.
+> Apple's own developer documentation calls this "Single App Mode" or "Autonomous Single App Mode" (ASAM). Same feature. We call it dedicated panel mode because that's what AV integrators call these tablets.
+
+Apple is much more restrictive than Android about dedicated-panel lockdown. There is no equivalent to Android's Device Owner for individual consumers. Instead, there are three tiers of lockdown, each with real tradeoffs. Pick the tier that matches how determined your users are.
 
 ## Before You Start
 
-### Tier 1: Soft Kiosk (No Setup)
+### Tier 1: Basic Dedicated Panel (No Setup)
 
 Install the app from the App Store, launch it, pair with your OpenAVC system. Done.
 
@@ -21,7 +23,7 @@ Install the app from the App Store, launch it, pair with your OpenAVC system. Do
 - The Home bar at the bottom can swipe the user out to the home screen.
 - There's no auto-launch on boot. If the iPad reboots, someone has to tap the app icon.
 
-Soft kiosk is enough for staff-only spaces or temporary installs.
+Basic mode is enough for staff-only spaces or temporary installs.
 
 ### Tier 2: Guided Access (Free, Manual Per Session)
 
@@ -41,7 +43,7 @@ Good for installs where someone staff-side visits the tablet daily anyway.
 
 ### Tier 3: Autonomous Single App Mode (MDM Required)
 
-Autonomous Single App Mode (ASAM) is Apple's real kiosk mechanism. A managed iPad running a specific app can call the system to lock itself in, and survive reboots without staff intervention.
+Autonomous Single App Mode (ASAM) is Apple's real dedicated-panel mechanism. A managed iPad running a specific app can call the system to lock itself in, and survive reboots without staff intervention.
 
 **What you get on top of Tier 2:**
 - Lock engages automatically whenever the app launches, including after a reboot.
@@ -113,7 +115,7 @@ To unlock, remove the ASAM profile from the iPad via your MDM. The next time the
 
 ## Comparison
 
-| | Soft Kiosk | Guided Access | Autonomous Single App Mode |
+| | Basic | Guided Access | Autonomous Single App Mode |
 |---|---|---|---|
 | Cost | Free | Free | $3 to $6 per device per month |
 | Setup complexity | None | Low | High (one-time) |
@@ -125,7 +127,7 @@ To unlock, remove the ASAM profile from the iPad via your MDM. The next time the
 
 ## Or Skip All of This
 
-If the iOS constraints sound like more work than they're worth, Android is a meaningfully easier kiosk platform. An Android tablet plus the OpenAVC Panel app plus a one-time ADB command gets you everything Autonomous Single App Mode gets you, with no ongoing MDM cost. Our Android kiosk setup guide walks through it: [Android kiosk setup](panel-app-kiosk-android.md).
+If the iOS constraints sound like more work than they're worth, Android is a meaningfully easier platform for dedicated panels. An Android tablet plus the OpenAVC Panel app plus a one-time ADB command gets you everything Autonomous Single App Mode gets you, with no ongoing MDM cost. Our Android setup guide walks through it: [Android dedicated panel setup](panel-app-dedicated-android.md).
 
 For customers who want a fully turnkey path on either platform, we also sell pre-provisioned tablets. See [openavc.com/panel-tablet](https://openavc.com/panel-tablet) for availability.
 
@@ -143,5 +145,5 @@ The app has to be launched after the policy takes effect. Force-quit and relaunc
 ## Related
 
 - [OpenAVC Panel App overview](panel-app.md)
-- [Android kiosk setup](panel-app-kiosk-android.md)
+- [Android dedicated panel setup](panel-app-dedicated-android.md)
 - [Getting started with OpenAVC](getting-started.md)

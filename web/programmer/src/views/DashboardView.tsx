@@ -68,20 +68,20 @@ function QRCodeDialog({ url, onClose }: { url: string; onClose: () => void }) {
           justifyContent: "center",
         }}>
           <a
-            href="https://docs.openavc.com/panel-app-kiosk-android"
+            href="https://docs.openavc.com/panel-app-dedicated-android"
             target="_blank"
             rel="noopener noreferrer"
             style={{ color: "var(--accent)", textDecoration: "none" }}
           >
-            Android kiosk guide
+            Android dedicated panel setup
           </a>
           <a
-            href="https://docs.openavc.com/panel-app-kiosk-ios"
+            href="https://docs.openavc.com/panel-app-dedicated-ios"
             target="_blank"
             rel="noopener noreferrer"
             style={{ color: "var(--accent)", textDecoration: "none" }}
           >
-            iOS kiosk guide
+            iOS dedicated panel setup
           </a>
         </div>
         <button

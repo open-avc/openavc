@@ -119,8 +119,8 @@ _PAGE_TEMPLATE = """<!DOCTYPE html>
     Setting up a dedicated touch panel?
     <a href="{app_url}" target="_blank" rel="noopener noreferrer">Get the OpenAVC app</a>
     <br>
-    Locking a tablet down?
-    <a href="{kiosk_guide_url}" target="_blank" rel="noopener noreferrer">Read the kiosk guide</a>
+    Setting up a dedicated panel?
+    <a href="{dedicated_panel_guide_url}" target="_blank" rel="noopener noreferrer">Read the setup guide</a>
   </p>
   <div class="version">v{version}</div>
 </main>
@@ -133,9 +133,9 @@ _PAGE_TEMPLATE = """<!DOCTYPE html>
 # once the native apps ship. See openavc-mobile-panel-plan.md Phase 1/2.
 _APP_DOWNLOAD_URL = "https://openavc.com/panel-app"
 
-# Docs site hosts the Android + iOS kiosk walkthroughs; the overview page
-# lets users pick the platform they're on.
-_KIOSK_GUIDE_URL = "https://docs.openavc.com/panel-app"
+# Docs site hosts the Android + iOS dedicated-panel walkthroughs; the
+# overview page lets users pick the platform they're on.
+_DEDICATED_PANEL_GUIDE_URL = "https://docs.openavc.com/panel-app"
 
 
 @router.get("/pair", response_class=HTMLResponse)
@@ -154,6 +154,6 @@ async def pair_landing(request: Request) -> HTMLResponse:
         project_name=html.escape(project_name),
         version=html.escape(version),
         app_url=_APP_DOWNLOAD_URL,
-        kiosk_guide_url=_KIOSK_GUIDE_URL,
+        dedicated_panel_guide_url=_DEDICATED_PANEL_GUIDE_URL,
     )
     return HTMLResponse(page)
