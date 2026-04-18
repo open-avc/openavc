@@ -155,7 +155,7 @@ Once a tablet is Device Owner, you can't simply uninstall the OpenAVC Panel app.
 
 ## Or Skip All of This
 
-If you don't want to touch ADB or QR provisioning, we sell pre-provisioned Android tablets that arrive ready to scan a QR and pair with your OpenAVC system. Cost is around the price of the tablet itself plus a small provisioning fee. See [openavc.com/panel-tablet](https://openavc.com/panel-tablet) for availability and SKUs.
+A pre-provisioned OpenAVC Panel Tablet (arrives configured, scan a QR to pair) is on the roadmap. It will be a separate SKU listed on openavc.com when available.
 
 ## Troubleshooting
 

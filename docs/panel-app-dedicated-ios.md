@@ -129,7 +129,7 @@ To unlock, remove the ASAM profile from the iPad via your MDM. The next time the
 
 If the iOS constraints sound like more work than they're worth, Android is a meaningfully easier platform for dedicated panels. An Android tablet plus the OpenAVC Panel app plus a one-time ADB command gets you everything Autonomous Single App Mode gets you, with no ongoing MDM cost. Our Android setup guide walks through it: [Android dedicated panel setup](panel-app-dedicated-android.md).
 
-For customers who want a fully turnkey path on either platform, we also sell pre-provisioned tablets. See [openavc.com/panel-tablet](https://openavc.com/panel-tablet) for availability.
+A pre-provisioned OpenAVC Panel Tablet (turnkey, arrives configured) is on the roadmap. It will be a separate SKU on openavc.com when available.
 
 ## Troubleshooting
 
