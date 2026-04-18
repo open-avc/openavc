@@ -20,6 +20,7 @@ Use the search box at the top of the macro list to filter by name.
 | **Device Command** | Send a command to a device | `projector_main` -> `power_on` |
 | **Group Command** | Send a command to all devices in a group at once | `projectors` -> `power_on` |
 | **Delay** | Wait N seconds between steps | Wait 15 seconds for projector warmup |
+| **Wait Until** | Pause until a state value matches a condition | Wait until the projector reports it is warm |
 | **Set Variable** | Set a user variable | `var.room_active` = `true` |
 | **Emit Event** | Fire a custom event on the event bus | `room.shutdown_complete` |
 | **Run Macro** | Execute another macro as a sub-routine | Run `select_hdmi1` |
@@ -73,6 +74,26 @@ A conditional step checks a state value and runs one set of steps if the conditi
 4. Optionally add steps to the **Else** block (runs when condition is false)
 
 Conditionals can be nested (a conditional inside a conditional) up to 5 levels deep. Macros that call other macros via "Run Macro" steps can nest up to 10 levels deep. For most rooms, one level of each is enough.
+
+## Wait Until
+
+A **Wait Until** step pauses the macro until a state value matches a condition, then continues. This replaces the common pattern of guessing a fixed **Delay** for a projector warmup or a display input change. The macro resumes the instant the device reports ready, and has a timeout so a stuck device does not strand the macro forever.
+
+Fields:
+
+- **Wait until** — a condition (same picker as conditional steps): state key, operator, value.
+- **Timeout** — seconds to wait before giving up. Check **Never time out** to wait indefinitely.
+- **If timeout** — when a timeout fires, either **Fail the macro** (default) or **Continue anyway**. Failing is the safer default for hardware waits, since the next step is usually something that depends on the device being ready.
+
+Example: a projector warmup that no longer guesses a delay.
+
+| Step | Type | Details |
+|------|------|---------|
+| 1 | Device Command | `projector_main` -> `power_on` |
+| 2 | **Wait Until** | `device.projector_main.power_state` equals `"on"`, timeout 60s, fail on timeout |
+| 3 | Device Command | `projector_main` -> `set_input`, input: `hdmi1` |
+
+Other common uses: wait for a display to confirm an input change before routing audio (short timeout, continue anyway so audio always follows), wait for a device to come back online after a power cycle, or wait for a user to press a confirm button on the panel. For the last case, set a user variable from the button binding and use **Never time out** so the macro waits as long as the user needs. A waiting macro still respects cancel groups and explicit cancellation, so "Never time out" is always breakable from outside.
 
 ## Skip If Guards
 

@@ -67,6 +67,11 @@ export interface MacroStep {
   then_steps?: MacroStep[];
   else_steps?: MacroStep[];
 
+  // wait_until step fields (action == "wait_until")
+  // timeout is seconds; null means "never time out"
+  timeout?: number | null;
+  on_timeout?: "fail" | "continue";
+
   // Step-level guard
   skip_if?: StepCondition;
 

@@ -83,10 +83,48 @@ export const STEP_TYPES: StepTypeInfo[] = [
       else_steps: [],
     }),
   },
+  {
+    action: "wait_until",
+    label: "Wait Until",
+    description: "Pause until a state value matches a condition (with optional timeout)",
+    color: "#14b8a6",
+    summary: (step) => {
+      const cond = step.condition;
+      if (!cond?.key) return "No condition set";
+      const op = cond.operator ?? "eq";
+      const val = cond.value != null ? JSON.stringify(cond.value) : "?";
+      const condStr =
+        op === "truthy"
+          ? `${cond.key} is truthy`
+          : op === "falsy"
+          ? `${cond.key} is falsy`
+          : `${cond.key} ${op} ${val}`;
+      const tmo = step.timeout == null ? "no timeout" : `${step.timeout}s`;
+      return `${condStr} (${tmo})`;
+    },
+    defaults: () => ({
+      action: "wait_until",
+      condition: { key: "", operator: "eq", value: "" },
+      timeout: 30,
+      on_timeout: "fail",
+    }),
+  },
 ];
 
 export function getStepType(action: string): StepTypeInfo | undefined {
   return STEP_TYPES.find((t) => t.action === action);
+}
+
+/** Recurse into then/else branches to find any wait_until step that has a numeric timeout. */
+function _macroUsesWaitUntilWithTimeout(steps: MacroStep[]): boolean {
+  for (const step of steps) {
+    if (step.action === "wait_until" && step.timeout != null) return true;
+    if (step.action === "conditional") {
+      if (_macroUsesWaitUntilWithTimeout((step as any).then_steps ?? [])) return true;
+      if (_macroUsesWaitUntilWithTimeout((step as any).else_steps ?? [])) return true;
+    }
+  }
+  return false;
 }
 
 export function macroToScript(
@@ -112,10 +150,12 @@ export function macroToScript(
   }
 
   const escapedName = macro.name.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  const needsTimeImport = _macroUsesWaitUntilWithTimeout(macro.steps);
   const lines: string[] = [
     `"""Auto-generated from macro '${escapedName}'."""`,
     `from openavc import ${imports.join(", ")}`,
     "import asyncio",
+    ...(needsTimeImport ? ["import time as _t"] : []),
     "",
   ];
 
@@ -344,6 +384,42 @@ function _generateStepLines(
         } else {
           lines.push(`${indent}# Conditional step with no condition set`);
           lines.push(`${indent}pass`);
+        }
+        break;
+      }
+      case "wait_until": {
+        const cond = step.condition;
+        if (!cond) {
+          lines.push(`${indent}# wait_until step with no condition set`);
+          lines.push(`${indent}pass`);
+          break;
+        }
+        const key = _pyEscape(cond.key ?? "");
+        const val = JSON.stringify(cond.value ?? "");
+        const op = cond.operator ?? "eq";
+        const opMap: Record<string, string> = { eq: "==", ne: "!=", gt: ">", lt: "<", gte: ">=", lte: "<=" };
+        const pyOp = opMap[op] ?? "==";
+        let checkExpr: string;
+        if (op === "truthy") checkExpr = `state.get("${key}")`;
+        else if (op === "falsy") checkExpr = `not state.get("${key}")`;
+        else checkExpr = `state.get("${key}") ${pyOp} ${val}`;
+        const timeout = step.timeout;
+        const onTimeout = step.on_timeout ?? "fail";
+        if (timeout == null) {
+          // Never time out — poll until satisfied
+          lines.push(`${indent}while not (${checkExpr}):`);
+          lines.push(`${indent}    await asyncio.sleep(0.5)`);
+        } else {
+          lines.push(`${indent}# wait_until: ${cond.key} ${op} ${val} (timeout ${timeout}s, ${onTimeout})`);
+          lines.push(`${indent}_deadline = _t.monotonic() + ${timeout}`);
+          lines.push(`${indent}while not (${checkExpr}):`);
+          lines.push(`${indent}    if _t.monotonic() >= _deadline:`);
+          if (onTimeout === "fail") {
+            lines.push(`${indent}        raise TimeoutError("wait_until: ${key} not satisfied after ${timeout}s")`);
+          } else {
+            lines.push(`${indent}        break  # on_timeout: continue`);
+          }
+          lines.push(`${indent}    await asyncio.sleep(0.5)`);
         }
         break;
       }

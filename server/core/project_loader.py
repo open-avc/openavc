@@ -94,7 +94,7 @@ class StepCondition(BaseModel):
 
 
 class MacroStep(BaseModel):
-    action: str  # "device.command", "group.command", "delay", "state.set", "macro", "event.emit", "conditional"
+    action: str  # "device.command", "group.command", "delay", "state.set", "macro", "event.emit", "conditional", "wait_until"
     # Fields used by different action types (all optional, validated at runtime)
     device: str | None = None
     group: str | None = None  # group.command: target device group ID
@@ -112,6 +112,12 @@ class MacroStep(BaseModel):
     condition: StepCondition | None = None
     then_steps: list["MacroStep"] | None = None
     else_steps: list["MacroStep"] | None = None
+
+    # wait_until step fields (action == "wait_until")
+    # timeout: seconds to wait before giving up; None means never time out
+    # on_timeout: "fail" (default) raises and triggers stop_on_error handling; "continue" proceeds silently
+    timeout: float | None = None
+    on_timeout: str | None = None
 
     # Step-level guard: skip this step if condition is true
     skip_if: StepCondition | None = None

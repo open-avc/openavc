@@ -3,12 +3,13 @@ OpenAVC MacroEngine — executes named sequences of actions.
 
 Macros are the bridge between the visual configurator and scripting.
 They are ordered sequences of steps: send device commands, set state,
-add delays, emit events, or call other macros.
+add delays, wait for state conditions, emit events, or call other macros.
 """
 
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import Any, TYPE_CHECKING
 
 from server.core.condition_eval import eval_operator
@@ -285,6 +286,12 @@ class MacroEngine:
             return f"Emitting {step.get('event', '?')}"
         if action == "conditional":
             return f"Checking {step.get('condition', {}).get('key', '?')}"
+        if action == "wait_until":
+            cond = step.get("condition") or {}
+            key = cond.get("key", "?")
+            timeout = step.get("timeout")
+            tmo = "no timeout" if timeout is None else f"{timeout}s"
+            return f"Waiting for {key} ({tmo})"
         return action
 
     async def _execute_step(
@@ -441,5 +448,122 @@ class MacroEngine:
                 else:
                     log.debug("  Conditional: false, no else-steps")
 
+        elif action == "wait_until":
+            await self._execute_wait_until(step, macro_id)
+
         else:
             raise ValueError(f"Unknown macro action: '{action}'")
+
+    async def _execute_wait_until(
+        self, step: dict[str, Any], macro_id: str | None
+    ) -> None:
+        """Pause until a state condition becomes true, with optional timeout."""
+        condition = step.get("condition")
+        if not isinstance(condition, dict) or not condition.get("key"):
+            raise ValueError("wait_until step requires a condition with 'key'")
+
+        timeout = step.get("timeout")  # None = never time out
+        if timeout is not None and (not isinstance(timeout, (int, float)) or timeout < 0):
+            raise ValueError(
+                f"wait_until 'timeout' must be a non-negative number or null, got {timeout!r}"
+            )
+
+        on_timeout = step.get("on_timeout") or "fail"
+        if on_timeout not in ("fail", "continue"):
+            raise ValueError(
+                f"wait_until 'on_timeout' must be 'fail' or 'continue', got {on_timeout!r}"
+            )
+
+        key = condition.get("key", "")
+
+        # Fast path — already satisfied, skip subscribe/wait entirely
+        if self._evaluate_condition(condition):
+            if macro_id:
+                await self.events.emit(
+                    f"macro.progress.{macro_id}",
+                    {
+                        "macro_id": macro_id,
+                        "action": "wait_until",
+                        "condition_key": key,
+                        "condition_operator": condition.get("operator", "eq"),
+                        "condition_value": condition.get("value"),
+                        "status": "satisfied",
+                        "waited_seconds": 0.0,
+                    },
+                )
+            return
+
+        satisfied = asyncio.Event()
+
+        def _on_change(_k: str, _old: Any, _new: Any, _src: str) -> None:
+            if self._evaluate_condition(condition):
+                satisfied.set()
+
+        sub_id = self.state.subscribe(key, _on_change)
+        started = time.monotonic()
+
+        if macro_id:
+            await self.events.emit(
+                f"macro.progress.{macro_id}",
+                {
+                    "macro_id": macro_id,
+                    "action": "wait_until",
+                    "condition_key": key,
+                    "condition_operator": condition.get("operator", "eq"),
+                    "condition_value": condition.get("value"),
+                    "timeout": timeout,
+                    "status": "waiting",
+                },
+            )
+
+        try:
+            # Close the TOCTOU window between the initial check and subscribe
+            if self._evaluate_condition(condition):
+                satisfied.set()
+
+            if timeout is None:
+                await satisfied.wait()
+                timed_out = False
+            else:
+                try:
+                    await asyncio.wait_for(satisfied.wait(), timeout=float(timeout))
+                    timed_out = False
+                except asyncio.TimeoutError:
+                    timed_out = True
+        finally:
+            self.state.unsubscribe(sub_id)
+
+        elapsed = time.monotonic() - started
+
+        if timed_out:
+            if macro_id:
+                await self.events.emit(
+                    f"macro.progress.{macro_id}",
+                    {
+                        "macro_id": macro_id,
+                        "action": "wait_until",
+                        "condition_key": key,
+                        "status": "timeout",
+                        "waited_seconds": elapsed,
+                        "on_timeout": on_timeout,
+                    },
+                )
+            if on_timeout == "fail":
+                raise TimeoutError(
+                    f"wait_until timed out after {timeout}s "
+                    f"(condition: {key} {condition.get('operator', 'eq')} "
+                    f"{condition.get('value')!r})"
+                )
+            # on_timeout == "continue" → fall through silently
+        else:
+            if macro_id:
+                await self.events.emit(
+                    f"macro.progress.{macro_id}",
+                    {
+                        "macro_id": macro_id,
+                        "action": "wait_until",
+                        "condition_key": key,
+                        "status": "satisfied",
+                        "waited_seconds": elapsed,
+                    },
+                )

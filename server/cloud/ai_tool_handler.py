@@ -314,7 +314,7 @@ def _validate_bindings(bindings: dict, project: Any = None) -> str | None:
 
 _VALID_STEP_ACTIONS = frozenset((
     "device.command", "group.command", "delay", "state.set",
-    "macro", "event.emit", "conditional",
+    "macro", "event.emit", "conditional", "wait_until",
 ))
 _STEP_REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
     "device.command": ("device", "command"),
@@ -324,6 +324,10 @@ _STEP_REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
     "macro": ("macro",),
     "event.emit": ("event",),
     "conditional": ("condition",),
+    # wait_until: condition is required; timeout must be present in the step
+    # (null is allowed to mean "never time out") so we enforce it below rather
+    # than as a plain non-empty required field.
+    "wait_until": ("condition",),
 }
 _VALID_TRIGGER_TYPES = frozenset(("schedule", "state_change", "event", "startup"))
 _VALID_CONDITION_OPS = frozenset((
@@ -345,7 +349,7 @@ def _validate_macro_step(step: dict, path: str) -> list[str]:
     if action not in _VALID_STEP_ACTIONS:
         errors.append(
             f"{path}: step action '{action}' is not valid. "
-            f"Use: device.command, group.command, delay, state.set, macro, event.emit, conditional"
+            f"Use: device.command, group.command, delay, state.set, macro, event.emit, conditional, wait_until"
         )
         return errors
 
@@ -375,6 +379,27 @@ def _validate_macro_step(step: dict, path: str) -> list[str]:
                 for i, sub in enumerate(branch_steps):
                     if isinstance(sub, dict):
                         errors.extend(_validate_macro_step(sub, f"{path}.{branch}[{i}]"))
+
+    if action == "wait_until":
+        cond = step.get("condition")
+        if isinstance(cond, dict):
+            if not cond.get("key"):
+                errors.append(f"{path}: wait_until condition requires 'key'")
+            op = cond.get("operator", "eq")
+            if op not in _VALID_CONDITION_OPS:
+                errors.append(f"{path}: wait_until condition operator '{op}' is not valid")
+        # timeout is required as a field, but may be null to mean "never time out"
+        if "timeout" not in step:
+            errors.append(
+                f"{path}: wait_until requires 'timeout' (number of seconds, or null for no timeout)"
+            )
+        else:
+            tmo = step.get("timeout")
+            if tmo is not None and (not isinstance(tmo, (int, float)) or tmo < 0):
+                errors.append(f"{path}: wait_until 'timeout' must be a non-negative number or null")
+        on_timeout = step.get("on_timeout")
+        if on_timeout is not None and on_timeout not in ("fail", "continue"):
+            errors.append(f"{path}: wait_until 'on_timeout' must be 'fail' or 'continue'")
 
     # Validate skip_if guard
     skip_if = step.get("skip_if")

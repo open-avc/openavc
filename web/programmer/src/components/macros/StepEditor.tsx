@@ -102,6 +102,9 @@ export function StepEditor({ step, macros, currentMacroId, onChange }: StepEdito
         />
       );
       break;
+    case "wait_until":
+      editor = <WaitUntilEditor step={step} onChange={update} />;
+      break;
     default:
       editor = (
         <div style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}>
@@ -649,6 +652,121 @@ function EventEmitEditor({
         Scripts use <code style={{ background: "var(--bg-hover)", padding: "0 4px", borderRadius: 2 }}>@on_event("custom.my_event")</code> to
         respond to emitted events.
       </div>
+    </div>
+  );
+}
+
+// --- Wait Until Editor ---
+
+function WaitUntilEditor({
+  step,
+  onChange,
+}: {
+  step: MacroStep;
+  onChange: (patch: Partial<MacroStep>) => void;
+}) {
+  const condition = step.condition ?? { key: "", operator: "eq", value: "" };
+  const never = step.timeout == null;
+  const onTimeout = step.on_timeout ?? "fail";
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
+      <HelpText>
+        Pause the macro until a state value matches a condition. Great for "wait until the projector
+        reports it's warm" or "wait until a user presses a confirm button on the panel."
+      </HelpText>
+
+      <div>
+        <label style={{ ...labelStyle, display: "block", marginBottom: 4 }}>Wait until</label>
+        <ConditionEditor
+          condition={condition}
+          onChange={(c) => onChange({ condition: c })}
+        />
+      </div>
+
+      <div style={rowStyle}>
+        <label style={labelStyle}>Timeout</label>
+        <input
+          type="number"
+          min={0}
+          step={0.5}
+          value={never ? "" : String(step.timeout ?? 0)}
+          disabled={never}
+          onChange={(e) => onChange({ timeout: parseFloat(e.target.value) || 0 })}
+          style={{ ...inputStyle, maxWidth: 120 }}
+          placeholder={never ? "never" : "seconds"}
+        />
+        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>seconds</span>
+        <label
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            fontSize: 12,
+            color: "var(--text-secondary)",
+            cursor: "pointer",
+            marginLeft: "var(--space-sm)",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={never}
+            onChange={(e) =>
+              onChange({ timeout: e.target.checked ? null : 30 })
+            }
+          />
+          Never time out
+        </label>
+      </div>
+
+      {!never && (
+        <div style={rowStyle}>
+          <label style={labelStyle}>If timeout</label>
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 12,
+              color: "var(--text-secondary)",
+              cursor: "pointer",
+            }}
+          >
+            <input
+              type="radio"
+              name={`wait_until_on_timeout_${step.description ?? "x"}`}
+              checked={onTimeout === "fail"}
+              onChange={() => onChange({ on_timeout: "fail" })}
+            />
+            Fail the macro
+          </label>
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 12,
+              color: "var(--text-secondary)",
+              cursor: "pointer",
+            }}
+          >
+            <input
+              type="radio"
+              name={`wait_until_on_timeout_${step.description ?? "x"}`}
+              checked={onTimeout === "continue"}
+              onChange={() => onChange({ on_timeout: "continue" })}
+            />
+            Continue anyway
+          </label>
+        </div>
+      )}
+
+      {never && (
+        <div style={hintStyle}>
+          With no timeout, the macro waits forever. It can still be stopped by cancelling the
+          macro or by another macro in the same cancel group.
+        </div>
+      )}
     </div>
   );
 }
