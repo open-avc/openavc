@@ -6,11 +6,6 @@ import { useProjectStore } from "../../store/projectStore";
 import { CanvasElement } from "./CanvasElement";
 import { moveElementInPage } from "./uiBuilderHelpers";
 
-// Share the runtime element stylesheet only for reference — the overlay itself
-// renders invisible hit-boxes, but importing this keeps the CSS custom properties
-// (--panel-*) resolvable inside any overlay chrome that reuses them.
-import "../../../../panel/panel-elements.css";
-
 /** Check if two grid areas overlap. */
 function areasOverlap(a: GridArea, b: GridArea): boolean {
   const aRight = a.col + a.col_span;
@@ -36,22 +31,6 @@ function findOverlappingIds(elements: UIElement[]): Set<string> {
   }
   return ids;
 }
-
-/** Map theme variable keys to CSS custom property names. */
-const THEME_VAR_MAP: Record<string, string> = {
-  panel_bg: "--panel-bg",
-  panel_text: "--panel-text",
-  accent: "--panel-accent",
-  button_bg: "--panel-button-bg",
-  button_text: "--panel-button-text",
-  button_active_bg: "--panel-button-active-bg",
-  button_active_text: "--panel-button-active-text",
-  danger: "--panel-danger",
-  success: "--panel-success",
-  warning: "--panel-warning",
-  grid_gap: "--panel-grid-gap",
-  border_radius: "--panel-border-radius",
-};
 
 interface CanvasProps {
   page: UIPage;
@@ -131,21 +110,6 @@ export function Canvas({
 
   // iframeReady is informational for now — kept to allow future gating if needed.
   void iframeReady;
-
-  // CSS custom properties for theme. These only affect overlay chrome (grid lines,
-  // selection outlines use their own colors); the iframe carries its own theme pipeline.
-  const panelCssVars = useMemo(() => {
-    const vars: Record<string, string> = {};
-    if (themeVariables) {
-      for (const [key, cssVar] of Object.entries(THEME_VAR_MAP)) {
-        const val = themeVariables[key];
-        if (val != null) {
-          vars[cssVar] = typeof val === "number" ? val + "px" : String(val);
-        }
-      }
-    }
-    return vars;
-  }, [themeVariables]);
 
   // Outer padding must match the iframe's #panel-root padding (var(--panel-grid-gap), default 8)
   // so the overlay grid aligns with the iframe's panel-page grid cell-for-cell.
@@ -274,7 +238,6 @@ export function Canvas({
             onClick={handleCanvasClick}
             onContextMenu={handleBackgroundContextMenu}
             style={{
-              ...panelCssVars,
               position: "absolute",
               inset: 0,
               padding: `${outerGap}px`,

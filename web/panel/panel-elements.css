@@ -13,13 +13,17 @@
     --panel-bg: #1a1a2e;
     --panel-text: #ffffff;
     --panel-accent: #2196F3;
+    --panel-accent-hover: #1e88e5;
     --panel-button-bg: #424242;
     --panel-button-text: #cccccc;
     --panel-button-active-bg: #2196F3;
     --panel-button-active-text: #ffffff;
+    --panel-button-border: #555555;
     --panel-danger: #F44336;
     --panel-success: #4CAF50;
     --panel-warning: #FF9800;
+    --panel-surface: #2a2a4a;
+    --panel-surface-border: #3a3a5c;
     --panel-grid-gap: 8px;
     --panel-border-radius: 8px;
 }

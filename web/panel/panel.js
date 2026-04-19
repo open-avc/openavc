@@ -3251,18 +3251,25 @@ class PanelApp {
         const root = document.documentElement;
         const vars = { ...theme.variables, ...overrides };
 
-        // Map theme variables to CSS custom properties
+        // Map theme variables to CSS custom properties. The last four
+        // (accent_hover, button_border, surface, surface_border) aren't
+        // consumed by any rule in panel-elements.css today, but are exposed
+        // so theme authors and user CSS can reference them via var(--panel-*).
         const varMap = {
             panel_bg: '--panel-bg',
             panel_text: '--panel-text',
             accent: '--panel-accent',
+            accent_hover: '--panel-accent-hover',
             button_bg: '--panel-button-bg',
             button_text: '--panel-button-text',
             button_active_bg: '--panel-button-active-bg',
             button_active_text: '--panel-button-active-text',
+            button_border: '--panel-button-border',
             danger: '--panel-danger',
             success: '--panel-success',
             warning: '--panel-warning',
+            surface: '--panel-surface',
+            surface_border: '--panel-surface-border',
             grid_gap: '--panel-grid-gap',
             border_radius: '--panel-border-radius',
         };
@@ -3311,7 +3318,55 @@ class PanelApp {
         this.themeElementDefaults = {};
     }
 
+    /**
+     * Resolve a theme `"var(name)"` reference to its underlying variable value.
+     * Returns the original value unchanged if it isn't a var() string.
+     */
+    _resolveThemeValue(value, variables) {
+        if (typeof value !== 'string') return value;
+        const match = value.match(/^var\(([^)]+)\)$/);
+        if (!match) return value;
+        const v = variables?.[match[1].trim()];
+        return v != null ? v : null;
+    }
+
+    /**
+     * Convert theme.page_defaults (with background_color/_image/_gradient keys
+     * and `var(name)` references) into a page.background-shaped object so
+     * _applyPageBackground can consume it.
+     */
+    _themePageDefaultsToBackground(defaults, variables) {
+        if (!defaults) return null;
+        const bg = {};
+        const color = this._resolveThemeValue(defaults.background_color, variables);
+        if (color) bg.color = color;
+        const image = this._resolveThemeValue(defaults.background_image, variables);
+        if (image) {
+            bg.image = image;
+            if (defaults.background_image_size) bg.image_size = defaults.background_image_size;
+            if (defaults.background_image_position) bg.image_position = defaults.background_image_position;
+            if (defaults.background_image_opacity != null) bg.image_opacity = defaults.background_image_opacity;
+        }
+        const gradient = defaults.background_gradient;
+        if (gradient && typeof gradient === 'object') {
+            const from = this._resolveThemeValue(gradient.from, variables);
+            const to = this._resolveThemeValue(gradient.to, variables);
+            if (from && to) {
+                bg.gradient = { from, to, angle: gradient.angle };
+            }
+        }
+        return Object.keys(bg).length ? bg : null;
+    }
+
     _applyPageBackground(gridEl, bg) {
+        // Inherit theme.page_defaults when the page itself doesn't set a background.
+        // Keeps bg visuals consistent with the active theme for pages that don't opt out.
+        if (!bg || (!bg.color && !bg.image && !bg.gradient)) {
+            bg = this._themePageDefaultsToBackground(
+                this.currentTheme?.page_defaults,
+                this.currentTheme?.variables,
+            );
+        }
         if (!bg) return;
         gridEl.style.position = 'relative';
 
