@@ -100,8 +100,10 @@ export function Canvas({
 
   // Seed the iframe when it finishes loading. Panel.js has a parallel fetch fallback
   // for the initial render, so missing this message only costs a minor render.
+  // The iframe always receives the in-memory project via postMessage — in edit
+  // mode this is the only source; in preview mode it takes priority over any
+  // WS ui.definition from the server so unsaved edits stay visible.
   const handleIframeLoad = useCallback(() => {
-    if (previewMode) return;
     const iframe = iframeRef.current;
     const p = projectRef.current;
     if (!iframe?.contentWindow || !p) return;
@@ -111,12 +113,11 @@ export function Canvas({
       "*",
     );
     setIframeReady(true);
-  }, [previewMode, showGrid]);
+  }, [showGrid]);
 
-  // Push project → iframe on every edit. Unconditionally posts (no iframeReady gate)
-  // so new elements show up even if the handshake raced on startup.
+  // Push project → iframe on every edit (both edit and preview modes).
   useEffect(() => {
-    if (previewMode || !project) return;
+    if (!project) return;
     const iframe = iframeRef.current;
     if (!iframe?.contentWindow) return;
     const timer = setTimeout(() => {
@@ -126,7 +127,7 @@ export function Canvas({
       );
     }, 50);
     return () => clearTimeout(timer);
-  }, [project, page.id, previewMode, showGrid]);
+  }, [project, page.id, showGrid]);
 
   // iframeReady is informational for now — kept to allow future gating if needed.
   void iframeReady;

@@ -12,6 +12,10 @@ class PanelApp {
         // binding sends, no idle/lock, no transitions. Definition arrives via
         // postMessage from the parent programmer window.
         this.editMode = params.get('edit') === '1';
+        // Embedded — iframe hosted inside another window (the builder). The
+        // parent is authoritative for the project definition; WS is used only
+        // for live device state. Standalone tabs stay on the WS path for both.
+        this.embedded = (window.parent && window.parent !== window);
         this.ws = null;
         this.state = {};
         this.uiDef = null;
@@ -42,8 +46,13 @@ class PanelApp {
     }
 
     start() {
-        if (this.editMode) {
+        // Any embedded iframe accepts project updates from the parent programmer
+        // window. Preview mode embeds the iframe but still opens WS for live state;
+        // edit mode embeds it and skips WS entirely.
+        if (this.embedded) {
             this._setupEditModeListener();
+        }
+        if (this.editMode) {
             this._hideLoadingState();
             if (this.statusEl) {
                 this.statusEl.style.display = 'none';
@@ -53,7 +62,6 @@ class PanelApp {
             const offline = document.getElementById('offline-overlay');
             if (offline) offline.style.display = 'none';
             console.log('[panel-edit] start: edit mode, waiting for editor-init from parent');
-            // Fetch the current project as a fallback if parent's postMessage races.
             this._fetchProjectAndRender();
             this._postToParent({ type: 'openavc:editor-ready' });
             return;
@@ -109,7 +117,9 @@ class PanelApp {
                     this.uiSettings = ui.settings || {};
                     if (msg.pageId) this.currentPage = msg.pageId;
                     if (typeof msg.showGrid === 'boolean') this._editShowGrid = msg.showGrid;
-                    this.state = {};  // edit mode shows static defaults
+                    // Edit mode has no WS, so force empty state (static defaults).
+                    // Preview mode has a WS that manages state — don't clobber it.
+                    if (this.editMode) this.state = {};
                     this.snapshotReceived = true;
                     this.applyOrientation();
                     this.renderCurrentPage();
@@ -236,6 +246,11 @@ class PanelApp {
                 break;
 
             case 'ui.definition':
+                // Embedded iframes take their definition from the parent
+                // programmer window via postMessage — ignore server-pushed
+                // definitions so in-flight builder edits aren't clobbered by
+                // the last-saved project.
+                if (this.embedded) break;
                 this.uiDef = msg.ui;
                 this.uiSettings = msg.ui?.settings || {};
                 this.applyOrientation();
