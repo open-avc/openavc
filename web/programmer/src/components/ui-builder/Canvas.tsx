@@ -1,15 +1,14 @@
-import { useRef, useCallback, useMemo } from "react";
+import { useRef, useCallback, useMemo, useEffect, useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import type { UIPage, UIElement, MasterElement, GridArea } from "../../api/types";
-import { getTunnelPrefix } from "../../api/restClient";
 import { useUIBuilderStore } from "../../store/uiBuilderStore";
 import { useProjectStore } from "../../store/projectStore";
-import { useConnectionStore } from "../../store/connectionStore";
 import { CanvasElement } from "./CanvasElement";
-import { RenderElement } from "./ElementRenderers/renderElement";
 import { moveElementInPage } from "./uiBuilderHelpers";
 
-// Shared panel element styles — single source of truth for element rendering
+// Share the runtime element stylesheet only for reference — the overlay itself
+// renders invisible hit-boxes, but importing this keeps the CSS custom properties
+// (--panel-*) resolvable inside any overlay chrome that reuses them.
 import "../../../../panel/panel-elements.css";
 
 /** Check if two grid areas overlap. */
@@ -62,7 +61,6 @@ interface CanvasProps {
   screenWidth: number;
   screenHeight: number;
   masterElements?: MasterElement[];
-  themeElementDefaults?: Record<string, Record<string, unknown>>;
   themeVariables?: Record<string, unknown>;
 }
 
@@ -74,10 +72,11 @@ export function Canvas({
   screenWidth,
   masterElements,
   screenHeight,
-  themeElementDefaults,
   themeVariables,
 }: CanvasProps) {
-  const gridRef = useRef<HTMLDivElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const [iframeReady, setIframeReady] = useState(false);
   const { setNodeRef } = useDroppable({ id: "canvas-drop" });
 
   const selectedElementId = useUIBuilderStore((s) => s.selectedElementId);
@@ -93,9 +92,47 @@ export function Canvas({
   const project = useProjectStore((s) => s.project);
   const update = useProjectStore((s) => s.update);
 
-  const liveState = useConnectionStore((s) => s.liveState);
+  // Ref-based read of current project/page so the onLoad handler closure stays stable.
+  const projectRef = useRef(project);
+  const pageIdRef = useRef(page.id);
+  useEffect(() => { projectRef.current = project; }, [project]);
+  useEffect(() => { pageIdRef.current = page.id; }, [page.id]);
 
-  // Build CSS custom properties from theme variables for the canvas wrapper
+  // Seed the iframe when it finishes loading. Panel.js has a parallel fetch fallback
+  // for the initial render, so missing this message only costs a minor render.
+  const handleIframeLoad = useCallback(() => {
+    if (previewMode) return;
+    const iframe = iframeRef.current;
+    const p = projectRef.current;
+    if (!iframe?.contentWindow || !p) return;
+    console.log("[canvas] iframe loaded — posting editor-init");
+    iframe.contentWindow.postMessage(
+      { type: "openavc:editor-init", project: p, pageId: pageIdRef.current, showGrid },
+      "*",
+    );
+    setIframeReady(true);
+  }, [previewMode, showGrid]);
+
+  // Push project → iframe on every edit. Unconditionally posts (no iframeReady gate)
+  // so new elements show up even if the handshake raced on startup.
+  useEffect(() => {
+    if (previewMode || !project) return;
+    const iframe = iframeRef.current;
+    if (!iframe?.contentWindow) return;
+    const timer = setTimeout(() => {
+      iframe.contentWindow?.postMessage(
+        { type: "openavc:editor-project", project, pageId: page.id, showGrid },
+        "*",
+      );
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [project, page.id, previewMode, showGrid]);
+
+  // iframeReady is informational for now — kept to allow future gating if needed.
+  void iframeReady;
+
+  // CSS custom properties for theme. These only affect overlay chrome (grid lines,
+  // selection outlines use their own colors); the iframe carries its own theme pipeline.
   const panelCssVars = useMemo(() => {
     const vars: Record<string, string> = {};
     if (themeVariables) {
@@ -109,7 +146,13 @@ export function Canvas({
     return vars;
   }, [themeVariables]);
 
-  // Detect overlapping elements (only in edit mode)
+  // Outer padding must match the iframe's #panel-root padding (var(--panel-grid-gap), default 8)
+  // so the overlay grid aligns with the iframe's panel-page grid cell-for-cell.
+  const outerGap = useMemo(() => {
+    const v = themeVariables?.grid_gap;
+    return typeof v === "number" ? v : 8;
+  }, [themeVariables]);
+
   const overlappingIds = useMemo(
     () => (previewMode ? new Set<string>() : findOverlappingIds(page.elements)),
     [page.elements, previewMode],
@@ -121,6 +164,16 @@ export function Canvas({
       selectMasterElement(null);
     }
   }, [previewMode, selectElement, selectMasterElement]);
+
+  const handleBackgroundContextMenu = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      if (previewMode) return;
+      selectElement(null);
+      selectMasterElement(null);
+    },
+    [previewMode, selectElement, selectMasterElement],
+  );
 
   const handleCommitResize = useCallback(
     (elementId: string, gridArea: GridArea) => {
@@ -147,13 +200,13 @@ export function Canvas({
 
   const combinedRef = useCallback(
     (el: HTMLDivElement | null) => {
-      gridRef.current = el;
+      overlayRef.current = el;
       setNodeRef(el);
     },
     [setNodeRef],
   );
 
-  // Overlay/sidebar pages use their configured dimensions
+  // Overlay/sidebar pages use their configured dimensions.
   const pageType = page.page_type || "page";
   const isOverlay = pageType === "overlay" || pageType === "sidebar";
   const overlayWidth = isOverlay ? (page.overlay?.width ?? (pageType === "sidebar" ? 320 : 400)) : screenWidth;
@@ -161,45 +214,12 @@ export function Canvas({
     ? (pageType === "sidebar" ? screenHeight : (page.overlay?.height ?? 300))
     : screenHeight;
 
-  // Preview mode: show the real /panel in an iframe — zero duplicated logic
-  if (previewMode) {
-    return (
-      <div
-        style={{
-          flex: 1,
-          overflow: "auto",
-          background: "var(--bg-base)",
-          padding: "var(--space-lg)",
-        }}
-      >
-        <div
-          style={{
-            width: overlayWidth,
-            height: overlayHeight,
-            transform: `scale(${zoom})`,
-            transformOrigin: "top center",
-            flexShrink: 0,
-            margin: "auto",
-          }}
-        >
-          <iframe
-            key={page.id}
-            src={`/panel?page=${encodeURIComponent(page.id)}`}
-            style={{
-              width: "100%",
-              height: "100%",
-              border: "none",
-              borderRadius: isOverlay ? "12px" : "8px",
-              boxShadow: isOverlay
-                ? "0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.1)"
-                : "0 4px 24px rgba(0,0,0,0.5)",
-            }}
-          />
-        </div>
-      </div>
-    );
-  }
+  const iframeSrc = previewMode
+    ? `/panel?page=${encodeURIComponent(page.id)}`
+    : `/panel?page=${encodeURIComponent(page.id)}&edit=1`;
 
+  // dnd-kit reads the bounding rect of the element carrying data-canvas-grid for drop math.
+  // In edit mode we attach it to the overlay grid; in preview mode there's no drop target.
   return (
     <div
       style={{
@@ -217,230 +237,196 @@ export function Canvas({
           transformOrigin: "top center",
           flexShrink: 0,
           margin: "auto",
+          position: "relative",
+          borderRadius: isOverlay ? "12px" : "8px",
+          boxShadow: isOverlay
+            ? "0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.1)"
+            : "0 4px 24px rgba(0,0,0,0.5)",
         }}
       >
-        <div
-          ref={combinedRef}
-          data-canvas-grid=""
-          onClick={handleCanvasClick}
-          onContextMenu={(e) => {
-            e.preventDefault();
-          }}
+        {/* Iframe renders the real panel. Reload per page.id so panel.js rebuilds cleanly. */}
+        <iframe
+          key={`${page.id}-${previewMode ? "p" : "e"}`}
+          ref={iframeRef}
+          src={iframeSrc}
+          onLoad={handleIframeLoad}
+          title={`Panel page ${page.id}`}
+          tabIndex={previewMode ? 0 : -1}
           style={{
-            ...panelCssVars,
-            display: "grid",
-            gridTemplateColumns: `repeat(${page.grid.columns}, 1fr)`,
-            gridTemplateRows: `repeat(${page.grid.rows}, 1fr)`,
-            gap: `${page.grid_gap ?? 8}px`,
+            position: "absolute",
+            inset: 0,
             width: "100%",
             height: "100%",
-            background: page.background?.color || "#1a1a2e",
-            borderRadius: isOverlay ? "12px" : "8px",
-            padding: "8px",
-            position: "relative",
-            boxShadow: isOverlay
-              ? "0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.1)"
-              : "0 4px 24px rgba(0,0,0,0.5)",
-            fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
-            color: "var(--panel-text)",
-          } as React.CSSProperties}
-        >
-          {/* Page background layers */}
-          {page.background?.image && (
-            <div
-              style={{
-                position: "absolute",
-                inset: 0,
-                zIndex: 0,
-                pointerEvents: "none",
-                backgroundImage: `url("${getTunnelPrefix()}/api/projects/default/assets/${(page.background.image || "").replace("assets://", "")}")`,
-                backgroundSize: page.background.image_size || "cover",
-                backgroundPosition: page.background.image_position || "center",
-                backgroundRepeat: "no-repeat",
-                opacity: page.background.image_opacity ?? 1,
-                borderRadius: "inherit",
-              }}
-            />
-          )}
-          {page.background?.gradient?.from && page.background?.gradient?.to && (
-            <div
-              style={{
-                position: "absolute",
-                inset: 0,
-                zIndex: 1,
-                pointerEvents: "none",
-                background: `linear-gradient(${page.background.gradient.angle ?? 180}deg, ${page.background.gradient.from}, ${page.background.gradient.to})`,
-                borderRadius: "inherit",
-              }}
-            />
-          )}
+            border: "none",
+            borderRadius: "inherit",
+            background: "transparent",
+            pointerEvents: previewMode ? "auto" : "none",
+            display: "block",
+          }}
+        />
 
-          {/* Grid overlay */}
-          {showGrid && (
-            <GridOverlay columns={page.grid.columns} rows={page.grid.rows} gap={page.grid_gap ?? 8} />
-          )}
-          {/* Grid dimension label */}
-          {showGrid && (
+        {/* Overlay — only rendered in edit mode */}
+        {!previewMode && (
+          <div
+            ref={combinedRef}
+            data-canvas-grid=""
+            onClick={handleCanvasClick}
+            onContextMenu={handleBackgroundContextMenu}
+            style={{
+              ...panelCssVars,
+              position: "absolute",
+              inset: 0,
+              padding: `${outerGap}px`,
+              pointerEvents: "auto",
+              overflow: "visible",
+              borderRadius: "inherit",
+            }}
+          >
             <div
               style={{
-                position: "absolute",
-                top: 2,
-                left: 10,
-                fontSize: 10,
-                color: "rgba(255,255,255,0.3)",
-                pointerEvents: "none",
-                zIndex: 2,
-                fontFamily: "monospace",
+                display: "grid",
+                gridTemplateColumns: `repeat(${page.grid.columns}, 1fr)`,
+                gridTemplateRows: `repeat(${page.grid.rows}, 1fr)`,
+                gap: `${page.grid_gap ?? 8}px`,
+                width: "100%",
+                height: "100%",
+                position: "relative",
               }}
             >
-              {page.grid.columns} &times; {page.grid.rows}
-            </div>
-          )}
-
-          {/* Master elements (persistent, rendered below page elements) */}
-          {(masterElements || [])
-            .filter((m) => m.pages === "*" || (Array.isArray(m.pages) && m.pages.includes(page.id)))
-            .map((el) => {
-              const isMasterSelected = selectedMasterElementId === el.id;
-              return (
+              {/* Grid lines are rendered INSIDE the iframe's .panel-page now
+                  (see panel.js renderCurrentPage). That keeps them behind
+                  element backgrounds so dropped controls aren't "see-through". */}
+              {showGrid && (
                 <div
-                  key={`master-${el.id}`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    selectMasterElement(el.id);
-                  }}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setContextMenu({ x: e.clientX, y: e.clientY, elementId: el.id, isMaster: true });
-                  }}
                   style={{
-                    gridColumn: `${el.grid_area.col} / span ${el.grid_area.col_span}`,
-                    gridRow: `${el.grid_area.row} / span ${el.grid_area.row_span}`,
-                    opacity: 0.6,
-                    pointerEvents: "auto",
-                    zIndex: 0,
-                    position: "relative",
-                    cursor: "pointer",
-                    outline: isMasterSelected ? "2px solid #9C27B0" : "none",
-                    outlineOffset: 1,
-                    borderRadius: 4,
+                    position: "absolute",
+                    top: 2,
+                    left: 10,
+                    fontSize: 10,
+                    color: "rgba(255,255,255,0.3)",
+                    pointerEvents: "none",
+                    zIndex: 2,
+                    fontFamily: "monospace",
                   }}
-                  title={`Global element: ${el.id}`}
                 >
-                  <RenderElement element={el} previewMode={false} liveState={liveState} themeDefaults={themeElementDefaults} />
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: 2,
-                      left: 4,
-                      fontSize: 9,
-                      padding: "1px 4px",
-                      borderRadius: 3,
-                      background: "rgba(156,39,176,0.7)",
-                      color: "#fff",
-                      pointerEvents: "none",
-                      zIndex: 1,
-                    }}
-                  >
-                    Global
-                  </div>
+                  {page.grid.columns} &times; {page.grid.rows}
                 </div>
-              );
-            })}
+              )}
 
-          {/* Elements */}
-          {page.elements.map((el) => (
-            <CanvasElement
-              key={el.id}
-              element={el}
-              pageId={page.id}
-              selected={selectedElementIds.includes(el.id)}
-              multiSelected={selectedElementIds.length > 1 && selectedElementIds.includes(el.id)}
-              previewMode={false}
-              columns={page.grid.columns}
-              rows={page.grid.rows}
-              liveState={liveState}
-              hasOverlap={overlappingIds.has(el.id)}
-              onSelect={(id, shiftKey) => shiftKey ? toggleSelectElement(id) : selectElement(id)}
-              onCommitResize={handleCommitResize}
-              onContextMenu={handleContextMenu}
-              themeElementDefaults={themeElementDefaults}
-            />
-          ))}
+              {/* Master element hit-boxes (selection + badge, iframe renders the pixels) */}
+              {(masterElements || [])
+                .filter((m) => m.pages === "*" || (Array.isArray(m.pages) && m.pages.includes(page.id)))
+                .map((el) => {
+                  const isMasterSelected = selectedMasterElementId === el.id;
+                  return (
+                    <div
+                      key={`master-${el.id}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        selectMasterElement(el.id);
+                      }}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setContextMenu({ x: e.clientX, y: e.clientY, elementId: el.id, isMaster: true });
+                      }}
+                      style={{
+                        gridColumn: `${el.grid_area.col} / span ${el.grid_area.col_span}`,
+                        gridRow: `${el.grid_area.row} / span ${el.grid_area.row_span}`,
+                        position: "relative",
+                        cursor: "pointer",
+                        outline: isMasterSelected ? "2px solid #9C27B0" : "none",
+                        outlineOffset: 1,
+                        borderRadius: 4,
+                        zIndex: 0,
+                      }}
+                      title={`Master element: ${el.id}`}
+                    >
+                      <div
+                        style={{
+                          position: "absolute",
+                          top: 2,
+                          left: 4,
+                          fontSize: 9,
+                          padding: "1px 5px",
+                          borderRadius: 3,
+                          background: "rgba(156,39,176,0.85)",
+                          color: "#fff",
+                          pointerEvents: "none",
+                          zIndex: 1,
+                          fontWeight: 600,
+                          letterSpacing: "0.02em",
+                        }}
+                      >
+                        Master
+                      </div>
+                    </div>
+                  );
+                })}
 
-          {/* Snap guides (alignment lines for selected element) */}
-          {selectedElementId && page.elements.length > 1 && (
-            <SnapGuides
-              elements={page.elements}
-              selectedId={selectedElementId}
-              columns={page.grid.columns}
-              rows={page.grid.rows}
-            />
-          )}
+              {/* Element hit-boxes (selection + drag + resize, iframe renders the pixels) */}
+              {page.elements.map((el) => (
+                <CanvasElement
+                  key={el.id}
+                  element={el}
+                  pageId={page.id}
+                  selected={selectedElementIds.includes(el.id)}
+                  multiSelected={selectedElementIds.length > 1 && selectedElementIds.includes(el.id)}
+                  previewMode={false}
+                  columns={page.grid.columns}
+                  rows={page.grid.rows}
+                  hasOverlap={overlappingIds.has(el.id)}
+                  onSelect={(id, shiftKey) => (shiftKey ? toggleSelectElement(id) : selectElement(id))}
+                  onCommitResize={handleCommitResize}
+                  onContextMenu={handleContextMenu}
+                />
+              ))}
 
-          {/* Empty state */}
-          {page.elements.length === 0 && (
-            <div
-              style={{
-                gridColumn: "1 / -1",
-                gridRow: "1 / -1",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "var(--text-muted)",
-                fontSize: "var(--font-size-lg)",
-                pointerEvents: "none",
-                gap: "var(--space-sm)",
-              }}
-            >
-              <span>Drag elements from the palette to get started</span>
-              <a href="https://docs.openavc.com/ui-builder" target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)", fontSize: "var(--font-size-sm)", pointerEvents: "auto" }}>
-                Learn about the UI Builder
-              </a>
+              {/* Snap guides (alignment lines for selected element) */}
+              {selectedElementId && page.elements.length > 1 && (
+                <SnapGuides
+                  elements={page.elements}
+                  selectedId={selectedElementId}
+                  columns={page.grid.columns}
+                  rows={page.grid.rows}
+                />
+              )}
+
+              {/* Empty state */}
+              {page.elements.length === 0 && (
+                <div
+                  style={{
+                    gridColumn: "1 / -1",
+                    gridRow: "1 / -1",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "var(--text-muted)",
+                    fontSize: "var(--font-size-lg)",
+                    pointerEvents: "none",
+                    gap: "var(--space-sm)",
+                  }}
+                >
+                  <span>Drag elements from the palette to get started</span>
+                  <a
+                    href="https://docs.openavc.com/ui-builder"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: "var(--accent)", fontSize: "var(--font-size-sm)", pointerEvents: "auto" }}
+                  >
+                    Learn about the UI Builder
+                  </a>
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-function GridOverlay({
-  columns,
-  rows,
-  gap = 8,
-}: {
-  columns: number;
-  rows: number;
-  gap?: number;
-}) {
-  return (
-    <div
-      style={{
-        position: "absolute",
-        inset: 8,
-        display: "grid",
-        gridTemplateColumns: `repeat(${columns}, 1fr)`,
-        gridTemplateRows: `repeat(${rows}, 1fr)`,
-        gap: `${gap}px`,
-        pointerEvents: "none",
-        zIndex: 0,
-      }}
-    >
-      {Array.from({ length: columns * rows }).map((_, i) => (
-        <div
-          key={i}
-          style={{
-            border: "1px dashed rgba(255,255,255,0.18)",
-            borderRadius: "4px",
-          }}
-        />
-      ))}
-    </div>
-  );
-}
 
 function SnapGuides({
   elements,
@@ -483,7 +469,6 @@ function SnapGuides({
 
   if (vLines.size === 0 && hLines.size === 0) return null;
 
-  // Each grid column occupies (100% / columns) width, offset by padding (8px) and gap
   return (
     <div
       style={{

@@ -1,5 +1,5 @@
 import * as LucideIcons from "lucide-react";
-import { getTunnelPrefix } from "../../../api/restClient";
+import { getTunnelPrefix } from "../../api/restClient";
 
 interface ElementIconProps {
   name: string;
@@ -12,10 +12,8 @@ function getIconComponent(kebabName: string): React.ComponentType<{ size?: numbe
     .split("-")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join("");
-  // Use the icons namespace (resilient to tree-shaking), fall back to direct named export
   const icons = (LucideIcons as Record<string, unknown>).icons as Record<string, unknown> | undefined;
   const comp = icons?.[pascal] || (LucideIcons as Record<string, unknown>)[pascal];
-  // Lucide icons are forwardRef objects (typeof "object" with render), not plain functions
   if (comp && (typeof comp === "function" || typeof (comp as { render?: unknown }).render === "function")) {
     return comp as React.ComponentType<{ size?: number; color?: string }>;
   }
@@ -26,7 +24,6 @@ export function ElementIcon({ name, size, color }: ElementIconProps) {
   size = size ?? 24;
   if (!name) return null;
 
-  // Custom asset icon
   if (name.startsWith("assets://")) {
     return (
       <img
@@ -37,7 +34,6 @@ export function ElementIcon({ name, size, color }: ElementIconProps) {
     );
   }
 
-  // Lucide icon
   const Comp = getIconComponent(name);
   if (!Comp) return null;
 
@@ -73,9 +69,7 @@ export function IconTextLayout({
     alignItems: "center",
     justifyContent: "center",
     gap: isVertical ? 4 : 6,
-    flexDirection: isVertical
-      ? "column"
-      : "row",
+    flexDirection: isVertical ? "column" : "row",
     width: "100%",
     height: "100%",
   };

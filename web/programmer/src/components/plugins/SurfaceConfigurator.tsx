@@ -19,7 +19,7 @@ import { ButtonBindingEditor } from "../shared/ButtonBindingEditor";
 import type { ButtonBindings } from "../shared/ButtonBindingEditor";
 import { InlineColorPicker } from "../shared/InlineColorPicker";
 import { IconPicker } from "../ui-builder/IconPicker";
-import { ElementIcon } from "../ui-builder/ElementRenderers/ElementIcon";
+import { ElementIcon } from "../ui-builder/ElementIcon";
 import * as api from "../../api/restClient";
 
 // ──── Types ────

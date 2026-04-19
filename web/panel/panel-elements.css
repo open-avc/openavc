@@ -651,6 +651,43 @@
     font-variant-numeric: tabular-nums;
 }
 
+/* Horizontal fader */
+.panel-fader.horizontal .fader-body {
+    flex-direction: column;
+    height: 100%;
+    align-items: stretch;
+}
+.panel-fader.horizontal .fader-scale {
+    flex-direction: row;
+    width: 100%;
+    height: 16px;
+    justify-content: space-between;
+}
+.panel-fader.horizontal .fader-mark {
+    right: auto;
+    transform: translateX(-50%);
+    text-align: center;
+    top: 2px;
+    bottom: auto;
+}
+.panel-fader.horizontal .fader-track-wrap {
+    flex-direction: row;
+    width: 100%;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 0 22px;
+}
+.panel-fader.horizontal .fader-track {
+    width: 100%;
+    height: 6px;
+}
+.panel-fader.horizontal .fader-handle {
+    left: 50%;
+    top: 50%;
+    bottom: auto;
+    transform: translate(-50%, -50%);
+}
+
 /* ===== Group ===== */
 
 .panel-group {

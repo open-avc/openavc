@@ -46,7 +46,10 @@ button.panel-element {
 #panel-root {
     width: 100%;
     height: 100%;
-    padding: var(--panel-grid-gap);
+    /* Padding is on .panel-page (below). Putting it here would cause
+       `.panel-page { height: 100% }` to resolve to border-box height, making
+       the grid overflow the content area by `padding * 2` pixels — a 2px-per-row
+       error that breaks alignment with the design-mode overlay. */
 }
 
 /* ===== Connection Status ===== */
@@ -96,6 +99,7 @@ button.panel-element {
     display: grid;
     width: 100%;
     height: 100%;
+    padding: var(--panel-grid-gap);
     gap: var(--panel-grid-gap);
     position: relative;
 }
@@ -107,9 +111,15 @@ button.panel-element {
     grid-row: 1 / -1;
 }
 
-.panel-page > :not(.panel-page-bg-image):not(.panel-page-bg-gradient) {
+.panel-page > :not(.panel-page-bg-image):not(.panel-page-bg-gradient):not(.panel-page-grid-overlay) {
     position: relative;
     z-index: 2;
+}
+
+/* Edit-mode grid overlay — sits behind all elements */
+.panel-page > .panel-page-grid-overlay {
+    position: relative;
+    z-index: 0;
 }
 
 /* ===== Overlay / Popup System ===== */

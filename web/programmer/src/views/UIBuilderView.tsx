@@ -26,8 +26,6 @@ import { Canvas } from "../components/ui-builder/Canvas";
 import { CanvasToolbar } from "../components/ui-builder/CanvasToolbar";
 import { PropertiesPanel } from "../components/ui-builder/PropertiesPanel";
 import { ContextMenu } from "../components/ui-builder/ContextMenu";
-
-import { RenderElement } from "../components/ui-builder/ElementRenderers/renderElement";
 import {
   SCREEN_PRESETS,
   ELEMENT_TEMPLATES,
@@ -956,7 +954,6 @@ export function UIBuilderView() {
                 screenWidth={screenWidth}
                 screenHeight={screenHeight}
                 masterElements={project?.ui?.master_elements}
-                themeElementDefaults={themeElementDefaults}
                 themeVariables={themeVariables}
               />
             ) : (
@@ -1055,28 +1052,30 @@ export function UIBuilderView() {
         </PanelGroup>
       </div>
 
-      {/* Drag overlay — shows semi-transparent element preview */}
+      {/* Drag overlay — outlined footprint sized to the drop target, with the element type label. */}
       <DragOverlay dropAnimation={null}>
         {activeDragSource && draggedElement.current ? (
           <div
             style={{
               width: draggedElement.current.grid_area.col_span * dragCellSize.current.w,
               height: draggedElement.current.grid_area.row_span * dragCellSize.current.h,
-              opacity: 0.7,
+              opacity: 0.85,
               pointerEvents: "none",
               filter: "drop-shadow(0 4px 16px rgba(0,0,0,0.5))",
               borderRadius: 8,
-              overflow: "hidden",
               outline: "2px solid var(--accent)",
               outlineOffset: -1,
+              background: "var(--bg-elevated)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "var(--text-primary)",
+              fontSize: "var(--font-size-sm)",
+              fontWeight: 500,
+              textTransform: "capitalize",
             }}
           >
-            <RenderElement
-              element={draggedElement.current}
-              previewMode={false}
-              liveState={{}}
-              themeDefaults={themeElementDefaults}
-            />
+            {draggedElement.current.type.replace(/_/g, " ")}
           </div>
         ) : activeDragSource === "template" ? (
           <div

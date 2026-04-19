@@ -1,7 +1,6 @@
 import { useRef, useState, useCallback } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import type { UIElement, GridArea } from "../../api/types";
-import { RenderElement } from "./ElementRenderers/renderElement";
 
 interface CanvasElementProps {
   element: UIElement;
@@ -11,12 +10,10 @@ interface CanvasElementProps {
   previewMode: boolean;
   columns: number;
   rows: number;
-  liveState: Record<string, unknown>;
   hasOverlap?: boolean;
   onSelect: (id: string, shiftKey?: boolean) => void;
   onCommitResize: (elementId: string, gridArea: GridArea) => void;
   onContextMenu: (e: React.MouseEvent, elementId: string) => void;
-  themeElementDefaults?: Record<string, Record<string, unknown>>;
 }
 
 const HANDLE_SIZE = 18;
@@ -95,12 +92,10 @@ export function CanvasElement({
   previewMode,
   columns,
   rows,
-  liveState,
   hasOverlap,
   onSelect,
   onCommitResize,
   onContextMenu,
-  themeElementDefaults,
 }: CanvasElementProps) {
   const [tempGridArea, setTempGridArea] = useState<GridArea | null>(null);
   const tempGridAreaRef = useRef<GridArea | null>(null);
@@ -144,7 +139,7 @@ export function CanvasElement({
       const startY = e.clientY;
       const startGrid = { ...element.grid_area };
 
-      // Get cell dimensions from canvas grid parent
+      // Measure grid cells from the canvas grid container (attached by Canvas.tsx via data-canvas-grid).
       const gridEl = (e.currentTarget as HTMLElement).closest(
         "[data-canvas-grid]",
       );
@@ -210,6 +205,9 @@ export function CanvasElement({
     [element.grid_area, element.id, columns, rows, onCommitResize],
   );
 
+  // Transparent hit-box sitting on top of the iframe. The iframe renders the element's
+  // pixels; this wrapper handles selection, drag, resize, context menu, and the selection
+  // outline / overlap badge.
   return (
     <div
       ref={setNodeRef}
@@ -233,15 +231,10 @@ export function CanvasElement({
         zIndex: selected ? 10 : 1,
         minWidth: 0,
         minHeight: 0,
-        overflow: "hidden",
+        // Hit-box itself is transparent — the iframe below paints the real element.
+        background: "transparent",
       }}
     >
-      <RenderElement
-        element={element}
-        previewMode={previewMode}
-        liveState={liveState}
-        themeDefaults={themeElementDefaults}
-      />
       {selected && !previewMode && (
         <>
           {Object.entries(HANDLE_POSITIONS).map(([dir, style]) => (

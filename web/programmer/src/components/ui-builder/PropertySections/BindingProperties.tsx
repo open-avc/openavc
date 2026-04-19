@@ -334,30 +334,6 @@ export function BindingProperties({
           </div>
         );
       }
-      case "meter": {
-        const binding = element.bindings[slot] as Record<string, unknown> | undefined;
-        return (
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>Meter Source</div>
-            <VariableKeyPicker
-              value={String(binding?.key || "")}
-              onChange={(key) => handleBindingChange(slot, { source: "state", key })}
-              placeholder="Select meter state key..."
-            />
-            <div style={{ fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}>
-              Read-only state key for the integrated level meter display.
-            </div>
-            {binding && (
-              <button
-                onClick={() => handleBindingChange(slot, null)}
-                style={{ fontSize: 11, color: "var(--color-danger)", background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: 0 }}
-              >
-                Remove Binding
-              </button>
-            )}
-          </div>
-        );
-      }
       default:
         return null;
     }
@@ -378,7 +354,6 @@ export function BindingProperties({
     items: "Bind list items to a state key pattern for dynamic population.",
     select: "Action to perform when a list item is selected.",
     selected: "State key that tracks the currently selected item in the list.",
-    meter: "Read-only state key for the fader's meter display.",
   };
 
   const isActionIncomplete = (action: Record<string, unknown>): boolean => {
@@ -400,7 +375,6 @@ export function BindingProperties({
     if (slot === "variable") return !(binding as Record<string, unknown>).key;
     if (slot === "selected") return !(binding as Record<string, unknown>).key;
     if (slot === "items") return !(binding as Record<string, unknown>).key_pattern;
-    if (slot === "meter") return !(binding as Record<string, unknown>).key;
     return false;
   };
 

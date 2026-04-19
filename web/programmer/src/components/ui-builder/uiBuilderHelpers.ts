@@ -76,7 +76,7 @@ export const BINDING_SLOTS: Record<string, string[]> = {
   button: ["press", "release", "hold", "feedback"],
   label: ["text", "feedback"],
   slider: ["variable", "change", "value", "feedback"],
-  fader: ["value", "change", "meter", "feedback"],
+  fader: ["value", "change", "feedback"],
   status_led: ["color"],
   page_nav: [],
   select: ["variable", "change", "value", "feedback"],

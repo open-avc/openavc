@@ -7,11 +7,16 @@
 
 class PanelApp {
     constructor() {
+        const params = new URLSearchParams(window.location.search);
+        // Edit mode — iframe embedded in the UI Builder design canvas. No WS, no
+        // binding sends, no idle/lock, no transitions. Definition arrives via
+        // postMessage from the parent programmer window.
+        this.editMode = params.get('edit') === '1';
         this.ws = null;
         this.state = {};
         this.uiDef = null;
         this.uiSettings = {};
-        this.currentPage = new URLSearchParams(window.location.search).get('page') || 'main';
+        this.currentPage = params.get('page') || 'main';
         this.locked = false;
         this.snapshotReceived = false;
         this.idleTimer = null;
@@ -37,8 +42,89 @@ class PanelApp {
     }
 
     start() {
+        if (this.editMode) {
+            this._setupEditModeListener();
+            this._hideLoadingState();
+            if (this.statusEl) {
+                this.statusEl.style.display = 'none';
+                this.statusEl.remove();
+                this.statusEl = null;
+            }
+            const offline = document.getElementById('offline-overlay');
+            if (offline) offline.style.display = 'none';
+            console.log('[panel-edit] start: edit mode, waiting for editor-init from parent');
+            // Fetch the current project as a fallback if parent's postMessage races.
+            this._fetchProjectAndRender();
+            this._postToParent({ type: 'openavc:editor-ready' });
+            return;
+        }
         this.setupIdleListeners();
         this.connect();
+    }
+
+    _fetchProjectAndRender() {
+        const pathParts = location.pathname.split('/panel');
+        const basePath = pathParts[0] || '';
+        fetch(`${basePath}/api/project`)
+            .then(r => r.ok ? r.json() : null)
+            .then(proj => {
+                if (!proj || !proj.ui) {
+                    console.warn('[panel-edit] no project available from /api/project');
+                    return;
+                }
+                // If the parent already pushed a definition, don't clobber it.
+                if (this.uiDef) {
+                    console.log('[panel-edit] fetched project but parent already provided one; skipping');
+                    return;
+                }
+                console.log('[panel-edit] rendering from fetched project');
+                this.uiDef = proj.ui;
+                this.uiSettings = proj.ui.settings || {};
+                this.state = {};
+                this.snapshotReceived = true;
+                this.applyOrientation();
+                this.renderCurrentPage();
+            })
+            .catch(err => console.warn('[panel-edit] fetch failed:', err));
+    }
+
+    _postToParent(msg) {
+        if (window.parent && window.parent !== window) {
+            try { window.parent.postMessage(msg, '*'); } catch (_) { /* ignore */ }
+        }
+    }
+
+    _setupEditModeListener() {
+        window.addEventListener('message', (event) => {
+            // Only accept messages from the parent programmer window
+            if (event.source !== window.parent) return;
+            const msg = event.data;
+            if (!msg || typeof msg !== 'object') return;
+            switch (msg.type) {
+                case 'openavc:editor-init':
+                case 'openavc:editor-project': {
+                    const ui = msg.project?.ui || msg.ui || null;
+                    if (!ui) return;
+                    this.uiDef = ui;
+                    this.uiSettings = ui.settings || {};
+                    if (msg.pageId) this.currentPage = msg.pageId;
+                    if (typeof msg.showGrid === 'boolean') this._editShowGrid = msg.showGrid;
+                    this.state = {};  // edit mode shows static defaults
+                    this.snapshotReceived = true;
+                    this.applyOrientation();
+                    this.renderCurrentPage();
+                    this._postToParent({ type: 'openavc:editor-ready' });
+                    break;
+                }
+                case 'openavc:editor-page': {
+                    if (msg.pageId && msg.pageId !== this.currentPage) {
+                        this.currentPage = msg.pageId;
+                        this.renderCurrentPage();
+                    }
+                    break;
+                }
+            }
+        });
     }
 
     // --- WebSocket ---
@@ -92,6 +178,8 @@ class PanelApp {
     }
 
     send(msg) {
+        // Edit mode: no WS, bindings must not fire even if pointer events leak through
+        if (this.editMode) return;
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             this.ws.send(JSON.stringify(msg));
         }
@@ -394,11 +482,12 @@ class PanelApp {
         }
         this._clockElements = [];
 
-        // Page transition settings
+        // Page transition settings — disabled in edit mode so the designer isn't
+        // fighting re-entry animations on every live-preview rebuild.
         const settings = this.uiSettings || {};
-        const pageTransition = settings.page_transition || 'none';
+        const pageTransition = this.editMode ? 'none' : (settings.page_transition || 'none');
         const transitionDuration = settings.page_transition_duration || 200;
-        const entryAnimation = settings.element_entry || 'none';
+        const entryAnimation = this.editMode ? 'none' : (settings.element_entry || 'none');
         const staggerMs = settings.element_stagger_ms || 30;
 
         // Set transition duration CSS variable
@@ -452,6 +541,30 @@ class PanelApp {
         // Apply page enter animation
         if (pageTransition !== 'none') {
             grid.classList.add(`page-enter-${pageTransition}`);
+        }
+
+        // Edit-mode grid overlay (dashed cells). Rendered inside the grid so elements
+        // stack above it and the iframe's real backgrounds are preserved.
+        if (this.editMode && this._editShowGrid !== false) {
+            const gridGap = page.grid_gap != null ? page.grid_gap : 8;
+            const gridOverlay = document.createElement('div');
+            gridOverlay.className = 'panel-page-grid-overlay';
+            gridOverlay.style.cssText = [
+                'grid-column: 1 / -1',
+                'grid-row: 1 / -1',
+                `display: grid`,
+                `grid-template-columns: repeat(${cols}, 1fr)`,
+                `grid-template-rows: repeat(${rows}, 1fr)`,
+                `gap: ${gridGap}px`,
+                'pointer-events: none',
+                'z-index: 0',
+            ].join(';');
+            for (let i = 0; i < cols * rows; i++) {
+                const cell = document.createElement('div');
+                cell.style.cssText = 'border:1px dashed rgba(255,255,255,0.18);border-radius:4px;';
+                gridOverlay.appendChild(cell);
+            }
+            grid.appendChild(gridOverlay);
         }
 
         // Render master elements (persistent across pages, below page elements)
@@ -1003,6 +1116,20 @@ class PanelApp {
         el.className = 'panel-element panel-spacer';
         el.dataset.elementId = element.id;
         this.applyStyle(el, this.getThemedStyle(element.type, element.style));
+        // Edit-mode hint: dashed outline + label when the spacer has no visible styling,
+        // so designers can see where an otherwise invisible element sits.
+        const style = element.style || {};
+        const hasVisual = style.bg_color || style.background_image || style.background_gradient || style.border_width;
+        if (this.editMode && !hasVisual) {
+            el.style.border = '1px dashed rgba(255,255,255,0.3)';
+            el.style.borderRadius = el.style.borderRadius || '4px';
+            el.style.display = 'flex';
+            el.style.alignItems = 'center';
+            el.style.justifyContent = 'center';
+            el.style.color = 'rgba(255,255,255,0.4)';
+            el.style.fontSize = '11px';
+            el.textContent = 'Spacer';
+        }
         return el;
     }
 
@@ -1014,6 +1141,9 @@ class PanelApp {
         let content = element.label || 'Preset';
         if (element.preset_number != null) {
             content = element.preset_number + '\n' + content;
+            // Preserve the newline so the preset number sits on its own line.
+            el.style.whiteSpace = 'pre-line';
+            el.style.lineHeight = '1.15';
         }
         el.textContent = content;
 
@@ -1889,6 +2019,7 @@ class PanelApp {
         el.dataset.elementId = element.id;
 
         const orientation = element.orientation || 'vertical';
+        const isHorizontal = orientation === 'horizontal';
         let min = parseFloat(element.min ?? -80) || -80;
         let max = parseFloat(element.max ?? 10) || 10;
         if (min >= max) { const tmp = min; min = max; max = tmp; }
@@ -1898,7 +2029,10 @@ class PanelApp {
         const showValue = style.show_value !== false;
         const showScale = style.show_scale !== false;
 
-        el.classList.add(orientation === 'horizontal' ? 'horizontal' : 'vertical');
+        el.classList.add(isHorizontal ? 'horizontal' : 'vertical');
+
+        // Element-level wrapper styling (bg_color, border, padding, shadow, etc.)
+        this.applyStyle(el, this.getThemedStyle('fader', element.style));
 
         if (element.label) {
             const label = document.createElement('div');
@@ -1919,7 +2053,8 @@ class PanelApp {
                 const mark = document.createElement('div');
                 mark.className = 'fader-mark';
                 const frac = (m - min) / (max - min);
-                mark.style.bottom = `${frac * 100}%`;
+                if (isHorizontal) mark.style.left = `${frac * 100}%`;
+                else mark.style.bottom = `${frac * 100}%`;
                 mark.textContent = m.toString();
                 scale.appendChild(mark);
             }
@@ -1964,7 +2099,8 @@ class PanelApp {
         }
         currentValue = Math.max(min, Math.min(max, currentValue));
         const initFrac = (currentValue - min) / (max - min);
-        handle.style.bottom = `${initFrac * 100}%`;
+        if (isHorizontal) handle.style.left = `${initFrac * 100}%`;
+        else handle.style.bottom = `${initFrac * 100}%`;
         if (valueDisplay) valueDisplay.textContent = `${Math.round(currentValue * 10) / 10} ${unit}`;
 
         // Touch/mouse drag interaction
@@ -1973,15 +2109,22 @@ class PanelApp {
 
         const getValueFromEvent = (e) => {
             const rect = trackWrap.getBoundingClientRect();
-            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-            const frac = 1 - Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
+            let frac;
+            if (isHorizontal) {
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                frac = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+            } else {
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                frac = 1 - Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
+            }
             const val = min + frac * (max - min);
             return Math.round(val / step) * step;
         };
 
         const updateFader = (val) => {
             const frac = (val - min) / (max - min);
-            handle.style.bottom = `${frac * 100}%`;
+            if (isHorizontal) handle.style.left = `${frac * 100}%`;
+            else handle.style.bottom = `${frac * 100}%`;
             handle.setAttribute('aria-valuenow', String(Math.round(val * 10) / 10));
             if (valueDisplay) valueDisplay.textContent = `${Math.round(val * 10) / 10} ${unit}`;
         };
@@ -2070,7 +2213,7 @@ class PanelApp {
                 element: el,
                 elementDef: element,
                 binding: valueBinding,
-                _fader: { handle, valueDisplay, min, max, unit },
+                _fader: { handle, valueDisplay, min, max, unit, horizontal: isHorizontal },
             });
         }
 
@@ -2095,10 +2238,11 @@ class PanelApp {
     evaluateFaderValue(b) {
         const raw = this.state[b.binding.key];
         if (raw === undefined || raw === null) return;
-        const { handle, valueDisplay, min, max, unit } = b._fader;
+        const { handle, valueDisplay, min, max, unit, horizontal } = b._fader;
         const value = Math.max(min, Math.min(max, Number(raw)));
         const frac = (value - min) / (max - min);
-        handle.style.bottom = `${frac * 100}%`;
+        if (horizontal) handle.style.left = `${frac * 100}%`;
+        else handle.style.bottom = `${frac * 100}%`;
         if (valueDisplay) valueDisplay.textContent = `${Math.round(value * 10) / 10} ${unit}`;
     }
 
@@ -2439,6 +2583,33 @@ class PanelApp {
             el.style.display = 'flex';
             el.style.alignItems = 'center';
             el.style.justifyContent = 'center';
+            return el;
+        }
+
+        // Edit mode: render a placeholder instead of booting the real plugin iframe.
+        // Keeps the designer fast and avoids running plugin code while authoring.
+        if (this.editMode) {
+            el.style.display = 'flex';
+            el.style.flexDirection = 'column';
+            el.style.alignItems = 'center';
+            el.style.justifyContent = 'center';
+            el.style.gap = '4px';
+            el.style.border = '1px dashed rgba(255,255,255,0.3)';
+            el.style.borderRadius = '4px';
+            el.style.color = 'rgba(255,255,255,0.55)';
+            el.style.fontSize = '11px';
+            el.style.padding = '4px';
+            el.style.textAlign = 'center';
+            const label = document.createElement('div');
+            label.textContent = 'Plugin';
+            label.style.fontWeight = '600';
+            const sub = document.createElement('div');
+            sub.textContent = `${pluginId} / ${pluginType}`;
+            sub.style.opacity = '0.8';
+            sub.style.fontSize = '10px';
+            el.appendChild(label);
+            el.appendChild(sub);
+            this.applyStyle(el, this.getThemedStyle('plugin', element.style));
             return el;
         }
 
@@ -2919,6 +3090,7 @@ class PanelApp {
     // --- Lock Screen ---
 
     showLockScreen() {
+        if (this.editMode) return;
         const lockCode = this.uiSettings?.lock_code;
         if (!lockCode) return;
 
@@ -3578,4 +3750,6 @@ class PanelApp {
 
 // Start the app
 const app = new PanelApp();
+// Expose for iframe debugging and programmer integration (read-only intent)
+window.__openavcPanel = app;
 document.addEventListener('DOMContentLoaded', () => app.start());
