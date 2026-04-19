@@ -16,6 +16,7 @@ interface ProjectStore {
   project: ProjectConfig | null;
   loading: boolean;
   saving: boolean;
+  savePending: boolean;  // true while debouncedSave timer is pending
   error: string | null;
   dirty: boolean;
   revision: number | null;  // server revision counter
@@ -44,6 +45,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   project: null,
   loading: false,
   saving: false,
+  savePending: false,
   error: null,
   dirty: false,
   revision: null,
@@ -76,7 +78,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   save: async (retryCount = 0) => {
     const { project, revision } = get();
     if (!project) return;
-    set({ saving: true, error: null });
+    set({ saving: true, savePending: false, error: null });
     try {
       const result = await api.saveProject(project, revision ?? undefined);
       set({ saving: false, dirty: false, revision: result.revision ?? null, conflictDetected: false });
@@ -99,7 +101,11 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
   debouncedSave: (delay = 500) => {
     clearTimeout(_saveTimer);
-    _saveTimer = setTimeout(() => { _saveTimer = undefined; get().save(); }, delay);
+    set({ savePending: true });
+    _saveTimer = setTimeout(() => {
+      _saveTimer = undefined;
+      get().save();
+    }, delay);
   },
 
   flushSave: () => {

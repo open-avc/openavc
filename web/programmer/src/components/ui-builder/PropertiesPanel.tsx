@@ -26,8 +26,10 @@ interface PropertiesPanelProps {
   themes?: ThemeSummary[];
   onThemeChange?: (themeId: string) => void;
   onApplyThemeToElements?: () => void;
+  onApplyOverrides?: (overrides: Record<string, unknown>) => void;
   onRefreshThemes?: () => void;
   onChange: (elementId: string, patch: Partial<UIElement>) => void;
+  onRenameElement?: (oldId: string, newId: string) => void;
   onPageChange?: (patch: Partial<UIPage>) => void;
   onMasterElementChange?: (elementId: string, patch: Partial<MasterElement>) => void;
   onDemoteMaster?: (elementId: string) => void;
@@ -44,8 +46,10 @@ export function PropertiesPanel({
   themes,
   onThemeChange,
   onApplyThemeToElements,
+  onApplyOverrides,
   onRefreshThemes,
   onChange,
+  onRenameElement,
   onPageChange,
   onMasterElementChange,
   onDemoteMaster,
@@ -76,6 +80,7 @@ export function PropertiesPanel({
             settings={project?.ui?.settings}
             onThemeChange={onThemeChange!}
             onApplyThemeToElements={onApplyThemeToElements}
+            onApplyOverrides={onApplyOverrides}
             onRefreshThemes={onRefreshThemes}
           />
         </div>
@@ -92,6 +97,7 @@ export function PropertiesPanel({
         project={project}
         themeDefaults={themeDefaults}
         onChange={onMasterElementChange || (() => {})}
+        onRename={onRenameElement}
         onDemote={onDemoteMaster || (() => {})}
         onDelete={onDeleteMaster || (() => {})}
       />
@@ -184,7 +190,6 @@ export function PropertiesPanel({
   }
 
   if (!element || !page) {
-    const pageType = page?.page_type;
     const currentThemeId = project?.ui?.settings?.theme_id || "dark-default";
 
     return (
@@ -205,14 +210,13 @@ export function PropertiesPanel({
             settings={project?.ui?.settings}
             onThemeChange={onThemeChange}
             onApplyThemeToElements={onApplyThemeToElements}
+            onApplyOverrides={onApplyOverrides}
             onRefreshThemes={onRefreshThemes}
           />
         )}
 
         {/* Page Properties */}
-        {page && onPageChange && (pageType === "overlay" || pageType === "sidebar") ? (
-          <OverlayProperties page={page} onChange={onPageChange} />
-        ) : page && onPageChange ? (
+        {page && onPageChange ? (
           <PageProperties page={page} onChange={onPageChange} />
         ) : (
           <div
@@ -283,6 +287,7 @@ export function PropertiesPanel({
           element={element}
           pages={project.ui.pages}
           onChange={handleChange}
+          onRename={onRenameElement ? (newId) => onRenameElement(element.id, newId) : undefined}
         />
       </Section>
 
@@ -357,6 +362,7 @@ function MasterElementProperties({
   project,
   themeDefaults,
   onChange,
+  onRename,
   onDemote,
   onDelete,
 }: {
@@ -365,6 +371,7 @@ function MasterElementProperties({
   project: ProjectConfig;
   themeDefaults?: Record<string, Record<string, unknown>>;
   onChange: (elementId: string, patch: Partial<MasterElement>) => void;
+  onRename?: (oldId: string, newId: string) => void;
   onDemote: (elementId: string) => void;
   onDelete: (elementId: string) => void;
 }) {
@@ -437,6 +444,7 @@ function MasterElementProperties({
           element={masterElement}
           pages={project.ui.pages}
           onChange={handleElementChange}
+          onRename={onRename ? (newId) => onRename(masterElement.id, newId) : undefined}
         />
       </Section>
 
@@ -583,6 +591,11 @@ function PageProperties({
   onChange: (patch: Partial<UIPage>) => void;
 }) {
   const bg = page.background || {};
+  const overlay = page.overlay || {};
+  const pageType = page.page_type || "page";
+  const isOverlay = pageType === "overlay";
+  const isSidebar = pageType === "sidebar";
+  const isOverlayOrSidebar = isOverlay || isSidebar;
 
   const updateBg = (patch: Partial<PageBackground>) => {
     onChange({ background: { ...bg, ...patch } });
@@ -593,7 +606,59 @@ function PageProperties({
     updateBg({ gradient: { ...grad, ...patch } as PageBackground["gradient"] });
   };
 
+  const updateOverlay = (patch: Partial<OverlayConfig>) => {
+    onChange({ overlay: { ...overlay, ...patch } });
+  };
+
+  // Preserve grid across page-type switches — Aaron explicitly wants this.
+  // The previous behavior reset grid to 4×4 / 4×8 silently, which clamped
+  // existing elements off the grid with no path back.
+  const handleTypeChange = (newType: string) => {
+    if (newType === "page") {
+      onChange({ page_type: undefined as unknown as string, overlay: undefined });
+    } else if (newType === "overlay") {
+      onChange({
+        page_type: "overlay",
+        overlay: {
+          width: overlay.width ?? 400,
+          height: overlay.height ?? 300,
+          position: overlay.position ?? "center",
+          backdrop: overlay.backdrop ?? "dim",
+          dismiss_on_backdrop: overlay.dismiss_on_backdrop ?? true,
+          animation: overlay.animation ?? "fade",
+        },
+      });
+    } else if (newType === "sidebar") {
+      onChange({
+        page_type: "sidebar",
+        overlay: {
+          width: overlay.width ?? 320,
+          side: overlay.side ?? "right",
+          backdrop: overlay.backdrop ?? "dim",
+          dismiss_on_backdrop: overlay.dismiss_on_backdrop ?? true,
+          animation: overlay.animation ?? "slide-left",
+        },
+      });
+    }
+  };
+
   const hasGradient = !!(bg.gradient?.from && bg.gradient?.to);
+
+  const sectionHeader = (text: string, topGap = false): React.ReactNode => (
+    <div
+      style={{
+        fontSize: "var(--font-size-sm)",
+        color: "var(--text-secondary)",
+        textTransform: "uppercase",
+        letterSpacing: "0.5px",
+        fontWeight: 600,
+        padding: "var(--space-xs)",
+        marginTop: topGap ? "var(--space-sm)" : undefined,
+      }}
+    >
+      {text}
+    </div>
+  );
 
   return (
     <div
@@ -605,54 +670,13 @@ function PageProperties({
         gap: "var(--space-sm)",
       }}
     >
-      <div
-        style={{
-          fontSize: "var(--font-size-sm)",
-          color: "var(--text-secondary)",
-          textTransform: "uppercase",
-          letterSpacing: "0.5px",
-          fontWeight: 600,
-          padding: "var(--space-xs)",
-        }}
-      >
-        Page Properties
-      </div>
+      {sectionHeader(isSidebar ? "Sidebar Properties" : isOverlay ? "Overlay Properties" : "Page Properties")}
 
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
         <FieldRow label="Page Type">
           <select
-            value={page.page_type || "page"}
-            onChange={(e) => {
-              const newType = e.target.value;
-              if (newType === "page") {
-                onChange({ page_type: undefined as unknown as string, overlay: undefined });
-              } else if (newType === "overlay") {
-                onChange({
-                  page_type: "overlay",
-                  overlay: {
-                    width: 400,
-                    height: 300,
-                    position: "center",
-                    backdrop: "dim",
-                    dismiss_on_backdrop: true,
-                    animation: "fade",
-                  },
-                  grid: { columns: 4, rows: 4 },
-                });
-              } else if (newType === "sidebar") {
-                onChange({
-                  page_type: "sidebar",
-                  overlay: {
-                    width: 320,
-                    side: "right",
-                    backdrop: "dim",
-                    dismiss_on_backdrop: true,
-                    animation: "slide-left",
-                  },
-                  grid: { columns: 4, rows: 8 },
-                });
-              }
-            }}
+            value={pageType}
+            onChange={(e) => handleTypeChange(e.target.value)}
             style={{ flex: 1, padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
           >
             <option value="page">Page</option>
@@ -660,7 +684,104 @@ function PageProperties({
             <option value="sidebar">Sidebar</option>
           </select>
         </FieldRow>
+      </div>
 
+      {isOverlayOrSidebar && (
+        <>
+          {sectionHeader(isSidebar ? "Sidebar" : "Overlay", true)}
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+            <FieldRow label="Width">
+              <input
+                type="number"
+                value={overlay.width ?? (isSidebar ? 320 : 400)}
+                onChange={(e) => updateOverlay({ width: Number(e.target.value) })}
+                min={100}
+                style={{ flex: 1 }}
+              />
+              <span style={{ fontSize: 10, color: "var(--text-muted)" }}>px</span>
+            </FieldRow>
+
+            {isOverlay && (
+              <FieldRow label="Height">
+                <input
+                  type="number"
+                  value={overlay.height ?? 300}
+                  onChange={(e) => updateOverlay({ height: Number(e.target.value) })}
+                  min={100}
+                  style={{ flex: 1 }}
+                />
+                <span style={{ fontSize: 10, color: "var(--text-muted)" }}>px</span>
+              </FieldRow>
+            )}
+
+            {isOverlay && (
+              <FieldRow label="Position">
+                <select
+                  value={overlay.position || "center"}
+                  onChange={(e) => updateOverlay({ position: e.target.value })}
+                  style={{ flex: 1 }}
+                >
+                  <option value="center">Center</option>
+                  <option value="top">Top</option>
+                  <option value="bottom">Bottom</option>
+                </select>
+              </FieldRow>
+            )}
+
+            {isSidebar && (
+              <FieldRow label="Side">
+                <select
+                  value={overlay.side || "right"}
+                  onChange={(e) => updateOverlay({ side: e.target.value })}
+                  style={{ flex: 1 }}
+                >
+                  <option value="right">Right</option>
+                  <option value="left">Left</option>
+                </select>
+              </FieldRow>
+            )}
+
+            <FieldRow label="Backdrop">
+              <select
+                value={overlay.backdrop || "dim"}
+                onChange={(e) => updateOverlay({ backdrop: e.target.value })}
+                style={{ flex: 1 }}
+              >
+                <option value="dim">Dim</option>
+                <option value="blur">Blur</option>
+                <option value="none">None</option>
+              </select>
+            </FieldRow>
+
+            <FieldRow label="Animation">
+              <select
+                value={overlay.animation || (isSidebar ? "slide-left" : "fade")}
+                onChange={(e) => updateOverlay({ animation: e.target.value })}
+                style={{ flex: 1 }}
+              >
+                <option value="fade">Fade</option>
+                <option value="scale">Scale</option>
+                <option value="slide-up">Slide Up</option>
+                <option value="slide-down">Slide Down</option>
+                {isSidebar && <option value="slide-left">Slide Left</option>}
+                {isSidebar && <option value="slide-right">Slide Right</option>}
+                <option value="none">None</option>
+              </select>
+            </FieldRow>
+
+            <FieldRow label="Tap to Close">
+              <input
+                type="checkbox"
+                checked={overlay.dismiss_on_backdrop !== false}
+                onChange={(e) => updateOverlay({ dismiss_on_backdrop: e.target.checked })}
+              />
+            </FieldRow>
+          </div>
+        </>
+      )}
+
+      {sectionHeader("Grid", true)}
+      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
         <FieldRow label="Grid Cols">
           <input
             type="number"
@@ -706,20 +827,7 @@ function PageProperties({
         </div>
       </div>
 
-      <div
-        style={{
-          fontSize: "var(--font-size-sm)",
-          color: "var(--text-secondary)",
-          textTransform: "uppercase",
-          letterSpacing: "0.5px",
-          fontWeight: 600,
-          padding: "var(--space-xs)",
-          marginTop: "var(--space-sm)",
-        }}
-      >
-        Background
-      </div>
-
+      {sectionHeader("Background", true)}
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
         <FieldRow label="Color">
           <input
@@ -860,176 +968,9 @@ function PageProperties({
           lineHeight: 1.4,
         }}
       >
-        Page background is visible behind all elements. Use a gradient overlay on top of an image to keep text readable.
-      </div>
-    </div>
-  );
-}
-
-function OverlayProperties({
-  page,
-  onChange,
-}: {
-  page: UIPage;
-  onChange: (patch: Partial<UIPage>) => void;
-}) {
-  const overlay = page.overlay || {};
-  const pageType = page.page_type || "overlay";
-
-  const updateOverlay = (patch: Partial<OverlayConfig>) => {
-    onChange({ overlay: { ...overlay, ...patch } });
-  };
-
-  return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        overflow: "auto",
-        padding: "var(--space-sm)",
-        gap: "var(--space-sm)",
-      }}
-    >
-      <div
-        style={{
-          fontSize: "var(--font-size-sm)",
-          color: "var(--text-secondary)",
-          textTransform: "uppercase",
-          letterSpacing: "0.5px",
-          fontWeight: 600,
-          padding: "var(--space-xs)",
-        }}
-      >
-        {pageType === "sidebar" ? "Sidebar" : "Overlay"} Properties
-      </div>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
-        <FieldRow label="Width">
-          <input
-            type="number"
-            value={overlay.width ?? (pageType === "sidebar" ? 320 : 400)}
-            onChange={(e) => updateOverlay({ width: Number(e.target.value) })}
-            min={100}
-            style={{ flex: 1 }}
-          />
-          <span style={{ fontSize: 10, color: "var(--text-muted)" }}>px</span>
-        </FieldRow>
-
-        {pageType === "overlay" && (
-          <FieldRow label="Height">
-            <input
-              type="number"
-              value={overlay.height ?? 300}
-              onChange={(e) => updateOverlay({ height: Number(e.target.value) })}
-              min={100}
-              style={{ flex: 1 }}
-            />
-            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>px</span>
-          </FieldRow>
-        )}
-
-        {pageType === "overlay" && (
-          <FieldRow label="Position">
-            <select
-              value={overlay.position || "center"}
-              onChange={(e) => updateOverlay({ position: e.target.value })}
-              style={{ flex: 1 }}
-            >
-              <option value="center">Center</option>
-              <option value="top">Top</option>
-              <option value="bottom">Bottom</option>
-            </select>
-          </FieldRow>
-        )}
-
-        {pageType === "sidebar" && (
-          <FieldRow label="Side">
-            <select
-              value={overlay.side || "right"}
-              onChange={(e) => updateOverlay({ side: e.target.value })}
-              style={{ flex: 1 }}
-            >
-              <option value="right">Right</option>
-              <option value="left">Left</option>
-            </select>
-          </FieldRow>
-        )}
-
-        <FieldRow label="Backdrop">
-          <select
-            value={overlay.backdrop || "dim"}
-            onChange={(e) => updateOverlay({ backdrop: e.target.value })}
-            style={{ flex: 1 }}
-          >
-            <option value="dim">Dim</option>
-            <option value="blur">Blur</option>
-            <option value="none">None</option>
-          </select>
-        </FieldRow>
-
-        <FieldRow label="Animation">
-          <select
-            value={overlay.animation || "fade"}
-            onChange={(e) => updateOverlay({ animation: e.target.value })}
-            style={{ flex: 1 }}
-          >
-            <option value="fade">Fade</option>
-            <option value="scale">Scale</option>
-            <option value="slide-up">Slide Up</option>
-            <option value="slide-down">Slide Down</option>
-            {pageType === "sidebar" && <option value="slide-left">Slide Left</option>}
-            {pageType === "sidebar" && <option value="slide-right">Slide Right</option>}
-            <option value="none">None</option>
-          </select>
-        </FieldRow>
-
-        <FieldRow label="Tap to Close">
-          <input
-            type="checkbox"
-            checked={overlay.dismiss_on_backdrop !== false}
-            onChange={(e) =>
-              updateOverlay({ dismiss_on_backdrop: e.target.checked })
-            }
-          />
-        </FieldRow>
-
-        <FieldRow label="Grid Cols">
-          <input
-            type="number"
-            value={page.grid.columns}
-            onChange={(e) =>
-              onChange({ grid: { ...page.grid, columns: Math.max(1, Number(e.target.value)) } })
-            }
-            min={1}
-            max={24}
-            style={{ flex: 1 }}
-          />
-        </FieldRow>
-
-        <FieldRow label="Grid Rows">
-          <input
-            type="number"
-            value={page.grid.rows}
-            onChange={(e) =>
-              onChange({ grid: { ...page.grid, rows: Math.max(1, Number(e.target.value)) } })
-            }
-            min={1}
-            max={24}
-            style={{ flex: 1 }}
-          />
-        </FieldRow>
-      </div>
-
-      <div
-        style={{
-          fontSize: 11,
-          color: "var(--text-muted)",
-          padding: "var(--space-xs)",
-          lineHeight: 1.4,
-        }}
-      >
-        Navigate to this {pageType} using a page_nav element with target
-        "{page.id}", or use $back to dismiss.
+        {isOverlayOrSidebar
+          ? `Navigate to this ${isSidebar ? "sidebar" : "overlay"} using a page_nav element with target "${page.id}", or use $back to dismiss.`
+          : "Page background is visible behind all elements. Use a gradient overlay on top of an image to keep text readable."}
       </div>
     </div>
   );
@@ -1129,6 +1070,7 @@ function ThemeSection({
   settings,
   onThemeChange,
   onApplyThemeToElements,
+  onApplyOverrides,
   onRefreshThemes,
 }: {
   themes: ThemeSummary[];
@@ -1136,6 +1078,7 @@ function ThemeSection({
   settings?: UISettings;
   onThemeChange: (themeId: string) => void;
   onApplyThemeToElements?: () => void;
+  onApplyOverrides?: (overrides: Record<string, unknown>) => void;
   onRefreshThemes?: () => void;
 }) {
   const [showEditor, setShowEditor] = useState(false);
@@ -1247,10 +1190,7 @@ function ThemeSection({
             currentThemeId={currentThemeId}
             onThemeChange={onThemeChange}
             onRefreshThemes={onRefreshThemes || (() => {})}
-            onApplyOverrides={(_overrides) => {
-              // Theme overrides are handled by the settings update flow
-              // This is a pass-through - the parent handles the actual update
-            }}
+            onApplyOverrides={onApplyOverrides}
           />
         </div>
       )}

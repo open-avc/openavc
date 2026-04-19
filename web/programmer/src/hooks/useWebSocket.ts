@@ -4,6 +4,7 @@ import { useConnectionStore } from "../store/connectionStore";
 import { useLogStore } from "../store/logStore";
 import type { LogEntry } from "../store/logStore";
 import { useProjectStore } from "../store/projectStore";
+import { useUIBuilderStore } from "../store/uiBuilderStore";
 import { useDiscoveryStore } from "../store/discoveryStore";
 import { usePluginStore } from "../store/pluginStore";
 import { showSuccess, showInfo, showError } from "../store/toastStore";
@@ -29,6 +30,9 @@ export function useWebSocket() {
       const store = useProjectStore.getState();
       const wasDirty = store.dirty;
       store.load().then(() => {
+        // Project replaced from server — UI Builder undo snapshots reference
+        // stale pages/settings/master_elements that no longer match.
+        useUIBuilderStore.getState().clearUndoHistory();
         if (wasDirty) {
           showSuccess("Project reloaded from server — local changes may need to be re-applied");
         }
@@ -53,7 +57,9 @@ export function useWebSocket() {
     const debouncedProjectReload = () => {
       if (reloadTimer) clearTimeout(reloadTimer);
       reloadTimer = setTimeout(() => {
-        useProjectStore.getState().load();
+        useProjectStore.getState().load().then(() => {
+          useUIBuilderStore.getState().clearUndoHistory();
+        });
       }, 300);
     };
 

@@ -71,6 +71,9 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
   const update = useProjectStore((s) => s.update);
   const dirty = useProjectStore((s) => s.dirty);
   const saving = useProjectStore((s) => s.saving);
+  const savePending = useProjectStore((s) => s.savePending);
+  const error = useProjectStore((s) => s.error);
+  const conflictDetected = useProjectStore((s) => s.conflictDetected);
   const undo = useUIBuilderStore((s) => s.undo);
   const redo = useUIBuilderStore((s) => s.redo);
   const undoStack = useUIBuilderStore((s) => s.undoStack);
@@ -115,9 +118,9 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
   }, [pages, pageGroups]);
 
   const applyPageMutation = useCallback(
-    (mutate: (pages: UIPage[]) => UIPage[]) => {
+    (mutate: (pages: UIPage[]) => UIPage[], description: string) => {
       if (!project) return;
-      pushUndo(project.ui.pages);
+      pushUndo({ pages: project.ui.pages }, description);
       const newPages = mutate(project.ui.pages);
       update({ ui: { ...project.ui, pages: newPages } });
       touchMutation();
@@ -126,30 +129,31 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
   );
 
   const applyGroupMutation = useCallback(
-    (mutate: (groups: PageGroup[]) => PageGroup[]) => {
+    (mutate: (groups: PageGroup[]) => PageGroup[], description: string) => {
       if (!project) return;
+      pushUndo({ page_groups: project.ui.page_groups || [] }, description);
       const newGroups = mutate(project.ui.page_groups || []);
       update({ ui: { ...project.ui, page_groups: newGroups } });
       touchMutation();
     },
-    [project, update, touchMutation],
+    [project, pushUndo, update, touchMutation],
   );
 
   const handleAddGroup = (name: string) => {
-    applyGroupMutation((g) => addPageGroup(g, name));
+    applyGroupMutation((g) => addPageGroup(g, name), `Add group "${name}"`);
   };
 
   const handleDeleteGroup = (groupName: string) => {
-    applyGroupMutation((g) => removePageGroup(g, groupName));
+    applyGroupMutation((g) => removePageGroup(g, groupName), `Delete group "${groupName}"`);
   };
 
   const handleRenameGroup = (oldName: string, newName: string) => {
     if (!newName.trim() || newName === oldName) return;
-    applyGroupMutation((g) => renamePageGroup(g, oldName, newName.trim()));
+    applyGroupMutation((g) => renamePageGroup(g, oldName, newName.trim()), `Rename group`);
   };
 
   const handleAssignPageToGroup = (pageId: string, groupName: string | null) => {
-    applyGroupMutation((g) => assignPageToGroup(g, pageId, groupName));
+    applyGroupMutation((g) => assignPageToGroup(g, pageId, groupName), "Assign page to group");
   };
 
   const handleGroupRenameSubmit = () => {
@@ -163,7 +167,7 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
     if (!project) return;
     const newPages = addPage(project.ui.pages, pageType);
     const newPageId = newPages[newPages.length - 1].id;
-    applyPageMutation(() => newPages);
+    applyPageMutation(() => newPages, `Add ${pageType}`);
     selectPage(newPageId);
     setShowAddMenu(false);
   };
@@ -172,7 +176,7 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
     if (!project) return;
     const newPages = duplicatePage(project.ui.pages, pageId);
     const newPageId = newPages[newPages.length - 1]?.id;
-    applyPageMutation(() => newPages);
+    applyPageMutation(() => newPages, "Duplicate page");
     if (newPageId) selectPage(newPageId);
   };
 
@@ -180,14 +184,19 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
     if (pages.length <= 1) return;
     if (!project) return;
     const pageName = pages.find(p => p.id === pageId)?.name || pageId;
-    if (!window.confirm(`Delete page "${pageName}"? This cannot be undone.`)) return;
+    if (!window.confirm(`Delete page "${pageName}"?`)) return;
     // Find the page to switch to BEFORE mutating, so we can select it after
     const nextPageId = pages.find((p) => p.id !== pageId)?.id;
-    // Use direct mutation with settings cleanup instead of applyPageMutation
-    pushUndo(project.ui.pages);
+    const idleClobbered = project.ui.settings?.idle_page === pageId;
+    // Snapshot pages always; include settings only when idle_page collateral fires
+    pushUndo(
+      idleClobbered
+        ? { pages: project.ui.pages, settings: project.ui.settings }
+        : { pages: project.ui.pages },
+      `Delete page "${pageName}"`,
+    );
     const newPages = removePage(project.ui.pages, pageId);
-    // Clear idle_page if it referenced the deleted page
-    const settings = project.ui.settings?.idle_page === pageId
+    const settings = idleClobbered
       ? { ...project.ui.settings, idle_page: newPages[0]?.id || "" }
       : project.ui.settings;
     update({ ui: { ...project.ui, pages: newPages, settings } });
@@ -204,8 +213,9 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
 
   const handleRenameSubmit = () => {
     if (renamingPageId && renameValue.trim()) {
-      applyPageMutation((p) =>
-        renamePage(p, renamingPageId, renameValue.trim()),
+      applyPageMutation(
+        (p) => renamePage(p, renamingPageId, renameValue.trim()),
+        "Rename page",
       );
     }
     setRenamingPageId(null);
@@ -215,8 +225,9 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
     if (!selectedElementId || !selectedPageId || !project) return;
     const page = project.ui.pages.find((p) => p.id === selectedPageId);
     if (!page) return;
-    applyPageMutation((p) =>
-      alignElement(p, selectedPageId!, selectedElementId!, action, page.grid),
+    applyPageMutation(
+      (p) => alignElement(p, selectedPageId!, selectedElementId!, action, page.grid),
+      `Align ${action}`,
     );
   };
 
@@ -246,7 +257,7 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
           );
         });
         return result;
-      });
+      }, "Distribute horizontally");
     } else {
       const sorted = [...elements].sort((a, b) => a.grid_area.row - b.grid_area.row);
       const first = sorted[0].grid_area.row;
@@ -264,7 +275,7 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
           );
         });
         return result;
-      });
+      }, "Distribute vertically");
     }
   };
 
@@ -464,7 +475,7 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
                               const [moved] = result.splice(idx, 1);
                               result.unshift(moved);
                               return result;
-                            });
+                            }, "Set as home page");
                           }}
                           style={{ display: "flex", padding: 0, opacity: 0.3, color: "var(--text-secondary)", background: "none", border: "none", cursor: "pointer" }}
                           title="Set as home page (move to first position)"
@@ -475,7 +486,7 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          applyPageMutation((p) => reorderPage(p, page.id, "left"));
+                          applyPageMutation((p) => reorderPage(p, page.id, "left"), "Move page left");
                         }}
                         style={{ display: "flex", padding: 0, opacity: 0.3, color: "var(--text-secondary)" }}
                         title="Move page left"
@@ -485,7 +496,7 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          applyPageMutation((p) => reorderPage(p, page.id, "right"));
+                          applyPageMutation((p) => reorderPage(p, page.id, "right"), "Move page right");
                         }}
                         style={{ display: "flex", padding: 0, opacity: 0.3, color: "var(--text-secondary)" }}
                         title="Move page right"
@@ -753,7 +764,7 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
                 }
               : p
           );
-          pushUndo(project.ui.pages);
+          pushUndo({ pages: project.ui.pages }, "Edit grid");
           update({ ui: { ...project.ui, pages: updatedPages } });
           touchMutation();
         };
@@ -869,7 +880,11 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
               border: "none",
               cursor: undoStack.length > 0 ? "pointer" : "default",
             }}
-            title={`Undo (Ctrl+Z)${undoStack.length > 0 ? ` — ${undoStack.length} step${undoStack.length > 1 ? "s" : ""}` : ""}`}
+            title={
+              undoStack.length > 0
+                ? `Undo ${undoStack[undoStack.length - 1].description} (Ctrl+Z) — ${undoStack.length} step${undoStack.length > 1 ? "s" : ""}`
+                : "Undo (Ctrl+Z)"
+            }
           >
             <Undo2 size={14} />
           </button>
@@ -886,28 +901,62 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
               border: "none",
               cursor: redoStack.length > 0 ? "pointer" : "default",
             }}
-            title={`Redo (Ctrl+Y)${redoStack.length > 0 ? ` — ${redoStack.length} step${redoStack.length > 1 ? "s" : ""}` : ""}`}
+            title={
+              redoStack.length > 0
+                ? `Redo ${redoStack[redoStack.length - 1].description} (Ctrl+Y) — ${redoStack.length} step${redoStack.length > 1 ? "s" : ""}`
+                : "Redo (Ctrl+Y)"
+            }
           >
             <Redo2 size={14} />
           </button>
         </div>
       )}
 
-      {/* Save indicator */}
-      <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11 }}>
-        {saving ? (
-          <span style={{ display: "flex", alignItems: "center", gap: 3, color: "var(--text-muted)" }}>
+      {/* Save state + manual Save button */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+        {error && !conflictDetected ? (
+          <span style={{ color: "var(--color-error, #d33)", fontWeight: 500 }} title={error}>
+            Save failed
+          </span>
+        ) : saving ? (
+          <span style={{ display: "flex", alignItems: "center", gap: 3, color: "var(--text-secondary)" }}>
             <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} />
             Saving...
+          </span>
+        ) : savePending ? (
+          <span style={{ color: "var(--text-secondary)", fontStyle: "italic" }} title="Will save shortly">
+            Pending...
           </span>
         ) : dirty ? (
           <span style={{ color: "var(--color-warning)", fontWeight: 500 }}>Unsaved</span>
         ) : (
-          <span style={{ display: "flex", alignItems: "center", gap: 3, color: "var(--text-muted)", opacity: 0.6 }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 3, color: "var(--text-secondary)" }}>
             <Check size={12} />
             Saved
           </span>
         )}
+        <button
+          onClick={() => {
+            const store = useProjectStore.getState();
+            store.flushSave();
+            if (store.dirty && !store.saving) store.save();
+          }}
+          disabled={!dirty && !error}
+          title="Save now (Ctrl+S)"
+          style={{
+            padding: "2px 8px",
+            fontSize: 11,
+            fontWeight: 600,
+            borderRadius: 3,
+            border: "1px solid var(--border-color)",
+            background: dirty || error ? "var(--accent)" : "var(--bg-hover)",
+            color: dirty || error ? "#fff" : "var(--text-muted)",
+            cursor: dirty || error ? "pointer" : "default",
+            opacity: dirty || error ? 1 : 0.5,
+          }}
+        >
+          Save
+        </button>
       </div>
 
       {/* Zoom */}

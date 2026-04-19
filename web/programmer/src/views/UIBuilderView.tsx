@@ -42,12 +42,14 @@ import {
   demoteFromMaster,
   updateMasterElement,
   removeMasterElement,
+  renameElement,
+  validateElementId,
 } from "../components/ui-builder/uiBuilderHelpers";
+import { showSuccess, showInfo } from "../store/toastStore";
 
 export function UIBuilderView() {
   const project = useProjectStore((s) => s.project);
   const update = useProjectStore((s) => s.update);
-  const dirty = useProjectStore((s) => s.dirty);
   const save = useProjectStore((s) => s.save);
 
   // Reactive selectors — only subscribe to values that affect render
@@ -59,7 +61,6 @@ export function UIBuilderView() {
   const showGrid = useUIBuilderStore((s) => s.showGrid);
   const zoom = useUIBuilderStore((s) => s.zoom);
   const screenPresetIndex = useUIBuilderStore((s) => s.screenPresetIndex);
-  const lastMutationTime = useUIBuilderStore((s) => s.lastMutationTime);
   const clipboard = useUIBuilderStore((s) => s.clipboard);
 
   // Stable action refs — use getState() to avoid re-render subscriptions
@@ -141,17 +142,17 @@ export function UIBuilderView() {
     return unsub;
   }, [previewMode, selectPage]);
 
-  // Auto-save (debounced 2s after last mutation)
+  // Autosave is driven by useProjectStore.debouncedSave, called from
+  // touchMutation() on every UI Builder mutation. See store/uiBuilderStore.ts.
   const error = useProjectStore((s) => s.error);
+
+  // Flush pending save before the tab unloads so the 2 s debounce window
+  // can't lose the last edit.
   useEffect(() => {
-    if (!dirty || lastMutationTime === 0) return;
-    const timer = setTimeout(() => {
-      save().catch(() => {
-        // error is set in projectStore by save()
-      });
-    }, 2000);
-    return () => clearTimeout(timer);
-  }, [lastMutationTime, dirty, save]);
+    const handler = () => useProjectStore.getState().flushSave();
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, []);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -221,7 +222,7 @@ export function UIBuilderView() {
             });
           }
           return result;
-        });
+        }, `Nudge ${e.key.replace("Arrow", "").toLowerCase()}`);
         return;
       }
 
@@ -238,7 +239,7 @@ export function UIBuilderView() {
                 result = removeElementFromPage(result, currentPage.id, eid);
               }
               return result;
-            });
+            }, `Delete ${selectedElementIds.length} elements`);
             selectElement(null);
           }
         }
@@ -251,6 +252,14 @@ export function UIBuilderView() {
         if ((e.key === "z" && e.shiftKey) || e.key === "y") {
           e.preventDefault();
           redo();
+        }
+        if (e.key === "s" && !e.shiftKey) {
+          e.preventDefault();
+          const store = useProjectStore.getState();
+          store.flushSave();
+          // flushSave is a no-op when no debounce timer is pending, so kick a
+          // direct save when there are still uncommitted changes.
+          if (store.dirty && !store.saving) save();
         }
         if (e.key === "c" && selectedElementId && currentPage) {
           e.preventDefault();
@@ -285,11 +294,22 @@ export function UIBuilderView() {
   const screenWidth = preset?.width ?? 1024;
   const screenHeight = preset?.height ?? 600;
 
+  // Property changes debounce undo: push undo only once per editing burst,
+  // not on every keystroke. The timer resets on each change; the flag clears
+  // 800ms after the last edit, or whenever a structural mutation bookends the burst.
+  const propertyUndoPushed = useRef(false);
+  const propertyUndoTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+
   // --- Mutation helpers ---
   const applyMutation = useCallback(
-    (mutate: (pages: UIPage[]) => UIPage[]) => {
+    (mutate: (pages: UIPage[]) => UIPage[], description: string) => {
       if (!project) return;
-      pushUndo(project.ui.pages);
+      pushUndo({ pages: project.ui.pages }, description);
+      // Structural mutations bookend any in-flight property-edit burst:
+      // reset the burst flag so the next typed edit starts a fresh undo entry
+      // capturing the post-structural pages.
+      propertyUndoPushed.current = false;
+      clearTimeout(propertyUndoTimer.current);
       const newPages = mutate(project.ui.pages);
       update({ ui: { ...project.ui, pages: newPages } });
       touchMutation();
@@ -300,7 +320,7 @@ export function UIBuilderView() {
   const handleDeleteElement = useCallback(
     (elementId: string) => {
       if (!currentPage) return;
-      applyMutation((p) => removeElementFromPage(p, currentPage.id, elementId));
+      applyMutation((p) => removeElementFromPage(p, currentPage.id, elementId), "Delete element");
       selectElement(null);
     },
     [currentPage, applyMutation, selectElement],
@@ -309,7 +329,7 @@ export function UIBuilderView() {
   const handleDuplicateElement = useCallback(
     (elementId: string) => {
       if (!currentPage) return;
-      applyMutation((p) => duplicateElementInPage(p, currentPage.id, elementId));
+      applyMutation((p) => duplicateElementInPage(p, currentPage.id, elementId), "Duplicate element");
     },
     [currentPage, applyMutation],
   );
@@ -341,7 +361,7 @@ export function UIBuilderView() {
         row: Math.max(1, Math.min(clipboard.grid_area.row + 1, currentPage.grid.rows - clipboard.grid_area.row_span + 1)),
       },
     };
-    applyMutation((p) => addElementToPage(p, currentPage.id, newElement));
+    applyMutation((p) => addElementToPage(p, currentPage.id, newElement), "Paste element");
   }, [clipboard, currentPage, pages, applyMutation]);
 
   const handleBringToFront = useCallback(
@@ -349,6 +369,7 @@ export function UIBuilderView() {
       if (!currentPage) return;
       applyMutation((p) =>
         reorderElement(p, currentPage.id, elementId, "front"),
+        "Bring to front",
       );
     },
     [currentPage, applyMutation],
@@ -359,6 +380,7 @@ export function UIBuilderView() {
       if (!currentPage) return;
       applyMutation((p) =>
         reorderElement(p, currentPage.id, elementId, "back"),
+        "Send to back",
       );
     },
     [currentPage, applyMutation],
@@ -368,7 +390,12 @@ export function UIBuilderView() {
 
   const handlePromoteToMaster = useCallback((elementId: string) => {
     if (!project || !currentPage) return;
-    pushUndo(project.ui.pages);
+    pushUndo(
+      { pages: project.ui.pages, master_elements: project.ui.master_elements || [] },
+      "Promote to master",
+    );
+    propertyUndoPushed.current = false;
+    clearTimeout(propertyUndoTimer.current);
     const result = promoteToMaster(
       project.ui.pages,
       project.ui.master_elements || [],
@@ -388,7 +415,12 @@ export function UIBuilderView() {
 
   const handleDemoteFromMaster = useCallback((masterElementId: string) => {
     if (!project || !currentPage) return;
-    pushUndo(project.ui.pages);
+    pushUndo(
+      { pages: project.ui.pages, master_elements: project.ui.master_elements || [] },
+      "Demote from master",
+    );
+    propertyUndoPushed.current = false;
+    clearTimeout(propertyUndoTimer.current);
     const result = demoteFromMaster(
       project.ui.pages,
       project.ui.master_elements || [],
@@ -406,9 +438,68 @@ export function UIBuilderView() {
     selectMasterElement(null);
   }, [project, currentPage, pushUndo, update, touchMutation, selectMasterElement]);
 
+  const handleRenameElement = useCallback(
+    (oldId: string, newId: string) => {
+      if (!project) return;
+      const masters = project.ui.master_elements || [];
+      const err = validateElementId(newId, oldId, project.ui.pages, masters);
+      if (err) {
+        showError(err);
+        return;
+      }
+      if (newId === oldId) return;
+      const result = renameElement(
+        project.ui.pages,
+        masters,
+        project.macros || [],
+        project.variables || [],
+        project.scripts || [],
+        oldId,
+        newId,
+      );
+      // Snapshot only the scopes that actually changed (skip ones the helper
+      // didn't touch — e.g. variables stay reference-equal if no var.source_key
+      // matched). Keeps the undo entry small and the rollback honest.
+      const snapshot: Parameters<typeof pushUndo>[0] = {};
+      if (result.pages !== project.ui.pages) snapshot.pages = project.ui.pages;
+      if (result.master_elements !== masters) snapshot.master_elements = masters;
+      if (result.macros !== (project.macros || [])) snapshot.macros = project.macros || [];
+      if (result.variables !== (project.variables || [])) snapshot.variables = project.variables || [];
+      pushUndo(snapshot, `Rename element ${oldId} → ${newId}`);
+      propertyUndoPushed.current = false;
+      clearTimeout(propertyUndoTimer.current);
+      update({
+        ui: {
+          ...project.ui,
+          pages: result.pages,
+          master_elements: result.master_elements,
+        },
+        macros: result.macros,
+        variables: result.variables,
+      });
+      touchMutation();
+      // Re-select the renamed element under its new ID so the properties panel
+      // doesn't lose focus and refresh into "nothing selected".
+      if (selectedElementId === oldId) selectElement(newId);
+      if (selectedMasterElementId === oldId) selectMasterElement(newId);
+      showSuccess(`Renamed to ${newId}`);
+      if (result.scriptsToReview.length > 0) {
+        showInfo(
+          `Scripts may reference the old ID "ui.${oldId}.*". Search and update manually: ${result.scriptsToReview.join(", ")}`,
+        );
+      }
+    },
+    [project, pushUndo, update, touchMutation, selectedElementId, selectedMasterElementId, selectElement, selectMasterElement],
+  );
+
   const handleDeleteMasterElement = useCallback((masterElementId: string) => {
     if (!project) return;
-    pushUndo(project.ui.pages);
+    pushUndo(
+      { master_elements: project.ui.master_elements || [] },
+      "Delete master element",
+    );
+    propertyUndoPushed.current = false;
+    clearTimeout(propertyUndoTimer.current);
     const newMasters = removeMasterElement(project.ui.master_elements || [], masterElementId);
     update({
       ui: {
@@ -419,12 +510,6 @@ export function UIBuilderView() {
     touchMutation();
     selectMasterElement(null);
   }, [project, pushUndo, update, touchMutation, selectMasterElement]);
-
-  // Property changes debounce undo: push undo only once per editing burst,
-  // not on every keystroke. The timer resets on each change; undo is pushed
-  // when the user stops typing for 500ms.
-  const propertyUndoPushed = useRef(false);
-  const propertyUndoTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   // Reset undo burst tracking when selected element changes
   useEffect(() => {
@@ -438,7 +523,7 @@ export function UIBuilderView() {
 
       // Push undo once at the start of an editing burst
       if (!propertyUndoPushed.current) {
-        pushUndo(project.ui.pages);
+        pushUndo({ pages: project.ui.pages }, "Edit element");
         propertyUndoPushed.current = true;
       }
 
@@ -465,7 +550,7 @@ export function UIBuilderView() {
     (patch: Partial<UIPage>) => {
       if (!currentPage || !project) return;
       if (!propertyUndoPushed.current) {
-        pushUndo(project.ui.pages);
+        pushUndo({ pages: project.ui.pages }, "Edit page properties");
         propertyUndoPushed.current = true;
       }
       const newPages = project.ui.pages.map((p) =>
@@ -486,7 +571,10 @@ export function UIBuilderView() {
       if (!project) return;
 
       if (!propertyUndoPushed.current) {
-        pushUndo(project.ui.pages);
+        pushUndo(
+          { master_elements: project.ui.master_elements || [] },
+          "Edit master element",
+        );
         propertyUndoPushed.current = true;
       }
 
@@ -629,8 +717,9 @@ export function UIBuilderView() {
           row,
           existingIds,
         );
-        applyMutation((p) =>
-          addElementToPage(p, currentPage.id, newElement),
+        applyMutation(
+          (p) => addElementToPage(p, currentPage.id, newElement),
+          `Add ${data.elementType}`,
         );
         selectElement(newElement.id);
       } else if (data.source === "template" && data.templateId) {
@@ -666,7 +755,9 @@ export function UIBuilderView() {
             newPages = addElementToPage(newPages, currentPage.id, newEl);
             counter++;
           }
-          pushUndo(project.ui.pages);
+          pushUndo({ pages: project.ui.pages }, "Insert template");
+          propertyUndoPushed.current = false;
+          clearTimeout(propertyUndoTimer.current);
           update({ ui: { ...project.ui, pages: newPages } });
           touchMutation();
         }
@@ -688,8 +779,9 @@ export function UIBuilderView() {
             col_span: element.grid_area.col_span,
             row_span: element.grid_area.row_span,
           };
-          applyMutation((p) =>
-            moveElementInPage(p, currentPage.id, data.elementId!, newGridArea),
+          applyMutation(
+            (p) => moveElementInPage(p, currentPage.id, data.elementId!, newGridArea),
+            "Move element",
           );
         }
       }
@@ -733,6 +825,9 @@ export function UIBuilderView() {
         {error && (
           <div
             style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
               padding: "6px 16px",
               background: "rgba(244,67,54,0.15)",
               color: "var(--color-error)",
@@ -741,7 +836,36 @@ export function UIBuilderView() {
               flexShrink: 0,
             }}
           >
-            Save failed: {error}
+            <span style={{ flex: 1 }}>Save failed: {error}</span>
+            <button
+              onClick={() => save()}
+              style={{
+                padding: "2px 10px",
+                fontSize: 11,
+                fontWeight: 600,
+                borderRadius: 3,
+                border: "1px solid var(--color-error)",
+                background: "transparent",
+                color: "var(--color-error)",
+                cursor: "pointer",
+              }}
+            >
+              Retry
+            </button>
+            <button
+              onClick={() => useProjectStore.setState({ error: null })}
+              style={{
+                padding: "2px 10px",
+                fontSize: 11,
+                borderRadius: 3,
+                border: "1px solid var(--border-color)",
+                background: "transparent",
+                color: "var(--text-secondary)",
+                cursor: "pointer",
+              }}
+            >
+              Dismiss
+            </button>
           </div>
         )}
 
@@ -878,9 +1002,19 @@ export function UIBuilderView() {
                     themeDefaults={themeElementDefaults}
                     themes={themes}
                     onThemeChange={(id) => {
-                      pushUndo(project.ui.pages);
                       const settings = project.ui.settings;
+                      pushUndo({ settings }, "Change theme");
+                      propertyUndoPushed.current = false;
+                      clearTimeout(propertyUndoTimer.current);
                       update({ ui: { ...project.ui, settings: { ...settings, theme_id: id, theme: id.includes("light") || id === "minimal" ? "light" : "dark" } } });
+                      touchMutation();
+                    }}
+                    onApplyOverrides={(overrides) => {
+                      const settings = project.ui.settings;
+                      pushUndo({ settings }, "Apply theme overrides");
+                      propertyUndoPushed.current = false;
+                      clearTimeout(propertyUndoTimer.current);
+                      update({ ui: { ...project.ui, settings: { ...settings, theme_overrides: overrides } } });
                       touchMutation();
                     }}
                     onApplyThemeToElements={() => {
@@ -890,7 +1024,9 @@ export function UIBuilderView() {
                         "gauge_color", "gauge_bg_color", "item_bg", "item_active_bg",
                         "crosspoint_active_color", "crosspoint_inactive_color",
                       ];
-                      pushUndo(project.ui.pages);
+                      pushUndo({ pages: project.ui.pages }, "Reset elements to theme");
+                      propertyUndoPushed.current = false;
+                      clearTimeout(propertyUndoTimer.current);
                       const updatedPages = project.ui.pages.map((page) => ({
                         ...page,
                         elements: page.elements.map((el) => {
@@ -906,6 +1042,7 @@ export function UIBuilderView() {
                     }}
                     onRefreshThemes={loadThemes}
                     onChange={handlePropertyChange}
+                    onRenameElement={handleRenameElement}
                     onPageChange={handlePageChange}
                     onMasterElementChange={handleMasterElementPropertyChange}
                     onDemoteMaster={handleDemoteFromMaster}
@@ -979,7 +1116,7 @@ export function UIBuilderView() {
                   result = removeElementFromPage(result, currentPage.id, eid);
                 }
                 return result;
-              });
+              }, `Delete ${selectedElementIds.length} elements`);
               selectElement(null);
             }
           }}
@@ -1007,7 +1144,9 @@ export function UIBuilderView() {
           settings={project.ui.settings}
           pages={project.ui.pages}
           onUpdate={(settings) => {
-            pushUndo(project.ui.pages);
+            pushUndo({ settings: project.ui.settings }, "Edit project settings");
+            propertyUndoPushed.current = false;
+            clearTimeout(propertyUndoTimer.current);
             update({ ui: { ...project.ui, settings } });
             touchMutation();
           }}
@@ -1065,6 +1204,23 @@ function UISettingsDialog({
   onUpdate: (s: UISettings) => void;
   onClose: () => void;
 }) {
+  // Stage edits locally — commit to the project only on Save. Prevents
+  // accidental mid-edit commits and lets Cancel genuinely discard.
+  const [draft, setDraft] = useState<UISettings>(settings);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(settings);
+
+  const handleCancel = () => {
+    if (dirty && !window.confirm("Discard unsaved settings changes?")) return;
+    onClose();
+  };
+
+  const handleSave = () => {
+    if (dirty) onUpdate(draft);
+    onClose();
+  };
+
+  const patch = (p: Partial<UISettings>) => setDraft((d) => ({ ...d, ...p }));
+
   const labelStyle: React.CSSProperties = {
     display: "block",
     fontSize: "var(--font-size-sm)",
@@ -1085,7 +1241,7 @@ function UISettingsDialog({
         justifyContent: "center",
         zIndex: 1000,
       }}
-      onClick={onClose}
+      onClick={handleCancel}
     >
       <div
         style={{
@@ -1106,13 +1262,13 @@ function UISettingsDialog({
               <div style={{ display: "flex", gap: "var(--space-sm)", alignItems: "center" }}>
                 <input
                   type="color"
-                  value={settings.accent_color}
-                  onChange={(e) => onUpdate({ ...settings, accent_color: e.target.value })}
+                  value={draft.accent_color}
+                  onChange={(e) => patch({ accent_color: e.target.value })}
                   style={{ width: 40, height: 32, padding: 0, border: "1px solid var(--border-color)", borderRadius: "var(--border-radius)", cursor: "pointer" }}
                 />
                 <input
-                  value={settings.accent_color}
-                  onChange={(e) => onUpdate({ ...settings, accent_color: e.target.value })}
+                  value={draft.accent_color}
+                  onChange={(e) => patch({ accent_color: e.target.value })}
                   placeholder="#2196F3"
                   style={{ flex: 1 }}
                 />
@@ -1122,8 +1278,8 @@ function UISettingsDialog({
             <div style={fieldStyle}>
               <label style={labelStyle}>Font Family</label>
               <select
-                value={settings.font_family}
-                onChange={(e) => onUpdate({ ...settings, font_family: e.target.value })}
+                value={draft.font_family}
+                onChange={(e) => patch({ font_family: e.target.value })}
                 style={inputStyle}
               >
                 <option value="Inter, system-ui, sans-serif">Inter (Default)</option>
@@ -1137,8 +1293,8 @@ function UISettingsDialog({
             <div style={fieldStyle}>
               <label style={labelStyle}>Orientation</label>
               <select
-                value={settings.orientation}
-                onChange={(e) => onUpdate({ ...settings, orientation: e.target.value })}
+                value={draft.orientation}
+                onChange={(e) => patch({ orientation: e.target.value })}
                 style={inputStyle}
               >
                 <option value="landscape">Landscape</option>
@@ -1152,8 +1308,8 @@ function UISettingsDialog({
             <div style={fieldStyle}>
               <label style={labelStyle}>Lock Code (PIN)</label>
               <input
-                value={settings.lock_code}
-                onChange={(e) => onUpdate({ ...settings, lock_code: e.target.value.replace(/[^0-9]/g, "").slice(0, 6) })}
+                value={draft.lock_code}
+                onChange={(e) => patch({ lock_code: e.target.value.replace(/[^0-9]/g, "").slice(0, 6) })}
                 placeholder="Leave empty for no lock"
                 style={inputStyle}
               />
@@ -1167,8 +1323,8 @@ function UISettingsDialog({
               <input
                 type="number"
                 min={0}
-                value={settings.idle_timeout_seconds}
-                onChange={(e) => onUpdate({ ...settings, idle_timeout_seconds: parseInt(e.target.value) || 0 })}
+                value={draft.idle_timeout_seconds}
+                onChange={(e) => patch({ idle_timeout_seconds: parseInt(e.target.value) || 0 })}
                 style={inputStyle}
               />
               <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
@@ -1179,8 +1335,8 @@ function UISettingsDialog({
             <div style={fieldStyle}>
               <label style={labelStyle}>Idle Page</label>
               <select
-                value={settings.idle_page}
-                onChange={(e) => onUpdate({ ...settings, idle_page: e.target.value })}
+                value={draft.idle_page}
+                onChange={(e) => patch({ idle_page: e.target.value })}
                 style={inputStyle}
               >
                 {pages.map(p => (
@@ -1192,8 +1348,8 @@ function UISettingsDialog({
             <div style={fieldStyle}>
               <label style={labelStyle}>Page Transition</label>
               <select
-                value={settings.page_transition || "none"}
-                onChange={(e) => onUpdate({ ...settings, page_transition: e.target.value })}
+                value={draft.page_transition || "none"}
+                onChange={(e) => patch({ page_transition: e.target.value })}
                 style={inputStyle}
               >
                 <option value="none">None (instant)</option>
@@ -1204,7 +1360,7 @@ function UISettingsDialog({
                 <option value="scale">Scale</option>
               </select>
             </div>
-            {settings.page_transition && settings.page_transition !== "none" && (
+            {draft.page_transition && draft.page_transition !== "none" && (
               <div style={fieldStyle}>
                 <label style={labelStyle}>Transition Duration</label>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -1213,8 +1369,8 @@ function UISettingsDialog({
                     min={50}
                     max={1000}
                     step={50}
-                    value={settings.page_transition_duration || 200}
-                    onChange={(e) => onUpdate({ ...settings, page_transition_duration: Number(e.target.value) || 200 })}
+                    value={draft.page_transition_duration || 200}
+                    onChange={(e) => patch({ page_transition_duration: Number(e.target.value) || 200 })}
                     style={{ ...inputStyle, width: 80 }}
                   />
                   <span style={{ fontSize: 11, color: "var(--text-muted)" }}>ms</span>
@@ -1225,8 +1381,8 @@ function UISettingsDialog({
             <div style={fieldStyle}>
               <label style={labelStyle}>Element Entry Animation</label>
               <select
-                value={settings.element_entry || "none"}
-                onChange={(e) => onUpdate({ ...settings, element_entry: e.target.value })}
+                value={draft.element_entry || "none"}
+                onChange={(e) => patch({ element_entry: e.target.value })}
                 style={inputStyle}
               >
                 <option value="none">None (instant)</option>
@@ -1236,7 +1392,7 @@ function UISettingsDialog({
                 <option value="stagger">Stagger (fade up)</option>
               </select>
             </div>
-            {settings.element_entry === "stagger" && (
+            {draft.element_entry === "stagger" && (
               <div style={fieldStyle}>
                 <label style={labelStyle}>Stagger Delay</label>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -1245,8 +1401,8 @@ function UISettingsDialog({
                     min={10}
                     max={200}
                     step={10}
-                    value={settings.element_stagger_ms || 30}
-                    onChange={(e) => onUpdate({ ...settings, element_stagger_ms: Number(e.target.value) || 30 })}
+                    value={draft.element_stagger_ms || 30}
+                    onChange={(e) => patch({ element_stagger_ms: Number(e.target.value) || 30 })}
                     style={{ ...inputStyle, width: 80 }}
                   />
                   <span style={{ fontSize: 11, color: "var(--text-muted)" }}>ms per element</span>
@@ -1255,7 +1411,7 @@ function UISettingsDialog({
             )}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-sm)", marginTop: "var(--space-lg)" }}>
           <button
-            onClick={onClose}
+            onClick={handleCancel}
             style={{
               padding: "var(--space-sm) var(--space-lg)",
               borderRadius: "var(--border-radius)",
@@ -1265,7 +1421,23 @@ function UISettingsDialog({
               color: "var(--text-primary)",
             }}
           >
-            Close
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={!dirty}
+            style={{
+              padding: "var(--space-sm) var(--space-lg)",
+              borderRadius: "var(--border-radius)",
+              background: dirty ? "var(--accent)" : "var(--bg-hover)",
+              border: "none",
+              cursor: dirty ? "pointer" : "default",
+              opacity: dirty ? 1 : 0.5,
+              color: dirty ? "#fff" : "var(--text-muted)",
+              fontWeight: 600,
+            }}
+          >
+            Save
           </button>
         </div>
       </div>

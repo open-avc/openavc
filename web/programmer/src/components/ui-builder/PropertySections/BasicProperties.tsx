@@ -10,27 +10,20 @@ interface BasicPropertiesProps {
   element: UIElement;
   pages: UIPage[];
   onChange: (patch: Partial<UIElement>) => void;
+  onRename?: (newId: string) => void;
 }
 
 export function BasicProperties({
   element,
   pages,
   onChange,
+  onRename,
 }: BasicPropertiesProps) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
-      {/* ID (read-only) */}
+      {/* ID — inline rename, with reference rewriting in onRename handler */}
       <FieldRow label="ID">
-        <input
-          value={element.id}
-          readOnly
-          style={{
-            flex: 1,
-            opacity: 0.6,
-            cursor: "default",
-            background: "var(--bg-surface)",
-          }}
-        />
+        <ElementIdField id={element.id} onRename={onRename} />
         <CopyButton value={element.id} title="Copy element ID" />
       </FieldRow>
 
@@ -1062,6 +1055,62 @@ function MatrixLabelEditor({
         ))}
       </div>
     </div>
+  );
+}
+
+function ElementIdField({
+  id,
+  onRename,
+}: {
+  id: string;
+  onRename?: (newId: string) => void;
+}) {
+  const [draft, setDraft] = useState(id);
+  const [focused, setFocused] = useState(false);
+
+  // Reset draft when the underlying id changes (selection switch, undo, etc.)
+  // — only when the field isn't being actively edited.
+  useEffect(() => {
+    if (!focused) setDraft(id);
+  }, [id, focused]);
+
+  const commit = () => {
+    if (!onRename) return;
+    const trimmed = draft.trim();
+    if (trimmed === id) return;
+    onRename(trimmed);
+    // The handler shows an error toast if invalid; reset the draft if the
+    // parent didn't actually rename.
+    setDraft(id);
+  };
+
+  return (
+    <input
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onFocus={() => setFocused(true)}
+      onBlur={() => {
+        setFocused(false);
+        commit();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          (e.target as HTMLInputElement).blur();
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          setDraft(id);
+          (e.target as HTMLInputElement).blur();
+        }
+      }}
+      readOnly={!onRename}
+      title={onRename ? "Rename element (Enter to commit, Esc to cancel)" : "Element ID"}
+      style={{
+        flex: 1,
+        background: onRename ? "var(--bg-primary)" : "var(--bg-surface)",
+        cursor: onRename ? "text" : "default",
+      }}
+    />
   );
 }
 

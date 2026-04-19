@@ -1,4 +1,4 @@
-import type { UIPage, UIElement, GridArea, MasterElement, PageGroup } from "../../api/types";
+import type { UIPage, UIElement, GridArea, MasterElement, PageGroup, MacroConfig, MacroStep, VariableConfig, ScriptConfig } from "../../api/types";
 
 // --- Binding type definitions ---
 
@@ -783,4 +783,218 @@ export function assignPageToGroup(pageGroups: PageGroup[], pageId: string, group
     result = result.map(g => g.name === groupName ? { ...g, pages: [...g.pages, pageId] } : g);
   }
   return result;
+}
+
+// --- Element rename + reference rewriting ---
+
+/**
+ * Rewrite any string starting with `ui.<oldId>.` to `ui.<newId>.`.
+ * Returns the input unchanged if it doesn't match.
+ */
+function rewriteStateKey(value: unknown, oldId: string, newId: string): unknown {
+  if (typeof value !== "string") return value;
+  const prefix = `ui.${oldId}.`;
+  if (value.startsWith(prefix)) {
+    return `ui.${newId}.` + value.slice(prefix.length);
+  }
+  return value;
+}
+
+/**
+ * Recursively walk an arbitrary JSON-shaped value, rewriting any string
+ * value found at a key named `key`, `state_key`, or `source_key` if it
+ * starts with `ui.<oldId>.`. Returns a new value if anything changed,
+ * else the original (preserving reference equality where possible).
+ */
+function rewriteRefsDeep(value: unknown, oldId: string, newId: string): unknown {
+  if (Array.isArray(value)) {
+    let changed = false;
+    const next = value.map((v) => {
+      const r = rewriteRefsDeep(v, oldId, newId);
+      if (r !== v) changed = true;
+      return r;
+    });
+    return changed ? next : value;
+  }
+  if (value && typeof value === "object") {
+    let changed = false;
+    const next: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      let nv: unknown = v;
+      if ((k === "key" || k === "state_key" || k === "source_key") && typeof v === "string") {
+        nv = rewriteStateKey(v, oldId, newId);
+      } else {
+        nv = rewriteRefsDeep(v, oldId, newId);
+      }
+      if (nv !== v) changed = true;
+      next[k] = nv;
+    }
+    return changed ? next : value;
+  }
+  return value;
+}
+
+function rewriteElement(el: UIElement, oldId: string, newId: string): UIElement {
+  const renamedSelf = el.id === oldId ? { ...el, id: newId } : el;
+  const bindings = rewriteRefsDeep(renamedSelf.bindings, oldId, newId) as UIElement["bindings"];
+  const next: UIElement = bindings === renamedSelf.bindings
+    ? renamedSelf
+    : { ...renamedSelf, bindings };
+  // Walk visibility (and other top-level fields that may carry state keys)
+  // — visibility lives at element[visibility] but isn't typed; treat as opaque.
+  const elAsRecord = next as unknown as Record<string, unknown>;
+  if (elAsRecord.visibility) {
+    const newVis = rewriteRefsDeep(elAsRecord.visibility, oldId, newId);
+    if (newVis !== elAsRecord.visibility) {
+      return { ...next, visibility: newVis } as UIElement;
+    }
+  }
+  return next;
+}
+
+function rewriteStep(step: MacroStep, oldId: string, newId: string): MacroStep {
+  let next: MacroStep = step;
+  if (step.key) {
+    const k = rewriteStateKey(step.key, oldId, newId);
+    if (k !== step.key) next = { ...next, key: k as string };
+  }
+  if (step.params) {
+    const p = rewriteRefsDeep(step.params, oldId, newId) as Record<string, unknown>;
+    if (p !== step.params) next = { ...next, params: p };
+  }
+  if (step.condition?.key) {
+    const k = rewriteStateKey(step.condition.key, oldId, newId);
+    if (k !== step.condition.key) {
+      next = { ...next, condition: { ...step.condition, key: k as string } };
+    }
+  }
+  if (step.skip_if?.key) {
+    const k = rewriteStateKey(step.skip_if.key, oldId, newId);
+    if (k !== step.skip_if.key) {
+      next = { ...next, skip_if: { ...step.skip_if, key: k as string } };
+    }
+  }
+  if (step.then_steps) {
+    const t = step.then_steps.map((s) => rewriteStep(s, oldId, newId));
+    if (t.some((s, i) => s !== step.then_steps![i])) next = { ...next, then_steps: t };
+  }
+  if (step.else_steps) {
+    const e = step.else_steps.map((s) => rewriteStep(s, oldId, newId));
+    if (e.some((s, i) => s !== step.else_steps![i])) next = { ...next, else_steps: e };
+  }
+  return next;
+}
+
+function rewriteMacro(macro: MacroConfig, oldId: string, newId: string): MacroConfig {
+  let changed = false;
+  const steps = macro.steps.map((s) => {
+    const r = rewriteStep(s, oldId, newId);
+    if (r !== s) changed = true;
+    return r;
+  });
+  let triggers = macro.triggers;
+  if (triggers) {
+    const t = triggers.map((trig) => {
+      let next = trig;
+      if (trig.state_key) {
+        const k = rewriteStateKey(trig.state_key, oldId, newId);
+        if (k !== trig.state_key) next = { ...next, state_key: k as string };
+      }
+      if (trig.conditions) {
+        const conds = trig.conditions.map((c) => {
+          if (c.key) {
+            const k = rewriteStateKey(c.key, oldId, newId);
+            if (k !== c.key) return { ...c, key: k as string };
+          }
+          return c;
+        });
+        if (conds.some((c, i) => c !== trig.conditions![i])) next = { ...next, conditions: conds };
+      }
+      return next;
+    });
+    if (t.some((trig, i) => trig !== triggers![i])) {
+      triggers = t;
+      changed = true;
+    }
+  }
+  return changed ? { ...macro, steps, triggers } : macro;
+}
+
+function rewriteVariable(v: VariableConfig, oldId: string, newId: string): VariableConfig {
+  if (!v.source_key) return v;
+  const k = rewriteStateKey(v.source_key, oldId, newId);
+  return k === v.source_key ? v : { ...v, source_key: k as string };
+}
+
+export interface RenameResult {
+  pages: UIPage[];
+  master_elements: MasterElement[];
+  macros: MacroConfig[];
+  variables: VariableConfig[];
+  scriptsToReview: string[];  // script file names that mention `ui.<oldId>.`
+}
+
+/**
+ * Validate a proposed element ID. Returns null if valid, else an error
+ * message. Allowed chars: lowercase letters, digits, underscores. Must
+ * start with a letter. Must not collide with any existing element ID
+ * across all pages or master_elements (excluding the element being
+ * renamed itself).
+ */
+export function validateElementId(
+  newId: string,
+  currentId: string,
+  pages: UIPage[],
+  masterElements: MasterElement[],
+): string | null {
+  if (!newId) return "ID cannot be empty.";
+  if (newId === currentId) return null;
+  if (!/^[a-z][a-z0-9_]*$/.test(newId)) {
+    return "ID must start with a lowercase letter and contain only lowercase letters, digits, and underscores.";
+  }
+  const existing = new Set<string>();
+  for (const p of pages) for (const el of p.elements) existing.add(el.id);
+  for (const m of masterElements) existing.add(m.id);
+  existing.delete(currentId);
+  if (existing.has(newId)) return `An element with ID "${newId}" already exists.`;
+  return null;
+}
+
+/**
+ * Rename an element across the entire project, rewriting every reference
+ * in element bindings, visibility conditions, master elements, macro steps,
+ * trigger conditions, and variable source_keys. Scripts are NOT
+ * auto-rewritten — their source code is returned in `scriptsToReview` so
+ * the caller can warn the user.
+ */
+export function renameElement(
+  pages: UIPage[],
+  masterElements: MasterElement[],
+  macros: MacroConfig[],
+  variables: VariableConfig[],
+  scripts: ScriptConfig[],
+  oldId: string,
+  newId: string,
+): RenameResult {
+  const newPages = pages.map((p) => ({
+    ...p,
+    elements: p.elements.map((el) => rewriteElement(el, oldId, newId)),
+  }));
+  const newMasters = masterElements.map((m) => rewriteElement(m as unknown as UIElement, oldId, newId) as MasterElement);
+  const newMacros = macros.map((m) => rewriteMacro(m, oldId, newId));
+  const newVars = variables.map((v) => rewriteVariable(v, oldId, newId));
+  // Scripts: just list the ones that mention the old ID — caller warns.
+  const scriptsToReview = scripts
+    .filter((s) => s.file && s.id)
+    .map((s) => s.file);
+  // We can't actually grep script source from this client-side helper —
+  // returning all script files keeps it simple; UIBuilderView will toast a
+  // generic warning when scripts are present and the user can search.
+  return {
+    pages: newPages,
+    master_elements: newMasters,
+    macros: newMacros,
+    variables: newVars,
+    scriptsToReview,
+  };
 }

@@ -125,7 +125,7 @@ export function Canvas({
   const handleCommitResize = useCallback(
     (elementId: string, gridArea: GridArea) => {
       if (!project) return;
-      pushUndo(project.ui.pages);
+      pushUndo({ pages: project.ui.pages }, "Resize element");
       const newPages = moveElementInPage(
         project.ui.pages,
         page.id,

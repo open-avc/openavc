@@ -1,6 +1,23 @@
 import { create } from "zustand";
-import type { UIPage, UIElement } from "../api/types";
+import type { UIPage, UIElement, UISettings, MasterElement, PageGroup, MacroConfig, VariableConfig } from "../api/types";
 import { useProjectStore } from "./projectStore";
+
+export interface UndoScope {
+  // ui.* scopes
+  pages?: UIPage[];
+  settings?: UISettings;
+  master_elements?: MasterElement[];
+  page_groups?: PageGroup[];
+  // project.* scopes (for cross-project edits like element rename
+  // that must rewrite references in macros/variables)
+  macros?: MacroConfig[];
+  variables?: VariableConfig[];
+}
+
+export interface UndoEntry {
+  description: string;
+  snapshot: UndoScope;
+}
 
 interface UIBuilderStore {
   selectedPageId: string | null;
@@ -15,8 +32,8 @@ interface UIBuilderStore {
   customHeight: number;
   clipboard: UIElement | null;
   contextMenu: { x: number; y: number; elementId: string; isMaster?: boolean } | null;
-  undoStack: UIPage[][];
-  redoStack: UIPage[][];
+  undoStack: UndoEntry[];
+  redoStack: UndoEntry[];
   lastMutationTime: number;
   activeDragSource: string | null;
 
@@ -33,11 +50,103 @@ interface UIBuilderStore {
   setContextMenu: (
     menu: { x: number; y: number; elementId: string; isMaster?: boolean } | null,
   ) => void;
-  pushUndo: (pages: UIPage[]) => void;
+  pushUndo: (snapshot: UndoScope, description: string) => void;
   undo: () => void;
   redo: () => void;
+  clearUndoHistory: () => void;
   touchMutation: () => void;
   setActiveDragSource: (source: string | null) => void;
+}
+
+// Build (a) the inverse snapshot to push onto the redo/undo stack and
+// (b) the project patch to apply, given the snapshot the user is rolling
+// back to. UI scopes overlay onto project.ui; project scopes overlay
+// directly onto the project. Only scopes present in the original snapshot
+// are touched — that's the point of the scoped API.
+function computeRollbackPatch(
+  snapshot: UndoScope,
+  project: import("../api/types").ProjectConfig,
+): {
+  redoSnapshot: UndoScope;
+  projectPatch: Partial<import("../api/types").ProjectConfig>;
+} {
+  const redoSnapshot: UndoScope = {};
+  const uiPatch: Partial<typeof project.ui> = {};
+  const projectPatch: Partial<typeof project> = {};
+  let touchesUi = false;
+
+  if ("pages" in snapshot) {
+    redoSnapshot.pages = project.ui.pages;
+    uiPatch.pages = snapshot.pages;
+    touchesUi = true;
+  }
+  if ("settings" in snapshot) {
+    redoSnapshot.settings = project.ui.settings;
+    uiPatch.settings = snapshot.settings;
+    touchesUi = true;
+  }
+  if ("master_elements" in snapshot) {
+    redoSnapshot.master_elements = project.ui.master_elements ?? [];
+    uiPatch.master_elements = snapshot.master_elements;
+    touchesUi = true;
+  }
+  if ("page_groups" in snapshot) {
+    redoSnapshot.page_groups = project.ui.page_groups ?? [];
+    uiPatch.page_groups = snapshot.page_groups;
+    touchesUi = true;
+  }
+  if ("macros" in snapshot) {
+    redoSnapshot.macros = project.macros;
+    projectPatch.macros = snapshot.macros;
+  }
+  if ("variables" in snapshot) {
+    redoSnapshot.variables = project.variables;
+    projectPatch.variables = snapshot.variables;
+  }
+
+  if (touchesUi) {
+    projectPatch.ui = { ...project.ui, ...uiPatch };
+  }
+
+  return { redoSnapshot, projectPatch };
+}
+
+function repairSelection(
+  scope: UndoScope,
+  current: {
+    selectedPageId: string | null;
+    selectedElementIds: string[];
+    selectedMasterElementId: string | null;
+  },
+  fallback: { pages: UIPage[]; masters: MasterElement[] },
+) {
+  const pages = scope.pages ?? fallback.pages;
+  const masters = scope.master_elements ?? fallback.masters;
+
+  let { selectedPageId, selectedElementIds, selectedMasterElementId } = current;
+
+  if (selectedPageId) {
+    const page = pages.find((p) => p.id === selectedPageId);
+    if (!page) {
+      selectedPageId = pages[0]?.id ?? null;
+      selectedElementIds = [];
+    } else {
+      selectedElementIds = selectedElementIds.filter((eid) =>
+        page.elements.some((e) => e.id === eid),
+      );
+    }
+  }
+
+  if (selectedMasterElementId && !masters.some((m) => m.id === selectedMasterElementId)) {
+    selectedMasterElementId = null;
+  }
+
+  return {
+    selectedPageId,
+    selectedElementIds,
+    selectedElementId: selectedElementIds[0] || null,
+    selectedMasterElementId,
+  };
 }
 
 export const useUIBuilderStore = create<UIBuilderStore>((set, get) => ({
@@ -101,86 +210,81 @@ export const useUIBuilderStore = create<UIBuilderStore>((set, get) => ({
 
   setContextMenu: (contextMenu) => set({ contextMenu }),
 
-  pushUndo: (pages) => {
+  pushUndo: (snapshot, description) => {
     const { undoStack } = get();
     set({
-      undoStack: [...undoStack.slice(-49), pages],
+      undoStack: [...undoStack.slice(-49), { description, snapshot }],
       redoStack: [],
     });
   },
 
   undo: () => {
-    const { undoStack, redoStack, selectedElementIds, selectedPageId } = get();
+    const { undoStack, redoStack } = get();
     if (undoStack.length === 0) return;
     const projectStore = useProjectStore.getState();
     const project = projectStore.project;
     if (!project) return;
 
-    const currentPages = project.ui.pages;
-    const previousPages = undoStack[undoStack.length - 1];
+    const entry = undoStack[undoStack.length - 1];
+    const { redoSnapshot, projectPatch } = computeRollbackPatch(entry.snapshot, project);
 
-    // Clear selection if the element/page no longer exists in the target state
-    let newSelectedIds = selectedElementIds;
-    let newSelectedPageId = selectedPageId;
-    if (selectedPageId) {
-      const page = previousPages.find((p) => p.id === selectedPageId);
-      if (!page) {
-        newSelectedPageId = previousPages[0]?.id ?? null;
-        newSelectedIds = [];
-      } else {
-        newSelectedIds = selectedElementIds.filter((eid) =>
-          page.elements.some((e) => e.id === eid),
-        );
-      }
-    }
+    const newSelection = repairSelection(
+      entry.snapshot,
+      {
+        selectedPageId: get().selectedPageId,
+        selectedElementIds: get().selectedElementIds,
+        selectedMasterElementId: get().selectedMasterElementId,
+      },
+      { pages: project.ui.pages, masters: project.ui.master_elements ?? [] },
+    );
 
     set({
       undoStack: undoStack.slice(0, -1),
-      redoStack: [...redoStack, currentPages],
-      selectedElementId: newSelectedIds[0] || null,
-      selectedElementIds: newSelectedIds,
-      selectedPageId: newSelectedPageId,
+      redoStack: [...redoStack, { description: entry.description, snapshot: redoSnapshot }],
+      ...newSelection,
     });
 
-    projectStore.update({ ui: { ...project.ui, pages: previousPages } });
+    projectStore.update(projectPatch);
   },
 
   redo: () => {
-    const { undoStack, redoStack, selectedElementIds, selectedPageId } = get();
+    const { undoStack, redoStack } = get();
     if (redoStack.length === 0) return;
     const projectStore = useProjectStore.getState();
     const project = projectStore.project;
     if (!project) return;
 
-    const currentPages = project.ui.pages;
-    const nextPages = redoStack[redoStack.length - 1];
+    const entry = redoStack[redoStack.length - 1];
+    const { redoSnapshot: undoSnapshot, projectPatch } = computeRollbackPatch(entry.snapshot, project);
 
-    let newSelectedIds = selectedElementIds;
-    let newSelectedPageId = selectedPageId;
-    if (selectedPageId) {
-      const page = nextPages.find((p) => p.id === selectedPageId);
-      if (!page) {
-        newSelectedPageId = nextPages[0]?.id ?? null;
-        newSelectedIds = [];
-      } else {
-        newSelectedIds = selectedElementIds.filter((eid) =>
-          page.elements.some((e) => e.id === eid),
-        );
-      }
-    }
+    const newSelection = repairSelection(
+      entry.snapshot,
+      {
+        selectedPageId: get().selectedPageId,
+        selectedElementIds: get().selectedElementIds,
+        selectedMasterElementId: get().selectedMasterElementId,
+      },
+      { pages: project.ui.pages, masters: project.ui.master_elements ?? [] },
+    );
 
     set({
-      undoStack: [...undoStack, currentPages],
+      undoStack: [...undoStack, { description: entry.description, snapshot: undoSnapshot }],
       redoStack: redoStack.slice(0, -1),
-      selectedElementId: newSelectedIds[0] || null,
-      selectedElementIds: newSelectedIds,
-      selectedPageId: newSelectedPageId,
+      ...newSelection,
     });
 
-    projectStore.update({ ui: { ...project.ui, pages: nextPages } });
+    projectStore.update(projectPatch);
   },
 
-  touchMutation: () => set({ lastMutationTime: Date.now() }),
+  clearUndoHistory: () => set({ undoStack: [], redoStack: [] }),
+
+  touchMutation: () => {
+    set({ lastMutationTime: Date.now() });
+    // Route through the shared project store debounce so flushSave / Ctrl+S
+    // / unload handlers can flush UI Builder edits too. 2 s matches the
+    // previous local timer.
+    useProjectStore.getState().debouncedSave(2000);
+  },
 
   setActiveDragSource: (activeDragSource) => set({ activeDragSource }),
 }));
