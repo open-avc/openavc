@@ -95,6 +95,9 @@ function MacroConfig({
         style={{ width: "100%", padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
       >
         <option value="">Select macro...</option>
+        {project.macros.length === 0 && (
+          <option disabled>No macros yet — create one in the Macros view</option>
+        )}
         {project.macros.map((m) => (
           <option key={m.id} value={m.id}>
             {m.name}

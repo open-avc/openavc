@@ -6,13 +6,11 @@ Design touch panel pages for your AV spaces using the visual UI Builder.
 
 ## Layout
 
-**Left panel: Element Palette.** Drag elements onto the canvas. Use the search box at the top to filter elements by name. Hover over an element to see a preview thumbnail before dragging.
+**Left panel: Element Palette.** Drag elements onto the canvas. Use the search box at the top to filter elements by name. Hover over an element to see a description tooltip. Switch to the **Outline** tab to see all elements on the current page, search by ID, and manage z-order, lock, and visibility.
 - **Controls**: Button, Slider, Select, Text Input, Fader, Keypad
 - **Display**: Label, Status LED, Image, Spacer, Gauge, Level Meter, Clock, List, Matrix
 - **Layout**: Group
 - **Navigation**: Page Nav, Camera Preset
-
-The palette also includes a **Templates** section with pre-built element combos (see [Element Templates](#element-templates) below).
 
 Toggle the palette with **Ctrl+E**.
 
@@ -186,7 +184,7 @@ Show or hide elements based on system state. Select an element, open the **Visib
 
 For example, show video conference controls only when `var.current_mode` equals `"video_conference"`. Or hide an advanced settings group unless `var.show_advanced` is truthy.
 
-You can add multiple conditions. All conditions must be true for the element to be visible (AND logic). This works on every element type, including groups, so you can show or hide entire sections of the panel at once.
+You can add multiple conditions and choose AND or OR logic. With AND (default), all conditions must be true. With OR, the element is visible when any condition is true. This works on every element type, including groups, so you can show or hide entire sections of the panel at once.
 
 Visibility conditions are evaluated client-side in the panel, so they respond instantly without a server round-trip. They also work alongside the `ui.*.visible` state key overrides, which take priority when set.
 
@@ -329,20 +327,6 @@ The builder toolbar includes 6 alignment buttons for precise element placement:
 | Align Bottom | Snap the element's bottom edge to the nearest grid row |
 
 Select an element on the canvas, then click any alignment button. Alignment is relative to the full page grid. These also work on multi-selected elements, aligning all selected elements together.
-
-## Element Templates
-
-The Element Palette includes a **Templates** section with pre-built element combos. Templates insert multiple coordinated elements at once, saving time on common AV control patterns.
-
-| Template | Elements Created | Typical Use |
-|----------|-----------------|-------------|
-| **Volume Control** | Fader + Mute button + "Volume" label | Audio zone control |
-| **Source Selector** | 4 input buttons (HDMI 1-4) | Switcher input selection |
-| **Power Toggle** | Power button + Status LED | Projector or display power |
-| **Room Header** | Room name label + Clock | Top bar for any room panel |
-| **Mixer Strip** | Level meter + Fader + Mute button + Channel label | Audio mixer channel |
-
-Drag a template from the palette onto the canvas. The elements are placed together and pre-configured with sensible defaults. After placing, click each element to customize its bindings, labels, and colors for your specific devices.
 
 ## Page Transitions & Animations
 

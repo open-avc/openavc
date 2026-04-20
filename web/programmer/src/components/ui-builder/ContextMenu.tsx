@@ -12,7 +12,7 @@ interface ContextMenuProps {
   onDelete: (elementId: string) => void;
   onDeleteAll?: () => void;
   onDuplicateAll?: () => void;
-  onCopy: (elementId: string) => void;
+  onCopy: (elementIds: string[]) => void;
   onPaste: () => void;
   onBringToFront: (elementId: string) => void;
   onSendToBack: (elementId: string) => void;
@@ -104,10 +104,10 @@ export function ContextMenu({
           onClick: () => { onDuplicateAll?.(); onClose(); },
         },
         {
-          label: "Copy",
+          label: `Copy All (${multiSelectCount})`,
           icon: <Copy size={14} />,
           shortcut: "Ctrl+C",
-          onClick: () => { onCopy(elementId); onClose(); },
+          onClick: () => { onCopy([elementId]); onClose(); },
         },
         {
           label: "Paste",
@@ -135,7 +135,7 @@ export function ContextMenu({
           label: "Copy",
           icon: <Copy size={14} />,
           shortcut: "Ctrl+C",
-          onClick: () => { onCopy(elementId); onClose(); },
+          onClick: () => { onCopy([elementId]); onClose(); },
         },
         {
           label: "Paste",
@@ -155,7 +155,7 @@ export function ContextMenu({
           onClick: () => { onSendToBack(elementId); onClose(); },
         },
         {
-          label: "Make Global Element",
+          label: "Make Master Element",
           icon: <Globe size={14} />,
           onClick: () => { onPromoteToMaster?.(elementId); onClose(); },
           separator: true,

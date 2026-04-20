@@ -32,14 +32,16 @@ import {
 import type { UIPage, PageGroup } from "../../api/types";
 import { useUIBuilderStore } from "../../store/uiBuilderStore";
 import { useProjectStore } from "../../store/projectStore";
+import { ConfirmDialog } from "../shared/ConfirmDialog";
+import { PromptDialog } from "../shared/PromptDialog";
 import {
   SCREEN_PRESETS,
   addPage,
-  removePage,
+  removePageAndScrubRefs,
   renamePage,
   reorderPage,
   duplicatePage,
-  alignElement,
+  alignElements,
   addPageGroup,
   removePageGroup,
   renamePageGroup,
@@ -50,9 +52,10 @@ import {
 interface CanvasToolbarProps {
   pages: UIPage[];
   selectedPageId: string | null;
+  onValidate?: () => void;
 }
 
-export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
+export function CanvasToolbar({ pages, selectedPageId, onValidate }: CanvasToolbarProps) {
   const selectPage = useUIBuilderStore((s) => s.selectPage);
   const previewMode = useUIBuilderStore((s) => s.previewMode);
   const setPreviewMode = useUIBuilderStore((s) => s.setPreviewMode);
@@ -62,7 +65,6 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
   const setZoom = useUIBuilderStore((s) => s.setZoom);
   const screenPresetIndex = useUIBuilderStore((s) => s.screenPresetIndex);
   const setScreenPresetIndex = useUIBuilderStore((s) => s.setScreenPresetIndex);
-  const selectedElementId = useUIBuilderStore((s) => s.selectedElementId);
   const selectedElementIds = useUIBuilderStore((s) => s.selectedElementIds);
   const pushUndo = useUIBuilderStore((s) => s.pushUndo);
   const touchMutation = useUIBuilderStore((s) => s.touchMutation);
@@ -85,6 +87,9 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [renamingGroupName, setRenamingGroupName] = useState<string | null>(null);
   const [groupRenameValue, setGroupRenameValue] = useState("");
+  const [pendingDeletePageId, setPendingDeletePageId] = useState<string | null>(null);
+  const [pendingDeleteGroup, setPendingDeleteGroup] = useState<string | null>(null);
+  const [showNewGroupPrompt, setShowNewGroupPrompt] = useState(false);
   const addMenuRef = useRef<HTMLDivElement>(null);
 
   // Close add menu on click outside
@@ -183,27 +188,40 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
   const handleDeletePage = (pageId: string) => {
     if (pages.length <= 1) return;
     if (!project) return;
+    setPendingDeletePageId(pageId);
+  };
+
+  const confirmDeletePage = () => {
+    if (!pendingDeletePageId || !project) { setPendingDeletePageId(null); return; }
+    const pageId = pendingDeletePageId;
     const pageName = pages.find(p => p.id === pageId)?.name || pageId;
-    if (!window.confirm(`Delete page "${pageName}"?`)) return;
-    // Find the page to switch to BEFORE mutating, so we can select it after
     const nextPageId = pages.find((p) => p.id !== pageId)?.id;
     const idleClobbered = project.ui.settings?.idle_page === pageId;
-    // Snapshot pages always; include settings only when idle_page collateral fires
-    pushUndo(
-      idleClobbered
-        ? { pages: project.ui.pages, settings: project.ui.settings }
-        : { pages: project.ui.pages },
-      `Delete page "${pageName}"`,
+
+    const result = removePageAndScrubRefs(
+      project.ui.pages,
+      pageId,
+      project.ui.master_elements || [],
+      project.macros || [],
     );
-    const newPages = removePage(project.ui.pages, pageId);
+    const snapshot: Record<string, unknown> = { pages: project.ui.pages };
+    if (idleClobbered) snapshot.settings = project.ui.settings;
+    if (result.masterElements !== (project.ui.master_elements || [])) snapshot.master_elements = project.ui.master_elements || [];
+    if (result.macros !== (project.macros || [])) snapshot.macros = project.macros || [];
+    pushUndo(snapshot, `Delete page "${pageName}"`);
+
     const settings = idleClobbered
-      ? { ...project.ui.settings, idle_page: newPages[0]?.id || "" }
+      ? { ...project.ui.settings, idle_page: result.pages[0]?.id || "" }
       : project.ui.settings;
-    update({ ui: { ...project.ui, pages: newPages, settings } });
+    update({
+      ui: { ...project.ui, pages: result.pages, master_elements: result.masterElements, settings },
+      macros: result.macros,
+    });
     touchMutation();
     if (selectedPageId === pageId && nextPageId) {
       selectPage(nextPageId);
     }
+    setPendingDeletePageId(null);
   };
 
   const handleDoubleClick = (pageId: string, name: string) => {
@@ -222,11 +240,11 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
   };
 
   const handleAlign = (action: AlignAction) => {
-    if (!selectedElementId || !selectedPageId || !project) return;
+    if (selectedElementIds.length === 0 || !selectedPageId || !project) return;
     const page = project.ui.pages.find((p) => p.id === selectedPageId);
     if (!page) return;
     applyPageMutation(
-      (p) => alignElement(p, selectedPageId!, selectedElementId!, action, page.grid),
+      (p) => alignElements(p, selectedPageId!, selectedElementIds, action, page.grid),
       `Align ${action}`,
     );
   };
@@ -344,7 +362,7 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
                     }}
                     title={isCollapsed ? "Expand group (double-click to rename)" : "Collapse group (double-click to rename)"}
                   >
-                    <FolderOpen size={10} style={{ opacity: 0.5 }} />
+                    <FolderOpen size={10} style={{ color: "var(--text-muted)" }} />
                     {renamingGroupName === group.name ? (
                       <input
                         autoFocus
@@ -377,23 +395,20 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (window.confirm(`Delete group "${group.name}"? Pages will become ungrouped.`)) {
-                          handleDeleteGroup(group.name);
-                        }
+                        setPendingDeleteGroup(group.name);
                       }}
                       style={{
                         display: "flex",
                         alignItems: "center",
-                        padding: 1,
-                        opacity: 0.25,
-                        color: "var(--text-secondary)",
+                        padding: 2,
+                        color: "var(--text-muted)",
                         background: "none",
                         border: "none",
                         cursor: "pointer",
                       }}
                       title="Delete group"
                     >
-                      <X size={10} />
+                      <X size={12} />
                     </button>
                   )}
                 </div>
@@ -426,13 +441,13 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
                 >
                   {/* Page type icon */}
                   {!page.page_type && (
-                    <Square size={10} style={{ opacity: 0.3, flexShrink: 0 }} />
+                    <Square size={10} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
                   )}
                   {page.page_type === "overlay" && (
-                    <Layers size={11} style={{ opacity: 0.5, flexShrink: 0 }} />
+                    <Layers size={11} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
                   )}
                   {page.page_type === "sidebar" && (
-                    <PanelRight size={11} style={{ opacity: 0.5, flexShrink: 0 }} />
+                    <PanelRight size={11} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
                   )}
                   {renamingPageId === page.id ? (
                     <input
@@ -460,7 +475,7 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
                   )}
                   {/* Home page indicator */}
                   {pages[0]?.id === page.id && !page.page_type && (
-                    <span title="Home page (shown first on startup)"><Home size={10} style={{ color: "var(--accent)", opacity: 0.6 }} /></span>
+                    <span title="Home page (shown first on startup)"><Home size={10} style={{ color: "var(--accent)" }} /></span>
                   )}
                   {pages.length > 1 && !previewMode && (
                     <>
@@ -477,7 +492,7 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
                               return result;
                             }, "Set as home page");
                           }}
-                          style={{ display: "flex", padding: 0, opacity: 0.3, color: "var(--text-secondary)", background: "none", border: "none", cursor: "pointer" }}
+                          style={{ display: "flex", padding: 0, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}
                           title="Set as home page (move to first position)"
                         >
                           <Home size={11} />
@@ -488,7 +503,7 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
                           e.stopPropagation();
                           applyPageMutation((p) => reorderPage(p, page.id, "left"), "Move page left");
                         }}
-                        style={{ display: "flex", padding: 0, opacity: 0.3, color: "var(--text-secondary)" }}
+                        style={{ display: "flex", padding: 0, color: "var(--text-muted)" }}
                         title="Move page left"
                       >
                         <ChevronLeft size={12} />
@@ -498,7 +513,7 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
                           e.stopPropagation();
                           applyPageMutation((p) => reorderPage(p, page.id, "right"), "Move page right");
                         }}
-                        style={{ display: "flex", padding: 0, opacity: 0.3, color: "var(--text-secondary)" }}
+                        style={{ display: "flex", padding: 0, color: "var(--text-muted)" }}
                         title="Move page right"
                       >
                         <ChevronRight size={12} />
@@ -508,7 +523,7 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
                           e.stopPropagation();
                           handleDuplicatePage(page.id);
                         }}
-                        style={{ display: "flex", padding: 0, opacity: 0.3, color: "var(--text-secondary)" }}
+                        style={{ display: "flex", padding: 0, color: "var(--text-muted)" }}
                         title="Duplicate page"
                       >
                         <Copy size={11} />
@@ -527,13 +542,12 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
                           }}
                           onClick={(e) => e.stopPropagation()}
                           style={{
-                            fontSize: 9,
-                            width: 18,
-                            opacity: 0.35,
+                            fontSize: 10,
+                            width: 20,
                             padding: 0,
                             background: "transparent",
                             border: "none",
-                            color: "var(--text-secondary)",
+                            color: "var(--text-muted)",
                             cursor: "pointer",
                           }}
                           title="Assign to group"
@@ -554,8 +568,7 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
                           alignItems: "center",
                           padding: 0,
                           marginLeft: 2,
-                          opacity: 0.3,
-                          color: "var(--text-secondary)",
+                          color: "var(--text-muted)",
                         }}
                         title="Delete page"
                       >
@@ -650,10 +663,7 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
               <div style={{ borderTop: "1px solid var(--border-color)", margin: "4px 0" }} />
               <button
                 onClick={() => {
-                  const name = window.prompt("Group name:");
-                  if (name?.trim()) {
-                    handleAddGroup(name.trim());
-                  }
+                  setShowNewGroupPrompt(true);
                   setShowAddMenu(false);
                 }}
                 style={{
@@ -694,9 +704,9 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
         const typeLabel = currentPage.page_type ? ` (${currentPage.page_type})` : "";
         return (
           <span style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 180 }}>
-            {group ? <><span style={{ opacity: 0.6 }}>{group.name}</span> <ChevronRight size={10} style={{ verticalAlign: "middle", opacity: 0.4 }} /> </> : null}
+            {group ? <><span>{group.name}</span> <ChevronRight size={10} style={{ verticalAlign: "middle" }} /> </> : null}
             <span style={{ color: "var(--text-secondary)" }}>{currentPage.name}</span>
-            {typeLabel && <span style={{ opacity: 0.5 }}>{typeLabel}</span>}
+            {typeLabel && <span>{typeLabel}</span>}
           </span>
         );
       })()}
@@ -969,35 +979,64 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
       >
         <button
           onClick={() => setZoom(zoom - 0.1)}
+          disabled={zoom <= 0.25}
           style={{
             display: "flex",
             padding: 2,
-            color: "var(--text-muted)",
+            color: zoom <= 0.25 ? "var(--border-color)" : "var(--text-muted)",
+            cursor: zoom <= 0.25 ? "default" : "pointer",
           }}
         >
           <ZoomOut size={14} />
         </button>
-        <span
+        <button
+          onClick={() => setZoom(1)}
+          title="Reset to 100%"
           style={{
             fontSize: "var(--font-size-sm)",
             color: "var(--text-secondary)",
             minWidth: 36,
             textAlign: "center",
+            background: "transparent",
+            border: "none",
+            cursor: "pointer",
+            padding: "1px 0",
           }}
         >
           {Math.round(zoom * 100)}%
-        </span>
+        </button>
         <button
           onClick={() => setZoom(zoom + 0.1)}
+          disabled={zoom >= 2}
           style={{
             display: "flex",
             padding: 2,
-            color: "var(--text-muted)",
+            color: zoom >= 2 ? "var(--border-color)" : "var(--text-muted)",
+            cursor: zoom >= 2 ? "default" : "pointer",
           }}
         >
           <ZoomIn size={14} />
         </button>
       </div>
+
+      {/* Validate project */}
+      {!previewMode && onValidate && (
+        <button
+          onClick={onValidate}
+          style={{
+            display: "flex", alignItems: "center", gap: 4,
+            padding: "3px 10px", borderRadius: "var(--border-radius)",
+            background: "transparent", border: "1px solid var(--border-color)",
+            color: "var(--text-secondary)", fontSize: "var(--font-size-sm)",
+            cursor: "pointer",
+          }}
+          title="Validate project for broken references"
+          onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
+          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+        >
+          <Check size={12} /> Validate
+        </button>
+      )}
 
       {/* Preview toggle */}
       <button
@@ -1036,6 +1075,44 @@ export function CanvasToolbar({ pages, selectedPageId }: CanvasToolbarProps) {
         >
           {preset.width}x{preset.height}
         </span>
+      )}
+
+      {pendingDeletePageId && (
+        <ConfirmDialog
+          title="Delete Page"
+          message={`Delete page "${pages.find(p => p.id === pendingDeletePageId)?.name || pendingDeletePageId}"?`}
+          confirmLabel="Delete"
+          destructive
+          onConfirm={confirmDeletePage}
+          onCancel={() => setPendingDeletePageId(null)}
+        />
+      )}
+
+      {pendingDeleteGroup && (
+        <ConfirmDialog
+          title="Delete Group"
+          message={`Delete group "${pendingDeleteGroup}"? Pages will become ungrouped.`}
+          confirmLabel="Delete"
+          destructive
+          onConfirm={() => {
+            handleDeleteGroup(pendingDeleteGroup);
+            setPendingDeleteGroup(null);
+          }}
+          onCancel={() => setPendingDeleteGroup(null)}
+        />
+      )}
+
+      {showNewGroupPrompt && (
+        <PromptDialog
+          title="New Group"
+          placeholder="Group name"
+          submitLabel="Create"
+          onSubmit={(name) => {
+            handleAddGroup(name);
+            setShowNewGroupPrompt(false);
+          }}
+          onCancel={() => setShowNewGroupPrompt(false)}
+        />
       )}
     </div>
   );

@@ -19,12 +19,13 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
   {
     title: "UI Builder",
     shortcuts: [
+      { keys: "Ctrl+S", description: "Save project" },
       { keys: "Ctrl+P", description: "Toggle preview mode" },
       { keys: "Ctrl+E", description: "Toggle element palette" },
       { keys: "Ctrl+C", description: "Copy selected element" },
       { keys: "Ctrl+V", description: "Paste element" },
       { keys: "Ctrl+D", description: "Duplicate selected element" },
-      { keys: "Delete", description: "Delete selected element(s)" },
+      { keys: "Delete / Backspace", description: "Delete selected element(s)" },
       { keys: "Arrow keys", description: "Move selected element(s)" },
       { keys: "Escape", description: "Deselect all" },
       { keys: "Shift+Click", description: "Add/remove from multi-select" },

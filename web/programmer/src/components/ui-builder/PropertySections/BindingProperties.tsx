@@ -356,6 +356,40 @@ export function BindingProperties({
     selected: "State key that tracks the currently selected item in the list.",
   };
 
+  const deviceIds = new Set(project.devices.map((d) => d.id));
+  const macroIds = new Set(project.macros.map((m) => m.id));
+  const pageIds = new Set(project.ui.pages.map((p) => p.id));
+
+  const getActionDangling = (action: Record<string, unknown>): string | null => {
+    if (action.action === "device.command" && action.device && !deviceIds.has(action.device as string))
+      return `Device "${action.device}" not found`;
+    if (action.action === "macro" && action.macro && !macroIds.has(action.macro as string))
+      return `Macro "${action.macro}" not found`;
+    if (action.action === "navigate" && action.page && !pageIds.has(action.page as string))
+      return `Page "${action.page}" not found`;
+    return null;
+  };
+
+  const getSlotDangling = (slot: string): string | null => {
+    const binding = element.bindings[slot];
+    if (!binding) return null;
+    if (["press", "release", "hold", "change", "submit", "route", "select"].includes(slot)) {
+      const actions = Array.isArray(binding) ? binding : [binding];
+      for (const a of actions as Record<string, unknown>[]) {
+        const d = getActionDangling(a);
+        if (d) return d;
+      }
+    }
+    if (["variable", "value", "text", "feedback", "color", "selected"].includes(slot)) {
+      const key = (binding as Record<string, unknown>).key as string | undefined;
+      if (key?.startsWith("device.")) {
+        const deviceId = key.split(".")[1];
+        if (!deviceIds.has(deviceId)) return `Device "${deviceId}" not found`;
+      }
+    }
+    return null;
+  };
+
   const isActionIncomplete = (action: Record<string, unknown>): boolean => {
     if (action.action === "device.command") return !action.device || !action.command;
     if (action.action === "macro") return !action.macro;
@@ -448,12 +482,13 @@ export function BindingProperties({
         const binding = element.bindings[slot] as Record<string, unknown> | undefined;
         const isTestable = (slot === "press" || slot === "release" || slot === "hold" || slot === "change" || slot === "submit" || slot === "route" || slot === "select") && hasBinding;
         const incomplete = hasBinding && isBindingIncomplete(slot, binding);
+        const dangling = hasBinding ? getSlotDangling(slot) : null;
 
         return (
           <div
             key={slot}
             style={{
-              border: "1px solid var(--border-color)",
+              border: dangling ? "1px solid var(--color-error)" : "1px solid var(--border-color)",
               borderRadius: "var(--border-radius)",
               overflow: "hidden",
             }}
@@ -481,19 +516,30 @@ export function BindingProperties({
                   )}
                 </span>
                 <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                  {incomplete && (
-                    <span title="Incomplete binding">
-                      <AlertTriangle size={12} style={{ color: "var(--color-warning)" }} />
+                  {dangling ? (
+                    <>
+                      <span title={dangling}>
+                        <AlertTriangle size={12} style={{ color: "var(--color-error)" }} />
+                      </span>
+                      <span style={{ fontSize: 11, color: "var(--color-error)" }}>Broken</span>
+                    </>
+                  ) : incomplete ? (
+                    <>
+                      <span title="Incomplete binding">
+                        <AlertTriangle size={12} style={{ color: "var(--color-warning)" }} />
+                      </span>
+                      <span style={{ fontSize: 11, color: "var(--color-warning)" }}>Incomplete</span>
+                    </>
+                  ) : (
+                    <span
+                      style={{
+                        fontSize: 11,
+                        color: hasBinding ? "var(--accent)" : "var(--text-muted)",
+                      }}
+                    >
+                      {getSlotSummary(slot)}
                     </span>
                   )}
-                  <span
-                    style={{
-                      fontSize: 11,
-                      color: incomplete ? "var(--color-warning)" : hasBinding ? "var(--accent)" : "var(--text-muted)",
-                    }}
-                  >
-                    {incomplete ? "Incomplete" : getSlotSummary(slot)}
-                  </span>
                 </span>
               </button>
               {isTestable && binding && (

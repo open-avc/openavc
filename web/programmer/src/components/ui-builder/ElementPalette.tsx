@@ -20,9 +20,8 @@ import {
   LayoutGrid,
   List,
   Puzzle,
-  LayoutTemplate,
 } from "lucide-react";
-import { ELEMENT_TYPES, ELEMENT_TEMPLATES, type ElementTypeInfo } from "./uiBuilderHelpers";
+import { ELEMENT_TYPES, type ElementTypeInfo } from "./uiBuilderHelpers";
 import { usePluginStore } from "../../store/pluginStore";
 
 const ICONS: Record<string, React.ReactNode> = {
@@ -53,7 +52,7 @@ const CATEGORIES = [
   { key: "navigation" as const, label: "Navigation" },
 ];
 
-export function ElementPalette({ disabled }: { disabled?: boolean }) {
+export function ElementPalette({ disabled, onAdd }: { disabled?: boolean; onAdd?: (type: string) => void }) {
   const panelElements = usePluginStore((s) => s.extensions.panel_elements);
   const [search, setSearch] = useState("");
 
@@ -125,38 +124,13 @@ export function ElementPalette({ disabled }: { disabled?: boolean }) {
                   key={info.type}
                   info={info}
                   disabled={disabled}
+                  onAdd={onAdd}
                 />
               ))}
             </div>
           </div>
         );
       })}
-
-      {/* Templates (multi-element presets) */}
-      {ELEMENT_TEMPLATES.length > 0 && (
-        <div>
-          <div
-            style={{
-              fontSize: 11,
-              color: "var(--text-muted)",
-              textTransform: "uppercase",
-              letterSpacing: "0.5px",
-              marginBottom: "var(--space-xs)",
-            }}
-          >
-            Templates
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            {ELEMENT_TEMPLATES.map((tpl) => (
-              <TemplatePaletteItem
-                key={tpl.id}
-                template={tpl}
-                disabled={disabled}
-              />
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Plugin elements */}
       {panelElements.length > 0 && (
@@ -184,6 +158,7 @@ export function ElementPalette({ disabled }: { disabled?: boolean }) {
                 }}
                 disabled={disabled}
                 icon={<Puzzle size={16} />}
+                onAdd={onAdd}
               />
             ))}
           </div>
@@ -197,10 +172,12 @@ function PaletteItem({
   info,
   disabled,
   icon,
+  onAdd,
 }: {
   info: ElementTypeInfo;
   disabled?: boolean;
   icon?: React.ReactNode;
+  onAdd?: (type: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `palette-${info.type}`,
@@ -227,7 +204,8 @@ function PaletteItem({
         background: "transparent",
         userSelect: "none",
       }}
-      title={info.description ? `${info.label} — ${info.description}` : `Drag to add ${info.label}`}
+      title={info.description ? `${info.label} — ${info.description}\nClick to add, or drag to place` : `Click to add ${info.label}, or drag to place`}
+      onClick={() => { if (!disabled && onAdd) onAdd(info.type); }}
       onMouseEnter={(e) => {
         if (!disabled) {
           (e.currentTarget as HTMLElement).style.background =
@@ -253,52 +231,3 @@ function PaletteItem({
   );
 }
 
-function TemplatePaletteItem({
-  template,
-  disabled,
-}: {
-  template: { id: string; label: string; description: string };
-  disabled?: boolean;
-}) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: `template-${template.id}`,
-    data: { source: "template", templateId: template.id },
-    disabled,
-  });
-
-  return (
-    <div
-      ref={setNodeRef}
-      {...listeners}
-      {...attributes}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "var(--space-sm)",
-        padding: "6px 8px",
-        borderRadius: "var(--border-radius)",
-        cursor: disabled ? "default" : "grab",
-        opacity: isDragging ? 0.4 : disabled ? 0.4 : 1,
-        fontSize: "var(--font-size-sm)",
-        color: "var(--text-primary)",
-        transition: "background var(--transition-fast)",
-        background: "transparent",
-        userSelect: "none",
-      }}
-      title={`${template.label} — ${template.description}`}
-      onMouseEnter={(e) => {
-        if (!disabled) {
-          (e.currentTarget as HTMLElement).style.background = "var(--bg-hover)";
-        }
-      }}
-      onMouseLeave={(e) => {
-        (e.currentTarget as HTMLElement).style.background = "transparent";
-      }}
-    >
-      <span style={{ color: "var(--accent)", display: "flex" }}>
-        <LayoutTemplate size={16} />
-      </span>
-      {template.label}
-    </div>
-  );
-}

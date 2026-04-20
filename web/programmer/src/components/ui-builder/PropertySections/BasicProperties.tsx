@@ -1,14 +1,21 @@
-import { useState, useRef, useEffect } from "react";
-import { HexColorPicker } from "react-colorful";
+import { useState, useEffect } from "react";
 import { Plus, X } from "lucide-react";
 import type { UIElement, UIPage, UIElementOption } from "../../../api/types";
 import { CopyButton } from "../../shared/CopyButton";
 import { IconPicker } from "../IconPicker";
 import { AssetPicker } from "../AssetPicker";
+import { InlineColorPicker } from "../../shared/InlineColorPicker";
+import { showInfo } from "../../../store/toastStore";
+
+interface MatrixPreset {
+  name: string;
+  macro?: string;
+}
 
 interface BasicPropertiesProps {
   element: UIElement;
   pages: UIPage[];
+  macros?: { id: string; name: string }[];
   onChange: (patch: Partial<UIElement>) => void;
   onRename?: (newId: string) => void;
 }
@@ -16,6 +23,7 @@ interface BasicPropertiesProps {
 export function BasicProperties({
   element,
   pages,
+  macros = [],
   onChange,
   onRename,
 }: BasicPropertiesProps) {
@@ -268,10 +276,10 @@ export function BasicProperties({
                 const newOrientation = e.target.value;
                 const oldOrientation = element.orientation || "horizontal";
                 const patch: Partial<typeof element> = { orientation: newOrientation };
-                // Swap grid dimensions when switching orientation
                 if (newOrientation !== oldOrientation) {
                   const ga = element.grid_area;
                   patch.grid_area = { ...ga, col_span: ga.row_span, row_span: ga.col_span };
+                  showInfo(`Swapped dimensions to ${ga.row_span}x${ga.col_span} for ${newOrientation} layout`);
                 }
                 onChange(patch);
               }}
@@ -334,6 +342,14 @@ export function BasicProperties({
               style={{ flex: 1, fontSize: 11 }}
             />
           </FieldRow>
+          <FieldRow label="Alt Text">
+            <input
+              value={element.label || ""}
+              onChange={(e) => onChange({ label: e.target.value || undefined })}
+              placeholder="Describe the image"
+              style={{ flex: 1, fontSize: 11 }}
+            />
+          </FieldRow>
         </>
       )}
 
@@ -374,13 +390,13 @@ export function BasicProperties({
 
           <SubSection label="Gauge Appearance" />
           <FieldRow label="Gauge Color">
-            <ColorInput
+            <InlineColorPicker size="md" clearable
               value={String(element.style?.gauge_color || "")}
               onChange={(v) => onChange({ style: { ...element.style, gauge_color: v || undefined } })}
             />
           </FieldRow>
           <FieldRow label="Background Arc">
-            <ColorInput
+            <InlineColorPicker size="md" clearable
               value={String(element.style?.gauge_bg_color || "")}
               onChange={(v) => onChange({ style: { ...element.style, gauge_bg_color: v || undefined } })}
             />
@@ -480,6 +496,24 @@ export function BasicProperties({
               <span style={{ fontSize: 10, color: "var(--text-muted)" }}>ms</span>
             </FieldRow>
           )}
+          <FieldRow label="Green to">
+            <input
+              type="number"
+              value={(element.style?.green_to as number) ?? -12}
+              onChange={(e) => onChange({ style: { ...element.style, green_to: Number(e.target.value) } })}
+              style={{ flex: 1 }}
+            />
+            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>dB</span>
+          </FieldRow>
+          <FieldRow label="Yellow to">
+            <input
+              type="number"
+              value={(element.style?.yellow_to as number) ?? -3}
+              onChange={(e) => onChange({ style: { ...element.style, yellow_to: Number(e.target.value) } })}
+              style={{ flex: 1 }}
+            />
+            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>dB</span>
+          </FieldRow>
         </>
       )}
 
@@ -539,17 +573,8 @@ export function BasicProperties({
               <option value="top-right">Top Right</option>
               <option value="bottom-left">Bottom Left</option>
               <option value="bottom-center">Bottom Center</option>
+              <option value="bottom-right">Bottom Right</option>
             </select>
-          </FieldRow>
-          <FieldRow label="Collapsible">
-            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
-              <input
-                type="checkbox"
-                checked={element.collapsible ?? false}
-                onChange={(e) => onChange({ collapsible: e.target.checked })}
-              />
-              Allow user to collapse
-            </label>
           </FieldRow>
         </>
       )}
@@ -570,6 +595,54 @@ export function BasicProperties({
           <FieldRow label="Format">
             <input value={element.format || ""} onChange={(e) => onChange({ format: e.target.value })} placeholder={{ time: "h:mm A", date: "MMM D, YYYY", datetime: "MMM D, YYYY h:mm A", countdown: "HH:mm:ss", elapsed: "HH:mm:ss", meeting: "mm:ss" }[element.clock_mode || "time"] || "h:mm A"} style={{ flex: 1 }} />
           </FieldRow>
+          {element.clock_mode === "countdown" && (
+            <>
+              <FieldRow label="Target Time">
+                <input
+                  type="datetime-local"
+                  value={element.target_time || ""}
+                  onChange={(e) => onChange({ target_time: e.target.value || undefined })}
+                  style={{ flex: 1, fontSize: 11 }}
+                />
+              </FieldRow>
+              <FieldRow label="State Key">
+                <input
+                  value={(element.bindings as Record<string, unknown>)?.value
+                    ? ((element.bindings as Record<string, { key?: string }>)?.value?.key || "")
+                    : (element.start_key || "")}
+                  onChange={(e) => {
+                    const key = e.target.value;
+                    if (key) {
+                      onChange({ bindings: { ...element.bindings, value: { key } }, target_time: undefined });
+                    } else {
+                      const { value: _v, ...rest } = element.bindings as Record<string, unknown>;
+                      onChange({ bindings: rest, start_key: undefined });
+                    }
+                  }}
+                  placeholder="var.countdown_target"
+                  style={{ flex: 1, fontSize: 11 }}
+                />
+              </FieldRow>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
+                Set a fixed target time, or bind to a state key containing an ISO datetime. State key takes priority.
+              </div>
+            </>
+          )}
+          {element.clock_mode === "elapsed" && (
+            <>
+              <FieldRow label="Start Key">
+                <input
+                  value={element.start_key || ""}
+                  onChange={(e) => onChange({ start_key: e.target.value || undefined })}
+                  placeholder="var.meeting_started"
+                  style={{ flex: 1, fontSize: 11 }}
+                />
+              </FieldRow>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
+                State key containing the start time (ISO datetime). Timer shows time elapsed since that value.
+              </div>
+            </>
+          )}
           {element.clock_mode === "meeting" && (
             <FieldRow label="Duration">
               <input type="number" value={element.duration_minutes ?? 60} onChange={(e) => onChange({ duration_minutes: Number(e.target.value) })} min={1} style={{ flex: 1 }} />
@@ -670,6 +743,25 @@ export function BasicProperties({
           <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
             Use * for the output number (1-based)
           </div>
+          <FieldRow label="Input Key">
+            <input
+              value={element.matrix_config?.input_key_pattern || ""}
+              onChange={(e) => onChange({ matrix_config: { ...element.matrix_config, input_key_pattern: e.target.value || undefined } })}
+              placeholder="device.sw.input_*_name"
+              style={{ flex: 1, fontSize: 11 }}
+            />
+          </FieldRow>
+          <FieldRow label="Output Key">
+            <input
+              value={element.matrix_config?.output_key_pattern || ""}
+              onChange={(e) => onChange({ matrix_config: { ...element.matrix_config, output_key_pattern: e.target.value || undefined } })}
+              placeholder="device.sw.output_*_name"
+              style={{ flex: 1, fontSize: 11 }}
+            />
+          </FieldRow>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
+            Dynamic labels from state. * = input/output number
+          </div>
           <FieldRow label="Audio Follow">
             <input
               type="checkbox"
@@ -689,15 +781,21 @@ export function BasicProperties({
             onChange={(labels) => onChange({ matrix_config: { ...element.matrix_config, output_labels: labels } })}
           />
 
+          <MatrixPresetsEditor
+            presets={(element.bindings as Record<string, unknown>)?.presets as MatrixPreset[] || []}
+            macros={macros}
+            onChange={(presets) => onChange({ bindings: { ...element.bindings, presets: presets.length > 0 ? presets : undefined } })}
+          />
+
           <SubSection label="Matrix Appearance" />
           <FieldRow label="Active Color">
-            <ColorInput
+            <InlineColorPicker size="md" clearable
               value={String(element.style?.crosspoint_active_color || "")}
               onChange={(v) => onChange({ style: { ...element.style, crosspoint_active_color: v || undefined } })}
             />
           </FieldRow>
           <FieldRow label="Inactive Color">
-            <ColorInput
+            <InlineColorPicker size="md" clearable
               value={String(element.style?.crosspoint_inactive_color || "")}
               onChange={(v) => onChange({ style: { ...element.style, crosspoint_inactive_color: v || undefined } })}
             />
@@ -829,7 +927,7 @@ export function BasicProperties({
                 <span style={{ fontSize: 10, color: "var(--text-muted)" }}>px</span>
               </FieldRow>
               <FieldRow label="Icon Color">
-                <ColorInput
+                <InlineColorPicker size="md" clearable
                   value={element.icon_color || ""}
                   onChange={(v) => onChange({ icon_color: v || undefined })}
                 />
@@ -1033,8 +1131,6 @@ function MatrixLabelEditor({
   labels: string[];
   onChange: (labels: string[]) => void;
 }) {
-  if (labels.length === 0) return null;
-
   return (
     <div style={{ marginTop: 4 }}>
       <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 4 }}>{title}</div>
@@ -1053,6 +1149,76 @@ function MatrixLabelEditor({
             />
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function MatrixPresetsEditor({
+  presets,
+  macros,
+  onChange,
+}: {
+  presets: MatrixPreset[];
+  macros: { id: string; name: string }[];
+  onChange: (presets: MatrixPreset[]) => void;
+}) {
+  return (
+    <div style={{ marginTop: 4 }}>
+      <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 4 }}>Presets</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        {presets.map((preset, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <input
+              value={preset.name || ""}
+              onChange={(e) => {
+                const updated = [...presets];
+                updated[i] = { ...updated[i], name: e.target.value };
+                onChange(updated);
+              }}
+              placeholder="Preset name"
+              style={{ flex: 1, padding: "2px 6px", fontSize: 11 }}
+            />
+            <select
+              value={preset.macro || ""}
+              onChange={(e) => {
+                const updated = [...presets];
+                updated[i] = { ...updated[i], macro: e.target.value || undefined };
+                onChange(updated);
+              }}
+              style={{ flex: 1, fontSize: 11, padding: "2px 4px" }}
+            >
+              <option value="">No macro</option>
+              {macros.map((m) => (
+                <option key={m.id} value={m.id}>{m.name || m.id}</option>
+              ))}
+            </select>
+            <button
+              onClick={() => onChange(presets.filter((_, j) => j !== i))}
+              style={{
+                padding: "1px 5px", border: "1px solid var(--border-color)",
+                borderRadius: 3, background: "transparent", color: "var(--color-error)",
+                fontSize: 11, cursor: "pointer", flexShrink: 0,
+              }}
+            >
+              <X size={10} />
+            </button>
+          </div>
+        ))}
+        <button
+          onClick={() => onChange([...presets, { name: `Preset ${presets.length + 1}` }])}
+          style={{
+            padding: "3px 10px", borderRadius: "var(--border-radius)",
+            border: "1px dashed var(--border-color)", background: "transparent",
+            color: "var(--text-muted)", fontSize: 11, cursor: "pointer",
+            alignSelf: "flex-start",
+          }}
+        >
+          <Plus size={10} /> Add Preset
+        </button>
+      </div>
+      <div style={{ fontSize: 10, color: "var(--text-muted)", fontStyle: "italic", marginTop: 2 }}>
+        Presets appear as buttons above the matrix. Each runs a macro when clicked.
       </div>
     </div>
   );
@@ -1159,80 +1325,6 @@ function SubSection({ label }: { label: string }) {
       }}
     >
       {label}
-    </div>
-  );
-}
-
-function ColorInput({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const handleClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [open]);
-
-  return (
-    <div ref={ref} style={{ position: "relative", display: "flex", alignItems: "center", gap: 4 }}>
-      <div
-        onClick={() => setOpen(!open)}
-        style={{
-          width: 24,
-          height: 24,
-          borderRadius: 4,
-          backgroundColor: value || "transparent",
-          border: "1px solid var(--border-color)",
-          cursor: "pointer",
-          flexShrink: 0,
-        }}
-      />
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder="#000000"
-        style={{ width: 80, padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
-      />
-      {value && (
-        <button
-          onClick={() => onChange("")}
-          style={{ padding: "2px 4px", fontSize: 10, color: "var(--text-muted)", borderRadius: 3 }}
-        >
-          Clear
-        </button>
-      )}
-      {open && (
-        <div
-          style={{
-            position: "absolute",
-            zIndex: 100,
-            top: 30,
-            left: 0,
-            background: "var(--bg-elevated)",
-            border: "1px solid var(--border-color)",
-            borderRadius: "var(--border-radius)",
-            padding: "var(--space-sm)",
-            boxShadow: "var(--shadow-lg)",
-          }}
-        >
-          <HexColorPicker
-            color={value || "#000000"}
-            onChange={onChange}
-            style={{ width: 180, height: 150 }}
-          />
-        </div>
-      )}
     </div>
   );
 }

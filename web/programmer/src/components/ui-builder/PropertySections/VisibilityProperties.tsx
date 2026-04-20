@@ -8,24 +8,28 @@ interface VisibilityPropertiesProps {
 
 export function VisibilityProperties({ element, onChange }: VisibilityPropertiesProps) {
   const visibleWhen = element.bindings.visible_when as
-    | { key?: string; operator?: string; value?: unknown; all?: StepCondition[] }
+    | { key?: string; operator?: string; value?: unknown; all?: StepCondition[]; any?: StepCondition[] }
     | undefined;
 
   const hasCondition = visibleWhen != null;
+  const mode: "all" | "any" = visibleWhen?.any ? "any" : "all";
   const conditions: StepCondition[] = visibleWhen?.all
     ? visibleWhen.all
-    : visibleWhen?.key
-      ? [{ key: visibleWhen.key, operator: visibleWhen.operator ?? "eq", value: visibleWhen.value }]
-      : [];
+    : visibleWhen?.any
+      ? visibleWhen.any
+      : visibleWhen?.key
+        ? [{ key: visibleWhen.key, operator: visibleWhen.operator ?? "eq", value: visibleWhen.value }]
+        : [];
 
-  const updateConditions = (updated: StepCondition[]) => {
+  const updateConditions = (updated: StepCondition[], newMode?: "all" | "any") => {
+    const m = newMode ?? mode;
     const newBindings = { ...element.bindings };
     if (updated.length === 0) {
       delete newBindings.visible_when;
     } else if (updated.length === 1) {
       newBindings.visible_when = updated[0];
     } else {
-      newBindings.visible_when = { all: updated };
+      newBindings.visible_when = m === "any" ? { any: updated } : { all: updated };
     }
     onChange({ bindings: newBindings });
   };
@@ -78,19 +82,41 @@ export function VisibilityProperties({ element, onChange }: VisibilityProperties
               )}
             </div>
           ))}
-          <button
-            onClick={() => updateConditions([...conditions, { key: "", operator: "truthy" }])}
-            style={{
-              padding: "3px 10px", borderRadius: "var(--border-radius)",
-              border: "1px dashed var(--border-color)", background: "transparent",
-              color: "var(--text-muted)", fontSize: 12, cursor: "pointer",
-              alignSelf: "flex-start",
-            }}
-          >
-            + Add condition (AND)
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button
+              onClick={() => updateConditions([...conditions, { key: "", operator: "truthy" }])}
+              style={{
+                padding: "3px 10px", borderRadius: "var(--border-radius)",
+                border: "1px dashed var(--border-color)", background: "transparent",
+                color: "var(--text-muted)", fontSize: 12, cursor: "pointer",
+              }}
+            >
+              + Add condition
+            </button>
+            {conditions.length > 1 && (
+              <div style={{ display: "flex", gap: 2, fontSize: 11 }}>
+                {(["all", "any"] as const).map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => updateConditions(conditions, m)}
+                    style={{
+                      padding: "2px 8px", borderRadius: 3, fontSize: 11, cursor: "pointer",
+                      border: "1px solid var(--border-color)",
+                      background: mode === m ? "var(--accent-dim)" : "transparent",
+                      color: mode === m ? "var(--accent)" : "var(--text-muted)",
+                      fontWeight: mode === m ? 600 : 400,
+                    }}
+                  >
+                    {m === "all" ? "AND" : "OR"}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <div style={{ fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}>
-            All conditions must be true for the element to be visible.
+            {mode === "any"
+              ? "Element is visible when any condition is true."
+              : "Element is visible when all conditions are true."}
           </div>
         </div>
       )}

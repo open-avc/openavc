@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight, Trash2, Undo2, Link, Palette } from "lucide-react";
+import { ConfirmDialog } from "../shared/ConfirmDialog";
 import type { UIElement, UIPage, ProjectConfig, OverlayConfig, PageBackground, MasterElement } from "../../api/types";
 import { BasicProperties } from "./PropertySections/BasicProperties";
 import { LayoutProperties } from "./PropertySections/LayoutProperties";
@@ -245,6 +246,7 @@ export function PropertiesPanel({
         <BasicProperties
           element={element}
           pages={project.ui.pages}
+          macros={(project.macros || []).map((m) => ({ id: m.id, name: m.name }))}
           onChange={handleChange}
           onRename={onRenameElement ? (newId) => onRenameElement(element.id, newId) : undefined}
         />
@@ -334,6 +336,7 @@ function MasterElementProperties({
   onDemote: (elementId: string) => void;
   onDelete: (elementId: string) => void;
 }) {
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const pagesValue = masterElement.pages;
   const isAllPages = pagesValue === "*";
   const selectedPageIds = Array.isArray(pagesValue) ? pagesValue : [];
@@ -402,6 +405,7 @@ function MasterElementProperties({
         <BasicProperties
           element={masterElement}
           pages={project.ui.pages}
+          macros={(project.macros || []).map((m) => ({ id: m.id, name: m.name }))}
           onChange={handleElementChange}
           onRename={onRename ? (newId) => onRename(masterElement.id, newId) : undefined}
         />
@@ -498,17 +502,13 @@ function MasterElementProperties({
             fontSize: "var(--font-size-sm)",
             color: "var(--text-primary)",
           }}
-          title="Move this global element back to the current page as a regular element"
+          title="Move this master element back to the current page as a regular element"
         >
           <Undo2 size={13} />
           Move to Current Page
         </button>
         <button
-          onClick={() => {
-            if (window.confirm(`Delete global element "${masterElement.id}"? This cannot be undone.`)) {
-              onDelete(masterElement.id);
-            }
-          }}
+          onClick={() => setShowDeleteConfirm(true)}
           style={{
             display: "flex",
             alignItems: "center",
@@ -524,7 +524,7 @@ function MasterElementProperties({
           }}
         >
           <Trash2 size={13} />
-          Delete Global Element
+          Delete Master Element
         </button>
       </div>
 
@@ -538,6 +538,20 @@ function MasterElementProperties({
       >
         Master elements appear on multiple pages. Changes here apply everywhere.
       </div>
+
+      {showDeleteConfirm && (
+        <ConfirmDialog
+          title="Delete Master Element"
+          message={`Delete master element "${masterElement.id}"? This cannot be undone.`}
+          confirmLabel="Delete"
+          destructive
+          onConfirm={() => {
+            onDelete(masterElement.id);
+            setShowDeleteConfirm(false);
+          }}
+          onCancel={() => setShowDeleteConfirm(false)}
+        />
+      )}
     </div>
   );
 }
@@ -847,7 +861,7 @@ function PageProperties({
               >
                 <option value="cover">Cover</option>
                 <option value="contain">Contain</option>
-                <option value="100% 100%">Stretch</option>
+                <option value="stretch">Stretch</option>
               </select>
             </FieldRow>
 

@@ -1,7 +1,6 @@
-import { useState, useRef, useEffect } from "react";
-import { HexColorPicker } from "react-colorful";
 import type { UIElement } from "../../../api/types";
 import { AssetPicker } from "../AssetPicker";
+import { InlineColorPicker } from "../../shared/InlineColorPicker";
 
 interface StylePropertiesProps {
   element: UIElement;
@@ -22,7 +21,7 @@ export function StyleProperties({ element, onChange, themeDefaults }: StylePrope
   const style = element.style || {};
 
   const handleStyleChange = (key: string, value: unknown) => {
-    onChange({ style: { ...style, [key]: value || undefined } });
+    onChange({ style: { ...style, [key]: value === undefined || value === "" ? undefined : value } });
   };
 
   // Check if a style property is explicitly set on this element (vs inherited from theme)
@@ -79,7 +78,7 @@ export function StyleProperties({ element, onChange, themeDefaults }: StylePrope
         isOverridden={isOverridden("bg_color")}
         onReset={() => handleReset("bg_color")}
       >
-        <ColorField
+        <InlineColorPicker size="md" clearable
           value={String(style.bg_color || "")}
           onChange={(v) => handleStyleChange("bg_color", v)}
           placeholder={String(themeDefaults?.bg_color || "")}
@@ -92,12 +91,44 @@ export function StyleProperties({ element, onChange, themeDefaults }: StylePrope
         isOverridden={isOverridden("text_color")}
         onReset={() => handleReset("text_color")}
       >
-        <ColorField
+        <InlineColorPicker size="md" clearable
           value={String(style.text_color || "")}
           onChange={(v) => handleStyleChange("text_color", v)}
           placeholder={String(themeDefaults?.text_color || "")}
         />
       </StyleRow>
+
+      {/* Accent color — overrides the theme accent for interactive sub-elements */}
+      {["slider", "fader", "select", "text_input", "page_nav", "keypad"].includes(element.type) && (
+        <StyleRow
+          label="Accent Color"
+          tooltip="Color for interactive parts (thumb, handle, fill). Overrides theme accent for this element."
+          isOverridden={isOverridden("accent_color")}
+          onReset={() => handleReset("accent_color")}
+        >
+          <InlineColorPicker size="md" clearable
+            value={String(style.accent_color || "")}
+            onChange={(v) => handleStyleChange("accent_color", v)}
+            placeholder={String(themeDefaults?.accent_color || "")}
+          />
+        </StyleRow>
+      )}
+
+      {/* Track/surface color — overrides the theme surface for track backgrounds */}
+      {["slider", "fader", "select", "text_input", "keypad"].includes(element.type) && (
+        <StyleRow
+          label="Track Color"
+          tooltip="Background color for tracks, inputs, and surface areas. Overrides theme surface for this element."
+          isOverridden={isOverridden("track_color")}
+          onReset={() => handleReset("track_color")}
+        >
+          <InlineColorPicker size="md" clearable
+            value={String(style.track_color || "")}
+            onChange={(v) => handleStyleChange("track_color", v)}
+            placeholder={String(themeDefaults?.track_color || "")}
+          />
+        </StyleRow>
+      )}
 
       {/* Element-specific colors */}
       {element.type === "list" && (
@@ -108,7 +139,7 @@ export function StyleProperties({ element, onChange, themeDefaults }: StylePrope
             isOverridden={isOverridden("item_bg")}
             onReset={() => handleReset("item_bg")}
           >
-            <ColorField
+            <InlineColorPicker size="md" clearable
               value={String(style.item_bg || "")}
               onChange={(v) => handleStyleChange("item_bg", v)}
               placeholder={String(themeDefaults?.item_bg || "")}
@@ -120,7 +151,7 @@ export function StyleProperties({ element, onChange, themeDefaults }: StylePrope
             isOverridden={isOverridden("item_active_bg")}
             onReset={() => handleReset("item_active_bg")}
           >
-            <ColorField
+            <InlineColorPicker size="md" clearable
               value={String(style.item_active_bg || "")}
               onChange={(v) => handleStyleChange("item_active_bg", v)}
               placeholder={String(themeDefaults?.item_active_bg || "")}
@@ -340,7 +371,7 @@ export function StyleProperties({ element, onChange, themeDefaults }: StylePrope
             isOverridden={isOverridden("border_color")}
             onReset={() => handleReset("border_color")}
           >
-            <ColorField
+            <InlineColorPicker size="md" clearable
               value={String(style.border_color || "")}
               onChange={(v) => handleStyleChange("border_color", v)}
               placeholder={String(themeDefaults?.border_color || "")}
@@ -564,14 +595,14 @@ export function StyleProperties({ element, onChange, themeDefaults }: StylePrope
       {gradientEnabled && (
         <>
           <StyleRow label="Gradient Start" tooltip="Color at the beginning of the gradient">
-            <ColorField
+            <InlineColorPicker size="md" clearable
               value={String(gradient?.from || "")}
               onChange={(v) => handleGradientChange("from", v)}
             />
           </StyleRow>
 
           <StyleRow label="Gradient End" tooltip="Color at the end of the gradient">
-            <ColorField
+            <InlineColorPicker size="md" clearable
               value={String(gradient?.to || "")}
               onChange={(v) => handleGradientChange("to", v)}
             />
@@ -721,6 +752,20 @@ export function StyleProperties({ element, onChange, themeDefaults }: StylePrope
         </span>
       </StyleRow>
 
+      <StyleRow label="Transition Speed" tooltip="How fast this element's style changes animate (in milliseconds). Affects feedback state transitions.">
+        <input
+          type="number"
+          value={style.transition_duration != null ? Number(style.transition_duration) : ""}
+          onChange={(e) => handleStyleChange("transition_duration", e.target.value ? Number(e.target.value) : undefined)}
+          placeholder="200"
+          min={0}
+          max={5000}
+          step={50}
+          style={{ flex: 1, padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
+        />
+        <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>ms</span>
+      </StyleRow>
+
       <StyleRow label="Content Overflow" tooltip="What happens when content is larger than the element — hide it, show scrollbars, or let it overflow">
         <select
           value={String(style.overflow || "")}
@@ -838,94 +883,3 @@ function StyleRow({
   );
 }
 
-function ColorField({
-  value,
-  onChange,
-  placeholder,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const handleClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [open]);
-
-  // Show theme default color in swatch when no explicit value is set
-  const displayColor = value || placeholder || "transparent";
-  const isInherited = !value && !!placeholder;
-
-  return (
-    <div ref={ref} style={{ position: "relative" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-        <div
-          onClick={() => setOpen(!open)}
-          style={{
-            width: 24,
-            height: 24,
-            borderRadius: 4,
-            backgroundColor: displayColor,
-            border: isInherited ? "1px dashed var(--border-color)" : "1px solid var(--border-color)",
-            cursor: "pointer",
-            flexShrink: 0,
-            opacity: isInherited ? 0.6 : 1,
-          }}
-        />
-        <input
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="#000000"
-          style={{
-            width: 80,
-            padding: "4px 6px",
-            fontSize: "var(--font-size-sm)",
-          }}
-        />
-        {value && (
-          <button
-            onClick={() => onChange("")}
-            style={{
-              padding: "2px 4px",
-              fontSize: 10,
-              color: "var(--text-muted)",
-              borderRadius: 3,
-            }}
-          >
-            Clear
-          </button>
-        )}
-      </div>
-      {open && (
-        <div
-          style={{
-            position: "absolute",
-            zIndex: 100,
-            top: 30,
-            left: 0,
-            background: "var(--bg-elevated)",
-            border: "1px solid var(--border-color)",
-            borderRadius: "var(--border-radius)",
-            padding: "var(--space-sm)",
-            boxShadow: "var(--shadow-lg)",
-          }}
-        >
-          <HexColorPicker
-            color={value || "#000000"}
-            onChange={onChange}
-            style={{ width: 180, height: 150 }}
-          />
-        </div>
-      )}
-    </div>
-  );
-}

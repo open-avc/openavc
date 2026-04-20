@@ -1,38 +1,41 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
-interface ConfirmDialogProps {
+interface PromptDialogProps {
   title: string;
-  message: React.ReactNode;
-  confirmLabel?: string;
+  message?: string;
+  placeholder?: string;
+  defaultValue?: string;
+  submitLabel?: string;
   cancelLabel?: string;
-  destructive?: boolean;
-  onConfirm: () => void;
+  onSubmit: (value: string) => void;
   onCancel: () => void;
 }
 
-export function ConfirmDialog({
+export function PromptDialog({
   title,
   message,
-  confirmLabel = "Confirm",
+  placeholder,
+  defaultValue = "",
+  submitLabel = "OK",
   cancelLabel = "Cancel",
-  destructive = false,
-  onConfirm,
+  onSubmit,
   onCancel,
-}: ConfirmDialogProps) {
+}: PromptDialogProps) {
+  const [value, setValue] = useState(defaultValue);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const previousFocusRef = useRef<Element | null>(null);
 
   useEffect(() => {
     previousFocusRef.current = document.activeElement;
     requestAnimationFrame(() => {
-      const selector = destructive ? "button[data-cancel]" : "button[data-confirm]";
-      const btn = dialogRef.current?.querySelector<HTMLElement>(selector);
-      btn?.focus();
+      inputRef.current?.focus();
+      inputRef.current?.select();
     });
     return () => {
       (previousFocusRef.current as HTMLElement)?.focus?.();
     };
-  }, [destructive]);
+  }, []);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -55,6 +58,10 @@ export function ConfirmDialog({
     return () => document.removeEventListener("keydown", handler);
   }, [onCancel]);
 
+  const handleSubmit = () => {
+    if (value.trim()) onSubmit(value.trim());
+  };
+
   return (
     <div
       style={{
@@ -70,9 +77,9 @@ export function ConfirmDialog({
     >
       <div
         ref={dialogRef}
-        role="alertdialog"
-        aria-labelledby="confirm-dialog-title"
-        aria-describedby="confirm-dialog-desc"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
         tabIndex={-1}
         style={{
           background: "var(--bg-elevated)",
@@ -85,15 +92,35 @@ export function ConfirmDialog({
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 id="confirm-dialog-title" style={{ marginBottom: "var(--space-md)", fontSize: "var(--font-size-lg)" }}>
+        <h3 style={{ marginBottom: "var(--space-md)", fontSize: "var(--font-size-lg)" }}>
           {title}
         </h3>
-        <div id="confirm-dialog-desc" style={{ color: "var(--text-secondary)", marginBottom: "var(--space-xl)" }}>
-          {message}
-        </div>
+        {message && (
+          <div style={{ color: "var(--text-secondary)", marginBottom: "var(--space-md)" }}>
+            {message}
+          </div>
+        )}
+        <input
+          ref={inputRef}
+          type="text"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") handleSubmit(); }}
+          placeholder={placeholder}
+          style={{
+            width: "100%",
+            padding: "var(--space-sm) var(--space-md)",
+            borderRadius: "var(--border-radius)",
+            border: "1px solid var(--border-color)",
+            background: "var(--bg-input)",
+            color: "var(--text-primary)",
+            fontSize: "var(--font-size-md)",
+            marginBottom: "var(--space-xl)",
+            boxSizing: "border-box",
+          }}
+        />
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-sm)" }}>
           <button
-            data-cancel
             onClick={onCancel}
             style={{
               padding: "var(--space-sm) var(--space-lg)",
@@ -104,16 +131,17 @@ export function ConfirmDialog({
             {cancelLabel}
           </button>
           <button
-            data-confirm
-            onClick={onConfirm}
+            onClick={handleSubmit}
             style={{
               padding: "var(--space-sm) var(--space-lg)",
               borderRadius: "var(--border-radius)",
-              background: destructive ? "var(--color-error)" : "var(--accent)",
-              color: destructive ? "#fff" : "var(--text-on-accent)",
+              background: "var(--accent)",
+              color: "var(--text-on-accent)",
+              opacity: value.trim() ? 1 : 0.5,
             }}
+            disabled={!value.trim()}
           >
-            {confirmLabel}
+            {submitLabel}
           </button>
         </div>
       </div>

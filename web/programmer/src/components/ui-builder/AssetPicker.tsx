@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Trash2, X, Image } from "lucide-react";
 import * as api from "../../api/restClient";
 import { useProjectStore } from "../../store/projectStore";
+import { ConfirmDialog } from "../shared/ConfirmDialog";
 
 interface AssetPickerProps {
   value: string;
@@ -98,6 +99,8 @@ function AssetBrowserModal({
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  const [pendingLargeUpload, setPendingLargeUpload] = useState<{ files: File[]; largeNames: string } | null>(null);
+  const [pendingDeleteAsset, setPendingDeleteAsset] = useState<string | null>(null);
 
   // Build set of referenced asset names (12.10)
   const project = useProjectStore((s) => s.project);
@@ -143,18 +146,21 @@ function AssetBrowserModal({
 
   const handleUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    // Warn about large files (12.9)
-    const largeFiles = Array.from(files).filter((f) => f.size > 500 * 1024);
+    const allFiles = Array.from(files);
+    const largeFiles = allFiles.filter((f) => f.size > 500 * 1024);
     if (largeFiles.length > 0) {
       const names = largeFiles.map((f) => `${f.name} (${(f.size / 1024).toFixed(0)} KB)`).join(", ");
-      if (!window.confirm(
-        `The following files are larger than 500 KB:\n${names}\n\nLarge images slow down panel loading. Consider compressing them before uploading.\n\nUpload anyway?`
-      )) return;
+      setPendingLargeUpload({ files: allFiles, largeNames: names });
+      return;
     }
+    await doUpload(allFiles);
+  };
+
+  const doUpload = async (files: File[]) => {
     setUploading(true);
     setError("");
     try {
-      for (const file of Array.from(files)) {
+      for (const file of files) {
         await api.uploadAsset(file);
       }
       await loadAssets();
@@ -165,8 +171,14 @@ function AssetBrowserModal({
     }
   };
 
-  const handleDelete = async (name: string) => {
-    if (!window.confirm(`Delete "${name}"? This cannot be undone.`)) return;
+  const handleDelete = (name: string) => {
+    setPendingDeleteAsset(name);
+  };
+
+  const confirmDeleteAsset = async () => {
+    if (!pendingDeleteAsset) return;
+    const name = pendingDeleteAsset;
+    setPendingDeleteAsset(null);
     try {
       await api.deleteAsset(name);
       await loadAssets();
@@ -410,6 +422,35 @@ function AssetBrowserModal({
           )}
         </div>
       </div>
+
+      {pendingLargeUpload && (
+        <ConfirmDialog
+          title="Large Files"
+          message={<>
+            <div>The following files are larger than 500 KB:</div>
+            <div style={{ margin: "8px 0", fontFamily: "monospace", fontSize: "var(--font-size-sm)" }}>{pendingLargeUpload.largeNames}</div>
+            <div>Large images slow down panel loading. Consider compressing them before uploading.</div>
+          </>}
+          confirmLabel="Upload Anyway"
+          onConfirm={() => {
+            const files = pendingLargeUpload.files;
+            setPendingLargeUpload(null);
+            doUpload(files);
+          }}
+          onCancel={() => setPendingLargeUpload(null)}
+        />
+      )}
+
+      {pendingDeleteAsset && (
+        <ConfirmDialog
+          title="Delete Asset"
+          message={`Delete "${pendingDeleteAsset}"? This cannot be undone.`}
+          confirmLabel="Delete"
+          destructive
+          onConfirm={confirmDeleteAsset}
+          onCancel={() => setPendingDeleteAsset(null)}
+        />
+      )}
     </div>
   );
 }

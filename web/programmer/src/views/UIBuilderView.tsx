@@ -22,14 +22,15 @@ import { useProjectStore } from "../store/projectStore";
 import { useUIBuilderStore } from "../store/uiBuilderStore";
 import { useNavigationStore } from "../store/navigationStore";
 import { ElementPalette } from "../components/ui-builder/ElementPalette";
+import { OutlinePanel } from "../components/ui-builder/OutlinePanel";
 import { Canvas } from "../components/ui-builder/Canvas";
 import { CanvasToolbar } from "../components/ui-builder/CanvasToolbar";
 import { PropertiesPanel } from "../components/ui-builder/PropertiesPanel";
 import { ContextMenu } from "../components/ui-builder/ContextMenu";
 import { ThemeStudio } from "../components/ui-builder/ThemeStudio";
+import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import {
   SCREEN_PRESETS,
-  ELEMENT_TEMPLATES,
   createDefaultElement,
   addElementToPage,
   removeElementFromPage,
@@ -37,12 +38,15 @@ import {
   moveElementInPage,
   duplicateElementInPage,
   reorderElement,
+  moveElementInOrder,
   promoteToMaster,
   demoteFromMaster,
   updateMasterElement,
   removeMasterElement,
   renameElement,
   validateElementId,
+  validateProject,
+  type ValidationIssue,
 } from "../components/ui-builder/uiBuilderHelpers";
 import { showSuccess, showInfo } from "../store/toastStore";
 
@@ -57,6 +61,8 @@ export function UIBuilderView() {
   const selectedElementIds = useUIBuilderStore((s) => s.selectedElementIds);
   const selectedMasterElementId = useUIBuilderStore((s) => s.selectedMasterElementId);
   const previewMode = useUIBuilderStore((s) => s.previewMode);
+  const lockedElementIds = useUIBuilderStore((s) => s.lockedElementIds);
+  const hiddenElementIds = useUIBuilderStore((s) => s.hiddenElementIds);
   const showGrid = useUIBuilderStore((s) => s.showGrid);
   const zoom = useUIBuilderStore((s) => s.zoom);
   const screenPresetIndex = useUIBuilderStore((s) => s.screenPresetIndex);
@@ -91,9 +97,14 @@ export function UIBuilderView() {
   const activeDragSource = useUIBuilderStore((s) => s.activeDragSource);
 
   const [showSettings, setShowSettings] = useState(false);
-  const [showShortcuts, setShowShortcuts] = useState(false);
+  const openGlobalShortcuts = useCallback(() => {
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "/", ctrlKey: true, bubbles: true }));
+  }, []);
   const [showPalette, setShowPalette] = useState(true);
+  const [leftTab, setLeftTab] = useState<"elements" | "outline">("elements");
   const [showThemeStudio, setShowThemeStudio] = useState(false);
+  const [validationIssues, setValidationIssues] = useState<ValidationIssue[] | null>(null);
+  const [confirmResetStyles, setConfirmResetStyles] = useState(false);
   const [themeElementDefaults, setThemeElementDefaults] = useState<Record<string, Record<string, unknown>>>({});
   const [themeVariables, setThemeVariables] = useState<Record<string, unknown>>({});
   const [themes, setThemes] = useState<{ id: string; name: string; version: string; author: string; description: string; preview_colors: string[]; variables: Record<string, unknown>; source: string }[]>([]);
@@ -212,44 +223,67 @@ export function UIBuilderView() {
       // Arrow keys — move all selected elements by 1 grid cell
       if (
         (e.key === "ArrowUp" || e.key === "ArrowDown" ||
-         e.key === "ArrowLeft" || e.key === "ArrowRight") &&
-        selectedElementIds.length > 0 && currentPage
+         e.key === "ArrowLeft" || e.key === "ArrowRight") && currentPage
       ) {
-        e.preventDefault();
-        const { columns, rows: gridRows } = currentPage.grid;
-        // Check all selected elements can move in this direction
-        const elementsToMove = selectedElementIds
-          .map((eid) => currentPage.elements.find((el) => el.id === eid))
-          .filter((el): el is typeof currentPage.elements[0] => !!el);
-        if (elementsToMove.length === 0) return;
+        // Nudge master element
+        if (selectedMasterElementId && masterElements.length > 0) {
+          const mel = masterElements.find((m) => m.id === selectedMasterElementId);
+          if (!mel) return;
+          e.preventDefault();
+          const { columns, rows: gridRows } = currentPage.grid;
+          const { col, row, col_span, row_span } = mel.grid_area;
+          if (e.key === "ArrowLeft" && col <= 1) return;
+          if (e.key === "ArrowRight" && col + col_span > columns) return;
+          if (e.key === "ArrowUp" && row <= 1) return;
+          if (e.key === "ArrowDown" && row + row_span > gridRows) return;
+          let newCol = col, newRow = row;
+          if (e.key === "ArrowLeft") newCol = col - 1;
+          if (e.key === "ArrowRight") newCol = col + 1;
+          if (e.key === "ArrowUp") newRow = row - 1;
+          if (e.key === "ArrowDown") newRow = row + 1;
+          handleMasterElementPropertyChange(selectedMasterElementId, {
+            grid_area: { col: newCol, row: newRow, col_span, row_span },
+          } as Partial<MasterElement>);
+          return;
+        }
 
-        const canMove = elementsToMove.every((el) => {
-          const { col, row, col_span, row_span } = el.grid_area;
-          if (e.key === "ArrowLeft") return col > 1;
-          if (e.key === "ArrowRight") return col + col_span <= columns;
-          if (e.key === "ArrowUp") return row > 1;
-          if (e.key === "ArrowDown") return row + row_span <= gridRows;
-          return false;
-        });
-        if (!canMove) return;
+        // Nudge page elements
+        if (selectedElementIds.length > 0) {
+          e.preventDefault();
+          const { columns, rows: gridRows } = currentPage.grid;
+          const elementsToMove = selectedElementIds
+            .map((eid) => currentPage.elements.find((el) => el.id === eid))
+            .filter((el): el is typeof currentPage.elements[0] => !!el);
+          if (elementsToMove.length === 0) return;
 
-        applyMutation((pages) => {
-          let result = pages;
-          for (const el of elementsToMove) {
+          const canMove = elementsToMove.every((el) => {
             const { col, row, col_span, row_span } = el.grid_area;
-            let newCol = col;
-            let newRow = row;
-            if (e.key === "ArrowLeft") newCol = col - 1;
-            if (e.key === "ArrowRight") newCol = col + 1;
-            if (e.key === "ArrowUp") newRow = row - 1;
-            if (e.key === "ArrowDown") newRow = row + 1;
-            result = moveElementInPage(result, currentPage.id, el.id, {
-              col: newCol, row: newRow, col_span, row_span,
-            });
-          }
-          return result;
-        }, `Nudge ${e.key.replace("Arrow", "").toLowerCase()}`);
-        return;
+            if (e.key === "ArrowLeft") return col > 1;
+            if (e.key === "ArrowRight") return col + col_span <= columns;
+            if (e.key === "ArrowUp") return row > 1;
+            if (e.key === "ArrowDown") return row + row_span <= gridRows;
+            return false;
+          });
+          if (!canMove) return;
+
+          applyMutation((pages) => {
+            let result = pages;
+            for (const el of elementsToMove) {
+              const { col, row, col_span, row_span } = el.grid_area;
+              let newCol = col;
+              let newRow = row;
+              if (e.key === "ArrowLeft") newCol = col - 1;
+              if (e.key === "ArrowRight") newCol = col + 1;
+              if (e.key === "ArrowUp") newRow = row - 1;
+              if (e.key === "ArrowDown") newRow = row + 1;
+              result = moveElementInPage(result, currentPage.id, el.id, {
+                col: newCol, row: newRow, col_span, row_span,
+              });
+            }
+            return result;
+          }, `Nudge ${e.key.replace("Arrow", "").toLowerCase()}`);
+          return;
+        }
       }
 
       if (e.key === "Delete" || e.key === "Backspace") {
@@ -287,9 +321,9 @@ export function UIBuilderView() {
           // direct save when there are still uncommitted changes.
           if (store.dirty && !store.saving) save();
         }
-        if (e.key === "c" && selectedElementId && currentPage) {
+        if (e.key === "c" && selectedElementIds.length > 0 && currentPage) {
           e.preventDefault();
-          handleCopyElement(selectedElementId);
+          handleCopyElement(selectedElementIds);
         }
         if (e.key === "v" && clipboard && currentPage) {
           e.preventDefault();
@@ -361,33 +395,44 @@ export function UIBuilderView() {
   );
 
   const handleCopyElement = useCallback(
-    (elementId: string) => {
+    (elementIds: string[]) => {
       if (!currentPage) return;
-      const el = currentPage.elements.find((e) => e.id === elementId);
-      if (el) setClipboard(JSON.parse(JSON.stringify(el)));
+      const els = elementIds
+        .map((eid) => currentPage.elements.find((e) => e.id === eid))
+        .filter((e): e is UIElement => !!e);
+      if (els.length > 0) setClipboard(JSON.parse(JSON.stringify(els)));
     },
     [currentPage, setClipboard],
   );
 
   const handlePasteElement = useCallback(() => {
-    if (!clipboard || !currentPage) return;
-    // Collect IDs from ALL pages to avoid cross-page collisions
+    if (!clipboard || clipboard.length === 0 || !currentPage) return;
     const existingIds = new Set(pages.flatMap((p) => p.elements.map((e) => e.id)));
-    let id = clipboard.id;
-    let counter = 1;
-    while (existingIds.has(id)) {
-      id = `${clipboard.type}_paste_${counter++}`;
+    const newElements: UIElement[] = [];
+    for (const src of clipboard) {
+      let id = src.id;
+      let counter = 1;
+      while (existingIds.has(id)) {
+        id = `${src.type}_paste_${counter++}`;
+      }
+      existingIds.add(id);
+      newElements.push({
+        ...JSON.parse(JSON.stringify(src)),
+        id,
+        grid_area: {
+          ...src.grid_area,
+          col: Math.max(1, Math.min(src.grid_area.col + 1, currentPage.grid.columns - src.grid_area.col_span + 1)),
+          row: Math.max(1, Math.min(src.grid_area.row + 1, currentPage.grid.rows - src.grid_area.row_span + 1)),
+        },
+      });
     }
-    const newElement: UIElement = {
-      ...JSON.parse(JSON.stringify(clipboard)),
-      id,
-      grid_area: {
-        ...clipboard.grid_area,
-        col: Math.max(1, Math.min(clipboard.grid_area.col + 1, currentPage.grid.columns - clipboard.grid_area.col_span + 1)),
-        row: Math.max(1, Math.min(clipboard.grid_area.row + 1, currentPage.grid.rows - clipboard.grid_area.row_span + 1)),
-      },
-    };
-    applyMutation((p) => addElementToPage(p, currentPage.id, newElement), "Paste element");
+    applyMutation((p) => {
+      let result = p;
+      for (const el of newElements) {
+        result = addElementToPage(result, currentPage.id, el);
+      }
+      return result;
+    }, `Paste ${newElements.length === 1 ? "element" : `${newElements.length} elements`}`);
   }, [clipboard, currentPage, pages, applyMutation]);
 
   const handleBringToFront = useCallback(
@@ -683,10 +728,10 @@ export function UIBuilderView() {
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
       const data = event.active.data.current as
-        | { source: string; elementType?: string; elementId?: string; templateId?: string }
+        | { source: string; elementType?: string; elementId?: string }
         | undefined;
       setActiveDragSource(data?.source || null);
-      dragElementType.current = data?.elementType || data?.templateId || null;
+      dragElementType.current = data?.elementType || null;
       const pointerEvent = event.activatorEvent as PointerEvent;
       dragStartPointer.current = {
         x: pointerEvent.clientX,
@@ -760,7 +805,7 @@ export function UIBuilderView() {
       if (!dragStartPointer.current) return;
 
       const data = active.data.current as
-        | { source: string; elementType?: string; elementId?: string; templateId?: string }
+        | { source: string; elementType?: string; elementId?: string }
         | undefined;
       if (!data) return;
 
@@ -801,45 +846,6 @@ export function UIBuilderView() {
           `Add ${data.elementType}`,
         );
         selectElement(newElement.id);
-      } else if (data.source === "template" && data.templateId) {
-        // Create multiple elements from a template
-        const template = ELEMENT_TEMPLATES.find((t) => t.id === data.templateId);
-        if (template) {
-          const existingIds = new Set(
-            pages.flatMap((p) => p.elements.map((e) => e.id)),
-          );
-          let newPages = project.ui.pages;
-          let counter = 1;
-          for (const tmplEl of template.elements) {
-            let id = `${tmplEl.type}_${counter}`;
-            while (existingIds.has(id)) {
-              counter++;
-              id = `${tmplEl.type}_${counter}`;
-            }
-            existingIds.add(id);
-            const newCol = Math.max(1, Math.min(currentPage.grid.columns, tmplEl.grid_area.col + col));
-            const newRow = Math.max(1, Math.min(currentPage.grid.rows, tmplEl.grid_area.row + row));
-            const newColSpan = Math.min(tmplEl.grid_area.col_span, currentPage.grid.columns - newCol + 1);
-            const newRowSpan = Math.min(tmplEl.grid_area.row_span, currentPage.grid.rows - newRow + 1);
-            const newEl = {
-              ...tmplEl,
-              id,
-              grid_area: {
-                col: newCol,
-                row: newRow,
-                col_span: Math.max(1, newColSpan),
-                row_span: Math.max(1, newRowSpan),
-              },
-            } as UIElement;
-            newPages = addElementToPage(newPages, currentPage.id, newEl);
-            counter++;
-          }
-          pushUndo({ pages: project.ui.pages }, "Insert template");
-          propertyUndoPushed.current = false;
-          clearTimeout(propertyUndoTimer.current);
-          update({ ui: { ...project.ui, pages: newPages } });
-          touchMutation();
-        }
       } else if (data.source === "canvas" && data.elementId) {
         // Move existing element
         const element = currentPage.elements.find(
@@ -870,6 +876,13 @@ export function UIBuilderView() {
     [currentPage, pages, project, applyMutation, selectElement, setActiveDragSource],
   );
 
+  const handleDragCancel = useCallback(() => {
+    setActiveDragSource(null);
+    dragElementType.current = null;
+    draggedElement.current = null;
+    dragStartPointer.current = null;
+  }, [setActiveDragSource]);
+
   if (!project) {
     return (
       <div
@@ -891,6 +904,7 @@ export function UIBuilderView() {
       sensors={sensors}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
     >
       <div
         style={{
@@ -951,7 +965,11 @@ export function UIBuilderView() {
         {/* Toolbar */}
         <div style={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
           <div style={{ flex: 1 }}>
-            <CanvasToolbar pages={pages} selectedPageId={currentPage?.id || null} />
+            <CanvasToolbar
+              pages={pages}
+              selectedPageId={currentPage?.id || null}
+              onValidate={() => setValidationIssues(validateProject(project))}
+            />
           </div>
           {!previewMode && (
             <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", padding: "0 var(--space-md)", borderBottom: "1px solid var(--border-color)", background: "var(--bg-surface)", minHeight: 38 }}>
@@ -992,7 +1010,7 @@ export function UIBuilderView() {
                 <Settings size={16} /> Settings
               </button>
               <button
-                onClick={() => setShowShortcuts(true)}
+                onClick={openGlobalShortcuts}
                 title="Keyboard Shortcuts"
                 style={{
                   display: "flex",
@@ -1017,19 +1035,88 @@ export function UIBuilderView() {
 
         {/* Main 3-panel layout */}
         <PanelGroup direction="horizontal" style={{ flex: 1 }}>
-          {/* Left: Element Palette (Ctrl+E to toggle) */}
+          {/* Left: Element Palette / Outline (Ctrl+E to toggle) */}
           {!previewMode && showPalette && (
             <>
               <Panel defaultSize={15} minSize={10} maxSize={25}>
                 <div
                   style={{
                     height: "100%",
-                    overflow: "auto",
+                    display: "flex",
+                    flexDirection: "column",
                     borderRight: "1px solid var(--border-color)",
                     background: "var(--bg-surface)",
                   }}
                 >
-                  <ElementPalette disabled={previewMode} />
+                  {/* Tab bar */}
+                  <div style={{ display: "flex", borderBottom: "1px solid var(--border-color)", flexShrink: 0 }}>
+                    {(["elements", "outline"] as const).map((tab) => (
+                      <button
+                        key={tab}
+                        onClick={() => setLeftTab(tab)}
+                        style={{
+                          flex: 1, padding: "6px 0", fontSize: 11, fontWeight: 500,
+                          background: "transparent", border: "none", cursor: "pointer",
+                          color: leftTab === tab ? "var(--accent)" : "var(--text-muted)",
+                          borderBottom: leftTab === tab ? "2px solid var(--accent)" : "2px solid transparent",
+                        }}
+                      >
+                        {tab === "elements" ? "Elements" : "Outline"}
+                      </button>
+                    ))}
+                  </div>
+                  {/* Tab content */}
+                  <div style={{ flex: 1, overflow: "auto" }}>
+                    {leftTab === "elements" ? (
+                      <ElementPalette
+                        disabled={previewMode}
+                        onAdd={(type) => {
+                          if (!currentPage || !project) return;
+                          const existingIds = new Set(pages.flatMap((p) => p.elements.map((e) => e.id)));
+                          const { columns, rows: gridRows } = currentPage.grid;
+                          const occupied = new Set(currentPage.elements.map((el) => `${el.grid_area.col},${el.grid_area.row}`));
+                          let col = 1, row = 1;
+                          for (let r = 1; r <= gridRows; r++) {
+                            for (let c = 1; c <= columns; c++) {
+                              if (!occupied.has(`${c},${r}`)) { col = c; row = r; r = gridRows + 1; break; }
+                            }
+                          }
+                          const newElement = createDefaultElement(type, col, row, existingIds);
+                          applyMutation(
+                            (p) => addElementToPage(p, currentPage.id, newElement),
+                            `Add ${type}`,
+                          );
+                          selectElement(newElement.id);
+                        }}
+                      />
+                    ) : (
+                      <OutlinePanel
+                        elements={currentPage?.elements || []}
+                        masterElements={masterElements}
+                        selectedElementIds={selectedElementIds}
+                        selectedMasterElementId={selectedMasterElementId}
+                        lockedElementIds={lockedElementIds}
+                        hiddenElementIds={hiddenElementIds}
+                        onSelectElement={(id, shift) => {
+                          if (shift) {
+                            useUIBuilderStore.getState().toggleSelectElement(id);
+                          } else {
+                            selectElement(id);
+                          }
+                        }}
+                        onSelectMasterElement={selectMasterElement}
+                        onMoveOrder={(elementId, direction) => {
+                          if (!currentPage) return;
+                          applyMutation(
+                            (p) => moveElementInOrder(p, currentPage.id, elementId, direction),
+                            `Move ${direction}`,
+                          );
+                        }}
+                        onToggleLock={(id) => useUIBuilderStore.getState().toggleLock(id)}
+                        onToggleHide={(id) => useUIBuilderStore.getState().toggleHide(id)}
+                      />
+                    )}
+                  </div>
                 </div>
               </Panel>
               <PanelResizeHandle
@@ -1138,22 +1225,6 @@ export function UIBuilderView() {
           >
             {draggedElement.current.type.replace(/_/g, " ")}
           </div>
-        ) : activeDragSource === "template" ? (
-          <div
-            style={{
-              padding: "6px 14px",
-              background: "var(--bg-elevated)",
-              border: "1px solid var(--accent)",
-              borderRadius: "var(--border-radius)",
-              color: "var(--text-primary)",
-              fontSize: "var(--font-size-sm)",
-              boxShadow: "var(--shadow-md)",
-              opacity: 0.9,
-              pointerEvents: "none",
-            }}
-          >
-            {dragElementType.current || "Template"}
-          </div>
         ) : null}
       </DragOverlay>
 
@@ -1187,7 +1258,7 @@ export function UIBuilderView() {
               }
             }
           }}
-          onCopy={handleCopyElement}
+          onCopy={(ids) => handleCopyElement(selectedElementIds.length > 1 ? selectedElementIds : ids)}
           onPaste={handlePasteElement}
           onBringToFront={handleBringToFront}
           onSendToBack={handleSendToBack}
@@ -1211,9 +1282,107 @@ export function UIBuilderView() {
           onClearOverrides={() => handleUpdateThemeOverrides({})}
           onRefreshThemes={loadThemes}
           onThemeSaved={() => setThemeFetchKey((k) => k + 1)}
+          onResetElementStyles={() => setConfirmResetStyles(true)}
           panelWidth={screenWidth}
           panelHeight={screenHeight}
         />
+      )}
+      {confirmResetStyles && (
+        <ConfirmDialog
+          title="Reset element styles to theme defaults?"
+          message="This removes per-element color, font, border, and spacing overrides from all elements across all pages. Elements will inherit their appearance from the theme. This can be undone with Ctrl+Z."
+          confirmLabel="Reset Styles"
+          destructive
+          onCancel={() => setConfirmResetStyles(false)}
+          onConfirm={() => {
+            setConfirmResetStyles(false);
+            if (!project) return;
+            pushUndo({ pages: project.ui.pages }, "Reset element styles to theme");
+            propertyUndoPushed.current = false;
+            clearTimeout(propertyUndoTimer.current);
+            const themeStyleKeys = [
+              "bg_color", "text_color", "font_size", "font_weight", "font_family",
+              "border_radius", "border_color", "border_width", "text_align",
+              "accent_color", "track_color",
+            ];
+            const newPages = project.ui.pages.map((page) => ({
+              ...page,
+              elements: page.elements.map((el) => {
+                const cleaned: Record<string, unknown> = {};
+                for (const [k, v] of Object.entries(el.style || {})) {
+                  if (!themeStyleKeys.includes(k)) cleaned[k] = v;
+                }
+                return { ...el, style: cleaned };
+              }),
+            }));
+            update({ ui: { ...project.ui, pages: newPages } });
+            touchMutation();
+            showSuccess("Element styles reset to theme defaults");
+          }}
+        />
+      )}
+
+      {/* Validation results */}
+      {validationIssues !== null && (
+        <div
+          style={{
+            position: "fixed", inset: 0, zIndex: 1000,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            background: "rgba(0,0,0,0.5)",
+          }}
+          onClick={() => setValidationIssues(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "var(--bg-elevated)", borderRadius: 8,
+              border: "1px solid var(--border-color)", boxShadow: "var(--shadow-lg)",
+              padding: 20, minWidth: 400, maxWidth: 600, maxHeight: "70vh",
+              display: "flex", flexDirection: "column", gap: 12,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <h3 style={{ margin: 0, fontSize: 14 }}>
+                Project Validation {validationIssues.length === 0 ? "— No Issues" : `— ${validationIssues.length} issue${validationIssues.length === 1 ? "" : "s"}`}
+              </h3>
+              <button onClick={() => setValidationIssues(null)} style={{ background: "transparent", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 16 }}>&times;</button>
+            </div>
+            {validationIssues.length === 0 ? (
+              <div style={{ color: "var(--color-success)", fontSize: 13, padding: "12px 0" }}>
+                All bindings, pages, devices, and macros are valid.
+              </div>
+            ) : (
+              <div style={{ overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
+                {validationIssues.map((issue, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      display: "flex", gap: 8, padding: "6px 8px", borderRadius: 4, fontSize: 12,
+                      background: issue.severity === "error" ? "rgba(244,67,54,0.08)" : "rgba(255,152,0,0.08)",
+                      border: `1px solid ${issue.severity === "error" ? "rgba(244,67,54,0.2)" : "rgba(255,152,0,0.2)"}`,
+                      cursor: issue.pageId ? "pointer" : "default",
+                    }}
+                    onClick={() => {
+                      if (issue.pageId) {
+                        selectPage(issue.pageId);
+                        if (issue.elementId) selectElement(issue.elementId);
+                        setValidationIssues(null);
+                      }
+                    }}
+                  >
+                    <span style={{ color: issue.severity === "error" ? "var(--color-error)" : "#ff9800", fontWeight: 600, flexShrink: 0 }}>
+                      {issue.severity === "error" ? "ERR" : "WARN"}
+                    </span>
+                    <div>
+                      <div style={{ fontWeight: 500 }}>{issue.message}</div>
+                      <div style={{ color: "var(--text-muted)", fontSize: 11 }}>{issue.location}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Settings dialog */}
@@ -1232,41 +1401,6 @@ export function UIBuilderView() {
         />
       )}
 
-      {/* Keyboard shortcuts dialog */}
-      {showShortcuts && (
-        <div
-          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}
-          onClick={() => setShowShortcuts(false)}
-        >
-          <div
-            style={{ background: "var(--bg-elevated)", borderRadius: "var(--border-radius)", padding: "var(--space-xl)", width: 400, boxShadow: "var(--shadow-lg)" }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 style={{ fontSize: "var(--font-size-lg)", marginBottom: "var(--space-lg)" }}>Keyboard Shortcuts</h3>
-            {[
-              ["Ctrl + Z", "Undo"],
-              ["Ctrl + Shift + Z", "Redo"],
-              ["Ctrl + C", "Copy element"],
-              ["Ctrl + V", "Paste element"],
-              ["Ctrl + D", "Duplicate element"],
-              ["Delete / Backspace", "Delete selected element(s)"],
-              ["Arrow keys", "Move selected element(s)"],
-              ["Shift + Click", "Add/remove from selection"],
-              ["Escape", "Deselect all"],
-            ].map(([key, desc]) => (
-              <div key={key} style={{ display: "flex", justifyContent: "space-between", padding: "var(--space-xs) 0", borderBottom: "1px solid var(--border-color)" }}>
-                <code style={{ fontSize: "var(--font-size-sm)", background: "var(--bg-hover)", padding: "2px 8px", borderRadius: 4 }}>{key}</code>
-                <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>{desc}</span>
-              </div>
-            ))}
-            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "var(--space-lg)" }}>
-              <button onClick={() => setShowShortcuts(false)} style={{ padding: "var(--space-sm) var(--space-lg)", borderRadius: "var(--border-radius)", background: "var(--bg-hover)", border: "none", cursor: "pointer", color: "var(--text-primary)" }}>
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </DndContext>
   );
 }
@@ -1282,13 +1416,12 @@ function UISettingsDialog({
   onUpdate: (s: UISettings) => void;
   onClose: () => void;
 }) {
-  // Stage edits locally — commit to the project only on Save. Prevents
-  // accidental mid-edit commits and lets Cancel genuinely discard.
   const [draft, setDraft] = useState<UISettings>(settings);
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const dirty = JSON.stringify(draft) !== JSON.stringify(settings);
 
   const handleCancel = () => {
-    if (dirty && !window.confirm("Discard unsaved settings changes?")) return;
+    if (dirty) { setShowDiscardConfirm(true); return; }
     onClose();
   };
 
@@ -1519,6 +1652,17 @@ function UISettingsDialog({
           </button>
         </div>
       </div>
+
+      {showDiscardConfirm && (
+        <ConfirmDialog
+          title="Discard Changes"
+          message="Discard unsaved settings changes?"
+          confirmLabel="Discard"
+          destructive
+          onConfirm={onClose}
+          onCancel={() => setShowDiscardConfirm(false)}
+        />
+      )}
     </div>
   );
 }

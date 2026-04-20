@@ -1,4 +1,4 @@
-import type { UIPage, UIElement, GridArea, MasterElement, PageGroup, MacroConfig, MacroStep, VariableConfig, ScriptConfig } from "../../api/types";
+import type { UIPage, UIElement, GridArea, MasterElement, PageGroup, MacroConfig, MacroStep, VariableConfig, ScriptConfig, ProjectConfig } from "../../api/types";
 
 // --- Binding type definitions ---
 
@@ -74,18 +74,18 @@ export const ELEMENT_TYPES: ElementTypeInfo[] = [
 
 export const BINDING_SLOTS: Record<string, string[]> = {
   button: ["press", "release", "hold", "feedback"],
-  label: ["text", "feedback"],
-  slider: ["variable", "change", "value", "feedback"],
-  fader: ["value", "change", "feedback"],
+  label: ["text"],
+  slider: ["variable", "change", "value"],
+  fader: ["value", "change"],
   status_led: ["color"],
   page_nav: [],
-  select: ["variable", "change", "value", "feedback"],
-  text_input: ["variable", "change", "value", "feedback"],
+  select: ["variable", "change", "value"],
+  text_input: ["variable", "change", "value"],
   camera_preset: ["press", "feedback"],
   image: [],
   spacer: [],
-  gauge: ["value", "feedback"],
-  level_meter: ["value", "feedback"],
+  gauge: ["value"],
+  level_meter: ["value"],
   group: [],
   clock: [],
   keypad: ["submit"],
@@ -396,6 +396,47 @@ export function removePage(pages: UIPage[], pageId: string): UIPage[] {
     }));
 }
 
+export function removePageAndScrubRefs(
+  pages: UIPage[],
+  pageId: string,
+  masterElements: MasterElement[],
+  macros: MacroConfig[],
+): {
+  pages: UIPage[];
+  masterElements: MasterElement[];
+  macros: MacroConfig[];
+} {
+  const newPages = removePage(pages, pageId);
+
+  // Scrub master_elements.pages arrays that reference this page
+  const newMasters = masterElements.map((m) => {
+    if (m.pages === "*" || !Array.isArray(m.pages)) return m;
+    const filtered = (m.pages as string[]).filter((pid) => pid !== pageId);
+    if (filtered.length === m.pages.length) return m;
+    return { ...m, pages: filtered.length > 0 ? filtered : "*" };
+  });
+
+  // Scrub trigger conditions that match on the deleted page
+  const newMacros = macros.map((macro) => {
+    if (!macro.triggers) return macro;
+    let changed = false;
+    const newTriggers = macro.triggers.map((trigger) => {
+      if (!trigger.conditions) return trigger;
+      const filtered = trigger.conditions.filter(
+        (c) => !(c.key === "system.current_page" && c.value === pageId),
+      );
+      if (filtered.length !== trigger.conditions.length) {
+        changed = true;
+        return { ...trigger, conditions: filtered };
+      }
+      return trigger;
+    });
+    return changed ? { ...macro, triggers: newTriggers } : macro;
+  });
+
+  return { pages: newPages, masterElements: newMasters, macros: newMacros };
+}
+
 export function renamePage(
   pages: UIPage[],
   pageId: string,
@@ -515,6 +556,24 @@ export function reorderElement(
   });
 }
 
+export function moveElementInOrder(
+  pages: UIPage[],
+  pageId: string,
+  elementId: string,
+  direction: "up" | "down",
+): UIPage[] {
+  return pages.map((p) => {
+    if (p.id !== pageId) return p;
+    const idx = p.elements.findIndex((e) => e.id === elementId);
+    if (idx === -1) return p;
+    const newIdx = direction === "up" ? idx - 1 : idx + 1;
+    if (newIdx < 0 || newIdx >= p.elements.length) return p;
+    const els = [...p.elements];
+    [els[idx], els[newIdx]] = [els[newIdx], els[idx]];
+    return { ...p, elements: els };
+  });
+}
+
 // --- Page reordering ---
 
 export function reorderPage(
@@ -588,73 +647,72 @@ export function duplicatePage(
   return result;
 }
 
-// --- Element templates ---
-
-export interface ElementTemplate {
-  id: string;
-  label: string;
-  description: string;
-  elements: Array<Omit<UIElement, "id">>;
-}
-
-export const ELEMENT_TEMPLATES: ElementTemplate[] = [
-  {
-    id: "volume_control",
-    label: "Volume Control",
-    description: "Fader + mute button + label",
-    elements: [
-      { type: "label", text: "Volume", grid_area: { col: 0, row: 0, col_span: 2, row_span: 1 }, style: { font_size: 12, text_align: "center" }, bindings: {} },
-      { type: "fader", label: "", min: -80, max: 10, step: 0.5, unit: "dB", orientation: "vertical", grid_area: { col: 0, row: 1, col_span: 2, row_span: 4 }, style: { show_value: true, show_scale: true }, bindings: {} },
-      { type: "button", label: "Mute", grid_area: { col: 0, row: 5, col_span: 2, row_span: 1 }, style: {}, bindings: {} },
-    ],
-  },
-  {
-    id: "source_selector",
-    label: "Source Selector",
-    description: "4-button source row with feedback",
-    elements: [
-      { type: "button", label: "HDMI 1", grid_area: { col: 0, row: 0, col_span: 2, row_span: 2 }, style: {}, bindings: {} },
-      { type: "button", label: "HDMI 2", grid_area: { col: 2, row: 0, col_span: 2, row_span: 2 }, style: {}, bindings: {} },
-      { type: "button", label: "USB-C", grid_area: { col: 4, row: 0, col_span: 2, row_span: 2 }, style: {}, bindings: {} },
-      { type: "button", label: "Wireless", grid_area: { col: 6, row: 0, col_span: 2, row_span: 2 }, style: {}, bindings: {} },
-    ],
-  },
-  {
-    id: "power_toggle",
-    label: "Power Toggle",
-    description: "Toggle button + status LED",
-    elements: [
-      { type: "button", label: "Power", icon: "power", icon_position: "left", grid_area: { col: 0, row: 0, col_span: 3, row_span: 2 }, style: {}, bindings: {} },
-      { type: "status_led", grid_area: { col: 3, row: 0, col_span: 1, row_span: 2 }, style: {}, bindings: {} },
-    ],
-  },
-  {
-    id: "room_header",
-    label: "Room Header",
-    description: "Room name + clock",
-    elements: [
-      { type: "label", text: "Conference Room", grid_area: { col: 0, row: 0, col_span: 4, row_span: 1 }, style: { font_size: 18, font_weight: "600", text_align: "left" }, bindings: {} },
-      { type: "clock", clock_mode: "time", format: "h:mm A", grid_area: { col: 10, row: 0, col_span: 3, row_span: 1 }, style: { font_size: 18, text_align: "right" }, bindings: {} },
-    ],
-  },
-  {
-    id: "mixer_strip",
-    label: "Mixer Strip",
-    description: "Fader + meter + mute + label",
-    elements: [
-      { type: "label", text: "Ch 1", grid_area: { col: 0, row: 0, col_span: 2, row_span: 1 }, style: { font_size: 11, text_align: "center" }, bindings: {} },
-      { type: "level_meter", label: "", min: -60, max: 0, orientation: "vertical", grid_area: { col: 0, row: 1, col_span: 1, row_span: 4 }, style: { meter_segments: 16, show_peak: true }, bindings: {} },
-      { type: "fader", label: "", min: -80, max: 10, step: 0.5, unit: "dB", orientation: "vertical", grid_area: { col: 1, row: 1, col_span: 1, row_span: 4 }, style: { show_value: false, show_scale: false }, bindings: {} },
-      { type: "button", label: "M", grid_area: { col: 0, row: 5, col_span: 2, row_span: 1 }, style: { font_size: 12 }, bindings: {} },
-    ],
-  },
-];
-
 // --- Alignment helpers ---
 
 export type AlignAction =
   | "align-left" | "align-center" | "align-right"
   | "align-top" | "align-middle" | "align-bottom";
+
+export function alignElements(
+  pages: UIPage[],
+  pageId: string,
+  elementIds: string[],
+  action: AlignAction,
+  gridConfig: { columns: number; rows: number },
+): UIPage[] {
+  return pages.map((p) => {
+    if (p.id !== pageId) return p;
+    const targets = p.elements.filter((el) => elementIds.includes(el.id));
+    if (targets.length === 0) return p;
+
+    // When multiple elements are selected, align relative to the selection
+    // bounding box. Single element aligns to the page grid.
+    const useSelectionBounds = targets.length > 1;
+    let boundsLeft: number, boundsRight: number, boundsTop: number, boundsBottom: number;
+    if (useSelectionBounds) {
+      boundsLeft = Math.min(...targets.map((el) => el.grid_area.col));
+      boundsRight = Math.max(...targets.map((el) => el.grid_area.col + el.grid_area.col_span - 1));
+      boundsTop = Math.min(...targets.map((el) => el.grid_area.row));
+      boundsBottom = Math.max(...targets.map((el) => el.grid_area.row + el.grid_area.row_span - 1));
+    } else {
+      boundsLeft = 1;
+      boundsRight = gridConfig.columns;
+      boundsTop = 1;
+      boundsBottom = gridConfig.rows;
+    }
+    const boundsW = boundsRight - boundsLeft + 1;
+    const boundsH = boundsBottom - boundsTop + 1;
+
+    return {
+      ...p,
+      elements: p.elements.map((el) => {
+        if (!elementIds.includes(el.id)) return el;
+        const area = { ...el.grid_area };
+        switch (action) {
+          case "align-left":
+            area.col = boundsLeft;
+            break;
+          case "align-center":
+            area.col = Math.max(1, boundsLeft + Math.round((boundsW - area.col_span) / 2));
+            break;
+          case "align-right":
+            area.col = boundsRight - area.col_span + 1;
+            break;
+          case "align-top":
+            area.row = boundsTop;
+            break;
+          case "align-middle":
+            area.row = Math.max(1, boundsTop + Math.round((boundsH - area.row_span) / 2));
+            break;
+          case "align-bottom":
+            area.row = boundsBottom - area.row_span + 1;
+            break;
+        }
+        return { ...el, grid_area: area };
+      }),
+    };
+  });
+}
 
 export function alignElement(
   pages: UIPage[],
@@ -663,37 +721,7 @@ export function alignElement(
   action: AlignAction,
   gridConfig: { columns: number; rows: number },
 ): UIPage[] {
-  return pages.map((p) => {
-    if (p.id !== pageId) return p;
-    return {
-      ...p,
-      elements: p.elements.map((el) => {
-        if (el.id !== elementId) return el;
-        const area = { ...el.grid_area };
-        switch (action) {
-          case "align-left":
-            area.col = 1;
-            break;
-          case "align-center":
-            area.col = Math.max(1, Math.round((gridConfig.columns - area.col_span) / 2) + 1);
-            break;
-          case "align-right":
-            area.col = gridConfig.columns - area.col_span + 1;
-            break;
-          case "align-top":
-            area.row = 1;
-            break;
-          case "align-middle":
-            area.row = Math.max(1, Math.round((gridConfig.rows - area.row_span) / 2) + 1);
-            break;
-          case "align-bottom":
-            area.row = gridConfig.rows - area.row_span + 1;
-            break;
-        }
-        return { ...el, grid_area: area };
-      }),
-    };
-  });
+  return alignElements(pages, pageId, [elementId], action, gridConfig);
 }
 
 // --- Master element helpers ---
@@ -997,4 +1025,127 @@ export function renameElement(
     variables: newVars,
     scriptsToReview,
   };
+}
+
+// --- Project validation ---
+
+export interface ValidationIssue {
+  severity: "error" | "warning";
+  message: string;
+  location: string;
+  pageId?: string;
+  elementId?: string;
+}
+
+export function validateProject(project: ProjectConfig): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const pageIds = new Set(project.ui.pages.map((p) => p.id));
+  const deviceIds = new Set(project.devices.map((d) => d.id));
+  const macroIds = new Set(project.macros.map((m) => m.id));
+  const checkElement = (el: UIElement, pageId: string, pageName: string) => {
+    const loc = `${pageName} > ${el.id}`;
+    const bindings = el.bindings || {};
+
+    // page_nav target
+    if (el.type === "page_nav" && el.target_page && !pageIds.has(el.target_page)) {
+      issues.push({ severity: "error", message: `Target page "${el.target_page}" does not exist`, location: loc, pageId, elementId: el.id });
+    }
+
+    // press/release/hold bindings
+    for (const slot of ["press", "release", "hold"]) {
+      const b = bindings[slot] as Record<string, unknown> | undefined;
+      if (!b) continue;
+      if (b.action === "navigate" && b.page && !pageIds.has(b.page as string)) {
+        issues.push({ severity: "error", message: `Navigate to deleted page "${b.page}"`, location: `${loc} > ${slot}`, pageId, elementId: el.id });
+      }
+      if (b.action === "device.command" && b.device && !deviceIds.has(b.device as string)) {
+        issues.push({ severity: "error", message: `Device "${b.device}" not found`, location: `${loc} > ${slot}`, pageId, elementId: el.id });
+      }
+      if (b.action === "macro" && b.macro && !macroIds.has(b.macro as string)) {
+        issues.push({ severity: "error", message: `Macro "${b.macro}" not found`, location: `${loc} > ${slot}`, pageId, elementId: el.id });
+      }
+    }
+
+    // variable/value bindings
+    for (const slot of ["variable", "value", "text", "color", "items", "selected"]) {
+      const b = bindings[slot] as Record<string, unknown> | undefined;
+      if (!b || !b.key) continue;
+      const key = b.key as string;
+      if (key.startsWith("device.")) {
+        const deviceId = key.split(".")[1];
+        if (!deviceIds.has(deviceId)) {
+          issues.push({ severity: "warning", message: `State key references unknown device "${deviceId}"`, location: `${loc} > ${slot}`, pageId, elementId: el.id });
+        }
+      }
+    }
+
+    // visible_when conditions
+    const vw = bindings.visible_when as Record<string, unknown> | undefined;
+    if (vw) {
+      const conditions = (vw.all || vw.any || [vw]) as Array<{ key?: string }>;
+      for (const c of conditions) {
+        if (c.key?.startsWith("device.")) {
+          const deviceId = c.key.split(".")[1];
+          if (!deviceIds.has(deviceId)) {
+            issues.push({ severity: "warning", message: `Visibility condition references unknown device "${deviceId}"`, location: `${loc} > visible_when`, pageId, elementId: el.id });
+          }
+        }
+      }
+    }
+
+    // Unbound interactive elements
+    if (["button", "slider", "fader", "select", "text_input", "keypad"].includes(el.type)) {
+      const hasBinding = Object.keys(bindings).some((k) => {
+        const v = bindings[k];
+        return v && typeof v === "object" && Object.keys(v).length > 0;
+      });
+      if (!hasBinding) {
+        issues.push({ severity: "warning", message: `Interactive element has no bindings`, location: loc, pageId, elementId: el.id });
+      }
+    }
+  };
+
+  // Check page elements
+  for (const page of project.ui.pages) {
+    for (const el of page.elements) {
+      checkElement(el, page.id, page.name);
+    }
+  }
+
+  // Check master elements
+  for (const mel of project.ui.master_elements || []) {
+    checkElement(mel, "", "Master Elements");
+    if (Array.isArray(mel.pages)) {
+      for (const pid of mel.pages) {
+        if (!pageIds.has(pid)) {
+          issues.push({ severity: "error", message: `References deleted page "${pid}"`, location: `Master Elements > ${mel.id}` });
+        }
+      }
+    }
+  }
+
+  // Check macro steps
+  for (const macro of project.macros) {
+    const checkStep = (step: MacroStep, prefix: string) => {
+      if (step.action === "device.command" && step.device && !deviceIds.has(step.device)) {
+        issues.push({ severity: "error", message: `Device "${step.device}" not found`, location: `${prefix} > ${step.description || step.action}` });
+      }
+      if (step.action === "macro" && step.macro && !macroIds.has(step.macro)) {
+        issues.push({ severity: "error", message: `Macro "${step.macro}" not found`, location: `${prefix} > ${step.description || "call macro"}` });
+      }
+      step.then_steps?.forEach((s) => checkStep(s, prefix));
+      step.else_steps?.forEach((s) => checkStep(s, prefix));
+    };
+    for (const step of macro.steps) {
+      checkStep(step, `Macro "${macro.name}"`);
+    }
+  }
+
+  // Check idle_page
+  const idlePage = project.ui.settings.idle_page;
+  if (idlePage && !pageIds.has(idlePage)) {
+    issues.push({ severity: "error", message: `Idle page "${idlePage}" does not exist`, location: "Settings > Idle Page" });
+  }
+
+  return issues;
 }

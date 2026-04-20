@@ -30,12 +30,14 @@ interface UIBuilderStore {
   screenPresetIndex: number;
   customWidth: number;
   customHeight: number;
-  clipboard: UIElement | null;
+  clipboard: UIElement[] | null;
   contextMenu: { x: number; y: number; elementId: string; isMaster?: boolean } | null;
   undoStack: UndoEntry[];
   redoStack: UndoEntry[];
   lastMutationTime: number;
   activeDragSource: string | null;
+  lockedElementIds: Set<string>;
+  hiddenElementIds: Set<string>;
 
   selectPage: (id: string | null) => void;
   selectElement: (id: string | null) => void;
@@ -46,7 +48,7 @@ interface UIBuilderStore {
   setZoom: (zoom: number) => void;
   setScreenPresetIndex: (index: number) => void;
   setCustomSize: (w: number, h: number) => void;
-  setClipboard: (el: UIElement | null) => void;
+  setClipboard: (el: UIElement[] | null) => void;
   setContextMenu: (
     menu: { x: number; y: number; elementId: string; isMaster?: boolean } | null,
   ) => void;
@@ -56,6 +58,8 @@ interface UIBuilderStore {
   clearUndoHistory: () => void;
   touchMutation: () => void;
   setActiveDragSource: (source: string | null) => void;
+  toggleLock: (elementId: string) => void;
+  toggleHide: (elementId: string) => void;
 }
 
 // Build (a) the inverse snapshot to push onto the redo/undo stack and
@@ -166,6 +170,8 @@ export const useUIBuilderStore = create<UIBuilderStore>((set, get) => ({
   redoStack: [],
   lastMutationTime: 0,
   activeDragSource: null,
+  lockedElementIds: new Set(),
+  hiddenElementIds: new Set(),
 
   selectPage: (id) => set({ selectedPageId: id, selectedElementId: null, selectedElementIds: [], selectedMasterElementId: null }),
 
@@ -287,4 +293,16 @@ export const useUIBuilderStore = create<UIBuilderStore>((set, get) => ({
   },
 
   setActiveDragSource: (activeDragSource) => set({ activeDragSource }),
+
+  toggleLock: (elementId) => {
+    const next = new Set(get().lockedElementIds);
+    if (next.has(elementId)) next.delete(elementId); else next.add(elementId);
+    set({ lockedElementIds: next });
+  },
+
+  toggleHide: (elementId) => {
+    const next = new Set(get().hiddenElementIds);
+    if (next.has(elementId)) next.delete(elementId); else next.add(elementId);
+    set({ hiddenElementIds: next });
+  },
 }));

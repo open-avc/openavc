@@ -11,6 +11,8 @@ interface CanvasElementProps {
   columns: number;
   rows: number;
   hasOverlap?: boolean;
+  locked?: boolean;
+  hidden?: boolean;
   onSelect: (id: string, shiftKey?: boolean) => void;
   onCommitResize: (elementId: string, gridArea: GridArea) => void;
   onContextMenu: (e: React.MouseEvent, elementId: string) => void;
@@ -93,6 +95,8 @@ export function CanvasElement({
   columns,
   rows,
   hasOverlap,
+  locked,
+  hidden,
   onSelect,
   onCommitResize,
   onContextMenu,
@@ -104,29 +108,29 @@ export function CanvasElement({
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `canvas-${element.id}`,
     data: { source: "canvas", elementId: element.id, pageId },
-    disabled: previewMode || isResizing.current,
+    disabled: previewMode || isResizing.current || !!locked,
   });
 
   const gridArea = tempGridArea || element.grid_area;
 
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
-      if (previewMode) return;
+      if (previewMode || locked) return;
       e.stopPropagation();
       onSelect(element.id, e.shiftKey);
     },
-    [previewMode, onSelect, element.id],
+    [previewMode, locked, onSelect, element.id],
   );
 
   const handleRightClick = useCallback(
     (e: React.MouseEvent) => {
-      if (previewMode) return;
+      if (previewMode || locked) return;
       e.preventDefault();
       e.stopPropagation();
       onSelect(element.id);
       onContextMenu(e, element.id);
     },
-    [previewMode, onSelect, onContextMenu, element.id],
+    [previewMode, locked, onSelect, onContextMenu, element.id],
   );
 
   const handleResizeStart = useCallback(
@@ -179,12 +183,16 @@ export function CanvasElement({
         tempGridAreaRef.current = newArea;
       };
 
-      const handlePointerUp = () => {
+      const cleanup = () => {
         document.removeEventListener("pointermove", handlePointerMove);
         document.removeEventListener("pointerup", handlePointerUp);
+        document.removeEventListener("keydown", handleKeyDown);
         isResizing.current = false;
+      };
 
+      const handlePointerUp = () => {
         const finalGrid = tempGridAreaRef.current;
+        cleanup();
         setTempGridArea(null);
         tempGridAreaRef.current = null;
 
@@ -199,8 +207,17 @@ export function CanvasElement({
         }
       };
 
+      const handleKeyDown = (keyEvent: KeyboardEvent) => {
+        if (keyEvent.key === "Escape") {
+          cleanup();
+          setTempGridArea(null);
+          tempGridAreaRef.current = null;
+        }
+      };
+
       document.addEventListener("pointermove", handlePointerMove);
       document.addEventListener("pointerup", handlePointerUp);
+      document.addEventListener("keydown", handleKeyDown);
     },
     [element.grid_area, element.id, columns, rows, onCommitResize],
   );
@@ -227,7 +244,7 @@ export function CanvasElement({
           : "none",
         outlineOffset: "1px",
         opacity: isDragging ? 0.3 : 1,
-        cursor: previewMode ? "default" : "move",
+        cursor: previewMode ? "default" : locked ? "not-allowed" : "move",
         zIndex: selected ? 10 : 1,
         minWidth: 0,
         minHeight: 0,
@@ -298,6 +315,20 @@ export function CanvasElement({
           }}
         >
           {tempGridArea.col_span}&times;{tempGridArea.row_span} at col {tempGridArea.col}, row {tempGridArea.row}
+        </div>
+      )}
+      {/* Hidden overlay — dims the element and blocks interaction */}
+      {hidden && !previewMode && (
+        <div
+          style={{
+            position: "absolute", inset: 0,
+            background: "rgba(0,0,0,0.6)",
+            borderRadius: 4, pointerEvents: "none",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            zIndex: 15,
+          }}
+        >
+          <span style={{ fontSize: 9, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Hidden</span>
         </div>
       )}
     </div>

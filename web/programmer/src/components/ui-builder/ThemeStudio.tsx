@@ -669,6 +669,7 @@ export interface ThemeStudioProps {
   onRefreshThemes: () => void;
   /** Called after Save Changes so the canvas iframe re-fetches the updated theme. */
   onThemeSaved?: () => void;
+  onResetElementStyles?: () => void;
   panelWidth?: number;
   panelHeight?: number;
 }
@@ -684,6 +685,7 @@ export function ThemeStudio({
   onClearOverrides,
   onRefreshThemes,
   onThemeSaved,
+  onResetElementStyles,
   panelWidth = 1280,
   panelHeight = 800,
 }: ThemeStudioProps) {
@@ -1213,6 +1215,22 @@ export function ThemeStudio({
               </option>
             ))}
           </select>
+          {onResetElementStyles && (
+            <button
+              onClick={onResetElementStyles}
+              title="Remove per-element style overrides so all elements inherit from the theme"
+              style={{
+                display: "flex", alignItems: "center", gap: 4,
+                padding: "4px 10px", borderRadius: 4, fontSize: 11,
+                background: "transparent", border: "1px solid var(--border-color)",
+                color: "var(--text-secondary)", cursor: "pointer",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+            >
+              Reset Element Styles
+            </button>
+          )}
           <button
             onClick={handleClose}
             title="Close (Esc)"

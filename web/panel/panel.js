@@ -740,16 +740,16 @@ class PanelApp {
         const vw = element.bindings?.visible_when;
         if (!vw) return;
 
-        // Single condition or compound (all:[...])
-        const conditions = vw.all || [vw];
-        // Collect all keys for the optimized change-detection
+        // Single condition, compound AND (all:[...]), or compound OR (any:[...])
+        const conditions = vw.all || vw.any || [vw];
+        const mode = vw.any ? 'any' : 'all';
         const keys = conditions.map(c => c.key).filter(Boolean);
 
         this.bindings.push({
             type: 'visible_when',
             element: el,
             elementDef: element,
-            binding: { conditions, _keys: keys },
+            binding: { conditions, mode, _keys: keys },
         });
     }
 
@@ -2999,11 +2999,13 @@ class PanelApp {
     evaluateVisibleWhen(b) {
         const { element, binding } = b;
         const conditions = binding.conditions || [];
-        // All conditions must be true for the element to be visible
-        const visible = conditions.every(cond => {
+        const check = (cond) => {
             const actual = this.state[cond.key];
             return this._evalConditionOp(cond.operator || 'eq', actual, cond.value);
-        });
+        };
+        const visible = binding.mode === 'any'
+            ? conditions.some(check)
+            : conditions.every(check);
         element.style.display = visible ? '' : 'none';
     }
 
@@ -3689,6 +3691,15 @@ class PanelApp {
 
         // Opacity (also handled by ui.* overrides, but allow static setting)
         if (style.opacity != null) el.style.opacity = String(style.opacity);
+
+        // Per-element CSS custom properties for accent/surface colors.
+        // These override theme-level --panel-accent / --panel-surface for
+        // sub-elements (thumb, fill, handle, track) that reference --el-*.
+        if (style.accent_color) el.style.setProperty('--el-accent', style.accent_color);
+        if (style.track_color) {
+            el.style.setProperty('--el-surface', style.track_color);
+            el.style.setProperty('--el-surface-border', style.track_color);
+        }
     }
 
     _sanitizeCssValue(value) {
