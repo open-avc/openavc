@@ -3613,11 +3613,15 @@ class PanelApp {
             el.style.alignItems = vMap[style.vertical_align] || 'center';
         }
 
-        // Border
+        // Border — only set properties that are explicitly in the style.
+        // Elements that rely on CSS variables for border-color (e.g. buttons
+        // using --panel-button-border) must not be clobbered by a fallback.
         if (style.border_width) {
             el.style.borderWidth = style.border_width + 'px';
             el.style.borderStyle = style.border_style || 'solid';
-            el.style.borderColor = style.border_color || '#666666';
+            if (style.border_color) {
+                el.style.borderColor = style.border_color;
+            }
         }
 
         // Box shadow with presets
