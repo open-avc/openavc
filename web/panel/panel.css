@@ -66,7 +66,7 @@ button.panel-element {
 }
 #connection-status.connected {
     background: var(--panel-success);
-    color: #fff;
+    color: var(--panel-bg);
 }
 #connection-status.hidden {
     opacity: 0;
@@ -74,7 +74,7 @@ button.panel-element {
 }
 #connection-status.disconnected {
     background: var(--panel-danger);
-    color: #fff;
+    color: var(--panel-bg);
     animation: pulse 1.5s infinite;
 }
 @keyframes pulse {
@@ -88,7 +88,8 @@ button.panel-element {
     bottom: 8px;
     right: 8px;
     font-size: 11px;
-    color: rgba(255,255,255,0.5);
+    color: var(--panel-text);
+    opacity: 0.5;
     z-index: 1000;
 }
 
@@ -386,14 +387,14 @@ button.panel-element {
     letter-spacing: 8px;
     border: 2px solid var(--panel-accent, #2196F3);
     border-radius: 8px;
-    background: rgba(255,255,255,0.1);
+    background: color-mix(in srgb, var(--panel-text) 10%, var(--panel-bg));
     color: var(--panel-text, #fff);
     outline: none;
 }
 
 .lock-input:focus {
     border-color: var(--panel-accent, #2196F3);
-    box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.3);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--panel-accent, #2196F3) 30%, transparent);
 }
 
 .lock-submit {
@@ -406,7 +407,7 @@ button.panel-element {
     border: none;
     border-radius: 8px;
     background: var(--panel-accent, #2196F3);
-    color: #fff;
+    color: var(--panel-button-text, #fff);
     cursor: pointer;
 }
 
@@ -415,7 +416,7 @@ button.panel-element {
 }
 
 .lock-error {
-    color: #ef4444;
+    color: var(--panel-danger, #ef4444);
     font-size: 14px;
     margin-top: 12px;
     min-height: 20px;

@@ -485,7 +485,7 @@ class PanelApp {
             } else {
                 this.root.textContent = '';
                 const emptyMsg = document.createElement('div');
-                emptyMsg.style.cssText = 'padding:2rem;text-align:center;color:#999;';
+                emptyMsg.style.cssText = 'padding:2rem;text-align:center;color:var(--panel-text);opacity:0.5;';
                 emptyMsg.textContent = 'No panels configured';
                 this.root.appendChild(emptyMsg);
                 return;
@@ -1231,7 +1231,7 @@ class PanelApp {
                 const placeholder = document.createElement('div');
                 placeholder.textContent = 'Image not found';
                 placeholder.title = element.src;
-                placeholder.style.cssText = 'display:flex;align-items:center;justify-content:center;width:100%;height:100%;color:#999;font-size:12px;';
+                placeholder.style.cssText = 'display:flex;align-items:center;justify-content:center;width:100%;height:100%;color:var(--panel-text);opacity:0.5;font-size:12px;';
                 el.appendChild(placeholder);
             };
             el.appendChild(img);
@@ -1251,12 +1251,13 @@ class PanelApp {
         const style = element.style || {};
         const hasVisual = style.bg_color || style.background_image || style.background_gradient || style.border_width;
         if (this.editMode && !hasVisual) {
-            el.style.border = '1px dashed rgba(255,255,255,0.3)';
+            el.style.border = '1px dashed var(--panel-text, rgba(255,255,255,0.3))';
+            el.style.opacity = '0.3';
             el.style.borderRadius = el.style.borderRadius || '4px';
             el.style.display = 'flex';
             el.style.alignItems = 'center';
             el.style.justifyContent = 'center';
-            el.style.color = 'rgba(255,255,255,0.4)';
+            el.style.color = 'var(--panel-text)';
             el.style.fontSize = '11px';
             el.textContent = 'Spacer';
         }
@@ -2709,7 +2710,8 @@ class PanelApp {
         const validIdPattern = /^[a-zA-Z0-9_-]+$/;
         if (!pluginId || !pluginType || !validIdPattern.test(pluginId) || !validIdPattern.test(pluginType)) {
             el.textContent = 'Plugin element (unconfigured)';
-            el.style.color = '#999';
+            el.style.color = 'var(--panel-text)';
+            el.style.opacity = '0.5';
             el.style.fontSize = '12px';
             el.style.display = 'flex';
             el.style.alignItems = 'center';
@@ -2725,9 +2727,10 @@ class PanelApp {
             el.style.alignItems = 'center';
             el.style.justifyContent = 'center';
             el.style.gap = '4px';
-            el.style.border = '1px dashed rgba(255,255,255,0.3)';
+            el.style.border = '1px dashed var(--panel-text, rgba(255,255,255,0.3))';
             el.style.borderRadius = '4px';
-            el.style.color = 'rgba(255,255,255,0.55)';
+            el.style.color = 'var(--panel-text)';
+            el.style.opacity = '0.4';
             el.style.fontSize = '11px';
             el.style.padding = '4px';
             el.style.textAlign = 'center';
@@ -2760,7 +2763,7 @@ class PanelApp {
         // Loading indicator
         const loadingIndicator = document.createElement('div');
         loadingIndicator.textContent = 'Loading plugin...';
-        loadingIndicator.style.cssText = 'display:flex;align-items:center;justify-content:center;width:100%;height:100%;color:#999;font-size:12px;position:absolute;inset:0;z-index:1;';
+        loadingIndicator.style.cssText = 'display:flex;align-items:center;justify-content:center;width:100%;height:100%;color:var(--panel-text);opacity:0.5;font-size:12px;position:absolute;inset:0;z-index:1;';
         el.style.position = 'relative';
         el.appendChild(loadingIndicator);
 

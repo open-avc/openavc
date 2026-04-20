@@ -1027,7 +1027,7 @@ export function ThemeStudio({
       ...working,
       preview_colors: derivePreviewColors(working.variables),
     };
-    delete exportData._source;
+    delete (exportData as { _source?: string })._source;
     const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -2045,18 +2045,20 @@ function EditorColumn({
       if (ref) ref.open = elType === focusedElement;
     }
     const target = elementRefs.current[focusedElement];
+    let timer: ReturnType<typeof setTimeout> | undefined;
     if (target) {
       target.scrollIntoView({ behavior: "smooth", block: "nearest" });
       target.style.outline = "2px solid var(--accent)";
       target.style.outlineOffset = "-2px";
       target.style.borderRadius = "4px";
-      setTimeout(() => {
+      timer = setTimeout(() => {
         target.style.outline = "";
         target.style.outlineOffset = "";
         target.style.borderRadius = "";
       }, 1200);
     }
     onClearFocus();
+    return () => { if (timer) clearTimeout(timer); };
   }, [focusedElement, onClearFocus]);
 
   // Keyboard arrows navigate between element sections
