@@ -718,6 +718,11 @@ export function ThemeStudio({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const galleryPage = useMemo(() => buildGalleryPage(), []);
+  const savedTheme = useMemo<ThemeDefinition | null>(() => {
+    if (!savedJson) return null;
+    try { return JSON.parse(savedJson) as ThemeDefinition; }
+    catch { return null; }
+  }, [savedJson]);
 
   // Load the theme PRISTINE into the working copy. Project-level overrides
   // are a separate layer surfaced by the override banner — merging them in
@@ -1274,6 +1279,8 @@ export function ThemeStudio({
                 onSetVar={setVar}
                 onSetElementDefault={setElementDefault}
                 onApplySurfaceStyle={applySurfaceStyle}
+                savedVars={savedTheme?.variables || {}}
+                savedDefaults={savedTheme?.element_defaults || {}}
                 focusedElement={focusedElement}
                 onClearFocus={() => setFocusedElement(null)}
                 onSaveChanges={handleSaveChanges}
@@ -1784,11 +1791,13 @@ function SegmentedControl({
 interface QuickAdjustProps {
   vars: Record<string, unknown>;
   defaults: Record<string, Record<string, unknown>>;
+  savedVars: Record<string, unknown>;
+  savedDefaults: Record<string, Record<string, unknown>>;
   onSetVar: (key: string, value: unknown) => void;
   onApplySurfaceStyle: (style: "flat" | "layered" | "outlined") => void;
 }
 
-function QuickAdjustSection({ vars, defaults, onSetVar, onApplySurfaceStyle }: QuickAdjustProps) {
+function QuickAdjustSection({ vars, defaults, savedVars, savedDefaults, onSetVar, onApplySurfaceStyle }: QuickAdjustProps) {
   const accent = String(vars.accent ?? "#2196F3");
   const borderRadius = Number(vars.border_radius ?? 8);
   const fontFamily = String(vars.font_family ?? "Inter, system-ui, sans-serif");
@@ -1807,6 +1816,23 @@ function QuickAdjustSection({ vars, defaults, onSetVar, onApplySurfaceStyle }: Q
     : fontFamily.includes("Georgia") || (fontFamily.includes("serif") && !fontFamily.includes("sans-serif")) ? "serif"
     : fontFamily === "monospace" || fontFamily.includes("Mono") || fontFamily.includes("Fira") ? "mono"
     : null;
+
+  // Detect which controls have been modified from the saved theme
+  const accentModified = String(vars.accent ?? "") !== String(savedVars.accent ?? "");
+  const roundnessModified = String(vars.border_radius ?? "") !== String(savedVars.border_radius ?? "");
+  const fontModified = String(vars.font_family ?? "") !== String(savedVars.font_family ?? "");
+  const savedButtonShadow = String(savedDefaults.button?.box_shadow ?? "");
+  const savedButtonBorderWidth = Number(savedDefaults.button?.border_width ?? 1);
+  const savedHasShadow = savedButtonShadow !== "" && savedButtonShadow !== "none";
+  const savedSurfaceStyle =
+    !savedHasShadow && savedButtonBorderWidth === 0 ? "flat" : savedHasShadow ? "layered" : "outlined";
+  const surfaceModified = surfaceStyle !== savedSurfaceStyle;
+
+  const modifiedPill = (
+    <span style={{ fontSize: 9, color: "var(--accent)", fontWeight: 600, marginLeft: 6 }}>
+      modified
+    </span>
+  );
 
   const labelStyle: React.CSSProperties = {
     fontSize: 12,
@@ -1846,7 +1872,7 @@ function QuickAdjustSection({ vars, defaults, onSetVar, onApplySurfaceStyle }: Q
       <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 14 }}>
         {/* Brand Accent */}
         <div>
-          <div style={labelStyle}>Brand Accent</div>
+          <div style={labelStyle}>Brand Accent{accentModified && modifiedPill}</div>
           <div style={hintStyle}>
             Active buttons, slider fills, fader handles, focus rings, and highlights
           </div>
@@ -1876,7 +1902,7 @@ function QuickAdjustSection({ vars, defaults, onSetVar, onApplySurfaceStyle }: Q
 
         {/* Roundness */}
         <div>
-          <div style={labelStyle}>Roundness</div>
+          <div style={labelStyle}>Roundness{roundnessModified && modifiedPill}</div>
           <div style={hintStyle}>Corner radius for buttons, sliders, and all elements</div>
           <SegmentedControl
             options={[
@@ -1899,7 +1925,7 @@ function QuickAdjustSection({ vars, defaults, onSetVar, onApplySurfaceStyle }: Q
 
         {/* Surface Style */}
         <div>
-          <div style={labelStyle}>Surface Style</div>
+          <div style={labelStyle}>Surface Style{surfaceModified && modifiedPill}</div>
           <div style={hintStyle}>
             How elements sit on the page — flat, with depth shadows, or with outlines
           </div>
@@ -1916,7 +1942,7 @@ function QuickAdjustSection({ vars, defaults, onSetVar, onApplySurfaceStyle }: Q
 
         {/* Typography */}
         <div>
-          <div style={labelStyle}>Typography</div>
+          <div style={labelStyle}>Typography{fontModified && modifiedPill}</div>
           <div style={hintStyle}>Font family across the entire panel</div>
           <SegmentedControl
             options={[
@@ -1961,6 +1987,8 @@ interface EditorColumnProps {
   onSetVar: (key: string, value: unknown) => void;
   onSetElementDefault: (elType: string, key: string, value: unknown) => void;
   onApplySurfaceStyle: (style: "flat" | "layered" | "outlined") => void;
+  savedVars: Record<string, unknown>;
+  savedDefaults: Record<string, Record<string, unknown>>;
   focusedElement: string | null;
   onClearFocus: () => void;
   onSaveChanges: () => void;
@@ -1985,6 +2013,8 @@ function EditorColumn({
   onSetVar,
   onSetElementDefault,
   onApplySurfaceStyle,
+  savedVars,
+  savedDefaults,
   focusedElement,
   onClearFocus,
   onSaveChanges,
@@ -2317,6 +2347,8 @@ function EditorColumn({
         <QuickAdjustSection
           vars={vars}
           defaults={defaults}
+          savedVars={savedVars}
+          savedDefaults={savedDefaults}
           onSetVar={onSetVar}
           onApplySurfaceStyle={onApplySurfaceStyle}
         />
@@ -2327,11 +2359,18 @@ function EditorColumn({
           <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: 10 }}>
             {THEME_TOKENS.map((tok) => {
               const val = vars[tok.key];
+              const saved = savedVars[tok.key];
+              const isModified = String(val ?? "") !== String(saved ?? "");
               return (
                 <div key={tok.key}>
                   <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                     <label
-                      style={{ width: 130, fontSize: 11, color: "var(--text-secondary)" }}
+                      style={{
+                        width: 130,
+                        fontSize: 11,
+                        color: isModified ? "var(--accent)" : "var(--text-secondary)",
+                        fontWeight: isModified ? 600 : 400,
+                      }}
                       title={tok.hint}
                     >
                       {tok.label}
@@ -2372,6 +2411,26 @@ function EditorColumn({
                         <option value="monospace">Monospace</option>
                       </select>
                     )}
+                    {isModified && (
+                      <button
+                        type="button"
+                        onClick={() => onSetVar(tok.key, saved)}
+                        title={`Reset to saved: ${saved}`}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          padding: 2,
+                          background: "transparent",
+                          border: "none",
+                          cursor: "pointer",
+                          color: "var(--accent)",
+                          flexShrink: 0,
+                          opacity: 0.7,
+                        }}
+                      >
+                        <RotateCcw size={11} />
+                      </button>
+                    )}
                   </div>
                 </div>
               );
@@ -2409,11 +2468,23 @@ function EditorColumn({
                         control.source.kind === "var"
                           ? vars[control.source.key]
                           : defaults[elType]?.[control.source.key];
+                      const savedVal =
+                        control.source.kind === "var"
+                          ? savedVars[control.source.key]
+                          : savedDefaults[elType]?.[control.source.key];
+                      const isModified = String(val ?? "") !== String(savedVal ?? "");
                       const setControl = (next: unknown) => {
                         if (control.source.kind === "var") {
                           onSetVar(control.source.key, next);
                         } else {
                           onSetElementDefault(elType, control.source.key, next);
+                        }
+                      };
+                      const resetControl = () => {
+                        if (control.source.kind === "var") {
+                          onSetVar(control.source.key, savedVal);
+                        } else {
+                          onSetElementDefault(elType, control.source.key, savedVal);
                         }
                       };
                       const isBoxShadow = control.source.kind === "default" && control.source.key === "box_shadow";
@@ -2431,7 +2502,8 @@ function EditorColumn({
                               style={{
                                 width: 130,
                                 fontSize: 10,
-                                color: "var(--text-muted)",
+                                color: isModified ? "var(--accent)" : "var(--text-muted)",
+                                fontWeight: isModified ? 600 : 400,
                                 paddingTop: isBoxShadow ? 4 : 0,
                               }}
                             >
@@ -2485,6 +2557,26 @@ function EditorColumn({
                                 title={String(val ?? "")}
                                 style={{ flex: 1, fontSize: 10, fontFamily: "monospace" }}
                               />
+                            )}
+                            {isModified && (
+                              <button
+                                type="button"
+                                onClick={resetControl}
+                                title={`Reset to saved: ${savedVal}`}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  padding: 2,
+                                  background: "transparent",
+                                  border: "none",
+                                  cursor: "pointer",
+                                  color: "var(--accent)",
+                                  flexShrink: 0,
+                                  opacity: 0.7,
+                                }}
+                              >
+                                <RotateCcw size={10} />
+                              </button>
                             )}
                           </div>
                           {control.hint && (
