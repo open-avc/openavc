@@ -714,6 +714,7 @@ export function ThemeStudio({
   const [pendingClose, setPendingClose] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [previewView, setPreviewView] = useState<string>("gallery");
+  const [focusedElement, setFocusedElement] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const galleryPage = useMemo(() => buildGalleryPage(), []);
@@ -1084,6 +1085,27 @@ export function ThemeStudio({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isDirty]);
 
+  // Listen for element clicks from the preview iframe
+  useEffect(() => {
+    if (!open) return;
+    const onMsg = (e: MessageEvent) => {
+      if (e.data?.type === "openavc:theme-element-click") {
+        const elType = e.data.elementType as string;
+        if (elType && ELEMENT_CONTROLS[elType]) {
+          setFocusedElement(elType);
+        } else {
+          // Derivative types (page_nav, camera_preset, keypad) map to button
+          const buttonDerivatives = ["page_nav", "camera_preset", "keypad"];
+          if (elType && buttonDerivatives.includes(elType)) {
+            setFocusedElement("button");
+          }
+        }
+      }
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, [open]);
+
   // Contrast checks on working copy variables
   const contrastChecks = useMemo(() => {
     const v = (working?.variables || {}) as Record<string, string>;
@@ -1252,6 +1274,8 @@ export function ThemeStudio({
                 onSetVar={setVar}
                 onSetElementDefault={setElementDefault}
                 onApplySurfaceStyle={applySurfaceStyle}
+                focusedElement={focusedElement}
+                onClearFocus={() => setFocusedElement(null)}
                 onSaveChanges={handleSaveChanges}
                 onSaveAsCustom={handleSaveAsCustom}
                 onDiscard={handleDiscard}
@@ -1937,6 +1961,8 @@ interface EditorColumnProps {
   onSetVar: (key: string, value: unknown) => void;
   onSetElementDefault: (elType: string, key: string, value: unknown) => void;
   onApplySurfaceStyle: (style: "flat" | "layered" | "outlined") => void;
+  focusedElement: string | null;
+  onClearFocus: () => void;
   onSaveChanges: () => void;
   onSaveAsCustom: () => void;
   onDiscard: () => void;
@@ -1959,6 +1985,8 @@ function EditorColumn({
   onSetVar,
   onSetElementDefault,
   onApplySurfaceStyle,
+  focusedElement,
+  onClearFocus,
   onSaveChanges,
   onSaveAsCustom,
   onDiscard,
@@ -1966,6 +1994,67 @@ function EditorColumn({
   onDelete,
   onClearOverrides,
 }: EditorColumnProps) {
+  const elementRefs = useRef<Record<string, HTMLDetailsElement | null>>({});
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!focusedElement) return;
+    // Collapse all, expand target, scroll into view, briefly highlight
+    for (const [elType, ref] of Object.entries(elementRefs.current)) {
+      if (ref) ref.open = elType === focusedElement;
+    }
+    const target = elementRefs.current[focusedElement];
+    if (target) {
+      target.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      target.style.outline = "2px solid var(--accent)";
+      target.style.outlineOffset = "-2px";
+      target.style.borderRadius = "4px";
+      setTimeout(() => {
+        target.style.outline = "";
+        target.style.outlineOffset = "";
+        target.style.borderRadius = "";
+      }, 1200);
+    }
+    onClearFocus();
+  }, [focusedElement, onClearFocus]);
+
+  // Keyboard arrows navigate between element sections
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+      // Only activate when a summary or details has focus
+      const active = document.activeElement;
+      if (!active || !container.contains(active)) return;
+      const summary = active.closest("summary");
+      if (!summary) return;
+      const details = summary.parentElement as HTMLDetailsElement | null;
+      if (!details) return;
+      const currentIdx = ELEMENT_ORDER.indexOf(
+        Object.entries(elementRefs.current).find(([, ref]) => ref === details)?.[0] || "",
+      );
+      if (currentIdx < 0) return;
+      e.preventDefault();
+      const nextIdx = e.key === "ArrowDown"
+        ? Math.min(currentIdx + 1, ELEMENT_ORDER.length - 1)
+        : Math.max(currentIdx - 1, 0);
+      const nextType = ELEMENT_ORDER[nextIdx];
+      const nextDetails = elementRefs.current[nextType];
+      if (nextDetails) {
+        for (const [, ref] of Object.entries(elementRefs.current)) {
+          if (ref) ref.open = false;
+        }
+        nextDetails.open = true;
+        const nextSummary = nextDetails.querySelector("summary");
+        nextSummary?.focus();
+        nextDetails.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+    };
+    container.addEventListener("keydown", onKey);
+    return () => container.removeEventListener("keydown", onKey);
+  }, []);
+
   if (!working) {
     return (
       <div
@@ -2198,7 +2287,7 @@ function EditorColumn({
         </div>
       )}
 
-      <div style={{ flex: 1, overflow: "auto", padding: 10 }}>
+      <div ref={scrollContainerRef} style={{ flex: 1, overflow: "auto", padding: 10 }}>
         {/* Theme info */}
         <div style={sectionStyle}>
           <div style={sectionTitleStyle}>Theme Info</div>
@@ -2298,7 +2387,11 @@ function EditorColumn({
               const controls = ELEMENT_CONTROLS[elType];
               if (!controls) return null;
               return (
-                <details key={elType} style={{ marginBottom: 6 }}>
+                <details
+                  key={elType}
+                  ref={(el) => { elementRefs.current[elType] = el; }}
+                  style={{ marginBottom: 6 }}
+                >
                   <summary
                     style={{
                       cursor: "pointer",

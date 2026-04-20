@@ -451,6 +451,7 @@ class PanelApp {
                 const area = element.grid_area || {};
                 el.style.gridColumn = `${area.col || 1} / span ${area.col_span || 1}`;
                 el.style.gridRow = `${area.row || 1} / span ${area.row_span || 1}`;
+                el.dataset.elementType = element.type;
                 this.registerVisibleWhen(el, element);
                 grid.appendChild(el);
             }
@@ -607,6 +608,7 @@ class PanelApp {
                 el.style.gridColumn = `${area.col || 1} / span ${area.col_span || 1}`;
                 el.style.gridRow = `${area.row || 1} / span ${area.row_span || 1}`;
                 el.style.zIndex = '0';  // Below page elements
+                el.dataset.elementType = mEl.type;
                 this.registerVisibleWhen(el, mEl);
                 grid.appendChild(el);
             }
@@ -621,6 +623,7 @@ class PanelApp {
                 const area = element.grid_area || {};
                 el.style.gridColumn = `${area.col || 1} / span ${area.col_span || 1}`;
                 el.style.gridRow = `${area.row || 1} / span ${area.row_span || 1}`;
+                el.dataset.elementType = element.type;
 
                 // Element entry animation
                 if (entryAnimation !== 'none') {
@@ -641,6 +644,92 @@ class PanelApp {
 
         this.root.appendChild(grid);
         this.evaluateAllBindings();
+
+        // Theme Studio direct manipulation — click any element in the preview
+        // to jump to its section in the editor. Hover shows an outline + type label.
+        if (this.editMode) {
+            this._setupThemeStudioInteraction(grid);
+        }
+    }
+
+    _setupThemeStudioInteraction(grid) {
+        const TYPE_LABELS = {
+            button: 'Button', label: 'Label', slider: 'Slider', fader: 'Fader',
+            select: 'Select', text_input: 'Text Input', status_led: 'Status LED',
+            gauge: 'Gauge', level_meter: 'Level Meter', list: 'List', matrix: 'Matrix',
+            group: 'Group', image: 'Image', clock: 'Clock', spacer: 'Spacer',
+            page_nav: 'Page Nav', camera_preset: 'Camera Preset', keypad: 'Keypad',
+        };
+
+        const tooltip = document.createElement('div');
+        tooltip.style.cssText = [
+            'position: fixed', 'padding: 2px 6px', 'font-size: 10px', 'font-weight: 600',
+            'background: rgba(0,0,0,0.8)', 'color: #fff', 'border-radius: 3px',
+            'pointer-events: none', 'z-index: 9999', 'display: none', 'white-space: nowrap',
+        ].join(';');
+        document.body.appendChild(tooltip);
+
+        let hoveredEl = null;
+
+        const findPanelElement = (target) => {
+            let el = target;
+            while (el && el !== grid) {
+                if (el.dataset && el.dataset.elementType) return el;
+                el = el.parentElement;
+            }
+            return null;
+        };
+
+        grid.addEventListener('mousemove', (e) => {
+            const panelEl = findPanelElement(e.target);
+            if (panelEl === hoveredEl) {
+                if (panelEl) {
+                    const r = panelEl.getBoundingClientRect();
+                    tooltip.style.left = (r.left + r.width / 2 - tooltip.offsetWidth / 2) + 'px';
+                    tooltip.style.top = (r.top - 22) + 'px';
+                }
+                return;
+            }
+            if (hoveredEl) {
+                hoveredEl.style.outline = '';
+                hoveredEl.style.outlineOffset = '';
+            }
+            hoveredEl = panelEl;
+            if (panelEl) {
+                panelEl.style.outline = '2px solid rgba(33,150,243,0.7)';
+                panelEl.style.outlineOffset = '-2px';
+                const type = panelEl.dataset.elementType;
+                tooltip.textContent = TYPE_LABELS[type] || type;
+                tooltip.style.display = 'block';
+                const r = panelEl.getBoundingClientRect();
+                tooltip.style.left = (r.left + r.width / 2 - tooltip.offsetWidth / 2) + 'px';
+                tooltip.style.top = (r.top - 22) + 'px';
+            } else {
+                tooltip.style.display = 'none';
+            }
+        });
+
+        grid.addEventListener('mouseleave', () => {
+            if (hoveredEl) {
+                hoveredEl.style.outline = '';
+                hoveredEl.style.outlineOffset = '';
+                hoveredEl = null;
+            }
+            tooltip.style.display = 'none';
+        });
+
+        grid.addEventListener('click', (e) => {
+            const panelEl = findPanelElement(e.target);
+            if (!panelEl) return;
+            e.preventDefault();
+            e.stopPropagation();
+            const elType = panelEl.dataset.elementType;
+            this._postToParent({
+                type: 'openavc:theme-element-click',
+                elementType: elType,
+                elementId: panelEl.dataset.elementId,
+            });
+        }, true);
     }
 
     /**
