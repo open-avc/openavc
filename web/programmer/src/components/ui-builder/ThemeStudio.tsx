@@ -664,6 +664,8 @@ export interface ThemeStudioProps {
   /** Called to clear project-level theme_overrides after save (they're now baked in). */
   onClearOverrides: () => void;
   onRefreshThemes: () => void;
+  /** Called after Save Changes so the canvas iframe re-fetches the updated theme. */
+  onThemeSaved?: () => void;
   panelWidth?: number;
   panelHeight?: number;
 }
@@ -678,6 +680,7 @@ export function ThemeStudio({
   onChangeTheme,
   onClearOverrides,
   onRefreshThemes,
+  onThemeSaved,
   panelWidth = 1280,
   panelHeight = 800,
 }: ThemeStudioProps) {
@@ -801,9 +804,9 @@ export function ThemeStudio({
     setSavedJson(JSON.stringify(merged));
   };
 
-  // --- Save Changes (custom only) ---
-  const handleSaveChanges = async () => {
-    if (!working || !isCustom) return;
+  // --- Save Changes (custom only) --- returns true on success
+  const handleSaveChanges = async (): Promise<boolean> => {
+    if (!working || !isCustom) return false;
     setBusy(true);
     setStatusMsg(null);
     try {
@@ -815,22 +818,26 @@ export function ThemeStudio({
       await updateTheme(working.id, payload);
       if (Object.keys(themeOverrides).length > 0) onClearOverrides();
       await refreshAndReload(working.id);
+      onThemeSaved?.();
       setStatusMsg({ kind: "info", text: `Saved "${working.name}"` });
+      setBusy(false);
+      return true;
     } catch (e) {
       setStatusMsg({ kind: "error", text: e instanceof Error ? e.message : "Save failed" });
+      setBusy(false);
+      return false;
     }
-    setBusy(false);
   };
 
   // --- Save as Custom ---
   // Auto-renames + auto-disambiguates the id so we can never collide with a
   // built-in or an existing custom (which would 409 the POST).
-  const handleSaveAsCustom = async () => {
-    if (!working) return;
+  const handleSaveAsCustom = async (): Promise<boolean> => {
+    if (!working) return false;
     let baseName = working.name.trim();
     if (!baseName) {
       setStatusMsg({ kind: "error", text: "Enter a theme name" });
-      return;
+      return false;
     }
     // Visually distinguish the new theme from its source so the picker
     // doesn't end up with two cards labeled the same.
@@ -865,10 +872,13 @@ export function ThemeStudio({
       onChangeTheme(id);
       onRefreshThemes();
       setStatusMsg({ kind: "info", text: `Saved as "${name}"` });
+      setBusy(false);
+      return true;
     } catch (e) {
       setStatusMsg({ kind: "error", text: e instanceof Error ? e.message : "Save failed" });
+      setBusy(false);
+      return false;
     }
-    setBusy(false);
   };
 
   // --- Discard ---
@@ -998,9 +1008,9 @@ export function ThemeStudio({
     const checks: { label: string; fg: string; bg: string; ratio: number | null; level: WcagLevel }[] = [];
     const pairs: [string, string, string][] = [
       ["Text on Background", "panel_text", "panel_bg"],
-      ["Button Text", "button_text", "button_bg"],
-      ["Active Button Text", "button_active_text", "button_active_bg"],
+      ["Button Text on Button", "button_text", "button_bg"],
       ["Accent on Background", "accent", "panel_bg"],
+      ["Accent on Button (active)", "accent", "button_bg"],
       ["Danger on Background", "danger", "panel_bg"],
       ["Success on Background", "success", "panel_bg"],
       ["Warning on Background", "warning", "panel_bg"],
@@ -1241,9 +1251,12 @@ export function ThemeStudio({
             cancelLabel="Discard"
             onConfirm={async () => {
               setPendingClose(false);
-              if (isCustom) await handleSaveChanges();
-              else await handleSaveAsCustom();
-              onClose();
+              const ok = isCustom
+                ? await handleSaveChanges()
+                : await handleSaveAsCustom();
+              if (ok) onClose();
+              // If save failed, status message is already shown. Studio stays
+              // open so the user can retry or discard.
             }}
             onCancel={() => {
               setPendingClose(false);

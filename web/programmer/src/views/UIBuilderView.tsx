@@ -97,6 +97,9 @@ export function UIBuilderView() {
   const [themeElementDefaults, setThemeElementDefaults] = useState<Record<string, Record<string, unknown>>>({});
   const [themeVariables, setThemeVariables] = useState<Record<string, unknown>>({});
   const [themes, setThemes] = useState<{ id: string; name: string; version: string; author: string; description: string; preview_colors: string[]; variables: Record<string, unknown>; source: string }[]>([]);
+  // Bumped by the Theme Studio after Save Changes to force the canvas iframe
+  // to re-fetch the theme from the server (same theme_id but changed file).
+  const [themeFetchKey, setThemeFetchKey] = useState(0);
 
   // Load themes list
   const loadThemes = useCallback(() => {
@@ -152,7 +155,7 @@ export function UIBuilderView() {
         setThemeVariables(vars);
       })
       .catch(() => { setThemeElementDefaults({}); setThemeVariables({}); });
-  }, [themeId]);
+  }, [themeId, themeFetchKey]);
 
   // Listen for server-initiated page navigation (preview mode)
   useEffect(() => {
@@ -1094,7 +1097,7 @@ export function UIBuilderView() {
                     project={project}
                     themeDefaults={themeElementDefaults}
                     themes={themes}
-                    onThemeChange={handleThemeChange}
+                    onThemeChange={showThemeStudio ? undefined : handleThemeChange}
                     onOpenThemeStudio={() => setShowThemeStudio(true)}
                     onChange={handlePropertyChange}
                     onRenameElement={handleRenameElement}
@@ -1207,6 +1210,7 @@ export function UIBuilderView() {
           onChangeTheme={handleThemeChange}
           onClearOverrides={() => handleUpdateThemeOverrides({})}
           onRefreshThemes={loadThemes}
+          onThemeSaved={() => setThemeFetchKey((k) => k + 1)}
           panelWidth={screenWidth}
           panelHeight={screenHeight}
         />
