@@ -30,7 +30,7 @@ Toggle the palette with **Ctrl+E**.
 - Layout (grid position and span)
 - Style (colors, font size, border radius)
 - Bindings (the critical programming section, where logic meets the UI)
-- Theme tab (live theme preview with sample elements, "Overrides theme" indicator on elements with custom colors, and a "Reset to theme" button)
+- Theme tab (shows which styles are inherited from the theme vs. overridden per-element)
 
 ## Element Types
 
@@ -278,9 +278,7 @@ The Theme Picker in Panel Settings shows visual cards with color swatches for ea
 
 Select a theme to apply it immediately. The canvas preview updates in real time.
 
-**Theme overrides** let you tweak individual variables (background, accent, text color, etc.) without creating a full custom theme. Click **Customize** on any theme card to adjust specific values while keeping the rest of the theme intact.
-
-Custom themes can be created, exported as `.avctheme` files, and shared across projects or installations.
+To customize a theme, open the **Theme Studio** (click the paint brush icon in the toolbar). The studio lets you tweak any theme and save it as a custom theme. Custom themes can be exported as `.avctheme` files and shared across projects or installations.
 
 ## Master Elements
 
@@ -373,19 +371,45 @@ Add visual polish to your panel with page transitions and element animations. Co
 
 **Transition duration** (in ms) controls the speed of page transitions. **Stagger delay** (in ms) sets the interval between each element when using the stagger animation. Lower values make elements appear faster in sequence.
 
-## Theme Editor
+## Theme Studio
 
-The **Theme Editor** tab in Panel Settings gives you full control over theme colors and element defaults.
+The **Theme Studio** opens as a full-screen editor with three columns: a theme picker on the left, the editor in the center, and a live preview on the right.
 
-**Color palette:** Edit every theme color variable: panel background, accent, button colors, status colors (success, danger, warning), surface colors, and text colors. Changes preview in real time on the canvas.
+### Theme picker
 
-**Element defaults:** Customize default styles per element type. For example, set all buttons to have rounded corners and a subtle border, or make all labels transparent with no background. These defaults apply to elements that do not have explicit style overrides.
+Visual cards show a mini panel mockup rendered with each theme's actual colors and font. Click a card to switch themes. Hover any card and click the copy icon to duplicate it as a custom theme. Built-in themes are read-only; duplicating one creates an editable custom copy.
 
-**Contrast checker:** A built-in WCAG accessibility checker evaluates text-on-background contrast for every color combination in the theme. It flags combinations that do not meet AA or AAA accessibility standards, helping you build panels that are readable for all users.
+### Quick Adjust
 
-**Save as custom theme:** After editing, click **Save as Custom Theme** to store your changes as a new named theme. Custom themes appear alongside the built-in themes in the Theme Picker.
+The first section in the editor. Four composed controls that cover the most common tweaks without touching individual color pickers:
 
-**Export/import:** Click **Export** to download the theme as an `.avctheme` file. Share it with colleagues or use it on other OpenAVC installations. Click **Import** to load an `.avctheme` file into the theme library.
+- **Brand Accent** -- single color picker that sets the accent color used across active buttons, slider fills, fader handles, and focus rings.
+- **Roundness** -- segmented control (Sharp / Standard / Round) that sets the corner radius for every element.
+- **Surface Style** -- segmented control (Flat / Layered / Outlined) that batch-updates border widths, box shadows, and surface borders across all element types.
+- **Typography** -- segmented control (Sans / Serif / Mono) that sets the panel font.
+
+Each control shows a "modified" label when its value differs from the saved theme.
+
+### Theme tokens and element defaults
+
+Below Quick Adjust, the **Theme** section exposes every color variable (background, text, accent, surface, status colors, border radius, grid gap, font). The **Elements** section exposes per-element-type styling: button colors, slider track colors, gauge fill, list item backgrounds, matrix crosspoint colors, and more.
+
+Modified values turn accent-colored, and a reset icon appears to revert any value to its saved state.
+
+### Direct manipulation
+
+Click any element in the live preview to jump directly to its editor section. Hovering an element in the preview shows a blue outline and a type label so you know what you are about to select. Arrow keys navigate between element sections when focused.
+
+### Contrast checker
+
+A built-in WCAG accessibility checker evaluates text-on-background contrast for every color pair in the theme. It flags combinations that do not meet AA or AAA standards.
+
+### Saving
+
+- **Save Changes** (custom themes): overwrites the theme file.
+- **Save as Custom**: duplicates the current theme as an editable copy.
+- **Discard**: reverts all edits to the last saved state.
+- **Export/Import**: download themes as `.avctheme` files or import them from other installations.
 
 ## Page Backgrounds
 
