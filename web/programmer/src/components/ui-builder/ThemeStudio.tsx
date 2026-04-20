@@ -76,11 +76,11 @@ const ELEMENT_CONTROLS: Record<string, ElementControl[]> = {
     // camera_preset, keypad keys, matrix preset buttons — anything visually
     // a button picks them up automatically. Active button bg derives from
     // Accent (no separate token); active text uses Button Text.
-    { label: "Background", type: "color", source: { kind: "var", key: "button_bg" } },
-    { label: "Text", type: "color", source: { kind: "var", key: "button_text" } },
-    { label: "Border Color", type: "color", source: { kind: "var", key: "button_border" } },
+    { label: "Background", type: "color", source: { kind: "var", key: "button_bg" }, hint: "Also applies to page nav, camera presets, keypads" },
+    { label: "Text", type: "color", source: { kind: "var", key: "button_text" }, hint: "Also used as active button text color" },
+    { label: "Border Color", type: "color", source: { kind: "var", key: "button_border" }, hint: "Also applies to page nav, camera presets, keypads" },
     { label: "Border Width (px)", type: "number", source: { kind: "default", key: "border_width" } },
-    { label: "Box Shadow", type: "text", source: { kind: "default", key: "box_shadow" } },
+    { label: "Box Shadow", type: "text", source: { kind: "default", key: "box_shadow" }, hint: "CSS syntax, e.g. '0 2px 4px rgba(0,0,0,0.3)' or 'none'" },
   ],
   label: [
     { label: "Background", type: "color", source: { kind: "default", key: "bg_color" } },
@@ -1748,13 +1748,17 @@ function SegmentedControl({
   options,
   value,
   onChange,
+  ariaLabel,
 }: {
   options: { value: string; label: string }[];
   value: string | null;
   onChange: (value: string) => void;
+  ariaLabel?: string;
 }) {
   return (
     <div
+      role="radiogroup"
+      aria-label={ariaLabel}
       style={{
         display: "inline-flex",
         borderRadius: 6,
@@ -1768,6 +1772,8 @@ function SegmentedControl({
           <button
             key={opt.value}
             type="button"
+            role="radio"
+            aria-checked={selected}
             onClick={() => onChange(opt.value)}
             style={{
               padding: "5px 14px",
@@ -1879,6 +1885,7 @@ function QuickAdjustSection({ vars, defaults, savedVars, savedDefaults, onSetVar
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <input
               type="color"
+              aria-label="Brand accent color"
               value={HEX_RE.test(accent) ? accent : "#2196F3"}
               onChange={(e) => onSetVar("accent", e.target.value)}
               style={{
@@ -1893,6 +1900,7 @@ function QuickAdjustSection({ vars, defaults, savedVars, savedDefaults, onSetVar
             />
             <input
               type="text"
+              aria-label="Brand accent hex value"
               value={accent}
               onChange={(e) => onSetVar("accent", e.target.value)}
               style={{ flex: 1, fontSize: 11, fontFamily: "monospace" }}
@@ -1905,6 +1913,7 @@ function QuickAdjustSection({ vars, defaults, savedVars, savedDefaults, onSetVar
           <div style={labelStyle}>Roundness{roundnessModified && modifiedPill}</div>
           <div style={hintStyle}>Corner radius for buttons, sliders, and all elements</div>
           <SegmentedControl
+            ariaLabel="Roundness"
             options={[
               { value: "sharp", label: "Sharp" },
               { value: "standard", label: "Standard" },
@@ -1930,6 +1939,7 @@ function QuickAdjustSection({ vars, defaults, savedVars, savedDefaults, onSetVar
             How elements sit on the page — flat, with depth shadows, or with outlines
           </div>
           <SegmentedControl
+            ariaLabel="Surface style"
             options={[
               { value: "flat", label: "Flat" },
               { value: "layered", label: "Layered" },
@@ -1945,6 +1955,7 @@ function QuickAdjustSection({ vars, defaults, savedVars, savedDefaults, onSetVar
           <div style={labelStyle}>Typography{fontModified && modifiedPill}</div>
           <div style={hintStyle}>Font family across the entire panel</div>
           <SegmentedControl
+            ariaLabel="Typography"
             options={[
               { value: "sans", label: "Sans" },
               { value: "serif", label: "Serif" },
