@@ -222,6 +222,25 @@ function wcagLevel(ratio: number): WcagLevel {
   return "fail";
 }
 
+// --- Color utilities for Quick Adjust ---
+
+function adjustHex(hex: string, amount: number): string {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return hex;
+  const adjusted = rgb.map((c) => {
+    if (amount > 0) return Math.round(c + (255 - c) * amount);
+    return Math.round(c * (1 + amount));
+  });
+  return `#${adjusted.map((c) => Math.max(0, Math.min(255, c)).toString(16).padStart(2, "0")).join("")}`;
+}
+
+function deriveSurfaceBorder(surface: string): string {
+  const rgb = hexToRgb(surface);
+  if (!rgb) return surface;
+  const lum = relativeLuminance(...rgb);
+  return adjustHex(surface, lum < 0.5 ? 0.2 : -0.15);
+}
+
 // --- ColorPickerCell ---
 
 interface ColorPickerCellProps {
@@ -742,6 +761,18 @@ export function ThemeStudio({
       } else {
         newVars[key] = value;
       }
+      // border_radius exists in both variables and element_defaults — if only
+      // the variable updates, element_defaults inline styles override it and
+      // the change appears to do nothing. Keep them in sync.
+      if (key === "border_radius") {
+        const defs = JSON.parse(JSON.stringify(prev.element_defaults || {}));
+        for (const elType of Object.keys(defs)) {
+          if (defs[elType]?.border_radius !== undefined) {
+            defs[elType].border_radius = value;
+          }
+        }
+        return { ...prev, variables: newVars, element_defaults: defs };
+      }
       return { ...prev, variables: newVars };
     });
   };
@@ -752,6 +783,57 @@ export function ThemeStudio({
       const defaults = { ...(prev.element_defaults || {}) };
       defaults[elType] = { ...(defaults[elType] || {}), [key]: value };
       return { ...prev, element_defaults: defaults };
+    });
+  };
+
+  const applySurfaceStyle = (style: "flat" | "layered" | "outlined") => {
+    setWorking((prev) => {
+      if (!prev) return prev;
+      const vars = { ...(prev.variables || {}) };
+      const defaults = JSON.parse(JSON.stringify(prev.element_defaults || {}));
+      const borderEls = [
+        "button", "label", "slider", "fader", "select", "text_input",
+        "gauge", "level_meter", "list", "matrix", "group", "image", "clock",
+      ];
+      const shadowEls = ["button", "slider", "camera_preset", "page_nav"];
+      if (style === "flat") {
+        for (const el of borderEls) {
+          if (!defaults[el]) defaults[el] = {};
+          defaults[el].border_width = 0;
+        }
+        for (const el of shadowEls) {
+          if (!defaults[el]) defaults[el] = {};
+          defaults[el].box_shadow = "none";
+        }
+        if (vars.surface) vars.surface_border = String(vars.surface);
+      } else if (style === "layered") {
+        for (const el of borderEls) {
+          if (!defaults[el]) defaults[el] = {};
+          defaults[el].border_width = 1;
+        }
+        if (!defaults.button) defaults.button = {};
+        defaults.button.box_shadow = "0 2px 4px rgba(0,0,0,0.3)";
+        if (!defaults.slider) defaults.slider = {};
+        defaults.slider.box_shadow = "inset 0 1px 3px rgba(0,0,0,0.3)";
+        if (defaults.camera_preset) defaults.camera_preset.box_shadow = "0 2px 4px rgba(0,0,0,0.3)";
+        if (defaults.page_nav) defaults.page_nav.box_shadow = "0 1px 3px rgba(0,0,0,0.2)";
+        if (vars.surface && String(vars.surface) === String(vars.surface_border)) {
+          vars.surface_border = deriveSurfaceBorder(String(vars.surface));
+        }
+      } else {
+        for (const el of borderEls) {
+          if (!defaults[el]) defaults[el] = {};
+          defaults[el].border_width = 1;
+        }
+        for (const el of shadowEls) {
+          if (!defaults[el]) defaults[el] = {};
+          defaults[el].box_shadow = "none";
+        }
+        if (vars.surface && String(vars.surface) === String(vars.surface_border)) {
+          vars.surface_border = deriveSurfaceBorder(String(vars.surface));
+        }
+      }
+      return { ...prev, variables: vars, element_defaults: defaults };
     });
   };
 
@@ -1010,7 +1092,7 @@ export function ThemeStudio({
       ["Text on Background", "panel_text", "panel_bg"],
       ["Button Text on Button", "button_text", "button_bg"],
       ["Accent on Background", "accent", "panel_bg"],
-      ["Accent on Button (active)", "accent", "button_bg"],
+      ["Button Text on Active", "button_text", "accent"],
       ["Danger on Background", "danger", "panel_bg"],
       ["Success on Background", "success", "panel_bg"],
       ["Warning on Background", "warning", "panel_bg"],
@@ -1169,6 +1251,7 @@ export function ThemeStudio({
                 onSetDesc={setDesc}
                 onSetVar={setVar}
                 onSetElementDefault={setElementDefault}
+                onApplySurfaceStyle={applySurfaceStyle}
                 onSaveChanges={handleSaveChanges}
                 onSaveAsCustom={handleSaveAsCustom}
                 onDiscard={handleDiscard}
@@ -1628,6 +1711,216 @@ function ThemePickerColumn({
   );
 }
 
+// --- Quick Adjust components ---
+
+function SegmentedControl({
+  options,
+  value,
+  onChange,
+}: {
+  options: { value: string; label: string }[];
+  value: string | null;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        borderRadius: 6,
+        overflow: "hidden",
+        border: "1px solid var(--border-color)",
+      }}
+    >
+      {options.map((opt, i) => {
+        const selected = value === opt.value;
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => onChange(opt.value)}
+            style={{
+              padding: "5px 14px",
+              fontSize: 11,
+              fontWeight: selected ? 600 : 400,
+              background: selected ? "var(--accent)" : "var(--bg-hover)",
+              color: selected ? "#fff" : "var(--text-secondary)",
+              border: "none",
+              borderRight: i < options.length - 1 ? "1px solid var(--border-color)" : "none",
+              cursor: "pointer",
+            }}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+interface QuickAdjustProps {
+  vars: Record<string, unknown>;
+  defaults: Record<string, Record<string, unknown>>;
+  onSetVar: (key: string, value: unknown) => void;
+  onApplySurfaceStyle: (style: "flat" | "layered" | "outlined") => void;
+}
+
+function QuickAdjustSection({ vars, defaults, onSetVar, onApplySurfaceStyle }: QuickAdjustProps) {
+  const accent = String(vars.accent ?? "#2196F3");
+  const borderRadius = Number(vars.border_radius ?? 8);
+  const fontFamily = String(vars.font_family ?? "Inter, system-ui, sans-serif");
+
+  const roundnessPreset =
+    borderRadius === 0 ? "sharp" : borderRadius === 8 ? "standard" : borderRadius === 16 ? "round" : null;
+
+  const buttonShadow = String(defaults.button?.box_shadow ?? "");
+  const buttonBorderWidth = Number(defaults.button?.border_width ?? 1);
+  const hasShadow = buttonShadow !== "" && buttonShadow !== "none";
+  const surfaceStyle: string | null =
+    !hasShadow && buttonBorderWidth === 0 ? "flat" : hasShadow ? "layered" : "outlined";
+
+  const typographyPreset =
+    fontFamily.includes("Inter") || fontFamily.startsWith("system-ui") ? "sans"
+    : fontFamily.includes("Georgia") || (fontFamily.includes("serif") && !fontFamily.includes("sans-serif")) ? "serif"
+    : fontFamily === "monospace" || fontFamily.includes("Mono") || fontFamily.includes("Fira") ? "mono"
+    : null;
+
+  const labelStyle: React.CSSProperties = {
+    fontSize: 12,
+    fontWeight: 600,
+    color: "var(--text-primary)",
+    marginBottom: 2,
+  };
+  const hintStyle: React.CSSProperties = {
+    fontSize: 10,
+    color: "var(--text-muted)",
+    lineHeight: 1.3,
+    marginBottom: 4,
+  };
+
+  return (
+    <div
+      style={{
+        background: "var(--bg-surface)",
+        borderRadius: 6,
+        border: "1px solid var(--border-color)",
+        marginBottom: 10,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 10,
+          fontWeight: 700,
+          textTransform: "uppercase",
+          letterSpacing: "0.5px",
+          color: "var(--text-secondary)",
+          padding: "8px 10px",
+          borderBottom: "1px solid var(--border-color)",
+        }}
+      >
+        Quick Adjust
+      </div>
+      <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 14 }}>
+        {/* Brand Accent */}
+        <div>
+          <div style={labelStyle}>Brand Accent</div>
+          <div style={hintStyle}>
+            Active buttons, slider fills, fader handles, focus rings, and highlights
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input
+              type="color"
+              value={HEX_RE.test(accent) ? accent : "#2196F3"}
+              onChange={(e) => onSetVar("accent", e.target.value)}
+              style={{
+                width: 36,
+                height: 28,
+                padding: 0,
+                border: "1px solid var(--border-color)",
+                borderRadius: 4,
+                cursor: "pointer",
+                flexShrink: 0,
+              }}
+            />
+            <input
+              type="text"
+              value={accent}
+              onChange={(e) => onSetVar("accent", e.target.value)}
+              style={{ flex: 1, fontSize: 11, fontFamily: "monospace" }}
+            />
+          </div>
+        </div>
+
+        {/* Roundness */}
+        <div>
+          <div style={labelStyle}>Roundness</div>
+          <div style={hintStyle}>Corner radius for buttons, sliders, and all elements</div>
+          <SegmentedControl
+            options={[
+              { value: "sharp", label: "Sharp" },
+              { value: "standard", label: "Standard" },
+              { value: "round", label: "Round" },
+            ]}
+            value={roundnessPreset}
+            onChange={(v) => {
+              const map: Record<string, number> = { sharp: 0, standard: 8, round: 16 };
+              onSetVar("border_radius", map[v]);
+            }}
+          />
+          {roundnessPreset === null && (
+            <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>
+              Custom ({borderRadius}px) — adjust in the Theme section below
+            </div>
+          )}
+        </div>
+
+        {/* Surface Style */}
+        <div>
+          <div style={labelStyle}>Surface Style</div>
+          <div style={hintStyle}>
+            How elements sit on the page — flat, with depth shadows, or with outlines
+          </div>
+          <SegmentedControl
+            options={[
+              { value: "flat", label: "Flat" },
+              { value: "layered", label: "Layered" },
+              { value: "outlined", label: "Outlined" },
+            ]}
+            value={surfaceStyle}
+            onChange={(v) => onApplySurfaceStyle(v as "flat" | "layered" | "outlined")}
+          />
+        </div>
+
+        {/* Typography */}
+        <div>
+          <div style={labelStyle}>Typography</div>
+          <div style={hintStyle}>Font family across the entire panel</div>
+          <SegmentedControl
+            options={[
+              { value: "sans", label: "Sans" },
+              { value: "serif", label: "Serif" },
+              { value: "mono", label: "Mono" },
+            ]}
+            value={typographyPreset}
+            onChange={(v) => {
+              const fonts: Record<string, string> = {
+                sans: "Inter, system-ui, sans-serif",
+                serif: "Georgia, 'Times New Roman', serif",
+                mono: "monospace",
+              };
+              onSetVar("font_family", fonts[v]);
+            }}
+          />
+          {typographyPreset === null && (
+            <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>
+              Custom: {fontFamily}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // --- Editor column ---
 
 interface EditorColumnProps {
@@ -1643,6 +1936,7 @@ interface EditorColumnProps {
   onSetDesc: (desc: string) => void;
   onSetVar: (key: string, value: unknown) => void;
   onSetElementDefault: (elType: string, key: string, value: unknown) => void;
+  onApplySurfaceStyle: (style: "flat" | "layered" | "outlined") => void;
   onSaveChanges: () => void;
   onSaveAsCustom: () => void;
   onDiscard: () => void;
@@ -1664,6 +1958,7 @@ function EditorColumn({
   onSetDesc,
   onSetVar,
   onSetElementDefault,
+  onApplySurfaceStyle,
   onSaveChanges,
   onSaveAsCustom,
   onDiscard,
@@ -1929,6 +2224,14 @@ function EditorColumn({
           </div>
         </div>
 
+        {/* Quick Adjust — composed controls for the most common tweaks */}
+        <QuickAdjustSection
+          vars={vars}
+          defaults={defaults}
+          onSetVar={onSetVar}
+          onApplySurfaceStyle={onApplySurfaceStyle}
+        />
+
         {/* Theme tokens — foundational values used across many elements */}
         <div style={sectionStyle}>
           <div style={sectionTitleStyle}>Theme</div>
@@ -1976,6 +2279,7 @@ function EditorColumn({
                         <option value="system-ui, sans-serif">System UI</option>
                         <option value="'Roboto', sans-serif">Roboto</option>
                         <option value="'Segoe UI', sans-serif">Segoe UI</option>
+                        <option value="Georgia, 'Times New Roman', serif">Serif</option>
                         <option value="monospace">Monospace</option>
                       </select>
                     )}
