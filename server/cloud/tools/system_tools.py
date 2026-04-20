@@ -124,7 +124,9 @@ class SystemToolsMixin:
         engine = self._get_engine()
         active_theme = None
         if engine and engine.project:
-            active_theme = getattr(engine.project.ui, "theme", None)
+            settings = getattr(engine.project.ui, "settings", None)
+            if settings is not None:
+                active_theme = getattr(settings, "theme_id", None) or None
 
         themes = _list_all_themes()
         return [
@@ -185,7 +187,10 @@ class SystemToolsMixin:
         if not builtin and not custom:
             return {"error": f"Theme '{theme_id}' not found"}
 
-        engine.project.ui.theme = theme_id
+        engine.project.ui.settings.theme_id = theme_id
+        engine.project.ui.settings.theme = (
+            "light" if ("light" in theme_id or theme_id == "minimal") else "dark"
+        )
         save_project(engine.project_path, engine.project)
 
         if self._reload_fn:

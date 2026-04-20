@@ -8,16 +8,16 @@
  * Builder: imported directly by Canvas.tsx
  */
 
-/* Default theme variables (overridden by active theme on the panel or builder canvas) */
+/* Default theme variables (overridden by active theme on the panel or builder canvas).
+   Hover/pressed states are derived from these via CSS filter() — no separate
+   *_hover token (touch panels don't hover). Active button bg derives from
+   --panel-accent so customizing the accent updates active button styling. */
 :root {
     --panel-bg: #1a1a2e;
     --panel-text: #ffffff;
     --panel-accent: #2196F3;
-    --panel-accent-hover: #1e88e5;
     --panel-button-bg: #424242;
     --panel-button-text: #cccccc;
-    --panel-button-active-bg: #2196F3;
-    --panel-button-active-text: #ffffff;
     --panel-button-border: #555555;
     --panel-danger: #F44336;
     --panel-success: #4CAF50;
@@ -60,11 +60,16 @@
 .panel-button {
     background: var(--panel-button-bg);
     color: var(--panel-button-text);
+    border: 1px solid var(--panel-button-border);
     cursor: pointer;
     font-weight: 500;
     text-align: center;
     padding: 8px;
     word-wrap: break-word;
+}
+.panel-button:hover {
+    /* Derive hover from button bg via filter — no separate token needed. */
+    filter: brightness(1.15);
 }
 .panel-button:active {
     transform: scale(0.96);
@@ -96,15 +101,19 @@
     justify-content: center;
     align-items: center;
 }
+/* Inactive dot uses panel text dimmed; the active color comes from the
+   element's color binding (panel.js sets backgroundColor inline when active). */
 .panel-status-led .led-dot {
     width: 20px;
     height: 20px;
     border-radius: 50%;
-    background: #9E9E9E;
+    background: var(--panel-text);
+    opacity: 0.35;
     box-shadow: 0 0 6px rgba(0,0,0,0.3);
-    transition: background-color 0.3s, box-shadow 0.3s;
+    transition: background-color 0.3s, box-shadow 0.3s, opacity 0.3s;
 }
 .panel-status-led .led-dot.active {
+    opacity: 1;
     box-shadow: 0 0 12px currentColor;
 }
 
@@ -118,11 +127,11 @@
 }
 .panel-slider label {
     font-size: 12px;
-    color: var(--panel-button-text);
+    color: var(--panel-text);
 }
 .panel-slider .slider-value {
     font-size: 11px;
-    color: var(--panel-button-text);
+    color: var(--panel-text);
     text-align: center;
     font-family: monospace;
     white-space: nowrap;
@@ -144,7 +153,8 @@
 }
 .panel-slider .slider-track {
     position: absolute;
-    background: #333;
+    background: var(--panel-surface);
+    border: 1px solid var(--panel-surface-border);
     border-radius: 4px;
     overflow: hidden;
 }
@@ -233,10 +243,10 @@
     color: var(--panel-accent);
     cursor: pointer;
     font-size: 14px;
-    border: 1px solid rgba(255,255,255,0.1);
+    border: 1px solid var(--panel-button-border);
 }
 .panel-page-nav:hover {
-    background: rgba(255,255,255,0.05);
+    filter: brightness(1.2);
 }
 
 /* ===== Select ===== */
@@ -248,15 +258,15 @@
 }
 .panel-select label {
     font-size: 12px;
-    color: var(--panel-button-text);
+    color: var(--panel-text);
 }
 .panel-select select {
     width: 100%;
     padding: 6px 8px;
     border-radius: 6px;
-    border: 1px solid rgba(255,255,255,0.15);
-    background: #333;
-    color: #fff;
+    border: 1px solid var(--panel-surface-border);
+    background: var(--panel-surface);
+    color: var(--panel-text);
     font-size: 14px;
     cursor: pointer;
     -webkit-appearance: none;
@@ -272,15 +282,15 @@
 }
 .panel-text-input label {
     font-size: 12px;
-    color: var(--panel-button-text);
+    color: var(--panel-text);
 }
 .panel-text-input input {
     width: 100%;
     padding: 6px 8px;
     border-radius: 6px;
-    border: 1px solid rgba(255,255,255,0.15);
-    background: #333;
-    color: #fff;
+    border: 1px solid var(--panel-surface-border);
+    background: var(--panel-surface);
+    color: var(--panel-text);
     font-size: 14px;
 }
 
@@ -310,7 +320,7 @@
 }
 .panel-list .list-label {
     font-size: 12px;
-    color: var(--panel-button-text);
+    color: var(--panel-text);
     padding: 8px 12px 4px;
     flex-shrink: 0;
 }
@@ -339,7 +349,7 @@
     padding: 0 12px;
     border-radius: 6px;
     font-size: 14px;
-    color: #fff;
+    color: var(--panel-text);
     cursor: pointer;
     transition: background-color 0.15s;
     flex-shrink: 0;
@@ -387,7 +397,7 @@
     align-items: center;
     justify-content: center;
     font-size: 11px;
-    color: var(--panel-button-text);
+    color: var(--panel-text);
     padding: 4px;
     white-space: nowrap;
     overflow: hidden;
@@ -446,7 +456,7 @@
 }
 .panel-matrix .matrix-list-label {
     font-size: 12px;
-    color: var(--panel-button-text);
+    color: var(--panel-text);
     min-width: 80px;
     text-align: right;
 }
@@ -454,33 +464,36 @@
     flex: 1;
     padding: 6px 8px;
     border-radius: 6px;
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    background: #333;
-    color: #fff;
+    border: 1px solid var(--panel-surface-border);
+    background: var(--panel-surface);
+    color: var(--panel-text);
     font-size: 13px;
     cursor: pointer;
     -webkit-appearance: none;
     appearance: none;
 }
-/* Lock/mute toggles */
+/* Lock/mute toggles — derive states from theme semantic colors. */
 .matrix-lock-btn, .matrix-mute-btn {
     background: none;
-    border: 1px solid rgba(255,255,255,0.15);
+    border: 1px solid var(--panel-surface-border);
     border-radius: 4px;
-    color: rgba(255,255,255,0.4);
+    color: var(--panel-text);
+    opacity: 0.55;
     font-size: 11px;
     cursor: pointer;
     padding: 2px 4px;
     transition: all 0.15s;
 }
 .matrix-lock-btn.locked {
-    color: #ffa726;
-    border-color: #ffa726;
+    color: var(--panel-warning);
+    border-color: var(--panel-warning);
+    opacity: 1;
 }
 .matrix-mute-btn.muted {
-    color: #ef5350;
-    border-color: #ef5350;
-    background: rgba(239,83,80,0.15);
+    color: var(--panel-danger);
+    border-color: var(--panel-danger);
+    background: color-mix(in srgb, var(--panel-danger) 15%, transparent);
+    opacity: 1;
 }
 .matrix-toggle {
     display: flex;
@@ -497,15 +510,15 @@
 .matrix-preset-btn {
     padding: 4px 10px;
     border-radius: 4px;
-    border: 1px solid rgba(255,255,255,0.2);
-    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--panel-button-border);
+    background: var(--panel-button-bg);
     color: var(--panel-button-text);
     font-size: 11px;
     cursor: pointer;
-    transition: background 0.15s;
+    transition: background 0.15s, filter 0.15s;
 }
 .matrix-preset-btn:hover {
-    background: rgba(255,255,255,0.1);
+    filter: brightness(1.15);
 }
 .matrix-drag-line {
     height: 0;
@@ -525,7 +538,7 @@
 }
 .panel-gauge .gauge-label {
     font-size: 12px;
-    color: var(--panel-button-text);
+    color: var(--panel-text);
     text-align: center;
     margin-top: 4px;
 }
@@ -545,7 +558,7 @@
 }
 .panel-level-meter .meter-label {
     font-size: 11px;
-    color: var(--panel-button-text);
+    color: var(--panel-text);
     text-align: center;
 }
 .panel-level-meter .meter-bar {
@@ -564,18 +577,42 @@
 .panel-level-meter .meter-segment {
     flex: 1;
     border-radius: 1px;
-    transition: opacity 0.08s;
+    transition: opacity 0.08s, background-color 0.08s;
     min-height: 2px;
     min-width: 2px;
 }
+/* Inactive segments — heavily dimmed semantic color (visible against any bg). */
 .panel-level-meter .meter-segment[data-zone="green"] {
-    background: #4CAF50;
+    background: color-mix(in srgb, var(--panel-success) 15%, transparent);
 }
 .panel-level-meter .meter-segment[data-zone="yellow"] {
-    background: #FF9800;
+    background: color-mix(in srgb, var(--panel-warning) 15%, transparent);
 }
 .panel-level-meter .meter-segment[data-zone="red"] {
-    background: #F44336;
+    background: color-mix(in srgb, var(--panel-danger) 15%, transparent);
+}
+/* Lit segments use the full theme color. */
+.panel-level-meter .meter-segment.lit[data-zone="green"] {
+    background: var(--panel-success);
+}
+.panel-level-meter .meter-segment.lit[data-zone="yellow"] {
+    background: var(--panel-warning);
+}
+.panel-level-meter .meter-segment.lit[data-zone="red"] {
+    background: var(--panel-danger);
+}
+/* Peak indicator — full color at 70% opacity. */
+.panel-level-meter .meter-segment.peak[data-zone="green"] {
+    background: var(--panel-success);
+    opacity: 0.7;
+}
+.panel-level-meter .meter-segment.peak[data-zone="yellow"] {
+    background: var(--panel-warning);
+    opacity: 0.7;
+}
+.panel-level-meter .meter-segment.peak[data-zone="red"] {
+    background: var(--panel-danger);
+    opacity: 0.7;
 }
 
 /* ===== Fader ===== */
@@ -588,7 +625,7 @@
 }
 .panel-fader .fader-label {
     font-size: 12px;
-    color: var(--panel-button-text);
+    color: var(--panel-text);
     text-align: center;
     flex-shrink: 0;
 }
@@ -609,7 +646,8 @@
 }
 .panel-fader .fader-mark {
     font-size: 9px;
-    color: #666;
+    color: var(--panel-text);
+    opacity: 0.5;
     text-align: right;
     position: absolute;
     right: 4px;
@@ -627,29 +665,33 @@
 .panel-fader .fader-track {
     width: 6px;
     height: 100%;
-    background: rgba(0,0,0,0.3);
+    background: var(--panel-surface);
+    border: 1px solid var(--panel-surface-border);
     border-radius: 3px;
 }
 .panel-fader .fader-handle {
     position: absolute;
     width: 44px;
     height: 44px;
-    background: rgba(255,255,255,0.4);
+    background: var(--panel-accent);
     border-radius: 3px;
     left: 50%;
     transform: translate(-50%, 50%);
     bottom: 50%;
     cursor: grab;
     box-shadow: 0 1px 3px rgba(0,0,0,0.5);
-    transition: bottom 0.05s;
+    transition: bottom 0.05s, filter 0.15s;
+}
+.panel-fader .fader-handle:hover {
+    filter: brightness(1.15);
 }
 .panel-fader .fader-handle:active {
     cursor: grabbing;
-    background: rgba(255,255,255,0.6);
+    filter: brightness(1.25);
 }
 .panel-fader .fader-value {
     font-size: 12px;
-    color: var(--panel-button-text);
+    color: var(--panel-text);
     text-align: center;
     flex-shrink: 0;
     font-variant-numeric: tabular-nums;
@@ -703,7 +745,8 @@
 .panel-group .group-label {
     position: absolute;
     font-size: 12px;
-    color: #888888;
+    color: var(--panel-text);
+    opacity: 0.55;
     text-transform: uppercase;
     letter-spacing: 1px;
     padding: 4px 8px;
@@ -732,18 +775,18 @@
 }
 .panel-keypad .keypad-label {
     font-size: 12px;
-    color: var(--panel-button-text);
+    color: var(--panel-text);
     text-align: center;
 }
 .panel-keypad .keypad-display {
-    background: rgba(0,0,0,0.3);
-    border: 1px solid rgba(255,255,255,0.1);
+    background: var(--panel-surface);
+    border: 1px solid var(--panel-surface-border);
     border-radius: 6px;
     padding: 8px 12px;
     font-size: 20px;
     font-family: 'Courier New', monospace;
     text-align: right;
-    color: inherit;
+    color: var(--panel-text);
     min-height: 36px;
     font-variant-numeric: tabular-nums;
 }
@@ -753,24 +796,28 @@
     gap: 4px;
     flex: 1;
 }
+/* Keypad keys reuse button tokens so they re-skin with the rest of the buttons. */
 .panel-keypad .keypad-key {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #3a3a3a;
-    color: #fff;
-    border: none;
+    background: var(--panel-button-bg);
+    color: var(--panel-button-text);
+    border: 1px solid var(--panel-button-border);
     border-radius: 6px;
     font-size: 18px;
     font-weight: 500;
     cursor: pointer;
-    transition: background 0.15s;
+    transition: background 0.15s, filter 0.15s;
     user-select: none;
     -webkit-user-select: none;
     min-height: 36px;
 }
+.panel-keypad .keypad-key:hover {
+    filter: brightness(1.15);
+}
 .panel-keypad .keypad-key:active {
-    background: #555;
+    filter: brightness(0.85);
 }
 .panel-keypad .keypad-clear {
     color: var(--panel-danger);

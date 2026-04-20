@@ -315,6 +315,21 @@ from server.system_config import WEB_PANEL_DIR, WEB_PROGRAMMER_DIR
 if WEB_PANEL_DIR.exists():
     app.mount("/panel", StaticFiles(directory=str(WEB_PANEL_DIR), html=True), name="panel")
 
+
+@app.middleware("http")
+async def _panel_no_cache(request, call_next):
+    """Force browsers to revalidate /panel assets via ETag (no stale-cache trap).
+
+    Without this, the panel iframe inside the Theme Studio happily serves
+    cached panel.css / panel.js for hours, masking deployed fixes. ETag
+    revalidation keeps cache cheap (304 on no-change) without ever serving
+    truly stale content.
+    """
+    response = await call_next(request)
+    if request.url.path.startswith("/panel"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
 # Serve Programmer UI static files (Vite build output)
 programmer_dir = WEB_PROGRAMMER_DIR
 if programmer_dir.exists():

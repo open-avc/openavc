@@ -14,11 +14,8 @@
         "panel_bg": "#0a1628",
         "panel_text": "#cfd8dc",
         "accent": "#42a5f5",
-        "accent_hover": "#2196f3",
         "button_bg": "#1a237e",
         "button_text": "#cfd8dc",
-        "button_active_bg": "#42a5f5",
-        "button_active_text": "#ffffff",
         "button_border": "#283593",
         "danger": "#e53935",
         "success": "#43a047",
@@ -31,10 +28,7 @@
     },
     "element_defaults": {
         "button": {
-            "bg_color": "#1a237e",
-            "text_color": "#cfd8dc",
             "border_width": 1,
-            "border_color": "#283593",
             "border_radius": 8,
             "box_shadow": "0 2px 6px rgba(0,0,0,0.4)"
         },
@@ -51,7 +45,9 @@
             "border_width": 1,
             "border_color": "#1a2f52",
             "border_radius": 8,
-            "box_shadow": "inset 0 1px 3px rgba(0,0,0,0.4)"
+            "box_shadow": "inset 0 1px 3px rgba(0,0,0,0.4)",
+            "text_color": "#cfd8dc",
+            "thumb_size": 44
         },
         "page_nav": {
             "bg_color": "#0f1f3d",
@@ -76,10 +72,14 @@
             "border_radius": 8
         },
         "status_led": {
-            "bg_color": "transparent"
+            "bg_color": "transparent",
+            "text_color": "#cfd8dc",
+            "border_color": "transparent"
         },
         "image": {
-            "bg_color": "transparent"
+            "bg_color": "transparent",
+            "border_color": "transparent",
+            "border_width": 0
         },
         "spacer": {
             "bg_color": "transparent"
@@ -96,14 +96,22 @@
             "bg_color": "transparent",
             "text_color": "#cfd8dc",
             "gauge_color": "#42a5f5",
-            "gauge_bg_color": "#0f1f3d"
+            "gauge_bg_color": "#0f1f3d",
+            "border_color": "transparent",
+            "border_width": 0
         },
         "level_meter": {
-            "bg_color": "transparent"
+            "bg_color": "transparent",
+            "border_color": "transparent",
+            "border_width": 0,
+            "green_to": -12,
+            "yellow_to": -3
         },
         "fader": {
             "bg_color": "transparent",
-            "text_color": "#cfd8dc"
+            "text_color": "#cfd8dc",
+            "border_color": "transparent",
+            "border_width": 0
         },
         "group": {
             "bg_color": "rgba(66,165,245,0.04)",
@@ -114,7 +122,9 @@
         },
         "clock": {
             "bg_color": "transparent",
-            "text_color": "#cfd8dc"
+            "text_color": "#cfd8dc",
+            "border_color": "transparent",
+            "border_width": 0
         },
         "keypad": {
             "bg_color": "#0f1f3d",

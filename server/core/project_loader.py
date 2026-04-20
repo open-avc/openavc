@@ -276,8 +276,8 @@ class UISettings(BaseModel):
     theme: str = "dark"
     theme_id: str = ""
     theme_overrides: dict[str, Any] = Field(default_factory=dict)
-    accent_color: str = "#2196F3"
-    font_family: str = "Inter, system-ui, sans-serif"
+    accent_color: str = ""
+    font_family: str = ""
     lock_code: str = ""
     idle_timeout_seconds: int = 0
     idle_page: str = "main"

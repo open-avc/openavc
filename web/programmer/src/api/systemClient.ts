@@ -150,6 +150,9 @@ export interface ThemeSummary {
   author: string;
   description: string;
   preview_colors: string[];
+  /** Full theme variables — used by the Theme Studio picker to render rich
+   *  per-card previews (font + button colors + surface) without per-card fetches. */
+  variables: Record<string, unknown>;
   source: string;
 }
 

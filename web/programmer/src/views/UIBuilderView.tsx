@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { Settings } from "lucide-react";
+import { Settings, Palette } from "lucide-react";
 import {
   DndContext,
   DragOverlay,
@@ -26,6 +26,7 @@ import { Canvas } from "../components/ui-builder/Canvas";
 import { CanvasToolbar } from "../components/ui-builder/CanvasToolbar";
 import { PropertiesPanel } from "../components/ui-builder/PropertiesPanel";
 import { ContextMenu } from "../components/ui-builder/ContextMenu";
+import { ThemeStudio } from "../components/ui-builder/ThemeStudio";
 import {
   SCREEN_PRESETS,
   ELEMENT_TEMPLATES,
@@ -92,9 +93,10 @@ export function UIBuilderView() {
   const [showSettings, setShowSettings] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showPalette, setShowPalette] = useState(true);
+  const [showThemeStudio, setShowThemeStudio] = useState(false);
   const [themeElementDefaults, setThemeElementDefaults] = useState<Record<string, Record<string, unknown>>>({});
   const [themeVariables, setThemeVariables] = useState<Record<string, unknown>>({});
-  const [themes, setThemes] = useState<{ id: string; name: string; version: string; author: string; description: string; preview_colors: string[]; source: string }[]>([]);
+  const [themes, setThemes] = useState<{ id: string; name: string; version: string; author: string; description: string; preview_colors: string[]; variables: Record<string, unknown>; source: string }[]>([]);
 
   // Load themes list
   const loadThemes = useCallback(() => {
@@ -116,15 +118,38 @@ export function UIBuilderView() {
     }
   }, [selectedPageId, project, selectPage]);
 
-  // Load theme element defaults when theme_id changes
+  // Load theme element defaults when theme_id changes.
+  // Buttons (and visually-button-like types: page_nav, camera_preset, keypad)
+  // get their colors from CSS variables via .panel-button rules, NOT from
+  // element_defaults. Synthesize those colors into themeElementDefaults so
+  // the Properties panel can show the real effective color as the swatch
+  // placeholder for new elements — otherwise users see blank/#000000 and
+  // assume the element is unstyled when it actually renders themed.
   const themeId = project?.ui?.settings?.theme_id;
   useEffect(() => {
     const id = themeId || "dark-default";
     fetch(`${getTunnelPrefix()}/api/themes/${id}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((theme) => {
-        setThemeElementDefaults(theme?.element_defaults || {});
-        setThemeVariables(theme?.variables || {});
+        const vars = theme?.variables || {};
+        const baseDefaults = theme?.element_defaults || {};
+        const buttonInherit: Record<string, unknown> = {};
+        if (vars.button_bg) buttonInherit.bg_color = vars.button_bg;
+        if (vars.button_text) buttonInherit.text_color = vars.button_text;
+        if (vars.button_border) buttonInherit.border_color = vars.button_border;
+        const synthesized: Record<string, Record<string, unknown>> = { ...baseDefaults };
+        for (const t of ["button", "page_nav", "camera_preset", "keypad"]) {
+          synthesized[t] = { ...buttonInherit, ...(baseDefaults[t] || {}) };
+        }
+        // Most labels/text in non-button elements inherit panel_text via CSS;
+        // surface label_color so the Properties panel doesn't mis-show black.
+        if (vars.panel_text) {
+          for (const t of ["label", "slider", "fader", "gauge", "level_meter", "list", "select", "text_input", "group", "clock", "matrix"]) {
+            synthesized[t] = { text_color: vars.panel_text, ...(synthesized[t] || baseDefaults[t] || {}) };
+          }
+        }
+        setThemeElementDefaults(synthesized);
+        setThemeVariables(vars);
       })
       .catch(() => { setThemeElementDefaults({}); setThemeVariables({}); });
   }, [themeId]);
@@ -515,6 +540,59 @@ export function UIBuilderView() {
     clearTimeout(propertyUndoTimer.current);
   }, [selectedElementId, selectedMasterElementId]);
 
+  // --- Theme handlers (also used by ThemeStudio) ---
+
+  const handleThemeChange = useCallback(
+    (id: string) => {
+      if (!project) return;
+      const settings = project.ui.settings;
+      pushUndo({ settings }, "Change theme");
+      propertyUndoPushed.current = false;
+      clearTimeout(propertyUndoTimer.current);
+      // Clear accent_color / font_family / theme_overrides when switching
+      // themes. These are per-project overrides that were tuned for the
+      // PREVIOUS theme — carrying them forward makes the new theme look
+      // wrong (e.g. blue accent on a gold-themed Luxury preset).
+      update({
+        ui: {
+          ...project.ui,
+          settings: {
+            ...settings,
+            theme_id: id,
+            theme: id.includes("light") || id === "minimal" ? "light" : "dark",
+            accent_color: "",
+            font_family: "",
+            theme_overrides: {},
+          },
+        },
+      });
+      touchMutation();
+    },
+    [project, pushUndo, update, touchMutation],
+  );
+
+  // Live theme variable overrides — burst-undo so dragging a color picker
+  // produces one undo entry, not 50.
+  const handleUpdateThemeOverrides = useCallback(
+    (overrides: Record<string, unknown>) => {
+      if (!project) return;
+      const settings = project.ui.settings;
+      if (!propertyUndoPushed.current) {
+        pushUndo({ settings }, "Edit theme overrides");
+        propertyUndoPushed.current = true;
+      }
+      update({
+        ui: { ...project.ui, settings: { ...settings, theme_overrides: overrides } },
+      });
+      touchMutation();
+      clearTimeout(propertyUndoTimer.current);
+      propertyUndoTimer.current = setTimeout(() => {
+        propertyUndoPushed.current = false;
+      }, 800);
+    },
+    [project, pushUndo, update, touchMutation],
+  );
+
   const handlePropertyChange = useCallback(
     (elementId: string, patch: Partial<UIElement>) => {
       if (!currentPage || !project) return;
@@ -875,6 +953,24 @@ export function UIBuilderView() {
           {!previewMode && (
             <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", padding: "0 var(--space-md)", borderBottom: "1px solid var(--border-color)", background: "var(--bg-surface)", minHeight: 38 }}>
               <button
+                onClick={() => setShowThemeStudio(true)}
+                title="Open Theme Studio"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "var(--space-xs)",
+                  padding: "var(--space-xs) var(--space-md)",
+                  borderRadius: "var(--border-radius)",
+                  background: "var(--bg-hover)",
+                  fontSize: "var(--font-size-sm)",
+                  border: "none",
+                  cursor: "pointer",
+                  color: "var(--text-secondary)",
+                }}
+              >
+                <Palette size={16} /> Theme
+              </button>
+              <button
                 onClick={() => setShowSettings(true)}
                 title="Panel Settings"
                 style={{
@@ -998,46 +1094,8 @@ export function UIBuilderView() {
                     project={project}
                     themeDefaults={themeElementDefaults}
                     themes={themes}
-                    onThemeChange={(id) => {
-                      const settings = project.ui.settings;
-                      pushUndo({ settings }, "Change theme");
-                      propertyUndoPushed.current = false;
-                      clearTimeout(propertyUndoTimer.current);
-                      update({ ui: { ...project.ui, settings: { ...settings, theme_id: id, theme: id.includes("light") || id === "minimal" ? "light" : "dark" } } });
-                      touchMutation();
-                    }}
-                    onApplyOverrides={(overrides) => {
-                      const settings = project.ui.settings;
-                      pushUndo({ settings }, "Apply theme overrides");
-                      propertyUndoPushed.current = false;
-                      clearTimeout(propertyUndoTimer.current);
-                      update({ ui: { ...project.ui, settings: { ...settings, theme_overrides: overrides } } });
-                      touchMutation();
-                    }}
-                    onApplyThemeToElements={() => {
-                      const COLOR_KEYS = [
-                        "bg_color", "text_color", "border_width", "border_color",
-                        "border_style", "border_radius", "box_shadow",
-                        "gauge_color", "gauge_bg_color", "item_bg", "item_active_bg",
-                        "crosspoint_active_color", "crosspoint_inactive_color",
-                      ];
-                      pushUndo({ pages: project.ui.pages }, "Reset elements to theme");
-                      propertyUndoPushed.current = false;
-                      clearTimeout(propertyUndoTimer.current);
-                      const updatedPages = project.ui.pages.map((page) => ({
-                        ...page,
-                        elements: page.elements.map((el) => {
-                          const cleanedStyle = { ...el.style };
-                          for (const key of COLOR_KEYS) {
-                            delete cleanedStyle[key];
-                          }
-                          return { ...el, style: cleanedStyle };
-                        }),
-                      }));
-                      update({ ui: { ...project.ui, pages: updatedPages } });
-                      touchMutation();
-                    }}
-                    onRefreshThemes={loadThemes}
+                    onThemeChange={handleThemeChange}
+                    onOpenThemeStudio={() => setShowThemeStudio(true)}
                     onChange={handlePropertyChange}
                     onRenameElement={handleRenameElement}
                     onPageChange={handlePageChange}
@@ -1134,6 +1192,23 @@ export function UIBuilderView() {
           onDemoteFromMaster={handleDemoteFromMaster}
           onDeleteMaster={handleDeleteMasterElement}
           hasClipboard={!!clipboard}
+        />
+      )}
+
+      {/* Theme Studio */}
+      {project && (
+        <ThemeStudio
+          open={showThemeStudio}
+          onClose={() => setShowThemeStudio(false)}
+          themes={themes}
+          project={project}
+          currentThemeId={project.ui.settings.theme_id || "dark-default"}
+          themeOverrides={project.ui.settings.theme_overrides || {}}
+          onChangeTheme={handleThemeChange}
+          onClearOverrides={() => handleUpdateThemeOverrides({})}
+          onRefreshThemes={loadThemes}
+          panelWidth={screenWidth}
+          panelHeight={screenHeight}
         />
       )}
 

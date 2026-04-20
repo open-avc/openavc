@@ -117,9 +117,22 @@ class PanelApp {
                     this.uiSettings = ui.settings || {};
                     if (msg.pageId) this.currentPage = msg.pageId;
                     if (typeof msg.showGrid === 'boolean') this._editShowGrid = msg.showGrid;
-                    // Edit mode has no WS, so force empty state (static defaults).
+                    // The Theme Studio sends a live working-copy theme so edits
+                    // apply within a frame (no fetch). When omitted, fall back to
+                    // the normal /api/themes/<id> fetch path.
+                    if (msg.inlineTheme && typeof msg.inlineTheme === 'object') {
+                        this.inlineTheme = msg.inlineTheme;
+                    } else if (Object.prototype.hasOwnProperty.call(msg, 'inlineTheme')) {
+                        // Explicitly null/undefined cleared from parent — drop any prior inline theme
+                        this.inlineTheme = null;
+                    }
+                    // Edit mode has no WS, so the parent supplies state (or none).
                     // Preview mode has a WS that manages state — don't clobber it.
-                    if (this.editMode) this.state = {};
+                    if (this.editMode) {
+                        this.state = msg.demoState && typeof msg.demoState === 'object'
+                            ? { ...msg.demoState }
+                            : {};
+                    }
                     this.snapshotReceived = true;
                     this.applyOrientation();
                     this.renderCurrentPage();
@@ -864,6 +877,10 @@ class PanelApp {
         el.className = 'panel-element panel-status-led';
         el.dataset.elementId = element.id;
 
+        // Apply theme element_defaults so wrapper bg / border / radius pick
+        // up the theme. Without this, status_led ignored theme styling.
+        this.applyStyle(el, this.getThemedStyle('status_led', element.style));
+
         const dot = document.createElement('div');
         dot.className = 'led-dot';
         el.appendChild(dot);
@@ -887,8 +904,17 @@ class PanelApp {
         el.className = 'panel-element panel-slider' + (isVertical ? ' panel-slider-vertical' : '');
         el.dataset.elementId = element.id;
 
-        // Thumb size CSS variable
-        el.style.setProperty('--thumb-size', (element.thumb_size ?? 44) + 'px');
+        const themedSliderStyle = this.getThemedStyle('slider', element.style);
+        // Apply theme element_defaults to the wrapper so slider bg / border /
+        // radius / shadow pick up the theme. Without this, sliders silently
+        // ignored their theme styling.
+        this.applyStyle(el, themedSliderStyle);
+
+        // Thumb size: per-element value wins, otherwise theme element_default, otherwise 44.
+        el.style.setProperty(
+            '--thumb-size',
+            (element.thumb_size ?? themedSliderStyle.thumb_size ?? 44) + 'px',
+        );
 
         if (element.label) {
             const label = document.createElement('label');
@@ -1204,11 +1230,15 @@ class PanelApp {
 
         const listStyle = element.list_style || 'selectable';
         const itemHeight = element.item_height || 44;
-        const style = element.style || {};
+        // Merge theme element_defaults so `item_bg` / `item_active_bg` from
+        // the theme actually drive list row colors. Reading raw element.style
+        // here was a long-standing bug — theme edits looked dead because
+        // only per-element overrides won.
+        const style = this.getThemedStyle('list', element.style);
         const itemBg = style.item_bg || '#2a2a4e';
         const itemActiveBg = style.item_active_bg || '#42a5f5';
 
-        this.applyStyle(el, this.getThemedStyle(element.type, element.style));
+        this.applyStyle(el, style);
 
         if (element.label) {
             const label = document.createElement('div');
@@ -1379,12 +1409,14 @@ class PanelApp {
         const inputKeyPattern = config.input_key_pattern || '';
         const outputKeyPattern = config.output_key_pattern || '';
         const matrixStyle = element.matrix_style || 'crosspoint';
-        const style = element.style || {};
+        // Merge theme element_defaults so crosspoint colors come from the
+        // theme, not just per-element overrides.
+        const style = this.getThemedStyle('matrix', element.style);
         const activeColor = style.crosspoint_active_color || '#4CAF50';
         const inactiveColor = style.crosspoint_inactive_color || '#333333';
         const cellSize = style.cell_size || 44;
 
-        this.applyStyle(el, this.getThemedStyle(element.type, element.style));
+        this.applyStyle(el, style);
 
         if (element.label) {
             const label = document.createElement('div');
@@ -1779,7 +1811,9 @@ class PanelApp {
         const max = element.max ?? 100;
         const unit = element.unit || '';
         const arcAngle = element.arc_angle ?? 240;
-        const style = element.style || {};
+        // Merge theme element_defaults so gauge_color / gauge_bg_color come
+        // from the theme.
+        const style = this.getThemedStyle('gauge', element.style);
         const gaugeColor = style.gauge_color || '#4CAF50';
         const gaugeBgColor = style.gauge_bg_color || '#333333';
         const gaugeWidth = style.gauge_width || 8;
@@ -1935,7 +1969,9 @@ class PanelApp {
         const orientation = element.orientation || 'vertical';
         const min = element.min ?? -60;
         const max = element.max ?? 0;
-        const style = element.style || {};
+        // Merge theme element_defaults so green_to / yellow_to thresholds
+        // (now editable per theme) actually drive the meter zones.
+        const style = this.getThemedStyle('level_meter', element.style);
         const segments = style.meter_segments || 20;
         const showPeak = style.show_peak !== false;
         const greenTo = style.green_to ?? -12;
@@ -1953,7 +1989,9 @@ class PanelApp {
         const bar = document.createElement('div');
         bar.className = 'meter-bar';
 
-        // Create segments (for vertical: bottom=min, top=max)
+        // Create segments (for vertical: bottom=min, top=max).
+        // Colors come from CSS using --panel-success / --panel-warning / --panel-danger
+        // via [data-zone] selectors, so themes can recolor zones without code changes.
         for (let i = 0; i < segments; i++) {
             const seg = document.createElement('div');
             seg.className = 'meter-segment';
@@ -1965,10 +2003,6 @@ class PanelApp {
             } else {
                 seg.dataset.zone = 'green';
             }
-            // Use solid dim color instead of opacity to prevent background bleed-through
-            const dimColors = { green: '#0f2410', yellow: '#332701', red: '#310d0b' };
-            seg.style.backgroundColor = dimColors[seg.dataset.zone] || dimColors.green;
-            seg.style.opacity = '1';
             bar.appendChild(seg);
         }
 
@@ -2008,21 +2042,11 @@ class PanelApp {
         const peakFrac = (b._meter.peakValue - min) / (max - min);
         const peakIdx = Math.round(peakFrac * (segments - 1));
 
+        // Toggle CSS classes; backgrounds come from theme tokens via panel-elements.css.
         const segs = bar.querySelectorAll('.meter-segment');
-        const activeColors = { green: '#4CAF50', yellow: '#FF9800', red: '#F44336' };
-        const dimColors = { green: '#0f2410', yellow: '#332701', red: '#310d0b' };
         for (let i = 0; i < segs.length; i++) {
-            const zone = segs[i].dataset.zone || 'green';
-            if (i < litCount) {
-                segs[i].style.backgroundColor = activeColors[zone] || activeColors.green;
-                segs[i].style.opacity = '1';
-            } else if (showPeak && i === peakIdx) {
-                segs[i].style.backgroundColor = activeColors[zone] || activeColors.green;
-                segs[i].style.opacity = '0.7';
-            } else {
-                segs[i].style.backgroundColor = dimColors[zone] || dimColors.green;
-                segs[i].style.opacity = '1';
-            }
+            segs[i].classList.toggle('lit', i < litCount);
+            segs[i].classList.toggle('peak', showPeak && i === peakIdx && i >= litCount);
         }
     }
 
@@ -2040,7 +2064,10 @@ class PanelApp {
         if (min >= max) { const tmp = min; min = max; max = tmp; }
         const step = element.step ?? 0.5;
         const unit = element.unit || 'dB';
-        const style = element.style || {};
+        // Merge theme element_defaults for consistency with other renderers,
+        // even though show_value/show_scale aren't currently theme-editable
+        // — keeps the pattern uniform if those flags become themable later.
+        const style = this.getThemedStyle('fader', element.style);
         const showValue = style.show_value !== false;
         const showScale = style.show_scale !== false;
 
@@ -2660,9 +2687,10 @@ class PanelApp {
             const themeVars = {};
             const root = document.documentElement;
             for (const prop of ['--panel-bg', '--panel-text', '--panel-accent',
-                '--panel-button-bg', '--panel-button-text', '--panel-button-active-bg',
-                '--panel-button-active-text', '--panel-danger', '--panel-success',
-                '--panel-warning', '--panel-grid-gap', '--panel-border-radius']) {
+                '--panel-button-bg', '--panel-button-text', '--panel-button-border',
+                '--panel-surface', '--panel-surface-border',
+                '--panel-danger', '--panel-success', '--panel-warning',
+                '--panel-grid-gap', '--panel-border-radius']) {
                 themeVars[prop] = getComputedStyle(root).getPropertyValue(prop).trim();
             }
             iframe.contentWindow.postMessage({
@@ -3219,9 +3247,25 @@ class PanelApp {
 
         if (this._themeApplyInProgress) return;
 
+        const prevDefaults = JSON.stringify(this.themeElementDefaults || {});
+
+        // Theme Studio path: parent supplied a working-copy theme. Apply it
+        // synchronously without hitting the network so picker drags reflect
+        // within a frame instead of after a round-trip.
+        if (this.inlineTheme && this.inlineTheme.id === themeId) {
+            this._applyThemeData(this.inlineTheme, overrides, settings);
+            this.currentTheme = this.inlineTheme;
+            const newDefaults = JSON.stringify(this.themeElementDefaults || {});
+            if (prevDefaults !== newDefaults && this.snapshotReceived) {
+                this._themeApplyInProgress = true;
+                this.renderCurrentPage();
+                this._themeApplyInProgress = false;
+            }
+            return;
+        }
+
         const pathParts = location.pathname.split('/panel');
         const basePath = pathParts[0] || '';
-        const prevDefaults = JSON.stringify(this.themeElementDefaults || {});
 
         fetch(`${basePath}/api/themes/${encodeURIComponent(themeId)}`)
             .then(res => {
@@ -3255,15 +3299,14 @@ class PanelApp {
         // (accent_hover, button_border, surface, surface_border) aren't
         // consumed by any rule in panel-elements.css today, but are exposed
         // so theme authors and user CSS can reference them via var(--panel-*).
+        // Hover derives from accent/button via CSS filter (no *_hover token).
+        // Active button bg derives from --panel-accent in CSS (no separate token).
         const varMap = {
             panel_bg: '--panel-bg',
             panel_text: '--panel-text',
             accent: '--panel-accent',
-            accent_hover: '--panel-accent-hover',
             button_bg: '--panel-button-bg',
             button_text: '--panel-button-text',
-            button_active_bg: '--panel-button-active-bg',
-            button_active_text: '--panel-button-active-text',
             button_border: '--panel-button-border',
             danger: '--panel-danger',
             success: '--panel-success',
@@ -3285,10 +3328,9 @@ class PanelApp {
             document.body.style.fontFamily = vars.font_family;
         }
 
-        // Per-setting overrides take priority
+        // Per-setting overrides take priority over the theme's variables.
         if (settings.accent_color) {
             root.style.setProperty('--panel-accent', settings.accent_color);
-            root.style.setProperty('--panel-button-active-bg', settings.accent_color);
         }
         if (settings.font_family) {
             document.body.style.fontFamily = settings.font_family;
@@ -3302,7 +3344,6 @@ class PanelApp {
         const root = document.documentElement;
         if (settings.accent_color) {
             root.style.setProperty('--panel-accent', settings.accent_color);
-            root.style.setProperty('--panel-button-active-bg', settings.accent_color);
         }
         if (settings.font_family) {
             document.body.style.fontFamily = settings.font_family;
@@ -3313,7 +3354,6 @@ class PanelApp {
             root.style.setProperty('--panel-text', '#212121');
             root.style.setProperty('--panel-button-bg', '#e0e0e0');
             root.style.setProperty('--panel-button-text', '#424242');
-            root.style.setProperty('--panel-button-active-text', '#ffffff');
         }
         this.themeElementDefaults = {};
     }

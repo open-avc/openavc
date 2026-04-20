@@ -1,13 +1,12 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight, Trash2, Undo2, Link, Palette } from "lucide-react";
-import type { UIElement, UIPage, ProjectConfig, OverlayConfig, PageBackground, MasterElement, UISettings } from "../../api/types";
+import type { UIElement, UIPage, ProjectConfig, OverlayConfig, PageBackground, MasterElement } from "../../api/types";
 import { BasicProperties } from "./PropertySections/BasicProperties";
 import { LayoutProperties } from "./PropertySections/LayoutProperties";
 import { StyleProperties } from "./PropertySections/StyleProperties";
 import { BindingProperties } from "./PropertySections/BindingProperties";
 import { VisibilityProperties } from "./PropertySections/VisibilityProperties";
 import { AssetPicker } from "./AssetPicker";
-import { ThemeEditor } from "./ThemeEditor";
 
 interface ThemeSummary {
   id: string;
@@ -25,9 +24,7 @@ interface PropertiesPanelProps {
   themeDefaults?: Record<string, Record<string, unknown>>;
   themes?: ThemeSummary[];
   onThemeChange?: (themeId: string) => void;
-  onApplyThemeToElements?: () => void;
-  onApplyOverrides?: (overrides: Record<string, unknown>) => void;
-  onRefreshThemes?: () => void;
+  onOpenThemeStudio?: () => void;
   onChange: (elementId: string, patch: Partial<UIElement>) => void;
   onRenameElement?: (oldId: string, newId: string) => void;
   onPageChange?: (patch: Partial<UIPage>) => void;
@@ -45,9 +42,7 @@ export function PropertiesPanel({
   themeDefaults,
   themes,
   onThemeChange,
-  onApplyThemeToElements,
-  onApplyOverrides,
-  onRefreshThemes,
+  onOpenThemeStudio,
   onChange,
   onRenameElement,
   onPageChange,
@@ -55,39 +50,6 @@ export function PropertiesPanel({
   onDemoteMaster,
   onDeleteMaster,
 }: PropertiesPanelProps) {
-  const [showThemeTab, setShowThemeTab] = useState(false);
-
-  // Theme tab (12.5) — always accessible via toggle
-  if (showThemeTab && themes && themes.length > 0) {
-    return (
-      <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
-        <button
-          onClick={() => setShowThemeTab(false)}
-          style={{
-            display: "flex", alignItems: "center", gap: 4,
-            padding: "var(--space-xs) var(--space-sm)", margin: "var(--space-xs)",
-            borderRadius: "var(--border-radius)", border: "1px solid var(--accent)",
-            background: "var(--accent-dim, rgba(33,150,243,0.1))", color: "var(--accent)",
-            fontSize: 11, fontWeight: 600, cursor: "pointer",
-          }}
-        >
-          <Palette size={12} /> Back to Properties
-        </button>
-        <div style={{ flex: 1, overflow: "auto" }}>
-          <ThemeSection
-            themes={themes}
-            currentThemeId={project?.ui?.settings?.theme_id || "dark-default"}
-            settings={project?.ui?.settings}
-            onThemeChange={onThemeChange!}
-            onApplyThemeToElements={onApplyThemeToElements}
-            onApplyOverrides={onApplyOverrides}
-            onRefreshThemes={onRefreshThemes}
-          />
-        </div>
-      </div>
-    );
-  }
-
   // Master element selected — show master element properties
   if (masterElement && page) {
     return (
@@ -207,11 +169,8 @@ export function PropertiesPanel({
           <ThemeSection
             themes={themes}
             currentThemeId={currentThemeId}
-            settings={project?.ui?.settings}
             onThemeChange={onThemeChange}
-            onApplyThemeToElements={onApplyThemeToElements}
-            onApplyOverrides={onApplyOverrides}
-            onRefreshThemes={onRefreshThemes}
+            onOpenThemeStudio={onOpenThemeStudio}
           />
         )}
 
@@ -266,16 +225,16 @@ export function PropertiesPanel({
         }}>
           Properties
         </span>
-        {themes && themes.length > 0 && (
+        {onOpenThemeStudio && (
           <button
-            onClick={() => setShowThemeTab(true)}
+            onClick={onOpenThemeStudio}
             style={{
               display: "flex", alignItems: "center", gap: 3,
               padding: "1px 6px", borderRadius: 3,
               background: "transparent", border: "1px solid var(--border-color)",
               color: "var(--text-muted)", fontSize: 10, cursor: "pointer",
             }}
-            title="Open Theme Editor"
+            title="Open Theme Studio"
           >
             <Palette size={10} /> Theme
           </button>
@@ -1063,48 +1022,69 @@ function Section({
 }
 
 // --- Theme Section (shown when no element selected) ---
+// Thin picker. Click a card to switch theme. Click "Open Theme Studio…" for the full editor.
 
 function ThemeSection({
   themes,
   currentThemeId,
-  settings,
   onThemeChange,
-  onApplyThemeToElements,
-  onApplyOverrides,
-  onRefreshThemes,
+  onOpenThemeStudio,
 }: {
   themes: ThemeSummary[];
   currentThemeId: string;
-  settings?: UISettings;
   onThemeChange: (themeId: string) => void;
-  onApplyThemeToElements?: () => void;
-  onApplyOverrides?: (overrides: Record<string, unknown>) => void;
-  onRefreshThemes?: () => void;
+  onOpenThemeStudio?: () => void;
 }) {
-  const [showEditor, setShowEditor] = useState(false);
-
   return (
     <>
       <div
         style={{
-          fontSize: "var(--font-size-sm)",
-          color: "var(--text-secondary)",
-          textTransform: "uppercase",
-          letterSpacing: "0.5px",
-          fontWeight: 600,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
           padding: "var(--space-xs)",
         }}
       >
-        Theme
+        <span
+          style={{
+            fontSize: "var(--font-size-sm)",
+            color: "var(--text-secondary)",
+            textTransform: "uppercase",
+            letterSpacing: "0.5px",
+            fontWeight: 600,
+          }}
+        >
+          Theme
+        </span>
+        {onOpenThemeStudio && (
+          <button
+            onClick={onOpenThemeStudio}
+            title="Edit, duplicate, or save themes with live preview"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              padding: "3px 8px",
+              borderRadius: 4,
+              background: "var(--bg-hover)",
+              border: "1px solid var(--border-color)",
+              cursor: "pointer",
+              fontSize: 11,
+              color: "var(--text-secondary)",
+            }}
+          >
+            <Palette size={11} /> Open Studio
+          </button>
+        )}
       </div>
 
-      {/* Theme picker grid */}
+      {/* Theme picker grid — quick-switch only */}
       <div
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))",
           gap: 6,
-          marginBottom: 6,
+          marginBottom: 8,
         }}
       >
         {themes.map((t) => {
@@ -1113,11 +1093,12 @@ function ThemeSection({
             <div
               key={t.id}
               onClick={() => onThemeChange(t.id)}
+              title={`Switch to "${t.name}"`}
               style={{
                 padding: 6,
                 borderRadius: 6,
                 border: isSelected ? "2px solid var(--accent)" : "1px solid var(--border-color)",
-                background: isSelected ? "var(--accent-dim)" : "var(--bg-surface)",
+                background: isSelected ? "var(--accent-dim, rgba(33,150,243,0.12))" : "var(--bg-surface)",
                 cursor: "pointer",
                 textAlign: "center",
               }}
@@ -1136,64 +1117,19 @@ function ThemeSection({
                   />
                 ))}
               </div>
-              <div style={{ fontSize: 10, fontWeight: isSelected ? 600 : 400, color: "var(--text-primary)" }}>
+              <div
+                style={{
+                  fontSize: 10,
+                  fontWeight: isSelected ? 600 : 400,
+                  color: "var(--text-primary)",
+                }}
+              >
                 {t.name}
               </div>
             </div>
           );
         })}
       </div>
-
-      {/* Actions */}
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
-        {onApplyThemeToElements && (
-          <button
-            onClick={() => {
-              if (confirm("Reset all element colors to use theme defaults? You can undo with Ctrl+Z.")) {
-                onApplyThemeToElements();
-              }
-            }}
-            style={{
-              padding: "4px 8px",
-              borderRadius: 4,
-              background: "var(--bg-hover)",
-              border: "1px solid var(--border-color)",
-              cursor: "pointer",
-              fontSize: 10,
-              color: "var(--text-secondary)",
-            }}
-          >
-            Apply to existing elements
-          </button>
-        )}
-        <button
-          onClick={() => setShowEditor(!showEditor)}
-          style={{
-            padding: "4px 8px",
-            borderRadius: 4,
-            background: showEditor ? "var(--accent-dim)" : "var(--bg-hover)",
-            border: "1px solid var(--border-color)",
-            cursor: "pointer",
-            fontSize: 10,
-            color: "var(--text-secondary)",
-          }}
-        >
-          {showEditor ? "Hide Editor" : "Edit Theme"}
-        </button>
-      </div>
-
-      {/* Theme Editor (expandable) */}
-      {showEditor && settings && (
-        <div style={{ marginBottom: 8 }}>
-          <ThemeEditor
-            themes={themes as Parameters<typeof ThemeEditor>[0]["themes"]}
-            currentThemeId={currentThemeId}
-            onThemeChange={onThemeChange}
-            onRefreshThemes={onRefreshThemes || (() => {})}
-            onApplyOverrides={onApplyOverrides}
-          />
-        </div>
-      )}
 
       <div
         style={{

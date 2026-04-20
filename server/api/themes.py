@@ -94,9 +94,15 @@ def _validate_theme(data: dict) -> None:
 
 @router.get("/themes")
 async def list_themes() -> list[dict[str, Any]]:
-    """List all available themes (built-in + project custom)."""
+    """List all available themes (built-in + project custom).
+
+    Includes the full `variables` map so the Theme Studio picker can render
+    rich per-card previews (real fonts, button colors, surface tones) without
+    fetching each theme individually. Element_defaults are still excluded —
+    they're only needed when actually editing a theme via the per-element
+    sections.
+    """
     themes = _list_all_themes()
-    # Return summary without element_defaults for list view
     return [
         {
             "id": t["id"],
@@ -105,6 +111,7 @@ async def list_themes() -> list[dict[str, Any]]:
             "author": t.get("author", ""),
             "description": t.get("description", ""),
             "preview_colors": t.get("preview_colors", []),
+            "variables": t.get("variables", {}),
             "source": t.get("_source", "custom"),
         }
         for t in themes

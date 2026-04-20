@@ -34,13 +34,12 @@ input:focus-visible {
     outline-offset: 2px;
 }
 
-/* Reset button default styles so they look like the original divs */
+/* Reset native <button> chrome so it doesn't fight the theme. Background and
+   color come from .panel-button (theme-driven via --panel-button-bg / -text). */
 button.panel-element {
-    border: none;
     font: inherit;
     cursor: pointer;
-    background: inherit;
-    color: inherit;
+    /* Border is set by .panel-button; don't reset to none here or we'd hide the themed border. */
 }
 
 #panel-root {
