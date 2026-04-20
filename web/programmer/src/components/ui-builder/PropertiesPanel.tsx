@@ -264,8 +264,8 @@ export function PropertiesPanel({
         {/* Theme override indicator (12.7) */}
         {themeDefaults?.[element.type] && (() => {
           const td = themeDefaults[element.type];
-          const overrideKeys = ["bg_color", "text_color", "border_color", "font_size"].filter(
-            (k) => element.style[k] != null && td[k] != null && element.style[k] !== td[k]
+          const overrideKeys = Object.keys(td).filter(
+            (k) => element.style[k] != null && element.style[k] !== td[k]
           );
           if (overrideKeys.length === 0) return null;
           return (
