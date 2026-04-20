@@ -192,6 +192,8 @@ export interface UIElement {
     output_key_pattern?: string;
     route_key_pattern?: string;
     audio_follow_video?: boolean;
+    show_lock?: boolean;
+    show_mute?: boolean;
   };
   matrix_style?: string;
   // Plugin element

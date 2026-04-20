@@ -81,7 +81,7 @@ export interface PluginExtension {
   type?: string;
   renderer_url?: string;
   default_size?: { col_span: number; row_span: number };
-  config_schema?: Record<string, { type: string; label: string; default?: unknown }>;
+  config_schema?: Array<{ key: string; label: string; type: string; default?: unknown; options?: string[] }>;
 }
 
 // --- Plugin Browse / Install ---

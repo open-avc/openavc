@@ -5,6 +5,7 @@ import { CopyButton } from "../../shared/CopyButton";
 import { IconPicker } from "../IconPicker";
 import { AssetPicker } from "../AssetPicker";
 import { InlineColorPicker } from "../../shared/InlineColorPicker";
+import { usePluginStore } from "../../../store/pluginStore";
 import { showInfo } from "../../../store/toastStore";
 
 interface MatrixPreset {
@@ -770,6 +771,22 @@ export function BasicProperties({
             />
             <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Route audio with video</span>
           </FieldRow>
+          <FieldRow label="Show Lock">
+            <input
+              type="checkbox"
+              checked={element.matrix_config?.show_lock !== false}
+              onChange={(e) => onChange({ matrix_config: { ...element.matrix_config, show_lock: e.target.checked } })}
+            />
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Lock buttons per output</span>
+          </FieldRow>
+          <FieldRow label="Show Mute">
+            <input
+              type="checkbox"
+              checked={element.matrix_config?.show_mute !== false}
+              onChange={(e) => onChange({ matrix_config: { ...element.matrix_config, show_mute: e.target.checked } })}
+            />
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Mute buttons per output</span>
+          </FieldRow>
           <MatrixLabelEditor
             title="Input Labels"
             labels={element.matrix_config?.input_labels || []}
@@ -856,35 +873,12 @@ export function BasicProperties({
 
       {/* Plugin element config */}
       {element.type === "plugin" && (
-        <>
-          <FieldRow label="Plugin">
-            <input value={element.plugin_id || ""} readOnly style={{ flex: 1, opacity: 0.6 }} />
-          </FieldRow>
-          <FieldRow label="Type">
-            <input value={element.plugin_type || ""} readOnly style={{ flex: 1, opacity: 0.6 }} />
-          </FieldRow>
-          <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "2px 0" }}>
-            Plugin configuration (JSON):
-          </div>
-          <textarea
-            value={JSON.stringify(element.plugin_config || {}, null, 2)}
-            onChange={(e) => {
-              try {
-                const cfg = JSON.parse(e.target.value);
-                onChange({ plugin_config: cfg });
-              } catch {
-                // Invalid JSON — don't update
-              }
-            }}
-            rows={4}
-            style={{
-              width: "100%",
-              fontSize: 11,
-              fontFamily: "monospace",
-              resize: "vertical",
-            }}
-          />
-        </>
+        <PluginElementConfig
+          pluginId={element.plugin_id || ""}
+          pluginType={element.plugin_type || ""}
+          config={element.plugin_config || {}}
+          onChange={(cfg) => onChange({ plugin_config: cfg })}
+        />
       )}
 
       {/* Icon properties (for elements that display text) */}
@@ -1326,6 +1320,106 @@ function SubSection({ label }: { label: string }) {
     >
       {label}
     </div>
+  );
+}
+
+function PluginElementConfig({
+  pluginId,
+  pluginType,
+  config,
+  onChange,
+}: {
+  pluginId: string;
+  pluginType: string;
+  config: Record<string, unknown>;
+  onChange: (cfg: Record<string, unknown>) => void;
+}) {
+  const panelElements = usePluginStore((s) => s.extensions.panel_elements);
+  const ext = panelElements.find(
+    (e) => e.plugin_id === pluginId && e.type === pluginType,
+  );
+  const schema = ext?.config_schema;
+
+  const [jsonMode, setJsonMode] = useState(false);
+
+  return (
+    <>
+      <FieldRow label="Plugin">
+        <input value={pluginId} readOnly style={{ flex: 1, opacity: 0.6 }} />
+      </FieldRow>
+      <FieldRow label="Type">
+        <input value={pluginType} readOnly style={{ flex: 1, opacity: 0.6 }} />
+      </FieldRow>
+
+      {schema && schema.length > 0 && !jsonMode ? (
+        <>
+          {schema.map((field) => (
+            <FieldRow key={field.key} label={field.label}>
+              {field.type === "boolean" ? (
+                <input
+                  type="checkbox"
+                  checked={config[field.key] != null ? !!config[field.key] : !!field.default}
+                  onChange={(e) => onChange({ ...config, [field.key]: e.target.checked })}
+                />
+              ) : field.type === "select" && field.options ? (
+                <select
+                  value={String(config[field.key] ?? field.default ?? "")}
+                  onChange={(e) => onChange({ ...config, [field.key]: e.target.value })}
+                  style={{ flex: 1 }}
+                >
+                  {field.options.map((opt) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              ) : field.type === "integer" || field.type === "float" ? (
+                <input
+                  type="number"
+                  value={config[field.key] != null ? Number(config[field.key]) : (field.default != null ? Number(field.default) : "")}
+                  onChange={(e) => onChange({ ...config, [field.key]: field.type === "integer" ? parseInt(e.target.value) || 0 : parseFloat(e.target.value) || 0 })}
+                  step={field.type === "float" ? 0.1 : 1}
+                  style={{ flex: 1 }}
+                />
+              ) : (
+                <input
+                  value={String(config[field.key] ?? field.default ?? "")}
+                  onChange={(e) => onChange({ ...config, [field.key]: e.target.value })}
+                  placeholder={field.default != null ? String(field.default) : ""}
+                  style={{ flex: 1 }}
+                />
+              )}
+            </FieldRow>
+          ))}
+          <button
+            onClick={() => setJsonMode(true)}
+            style={{ fontSize: 10, color: "var(--text-muted)", background: "transparent", border: "none", cursor: "pointer", alignSelf: "flex-start", textDecoration: "underline" }}
+          >
+            Edit as JSON
+          </button>
+        </>
+      ) : (
+        <>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "2px 0" }}>
+            {schema && schema.length > 0 ? "Raw JSON:" : "Plugin configuration (JSON):"}
+          </div>
+          <textarea
+            value={JSON.stringify(config, null, 2)}
+            onChange={(e) => {
+              try { onChange(JSON.parse(e.target.value)); } catch { /* invalid JSON */ }
+            }}
+            rows={4}
+            style={{ width: "100%", fontSize: 11, fontFamily: "monospace", resize: "vertical" }}
+          />
+          {schema && schema.length > 0 && (
+            <button
+              onClick={() => setJsonMode(false)}
+              style={{ fontSize: 10, color: "var(--text-muted)", background: "transparent", border: "none", cursor: "pointer", alignSelf: "flex-start", textDecoration: "underline" }}
+            >
+              Edit as form
+            </button>
+          )}
+        </>
+      )}
+    </>
   );
 }
 

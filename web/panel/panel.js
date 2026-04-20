@@ -1499,6 +1499,8 @@ class PanelApp {
         const inputKeyPattern = config.input_key_pattern || '';
         const outputKeyPattern = config.output_key_pattern || '';
         const matrixStyle = element.matrix_style || 'crosspoint';
+        const showLock = config.show_lock !== false;
+        const showMute = config.show_mute !== false;
         // Merge theme element_defaults so crosspoint colors come from the
         // theme, not just per-element overrides.
         const style = this.getThemedStyle('matrix', element.style);
@@ -1589,51 +1591,52 @@ class PanelApp {
                     }
                 });
 
-                // Lock toggle
-                const lockBtn = document.createElement('button');
-                lockBtn.className = 'matrix-lock-btn';
-                lockBtn.textContent = '\uD83D\uDD13';
-                lockBtn.title = 'Lock output';
-                lockBtn.addEventListener('click', () => {
-                    if (lockedOutputs.has(o + 1)) {
-                        lockedOutputs.delete(o + 1);
-                        lockBtn.textContent = '\uD83D\uDD13';
-                        lockBtn.classList.remove('locked');
-                        select.disabled = false;
-                    } else {
-                        lockedOutputs.add(o + 1);
-                        lockBtn.textContent = '\uD83D\uDD12';
-                        lockBtn.classList.add('locked');
-                        select.disabled = true;
-                    }
-                });
-                row.appendChild(lockBtn);
-
-                // Mute toggle
-                const muteBtn = document.createElement('button');
-                muteBtn.className = 'matrix-mute-btn';
-                muteBtn.textContent = 'M';
-                muteBtn.title = 'Mute output';
-                muteBtn.addEventListener('click', () => {
-                    const outputIdx = o + 1;
-                    const isMuted = mutedOutputs.has(outputIdx);
-                    if (isMuted) {
-                        mutedOutputs.delete(outputIdx);
-                        muteBtn.classList.remove('muted');
-                    } else {
-                        mutedOutputs.add(outputIdx);
-                        muteBtn.classList.add('muted');
-                    }
-                    this.send({
-                        type: 'ui.route',
-                        element_id: element.id,
-                        output: outputIdx,
-                        mute: !isMuted,
+                if (showLock) {
+                    const lockBtn = document.createElement('button');
+                    lockBtn.className = 'matrix-lock-btn';
+                    lockBtn.textContent = '\uD83D\uDD13';
+                    lockBtn.title = 'Lock output';
+                    lockBtn.addEventListener('click', () => {
+                        if (lockedOutputs.has(o + 1)) {
+                            lockedOutputs.delete(o + 1);
+                            lockBtn.textContent = '\uD83D\uDD13';
+                            lockBtn.classList.remove('locked');
+                            select.disabled = false;
+                        } else {
+                            lockedOutputs.add(o + 1);
+                            lockBtn.textContent = '\uD83D\uDD12';
+                            lockBtn.classList.add('locked');
+                            select.disabled = true;
+                        }
                     });
-                    // Disable routing when output is muted
-                    if (select) select.disabled = mutedOutputs.has(outputIdx);
-                });
-                row.appendChild(muteBtn);
+                    row.appendChild(lockBtn);
+                }
+
+                if (showMute) {
+                    const muteBtn = document.createElement('button');
+                    muteBtn.className = 'matrix-mute-btn';
+                    muteBtn.textContent = 'M';
+                    muteBtn.title = 'Mute output';
+                    muteBtn.addEventListener('click', () => {
+                        const outputIdx = o + 1;
+                        const isMuted = mutedOutputs.has(outputIdx);
+                        if (isMuted) {
+                            mutedOutputs.delete(outputIdx);
+                            muteBtn.classList.remove('muted');
+                        } else {
+                            mutedOutputs.add(outputIdx);
+                            muteBtn.classList.add('muted');
+                        }
+                        this.send({
+                            type: 'ui.route',
+                            element_id: element.id,
+                            output: outputIdx,
+                            mute: !isMuted,
+                        });
+                        if (select) select.disabled = mutedOutputs.has(outputIdx);
+                    });
+                    row.appendChild(muteBtn);
+                }
 
                 row.appendChild(select);
                 list.appendChild(row);
@@ -1642,11 +1645,12 @@ class PanelApp {
             scrollWrap.appendChild(list);
         } else {
             // --- Crosspoint view ---
-            // Extra column for lock/mute controls
-            const extraCols = 2; // lock + mute columns
+            const extraColDefs = [];
+            if (showLock) extraColDefs.push('28px');
+            if (showMute) extraColDefs.push('28px');
             const table = document.createElement('div');
             table.className = 'matrix-grid';
-            table.style.gridTemplateColumns = `auto repeat(${inputCount}, ${cellSize}px) 28px 28px`;
+            table.style.gridTemplateColumns = `auto repeat(${inputCount}, ${cellSize}px) ${extraColDefs.join(' ')}`.trim();
             table.style.gridTemplateRows = `auto repeat(${outputCount}, ${cellSize}px)`;
 
             // Top-left corner cell
@@ -1666,16 +1670,20 @@ class PanelApp {
                 table.appendChild(header);
             }
             // Lock/Mute column headers
-            const lockHdr = document.createElement('div');
-            lockHdr.className = 'matrix-header';
-            lockHdr.textContent = '\uD83D\uDD12';
-            lockHdr.style.fontSize = '10px';
-            table.appendChild(lockHdr);
-            const muteHdr = document.createElement('div');
-            muteHdr.className = 'matrix-header';
-            muteHdr.textContent = 'M';
-            muteHdr.style.fontSize = '10px';
-            table.appendChild(muteHdr);
+            if (showLock) {
+                const lockHdr = document.createElement('div');
+                lockHdr.className = 'matrix-header';
+                lockHdr.textContent = '\uD83D\uDD12';
+                lockHdr.style.fontSize = '10px';
+                table.appendChild(lockHdr);
+            }
+            if (showMute) {
+                const muteHdr = document.createElement('div');
+                muteHdr.className = 'matrix-header';
+                muteHdr.textContent = 'M';
+                muteHdr.style.fontSize = '10px';
+                table.appendChild(muteHdr);
+            }
 
             // Drag-to-route state
             let dragLine = null;
@@ -1773,42 +1781,46 @@ class PanelApp {
                 }
 
                 // Lock button for this output
-                const lockCell = document.createElement('div');
-                lockCell.className = 'matrix-cell matrix-toggle';
-                const lockBtn = document.createElement('button');
-                lockBtn.className = 'matrix-lock-btn';
-                lockBtn.textContent = '\uD83D\uDD13';
-                lockBtn.title = 'Lock output';
-                lockBtn.addEventListener('click', () => {
-                    if (lockedOutputs.has(o + 1)) {
-                        lockedOutputs.delete(o + 1);
-                        lockBtn.textContent = '\uD83D\uDD13';
-                        lockBtn.classList.remove('locked');
-                    } else {
-                        lockedOutputs.add(o + 1);
-                        lockBtn.textContent = '\uD83D\uDD12';
-                        lockBtn.classList.add('locked');
-                    }
-                });
-                lockCell.appendChild(lockBtn);
-                table.appendChild(lockCell);
+                if (showLock) {
+                    const lockCell = document.createElement('div');
+                    lockCell.className = 'matrix-cell matrix-toggle';
+                    const lockBtn = document.createElement('button');
+                    lockBtn.className = 'matrix-lock-btn';
+                    lockBtn.textContent = '\uD83D\uDD13';
+                    lockBtn.title = 'Lock output';
+                    lockBtn.addEventListener('click', () => {
+                        if (lockedOutputs.has(o + 1)) {
+                            lockedOutputs.delete(o + 1);
+                            lockBtn.textContent = '\uD83D\uDD13';
+                            lockBtn.classList.remove('locked');
+                        } else {
+                            lockedOutputs.add(o + 1);
+                            lockBtn.textContent = '\uD83D\uDD12';
+                            lockBtn.classList.add('locked');
+                        }
+                    });
+                    lockCell.appendChild(lockBtn);
+                    table.appendChild(lockCell);
+                }
 
                 // Mute button for this output
-                const muteCell = document.createElement('div');
-                muteCell.className = 'matrix-cell matrix-toggle';
-                const muteBtn = document.createElement('button');
-                muteBtn.className = 'matrix-mute-btn';
-                muteBtn.textContent = 'M';
-                muteBtn.title = 'Mute output';
-                muteBtn.addEventListener('click', () => {
-                    const outputIdx = o + 1;
-                    const isMuted = mutedOutputs.has(outputIdx);
-                    if (isMuted) { mutedOutputs.delete(outputIdx); muteBtn.classList.remove('muted'); }
-                    else { mutedOutputs.add(outputIdx); muteBtn.classList.add('muted'); }
-                    this.send({ type: 'ui.route', element_id: element.id, output: outputIdx, mute: !isMuted });
-                });
-                muteCell.appendChild(muteBtn);
-                table.appendChild(muteCell);
+                if (showMute) {
+                    const muteCell = document.createElement('div');
+                    muteCell.className = 'matrix-cell matrix-toggle';
+                    const muteBtn = document.createElement('button');
+                    muteBtn.className = 'matrix-mute-btn';
+                    muteBtn.textContent = 'M';
+                    muteBtn.title = 'Mute output';
+                    muteBtn.addEventListener('click', () => {
+                        const outputIdx = o + 1;
+                        const isMuted = mutedOutputs.has(outputIdx);
+                        if (isMuted) { mutedOutputs.delete(outputIdx); muteBtn.classList.remove('muted'); }
+                        else { mutedOutputs.add(outputIdx); muteBtn.classList.add('muted'); }
+                        this.send({ type: 'ui.route', element_id: element.id, output: outputIdx, mute: !isMuted });
+                    });
+                    muteCell.appendChild(muteBtn);
+                    table.appendChild(muteCell);
+                }
             }
 
             scrollWrap.appendChild(table);
