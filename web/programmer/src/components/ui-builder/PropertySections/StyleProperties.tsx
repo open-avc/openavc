@@ -78,7 +78,7 @@ export function StyleProperties({ element, onChange, themeDefaults }: StylePrope
         isOverridden={isOverridden("bg_color")}
         onReset={() => handleReset("bg_color")}
       >
-        <InlineColorPicker size="md" clearable
+        <InlineColorPicker size="md"
           value={String(style.bg_color || "")}
           onChange={(v) => handleStyleChange("bg_color", v)}
           placeholder={String(themeDefaults?.bg_color || "")}
@@ -91,7 +91,7 @@ export function StyleProperties({ element, onChange, themeDefaults }: StylePrope
         isOverridden={isOverridden("text_color")}
         onReset={() => handleReset("text_color")}
       >
-        <InlineColorPicker size="md" clearable
+        <InlineColorPicker size="md"
           value={String(style.text_color || "")}
           onChange={(v) => handleStyleChange("text_color", v)}
           placeholder={String(themeDefaults?.text_color || "")}
@@ -106,7 +106,7 @@ export function StyleProperties({ element, onChange, themeDefaults }: StylePrope
           isOverridden={isOverridden("accent_color")}
           onReset={() => handleReset("accent_color")}
         >
-          <InlineColorPicker size="md" clearable
+          <InlineColorPicker size="md"
             value={String(style.accent_color || "")}
             onChange={(v) => handleStyleChange("accent_color", v)}
             placeholder={String(themeDefaults?.accent_color || "")}
@@ -122,7 +122,7 @@ export function StyleProperties({ element, onChange, themeDefaults }: StylePrope
           isOverridden={isOverridden("track_color")}
           onReset={() => handleReset("track_color")}
         >
-          <InlineColorPicker size="md" clearable
+          <InlineColorPicker size="md"
             value={String(style.track_color || "")}
             onChange={(v) => handleStyleChange("track_color", v)}
             placeholder={String(themeDefaults?.track_color || "")}
@@ -139,7 +139,7 @@ export function StyleProperties({ element, onChange, themeDefaults }: StylePrope
             isOverridden={isOverridden("item_bg")}
             onReset={() => handleReset("item_bg")}
           >
-            <InlineColorPicker size="md" clearable
+            <InlineColorPicker size="md"
               value={String(style.item_bg || "")}
               onChange={(v) => handleStyleChange("item_bg", v)}
               placeholder={String(themeDefaults?.item_bg || "")}
@@ -151,7 +151,7 @@ export function StyleProperties({ element, onChange, themeDefaults }: StylePrope
             isOverridden={isOverridden("item_active_bg")}
             onReset={() => handleReset("item_active_bg")}
           >
-            <InlineColorPicker size="md" clearable
+            <InlineColorPicker size="md"
               value={String(style.item_active_bg || "")}
               onChange={(v) => handleStyleChange("item_active_bg", v)}
               placeholder={String(themeDefaults?.item_active_bg || "")}
@@ -371,7 +371,7 @@ export function StyleProperties({ element, onChange, themeDefaults }: StylePrope
             isOverridden={isOverridden("border_color")}
             onReset={() => handleReset("border_color")}
           >
-            <InlineColorPicker size="md" clearable
+            <InlineColorPicker size="md"
               value={String(style.border_color || "")}
               onChange={(v) => handleStyleChange("border_color", v)}
               placeholder={String(themeDefaults?.border_color || "")}
@@ -595,14 +595,14 @@ export function StyleProperties({ element, onChange, themeDefaults }: StylePrope
       {gradientEnabled && (
         <>
           <StyleRow label="Gradient Start" tooltip="Color at the beginning of the gradient">
-            <InlineColorPicker size="md" clearable
+            <InlineColorPicker size="md"
               value={String(gradient?.from || "")}
               onChange={(v) => handleGradientChange("from", v)}
             />
           </StyleRow>
 
           <StyleRow label="Gradient End" tooltip="Color at the end of the gradient">
-            <InlineColorPicker size="md" clearable
+            <InlineColorPicker size="md"
               value={String(gradient?.to || "")}
               onChange={(v) => handleGradientChange("to", v)}
             />
