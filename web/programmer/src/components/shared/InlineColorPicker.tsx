@@ -74,7 +74,7 @@ export function InlineColorPicker({
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder || "#000"}
+        placeholder={placeholder || ""}
         style={{
           width: inputPx, padding: size === "md" ? "4px 6px" : "3px 4px",
           fontSize: size === "md" ? "var(--font-size-sm)" : 11,

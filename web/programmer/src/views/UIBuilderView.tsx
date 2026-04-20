@@ -132,13 +132,11 @@ export function UIBuilderView() {
     }
   }, [selectedPageId, project, selectPage]);
 
-  // Load theme element defaults when theme_id changes.
-  // Buttons (and visually-button-like types: page_nav, camera_preset, keypad)
-  // get their colors from CSS variables via .panel-button rules, NOT from
-  // element_defaults. Synthesize those colors into themeElementDefaults so
-  // the Properties panel can show the real effective color as the swatch
-  // placeholder for new elements — otherwise users see blank/#000000 and
-  // assume the element is unstyled when it actually renders themed.
+  // Load the full set of effective defaults for every element type so the
+  // Properties panel always shows the real value the element renders with.
+  // Sources: theme element_defaults (per-type), theme variables (CSS-derived),
+  // and CSS baseline defaults. Every themed property must be present here —
+  // if it's missing, the Properties panel shows blank instead of the real value.
   const themeId = project?.ui?.settings?.theme_id;
   useEffect(() => {
     const id = themeId || "dark-default";
@@ -147,19 +145,51 @@ export function UIBuilderView() {
       .then((theme) => {
         const vars = theme?.variables || {};
         const baseDefaults = theme?.element_defaults || {};
-        const buttonInherit: Record<string, unknown> = {};
-        if (vars.button_bg) buttonInherit.bg_color = vars.button_bg;
-        if (vars.button_text) buttonInherit.text_color = vars.button_text;
-        if (vars.button_border) buttonInherit.border_color = vars.button_border;
-        const synthesized: Record<string, Record<string, unknown>> = { ...baseDefaults };
-        for (const t of ["button", "page_nav", "camera_preset", "keypad"]) {
-          synthesized[t] = { ...buttonInherit, ...(baseDefaults[t] || {}) };
+
+        // Start with the full element_defaults from the theme — these already
+        // have bg_color, text_color, border_color, border_radius, border_width,
+        // box_shadow, etc. for every element type the theme author defined.
+        const synthesized: Record<string, Record<string, unknown>> = {};
+        for (const [type, defaults] of Object.entries(baseDefaults)) {
+          synthesized[type] = { ...(defaults as Record<string, unknown>) };
         }
-        // Most labels/text in non-button elements inherit panel_text via CSS;
-        // surface label_color so the Properties panel doesn't mis-show black.
+
+        // Button types get their base colors from button_* CSS variables,
+        // not element_defaults. Overlay these so the Properties panel shows them.
+        const buttonTypes = ["button", "page_nav", "camera_preset", "keypad"];
+        for (const t of buttonTypes) {
+          if (!synthesized[t]) synthesized[t] = {};
+          if (vars.button_bg && !synthesized[t].bg_color) synthesized[t].bg_color = vars.button_bg;
+          if (vars.button_text && !synthesized[t].text_color) synthesized[t].text_color = vars.button_text;
+          if (vars.button_border && !synthesized[t].border_color) synthesized[t].border_color = vars.button_border;
+        }
+
+        // Interactive elements get accent_color and track_color from CSS
+        // variables (--el-accent from vars.accent, --el-surface from vars.surface).
+        // These aren't in element_defaults — they're set at render time.
+        const interactiveTypes = ["slider", "fader", "select", "text_input", "page_nav", "keypad"];
+        for (const t of interactiveTypes) {
+          if (!synthesized[t]) synthesized[t] = {};
+          if (vars.accent) synthesized[t].accent_color = vars.accent;
+          if (vars.surface) synthesized[t].track_color = vars.surface;
+        }
+
+        // Non-button elements inherit panel_text via CSS. Fill in any type
+        // that doesn't already have text_color from element_defaults.
         if (vars.panel_text) {
-          for (const t of ["label", "slider", "fader", "gauge", "level_meter", "list", "select", "text_input", "group", "clock", "matrix"]) {
-            synthesized[t] = { text_color: vars.panel_text, ...(synthesized[t] || baseDefaults[t] || {}) };
+          for (const t of ["label", "slider", "fader", "gauge", "level_meter", "list", "select", "text_input", "group", "clock", "matrix", "status_led"]) {
+            if (!synthesized[t]) synthesized[t] = {};
+            if (!synthesized[t].text_color) synthesized[t].text_color = vars.panel_text;
+          }
+        }
+
+        // CSS baseline defaults that every element inherits if nothing else is set
+        const cssBaseline: Record<string, unknown> = { font_size: 14 };
+        if (vars.border_radius) cssBaseline.border_radius = vars.border_radius;
+        if (vars.font_family) cssBaseline.font_family = vars.font_family;
+        for (const t of Object.keys(synthesized)) {
+          for (const [k, v] of Object.entries(cssBaseline)) {
+            if (synthesized[t][k] === undefined) synthesized[t][k] = v;
           }
         }
         setThemeElementDefaults(synthesized);

@@ -173,7 +173,7 @@ export function StyleProperties({ element, onChange, themeDefaults }: StylePrope
               e.target.value ? Number(e.target.value) : undefined,
             )
           }
-          placeholder="inherit"
+          placeholder={themeDefaults?.font_size != null ? String(themeDefaults.font_size) : "14"}
           min={8}
           max={72}
           style={{ width: 64, padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
