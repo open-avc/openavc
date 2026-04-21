@@ -120,3 +120,7 @@ This is currently a solo-maintained project. Contributions, feedback, and driver
 MIT License. See [LICENSE](LICENSE) for details.
 
 Free to use, modify, and distribute. No per-space fees. No dealer certifications. No annual renewals.
+
+## Trademark
+
+"OpenAVC" and the OpenAVC logo are trademarks of OpenAVC LLC. The MIT License covers the source code but does not grant rights to these trademarks. See [TRADEMARK.md](TRADEMARK.md) for details.
