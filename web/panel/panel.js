@@ -2398,6 +2398,8 @@ class PanelApp {
     evaluateFaderValue(b) {
         const raw = this.state[b.binding.key];
         if (raw === undefined || raw === null) return;
+        if (b._lastFaderRaw === raw) return;
+        b._lastFaderRaw = raw;
         const { handle, valueDisplay, min, max, unit, horizontal } = b._fader;
         const value = Math.max(min, Math.min(max, Number(raw)));
         const frac = (value - min) / (max - min);
@@ -3214,6 +3216,8 @@ class PanelApp {
         const { element, binding, fill, valueDisplay, isVertical } = b;
         const value = this.state[binding.key];
         if (value !== undefined && value !== null) {
+            if (b._lastSliderRaw === value) return;
+            b._lastSliderRaw = value;
             element.value = value;
             // Update fill bar
             if (fill) {

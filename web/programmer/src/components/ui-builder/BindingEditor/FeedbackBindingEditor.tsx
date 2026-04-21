@@ -157,6 +157,12 @@ export function FeedbackBindingEditor({
     if (v === "on" || v === "off") { vals.add("on"); vals.add("off"); }
     if (v === "open" || v === "closed") { vals.add("open"); vals.add("closed"); }
     if (v === "playing" || v === "stopped" || v === "paused") { vals.add("playing"); vals.add("stopped"); vals.add("paused"); }
+    if (v === "warming" || v === "cooling" || ["on", "off"].some(x => vals.has(x))) {
+      if (v === "warming" || v === "cooling") { vals.add("on"); vals.add("off"); vals.add("warming"); vals.add("cooling"); }
+    }
+    if (v === "muted" || v === "unmuted") { vals.add("muted"); vals.add("unmuted"); }
+    if (v === "connected" || v === "disconnected") { vals.add("connected"); vals.add("disconnected"); }
+    if (v === "active" || v === "standby") { vals.add("active"); vals.add("standby"); }
     return Array.from(vals).sort();
   }, [liveValue]);
 
@@ -175,12 +181,36 @@ export function FeedbackBindingEditor({
   const statesMap = (current.states as Record<string, Record<string, unknown>>) || {};
   const defaultState = String(current.default_state ?? "");
 
-  const handleAddState = () => {
-    const newKey = `state_${Object.keys(statesMap).length + 1}`;
+  const suggestedStates = useMemo(() => {
+    return observedValues.filter((v) => !statesMap[v]);
+  }, [observedValues, statesMap]);
+
+  const defaultColors: Record<string, { bg_color: string; text_color: string }> = {
+    on: { bg_color: "#4CAF50", text_color: "#ffffff" },
+    off: { bg_color: "#424242", text_color: "#999999" },
+    true: { bg_color: "#4CAF50", text_color: "#ffffff" },
+    false: { bg_color: "#424242", text_color: "#999999" },
+    warming: { bg_color: "#FF9800", text_color: "#ffffff" },
+    cooling: { bg_color: "#2196F3", text_color: "#ffffff" },
+    muted: { bg_color: "#c62828", text_color: "#ffffff" },
+    unmuted: { bg_color: "#2e7d32", text_color: "#ffffff" },
+    active: { bg_color: "#4CAF50", text_color: "#ffffff" },
+    standby: { bg_color: "#424242", text_color: "#999999" },
+    connected: { bg_color: "#2e7d32", text_color: "#ffffff" },
+    disconnected: { bg_color: "#c62828", text_color: "#ffffff" },
+    playing: { bg_color: "#4CAF50", text_color: "#ffffff" },
+    paused: { bg_color: "#FF9800", text_color: "#ffffff" },
+    stopped: { bg_color: "#424242", text_color: "#999999" },
+    open: { bg_color: "#4CAF50", text_color: "#ffffff" },
+    closed: { bg_color: "#424242", text_color: "#999999" },
+  };
+
+  const handleAddState = (key?: string) => {
+    const newKey = key || `state_${Object.keys(statesMap).length + 1}`;
+    const colors = defaultColors[newKey.toLowerCase()] || { bg_color: "#424242", text_color: "#999999" };
     handleChange({
-      states: { ...statesMap, [newKey]: { bg_color: "#424242", label: newKey } },
+      states: { ...statesMap, [newKey]: { ...colors, label: newKey.toUpperCase() } },
       default_state: defaultState || newKey,
-      // Clear legacy fields when switching to multi-state
       condition: undefined,
       style_active: undefined,
       style_inactive: undefined,
@@ -218,12 +248,20 @@ export function FeedbackBindingEditor({
   };
 
   const switchToMultiState = () => {
+    const seedStates: Record<string, Record<string, unknown>> = {};
+    if (observedValues.length > 0) {
+      for (const v of observedValues) {
+        const colors = defaultColors[v.toLowerCase()] || { bg_color: "#424242", text_color: "#999999" };
+        seedStates[v] = { ...colors, label: v.toUpperCase() };
+      }
+    } else {
+      seedStates.on = { bg_color: "#4CAF50", text_color: "#ffffff", label: "ON" };
+      seedStates.off = { bg_color: "#424242", text_color: "#999999", label: "OFF" };
+    }
+    const firstKey = Object.keys(seedStates)[0];
     handleChange({
-      states: {
-        on: { bg_color: "#4CAF50", text_color: "#ffffff", label: "ON" },
-        off: { bg_color: "#424242", text_color: "#999999", label: "OFF" },
-      },
-      default_state: "off",
+      states: seedStates,
+      default_state: seedStates.off ? "off" : firstKey,
       condition: undefined,
       style_active: undefined,
       style_inactive: undefined,
@@ -337,7 +375,7 @@ export function FeedbackBindingEditor({
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <label style={labelStyle}>States</label>
             <button
-              onClick={handleAddState}
+              onClick={() => handleAddState()}
               style={{
                 display: "flex", alignItems: "center", gap: 3,
                 padding: "2px 8px", borderRadius: "var(--border-radius)",
@@ -348,6 +386,25 @@ export function FeedbackBindingEditor({
               <Plus size={12} /> Add State
             </button>
           </div>
+
+          {suggestedStates.length > 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Suggested:</span>
+              {suggestedStates.map((sv) => (
+                <button
+                  key={sv}
+                  onClick={() => handleAddState(sv)}
+                  style={{
+                    padding: "1px 8px", borderRadius: 10, fontSize: 11, cursor: "pointer",
+                    background: "var(--bg-hover)", color: "var(--text-secondary)",
+                    border: "1px solid var(--border-color)",
+                  }}
+                >
+                  + {sv}
+                </button>
+              ))}
+            </div>
+          )}
 
           {Object.entries(statesMap).map(([sk, appearance]) => {
             const isDefault = sk === defaultState;

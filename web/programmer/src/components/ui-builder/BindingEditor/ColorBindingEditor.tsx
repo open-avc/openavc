@@ -154,10 +154,23 @@ export function ColorBindingEditor({
               }}
             >
               <input
-                value={mapKey}
-                onChange={(e) =>
-                  updateMapEntry(mapKey, e.target.value, mapColor)
-                }
+                key={mapKey}
+                defaultValue={mapKey}
+                onBlur={(e) => {
+                  const newKey = e.target.value.trim();
+                  if (!newKey || newKey === mapKey) {
+                    e.target.value = mapKey;
+                    return;
+                  }
+                  if (newKey in colorMap) {
+                    e.target.value = mapKey;
+                    e.target.style.outline = "2px solid var(--color-error, #c62828)";
+                    setTimeout(() => { e.target.style.outline = ""; }, 1500);
+                    return;
+                  }
+                  updateMapEntry(mapKey, newKey, mapColor);
+                }}
+                onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
                 placeholder="Value"
                 style={{
                   width: 80,

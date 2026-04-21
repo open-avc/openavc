@@ -355,8 +355,13 @@ export function ButtonBindingEditor({
               </div>
             )}
             {!toggleKey && (
-              <div style={{ fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}>
-                Pick a state key so the button knows when to fire the On vs Off action.
+              <div style={{
+                fontSize: 11, padding: "6px 8px", borderRadius: "var(--border-radius)",
+                background: "var(--color-warning-bg, #fff3e0)", color: "var(--color-warning, #e65100)",
+                display: "flex", alignItems: "center", gap: 6,
+              }}>
+                <span style={{ fontSize: 14 }}>&#9888;</span>
+                <span>Toggle requires a state key. Without one, this button will act as a regular tap button.</span>
               </div>
             )}
           </div>
@@ -453,20 +458,44 @@ export function ButtonBindingEditor({
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--space-xs)" }}>
                 <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Action {i + 2}</span>
-                <button
-                  onClick={() => {
-                    const newExtra = extraActions.filter((_, j) => j !== i);
-                    onBindingsChange({ ...bindings, press: [press, ...newExtra] });
-                  }}
-                  style={{
-                    padding: "2px 6px", borderRadius: "var(--border-radius)",
-                    fontSize: 11, color: "var(--color-error)",
-                    background: "transparent", border: "1px solid var(--border-color)",
-                    cursor: "pointer",
-                  }}
-                >
-                  Remove
-                </button>
+                <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                  {i > 0 && (
+                    <button
+                      onClick={() => {
+                        const newExtra = [...extraActions];
+                        [newExtra[i - 1], newExtra[i]] = [newExtra[i], newExtra[i - 1]];
+                        onBindingsChange({ ...bindings, press: [press, ...newExtra] });
+                      }}
+                      title="Move up"
+                      style={reorderBtnStyle}
+                    >&#9650;</button>
+                  )}
+                  {i < extraActions.length - 1 && (
+                    <button
+                      onClick={() => {
+                        const newExtra = [...extraActions];
+                        [newExtra[i], newExtra[i + 1]] = [newExtra[i + 1], newExtra[i]];
+                        onBindingsChange({ ...bindings, press: [press, ...newExtra] });
+                      }}
+                      title="Move down"
+                      style={reorderBtnStyle}
+                    >&#9660;</button>
+                  )}
+                  <button
+                    onClick={() => {
+                      const newExtra = extraActions.filter((_, j) => j !== i);
+                      onBindingsChange({ ...bindings, press: [press, ...newExtra] });
+                    }}
+                    style={{
+                      padding: "2px 6px", borderRadius: "var(--border-radius)",
+                      fontSize: 11, color: "var(--color-error)",
+                      background: "transparent", border: "1px solid var(--border-color)",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Remove
+                  </button>
+                </div>
               </div>
               <ActionPicker
                 value={act}
@@ -523,4 +552,11 @@ const inputStyle: React.CSSProperties = {
 
 const hintStyle: React.CSSProperties = {
   fontSize: 11, color: "var(--text-muted)",
+};
+
+const reorderBtnStyle: React.CSSProperties = {
+  padding: "2px 5px", borderRadius: "var(--border-radius)",
+  fontSize: 9, color: "var(--text-muted)",
+  background: "transparent", border: "1px solid var(--border-color)",
+  cursor: "pointer", lineHeight: 1,
 };
