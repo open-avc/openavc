@@ -50,9 +50,8 @@ export function BasicProperties({
         />
       </FieldRow>
 
-      {/* Label (for most elements except label and status_led and spacer) */}
+      {/* Label (for most elements except label and spacer) */}
       {element.type !== "label" &&
-        element.type !== "status_led" &&
         element.type !== "spacer" && (
           <>
             <FieldRow label="Label">
@@ -607,6 +606,12 @@ export function BasicProperties({
           <FieldRow label="Format">
             <input value={element.format || ""} onChange={(e) => onChange({ format: e.target.value })} placeholder={{ time: "h:mm A", date: "MMM D, YYYY", datetime: "MMM D, YYYY h:mm A", countdown: "HH:mm:ss", elapsed: "HH:mm:ss", meeting: "mm:ss" }[element.clock_mode || "time"] || "h:mm A"} style={{ flex: 1 }} />
           </FieldRow>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.5, padding: "0 4px", marginTop: -4 }}>
+            <strong>Tokens:</strong>{" "}
+            h/hh (12hr) &middot; H/HH (24hr) &middot; mm (min) &middot; ss (sec) &middot; A/a (AM/pm)
+            &middot; D/DD (day) &middot; M/MM (month #) &middot; MMM (Jan) &middot; MMMM (January)
+            &middot; YYYY (year) &middot; ddd (Mon) &middot; dddd (Monday)
+          </div>
           {element.clock_mode === "countdown" && (
             <>
               <FieldRow label="Target Time">

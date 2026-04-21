@@ -984,6 +984,13 @@ class PanelApp {
         dot.className = 'led-dot';
         el.appendChild(dot);
 
+        if (element.label) {
+            const label = document.createElement('label');
+            label.className = 'led-label';
+            label.textContent = element.label;
+            el.appendChild(label);
+        }
+
         // Color binding
         if (element.bindings && element.bindings.color) {
             this.bindings.push({
@@ -2557,6 +2564,7 @@ class PanelApp {
                 const parts = new Intl.DateTimeFormat('en-US', {
                     ...opts, year: 'numeric', month: '2-digit', day: '2-digit',
                     hour: '2-digit', minute: '2-digit', second: '2-digit',
+                    weekday: 'short',
                 }).formatToParts(date);
                 const get = (type) => parts.find(p => p.type === type)?.value || '';
                 const tzDate = {
@@ -2566,6 +2574,7 @@ class PanelApp {
                     hour: parseInt(get('hour')),
                     minute: parseInt(get('minute')),
                     second: parseInt(get('second')),
+                    weekday: get('weekday'),
                 };
                 d = tzDate;
 
@@ -2574,9 +2583,11 @@ class PanelApp {
                 // Fall through to local time
             }
         }
+        const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
         return this._applyFormat({
             year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate(),
-            hour: d.getHours(), minute: d.getMinutes(), second: d.getSeconds()
+            hour: d.getHours(), minute: d.getMinutes(), second: d.getSeconds(),
+            weekday: days[d.getDay()],
         }, format, true);
     }
 
@@ -2585,17 +2596,22 @@ class PanelApp {
         const h12 = h24 % 12 || 12;
         const ampm = h24 < 12 ? 'AM' : 'PM';
         const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        const fullMonths = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+        const fullDays = { Sun: 'Sunday', Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday', Fri: 'Friday', Sat: 'Saturday' };
 
         return format
+            .replace(/dddd/g, fullDays[d.weekday] || d.weekday || '')
+            .replace(/ddd/g, d.weekday || '')
             .replace(/HH/g, String(h24).padStart(2, '0'))
-            .replace(/H/g, String(h24))
+            .replace(/\bH\b/g, String(h24))
             .replace(/hh/g, String(h12).padStart(2, '0'))
             .replace(/\bh\b/g, String(h12))
             .replace(/mm/g, String(d.minute).padStart(2, '0'))
             .replace(/ss/g, String(d.second).padStart(2, '0'))
-            .replace(/A/g, ampm)
-            .replace(/a/g, ampm.toLowerCase())
+            .replace(/\bA\b/g, ampm)
+            .replace(/\ba\b/g, ampm.toLowerCase())
             .replace(/YYYY/g, String(d.year))
+            .replace(/MMMM/g, fullMonths[d.month - 1] || '')
             .replace(/MMM/g, months[d.month - 1] || '')
             .replace(/MM/g, String(d.month).padStart(2, '0'))
             .replace(/\bM\b/g, String(d.month))

@@ -102,6 +102,7 @@
 .panel-status-led {
     justify-content: center;
     align-items: center;
+    gap: 8px;
 }
 /* Inactive dot uses panel text dimmed; the active color comes from the
    element's color binding (panel.js sets backgroundColor inline when active). */
@@ -113,10 +114,18 @@
     opacity: 0.35;
     box-shadow: 0 0 6px rgba(0,0,0,0.3);
     transition: background-color 0.3s, box-shadow 0.3s, opacity 0.3s;
+    flex-shrink: 0;
 }
 .panel-status-led .led-dot.active {
     opacity: 1;
     box-shadow: 0 0 12px currentColor;
+}
+.panel-status-led .led-label {
+    font-size: inherit;
+    color: inherit;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* ===== Slider ===== */

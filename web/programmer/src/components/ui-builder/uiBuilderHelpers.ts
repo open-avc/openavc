@@ -156,7 +156,8 @@ export function createDefaultElement(
     case "status_led":
       return {
         ...base,
-        grid_area: { col, row, col_span: 1, row_span: 1 },
+        label: "Status",
+        grid_area: { col, row, col_span: 2, row_span: 1 },
       };
     case "slider":
       return {
