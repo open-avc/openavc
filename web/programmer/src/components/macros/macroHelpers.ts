@@ -1,4 +1,4 @@
-import type { MacroStep, MacroConfig, DeviceConfig } from "../../api/types";
+import type { MacroStep, MacroConfig, DeviceConfig, DeviceGroup } from "../../api/types";
 
 export interface StepTypeInfo {
   action: string;
@@ -129,6 +129,7 @@ function _macroUsesWaitUntilWithTimeout(steps: MacroStep[]): boolean {
 
 export function macroToScript(
   macro: MacroConfig,
+  groups?: DeviceGroup[],
 ): string {
   const triggers = macro.triggers ?? [];
   const hasTriggers = triggers.length > 0;
@@ -200,7 +201,7 @@ export function macroToScript(
           }
         }
         // Steps
-        _generateStepLines(lines, macro.steps, "    ");
+        _generateStepLines(lines, macro.steps, "    ", groups);
       } else if (trigger.type === "event" && trigger.event_pattern) {
         lines.push(`@on_event("${trigger.event_pattern}")`);
         lines.push("async def on_trigger(event, payload):");
@@ -208,19 +209,19 @@ export function macroToScript(
           lines.push(_conditionToGuard(cond, "    "));
           lines.push("        return");
         }
-        _generateStepLines(lines, macro.steps, "    ");
+        _generateStepLines(lines, macro.steps, "    ", groups);
       } else if (trigger.type === "schedule" && trigger.cron) {
         lines.push(`# Schedule: ${trigger.cron}`);
         lines.push(`@on_event("schedule.macro_${macro.id}")`);
         lines.push("async def on_trigger(event, payload):");
-        _generateStepLines(lines, macro.steps, "    ");
+        _generateStepLines(lines, macro.steps, "    ", groups);
       } else if (trigger.type === "startup") {
         lines.push("@on_event(\"system.started\")");
         lines.push("async def on_startup(event, payload):");
         if ((trigger.delay_seconds ?? 0) > 0) {
           lines.push(`    await asyncio.sleep(${trigger.delay_seconds})`);
         }
-        _generateStepLines(lines, macro.steps, "    ");
+        _generateStepLines(lines, macro.steps, "    ", groups);
       }
     }
   }
@@ -289,7 +290,8 @@ function _conditionToGuard(
 function _generateStepLines(
   lines: string[],
   steps: MacroStep[],
-  indent: string
+  indent: string,
+  groups?: DeviceGroup[],
 ): void {
   if (steps.length === 0) {
     lines.push(`${indent}pass`);
@@ -318,7 +320,7 @@ function _generateStepLines(
         // Wrap the actual step in else
         lines.push(`${indent}else:`);
         // Re-enter with extra indent
-        _generateStepLines(lines, [{ ...step, skip_if: undefined }], indent + "    ");
+        _generateStepLines(lines, [{ ...step, skip_if: undefined }], indent + "    ", groups);
         continue;
       }
     }
@@ -332,11 +334,13 @@ function _generateStepLines(
       }
       case "group.command": {
         const params = step.params ? `, ${JSON.stringify(step.params)}` : "";
+        const group = groups?.find((g) => g.id === step.group);
+        const deviceIds = group?.device_ids ?? [];
         lines.push(
           `${indent}# Group command: ${_pyEscape(step.group ?? "")} -> ${_pyEscape(step.command ?? "")}`
         );
         lines.push(
-          `${indent}for device_id in device_groups.get("${_pyEscape(step.group ?? "")}", []):`
+          `${indent}for device_id in ${JSON.stringify(deviceIds)}:`
         );
         lines.push(
           `${indent}    await devices.send(device_id, "${_pyEscape(step.command ?? "")}"${params})`
@@ -376,10 +380,10 @@ function _generateStepLines(
           }
           const thenSteps = (step as any).then_steps ?? [];
           const elseSteps = (step as any).else_steps ?? [];
-          _generateStepLines(lines, thenSteps, indent + "    ");
+          _generateStepLines(lines, thenSteps, indent + "    ", groups);
           if (elseSteps.length > 0) {
             lines.push(`${indent}else:`);
-            _generateStepLines(lines, elseSteps, indent + "    ");
+            _generateStepLines(lines, elseSteps, indent + "    ", groups);
           }
         } else {
           lines.push(`${indent}# Conditional step with no condition set`);
@@ -428,6 +432,36 @@ function _generateStepLines(
         break;
     }
   }
+}
+
+/** Analyze a macro for potential script conversion issues. */
+export function getConversionWarnings(macro: MacroConfig, groups?: DeviceGroup[]): string[] {
+  const warnings: string[] = [];
+  const checkSteps = (steps: MacroStep[]) => {
+    for (const step of steps) {
+      if (step.action === "group.command") {
+        const group = groups?.find((g) => g.id === step.group);
+        if (!group) {
+          warnings.push(`Group command references unknown group "${step.group}" — device list will be empty in the generated script.`);
+        } else {
+          warnings.push(`Group command "${step.group}" → "${step.command}" is converted to a loop over ${group.device_ids.length} device(s). If the group membership changes later, update the script manually.`);
+        }
+      }
+      if (step.action === "wait_until" && step.timeout == null) {
+        warnings.push(`"Wait Until" step with no timeout — the script will poll forever until the condition is met. Make sure something will eventually satisfy it.`);
+      }
+      if (step.then_steps) checkSteps(step.then_steps);
+      if (step.else_steps) checkSteps(step.else_steps);
+    }
+  };
+  checkSteps(macro.steps);
+
+  const triggers = macro.triggers ?? [];
+  if (triggers.some((t) => t.type === "schedule" && t.enabled)) {
+    warnings.push("Schedule triggers are converted to event listeners. The schedule cron job still runs on the macro engine — disable the macro's schedule triggers after switching to the script.");
+  }
+
+  return warnings;
 }
 
 let _nextId = 1;

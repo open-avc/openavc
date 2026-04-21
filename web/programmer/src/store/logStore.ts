@@ -8,11 +8,15 @@ export interface LogEntry {
   message: string;
 }
 
+export type StepPathSegment = number | "then" | "else";
+
 export interface MacroProgress {
   macroId: string | null;
   stepIndex: number | null;
   totalSteps: number | null;
   status: "idle" | "running" | "completed" | "error";
+  /** Tracks execution path through conditional branches, e.g. [2, "then", 0] */
+  activeStepPath: StepPathSegment[];
 }
 
 export interface StepError {
@@ -26,6 +30,7 @@ export interface StepError {
 }
 
 export interface ConditionalResult {
+  stepIndex: number;
   conditionResult: boolean;
   branch: "then" | "else";
   conditionKey: string;
@@ -34,6 +39,7 @@ export interface ConditionalResult {
 }
 
 export interface GroupCommandResult {
+  stepIndex: number;
   group: string;
   command: string;
   deviceResults: Array<{
@@ -100,6 +106,7 @@ const INITIAL_MACRO: MacroProgress = {
   stepIndex: null,
   totalSteps: null,
   status: "idle",
+  activeStepPath: [],
 };
 
 export const useLogStore = create<LogStore>((set, get) => ({
@@ -153,13 +160,19 @@ export const useLogStore = create<LogStore>((set, get) => ({
 
   addGroupResult: (r) => set((s) => ({ groupResults: [...s.groupResults, r] })),
 
-  startMacroRun: (macroId) => set({
-    stepErrors: [],
-    conditionalResults: [],
-    groupResults: [],
-    macroStartedAt: Date.now(),
-    macroProgress: { macroId, stepIndex: null, totalSteps: null, status: "running" },
-  }),
+  startMacroRun: (macroId) => {
+    const s = get();
+    if (s.macroProgress.status === "running") {
+      return;
+    }
+    set({
+      stepErrors: [],
+      conditionalResults: [],
+      groupResults: [],
+      macroStartedAt: Date.now(),
+      macroProgress: { macroId, stepIndex: null, totalSteps: null, status: "running", activeStepPath: [] },
+    });
+  },
 
   finishMacroRun: (status, error) => {
     const s = get();

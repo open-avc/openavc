@@ -3,7 +3,7 @@ import { ViewContainer } from "../components/layout/ViewContainer";
 import { MacroList } from "../components/macros/MacroList";
 import { MacroEditor } from "../components/macros/MacroEditor";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
-import { macroToScript, generateId } from "../components/macros/macroHelpers";
+import { macroToScript, generateId, getConversionWarnings } from "../components/macros/macroHelpers";
 import { useProjectStore } from "../store/projectStore";
 import { useNavigationStore } from "../store/navigationStore";
 import * as api from "../api/restClient";
@@ -22,7 +22,7 @@ export function MacroView() {
   });
 
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-  const [scriptPreview, setScriptPreview] = useState<{ source: string; scriptId: string; fileName: string } | null>(null);
+  const [scriptPreview, setScriptPreview] = useState<{ source: string; scriptId: string; fileName: string; warnings: string[] } | null>(null);
 
   const macros = project?.macros ?? [];
   const devices = project?.devices ?? [];
@@ -74,10 +74,11 @@ export function MacroView() {
   // Show preview before converting (9.6)
   const handleConvertToScript = useCallback(() => {
     if (!selectedMacro || !project) return;
-    const source = macroToScript(selectedMacro);
+    const source = macroToScript(selectedMacro, project.device_groups);
+    const warnings = getConversionWarnings(selectedMacro, project.device_groups);
     const scriptId = selectedMacro.id.replace(/^macro_/, "script_");
     const fileName = `${scriptId}.py`;
-    setScriptPreview({ source, scriptId, fileName });
+    setScriptPreview({ source, scriptId, fileName, warnings });
   }, [selectedMacro, project]);
 
   const handleConfirmConvert = useCallback(async () => {
@@ -221,6 +222,25 @@ export function MacroView() {
                 {scriptPreview.source}
               </pre>
             </div>
+            {/* Warnings */}
+            {scriptPreview.warnings.length > 0 && (
+              <div style={{
+                padding: "var(--space-sm) var(--space-md)",
+                borderTop: "1px solid rgba(245,158,11,0.3)",
+                background: "rgba(245,158,11,0.06)",
+                fontSize: 12,
+                color: "var(--text-secondary)",
+                lineHeight: 1.5,
+              }}>
+                <div style={{ fontWeight: 600, color: "#f59e0b", marginBottom: 4 }}>Conversion notes</div>
+                {scriptPreview.warnings.map((w, i) => (
+                  <div key={i} style={{ display: "flex", gap: 6, marginBottom: 2 }}>
+                    <span style={{ color: "#f59e0b", flexShrink: 0 }}>•</span>
+                    <span>{w}</span>
+                  </div>
+                ))}
+              </div>
+            )}
             {/* Actions */}
             <div style={{
               padding: "var(--space-md)",

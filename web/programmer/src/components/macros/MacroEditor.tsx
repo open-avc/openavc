@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   Play,
   FileCode,
@@ -39,7 +39,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import type { MacroConfig, MacroStep, TriggerConfig } from "../../api/types";
 import { useLogStore } from "../../store/logStore";
-import type { StepError, ConditionalResult, GroupCommandResult, MacroLastRun } from "../../store/logStore";
+import type { StepError, ConditionalResult, GroupCommandResult, MacroLastRun, StepPathSegment } from "../../store/logStore";
 import { StepEditor } from "./StepEditor";
 import { TriggerList } from "./TriggerList";
 import {
@@ -76,6 +76,7 @@ interface SortableStepItemProps {
   onDuplicateStep: (index: number) => void;
   onCopyStep: (index: number) => void;
   onUpdateStep: (index: number, updated: MacroStep) => void;
+  activeStepPath?: StepPathSegment[];
 }
 
 function SortableStepItem({
@@ -98,6 +99,7 @@ function SortableStepItem({
   onDuplicateStep,
   onCopyStep,
   onUpdateStep,
+  activeStepPath,
 }: SortableStepItemProps) {
   const {
     attributes,
@@ -325,6 +327,7 @@ function SortableStepItem({
             macros={allMacros}
             currentMacroId={macroId}
             onChange={(updated) => onUpdateStep(index, updated)}
+            activeStepPath={isActive ? activeStepPath : undefined}
           />
         </div>
       )}
@@ -350,6 +353,18 @@ export function MacroEditor({
   const [expandedStep, setExpandedStep] = useState<number | null>(null);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
+  const addMenuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!showAddMenu && !showTemplates) return;
+    const handler = (e: MouseEvent) => {
+      if (addMenuRef.current && !addMenuRef.current.contains(e.target as Node)) {
+        setShowAddMenu(false);
+        setShowTemplates(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showAddMenu, showTemplates]);
   const [, setClipboardRevision] = useState(0); // force re-render on copy
 
   const macroProgress = useLogStore((s) => s.macroProgress);
@@ -390,6 +405,11 @@ export function MacroEditor({
   };
 
   const deleteStep = (index: number) => {
+    const step = macro.steps[index];
+    const hasContent = step.action === "conditional"
+      ? ((step.then_steps?.length ?? 0) > 0 || (step.else_steps?.length ?? 0) > 0)
+      : step.device || step.command || step.key || step.event || step.macro;
+    if (hasContent && !confirm(`Delete this ${getStepType(step.action)?.label ?? step.action} step?`)) return;
     const steps = macro.steps.filter((_, i) => i !== index);
     onUpdate({ ...macro, steps });
     if (expandedStep === index) setExpandedStep(null);
@@ -456,7 +476,16 @@ export function MacroEditor({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  const stepIds = macro.steps.map((_, i) => `step-${i}`);
+  const stepIdMapRef = useRef(new WeakMap<object, string>());
+  const stepIdCounterRef = useRef(0);
+  const stepIds = macro.steps.map((step) => {
+    let id = stepIdMapRef.current.get(step);
+    if (!id) {
+      id = `step-${stepIdCounterRef.current++}`;
+      stepIdMapRef.current.set(step, id);
+    }
+    return id;
+  });
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -717,10 +746,10 @@ export function MacroEditor({
                     isFirst={i === 0}
                     isLast={i === macro.steps.length - 1}
                     isExpanded={expandedStep === i}
-                    isActive={isRunning && macroProgress.stepIndex === i}
+                    isActive={isRunning && macroProgress.activeStepPath.length > 0 && macroProgress.activeStepPath[0] === i}
                     stepError={stepErrors.find((e) => e.stepIndex === i)}
-                    conditionalResult={step.action === "conditional" ? conditionalResults.find((_, ci) => ci === i) : undefined}
-                    groupResult={step.action === "group.command" ? groupResults.find((g) => g.group === step.group && g.command === step.command) : undefined}
+                    conditionalResult={step.action === "conditional" ? conditionalResults.find((r) => r.stepIndex === i) : undefined}
+                    groupResult={step.action === "group.command" ? groupResults.find((g) => g.stepIndex === i) : undefined}
                     devices={devices}
                     allMacros={allMacros}
                     macroId={macro.id}
@@ -730,6 +759,7 @@ export function MacroEditor({
                     onDuplicateStep={duplicateStep}
                     onCopyStep={handleCopyStep}
                     onUpdateStep={updateStep}
+                    activeStepPath={isRunning && macroProgress.activeStepPath[0] === i ? macroProgress.activeStepPath.slice(1) : undefined}
                   />
                 ))}
               </div>
@@ -743,7 +773,7 @@ export function MacroEditor({
         )}
 
         {/* Add step button */}
-        <div style={{ marginTop: "var(--space-md)", position: "relative" }}>
+        <div ref={addMenuRef} style={{ marginTop: "var(--space-md)", position: "relative" }}>
           <div style={{ display: "flex", gap: "var(--space-sm)" }}>
             <button
               onClick={() => { setShowAddMenu(!showAddMenu); setShowTemplates(false); }}

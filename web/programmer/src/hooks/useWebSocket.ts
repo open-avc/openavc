@@ -129,16 +129,52 @@ export function useWebSocket() {
         const store = useLogStore.getState();
         // Regular step progress
         if (msg.status === "running") {
+          const stepIndex = msg.step_index as number;
+          const totalSteps = msg.total_steps as number;
+          // Build the active step path through conditional branches.
+          // The path stack tracks [parentStepIndex, branch, ...] segments.
+          // When total_steps changes from the parent level, we're entering a branch.
+          // When it changes back, we're leaving.
+          const prev = store.macroProgress;
+          let path = [...prev.activeStepPath];
+
+          if (prev.totalSteps != null && totalSteps !== prev.totalSteps) {
+            // total_steps changed — we entered or exited a branch level
+            if (totalSteps < prev.totalSteps) {
+              // Entering a deeper branch — the last conditional result tells us the branch
+              const lastCond = store.conditionalResults[store.conditionalResults.length - 1];
+              if (lastCond) {
+                path = [...path, lastCond.stepIndex, lastCond.branch, stepIndex];
+              }
+            } else {
+              // Returning to a higher level — pop path back to matching depth
+              // Find the depth where totalSteps matches by popping pairs
+              while (path.length >= 3) {
+                path = path.slice(0, -3);
+              }
+              path = [stepIndex];
+            }
+          } else {
+            // Same level — update the last index in the path
+            if (path.length === 0) {
+              path = [stepIndex];
+            } else {
+              path = [...path.slice(0, -1), stepIndex];
+            }
+          }
+
           store.setMacroProgress({
             macroId: msg.macro_id as string,
-            stepIndex: msg.step_index as number,
-            totalSteps: msg.total_steps as number,
+            stepIndex,
+            totalSteps,
             status: "running",
+            activeStepPath: path,
           });
         }
         // Conditional evaluation result
         if (msg.status === "evaluated" && msg.action === "conditional") {
           store.addConditionalResult({
+            stepIndex: store.macroProgress.stepIndex ?? -1,
             conditionResult: msg.condition_result as boolean,
             branch: msg.branch as "then" | "else",
             conditionKey: msg.condition_key as string,
@@ -149,6 +185,7 @@ export function useWebSocket() {
         // Group command per-device results
         if (msg.status === "group_complete" && msg.action === "group.command") {
           store.addGroupResult({
+            stepIndex: store.macroProgress.stepIndex ?? -1,
             group: msg.group as string,
             command: msg.command as string,
             deviceResults: msg.device_results as any[],

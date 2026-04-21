@@ -6,6 +6,7 @@ import { VariableKeyPicker } from "../../components/shared/VariableKeyPicker";
 import { useProjectStore } from "../../store/projectStore";
 import { useConnectionStore } from "../../store/connectionStore";
 import { getScriptReferences } from "../../api/restClient";
+import { setStateValue } from "../../api/stateClient";
 import type { VariableConfig, ScriptReference } from "../../api/types";
 import { showError } from "../../store/toastStore";
 import {
@@ -74,7 +75,7 @@ export function VariablesSubTab() {
     (v.label && v.label.toLowerCase().includes(search.toLowerCase()))
   );
 
-  // Script references (fetched once)
+  const scriptCount = project?.scripts?.length ?? 0;
   const [scriptRefs, setScriptRefs] = useState<ScriptReference[]>([]);
   useEffect(() => {
     let cancelled = false;
@@ -82,7 +83,7 @@ export function VariablesSubTab() {
       .then((refs) => { if (!cancelled) setScriptRefs(refs); })
       .catch(console.error);
     return () => { cancelled = true; };
-  }, []);
+  }, [scriptCount]);
 
   const usageMap = useMemo(() => {
     if (!project) return new Map<string, VariableUsage[]>();
@@ -156,7 +157,7 @@ export function VariablesSubTab() {
     setShowCreate(false);
     setSelectedId(id);
     useProjectStore.getState().debouncedSave();
-  }, [variables, newType, newLabel, newDefault, update]);
+  }, [variables, newType, newLabel, newDefault, newDesc, update]);
 
   const handleCreate = useCallback(() => {
     if (!project) return;
@@ -201,7 +202,7 @@ export function VariablesSubTab() {
         },
       });
     },
-    [variables, usageMap, selectedId, update]
+    [variables, usageMap, selectedId, updateWithUndo]
   );
 
   const handleUpdate = useCallback(
@@ -234,14 +235,41 @@ export function VariablesSubTab() {
 
     // Deep clone project data for modification
     const newVars = variables.map((v) => v.id === oldId ? { ...v, id: safeNewId } : v);
-    const newMacros = project.macros.map((m) => {
+
+    const renameInSteps = (steps: typeof project.macros[0]["steps"]): [typeof steps, boolean] => {
       let changed = false;
-      const steps = m.steps.map((s) => {
-        if (s.action === "state.set" && s.key === oldKey) { changed = true; return { ...s, key: newKey }; }
-        if (s.action === "conditional" && s.condition?.key === oldKey) { changed = true; return { ...s, condition: { ...s.condition, key: newKey } }; }
-        if (s.skip_if?.key === oldKey) { changed = true; return { ...s, skip_if: { ...s.skip_if, key: newKey } }; }
-        return s;
+      const mapped = steps.map((s) => {
+        let step = s;
+        if (step.action === "state.set" && step.key === oldKey) { step = { ...step, key: newKey }; changed = true; }
+        if (step.action === "state.set" && step.value === `$${oldKey}`) { step = { ...step, value: `$${newKey}` }; changed = true; }
+        if ((step.action === "conditional" || step.action === "wait_until") && step.condition?.key === oldKey) {
+          step = { ...step, condition: { ...step.condition, key: newKey } }; changed = true;
+        }
+        if (step.skip_if?.key === oldKey) { step = { ...step, skip_if: { ...step.skip_if, key: newKey } }; changed = true; }
+        if ((step.action === "device.command" || step.action === "group.command") && step.params) {
+          const newParams: Record<string, unknown> = {};
+          let paramChanged = false;
+          for (const [pk, pv] of Object.entries(step.params)) {
+            if (pv === `$${oldKey}`) { newParams[pk] = `$${newKey}`; paramChanged = true; }
+            else newParams[pk] = pv;
+          }
+          if (paramChanged) { step = { ...step, params: newParams }; changed = true; }
+        }
+        if (step.then_steps) {
+          const [ts, tc] = renameInSteps(step.then_steps);
+          if (tc) { step = { ...step, then_steps: ts }; changed = true; }
+        }
+        if (step.else_steps) {
+          const [es, ec] = renameInSteps(step.else_steps);
+          if (ec) { step = { ...step, else_steps: es }; changed = true; }
+        }
+        return step;
       });
+      return [mapped, changed];
+    };
+
+    const newMacros = project.macros.map((m) => {
+      const [steps, changed] = renameInSteps(m.steps);
       const triggers = (m.triggers ?? []).map((t) => {
         let tc = false;
         const patched = { ...t };
@@ -270,6 +298,19 @@ export function VariablesSubTab() {
           const binding = nb[ev] as any;
           if (binding?.action === "state.set" && binding?.key === oldKey) {
             nb[ev] = { ...binding, key: newKey }; modified = true;
+          }
+          if (binding?.action === "value_map" && binding?.map) {
+            const actionMap = binding.map as Record<string, any>;
+            let mapChanged = false;
+            const newMap: Record<string, any> = {};
+            for (const [optVal, subAction] of Object.entries(actionMap)) {
+              if (subAction?.action === "state.set" && subAction?.key === oldKey) {
+                newMap[optVal] = { ...subAction, key: newKey }; mapChanged = true;
+              } else {
+                newMap[optVal] = subAction;
+              }
+            }
+            if (mapChanged) { nb[ev] = { ...binding, map: newMap }; modified = true; }
           }
         }
         return modified ? { ...el, bindings: nb } : el;
@@ -504,7 +545,18 @@ export function VariablesSubTab() {
                 <select
                   style={detailInput}
                   value={selectedVar.type}
-                  onChange={(e) => handleUpdate(selectedVar.id, { type: e.target.value })}
+                  onChange={(e) => {
+                    const newType = e.target.value;
+                    const patch: Partial<VariableConfig> = { type: newType };
+                    if (newType === "boolean") patch.default = Boolean(selectedVar.default);
+                    else if (newType === "number") patch.default = Number(selectedVar.default) || 0;
+                    else patch.default = selectedVar.default != null ? String(selectedVar.default) : "";
+                    const cleanValidation = { ...selectedVar.validation };
+                    if (newType !== "number") { cleanValidation.min = undefined; cleanValidation.max = undefined; }
+                    if (newType !== "string") { cleanValidation.allowed = undefined; }
+                    patch.validation = cleanValidation;
+                    handleUpdate(selectedVar.id, patch);
+                  }}
                 >
                   <option value="string">String</option>
                   <option value="boolean">Boolean</option>
@@ -513,15 +565,48 @@ export function VariablesSubTab() {
               </div>
               <div>
                 <label style={detailLabel}>Default Value</label>
-                <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>
-                  {JSON.stringify(selectedVar.default)}
-                </span>
+                {selectedVar.type === "boolean" ? (
+                  <select style={detailInput} value={String(selectedVar.default ?? false)} onChange={(e) => handleUpdate(selectedVar.id, { default: e.target.value === "true" })}>
+                    <option value="false">false</option>
+                    <option value="true">true</option>
+                  </select>
+                ) : (
+                  <input
+                    style={detailInput}
+                    type={selectedVar.type === "number" ? "number" : "text"}
+                    value={selectedVar.default != null ? String(selectedVar.default) : ""}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (selectedVar.type === "number") handleUpdate(selectedVar.id, { default: v === "" ? 0 : Number(v) });
+                      else handleUpdate(selectedVar.id, { default: v });
+                    }}
+                    placeholder={selectedVar.type === "number" ? "0" : ""}
+                  />
+                )}
               </div>
               <div>
                 <label style={detailLabel}>Current Value</label>
-                <span style={{ fontSize: "var(--font-size-sm)", color: selectedLiveValue !== undefined ? "var(--text-primary)" : "var(--text-muted)", fontWeight: 500 }}>
-                  {selectedLiveValue !== undefined ? JSON.stringify(selectedLiveValue) : "not set (system not running)"}
-                </span>
+                <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
+                  <span style={{ fontSize: "var(--font-size-sm)", color: selectedLiveValue !== undefined ? "var(--text-primary)" : "var(--text-muted)", fontWeight: 500 }}>
+                    {selectedLiveValue !== undefined ? JSON.stringify(selectedLiveValue) : "not set"}
+                  </span>
+                  {selectedLiveValue !== undefined && (
+                    <button
+                      onClick={() => {
+                        const val = prompt("Set value for var." + selectedVar.id + ":", String(selectedLiveValue ?? ""));
+                        if (val === null) return;
+                        let parsed: unknown = val;
+                        if (selectedVar.type === "boolean") parsed = val === "true";
+                        else if (selectedVar.type === "number") parsed = Number(val) || 0;
+                        setStateValue(`var.${selectedVar.id}`, parsed).catch(() => showError("Failed to set value"));
+                      }}
+                      style={{ ...iconBtn, fontSize: 11, padding: "1px 6px", border: "1px solid var(--border-color)", borderRadius: "var(--border-radius)" }}
+                      title="Set current value"
+                    >
+                      Set
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -596,6 +681,18 @@ export function VariablesSubTab() {
               <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
                 When a value is set outside these rules, a warning appears in the Activity log.
               </div>
+              {selectedLiveValue !== undefined && (() => {
+                const v = selectedVar.validation;
+                if (!v) return null;
+                if (selectedVar.type === "number" && typeof selectedLiveValue === "number") {
+                  if (v.min != null && selectedLiveValue < v.min) return <div style={{ fontSize: 12, color: "#ef4444", fontWeight: 500, marginTop: 4 }}>Current value {selectedLiveValue} is below minimum ({v.min})</div>;
+                  if (v.max != null && selectedLiveValue > v.max) return <div style={{ fontSize: 12, color: "#ef4444", fontWeight: 500, marginTop: 4 }}>Current value {selectedLiveValue} is above maximum ({v.max})</div>;
+                }
+                if (selectedVar.type === "string" && v.allowed && v.allowed.length > 0 && typeof selectedLiveValue === "string") {
+                  if (!v.allowed.includes(selectedLiveValue)) return <div style={{ fontSize: 12, color: "#ef4444", fontWeight: 500, marginTop: 4 }}>Current value "{selectedLiveValue}" is not in allowed values</div>;
+                }
+                return null;
+              })()}
             </div>
 
             {/* Dashboard tracking + Persistence */}
@@ -771,7 +868,7 @@ function SourceBindingEditor({
   liveState: Record<string, unknown>;
   onUpdate: (patch: Partial<VariableConfig>) => void;
 }) {
-  const isBound = !!variable.source_key;
+  const isBound = variable.source_key != null;
   const sourceMap = variable.source_map ?? {};
   const sourceValue = variable.source_key ? liveState[variable.source_key] : undefined;
 
@@ -813,6 +910,7 @@ function SourceBindingEditor({
   };
 
   const updateMapEntry = (oldKey: string, newKey: string, newValue: unknown) => {
+    if (newKey !== oldKey && newKey in sourceMap) return;
     const entries = Object.entries(sourceMap);
     const newMap: Record<string, unknown> = {};
     for (const [k, v] of entries) {
@@ -868,6 +966,12 @@ function SourceBindingEditor({
               placeholder="Select state key to bind..."
             />
           </div>
+
+          {variable.source_key && sourceValue === undefined && (
+            <div style={{ fontSize: 12, color: "#f59e0b", fontStyle: "italic" }}>
+              Source key "{variable.source_key}" has no value. The device may be offline or the key may not exist.
+            </div>
+          )}
 
           {/* Value Map */}
           <div>

@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { MacroStep, MacroConfig, DeviceConfig, DeviceInfo } from "../../api/types";
 import { useProjectStore } from "../../store/projectStore";
+import type { StepPathSegment } from "../../store/logStore";
 import { VariableKeyPicker } from "../shared/VariableKeyPicker";
 import { ConditionEditor } from "./ConditionEditor";
 import { STEP_TYPES, getStepType } from "./macroHelpers";
@@ -11,9 +12,10 @@ interface StepEditorProps {
   macros: MacroConfig[];
   currentMacroId: string;
   onChange: (updated: MacroStep) => void;
+  activeStepPath?: StepPathSegment[];
 }
 
-export function StepEditor({ step, macros, currentMacroId, onChange }: StepEditorProps) {
+export function StepEditor({ step, macros, currentMacroId, onChange, activeStepPath }: StepEditorProps) {
   const devices = useProjectStore((s) => s.project?.devices) ?? [];
 
   const update = (patch: Partial<MacroStep>) => {
@@ -99,6 +101,7 @@ export function StepEditor({ step, macros, currentMacroId, onChange }: StepEdito
           macros={macros}
           currentMacroId={currentMacroId}
           onChange={onChange}
+          activeStepPath={activeStepPath}
         />
       );
       break;
@@ -485,15 +488,69 @@ function GroupCommandEditor({
           {paramKeys.map((paramKey) => {
             const paramDef = paramSchema[paramKey];
             const currentVal = (step.params as Record<string, unknown>)?.[paramKey] ?? "";
+            const isDynamic = typeof currentVal === "string" && currentVal.startsWith("$");
             return (
-              <div key={paramKey} style={rowStyle}>
-                <label style={{ ...labelStyle, minWidth: 60 }}>{paramDef?.label ?? paramKey}</label>
-                <input
-                  value={String(currentVal)}
-                  onChange={(e) => handleParamChange(paramKey, e.target.value)}
-                  placeholder={paramDef?.type === "number" ? "0" : ""}
-                  style={inputStyle}
-                />
+              <div key={paramKey}>
+                <div style={rowStyle}>
+                  <label style={{ ...labelStyle, minWidth: 60 }}>
+                    {paramDef?.label ?? paramKey}
+                    {paramDef?.required && <span style={{ color: "#ef4444" }}> *</span>}
+                  </label>
+                  {isDynamic ? (
+                    <VariableKeyPicker
+                      value={String(currentVal).slice(1)}
+                      onChange={(key) => handleParamChange(paramKey, `$${key}`)}
+                      showDeviceState
+                      placeholder="Select state key..."
+                      style={{ flex: 1 }}
+                    />
+                  ) : paramDef?.type === "enum" && Array.isArray(paramDef.values) ? (
+                    <select
+                      value={String(currentVal)}
+                      onChange={(e) => handleParamChange(paramKey, e.target.value)}
+                      style={inputStyle}
+                    >
+                      <option value="">Select {paramKey}...</option>
+                      {paramDef.values.map((v: string) => (
+                        <option key={v} value={v}>{v}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      value={String(currentVal)}
+                      onChange={(e) => handleParamChange(paramKey, e.target.value)}
+                      placeholder={paramDef?.type === "number" ? "0" : ""}
+                      style={inputStyle}
+                    />
+                  )}
+                  <button
+                    onClick={() => {
+                      if (isDynamic) handleParamChange(paramKey, "");
+                      else handleParamChange(paramKey, "$var.");
+                    }}
+                    title={isDynamic ? "Switch to static value" : "Use dynamic value from state variable"}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      padding: "3px 6px",
+                      borderRadius: "var(--border-radius)",
+                      border: `1px solid ${isDynamic ? "var(--accent)" : "var(--border-color)"}`,
+                      background: isDynamic ? "rgba(33,150,243,0.15)" : "transparent",
+                      color: isDynamic ? "var(--accent)" : "var(--text-muted)",
+                      fontSize: 11,
+                      cursor: "pointer",
+                      flexShrink: 0,
+                      fontFamily: "var(--font-mono)",
+                    }}
+                  >
+                    $
+                  </button>
+                </div>
+                {isDynamic && (
+                  <div style={{ fontSize: 11, color: "var(--accent)", marginTop: 2, marginLeft: 78 }}>
+                    Value will be read from state at runtime
+                  </div>
+                )}
               </div>
             );
           })}
@@ -734,7 +791,7 @@ function WaitUntilEditor({
           >
             <input
               type="radio"
-              name={`wait_until_on_timeout_${step.description ?? "x"}`}
+              name={`wait_until_on_timeout_${step.condition?.key ?? ""}_${step.timeout ?? ""}`}
               checked={onTimeout === "fail"}
               onChange={() => onChange({ on_timeout: "fail" })}
             />
@@ -752,7 +809,7 @@ function WaitUntilEditor({
           >
             <input
               type="radio"
-              name={`wait_until_on_timeout_${step.description ?? "x"}`}
+              name={`wait_until_on_timeout_${step.condition?.key ?? ""}_${step.timeout ?? ""}`}
               checked={onTimeout === "continue"}
               onChange={() => onChange({ on_timeout: "continue" })}
             />
@@ -778,15 +835,27 @@ function ConditionalEditor({
   macros,
   currentMacroId,
   onChange,
+  activeStepPath,
 }: {
   step: MacroStep;
   macros: MacroConfig[];
   currentMacroId: string;
   onChange: (updated: MacroStep) => void;
+  activeStepPath?: StepPathSegment[];
 }) {
   const condition = step.condition ?? { key: "", operator: "eq", value: "" };
   const thenSteps = step.then_steps ?? [];
   const elseSteps = step.else_steps ?? [];
+
+  // Determine which branch step is active from the path.
+  // Path looks like [..., parentIdx, "then"|"else", branchStepIdx]
+  // We need to find the branch and index from the tail of the path.
+  const activeBranch = activeStepPath && activeStepPath.length >= 2
+    ? activeStepPath[activeStepPath.length - 2] as "then" | "else"
+    : null;
+  const activeBranchIdx = activeStepPath && activeStepPath.length >= 1
+    ? activeStepPath[activeStepPath.length - 1] as number
+    : null;
 
   const updateThenStep = (index: number, updated: MacroStep) => {
     const steps = [...thenSteps];
@@ -820,6 +889,40 @@ function ConditionalEditor({
     onChange({ ...step, else_steps: elseSteps.filter((_, i) => i !== index) });
   };
 
+  const moveThenStep = (index: number, direction: -1 | 1) => {
+    const newIndex = index + direction;
+    if (newIndex < 0 || newIndex >= thenSteps.length) return;
+    const arr = [...thenSteps];
+    [arr[index], arr[newIndex]] = [arr[newIndex], arr[index]];
+    onChange({ ...step, then_steps: arr });
+  };
+
+  const moveElseStep = (index: number, direction: -1 | 1) => {
+    const newIndex = index + direction;
+    if (newIndex < 0 || newIndex >= elseSteps.length) return;
+    const arr = [...elseSteps];
+    [arr[index], arr[newIndex]] = [arr[newIndex], arr[index]];
+    onChange({ ...step, else_steps: arr });
+  };
+
+  const moveThenToElse = (index: number) => {
+    const moved = thenSteps[index];
+    onChange({
+      ...step,
+      then_steps: thenSteps.filter((_, i) => i !== index),
+      else_steps: [...elseSteps, moved],
+    });
+  };
+
+  const moveElseToThen = (index: number) => {
+    const moved = elseSteps[index];
+    onChange({
+      ...step,
+      else_steps: elseSteps.filter((_, i) => i !== index),
+      then_steps: [...thenSteps, moved],
+    });
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
       <HelpText>
@@ -844,10 +947,15 @@ function ConditionalEditor({
             <InlineStepCard
               key={i}
               step={s}
+              index={i}
+              total={thenSteps.length}
               macros={macros}
               currentMacroId={currentMacroId}
               onChange={(updated) => updateThenStep(i, updated)}
               onDelete={() => removeThenStep(i)}
+              onMove={(dir) => moveThenStep(i, dir)}
+              onMoveToBranch={() => moveThenToElse(i)}
+              isActive={activeBranch === "then" && activeBranchIdx === i}
             />
           ))}
           <AddStepDropdown onAdd={addThenStep} />
@@ -862,10 +970,15 @@ function ConditionalEditor({
             <InlineStepCard
               key={i}
               step={s}
+              index={i}
+              total={elseSteps.length}
               macros={macros}
               currentMacroId={currentMacroId}
               onChange={(updated) => updateElseStep(i, updated)}
               onDelete={() => removeElseStep(i)}
+              onMove={(dir) => moveElseStep(i, dir)}
+              onMoveToBranch={() => moveElseToThen(i)}
+              isActive={activeBranch === "else" && activeBranchIdx === i}
             />
           ))}
           <AddStepDropdown onAdd={addElseStep} />
@@ -878,16 +991,26 @@ function ConditionalEditor({
 /** Compact step card used inside conditional then/else lists */
 function InlineStepCard({
   step,
+  index,
+  total,
   macros,
   currentMacroId,
   onChange,
   onDelete,
+  onMove,
+  onMoveToBranch,
+  isActive,
 }: {
   step: MacroStep;
+  index: number;
+  total: number;
   macros: MacroConfig[];
   currentMacroId: string;
   onChange: (updated: MacroStep) => void;
   onDelete: () => void;
+  onMove?: (direction: -1 | 1) => void;
+  onMoveToBranch?: () => void;
+  isActive?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const typeInfo = getStepType(step.action);
@@ -895,9 +1018,9 @@ function InlineStepCard({
 
   return (
     <div style={{
-      border: "1px solid var(--border-color)",
+      border: `1px solid ${isActive ? "var(--accent)" : "var(--border-color)"}`,
       borderRadius: "var(--border-radius)",
-      background: "var(--bg-surface)",
+      background: isActive ? "rgba(33, 150, 243, 0.08)" : "var(--bg-surface)",
     }}>
       <div
         onClick={() => setExpanded(!expanded)}
@@ -925,13 +1048,44 @@ function InlineStepCard({
         <span style={{ flex: 1, color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {typeInfo?.summary(step, devices as any) ?? ""}
         </span>
-        <button
-          onClick={(e) => { e.stopPropagation(); onDelete(); }}
-          style={{ background: "none", border: "none", color: "var(--color-error)", cursor: "pointer", padding: 2, display: "flex" }}
-          title="Remove step"
-        >
-          <span style={{ fontSize: 14, lineHeight: 1 }}>&times;</span>
-        </button>
+        <div style={{ display: "flex", gap: 1, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+          {onMove && (
+            <>
+              <button
+                onClick={() => onMove(-1)}
+                disabled={index === 0}
+                style={inlineIconBtn}
+                title="Move up"
+              >
+                ▲
+              </button>
+              <button
+                onClick={() => onMove(1)}
+                disabled={index === total - 1}
+                style={inlineIconBtn}
+                title="Move down"
+              >
+                ▼
+              </button>
+            </>
+          )}
+          {onMoveToBranch && (
+            <button
+              onClick={onMoveToBranch}
+              style={{ ...inlineIconBtn, fontSize: 10 }}
+              title="Move to other branch"
+            >
+              ⇄
+            </button>
+          )}
+          <button
+            onClick={onDelete}
+            style={{ ...inlineIconBtn, color: "var(--color-error)" }}
+            title="Remove step"
+          >
+            ×
+          </button>
+        </div>
       </div>
       {expanded && (
         <div style={{ padding: "var(--space-sm)", borderTop: "1px solid var(--border-color)" }}>
@@ -942,12 +1096,33 @@ function InlineStepCard({
   );
 }
 
+const inlineIconBtn: React.CSSProperties = {
+  background: "none",
+  border: "none",
+  color: "var(--text-muted)",
+  cursor: "pointer",
+  padding: "1px 3px",
+  fontSize: 11,
+  lineHeight: 1,
+  display: "flex",
+  alignItems: "center",
+};
+
 /** Small "Add Step" dropdown for inside conditional blocks */
 function AddStepDropdown({ onAdd }: { onAdd: (action: string) => void }) {
   const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
 
   return (
-    <div style={{ position: "relative" }}>
+    <div ref={ref} style={{ position: "relative" }}>
       <button
         onClick={() => setOpen(!open)}
         style={{

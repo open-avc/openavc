@@ -80,6 +80,59 @@ function globMatch(pattern: string, key: string): boolean {
   return regex.test(key);
 }
 
+/** Recursively scan macro steps for var.* references */
+function scanStepsForVarUsages(
+  steps: import("../../api/types").MacroStep[],
+  macroName: string,
+  macroNav: { view: ViewId; focus: { type: string; id: string } },
+  addUsage: (varId: string, usage: VariableUsage) => void,
+) {
+  for (const step of steps) {
+    if (step.action === "state.set" && step.key?.startsWith("var.")) {
+      addUsage(step.key.slice(4), {
+        type: "macro", icon: Zap, label: macroName,
+        detail: `Set Variable step → ${JSON.stringify(step.value)}`,
+        nav: macroNav,
+      });
+    }
+    if (step.action === "state.set" && typeof step.value === "string" && step.value.startsWith("$var.")) {
+      addUsage(step.value.slice(5), {
+        type: "macro", icon: Zap, label: macroName,
+        detail: "Set Variable step — dynamic source",
+        nav: macroNav,
+      });
+    }
+    if ((step.action === "conditional" || step.action === "wait_until") && step.condition?.key?.startsWith("var.")) {
+      addUsage(step.condition.key.slice(4), {
+        type: "macro", icon: Zap, label: macroName,
+        detail: `${step.action === "conditional" ? "Conditional" : "Wait Until"} condition`,
+        nav: macroNav,
+      });
+    }
+    if (step.skip_if?.key?.startsWith("var.")) {
+      addUsage(step.skip_if.key.slice(4), {
+        type: "macro", icon: Zap, label: macroName,
+        detail: "Skip-if guard",
+        nav: macroNav,
+      });
+    }
+    // Scan $var references in device/group command params
+    if ((step.action === "device.command" || step.action === "group.command") && step.params) {
+      for (const val of Object.values(step.params)) {
+        if (typeof val === "string" && val.startsWith("$var.")) {
+          addUsage(val.slice(5), {
+            type: "macro", icon: Zap, label: macroName,
+            detail: `${step.command ?? "?"} param — dynamic value`,
+            nav: macroNav,
+          });
+        }
+      }
+    }
+    if (step.then_steps) scanStepsForVarUsages(step.then_steps, macroName, macroNav, addUsage);
+    if (step.else_steps) scanStepsForVarUsages(step.else_steps, macroName, macroNav, addUsage);
+  }
+}
+
 /** Build usage map for var.* keys only (used in Variables sub-tab) */
 export function buildUsageMap(project: ProjectConfig, scriptRefs: ScriptReference[] = []): Map<string, VariableUsage[]> {
   const map = new Map<string, VariableUsage[]>();
@@ -92,15 +145,7 @@ export function buildUsageMap(project: ProjectConfig, scriptRefs: ScriptReferenc
 
   for (const macro of project.macros) {
     const macroNav = { view: "macros" as ViewId, focus: { type: "macro", id: macro.id } };
-    for (const step of macro.steps) {
-      if (step.action === "state.set" && step.key?.startsWith("var.")) {
-        addUsage(step.key.slice(4), {
-          type: "macro", icon: Zap, label: macro.name,
-          detail: `Set Variable step → ${JSON.stringify(step.value)}`,
-          nav: macroNav,
-        });
-      }
-    }
+    scanStepsForVarUsages(macro.steps, macro.name, macroNav, addUsage);
     for (const trigger of macro.triggers ?? []) {
       if (trigger.state_key?.startsWith("var.")) {
         addUsage(trigger.state_key.slice(4), {
@@ -150,6 +195,58 @@ export function buildUsageMap(project: ProjectConfig, scriptRefs: ScriptReferenc
   return map;
 }
 
+/** Recursively scan macro steps for ALL state key references */
+function scanStepsForAllKeyUsages(
+  steps: import("../../api/types").MacroStep[],
+  macroName: string,
+  macroNav: { view: ViewId; focus: { type: string; id: string } },
+  addUsage: (key: string, usage: VariableUsage) => void,
+) {
+  for (const step of steps) {
+    if (step.action === "state.set" && step.key) {
+      addUsage(step.key, {
+        type: "macro", icon: Zap, label: macroName,
+        detail: `Set Variable step → ${JSON.stringify(step.value)}`,
+        nav: macroNav,
+      });
+    }
+    if (step.action === "state.set" && typeof step.value === "string" && step.value.startsWith("$")) {
+      addUsage(step.value.slice(1), {
+        type: "macro", icon: Zap, label: macroName,
+        detail: "Set Variable step — dynamic source",
+        nav: macroNav,
+      });
+    }
+    if ((step.action === "conditional" || step.action === "wait_until") && step.condition?.key) {
+      addUsage(step.condition.key, {
+        type: "macro", icon: Zap, label: macroName,
+        detail: `${step.action === "conditional" ? "Conditional" : "Wait Until"} condition`,
+        nav: macroNav,
+      });
+    }
+    if (step.skip_if?.key) {
+      addUsage(step.skip_if.key, {
+        type: "macro", icon: Zap, label: macroName,
+        detail: "Skip-if guard",
+        nav: macroNav,
+      });
+    }
+    if ((step.action === "device.command" || step.action === "group.command") && step.params) {
+      for (const val of Object.values(step.params)) {
+        if (typeof val === "string" && val.startsWith("$")) {
+          addUsage(val.slice(1), {
+            type: "macro", icon: Zap, label: macroName,
+            detail: `${step.command ?? "?"} param — dynamic value`,
+            nav: macroNav,
+          });
+        }
+      }
+    }
+    if (step.then_steps) scanStepsForAllKeyUsages(step.then_steps, macroName, macroNav, addUsage);
+    if (step.else_steps) scanStepsForAllKeyUsages(step.else_steps, macroName, macroNav, addUsage);
+  }
+}
+
 /** Build usage map for ALL state keys (var.*, device.*, system.*) — used in Device States sub-tab */
 export function buildStateUsageMap(project: ProjectConfig, scriptRefs: ScriptReference[] = []): Map<string, VariableUsage[]> {
   const map = new Map<string, VariableUsage[]>();
@@ -162,15 +259,7 @@ export function buildStateUsageMap(project: ProjectConfig, scriptRefs: ScriptRef
 
   for (const macro of project.macros) {
     const macroNav = { view: "macros" as ViewId, focus: { type: "macro", id: macro.id } };
-    for (const step of macro.steps) {
-      if (step.action === "state.set" && step.key) {
-        addUsage(step.key, {
-          type: "macro", icon: Zap, label: macro.name,
-          detail: `Set Variable step → ${JSON.stringify(step.value)}`,
-          nav: macroNav,
-        });
-      }
-    }
+    scanStepsForAllKeyUsages(macro.steps, macro.name, macroNav, addUsage);
     for (const trigger of macro.triggers ?? []) {
       if (trigger.state_key) {
         addUsage(trigger.state_key, {

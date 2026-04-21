@@ -1,10 +1,11 @@
 /**
  * Per-trigger-type editors + conditions + advanced settings.
  */
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Trash2, ChevronDown, ChevronRight, Plus, HelpCircle } from "lucide-react";
 import type { TriggerConfig, TriggerCondition } from "../../api/types";
 import { useProjectStore } from "../../store/projectStore";
+import { useConnectionStore } from "../../store/connectionStore";
 import { VariableKeyPicker } from "../shared/VariableKeyPicker";
 import {
   STATE_OPERATORS,
@@ -14,7 +15,6 @@ import {
   describeCron,
   EVENT_CATEGORIES,
 } from "./triggerHelpers";
-import * as api from "../../api/restClient";
 
 interface TriggerEditorProps {
   trigger: TriggerConfig;
@@ -812,23 +812,11 @@ function ConditionsEditor({
 // --- Condition Preview (8.9) ---
 
 function ConditionPreview({ conditions }: { conditions: TriggerCondition[] }) {
-  const [currentState, setCurrentState] = useState<Record<string, unknown>>({});
-  const [loaded, setLoaded] = useState(false);
+  const liveState = useConnectionStore((s) => s.liveState);
+  const connected = useConnectionStore((s) => s.connected);
+  const currentState = liveState;
 
-  useEffect(() => {
-    let cancelled = false;
-    const fetchState = async () => {
-      try {
-        const state = await api.getState();
-        if (!cancelled) { setCurrentState(state); setLoaded(true); }
-      } catch { /* ignore */ }
-    };
-    fetchState();
-    const interval = setInterval(fetchState, 3000);
-    return () => { cancelled = true; clearInterval(interval); };
-  }, []);
-
-  if (!loaded || conditions.length === 0) return null;
+  if (!connected || conditions.length === 0) return null;
 
   const evaluateCondition = (cond: TriggerCondition): boolean => {
     const actual = currentState[cond.key];
