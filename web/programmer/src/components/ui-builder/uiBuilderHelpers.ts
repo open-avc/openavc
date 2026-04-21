@@ -144,14 +144,14 @@ export function createDefaultElement(
         ...base,
         label: "Button",
         grid_area: { col, row, col_span: 3, row_span: 2 },
-        style: { font_size: 16 },
+        style: {},
       };
     case "label":
       return {
         ...base,
         text: "Label",
         grid_area: { col, row, col_span: 3, row_span: 1 },
-        style: { font_size: 14 },
+        style: {},
       };
     case "status_led":
       return {
@@ -173,7 +173,7 @@ export function createDefaultElement(
         label: "Next Page",
         target_page: "",
         grid_area: { col, row, col_span: 2, row_span: 1 },
-        style: { font_size: 14 },
+        style: {},
       };
     case "select":
       return {
@@ -257,7 +257,7 @@ export function createDefaultElement(
         ...base,
         clock_mode: "time",
         grid_area: { col, row, col_span: 3, row_span: 1 },
-        style: { font_size: 24 },
+        style: {},
       };
     case "keypad":
       return {
