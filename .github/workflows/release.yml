@@ -420,11 +420,11 @@ jobs:
         run: |
           NOTES=$(jq -Rs . < .github/RELEASE_NOTES.md)
           DOWNLOAD_URL="https://openavc.com/download"
-          PLAIN_NOTES=$(cat .github/RELEASE_NOTES.md)
+          EMBED_DESC=$(echo "$NOTES" | jq -r '.' | head -c 4000)
+          EMBED_DESC_JSON=$(echo "$EMBED_DESC" | jq -Rs '.')
           jq -n --arg title "OpenAVC v${VERSION} Released" \
                 --arg url "$DOWNLOAD_URL" \
                 --argjson color 5682323 \
-                --argjson notes "$NOTES" \
-                --arg fallback "**OpenAVC v${VERSION} Released**"$'\n\n'"${PLAIN_NOTES}"$'\n\n'"Download: ${DOWNLOAD_URL}" \
-                '{content: $fallback, embeds: [{title: $title, url: $url, color: $color, description: ($notes + "\n\n[Download](https://openavc.com/download)")}]}' \
+                --argjson desc "$EMBED_DESC_JSON" \
+                '{embeds: [{title: $title, url: $url, color: $color, description: ($desc + "\n\n[Download](https://openavc.com/download)")}]}' \
           | curl -s -H "Content-Type: application/json" -d @- "${{ secrets.DISCORD_WEBHOOK }}"
