@@ -3757,6 +3757,7 @@ class PanelApp {
     _removeTextNodes(el) {
         Array.from(el.childNodes).forEach((n) => {
             if (n.nodeType === Node.TEXT_NODE) n.remove();
+            else if (n.classList?.contains('panel-label-span')) n.remove();
         });
     }
 
@@ -3959,6 +3960,7 @@ class PanelApp {
         }
 
         const textSpan = document.createElement('span');
+        textSpan.className = 'panel-label-span';
         textSpan.textContent = labelText;
 
         if (iconPos === 'top' || iconPos === 'bottom') {
