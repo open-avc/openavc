@@ -37,7 +37,6 @@ interface UIBuilderStore {
   lastMutationTime: number;
   activeDragSource: string | null;
   lockedElementIds: Set<string>;
-  hiddenElementIds: Set<string>;
 
   selectPage: (id: string | null) => void;
   selectElement: (id: string | null) => void;
@@ -59,7 +58,6 @@ interface UIBuilderStore {
   touchMutation: () => void;
   setActiveDragSource: (source: string | null) => void;
   toggleLock: (elementId: string) => void;
-  toggleHide: (elementId: string) => void;
 }
 
 // Build (a) the inverse snapshot to push onto the redo/undo stack and
@@ -171,7 +169,6 @@ export const useUIBuilderStore = create<UIBuilderStore>((set, get) => ({
   lastMutationTime: 0,
   activeDragSource: null,
   lockedElementIds: new Set(),
-  hiddenElementIds: new Set(),
 
   selectPage: (id) => set({ selectedPageId: id, selectedElementId: null, selectedElementIds: [], selectedMasterElementId: null }),
 
@@ -300,9 +297,4 @@ export const useUIBuilderStore = create<UIBuilderStore>((set, get) => ({
     set({ lockedElementIds: next });
   },
 
-  toggleHide: (elementId) => {
-    const next = new Set(get().hiddenElementIds);
-    if (next.has(elementId)) next.delete(elementId); else next.add(elementId);
-    set({ hiddenElementIds: next });
-  },
 }));

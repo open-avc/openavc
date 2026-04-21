@@ -68,7 +68,6 @@ export function Canvas({
   const touchMutation = useUIBuilderStore((s) => s.touchMutation);
   const setContextMenu = useUIBuilderStore((s) => s.setContextMenu);
   const lockedElementIds = useUIBuilderStore((s) => s.lockedElementIds);
-  const hiddenElementIds = useUIBuilderStore((s) => s.hiddenElementIds);
 
   const project = useProjectStore((s) => s.project);
   const update = useProjectStore((s) => s.update);
@@ -343,7 +342,6 @@ export function Canvas({
                   rows={page.grid.rows}
                   hasOverlap={overlappingIds.has(el.id)}
                   locked={lockedElementIds.has(el.id)}
-                  hidden={hiddenElementIds.has(el.id)}
                   onSelect={(id, shiftKey) => (shiftKey ? toggleSelectElement(id) : selectElement(id))}
                   onCommitResize={handleCommitResize}
                   onContextMenu={handleContextMenu}

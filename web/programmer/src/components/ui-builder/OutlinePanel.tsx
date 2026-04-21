@@ -3,7 +3,7 @@ import {
   MousePointerClick, SlidersHorizontal, ChevronDown, TextCursorInput,
   Type, Circle, Image, Square, ArrowRight, Camera, Gauge, BarChart3,
   SlidersVertical, Group, Clock, Grid3X3, LayoutGrid, List, Puzzle,
-  Search, Star, Eye, EyeOff, Lock, Unlock, ChevronUp, ChevronDown as ChDown,
+  Search, Star, Lock, Unlock, ChevronUp, ChevronDown as ChDown,
 } from "lucide-react";
 import type { UIElement, MasterElement } from "../../api/types";
 
@@ -35,12 +35,10 @@ interface OutlinePanelProps {
   selectedElementIds: string[];
   selectedMasterElementId: string | null;
   lockedElementIds: Set<string>;
-  hiddenElementIds: Set<string>;
   onSelectElement: (id: string, shift?: boolean) => void;
   onSelectMasterElement: (id: string) => void;
   onMoveOrder: (elementId: string, direction: "up" | "down") => void;
   onToggleLock: (elementId: string) => void;
-  onToggleHide: (elementId: string) => void;
 }
 
 export function OutlinePanel({
@@ -49,12 +47,10 @@ export function OutlinePanel({
   selectedElementIds,
   selectedMasterElementId,
   lockedElementIds,
-  hiddenElementIds,
   onSelectElement,
   onSelectMasterElement,
   onMoveOrder,
   onToggleLock,
-  onToggleHide,
 }: OutlinePanelProps) {
   const [search, setSearch] = useState("");
   const searchLower = search.toLowerCase();
@@ -93,7 +89,6 @@ export function OutlinePanel({
       ? selectedMasterElementId === el.id
       : selectedElementIds.includes(el.id);
     const isLocked = lockedElementIds.has(el.id);
-    const isHidden = hiddenElementIds.has(el.id);
     const displayLabel = el.label || el.text || "";
     const icon = ICONS[el.type] || <Square size={12} />;
 
@@ -112,9 +107,8 @@ export function OutlinePanel({
           padding: "3px 8px", cursor: "pointer", fontSize: 11,
           borderRadius: 3, userSelect: "none",
           background: isSelected ? "var(--accent-dim)" : "transparent",
-          color: isHidden ? "var(--text-muted)" : isSelected ? "var(--accent)" : "var(--text-primary)",
+          color: isSelected ? "var(--accent)" : "var(--text-primary)",
           borderLeft: isSelected ? "2px solid var(--accent)" : "2px solid transparent",
-          opacity: isHidden ? 0.5 : 1,
         }}
         onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = "var(--bg-hover)"; }}
         onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = "transparent"; }}
@@ -163,14 +157,6 @@ export function OutlinePanel({
           title={isLocked ? "Unlock element" : "Lock element (prevent selection on canvas)"}
         >
           {isLocked ? <Lock size={10} /> : <Unlock size={10} />}
-        </button>
-        {/* Hide toggle */}
-        <button
-          onClick={(e) => { e.stopPropagation(); onToggleHide(el.id); }}
-          style={{ ...iconBtnStyle, color: isHidden ? "var(--color-warning)" : "var(--border-color)" }}
-          title={isHidden ? "Show element in editor" : "Hide element in editor (still visible on deployed panel)"}
-        >
-          {isHidden ? <EyeOff size={10} /> : <Eye size={10} />}
         </button>
       </div>
     );

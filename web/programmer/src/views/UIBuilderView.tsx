@@ -62,7 +62,6 @@ export function UIBuilderView() {
   const selectedMasterElementId = useUIBuilderStore((s) => s.selectedMasterElementId);
   const previewMode = useUIBuilderStore((s) => s.previewMode);
   const lockedElementIds = useUIBuilderStore((s) => s.lockedElementIds);
-  const hiddenElementIds = useUIBuilderStore((s) => s.hiddenElementIds);
   const showGrid = useUIBuilderStore((s) => s.showGrid);
   const zoom = useUIBuilderStore((s) => s.zoom);
   const screenPresetIndex = useUIBuilderStore((s) => s.screenPresetIndex);
@@ -1148,7 +1147,6 @@ export function UIBuilderView() {
                         selectedElementIds={selectedElementIds}
                         selectedMasterElementId={selectedMasterElementId}
                         lockedElementIds={lockedElementIds}
-                        hiddenElementIds={hiddenElementIds}
                         onSelectElement={(id, shift) => {
                           if (shift) {
                             useUIBuilderStore.getState().toggleSelectElement(id);
@@ -1165,7 +1163,6 @@ export function UIBuilderView() {
                           );
                         }}
                         onToggleLock={(id) => useUIBuilderStore.getState().toggleLock(id)}
-                        onToggleHide={(id) => useUIBuilderStore.getState().toggleHide(id)}
                       />
                     )}
                   </div>
