@@ -260,17 +260,30 @@ def _validate_bindings(bindings: dict, project: Any = None) -> str | None:
     if isinstance(val_binding, dict) and not val_binding.get("key"):
         errors.append("value: missing 'key' (state key to display)")
 
-    # visible_when: must have key; validate operator
+    # visible_when: single condition or any:[] for OR logic
     vw = bindings.get("visible_when")
     if isinstance(vw, dict):
-        if not vw.get("key"):
-            errors.append("visible_when: missing 'key' (state key to evaluate)")
-        op = vw.get("operator")
-        if op and op not in _VALID_VISIBLE_WHEN_OPS:
-            errors.append(
-                f"visible_when: operator '{op}' is not valid. "
-                f"Use: eq, ne, gt, lt, gte, lte, truthy, falsy"
-            )
+        if "any" in vw:
+            conditions = vw["any"] if isinstance(vw["any"], list) else []
+            for i, cond in enumerate(conditions):
+                if isinstance(cond, dict):
+                    if not cond.get("key"):
+                        errors.append(f"visible_when.any[{i}]: missing 'key'")
+                    op = cond.get("operator")
+                    if op and op not in _VALID_VISIBLE_WHEN_OPS:
+                        errors.append(
+                            f"visible_when.any[{i}]: operator '{op}' is not valid. "
+                            f"Use: eq, ne, gt, lt, gte, lte, truthy, falsy"
+                        )
+        else:
+            if not vw.get("key"):
+                errors.append("visible_when: missing 'key' (state key to evaluate)")
+            op = vw.get("operator")
+            if op and op not in _VALID_VISIBLE_WHEN_OPS:
+                errors.append(
+                    f"visible_when: operator '{op}' is not valid. "
+                    f"Use: eq, ne, gt, lt, gte, lte, truthy, falsy"
+                )
 
     # selected: must have key
     sel = bindings.get("selected")

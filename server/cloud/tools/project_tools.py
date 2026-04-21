@@ -58,7 +58,8 @@ class ProjectToolsMixin:
             log.warning("Failed to list plugins for AI status", exc_info=True)
 
         # Active theme
-        active_theme = getattr(p.ui, "theme", None)
+        settings = getattr(p.ui, "settings", None)
+        active_theme = getattr(settings, "theme_id", None) if settings else None
         if active_theme:
             result["active_theme"] = active_theme
 
