@@ -1066,6 +1066,18 @@ export function validateProject(project: ProjectConfig): ValidationIssue[] {
       }
     }
 
+    // change/submit bindings
+    for (const slot of ["change", "submit"]) {
+      const b = bindings[slot] as Record<string, unknown> | undefined;
+      if (!b) continue;
+      if (b.action === "device.command" && b.device && !deviceIds.has(b.device as string)) {
+        issues.push({ severity: "error", message: `Device "${b.device}" not found`, location: `${loc} > ${slot}`, pageId, elementId: el.id });
+      }
+      if (b.action === "macro" && b.macro && !macroIds.has(b.macro as string)) {
+        issues.push({ severity: "error", message: `Macro "${b.macro}" not found`, location: `${loc} > ${slot}`, pageId, elementId: el.id });
+      }
+    }
+
     // variable/value bindings
     for (const slot of ["variable", "value", "text", "color", "items", "selected"]) {
       const b = bindings[slot] as Record<string, unknown> | undefined;
@@ -1109,6 +1121,10 @@ export function validateProject(project: ProjectConfig): ValidationIssue[] {
   for (const page of project.ui.pages) {
     for (const el of page.elements) {
       checkElement(el, page.id, page.name);
+      const a = el.grid_area;
+      if (a.col + a.col_span - 1 > page.grid.columns || a.row + a.row_span - 1 > page.grid.rows) {
+        issues.push({ severity: "warning", message: `Element extends beyond the ${page.grid.columns}\u00d7${page.grid.rows} grid`, location: `${page.name} > ${el.id}`, pageId: page.id, elementId: el.id });
+      }
     }
   }
 

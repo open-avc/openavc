@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Trash2, Undo2, Link, Palette } from "lucide-react";
+import { ChevronDown, ChevronRight, Trash2, Undo2, Link } from "lucide-react";
 import { ConfirmDialog } from "../shared/ConfirmDialog";
 import type { UIElement, UIPage, ProjectConfig, OverlayConfig, PageBackground, MasterElement } from "../../api/types";
 import { BasicProperties } from "./PropertySections/BasicProperties";
@@ -25,7 +25,6 @@ interface PropertiesPanelProps {
   themeDefaults?: Record<string, Record<string, unknown>>;
   themes?: ThemeSummary[];
   onThemeChange?: (themeId: string) => void;
-  onOpenThemeStudio?: () => void;
   onChange: (elementId: string, patch: Partial<UIElement>) => void;
   onRenameElement?: (oldId: string, newId: string) => void;
   onPageChange?: (patch: Partial<UIPage>) => void;
@@ -43,7 +42,6 @@ export function PropertiesPanel({
   themeDefaults,
   themes,
   onThemeChange,
-  onOpenThemeStudio,
   onChange,
   onRenameElement,
   onPageChange,
@@ -171,7 +169,6 @@ export function PropertiesPanel({
             themes={themes}
             currentThemeId={currentThemeId}
             onThemeChange={onThemeChange}
-            onOpenThemeStudio={onOpenThemeStudio}
           />
         )}
 
@@ -226,20 +223,6 @@ export function PropertiesPanel({
         }}>
           Properties
         </span>
-        {onOpenThemeStudio && (
-          <button
-            onClick={onOpenThemeStudio}
-            style={{
-              display: "flex", alignItems: "center", gap: 3,
-              padding: "1px 6px", borderRadius: 3,
-              background: "transparent", border: "1px solid var(--border-color)",
-              color: "var(--text-muted)", fontSize: 10, cursor: "pointer",
-            }}
-            title="Open Theme Studio"
-          >
-            <Palette size={10} /> Theme
-          </button>
-        )}
       </div>
 
       <Section title="Basic" defaultOpen>
@@ -542,7 +525,7 @@ function MasterElementProperties({
       {showDeleteConfirm && (
         <ConfirmDialog
           title="Delete Master Element"
-          message={`Delete master element "${masterElement.id}"? This cannot be undone.`}
+          message={`Delete master element "${masterElement.id}"? You can undo with Ctrl+Z.`}
           confirmLabel="Delete"
           destructive
           onConfirm={() => {
@@ -1042,12 +1025,10 @@ function ThemeSection({
   themes,
   currentThemeId,
   onThemeChange,
-  onOpenThemeStudio,
 }: {
   themes: ThemeSummary[];
   currentThemeId: string;
   onThemeChange: (themeId: string) => void;
-  onOpenThemeStudio?: () => void;
 }) {
   return (
     <>
@@ -1070,26 +1051,6 @@ function ThemeSection({
         >
           Theme
         </span>
-        {onOpenThemeStudio && (
-          <button
-            onClick={onOpenThemeStudio}
-            title="Edit, duplicate, or save themes with live preview"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 4,
-              padding: "3px 8px",
-              borderRadius: 4,
-              background: "var(--bg-hover)",
-              border: "1px solid var(--border-color)",
-              cursor: "pointer",
-              fontSize: 11,
-              color: "var(--text-secondary)",
-            }}
-          >
-            <Palette size={11} /> Open Studio
-          </button>
-        )}
       </div>
 
       {/* Theme picker grid — quick-switch only */}

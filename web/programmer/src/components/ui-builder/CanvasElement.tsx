@@ -127,10 +127,10 @@ export function CanvasElement({
       if (previewMode || locked) return;
       e.preventDefault();
       e.stopPropagation();
-      onSelect(element.id);
+      if (!selected) onSelect(element.id);
       onContextMenu(e, element.id);
     },
-    [previewMode, locked, onSelect, onContextMenu, element.id],
+    [previewMode, locked, selected, onSelect, onContextMenu, element.id],
   );
 
   const handleResizeStart = useCallback(

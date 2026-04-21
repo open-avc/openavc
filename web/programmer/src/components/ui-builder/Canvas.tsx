@@ -253,7 +253,7 @@ export function Canvas({
                 display: "grid",
                 gridTemplateColumns: `repeat(${page.grid.columns}, 1fr)`,
                 gridTemplateRows: `repeat(${page.grid.rows}, 1fr)`,
-                gap: `${page.grid_gap ?? 8}px`,
+                gap: `${page.grid_gap ?? outerGap}px`,
                 width: "100%",
                 height: "100%",
                 position: "relative",

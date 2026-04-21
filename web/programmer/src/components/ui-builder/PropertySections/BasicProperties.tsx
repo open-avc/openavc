@@ -351,6 +351,17 @@ export function BasicProperties({
               style={{ flex: 1, fontSize: 11 }}
             />
           </FieldRow>
+          <FieldRow label="Fit">
+            <select
+              value={element.object_fit || "contain"}
+              onChange={(e) => onChange({ object_fit: e.target.value })}
+              style={{ flex: 1 }}
+            >
+              <option value="contain">Contain (fit, may letterbox)</option>
+              <option value="cover">Cover (fill, may crop)</option>
+              <option value="fill">Fill (stretch to fit)</option>
+            </select>
+          </FieldRow>
         </>
       )}
 

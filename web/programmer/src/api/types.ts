@@ -152,6 +152,7 @@ export interface UIElement {
   display_mode?: string;
   button_image?: string;
   image_fit?: string;
+  object_fit?: string;
   image_blend_mode?: string;
   image_opacity?: number;
   frameless?: boolean;

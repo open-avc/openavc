@@ -91,6 +91,8 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate }: CanvasToolb
   const [pendingDeleteGroup, setPendingDeleteGroup] = useState<string | null>(null);
   const [showNewGroupPrompt, setShowNewGroupPrompt] = useState(false);
   const addMenuRef = useRef<HTMLDivElement>(null);
+  const gridUndoPushed = useRef(false);
+  const gridUndoTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   // Close add menu on click outside
   useEffect(() => {
@@ -179,8 +181,9 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate }: CanvasToolb
 
   const handleDuplicatePage = (pageId: string) => {
     if (!project) return;
+    const idx = project.ui.pages.findIndex((p) => p.id === pageId);
     const newPages = duplicatePage(project.ui.pages, pageId);
-    const newPageId = newPages[newPages.length - 1]?.id;
+    const newPageId = newPages[idx + 1]?.id;
     applyPageMutation(() => newPages, "Duplicate page");
     if (newPageId) selectPage(newPageId);
   };
@@ -774,9 +777,16 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate }: CanvasToolb
                 }
               : p
           );
-          pushUndo({ pages: project.ui.pages }, "Edit grid");
+          if (!gridUndoPushed.current) {
+            pushUndo({ pages: project.ui.pages }, "Edit grid");
+            gridUndoPushed.current = true;
+          }
           update({ ui: { ...project.ui, pages: updatedPages } });
           touchMutation();
+          clearTimeout(gridUndoTimer.current);
+          gridUndoTimer.current = setTimeout(() => {
+            gridUndoPushed.current = false;
+          }, 800);
         };
         return (
           <div style={{ display: "flex", alignItems: "center", gap: 3 }}>

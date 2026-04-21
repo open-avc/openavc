@@ -723,6 +723,12 @@ class PanelApp {
             if (!panelEl) return;
             e.preventDefault();
             e.stopPropagation();
+            if (hoveredEl) {
+                hoveredEl.style.outline = '';
+                hoveredEl.style.outlineOffset = '';
+                hoveredEl = null;
+            }
+            tooltip.style.display = 'none';
             const elType = panelEl.dataset.elementType;
             this._postToParent({
                 type: 'openavc:theme-element-click',
@@ -1226,6 +1232,7 @@ class PanelApp {
             img.src = this.resolveAssetUrl(element.src);
             img.alt = element.label || 'Panel image';
             img.loading = 'lazy';
+            if (element.object_fit) img.style.objectFit = element.object_fit;
             img.onerror = () => {
                 img.style.display = 'none';
                 const placeholder = document.createElement('div');

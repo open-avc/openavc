@@ -2039,29 +2039,42 @@ function EditorColumn({
 }: EditorColumnProps) {
   const elementRefs = useRef<Record<string, HTMLDetailsElement | null>>({});
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const highlightTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
     if (!focusedElement) return;
+    // Cancel any in-flight highlight timer and clear all outlines
+    if (highlightTimer.current) clearTimeout(highlightTimer.current);
+    for (const ref of Object.values(elementRefs.current)) {
+      if (ref) {
+        ref.style.outline = "";
+        ref.style.outlineOffset = "";
+        ref.style.borderRadius = "";
+      }
+    }
     // Collapse all, expand target, scroll into view, briefly highlight
     for (const [elType, ref] of Object.entries(elementRefs.current)) {
       if (ref) ref.open = elType === focusedElement;
     }
     const target = elementRefs.current[focusedElement];
-    let timer: ReturnType<typeof setTimeout> | undefined;
     if (target) {
       target.scrollIntoView({ behavior: "smooth", block: "nearest" });
       target.style.outline = "2px solid var(--accent)";
       target.style.outlineOffset = "-2px";
       target.style.borderRadius = "4px";
-      timer = setTimeout(() => {
+      highlightTimer.current = setTimeout(() => {
         target.style.outline = "";
         target.style.outlineOffset = "";
         target.style.borderRadius = "";
+        highlightTimer.current = undefined;
       }, 1200);
     }
     onClearFocus();
-    return () => { if (timer) clearTimeout(timer); };
   }, [focusedElement, onClearFocus]);
+
+  useEffect(() => {
+    return () => { if (highlightTimer.current) clearTimeout(highlightTimer.current); };
+  }, []);
 
   // Keyboard arrows navigate between element sections
   useEffect(() => {

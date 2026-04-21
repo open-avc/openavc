@@ -168,7 +168,7 @@ export function OutlinePanel({
         <button
           onClick={(e) => { e.stopPropagation(); onToggleHide(el.id); }}
           style={{ ...iconBtnStyle, color: isHidden ? "var(--color-warning)" : "var(--border-color)" }}
-          title={isHidden ? "Show element on canvas" : "Hide element on canvas"}
+          title={isHidden ? "Show element in editor" : "Hide element in editor (still visible on deployed panel)"}
         >
           {isHidden ? <EyeOff size={10} /> : <Eye size={10} />}
         </button>

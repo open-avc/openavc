@@ -257,6 +257,7 @@ export function UIBuilderView() {
       ) {
         // Nudge master element
         if (selectedMasterElementId && masterElements.length > 0) {
+          if (lockedElementIds.has(selectedMasterElementId)) return;
           const mel = masterElements.find((m) => m.id === selectedMasterElementId);
           if (!mel) return;
           e.preventDefault();
@@ -279,6 +280,7 @@ export function UIBuilderView() {
 
         // Nudge page elements
         if (selectedElementIds.length > 0) {
+          if (selectedElementIds.some(eid => lockedElementIds.has(eid))) return;
           e.preventDefault();
           const { columns, rows: gridRows } = currentPage.grid;
           const elementsToMove = selectedElementIds
@@ -317,7 +319,13 @@ export function UIBuilderView() {
       }
 
       if (e.key === "Delete" || e.key === "Backspace") {
+        if (selectedMasterElementId) {
+          e.preventDefault();
+          handleDeleteMasterElement(selectedMasterElementId);
+          return;
+        }
         if (selectedElementIds.length > 0 && currentPage) {
+          if (selectedElementIds.some(eid => lockedElementIds.has(eid))) return;
           e.preventDefault();
           if (selectedElementIds.length === 1) {
             handleDeleteElement(selectedElementIds[0]);
@@ -359,9 +367,19 @@ export function UIBuilderView() {
           e.preventDefault();
           handlePasteElement();
         }
-        if (e.key === "d" && selectedElementId && currentPage) {
+        if (e.key === "d" && selectedElementIds.length > 0 && currentPage) {
           e.preventDefault();
-          handleDuplicateElement(selectedElementId);
+          if (selectedElementIds.length === 1) {
+            handleDuplicateElement(selectedElementIds[0]);
+          } else {
+            applyMutation((pages) => {
+              let result = pages;
+              for (const eid of selectedElementIds) {
+                result = duplicateElementInPage(result, currentPage.id, eid);
+              }
+              return result;
+            }, `Duplicate ${selectedElementIds.length} elements`);
+          }
         }
       }
     };
@@ -441,9 +459,13 @@ export function UIBuilderView() {
     const newElements: UIElement[] = [];
     for (const src of clipboard) {
       let id = src.id;
-      let counter = 1;
-      while (existingIds.has(id)) {
-        id = `${src.type}_paste_${counter++}`;
+      if (existingIds.has(id)) {
+        let counter = 1;
+        id = `${src.type}_${counter}`;
+        while (existingIds.has(id)) {
+          counter++;
+          id = `${src.type}_${counter}`;
+        }
       }
       existingIds.add(id);
       newElements.push({
@@ -584,9 +606,9 @@ export function UIBuilderView() {
       if (selectedElementId === oldId) selectElement(newId);
       if (selectedMasterElementId === oldId) selectMasterElement(newId);
       showSuccess(`Renamed to ${newId}`);
-      if (result.scriptsToReview.length > 0) {
+      if ((project.scripts || []).length > 0) {
         showInfo(
-          `Scripts may reference the old ID "ui.${oldId}.*". Search and update manually: ${result.scriptsToReview.join(", ")}`,
+          `If any scripts reference "ui.${oldId}.*", update them manually.`,
         );
       }
     },
@@ -1215,7 +1237,6 @@ export function UIBuilderView() {
                     themeDefaults={themeElementDefaults}
                     themes={themes}
                     onThemeChange={showThemeStudio ? undefined : handleThemeChange}
-                    onOpenThemeStudio={() => setShowThemeStudio(true)}
                     onChange={handlePropertyChange}
                     onRenameElement={handleRenameElement}
                     onPageChange={handlePageChange}
@@ -1283,9 +1304,13 @@ export function UIBuilderView() {
           }}
           onDuplicateAll={() => {
             if (currentPage) {
-              for (const eid of selectedElementIds) {
-                handleDuplicateElement(eid);
-              }
+              applyMutation((pages) => {
+                let result = pages;
+                for (const eid of selectedElementIds) {
+                  result = duplicateElementInPage(result, currentPage.id, eid);
+                }
+                return result;
+              }, `Duplicate ${selectedElementIds.length} elements`);
             }
           }}
           onCopy={(ids) => handleCopyElement(selectedElementIds.length > 1 ? selectedElementIds : ids)}
@@ -1320,7 +1345,7 @@ export function UIBuilderView() {
       {confirmResetStyles && (
         <ConfirmDialog
           title="Reset element styles to theme defaults?"
-          message="This removes per-element color, font, border, and spacing overrides from all elements across all pages. Elements will inherit their appearance from the theme. This can be undone with Ctrl+Z."
+          message="This removes per-element style overrides for every property the current theme defines defaults for. Elements will inherit their appearance from the theme. This can be undone with Ctrl+Z."
           confirmLabel="Reset Styles"
           destructive
           onCancel={() => setConfirmResetStyles(false)}
@@ -1330,17 +1355,16 @@ export function UIBuilderView() {
             pushUndo({ pages: project.ui.pages }, "Reset element styles to theme");
             propertyUndoPushed.current = false;
             clearTimeout(propertyUndoTimer.current);
-            const themeStyleKeys = [
-              "bg_color", "text_color", "font_size", "font_weight", "font_family",
-              "border_radius", "border_color", "border_width", "text_align",
-              "accent_color", "track_color",
-            ];
             const newPages = project.ui.pages.map((page) => ({
               ...page,
               elements: page.elements.map((el) => {
+                const keysToReset = new Set(
+                  Object.keys(themeElementDefaults[el.type] || {}),
+                );
+                if (keysToReset.size === 0) return el;
                 const cleaned: Record<string, unknown> = {};
                 for (const [k, v] of Object.entries(el.style || {})) {
-                  if (!themeStyleKeys.includes(k)) cleaned[k] = v;
+                  if (!keysToReset.has(k)) cleaned[k] = v;
                 }
                 return { ...el, style: cleaned };
               }),
@@ -1503,7 +1527,7 @@ function UISettingsDialog({
               <div style={{ display: "flex", gap: "var(--space-sm)", alignItems: "center" }}>
                 <input
                   type="color"
-                  value={draft.accent_color}
+                  value={draft.accent_color || "#2196F3"}
                   onChange={(e) => patch({ accent_color: e.target.value })}
                   style={{ width: 40, height: 32, padding: 0, border: "1px solid var(--border-color)", borderRadius: "var(--border-radius)", cursor: "pointer" }}
                 />
