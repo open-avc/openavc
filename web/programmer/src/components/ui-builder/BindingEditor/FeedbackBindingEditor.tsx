@@ -34,7 +34,6 @@ export function FeedbackBindingEditor({
   showImageField = false,
 }: FeedbackBindingEditorProps) {
   const project = useProjectStore((s) => s.project);
-  const liveState = useConnectionStore.getState().liveState;
 
   const current = value || {
     source: "state",
@@ -45,6 +44,8 @@ export function FeedbackBindingEditor({
   };
 
   const stateKey = String(current.key || "");
+  const liveValue = useConnectionStore((s) => stateKey ? s.liveState[stateKey] : undefined);
+  const liveState = useConnectionStore.getState().liveState;
   const condition = (current.condition as Record<string, unknown>) || { equals: "" };
   const styleActive = (current.style_active as Record<string, string>) || {};
   const styleInactive = (current.style_inactive as Record<string, string>) || {};
@@ -140,9 +141,6 @@ export function FeedbackBindingEditor({
     const cat = categories.find((c) => c.id === selectedCategory);
     return cat?.keys ?? [];
   }, [selectedCategory, categories]);
-
-  // Live value of selected key
-  const liveValue = stateKey ? liveState[stateKey] : undefined;
 
   // Detect value type for smart condition
   const observedValues = useMemo(() => {

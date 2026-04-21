@@ -504,6 +504,10 @@ class PanelApp {
         for (const el of this.root.querySelectorAll('.panel-fader .fader-track-wrap')) {
             if (el._faderDragCleanup) el._faderDragCleanup();
         }
+        // Clean up orphaned matrix drag listeners
+        for (const el of this.root.querySelectorAll('.panel-matrix')) {
+            if (el._matrixDragCleanup) el._matrixDragCleanup();
+        }
         // Clean up global clock interval
         if (this._clockInterval) {
             clearInterval(this._clockInterval);
@@ -1781,6 +1785,12 @@ class PanelApp {
                         };
                         document.addEventListener('pointermove', onMove);
                         document.addEventListener('pointerup', onUp);
+                        el._matrixDragCleanup = () => {
+                            document.removeEventListener('pointermove', onMove);
+                            document.removeEventListener('pointerup', onUp);
+                            if (dragLine) { dragLine.remove(); dragLine = null; }
+                            dragStartInput = null;
+                        };
                     });
 
                     cell.appendChild(dot);
@@ -2340,7 +2350,6 @@ class PanelApp {
 
         // Keyboard arrow key support for fader
         handle.addEventListener('keydown', (e) => {
-            const step = (max - min) * 0.02; // 2% per keystroke
             let current = parseFloat(handle.getAttribute('aria-valuenow') || String(min));
             if (e.key === 'ArrowUp' || e.key === 'ArrowRight') {
                 e.preventDefault();
