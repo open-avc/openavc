@@ -529,9 +529,52 @@ class YAMLAutoSimulator(TCPSimulator):
                     set_state=handler_def.get("set_state", {}),
                 ))
 
+        # Parse notification templates — maps state changes to unsolicited messages
+        # Format: notifications: { "state_key": { "value": "message template", ... } }
+        # Template variables: {key} = state key name, {value} = new value, {channel} = extracted channel number
+        self._notification_map: dict[str, dict[str, str]] = {}
+        for key, value_map in sim.get("notifications", {}).items():
+            if isinstance(value_map, dict):
+                self._notification_map[key] = {
+                    str(k): str(v) for k, v in value_map.items()
+                }
+            elif isinstance(value_map, str):
+                # Simple template for any value: notifications: { key: "template with {value}" }
+                self._notification_map[key] = {"*": value_map}
+
     # Ensure handler lists exist even without simulator: section
     _explicit_handlers: list[ExplicitHandler] = []
     _script_handlers: list[ScriptHandler] = []
+    _notification_map: dict[str, dict[str, str]] = {}
+
+    # ── State change notifications ──
+
+    def set_state(self, key: str, value: Any) -> None:
+        """Override to broadcast notifications to connected TCP clients."""
+        old = self._state.get(key)
+        super().set_state(key, value)
+        if old == value:
+            return
+        if not self._notification_map or key not in self._notification_map:
+            return
+
+        value_map = self._notification_map[key]
+        # Normalize the value for lookup
+        if isinstance(value, bool):
+            lookup = str(value).lower()
+        else:
+            lookup = str(value)
+
+        template = value_map.get(lookup) or value_map.get("*")
+        if not template:
+            return
+
+        msg = template.replace("{value}", str(value)).replace("{key}", key)
+        delimiter = self._get_delimiter()
+        data = (msg + delimiter).encode()
+
+        if self._clients:
+            asyncio.ensure_future(self.push(data))
 
     # ── Helpers ──
 
