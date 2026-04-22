@@ -56,6 +56,7 @@ class UDPTransport:
         self._protocol: _UDPProtocol | None = None
         self._connected = False
         self._send_lock = asyncio.Lock()
+        self.last_data_received: float = 0.0
 
         # For send_and_wait: queue to capture the next response
         self._response_queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=100)
@@ -196,6 +197,8 @@ class UDPTransport:
 
     def _deliver_message(self, data: bytes, addr: tuple[str, int]) -> None:
         """Route an incoming datagram to the response queue and/or callback."""
+        import time
+        self.last_data_received = time.monotonic()
         log.info(f"[{self._name}] RX: {_format_data(data)} <- {addr[0]}:{addr[1]}")
 
         # If someone is waiting for a response, put it in the queue

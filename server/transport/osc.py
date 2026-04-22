@@ -65,9 +65,10 @@ class OSCTransport:
 
         if self._listen_port > 0:
             loop = asyncio.get_running_loop()
+            self._listen_last_data: float = 0.0
             self._listen_transport, self._listen_protocol = (
                 await loop.create_datagram_endpoint(
-                    lambda: _OSCListenProtocol(self._on_data, self._name),
+                    lambda: _OSCListenProtocol(self._on_data, self._name, parent=self),
                     local_addr=(bind_addr, self._listen_port),
                 )
             )
@@ -88,6 +89,38 @@ class OSCTransport:
         data = osc_encode_message(address, args)
         await self.send(data)
 
+    async def verify(self, timeout: float = 3.0) -> bool:
+        """Verify the remote OSC device is reachable.
+
+        Sends an OSC /info query (no args) and waits for any UDP response.
+        Most OSC devices respond to /info with console metadata. Returns
+        True if any datagram arrives back, False on timeout.
+        """
+        if self._udp is None or not self._udp.host or not self._udp.port:
+            return False
+
+        probe = osc_encode_message("/info")
+
+        self._udp._waiting_for_response = True
+        while not self._udp._response_queue.empty():
+            self._udp._response_queue.get_nowait()
+
+        try:
+            self._udp._transport.sendto(probe, (self._udp.host, self._udp.port))
+        except OSError:
+            self._udp._waiting_for_response = False
+            return False
+
+        try:
+            await asyncio.wait_for(
+                self._udp._response_queue.get(), timeout=timeout
+            )
+            return True
+        except asyncio.TimeoutError:
+            return False
+        finally:
+            self._udp._waiting_for_response = False
+
     async def close(self) -> None:
         """Close all sockets."""
         if self._listen_transport:
@@ -102,6 +135,13 @@ class OSCTransport:
         log.debug(f"[{self._name}] OSC transport closed")
 
     @property
+    def last_data_received(self) -> float:
+        """Monotonic timestamp of last incoming data (from either socket)."""
+        udp_ts = self._udp.last_data_received if self._udp else 0.0
+        listen_ts = self._listen_last_data if hasattr(self, "_listen_last_data") else 0.0
+        return max(udp_ts, listen_ts)
+
+    @property
     def connected(self) -> bool:
         """True if the send socket is open and ready."""
         return self._udp is not None and self._udp.connected
@@ -114,11 +154,16 @@ class _OSCListenProtocol(asyncio.DatagramProtocol):
         self,
         on_data: Callable[[bytes], None] | None,
         name: str,
+        parent: OSCTransport | None = None,
     ) -> None:
         self._on_data = on_data
         self._name = name
+        self._parent = parent
 
     def datagram_received(self, data: bytes, addr: tuple[str, int]) -> None:
+        import time
+        if self._parent is not None:
+            self._parent._listen_last_data = time.monotonic()
         log.info(f"[{self._name}] RX: ({len(data)} bytes) <- {addr[0]}:{addr[1]}")
         if self._on_data is not None:
             try:

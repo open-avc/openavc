@@ -212,6 +212,21 @@ class BaseDriver(ABC):
         else:
             raise ValueError(f"Unsupported transport type: {transport_type}")
 
+        # For connectionless transports (OSC, HTTP), verify the remote host
+        # is actually reachable before reporting connected. TCP and serial
+        # validate during open/create. UDP is genuinely connectionless (no
+        # universal probe). Set verify_timeout: 0 in config to skip.
+        verify_timeout = self.config.get("verify_timeout", 3.0)
+        if verify_timeout > 0 and hasattr(self.transport, "verify"):
+            if not await self.transport.verify(timeout=verify_timeout):
+                if self.transport:
+                    await self.transport.close()
+                    self.transport = None
+                raise ConnectionError(
+                    f"Device at {self.config.get('host', '?')}:"
+                    f"{self.config.get('port', '?')} is not responding"
+                )
+
         try:
             self._connected = True
             self.set_state("connected", True)
@@ -374,18 +389,49 @@ class BaseDriver(ABC):
             log.debug(f"[{self.device_id}] Polling stopped")
 
     async def _poll_loop(self, interval: float) -> None:
-        """Background loop that calls self.poll() periodically."""
+        """Background loop that calls self.poll() periodically.
+
+        For connectionless transports (UDP, OSC, HTTP), includes a watchdog
+        that triggers disconnect if no data is received for several poll
+        cycles. TCP and serial detect disconnect at the transport level.
+        """
+        has_watchdog = (
+            self.transport is not None
+            and hasattr(self.transport, "last_data_received")
+        )
+        max_dry_polls = self.config.get("max_missed_polls", 3)
+        dry_polls = 0
+
         try:
             while True:
+                last_rx = (
+                    self.transport.last_data_received
+                    if has_watchdog and self.transport
+                    else 0
+                )
+
                 try:
                     await self.poll()
                 except (ConnectionError, TimeoutError, OSError):
-                    # Expected during network issues — log briefly and retry next cycle
                     log.warning(f"[{self.device_id}] Poll failed (connection issue)")
                 except Exception:
-                    # Unexpected errors — log full traceback so driver bugs are visible
                     log.exception(f"[{self.device_id}] Unexpected error during poll")
+
                 await asyncio.sleep(interval)
+
+                if has_watchdog and self.transport:
+                    new_rx = self.transport.last_data_received
+                    if new_rx <= last_rx:
+                        dry_polls += 1
+                        if dry_polls >= max_dry_polls:
+                            log.warning(
+                                f"[{self.device_id}] No response for "
+                                f"{dry_polls} poll cycles — marking disconnected"
+                            )
+                            self._handle_transport_disconnect()
+                            return
+                    else:
+                        dry_polls = 0
         except asyncio.CancelledError:
             return
 

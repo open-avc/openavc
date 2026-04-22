@@ -811,6 +811,19 @@ polling:
     - "renew_subscription"
 ```
 
+#### Connection Verification
+
+When connecting, the platform sends an OSC `/info` query to verify the device is reachable. If your device doesn't respond to `/info`, add `verify_timeout: 0` to `default_config` to skip the check:
+
+```yaml
+default_config:
+  host: ""
+  port: 8000
+  verify_timeout: 0
+```
+
+The platform also monitors poll responses. If no data arrives from the device for several consecutive poll cycles, it marks the device as disconnected and starts auto-reconnect. This requires polling to be configured (which it should be for most OSC devices).
+
 #### Listen Port
 
 Most OSC devices reply to the sender's port (set `listen_port: 0`, the default). Some devices send feedback to a separate port. Set `listen_port` in the config if your device documentation specifies one.

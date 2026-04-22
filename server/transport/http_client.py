@@ -100,6 +100,7 @@ class HTTPClientTransport:
 
         self._client: httpx.AsyncClient | None = None
         self._last_response: HTTPResponse | None = None
+        self.last_data_received: float = 0.0
 
     async def open(self) -> None:
         """Create the httpx.AsyncClient session with configured auth and TLS."""
@@ -147,6 +148,16 @@ class HTTPClientTransport:
             await self._client.aclose()
             self._client = None
             log.info(f"HTTP client closed: {self.base_url}")
+
+    async def verify(self, timeout: float = 5.0) -> bool:
+        """Verify the remote HTTP device is reachable with a HEAD request."""
+        if self._client is None:
+            return False
+        try:
+            await self._client.head("/", timeout=timeout)
+            return True
+        except Exception:
+            return False
 
     @property
     def connected(self) -> bool:
@@ -253,6 +264,8 @@ class HTTPClientTransport:
                 ok=response.is_success,
             )
 
+            import time
+            self.last_data_received = time.monotonic()
             log.info(
                 f"[{self._name}] {method} {path} -> {result.status_code}"
             )
