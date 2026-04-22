@@ -16,6 +16,7 @@ AV_OUI_TABLE: dict[str, tuple[str, str]] = {
     "00:0a:2d": ("Kramer", "switcher"),
 
     # --- Audio DSPs / Mixers ---
+    "00:0a:45": ("Audio-Technica", "audio"),
     "00:90:5e": ("Biamp", "audio"),
     "00:0c:4d": ("QSC", "audio"),
     "7c:2e:0d": ("QSC", "audio"),
