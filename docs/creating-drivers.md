@@ -1292,6 +1292,13 @@ simulator:
         state["volume"] = level
         respond(f"Vol{level}\r\n")
 
+  notifications:
+    volume:
+      '*': 'Vol{value}'
+    mute:
+      'true': 'Amt1'
+      'false': 'Amt0'
+
   error_modes:
     communication_timeout:
       behavior: no_response
@@ -1305,10 +1312,13 @@ simulator:
 | `initial_state` | Default values when simulation starts |
 | `delays` | Response timing (makes simulation feel realistic) |
 | `controls` | UI controls in the Simulator dashboard (sliders, toggles, buttons) |
+| `notifications` | Unsolicited messages broadcast to connected clients on state changes |
 | `command_handlers` | How the simulator responds to commands |
 | `error_modes` | Failure scenarios for testing error handling |
 
 **Control types:** `power`, `slider`, `toggle`, `select`, `matrix`, `indicator`, `meters`, `presets`, `group`.
+
+**Notifications** make the simulator push unsolicited messages to connected clients when state changes, just like real hardware does. Many AV devices push state changes without being polled (Extron verbose mode, Shure REP messages, Audio-Technica MD notifications). Use `'*'` as the key to match any value with `{value}` as a placeholder, or use specific values like `'true'`/`'false'` for exact matches.
 
 For the complete simulator guide with all control types, state machines, and Python simulators, see the Writing Simulators documentation in the driver repository.
 
