@@ -328,6 +328,7 @@ Notice how much cleaner this is compared to JSON: comments explain the protocol,
 | `state_variables` | No | State properties this driver exposes. |
 | `commands` | No | Commands this driver can send. |
 | `responses` | No | Regex patterns for parsing device replies. |
+| `on_connect` | No | List of raw commands sent immediately after connecting. Use for enabling verbose/feedback mode or requesting initial state. |
 | `polling` | No | Periodic status query configuration. |
 | `frame_parser` | No | Advanced: custom framing (see below). |
 | `protocols` | No | Protocol names this driver speaks (e.g., `["pjlink"]`, `["extron_sis"]`). Helps discovery match devices to drivers. |
@@ -483,6 +484,22 @@ The shorthand `set` format is recommended (cleaner, matches community driver con
 Responses are checked in order. The first matching pattern wins.
 
 **Config values in patterns**: You can use config value placeholders like `{level_control}` in response patterns. They are resolved when the driver connects. This is useful for protocols like QSC Q-SYS where responses include user-configured control names.
+
+#### `on_connect` section
+
+Commands sent once immediately after the TCP/serial connection is established, before polling starts. Use this to enable feedback modes, request initial state, or set up the device for real-time notifications.
+
+```yaml
+on_connect:
+  - "\x1b3CV\r\n"    # Extron: enable verbose mode 3 (push all changes)
+```
+
+```yaml
+on_connect:
+  - "< GET ALL >"    # Shure: request all current state values
+```
+
+Many AV devices can push state changes in real-time (volume knob turned, input switched from front panel) but only after the controller enables feedback mode. Without `on_connect`, the driver relies entirely on polling and misses changes between poll cycles.
 
 #### `polling` section
 

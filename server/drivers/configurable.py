@@ -14,6 +14,7 @@ Usage:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from typing import Any
@@ -80,6 +81,24 @@ class ConfigurableDriver(BaseDriver):
                     f"[{self.device_id}] Invalid response pattern "
                     f"'{resp.get('pattern', resp.get('match', ''))}': {e}"
                 )
+
+    async def connect(self) -> None:
+        """Connect and send on_connect initialization commands."""
+        await super().connect()
+
+        on_connect = self._definition.get("on_connect", [])
+        if on_connect and self.transport and self.transport.connected:
+            transport_type = self._definition.get("transport")
+            delay = self.config.get("inter_command_delay", 0)
+            for raw in on_connect:
+                try:
+                    formatted = self._safe_substitute(raw, self.config) if "{" in raw else raw
+                    data = _safe_encode_escapes(formatted)
+                    await self.transport.send(data)
+                    if delay:
+                        await asyncio.sleep(delay)
+                except Exception as e:
+                    log.warning(f"[{self.device_id}] on_connect command failed: {e}")
 
     async def send_command(
         self, command: str, params: dict[str, Any] | None = None
