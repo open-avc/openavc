@@ -187,6 +187,10 @@ def generate_skeleton(info: dict, driver_stem: str) -> str:
         base_import = "from simulator.http_simulator import HTTPSimulator"
         base_class = "HTTPSimulator"
         handler_method = _http_handler_template(commands, state_vars, command_doc_block, state_comment_block)
+    elif transport == "osc":
+        base_import = "from simulator.osc_simulator import OSCSimulator"
+        base_class = "OSCSimulator"
+        handler_method = _osc_handler_template(commands, state_vars, command_doc_block, state_comment_block)
     else:
         base_import = "from simulator.tcp_simulator import TCPSimulator"
         base_class = "TCPSimulator"
@@ -297,6 +301,39 @@ def _http_handler_template(commands: dict, state_vars: dict, cmd_docs: str, stat
         #       return 200, self.state
 
         return 404, {{"error": "not found"}}'''
+
+
+def _osc_handler_template(commands: dict, state_vars: dict, cmd_docs: str, state_docs: str) -> str:
+    return f'''    def handle_message(
+        self,
+        address: str,
+        args: list[tuple[str, Any]],
+    ) -> list[tuple[str, list[tuple[str, Any]]]] | None:
+        """
+        Handle incoming OSC message from the driver.
+        Return list of (address, args) response tuples, or None.
+
+        Available helpers:
+            self.state              — dict of current state values
+            self.set_state(k, v)    — update state (triggers UI refresh)
+            self.active_errors      — set of currently active error mode names
+
+        Driver commands to handle:
+{cmd_docs}
+
+        State variables to maintain:
+{state_docs}
+        """
+        # Example OSC handler:
+        #   if address == "/ch/01/mix/fader" and args:
+        #       self.set_state("ch01_fader", args[0][1])
+        #       return [(address, args)]  # Echo back
+        #   if address == "/ch/01/mix/fader":
+        #       return [(address, [("f", self.state.get("ch01_fader", 0.0))])]
+        #   if address == "/xremote":
+        #       return None  # Subscription renewal, no response
+
+        return None'''
 
 
 def _default_for_type(var_type: str) -> str:

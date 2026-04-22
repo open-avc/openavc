@@ -1096,6 +1096,106 @@ class ${classNameFrom(info.id)}(BaseDriver):
     #     return buffer[:total], buffer[total:]
 `,
   },
+  {
+    id: "osc",
+    name: "OSC Device",
+    description: "Open Sound Control over UDP (mixing consoles, show control, lighting)",
+    transport: "osc",
+    generateCode: (info) => {
+      const cls = classNameFrom(info.id);
+      return `"""${info.name} driver for OpenAVC — OSC over UDP."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from server.drivers.base import BaseDriver
+from server.transport.osc_codec import osc_decode_message, osc_encode_message
+from server.utils.logger import get_logger
+
+log = get_logger(__name__)
+
+
+class ${cls}Driver(BaseDriver):
+    """${info.name} driver using Open Sound Control."""
+
+    DRIVER_INFO = {
+        "id": "${info.id}",
+        "name": "${info.name}",
+        "manufacturer": "${info.manufacturer}",
+        "category": "${info.category}",
+        "version": "1.0.0",
+        "author": "OpenAVC",
+        "description": "Controls ${info.name} via OSC over UDP.",
+        "transport": "osc",
+        "default_config": {
+            "host": "",
+            "port": 8000,
+            "listen_port": 0,
+            "poll_interval": 10,
+        },
+        "config_schema": {
+            "host": {"type": "string", "required": True, "label": "IP Address"},
+            "port": {"type": "integer", "default": 8000, "label": "Send Port"},
+            "listen_port": {
+                "type": "integer",
+                "default": 0,
+                "label": "Listen Port",
+                "description": "Set to 0 to receive on the same socket",
+            },
+        },
+        "state_variables": {
+            # Define your state variables here:
+            # "fader": {"type": "number", "label": "Fader Level"},
+            # "mute": {"type": "boolean", "label": "Mute"},
+        },
+        "commands": {
+            # Define your commands here:
+            # "set_fader": {
+            #     "label": "Set Fader",
+            #     "params": {"level": {"type": "number"}},
+            # },
+        },
+    }
+
+    async def send_command(
+        self, command: str, params: dict[str, Any] | None = None
+    ) -> Any:
+        params = params or {}
+
+        if not self.transport or not self.transport.connected:
+            raise ConnectionError(f"[{self.device_id}] Not connected")
+
+        # Route commands to OSC messages:
+        # if command == "set_fader":
+        #     level = float(params.get("level", 0))
+        #     msg = osc_encode_message("/ch/01/mix/fader", [("f", level)])
+        #     await self.transport.send(msg)
+
+        log.warning(f"[{self.device_id}] Unknown command: {command}")
+
+    async def on_data_received(self, data: bytes) -> None:
+        try:
+            address, args = osc_decode_message(data)
+        except (ValueError, Exception) as e:
+            log.warning(f"[{self.device_id}] OSC decode error: {e}")
+            return
+
+        log.debug(f"[{self.device_id}] OSC: {address} {args}")
+
+        # Match incoming OSC messages to state updates:
+        # if address == "/ch/01/mix/fader" and args:
+        #     self.set_state("fader", args[0][1])
+
+    async def poll(self) -> None:
+        if not self.transport or not self.transport.connected:
+            return
+        # Send periodic queries:
+        # msg = osc_encode_message("/xremote")
+        # await self.transport.send(msg)
+`;
+    },
+  },
 ];
 
 function classNameFrom(id: string): string {

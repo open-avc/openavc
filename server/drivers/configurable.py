@@ -47,10 +47,20 @@ class ConfigurableDriver(BaseDriver):
         self._definition: dict[str, Any] = getattr(self.__class__, "_definition", {})
         super().__init__(*args, **kwargs)
 
-        # Pre-compile response patterns (substitute config values first so
-        # patterns like 'cv "{level_control}" ...' resolve to actual names)
+        # Pre-compile response patterns — two separate lists:
+        # 1. Regex patterns for TCP/serial/UDP/HTTP responses
+        # 2. OSC address patterns for OSC responses
         self._compiled_responses: list[tuple[re.Pattern[str], list[dict[str, Any]]]] = []
+        self._osc_responses: list[tuple[str, list[dict[str, Any]]]] = []
+
         for resp in self._definition.get("responses", []):
+            # OSC responses use "address" key instead of "pattern"/"match"
+            if "address" in resp:
+                addr = self._safe_substitute(resp["address"], self.config)
+                mappings = resp.get("mappings", [])
+                self._osc_responses.append((addr, mappings))
+                continue
+
             try:
                 # Accept both "pattern" and "match" keys
                 raw_pattern = resp.get("pattern", "") or resp.get("match", "")
@@ -90,15 +100,37 @@ class ConfigurableDriver(BaseDriver):
         if on_connect and self.transport and self.transport.connected:
             transport_type = self._definition.get("transport")
             delay = self.config.get("inter_command_delay", 0)
-            for raw in on_connect:
-                try:
-                    formatted = self._safe_substitute(raw, self.config) if "{" in raw else raw
-                    data = _safe_encode_escapes(formatted)
-                    await self.transport.send(data)
-                    if delay:
-                        await asyncio.sleep(delay)
-                except Exception as e:
-                    log.warning(f"[{self.device_id}] on_connect command failed: {e}")
+
+            if transport_type == "osc":
+                from server.transport.osc_codec import osc_encode_message
+                for item in on_connect:
+                    try:
+                        if isinstance(item, str):
+                            address = self._safe_substitute(item, self.config) if "{" in item else item
+                            data = osc_encode_message(address)
+                        elif isinstance(item, dict):
+                            address = item.get("address", "")
+                            if "{" in address:
+                                address = self._safe_substitute(address, self.config)
+                            args = self._build_osc_args(item.get("args", []), self.config)
+                            data = osc_encode_message(address, args)
+                        else:
+                            continue
+                        await self.transport.send(data)
+                        if delay:
+                            await asyncio.sleep(delay)
+                    except Exception as e:
+                        log.warning(f"[{self.device_id}] on_connect OSC command failed: {e}")
+            else:
+                for raw in on_connect:
+                    try:
+                        formatted = self._safe_substitute(raw, self.config) if "{" in raw else raw
+                        data = _safe_encode_escapes(formatted)
+                        await self.transport.send(data)
+                        if delay:
+                            await asyncio.sleep(delay)
+                    except Exception as e:
+                        log.warning(f"[{self.device_id}] on_connect command failed: {e}")
 
     async def send_command(
         self, command: str, params: dict[str, Any] | None = None
@@ -114,6 +146,10 @@ class ConfigurableDriver(BaseDriver):
         if cmd_def is None:
             log.warning(f"[{self.device_id}] Unknown command: {command}")
             return None
+
+        # Check if this is an OSC command (has 'address' key)
+        if self._is_osc_command(cmd_def):
+            return await self._send_osc_command(command, cmd_def, params)
 
         # Check if this is an HTTP transport command (has 'path' or 'method' keys)
         if self._is_http_command(cmd_def):
@@ -138,6 +174,61 @@ class ConfigurableDriver(BaseDriver):
         await self.transport.send(data)
         log.debug(f"[{self.device_id}] Sent command '{command}': {data!r}")
         return True
+
+    def _is_osc_command(self, cmd_def: dict[str, Any]) -> bool:
+        """Check if a command definition uses OSC-style fields."""
+        return "address" in cmd_def
+
+    async def _send_osc_command(
+        self, command: str, cmd_def: dict[str, Any], params: dict[str, Any]
+    ) -> Any:
+        """Send an OSC command: encode address + typed args and send."""
+        from server.transport.osc_codec import osc_encode_message
+
+        all_params = {**self.config, **params}
+
+        raw_address = cmd_def.get("address", "")
+        address = self._safe_substitute(raw_address, all_params)
+
+        args = self._build_osc_args(cmd_def.get("args", []), all_params)
+        data = osc_encode_message(address, args)
+        await self.transport.send(data)
+        log.debug(f"[{self.device_id}] Sent OSC command '{command}': {address}")
+        return True
+
+    @staticmethod
+    def _build_osc_args(
+        arg_defs: list[dict[str, Any]], params: dict[str, Any]
+    ) -> list[tuple[str, Any]]:
+        """Build a list of typed OSC args from definition, substituting params."""
+        args: list[tuple[str, Any]] = []
+        for arg_def in arg_defs:
+            tag = arg_def.get("type", "f")
+            raw_value = str(arg_def.get("value", ""))
+
+            # Substitute {param} placeholders
+            if "{" in raw_value:
+                resolved = ConfigurableDriver._safe_substitute(raw_value, params)
+            else:
+                resolved = raw_value
+
+            if tag == "f":
+                args.append(("f", float(resolved)))
+            elif tag == "i":
+                args.append(("i", int(float(resolved))))
+            elif tag == "s":
+                args.append(("s", resolved))
+            elif tag == "h":
+                args.append(("h", int(resolved)))
+            elif tag == "d":
+                args.append(("d", float(resolved)))
+            elif tag == "T":
+                args.append(("T", True))
+            elif tag == "F":
+                args.append(("F", False))
+            elif tag == "N":
+                args.append(("N", None))
+        return args
 
     def _is_http_command(self, cmd_def: dict[str, Any]) -> bool:
         """Check if a command definition uses HTTP-style fields."""
@@ -249,7 +340,11 @@ class ConfigurableDriver(BaseDriver):
         return response
 
     async def on_data_received(self, data: bytes) -> None:
-        """Match response against pre-compiled regex patterns, update state."""
+        """Match response against pre-compiled patterns, update state."""
+        if self._definition.get("transport") == "osc":
+            await self._handle_osc_response(data)
+            return
+
         text = data.decode("utf-8", errors="replace").strip()
         if not text:
             return
@@ -297,6 +392,78 @@ class ConfigurableDriver(BaseDriver):
 
         log.debug(f"[{self.device_id}] Unmatched response: {text!r}")
 
+    async def _handle_osc_response(self, data: bytes) -> None:
+        """Decode incoming OSC data and match against address-based responses."""
+        import fnmatch
+        import struct
+        from server.transport.osc_codec import osc_decode_bundle
+
+        try:
+            messages = osc_decode_bundle(data)
+        except (ValueError, struct.error) as e:
+            log.warning(f"[{self.device_id}] Failed to decode OSC message: {e}")
+            return
+
+        for address, args in messages:
+            matched = False
+            for addr_pattern, mappings in self._osc_responses:
+                if not fnmatch.fnmatch(address, addr_pattern):
+                    continue
+                matched = True
+                for mapping in mappings:
+                    state_key = mapping.get("state")
+                    if not state_key:
+                        continue
+
+                    arg_index = mapping.get("arg", 0)
+                    value_type = mapping.get("type", "string")
+                    value_map = mapping.get("map")
+
+                    if arg_index >= len(args):
+                        continue
+
+                    _, raw_value = args[arg_index]
+
+                    if value_map:
+                        str_val = str(raw_value)
+                        if str_val in value_map:
+                            coerced = self._coerce_value(
+                                str(value_map[str_val]), value_type
+                            )
+                        else:
+                            coerced = self._coerce_osc_value(raw_value, value_type)
+                    else:
+                        coerced = self._coerce_osc_value(raw_value, value_type)
+
+                    self.set_state(state_key, coerced)
+
+                log.debug(f"[{self.device_id}] OSC matched: {addr_pattern}")
+                break
+
+            if not matched:
+                log.debug(f"[{self.device_id}] Unmatched OSC: {address}")
+
+    @staticmethod
+    def _coerce_osc_value(value: Any, value_type: str) -> Any:
+        """Convert an already-typed OSC value to the declared state type."""
+        if value_type in ("float", "number"):
+            try:
+                return float(value)
+            except (ValueError, TypeError):
+                return value
+        elif value_type == "integer":
+            try:
+                return int(value)
+            except (ValueError, TypeError):
+                return value
+        elif value_type == "boolean":
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, (int, float)):
+                return bool(value)
+            return str(value).lower() in ("1", "true", "yes", "on")
+        return str(value) if value is not None else None
+
     async def set_device_setting(self, key: str, value: Any) -> Any:
         """
         Write a device setting using the write definition from the driver YAML.
@@ -315,6 +482,23 @@ class ConfigurableDriver(BaseDriver):
             )
 
         all_params = {**self.config, "value": value}
+
+        # OSC write
+        if "address" in write_def:
+            from server.transport.osc_codec import osc_encode_message
+
+            if not self.transport or not self.transport.connected:
+                raise ConnectionError(f"[{self.device_id}] Not connected")
+
+            raw_address = write_def.get("address", "")
+            address = self._safe_substitute(raw_address, all_params)
+            args = self._build_osc_args(write_def.get("args", []), all_params)
+            data = osc_encode_message(address, args)
+            await self.transport.send(data)
+            log.debug(
+                f"[{self.device_id}] Set device setting '{key}' = {value!r}"
+            )
+            return True
 
         # HTTP write
         if "path" in write_def or "method" in write_def:
@@ -393,10 +577,20 @@ class ConfigurableDriver(BaseDriver):
         transport_type = self._definition.get("transport")
         is_http = transport_type == "http"
         is_udp = transport_type == "udp"
+        is_osc = transport_type == "osc"
 
         for query in queries:
             try:
-                if is_http:
+                if is_osc:
+                    commands = self._definition.get("commands", {})
+                    if query in commands:
+                        await self.send_command(query)
+                    else:
+                        from server.transport.osc_codec import osc_encode_message
+                        address = self._safe_substitute(query, self.config) if "{" in query else query
+                        msg = osc_encode_message(address)
+                        await self.transport.send(msg)
+                elif is_http:
                     # For HTTP: query can be a command name or a raw path
                     commands = self._definition.get("commands", {})
                     if query in commands:
@@ -533,6 +727,11 @@ def create_configurable_driver_class(
             cmd_meta["path"] = cmd_def["path"]
         if "body" in cmd_def:
             cmd_meta["body"] = cmd_def["body"]
+        # Include OSC-specific fields
+        if "address" in cmd_def:
+            cmd_meta["address"] = cmd_def["address"]
+        if "args" in cmd_def:
+            cmd_meta["args"] = cmd_def["args"]
         # Copy help from command definition
         if "help" in cmd_def:
             cmd_meta["help"] = cmd_def["help"]

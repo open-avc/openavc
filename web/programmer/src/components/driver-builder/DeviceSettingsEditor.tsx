@@ -64,6 +64,7 @@ export function DeviceSettingsEditor({ draft, onUpdate }: DeviceSettingsEditorPr
   };
 
   const isHttp = draft.transport === "http";
+  const isOsc = draft.transport === "osc";
 
   return (
     <div>
@@ -242,9 +243,30 @@ export function DeviceSettingsEditor({ draft, onUpdate }: DeviceSettingsEditorPr
 
                 <div style={{ marginBottom: "var(--space-md)" }}>
                   <label style={labelStyle}>
-                    Write Command {isHttp ? "(HTTP)" : "(Protocol String)"}
+                    Write Command {isOsc ? "(OSC)" : isHttp ? "(HTTP)" : "(Protocol String)"}
                   </label>
-                  {isHttp ? (
+                  {isOsc ? (
+                    <div>
+                      <input
+                        value={setting.write?.address ?? ""}
+                        onChange={(e) =>
+                          updateSetting(key, {
+                            write: { ...(setting.write ?? {}), address: e.target.value },
+                          })
+                        }
+                        placeholder="/device/setting/name"
+                        style={{
+                          width: "100%",
+                          fontFamily: "var(--font-mono)",
+                          fontSize: "var(--font-size-sm)",
+                        }}
+                      />
+                      <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: 2 }}>
+                        OSC address to write the setting. The value is sent as a float argument.
+                        Use {"{value}"} in custom args if needed.
+                      </div>
+                    </div>
+                  ) : isHttp ? (
                     <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "var(--space-sm)" }}>
                       <select
                         value={setting.write?.method ?? "POST"}

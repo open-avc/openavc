@@ -154,6 +154,26 @@ class BaseDriver(ABC):
             await self.transport.open(
                 local_addr=control_ip or None,
             )
+        elif transport_type == "osc":
+            from server.transport.osc import OSCTransport
+
+            host = self.config.get("host", "")
+            port = self.config.get("port", 8000)
+            listen_port = self.config.get("listen_port", 0)
+            delay = self.config.get("inter_command_delay", 0.0)
+
+            self.transport = OSCTransport(
+                host=host,
+                port=port,
+                listen_port=listen_port,
+                on_data=self.on_data_received,
+                on_disconnect=self._handle_transport_disconnect,
+                inter_command_delay=delay,
+                name=self.device_id,
+            )
+            await self.transport.open(
+                local_addr=control_ip or None,
+            )
         elif transport_type == "http":
             from server.transport.http_client import HTTPClientTransport
 

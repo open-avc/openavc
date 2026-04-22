@@ -80,10 +80,15 @@ export function PollingConfig({ draft, onUpdate }: PollingConfigProps) {
             marginBottom: "var(--space-sm)",
           }}
         >
-          Command strings sent each poll cycle. Include the delimiter at the
-          end (e.g., <code>\r</code> or <code>\r\n</code>). You can use
-          config field placeholders like{" "}
-          <code>{"{set_id}"}</code>.
+          {draft.transport === "osc"
+            ? <>OSC addresses or command names sent each poll cycle. Bare addresses
+              are sent with no arguments (as queries). Command names execute the
+              full command definition.</>
+            : <>Command strings sent each poll cycle. Include the delimiter at the
+              end (e.g., <code>\r</code> or <code>\r\n</code>). You can use
+              config field placeholders like{" "}
+              <code>{"{set_id}"}</code>.</>
+          }
         </div>
 
         {queries.map((query: string, i: number) => (
@@ -99,7 +104,7 @@ export function PollingConfig({ draft, onUpdate }: PollingConfigProps) {
             <input
               value={query}
               onChange={(e) => updateQuery(i, e.target.value)}
-              placeholder="e.g., %1POWR ?\r"
+              placeholder={draft.transport === "osc" ? "e.g., /xremote or get_status" : "e.g., %1POWR ?\\r"}
               style={{
                 flex: 1,
                 fontFamily: "var(--font-mono)",

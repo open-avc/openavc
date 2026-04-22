@@ -92,12 +92,14 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
       </div>
 
       <div style={{ marginBottom: "var(--space-md)" }}>
-        <label style={labelStyle}>Command String</label>
+        <label style={labelStyle}>
+          {draft.transport === "osc" ? "OSC Address" : "Command String"}
+        </label>
         <div style={{ display: "flex", gap: "var(--space-sm)" }}>
           <input
             value={command}
             onChange={(e) => setCommand(e.target.value)}
-            placeholder="e.g., %1POWR ?\r"
+            placeholder={draft.transport === "osc" ? "e.g., /info" : "e.g., %1POWR ?\\r"}
             onKeyDown={(e) => e.key === "Enter" && handleSend()}
             style={{
               flex: 1,

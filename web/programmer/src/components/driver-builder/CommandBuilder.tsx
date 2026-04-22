@@ -190,27 +190,54 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
                   </div>
                 </div>
 
-                <div style={{ marginBottom: "var(--space-md)" }}>
-                  <label style={labelStyle}>Command String</label>
-                  <input
-                    value={cmd.string}
-                    onChange={(e) =>
-                      updateCommand(name, { string: e.target.value })
-                    }
-                    placeholder="e.g., %1POWR {value}\r"
-                    style={{ width: "100%", fontFamily: "var(--font-mono)" }}
-                  />
-                  <div
-                    style={{
-                      fontSize: "11px",
-                      color: "var(--text-muted)",
-                      marginTop: "var(--space-xs)",
-                    }}
-                  >
-                    Use {"{param_name}"} for parameter placeholders. Use \r, \n
-                    for control characters.
+                {draft.transport === "osc" ? (
+                  <div style={{ marginBottom: "var(--space-md)" }}>
+                    <label style={labelStyle}>OSC Address</label>
+                    <input
+                      value={(cmd as any).address ?? ""}
+                      onChange={(e) =>
+                        updateCommand(name, { address: e.target.value } as any)
+                      }
+                      placeholder='e.g., /ch/01/mix/fader'
+                      style={{ width: "100%", fontFamily: "var(--font-mono)" }}
+                    />
+                    <div
+                      style={{
+                        fontSize: "11px",
+                        color: "var(--text-muted)",
+                        marginTop: "var(--space-xs)",
+                      }}
+                    >
+                      OSC address path. Use {"{param_name}"} for parameter substitution.
+                    </div>
+                    <OscArgsEditor
+                      args={(cmd as any).args ?? []}
+                      onChange={(args) => updateCommand(name, { args } as any)}
+                    />
                   </div>
-                </div>
+                ) : (
+                  <div style={{ marginBottom: "var(--space-md)" }}>
+                    <label style={labelStyle}>Command String</label>
+                    <input
+                      value={cmd.string}
+                      onChange={(e) =>
+                        updateCommand(name, { string: e.target.value })
+                      }
+                      placeholder="e.g., %1POWR {value}\r"
+                      style={{ width: "100%", fontFamily: "var(--font-mono)" }}
+                    />
+                    <div
+                      style={{
+                        fontSize: "11px",
+                        color: "var(--text-muted)",
+                        marginTop: "var(--space-xs)",
+                      }}
+                    >
+                      Use {"{param_name}"} for parameter placeholders. Use \r, \n
+                      for control characters.
+                    </div>
+                  </div>
+                )}
 
                 <ParamEditor
                   params={cmd.params}
@@ -345,6 +372,106 @@ function ParamEditor({
         }}
       >
         + Add Parameter
+      </button>
+    </div>
+  );
+}
+
+function OscArgsEditor({
+  args,
+  onChange,
+}: {
+  args: { type: string; value: string }[];
+  onChange: (args: { type: string; value: string }[]) => void;
+}) {
+  const addArg = () => {
+    onChange([...args, { type: "f", value: "" }]);
+  };
+
+  const removeArg = (index: number) => {
+    onChange(args.filter((_, i) => i !== index));
+  };
+
+  const updateArg = (index: number, partial: Partial<{ type: string; value: string }>) => {
+    const next = [...args];
+    next[index] = { ...next[index], ...partial };
+    onChange(next);
+  };
+
+  return (
+    <div style={{ marginTop: "var(--space-sm)" }}>
+      <div
+        style={{
+          fontSize: "var(--font-size-sm)",
+          color: "var(--text-secondary)",
+          marginBottom: "var(--space-xs)",
+        }}
+      >
+        Arguments
+      </div>
+      {args.length === 0 && (
+        <div
+          style={{
+            fontSize: "11px",
+            color: "var(--text-muted)",
+            marginBottom: "var(--space-xs)",
+          }}
+        >
+          No arguments — message will be sent as a query (address only).
+        </div>
+      )}
+      {args.map((arg, i) => (
+        <div
+          key={i}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--space-sm)",
+            marginBottom: "var(--space-xs)",
+          }}
+        >
+          <select
+            value={arg.type}
+            onChange={(e) => updateArg(i, { type: e.target.value })}
+            style={{ width: 100, fontSize: "var(--font-size-sm)" }}
+          >
+            <option value="f">Float</option>
+            <option value="i">Integer</option>
+            <option value="s">String</option>
+            <option value="T">True</option>
+            <option value="F">False</option>
+          </select>
+          {!["T", "F", "N"].includes(arg.type) && (
+            <input
+              value={arg.value}
+              onChange={(e) => updateArg(i, { value: e.target.value })}
+              placeholder={
+                arg.type === "f" ? "0.0" : arg.type === "i" ? "0" : "text"
+              }
+              style={{
+                flex: 1,
+                fontFamily: "var(--font-mono)",
+                fontSize: "var(--font-size-sm)",
+              }}
+            />
+          )}
+          <button
+            onClick={() => removeArg(i)}
+            style={{ padding: "2px", color: "var(--text-muted)" }}
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
+      ))}
+      <button
+        onClick={addArg}
+        style={{
+          fontSize: "var(--font-size-sm)",
+          color: "var(--accent)",
+          padding: "var(--space-xs) 0",
+        }}
+      >
+        + Add Argument
       </button>
     </div>
   );

@@ -11,7 +11,7 @@ function _ordinal(n: number): string {
 
 /** Read the pattern from whichever key is present. */
 function getPattern(resp: DriverResponseDef): string {
-  return resp.pattern ?? resp.match ?? "";
+  return resp.address ?? resp.pattern ?? resp.match ?? "";
 }
 
 /** Read mappings, converting set shorthand if needed. */
@@ -45,12 +45,21 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
   const responses = draft.responses ?? [];
 
   const addResponse = () => {
-    onUpdate({
-      responses: [
-        ...responses,
-        buildResponse("", [{ group: 1, state: "", type: "string" }]),
-      ],
-    });
+    if (draft.transport === "osc") {
+      onUpdate({
+        responses: [
+          ...responses,
+          { address: "", mappings: [{ group: 0, arg: 0, state: "", type: "float" }] },
+        ],
+      });
+    } else {
+      onUpdate({
+        responses: [
+          ...responses,
+          buildResponse("", [{ group: 1, state: "", type: "string" }]),
+        ],
+      });
+    }
   };
 
   const removeResponse = (index: number) => {
@@ -144,28 +153,55 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
             </button>
           </div>
 
-          <div style={{ marginBottom: "var(--space-md)" }}>
-            <label style={labelStyle}>Regex Pattern</label>
-            <input
-              value={pattern}
-              onChange={(e) =>
-                updateResponse(i, buildResponse(e.target.value, mappings))
-              }
-              placeholder="e.g., In(\d+) All"
-              style={{
-                width: "100%",
-                fontFamily: "var(--font-mono)",
-                fontSize: "var(--font-size-sm)",
-                borderColor: pattern && (() => { try { new RegExp(pattern); return false; } catch { return true; } })()
-                  ? "var(--color-error, #f44336)" : undefined,
-              }}
-            />
-            {pattern && (() => { try { new RegExp(pattern); return null; } catch (e) { return (
-              <div style={{ fontSize: 11, color: "var(--color-error, #f44336)", marginTop: 2 }}>
-                Invalid regex: {String(e).replace("SyntaxError: ", "")}
+          {draft.transport === "osc" ? (
+            <div style={{ marginBottom: "var(--space-md)" }}>
+              <label style={labelStyle}>OSC Address Pattern</label>
+              <input
+                value={resp.address ?? pattern}
+                onChange={(e) =>
+                  updateResponse(i, { address: e.target.value, mappings })
+                }
+                placeholder='e.g., /ch/01/mix/fader'
+                style={{
+                  width: "100%",
+                  fontFamily: "var(--font-mono)",
+                  fontSize: "var(--font-size-sm)",
+                }}
+              />
+              <div
+                style={{
+                  fontSize: "11px",
+                  color: "var(--text-muted)",
+                  marginTop: "var(--space-xs)",
+                }}
+              >
+                OSC address to match. Use * for wildcards (e.g., /ch/*/mix/fader).
               </div>
-            ); } })()}
-          </div>
+            </div>
+          ) : (
+            <div style={{ marginBottom: "var(--space-md)" }}>
+              <label style={labelStyle}>Regex Pattern</label>
+              <input
+                value={pattern}
+                onChange={(e) =>
+                  updateResponse(i, buildResponse(e.target.value, mappings))
+                }
+                placeholder="e.g., In(\d+) All"
+                style={{
+                  width: "100%",
+                  fontFamily: "var(--font-mono)",
+                  fontSize: "var(--font-size-sm)",
+                  borderColor: pattern && (() => { try { new RegExp(pattern); return false; } catch { return true; } })()
+                    ? "var(--color-error, #f44336)" : undefined,
+                }}
+              />
+              {pattern && (() => { try { new RegExp(pattern); return null; } catch (e) { return (
+                <div style={{ fontSize: 11, color: "var(--color-error, #f44336)", marginTop: 2 }}>
+                  Invalid regex: {String(e).replace("SyntaxError: ", "")}
+                </div>
+              ); } })()}
+            </div>
+          )}
 
           <div
             style={{
@@ -193,9 +229,11 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
                   width: 80,
                   whiteSpace: "nowrap",
                 }}
-                title={`Capture group ${mapping.group} from the regex pattern (the ${_ordinal(mapping.group)} set of parentheses)`}
+                title={draft.transport === "osc"
+                  ? `Argument index ${mapping.arg ?? mapping.group} from the OSC message`
+                  : `Capture group ${mapping.group} from the regex pattern (the ${_ordinal(mapping.group)} set of parentheses)`}
               >
-                Capture {mapping.group} →
+                {draft.transport === "osc" ? `Arg ${mapping.arg ?? mapping.group}` : `Capture ${mapping.group}`} →
               </label>
               <select
                 value={mapping.state}
@@ -248,14 +286,24 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
           ))}
           <button
             onClick={() => {
-              const nextGroup =
-                mappings.length > 0
-                  ? Math.max(...mappings.map((m) => m.group)) + 1
-                  : 1;
-              updateResponse(i, buildResponse(pattern, [
-                ...mappings,
-                { group: nextGroup, state: "", type: "string" },
-              ]));
+              if (draft.transport === "osc") {
+                const nextArg = mappings.length > 0
+                  ? Math.max(...mappings.map((m) => m.arg ?? m.group ?? 0)) + 1
+                  : 0;
+                updateResponse(i, { address: resp.address ?? pattern, mappings: [
+                  ...mappings,
+                  { group: 0, arg: nextArg, state: "", type: "float" },
+                ] });
+              } else {
+                const nextGroup =
+                  mappings.length > 0
+                    ? Math.max(...mappings.map((m) => m.group)) + 1
+                    : 1;
+                updateResponse(i, buildResponse(pattern, [
+                  ...mappings,
+                  { group: nextGroup, state: "", type: "string" },
+                ]));
+              }
             }}
             style={{
               fontSize: "var(--font-size-sm)",

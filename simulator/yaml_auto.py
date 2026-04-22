@@ -56,8 +56,10 @@ class YAMLAutoSimulator(TCPSimulator):
 
         self._driver_def = driver_def
 
-        # UDP transport support — overrides TCP server with UDP datagram server
-        self._is_udp = driver_def.get("transport") == "udp"
+        # UDP/OSC transport support — overrides TCP server with UDP datagram server
+        transport = driver_def.get("transport", "tcp")
+        self._is_udp = transport == "udp"
+        self._is_osc = transport == "osc"
         self._udp_transport: asyncio.DatagramTransport | None = None
 
         # Build handlers from driver definition
@@ -68,6 +70,12 @@ class YAMLAutoSimulator(TCPSimulator):
         self._build_state_responses()
         self._build_command_handlers()
         self._build_query_handlers()
+
+        # OSC-specific: build address-based handlers from responses
+        self._osc_address_handlers: list[tuple[str, list[dict]]] = []
+        self._osc_script_handlers: list[OSCScriptHandler] = []
+        if self._is_osc:
+            self._build_osc_address_handlers()
 
         # Merge explicit simulator: section if present
         sim_section = driver_def.get("simulator", {})
@@ -97,12 +105,12 @@ class YAMLAutoSimulator(TCPSimulator):
     # ── UDP transport overrides ──
 
     async def start(self, port: int) -> None:
-        """Start the simulator server (TCP or UDP based on driver transport)."""
-        if not self._is_udp:
+        """Start the simulator server (TCP, UDP, or OSC based on driver transport)."""
+        if not self._is_udp and not self._is_osc:
             await super().start(port)
             return
 
-        # UDP mode — start a datagram server instead of TCP
+        # UDP/OSC mode — start a datagram server instead of TCP
         self._port = port
         loop = asyncio.get_running_loop()
         self._udp_transport, _ = await loop.create_datagram_endpoint(
@@ -110,14 +118,15 @@ class YAMLAutoSimulator(TCPSimulator):
             local_addr=("127.0.0.1", port),
         )
         self._running = True
+        proto = "OSC" if self._is_osc else "UDP"
         logger.info(
-            "%s started on UDP port %d (driver: %s)",
-            self.name, port, self.driver_id,
+            "%s started on %s port %d (driver: %s)",
+            self.name, proto, port, self.driver_id,
         )
 
     async def stop(self) -> None:
         """Stop the simulator server."""
-        if not self._is_udp:
+        if not self._is_udp and not self._is_osc:
             await super().stop()
             return
 
@@ -136,7 +145,10 @@ class YAMLAutoSimulator(TCPSimulator):
         if self.has_error_behavior("no_response"):
             return
 
-        asyncio.ensure_future(self._handle_udp_datagram_async(data, addr))
+        if self._is_osc:
+            asyncio.ensure_future(self._handle_osc_datagram_async(data, addr))
+        else:
+            asyncio.ensure_future(self._handle_udp_datagram_async(data, addr))
 
     async def _handle_udp_datagram_async(
         self, data: bytes, addr: tuple[str, int]
@@ -156,12 +168,150 @@ class YAMLAutoSimulator(TCPSimulator):
             response = None
 
         if response and self.has_error_behavior("corrupt_response"):
-            from simulator.udp_simulator import _corrupt_bytes
+            from simulator.tcp_simulator import _corrupt_bytes
             response = _corrupt_bytes(response)
 
         if response and self._udp_transport:
             self._udp_transport.sendto(response, addr)
             self.log_protocol("out", response)
+
+    async def _handle_osc_datagram_async(
+        self, data: bytes, addr: tuple[str, int]
+    ) -> None:
+        """Handle an incoming OSC datagram: decode, match, respond."""
+        from server.transport.osc_codec import osc_decode_bundle, osc_encode_message
+
+        if self._network_layer:
+            await self._network_layer.apply_latency(self.device_id)
+
+        delay = self._delays.get("command_response", 0)
+        if delay > 0:
+            await asyncio.sleep(delay)
+
+        try:
+            messages = osc_decode_bundle(data)
+        except (ValueError, Exception) as e:
+            logger.warning("%s: OSC decode error: %s", self.device_id, e)
+            return
+
+        for osc_address, osc_args in messages:
+            responses = self._handle_osc_message(osc_address, osc_args)
+            if responses and self._udp_transport:
+                for resp_addr, resp_args in responses:
+                    resp_data = osc_encode_message(resp_addr, resp_args)
+                    if self.has_error_behavior("corrupt_response"):
+                        from simulator.osc_simulator import _corrupt_bytes
+                        resp_data = _corrupt_bytes(resp_data)
+                    self._udp_transport.sendto(resp_data, addr)
+                    self.log_protocol("out", resp_data)
+
+    def _handle_osc_message(
+        self, address: str, args: list[tuple[str, Any]]
+    ) -> list[tuple[str, list[tuple[str, Any]]]] | None:
+        """Handle a decoded OSC message using the response address mappings.
+
+        Two behaviors:
+        - Message WITH args: update state from arg values, echo back
+        - Message WITHOUT args: respond with current state values (query)
+
+        Also checks script handlers from the simulator: section.
+        """
+        import fnmatch
+
+        # Try script handlers first (from simulator: command_handlers with address:)
+        for handler in self._osc_script_handlers:
+            if fnmatch.fnmatch(address, handler.address_pattern):
+                return self._execute_osc_script_handler(handler, address, args)
+
+        # Match against response address patterns
+        for addr_pattern, mappings in self._osc_address_handlers:
+            if not fnmatch.fnmatch(address, addr_pattern):
+                continue
+
+            if args:
+                # SET: update state from incoming args
+                for mapping in mappings:
+                    arg_idx = mapping.get("arg", 0)
+                    state_key = mapping.get("state")
+                    if state_key and arg_idx < len(args):
+                        _, value = args[arg_idx]
+                        self.set_state(state_key, self._coerce_value(state_key, value))
+                # Echo the message back (standard OSC feedback pattern)
+                return [(address, args)]
+            else:
+                # QUERY: respond with current state values
+                resp_args: list[tuple[str, Any]] = []
+                for mapping in mappings:
+                    state_key = mapping.get("state")
+                    value_type = mapping.get("type", "float")
+                    if state_key:
+                        value = self._state.get(state_key, 0)
+                        tag = _type_to_osc_tag(value_type)
+                        resp_args.append((tag, value))
+                if resp_args:
+                    return [(address, resp_args)]
+                return [(address, [])]
+
+        # Special system addresses
+        if address == "/xremote":
+            return None  # Acknowledge silently (subscription renewal)
+        if address == "/info":
+            model = self._state.get("console_model", "Simulator")
+            firmware = self._state.get("firmware_version", "1.0.0")
+            return [("/info", [
+                ("s", "V2.07"), ("s", "osc-server"),
+                ("s", model), ("s", firmware),
+            ])]
+        if address == "/status":
+            return [("/status", [
+                ("s", "active"), ("s", "127.0.0.1"), ("s", "osc-server"),
+            ])]
+
+        logger.debug("%s: unmatched OSC address: %s", self.device_id, address)
+        return None
+
+    def _execute_osc_script_handler(
+        self, handler: OSCScriptHandler, address: str, args: list[tuple[str, Any]]
+    ) -> list[tuple[str, list[tuple[str, Any]]]] | None:
+        """Execute a script handler for OSC messages."""
+        response_data: list[tuple[str, list[tuple[str, Any]]]] = []
+
+        def respond(resp_address: str, resp_args: list[tuple[str, Any]] | None = None) -> None:
+            response_data.append((resp_address, resp_args or []))
+
+        state_proxy = _StateProxy(self._state, self.set_state)
+
+        namespace = {
+            "address": address,
+            "args": args,
+            "state": state_proxy,
+            "config": self.config,
+            "respond": respond,
+            "int": int,
+            "float": float,
+            "str": str,
+            "bool": bool,
+            "max": max,
+            "min": min,
+            "round": round,
+            "abs": abs,
+            "len": len,
+            "True": True,
+            "False": False,
+            "None": None,
+        }
+
+        try:
+            exec_ns = {"__builtins__": {}, **namespace}
+            exec(handler.code, exec_ns, exec_ns)  # noqa: S102
+        except Exception:
+            logger.exception(
+                "%s: OSC script handler error for %s",
+                self.device_id, handler.address_pattern,
+            )
+            return None
+
+        return response_data if response_data else None
 
     # ── Protocol handling ──
 
@@ -449,6 +599,22 @@ class YAMLAutoSimulator(TCPSimulator):
                     response_var=response_var,
                 ))
 
+    def _build_osc_address_handlers(self) -> None:
+        """Build OSC address → state mapping from responses with 'address' key."""
+        responses = self._driver_def.get("responses", [])
+        for resp_def in responses:
+            address = resp_def.get("address")
+            if not address:
+                continue
+            mappings = resp_def.get("mappings", [])
+            if mappings:
+                self._osc_address_handlers.append((address, mappings))
+
+        logger.info(
+            "Auto-gen OSC simulator for %s: %d address handlers",
+            self.driver_id, len(self._osc_address_handlers),
+        )
+
     def _infer_query_response_var(self, query_text: str) -> str | None:
         """Try to figure out which state var a query returns.
 
@@ -504,7 +670,16 @@ class YAMLAutoSimulator(TCPSimulator):
         self._explicit_handlers: list[ExplicitHandler] = []
         self._script_handlers: list[ScriptHandler] = []
         for handler_def in sim.get("command_handlers", []):
-            # Accept both "receive" and "match" as the pattern key
+            # OSC handlers use "address" key (fnmatch pattern)
+            if "address" in handler_def and "handler" in handler_def:
+                code = compile(handler_def["handler"], f"<sim:{self.driver_id}>", "exec")
+                self._osc_script_handlers.append(OSCScriptHandler(
+                    address_pattern=handler_def["address"],
+                    code=code,
+                ))
+                continue
+
+            # TCP/UDP handlers use "receive" or "match" as regex pattern
             pattern_str = handler_def.get("receive") or handler_def.get("match", "")
             if not pattern_str:
                 continue
@@ -515,14 +690,12 @@ class YAMLAutoSimulator(TCPSimulator):
                 continue
 
             if "handler" in handler_def:
-                # Script handler — inline Python code
                 code = compile(handler_def["handler"], f"<sim:{self.driver_id}>", "exec")
                 self._script_handlers.append(ScriptHandler(
                     pattern=pattern,
                     code=code,
                 ))
             else:
-                # Template handler — respond/set_state
                 self._explicit_handlers.append(ExplicitHandler(
                     pattern=pattern,
                     respond=handler_def.get("respond"),
@@ -884,6 +1057,24 @@ def _infer_state_var(cmd_name: str, state_vars: set[str]) -> str | None:
         return alias_target
 
     return None
+
+
+class OSCScriptHandler:
+    """Script handler for OSC simulator: command_handlers with address pattern."""
+    def __init__(self, address_pattern: str, code: Any):
+        self.address_pattern = address_pattern
+        self.code = code
+
+
+def _type_to_osc_tag(value_type: str) -> str:
+    """Map a state variable type to an OSC type tag."""
+    return {
+        "float": "f",
+        "number": "f",
+        "integer": "i",
+        "boolean": "i",
+        "string": "s",
+    }.get(value_type, "f")
 
 
 class _YAMLAutoUDPProtocol(asyncio.DatagramProtocol):

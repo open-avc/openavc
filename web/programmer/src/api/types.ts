@@ -402,12 +402,15 @@ export interface DriverCommandDef {
   method?: string;
   path?: string;
   body?: string;
+  address?: string;
+  args?: { type: string; value: string }[];
   params: Record<string, { type: string; required?: boolean; values?: string[]; help?: string }>;
   help?: string;
 }
 
 export interface DriverResponseMapping {
   group: number;
+  arg?: number;
   state: string;
   type?: string;
   map?: Record<string, string>;
@@ -418,6 +421,7 @@ export interface DriverResponseDef {
   // Both are accepted; the runtime handles either.
   pattern?: string;
   match?: string;
+  address?: string;
   mappings?: DriverResponseMapping[];
   set?: Record<string, string>;
 }
@@ -444,6 +448,8 @@ export interface DriverDeviceSettingDef {
     method?: string;
     path?: string;
     body?: string;
+    address?: string;
+    args?: { type: string; value: string }[];
   };
 }
 

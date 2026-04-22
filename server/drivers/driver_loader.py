@@ -48,14 +48,21 @@ def validate_driver_definition(driver_def: dict[str, Any]) -> list[str]:
             errors.append(f"Missing required field: {field}")
 
     transport = driver_def.get("transport", "")
-    if transport and transport not in ("tcp", "serial", "udp", "http"):
+    if transport and transport not in ("tcp", "serial", "udp", "http", "osc"):
         errors.append(f"Unsupported transport: {transport}")
 
     # Validate response patterns compile and don't have catastrophic backtracking
     for i, resp in enumerate(driver_def.get("responses", [])):
+        # OSC responses use "address" key — validate it starts with /
+        if "address" in resp:
+            addr = resp["address"]
+            if not isinstance(addr, str) or not addr.startswith("/"):
+                errors.append(f"Response {i}: OSC address must start with '/'")
+            continue
+
         pattern = resp.get("pattern", "") or resp.get("match", "")
         if not pattern:
-            errors.append(f"Response {i}: missing pattern or match")
+            errors.append(f"Response {i}: missing pattern, match, or address")
         else:
             try:
                 compiled = re.compile(pattern)
@@ -88,13 +95,14 @@ def validate_driver_definition(driver_def: dict[str, Any]) -> list[str]:
         if not isinstance(cmd_def, dict):
             errors.append(f"Command '{cmd_name}': must be a dict")
             continue
-        # TCP/serial commands need send/string, HTTP commands need path/method
+        # TCP/serial commands need send/string, HTTP need path/method, OSC needs address
         has_send = cmd_def.get("send") or cmd_def.get("string")
         has_http = cmd_def.get("path") or cmd_def.get("method")
-        if not has_send and not has_http:
+        has_osc = cmd_def.get("address") is not None
+        if not has_send and not has_http and not has_osc:
             errors.append(
-                f"Command '{cmd_name}': must have 'send' (TCP/serial) "
-                f"or 'path'/'method' (HTTP)"
+                f"Command '{cmd_name}': must have 'send' (TCP/serial), "
+                f"'path'/'method' (HTTP), or 'address' (OSC)"
             )
 
     # Validate state_variables structure

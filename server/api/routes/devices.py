@@ -163,6 +163,19 @@ async def test_device_connection(device_id: str) -> dict[str, Any]:
         except (OSError, ValueError) as e:
             return {"success": False, "error": str(e), "latency_ms": None}
 
+    elif transport in ("udp", "osc"):
+        # UDP/OSC is connectionless — verify the host resolves and socket opens
+        import socket as _socket
+        try:
+            sock = _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM)
+            sock.settimeout(2)
+            sock.connect((host, int(port)))
+            sock.close()
+            latency = round((_time.monotonic() - start) * 1000, 1)
+            return {"success": True, "error": None, "latency_ms": latency}
+        except (OSError, ValueError, TypeError) as e:
+            return {"success": False, "error": str(e), "latency_ms": None}
+
     elif transport == "http":
         # Test HTTP HEAD request
         url = cfg.get("base_url", cfg.get("url", ""))

@@ -25,6 +25,7 @@ Python drivers can be created and edited directly in the **Code** view of the Pr
 
 - **Yes:** Use the **Driver Builder UI** or a **.avcdriver definition**.
 - **No, it uses HTTP/REST:** Use a **.avcdriver definition** with `transport: http`. HTTP commands use `method`, `path`, and `body` fields instead of raw command strings. See the HTTP section below.
+- **No, it uses OSC (Open Sound Control):** Use the **Driver Builder UI** or a **.avcdriver definition** with `transport: osc`. OSC commands use `address` and `args` fields. See the OSC section below.
 - **No, it uses a binary protocol:** Use a **Python driver**.
 - **No, it uses UDP broadcast:** Use a **Python driver** (see the Wake-on-LAN driver as an example).
 
@@ -314,7 +315,7 @@ Notice how much cleaner this is compared to JSON: comments explain the protocol,
 |-------|----------|-------------|
 | `id` | Yes | Unique driver identifier. Lowercase, underscores. |
 | `name` | Yes | Human-readable display name. |
-| `transport` | Yes | `"tcp"`, `"serial"`, `"http"`, or `"udp"`. |
+| `transport` | Yes | `"tcp"`, `"serial"`, `"http"`, `"udp"`, or `"osc"`. |
 | `manufacturer` | No | Manufacturer name. Default: `"Generic"`. |
 | `category` | No | One of: `projector`, `display`, `switcher`, `scaler`, `audio`, `camera`, `lighting`, `relay`, `utility`, `other`. |
 | `version` | No | Semantic version. Default: `"1.0.0"`. |
@@ -736,6 +737,95 @@ With `level=75`, this sends `POST /api/audio` with body `{"channel": "program", 
 | `/api/driver-definitions/{id}` | PUT | Update a definition |
 | `/api/driver-definitions/{id}` | DELETE | Delete a definition |
 | `/api/driver-definitions/{id}/test-command` | POST | Test a command against live hardware |
+
+### OSC (Open Sound Control) Drivers
+
+For devices controlled via OSC over UDP (Behringer X32, QLab, ETC Eos, TouchDesigner, Resolume, etc.), set `transport: osc` and use OSC-specific command and response fields.
+
+OSC commands use `address` and `args` instead of `send`/`string` (TCP/serial) or `method`/`path` (HTTP). OSC responses match by address pattern instead of regex.
+
+#### OSC Command Format
+
+```yaml
+commands:
+  set_ch1_fader:
+    label: Set Channel 1 Fader
+    address: "/ch/01/mix/fader"
+    args:
+      - type: f
+        value: "{level}"
+    params:
+      level:
+        type: number
+        label: Level (0.0-1.0)
+
+  mute_ch1:
+    label: Mute Channel 1
+    address: "/ch/01/mix/on"
+    args:
+      - type: i
+        value: "0"
+
+  query_info:
+    label: Query Info
+    address: "/info"
+    # No args — sends address only (query)
+```
+
+Argument types: `f` (float), `i` (integer), `s` (string), `T` (true), `F` (false).
+
+#### OSC Response Format
+
+```yaml
+responses:
+  - address: "/ch/01/mix/fader"
+    mappings:
+      - arg: 0
+        state: ch1_fader
+        type: float
+
+  - address: "/ch/01/mix/on"
+    mappings:
+      - arg: 0
+        state: ch1_mute
+        type: boolean
+        map:
+          "0": "true"
+          "1": "false"
+```
+
+Responses use `address` instead of `match`/`pattern`, and `arg` (argument index) instead of `group` (regex capture group). Address patterns support `*` wildcards (e.g., `/ch/*/mix/fader`).
+
+#### OSC on_connect and Polling
+
+```yaml
+# on_connect: send bare addresses (no args) or dicts with args
+on_connect:
+  - "/xremote"
+  - "/info"
+
+# Polling: command names or bare OSC addresses
+polling:
+  interval: 9
+  queries:
+    - "renew_subscription"
+```
+
+#### Listen Port
+
+Most OSC devices reply to the sender's port (set `listen_port: 0`, the default). Some devices send feedback to a separate port. Set `listen_port` in the config if your device documentation specifies one.
+
+#### Common OSC Ports
+
+| Device | Send Port | Listen Port |
+|--------|-----------|-------------|
+| Behringer X32 / X32 Compact | 10023 | 0 (same socket) |
+| Behringer X-Air (XR18, XR16, XR12) | 10024 | 0 (same socket) |
+| Midas M32 | 10023 | 0 (same socket) |
+| QLab | 53000 | 0 |
+| ETC Eos | 3032 | 0 |
+| Resolume Arena | 7000 | 0 |
+| vMix | 8088 | 0 |
 
 ---
 

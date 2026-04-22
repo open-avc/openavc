@@ -32,6 +32,7 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
           <option value="udp">UDP</option>
           <option value="serial">Serial</option>
           <option value="http">HTTP / REST API</option>
+          <option value="osc">OSC (Open Sound Control)</option>
         </select>
         <div
           style={{
@@ -44,11 +45,13 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
             ? "Choose HTTP for devices with REST APIs (JSON, SOAP, etc.)."
             : draft.transport === "udp"
             ? "Choose UDP for devices that use datagram-based protocols (JSON-over-UDP, video wall controllers, etc.). Each command is sent as a single packet."
-            : "Choose TCP for network devices, UDP for datagram protocols, Serial for RS-232/RS-485, or HTTP for REST API devices."}
+            : draft.transport === "osc"
+            ? "Choose OSC for devices controlled via Open Sound Control (mixing consoles, show control, lighting, media servers). Commands use OSC address paths and typed arguments."
+            : "Choose TCP for network devices, UDP for datagram protocols, Serial for RS-232/RS-485, HTTP for REST APIs, or OSC for Open Sound Control."}
         </div>
       </div>
 
-      {draft.transport !== "http" && draft.transport !== "udp" && <div style={rowStyle}>
+      {draft.transport !== "http" && draft.transport !== "udp" && draft.transport !== "osc" && <div style={rowStyle}>
         <label style={labelStyle}>Message Delimiter</label>
         <select
           value={draft.delimiter}
@@ -220,6 +223,58 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
               }
               style={{ width: 120 }}
             />
+          </div>
+        </>
+      )}
+
+      {draft.transport === "osc" && (
+        <>
+          <div style={rowStyle}>
+            <label style={labelStyle}>Default Send Port</label>
+            <input
+              type="number"
+              value={
+                (draft.default_config.port as number | undefined) ?? 8000
+              }
+              onChange={(e) =>
+                onUpdate({
+                  default_config: {
+                    ...draft.default_config,
+                    port: parseInt(e.target.value) || 8000,
+                  },
+                })
+              }
+              style={{ width: 120 }}
+            />
+          </div>
+          <div style={rowStyle}>
+            <label style={labelStyle}>Listen Port</label>
+            <input
+              type="number"
+              value={
+                (draft.default_config.listen_port as number | undefined) ?? 0
+              }
+              onChange={(e) =>
+                onUpdate({
+                  default_config: {
+                    ...draft.default_config,
+                    listen_port: parseInt(e.target.value) || 0,
+                  },
+                })
+              }
+              style={{ width: 120 }}
+            />
+            <div
+              style={{
+                fontSize: "11px",
+                color: "var(--text-muted)",
+                marginTop: "var(--space-xs)",
+              }}
+            >
+              Port to receive device feedback on. Set to 0 to receive on the same
+              socket used for sending (most devices). Only set this if the device
+              sends feedback to a specific port.
+            </div>
           </div>
         </>
       )}

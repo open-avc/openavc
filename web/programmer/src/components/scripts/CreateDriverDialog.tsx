@@ -23,6 +23,7 @@ const TRANSPORTS = [
   { value: "serial", label: "Serial (RS-232)" },
   { value: "http", label: "HTTP / REST" },
   { value: "udp", label: "UDP" },
+  { value: "osc", label: "OSC (Open Sound Control)" },
 ];
 
 export function CreateDriverDialog({ onSubmit, onCancel, existingIds = [] }: CreateDriverDialogProps) {

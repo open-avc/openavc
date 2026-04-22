@@ -656,10 +656,13 @@ async def test_driver_command(driver_id: str, body: TestCommandRequest) -> dict:
     if body.transport == "http":
         return await _test_http_command(body)
 
-    if body.transport != "tcp":
+    if body.transport == "osc":
+        return await _test_osc_command(body)
+
+    if body.transport not in ("tcp",):
         raise HTTPException(
             status_code=422,
-            detail="Only TCP and HTTP test connections are supported",
+            detail="Only TCP, HTTP, and OSC test connections are supported",
         )
 
     delimiter = body.delimiter.encode().decode("unicode_escape").encode()
@@ -727,6 +730,48 @@ async def _test_http_command(body: TestCommandRequest) -> dict:
         return {"success": False, "response": None, "error": "HTTP request timed out"}
     except Exception as e:
         return {"success": False, "response": None, "error": str(e)}
+
+
+async def _test_osc_command(body: TestCommandRequest) -> dict:
+    """Test an OSC command against a device."""
+    import asyncio
+    from server.transport.osc_codec import osc_encode_message, osc_decode_message
+    from server.transport.udp import UDPTransport
+
+    address = body.command_string.strip()
+    if not address.startswith("/"):
+        address = "/" + address
+
+    response_text = None
+    error_text = None
+
+    udp = UDPTransport(
+        host=body.host,
+        port=body.port,
+        name="osc_test",
+    )
+    try:
+        await udp.open()
+        msg = osc_encode_message(address)
+        response = await udp.send_and_wait(msg, timeout=body.timeout)
+        try:
+            resp_addr, resp_args = osc_decode_message(response)
+            arg_strs = [str(v) for _, v in resp_args]
+            response_text = f"{resp_addr} [{', '.join(arg_strs)}]"
+        except (ValueError, Exception):
+            response_text = response.hex()
+    except asyncio.TimeoutError:
+        error_text = "Timeout waiting for OSC response"
+    except (OSError, ValueError) as e:
+        error_text = str(e)
+    finally:
+        await udp.close()
+
+    return {
+        "success": error_text is None,
+        "response": response_text,
+        "error": error_text,
+    }
 
 
 # --- Python Drivers ---
