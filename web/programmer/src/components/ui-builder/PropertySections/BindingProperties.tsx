@@ -239,9 +239,7 @@ export function BindingProperties({
           <SliderBindingEditor
             value={binding || null}
             project={project}
-            element={element}
             onChange={(v) => handleBindingChange(slot, v)}
-            onElementChange={onChange}
             onClear={() => handleBindingChange(slot, null)}
           />
         );
