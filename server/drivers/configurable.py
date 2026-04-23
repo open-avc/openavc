@@ -121,6 +121,18 @@ class ConfigurableDriver(BaseDriver):
                             await asyncio.sleep(delay)
                     except Exception as e:
                         log.warning(f"[{self.device_id}] on_connect OSC command failed: {e}")
+
+                # Query all OSC state variable addresses to fetch initial state.
+                # OSC convention: sending an address with no args returns the
+                # current value. This populates state immediately on connect.
+                for addr_pattern, _mappings in self._osc_responses:
+                    try:
+                        addr = self._safe_substitute(addr_pattern, self.config) if "{" in addr_pattern else addr_pattern
+                        await self.transport.send(osc_encode_message(addr))
+                        if delay:
+                            await asyncio.sleep(delay)
+                    except Exception as e:
+                        log.warning(f"[{self.device_id}] OSC initial query failed: {e}")
             else:
                 for raw in on_connect:
                     try:
