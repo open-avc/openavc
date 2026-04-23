@@ -2204,11 +2204,11 @@ class PanelApp {
 
         const orientation = element.orientation || 'vertical';
         const isHorizontal = orientation === 'horizontal';
-        let min = parseFloat(element.min ?? -80) || -80;
-        let max = parseFloat(element.max ?? 10) || 10;
+        let min = element.min != null ? parseFloat(element.min) : 0;
+        let max = element.max != null ? parseFloat(element.max) : 100;
         if (min >= max) { const tmp = min; min = max; max = tmp; }
-        const step = element.step ?? 0.5;
-        const unit = element.unit || 'dB';
+        const step = element.step ?? 1;
+        const unit = element.unit || '%';
         const outputMin = element.output_min;
         const outputMax = element.output_max;
         const hasOutputRange = outputMin != null && outputMax != null;
@@ -2447,17 +2447,20 @@ class PanelApp {
     }
 
     _faderScaleMarks(min, max) {
-        // Generate sensible scale marks for a dB fader
         const range = max - min;
-        if (range <= 20) return [min, Math.round((min + max) / 2), max];
+        if (range === 0) return [min];
+        // Pick a step that gives 3-7 marks
+        const rawStep = range / 5;
+        const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
+        const nice = [1, 2, 2.5, 5, 10].find(n => n * mag >= rawStep) * mag;
         const marks = [];
-        const candidates = [-80, -60, -40, -20, -10, -5, 0, 5, 10, 20];
-        for (const c of candidates) {
-            if (c >= min && c <= max) marks.push(c);
+        const start = Math.ceil(min / nice) * nice;
+        for (let v = start; v <= max + nice * 0.01; v += nice) {
+            const rounded = Math.round(v * 1e6) / 1e6;
+            if (rounded >= min && rounded <= max) marks.push(rounded);
         }
-        if (marks.length < 3) {
-            return [min, Math.round((min + max) / 2), max];
-        }
+        if (marks.length === 0 || marks[0] > min) marks.unshift(min);
+        if (marks[marks.length - 1] < max) marks.push(max);
         return marks;
     }
 

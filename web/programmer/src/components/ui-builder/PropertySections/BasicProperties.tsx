@@ -328,18 +328,16 @@ export function BasicProperties({
               style={{ flex: 1 }}
             />
           </FieldRow>
-          {element.output_min != null && element.output_max != null && (
-            <FieldRow label="Scale to Full Range">
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
-                <input
-                  type="checkbox"
-                  checked={element.scale_to_full !== false}
-                  onChange={(e) => onChange({ scale_to_full: e.target.checked })}
-                />
-                Hide output limit from end user
-              </label>
-            </FieldRow>
-          )}
+          <FieldRow label="Scale to Full Range">
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={element.scale_to_full !== false}
+                onChange={(e) => onChange({ scale_to_full: e.target.checked })}
+              />
+              Hide output limit from end user
+            </label>
+          </FieldRow>
         </>
       )}
 
@@ -562,16 +560,16 @@ export function BasicProperties({
       {element.type === "fader" && (
         <>
           <FieldRow label="Min">
-            <input type="number" value={element.min ?? -80} onChange={(e) => onChange({ min: Number(e.target.value) })} style={{ flex: 1 }} />
+            <input type="number" value={element.min ?? 0} onChange={(e) => onChange({ min: Number(e.target.value) })} style={{ flex: 1 }} />
           </FieldRow>
           <FieldRow label="Max">
-            <input type="number" value={element.max ?? 10} onChange={(e) => onChange({ max: Number(e.target.value) })} style={{ flex: 1 }} />
+            <input type="number" value={element.max ?? 100} onChange={(e) => onChange({ max: Number(e.target.value) })} style={{ flex: 1 }} />
           </FieldRow>
           <FieldRow label="Step">
-            <input type="number" value={element.step ?? 0.5} onChange={(e) => onChange({ step: Number(e.target.value) })} min={0.01} step={0.1} style={{ flex: 1 }} />
+            <input type="number" value={element.step ?? 1} onChange={(e) => onChange({ step: Number(e.target.value) })} min={0.01} step={0.1} style={{ flex: 1 }} />
           </FieldRow>
           <FieldRow label="Unit">
-            <input value={element.unit || ""} onChange={(e) => onChange({ unit: e.target.value })} placeholder="dB" style={{ flex: 1 }} />
+            <input value={element.unit || ""} onChange={(e) => onChange({ unit: e.target.value })} placeholder="%" style={{ flex: 1 }} />
           </FieldRow>
           <FieldRow label="Orientation">
             <select value={element.orientation || "vertical"} onChange={(e) => onChange({ orientation: e.target.value })} style={{ flex: 1 }}>
@@ -623,18 +621,16 @@ export function BasicProperties({
               step="any"
             />
           </FieldRow>
-          {element.output_min != null && element.output_max != null && (
-            <FieldRow label="Scale to Full Range">
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
-                <input
-                  type="checkbox"
-                  checked={element.scale_to_full !== false}
-                  onChange={(e) => onChange({ scale_to_full: e.target.checked })}
-                />
-                Hide output limit from end user
-              </label>
-            </FieldRow>
-          )}
+          <FieldRow label="Scale to Full Range">
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={element.scale_to_full !== false}
+                onChange={(e) => onChange({ scale_to_full: e.target.checked })}
+              />
+              Hide output limit from end user
+            </label>
+          </FieldRow>
         </>
       )}
 

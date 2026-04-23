@@ -166,6 +166,9 @@ export function createDefaultElement(
         min: 0,
         max: 100,
         step: 1,
+        output_min: 0,
+        output_max: 1,
+        scale_to_full: true,
         grid_area: { col, row, col_span: 4, row_span: 1 },
       };
     case "page_nav":
@@ -237,10 +240,13 @@ export function createDefaultElement(
       return {
         ...base,
         label: "Fader",
-        min: -80,
-        max: 10,
-        step: 0.5,
-        unit: "dB",
+        min: 0,
+        max: 100,
+        step: 1,
+        unit: "%",
+        output_min: 0,
+        output_max: 1,
+        scale_to_full: true,
         orientation: "vertical",
         grid_area: { col, row, col_span: 2, row_span: 5 },
         style: { show_value: true, show_scale: true },

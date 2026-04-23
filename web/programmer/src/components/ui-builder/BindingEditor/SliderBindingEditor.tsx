@@ -40,10 +40,10 @@ export function SliderBindingEditor({
           output_min: sv.min,
           output_max: sv.max,
         };
-        if (element.min == null || element.min === 0 || element.min === -80) {
+        if (element.min == null || element.min === 0) {
           patch.min = sv.min;
         }
-        if (element.max == null || element.max === 100 || element.max === 10) {
+        if (element.max == null || element.max === 100) {
           patch.max = sv.max;
         }
         if (sv.step != null) {

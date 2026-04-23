@@ -70,9 +70,14 @@ class BaseDriver(ABC):
             if var_type == "boolean":
                 default = False
             elif var_type == "integer":
-                default = 0
+                default = prop_info.get("min", 0)
+            elif var_type == "number":
+                default = float(prop_info.get("min", 0))
+            elif var_type == "enum":
+                values = prop_info.get("values", [])
+                default = values[0] if values else ""
             else:
-                default = None
+                default = ""
             self.set_state(prop_name, default)
         # Always set a connected state
         self.set_state("connected", False)
