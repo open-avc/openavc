@@ -140,6 +140,9 @@ export interface UIElement {
   min?: number;
   max?: number;
   step?: number;
+  output_min?: number;
+  output_max?: number;
+  scale_to_full?: boolean;
   target_page?: string;
   options?: UIElementOption[];
   placeholder?: string;
@@ -454,6 +457,7 @@ export interface DriverDeviceSettingDef {
 }
 
 export interface DriverSimulatorDef {
+  push_state?: boolean;
   initial_state?: Record<string, unknown>;
   delays?: Record<string, number>;
   controls?: Array<Record<string, unknown>>;
@@ -473,7 +477,7 @@ export interface DriverDefinition {
   delimiter: string;
   default_config: Record<string, unknown>;
   config_schema: Record<string, unknown>;
-  state_variables: Record<string, { type: string; label: string; values?: string[]; help?: string }>;
+  state_variables: Record<string, { type: string; label: string; values?: string[]; help?: string; min?: number; max?: number; step?: number }>;
   commands: Record<string, DriverCommandDef>;
   responses: DriverResponseDef[];
   polling: { interval?: number; queries?: string[] };

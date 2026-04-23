@@ -1412,9 +1412,11 @@ simulator:
         state["volume"] = level
         respond(f"Vol{level}\r\n")
 
+  # Enable push: state changes are pushed to connected drivers
+  push_state: true
+
+  # Optional: override push format for specific variables
   notifications:
-    volume:
-      '*': 'Vol{value}'
     mute:
       'true': 'Amt1'
       'false': 'Amt0'
@@ -1432,13 +1434,14 @@ simulator:
 | `initial_state` | Default values when simulation starts |
 | `delays` | Response timing (makes simulation feel realistic) |
 | `controls` | UI controls in the Simulator dashboard (sliders, toggles, buttons) |
-| `notifications` | Unsolicited messages broadcast to connected clients on state changes |
+| `push_state` | Enable push behavior (state changes sent to connected drivers) |
+| `notifications` | Optional overrides for the push format on state changes |
 | `command_handlers` | How the simulator responds to commands |
 | `error_modes` | Failure scenarios for testing error handling |
 
 **Control types:** `power`, `slider`, `toggle`, `select`, `matrix`, `indicator`, `meters`, `presets`, `group`.
 
-**Notifications** make the simulator push unsolicited messages to connected clients when state changes, just like real hardware does. Many AV devices push state changes without being polled (Extron verbose mode, Shure REP messages, Audio-Technica MD notifications). Use `'*'` as the key to match any value with `{value}` as a placeholder, or use specific values like `'true'`/`'false'` for exact matches.
+**Push behavior** is opt-in. Set `push_state: true` to enable it. When enabled, state changes from the simulator UI are pushed to connected drivers using the driver's existing response format. Only set this for devices that actually send unsolicited updates (e.g., Extron verbose mode, Shure subscriptions). Without it, the simulator is poll-only. **Notifications** are optional overrides for the push format. If your device uses a different format for unsolicited messages (for example, value-specific strings like `Amt1`/`Amt0` instead of `Amt{value}`), add a `notifications` section to override the format. Use `'*'` as the key to match any value with `{value}` as a placeholder, or use specific values like `'true'`/`'false'` for exact matches.
 
 For the complete simulator guide with all control types, state machines, and Python simulators, see the Writing Simulators documentation in the driver repository.
 

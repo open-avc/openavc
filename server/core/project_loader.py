@@ -191,6 +191,9 @@ class UIElement(BaseModel):
     min: float | None = None
     max: float | None = None
     step: float | None = None
+    output_min: float | None = None  # device-side minimum (for range scaling)
+    output_max: float | None = None  # device-side maximum (for range scaling)
+    scale_to_full: bool | None = None  # True: scale display to fill track; False: show dead space
     target_page: str | None = None
     options: list[dict[str, Any]] | None = None
     placeholder: str | None = None

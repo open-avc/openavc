@@ -621,7 +621,8 @@ class Engine:
             if variable_binding and isinstance(variable_binding, dict):
                 var_key = variable_binding.get("key", "")
                 if var_key:
-                    self.state.set(var_key, data.get("value"), source="ui")
+                    raw = data.get("value")
+                    self.state.set(var_key, self._scale_value_forward(element, raw), source="ui")
 
         # Look up the binding for this event type (always a list of actions)
         binding = bindings.get(event_type)
@@ -656,10 +657,11 @@ class Engine:
             binding = [binding]
         for action_item in binding:
             if isinstance(action_item, dict):
-                await self._execute_action(action_item, data)
+                await self._execute_action(action_item, data, element)
 
     async def _execute_action(
-        self, action_def: dict[str, Any], data: dict[str, Any]
+        self, action_def: dict[str, Any], data: dict[str, Any],
+        element: Any = None,
     ) -> None:
         """Execute a single UI binding action."""
         action = action_def.get("action", "")
@@ -670,7 +672,7 @@ class Engine:
             action_map = action_def.get("map", {})
             mapped_action = action_map.get(element_value)
             if mapped_action:
-                await self._execute_action(mapped_action, data)
+                await self._execute_action(mapped_action, data, element)
 
         elif action == "macro":
             macro_id = action_def.get("macro", "")
@@ -683,10 +685,11 @@ class Engine:
             device_id = action_def.get("device", "")
             command = action_def.get("command", "")
             params = dict(action_def.get("params", {}))
-            # Replace $value placeholder with actual value from UI event
+            # Replace $value placeholder with actual value from UI event,
+            # applying output range scaling if configured on the element
             for k, v in params.items():
                 if v == "$value":
-                    params[k] = data.get("value")
+                    params[k] = self._scale_value_forward(element, data.get("value"))
                 elif v == "$input":
                     params[k] = data.get("input")
                 elif v == "$output":
@@ -719,6 +722,30 @@ class Engine:
             func_name = action_def.get("function", "")
             if func_name:
                 await self.events.emit(f"script.call.{func_name}", data)
+
+    @staticmethod
+    def _scale_value_forward(element: Any, raw_value: Any) -> Any:
+        """Scale a display value to a device value using output_min/output_max."""
+        if raw_value is None or element is None:
+            return raw_value
+        output_min = getattr(element, "output_min", None)
+        output_max = getattr(element, "output_max", None)
+        if output_min is None or output_max is None:
+            return raw_value
+
+        val = float(raw_value)
+        if getattr(element, "scale_to_full", None) is False:
+            return max(output_min, min(output_max, val))
+
+        display_min = getattr(element, "min", None)
+        display_max = getattr(element, "max", None)
+        if display_min is None or display_max is None:
+            return raw_value
+        display_range = display_max - display_min
+        if display_range == 0:
+            return output_min
+        frac = (val - display_min) / display_range
+        return output_min + frac * (output_max - output_min)
 
     def _find_element(self, element_id: str) -> Any | None:
         """Find a UI element by ID across all pages."""

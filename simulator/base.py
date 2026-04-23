@@ -240,6 +240,7 @@ class BaseSimulator(ABC):
         controls = self.SIMULATOR_INFO.get("controls")
         if controls:
             info["controls"] = controls
+        info["push_state"] = getattr(self, "_push_state", False)
         return info
 
 

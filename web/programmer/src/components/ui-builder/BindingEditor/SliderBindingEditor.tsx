@@ -1,25 +1,60 @@
-import type { ProjectConfig } from "../../../api/types";
+import type { ProjectConfig, UIElement } from "../../../api/types";
 import { ActionPicker } from "./ActionPicker";
 import { VariableKeyPicker } from "../../shared/VariableKeyPicker";
 import { useConnectionStore } from "../../../store/connectionStore";
+import { getDriverDefinition } from "../../../api/driverClient";
 
 interface SliderBindingEditorProps {
   value: Record<string, unknown> | null;
   project: ProjectConfig;
+  element: UIElement;
   onChange: (value: Record<string, unknown>) => void;
+  onElementChange: (patch: Partial<UIElement>) => void;
   onClear: () => void;
 }
 
 export function SliderBindingEditor({
   value,
   project,
+  element,
   onChange,
+  onElementChange,
   onClear,
 }: SliderBindingEditorProps) {
   const valueKey = String(value?.key || "");
   const liveValue = useConnectionStore((s) => valueKey ? s.liveState[valueKey] : undefined);
 
   const isChangeBinding = value && value.action;
+
+  const autoPopulateFromStateKey = async (key: string) => {
+    const match = key.match(/^device\.([^.]+)\.(.+)$/);
+    if (!match) return;
+    const [, deviceId, varName] = match;
+    const device = project.devices?.find((d) => d.id === deviceId);
+    if (!device) return;
+    try {
+      const def = await getDriverDefinition(device.driver);
+      const sv = def.state_variables?.[varName];
+      if (sv && sv.min != null && sv.max != null) {
+        const patch: Partial<UIElement> = {
+          output_min: sv.min,
+          output_max: sv.max,
+        };
+        if (element.min == null || element.min === 0 || element.min === -80) {
+          patch.min = sv.min;
+        }
+        if (element.max == null || element.max === 100 || element.max === 10) {
+          patch.max = sv.max;
+        }
+        if (sv.step != null) {
+          patch.step = sv.step;
+        }
+        onElementChange(patch);
+      }
+    } catch {
+      // Driver lookup failed — skip auto-populate
+    }
+  };
 
   if (isChangeBinding) {
     return (
@@ -57,9 +92,10 @@ export function SliderBindingEditor({
         <label style={labelStyle}>State Key (value source)</label>
         <VariableKeyPicker
           value={String(value?.key || "")}
-          onChange={(key) =>
-            onChange({ source: "state", key })
-          }
+          onChange={(key) => {
+            onChange({ source: "state", key });
+            autoPopulateFromStateKey(key);
+          }}
           placeholder="Select state key..."
         />
         <div style={helpStyle}>

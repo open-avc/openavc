@@ -103,6 +103,7 @@ export interface DeviceInfo {
   active_errors: string[];
   available_errors: Record<string, { description: string }>;
   controls?: ControlDef[];
+  push_state: boolean;
 }
 
 export interface LogEntry {

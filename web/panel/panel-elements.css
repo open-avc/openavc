@@ -688,6 +688,13 @@
     border: 1px solid var(--el-surface-border, var(--panel-surface-border));
     border-radius: 3px;
 }
+.panel-fader .fader-dead-space {
+    position: absolute;
+    background: var(--el-surface, var(--panel-surface));
+    opacity: 0.5;
+    pointer-events: none;
+    z-index: 1;
+}
 .panel-fader .fader-handle {
     position: absolute;
     width: 44px;

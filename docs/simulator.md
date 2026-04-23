@@ -64,9 +64,11 @@ The Simulator UI shows your virtual devices and lets you interact with them from
 
 ## How It Works
 
-The simulator runs real protocol servers — a simulated PJLink projector runs a TCP server that speaks the actual PJLink protocol. Your driver connects to `localhost` instead of the real device IP and talks the same protocol. From the driver's perspective, it's real hardware.
+The simulator runs real protocol servers -- a simulated PJLink projector runs a TCP server that speaks the actual PJLink protocol. Your driver connects to `localhost` instead of the real device IP and talks the same protocol. From the driver's perspective, it's real hardware.
 
-When you add or remove devices while simulation is active, the simulator automatically syncs — new devices get simulated, removed devices are cleaned up. No restart needed.
+When you change state from the Simulator UI (adjusting a slider, toggling a button, etc.), simulators with `push_state: true` in their driver definition push the update to connected drivers immediately. This matches real devices that send unsolicited updates (verbose mode, subscriptions, notifications). Your driver picks up the change through its existing response matchers, the same way it would from real hardware. Drivers without `push_state` are poll-only, matching devices where the driver must query for state. HTTP simulators are always poll-based.
+
+When you add or remove devices while simulation is active, the simulator automatically syncs -- new devices get simulated, removed devices are cleaned up. No restart needed.
 
 ## Which Drivers Support Simulation
 

@@ -200,12 +200,34 @@ device.projector_main.power:
   "off"     -> gray (#9E9E9E)
 ```
 
-### Value/Slider Binding
+### Value/Slider/Fader Binding
 
-- **Change binding**: what happens when the slider moves (send device command with `$value` as the parameter)
-- **Value binding**: what state key drives the slider position (for two-way feedback)
+- **Change binding**: what happens when the slider or fader moves (send device command with `$value` as the parameter)
+- **Value binding**: what state key drives the position (for two-way feedback)
 
 Example: Bind a volume slider's change event to `devices.dsp_1.set_level` with `$value`, and bind its value to `device.dsp_1.output_level`. The slider sends level changes to the DSP and reflects the actual level reported back.
+
+### Output Range Scaling
+
+Sliders and faders support output range scaling for devices where the useful range is a subset of the full slider travel. This is configured with three properties in the Properties panel:
+
+| Property | Description |
+|----------|-------------|
+| **Output Min** | The minimum value sent to the device (default: same as slider min) |
+| **Output Max** | The maximum value sent to the device (default: same as slider max) |
+| **Scale to Full** | How the slider handles the limited range |
+
+When you bind a slider or fader to a device state variable that has `min` and `max` defined in the driver, these fields are auto-populated.
+
+**Scale to Full** controls the slider's visual behavior:
+
+- **On (Scale to Full):** The slider track covers the full visual range, and the output is scaled proportionally to the output min/max. The user sees a 0-100% slider, but the values sent to the device are mapped to the output range. This hides the device's internal range from the end user.
+- **Off (Show Limit):** The slider shows the actual device range. If the device range is 0-80 on a 0-100 slider, the slider stops at the 80% mark, leaving visible dead space above. This makes the hardware limit visible to the operator.
+
+**Example:** A DSP volume control accepts values 0-80, but the slider is configured 0-100.
+
+- With Scale to Full **on**: dragging to the top of the slider sends 80. The slider looks and feels like a standard 0-100 control.
+- With Scale to Full **off**: the slider stops at the 80 mark. Dragging past 80 has no effect, and the unused range is visually apparent.
 
 ## Properties Panel
 

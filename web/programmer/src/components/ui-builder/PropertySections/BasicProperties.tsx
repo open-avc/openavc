@@ -310,6 +310,36 @@ export function BasicProperties({
               Display current value
             </label>
           </FieldRow>
+          <FieldRow label="Output Min">
+            <input
+              type="number"
+              value={element.output_min ?? ""}
+              onChange={(e) => onChange({ output_min: e.target.value === "" ? undefined : Number(e.target.value) })}
+              placeholder="Same as Min"
+              style={{ flex: 1 }}
+            />
+          </FieldRow>
+          <FieldRow label="Output Max">
+            <input
+              type="number"
+              value={element.output_max ?? ""}
+              onChange={(e) => onChange({ output_max: e.target.value === "" ? undefined : Number(e.target.value) })}
+              placeholder="Same as Max"
+              style={{ flex: 1 }}
+            />
+          </FieldRow>
+          {element.output_min != null && element.output_max != null && (
+            <FieldRow label="Scale to Full Range">
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={element.scale_to_full !== false}
+                  onChange={(e) => onChange({ scale_to_full: e.target.checked })}
+                />
+                Hide output limit from end user
+              </label>
+            </FieldRow>
+          )}
         </>
       )}
 
@@ -571,6 +601,40 @@ export function BasicProperties({
               Show scale markings
             </label>
           </FieldRow>
+
+          <SubSection label="Output Range" />
+          <FieldRow label="Output Min">
+            <input
+              type="number"
+              value={element.output_min ?? ""}
+              onChange={(e) => onChange({ output_min: e.target.value === "" ? undefined : Number(e.target.value) })}
+              placeholder="Same as Min"
+              style={{ flex: 1 }}
+              step="any"
+            />
+          </FieldRow>
+          <FieldRow label="Output Max">
+            <input
+              type="number"
+              value={element.output_max ?? ""}
+              onChange={(e) => onChange({ output_max: e.target.value === "" ? undefined : Number(e.target.value) })}
+              placeholder="Same as Max"
+              style={{ flex: 1 }}
+              step="any"
+            />
+          </FieldRow>
+          {element.output_min != null && element.output_max != null && (
+            <FieldRow label="Scale to Full Range">
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={element.scale_to_full !== false}
+                  onChange={(e) => onChange({ scale_to_full: e.target.checked })}
+                />
+                Hide output limit from end user
+              </label>
+            </FieldRow>
+          )}
         </>
       )}
 

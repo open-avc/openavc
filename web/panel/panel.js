@@ -1042,15 +1042,25 @@ class PanelApp {
 
         const input = document.createElement('input');
         input.type = 'range';
-        input.min = element.min ?? 0;
-        input.max = element.max ?? 100;
+        const sliderMin = element.min ?? 0;
+        const sliderMax = element.max ?? 100;
+        input.min = sliderMin;
+        input.max = sliderMax;
         input.step = element.step ?? 1;
         input.setAttribute('aria-label', element.label || element.id);
+        const sOutputMin = element.output_min;
+        const sOutputMax = element.output_max;
+        const sHasOutputRange = sOutputMin != null && sOutputMax != null;
+        const sScaleToFull = element.scale_to_full !== false;
 
         // Set initial value from state if binding exists, else use min
         const sliderBinding = element.bindings?.variable || element.bindings?.value;
-        const initialValue = sliderBinding?.key ? this.state[sliderBinding.key] : undefined;
-        input.value = (initialValue !== undefined && initialValue !== null) ? initialValue : (element.min ?? 0);
+        const initialRaw = sliderBinding?.key ? this.state[sliderBinding.key] : undefined;
+        if (initialRaw !== undefined && initialRaw !== null) {
+            input.value = this._reverseScale(Number(initialRaw), sliderMin, sliderMax, sOutputMin, sOutputMax, sScaleToFull);
+        } else {
+            input.value = sliderMin;
+        }
 
         // Update fill from current value
         const updateFill = () => {
@@ -1078,6 +1088,12 @@ class PanelApp {
         // Debounced change handler
         let changeTimeout = null;
         input.addEventListener('input', () => {
+            // Clamp to output range when not scaling (dead space mode)
+            if (sHasOutputRange && !sScaleToFull) {
+                let v = parseFloat(input.value);
+                v = Math.max(sOutputMin, Math.min(sOutputMax, v));
+                input.value = v;
+            }
             updateFill();
             if (valueDisplay) {
                 const step = element.step ?? 1;
@@ -1109,6 +1125,9 @@ class PanelApp {
                 fill,
                 valueDisplay,
                 isVertical,
+                outputMin: sOutputMin,
+                outputMax: sOutputMax,
+                scaleToFull: sScaleToFull,
             });
         }
 
@@ -2190,6 +2209,10 @@ class PanelApp {
         if (min >= max) { const tmp = min; min = max; max = tmp; }
         const step = element.step ?? 0.5;
         const unit = element.unit || 'dB';
+        const outputMin = element.output_min;
+        const outputMax = element.output_max;
+        const hasOutputRange = outputMin != null && outputMax != null;
+        const scaleToFull = element.scale_to_full !== false;
         // Merge theme element_defaults for consistency with other renderers,
         // even though show_value/show_scale aren't currently theme-editable
         // — keeps the pattern uniform if those flags become themable later.
@@ -2237,6 +2260,26 @@ class PanelApp {
         track.className = 'fader-track';
         trackWrap.appendChild(track);
 
+        // Dead space overlay when output range is clamped and not scaled to full
+        if (hasOutputRange && !scaleToFull) {
+            const maxFrac = (outputMax - min) / (max - min);
+            const minFrac = (outputMin - min) / (max - min);
+            if (maxFrac < 1) {
+                const dead = document.createElement('div');
+                dead.className = 'fader-dead-space';
+                if (isHorizontal) { dead.style.left = `${maxFrac * 100}%`; dead.style.right = '0'; dead.style.top = '0'; dead.style.bottom = '0'; }
+                else { dead.style.bottom = `${maxFrac * 100}%`; dead.style.top = '0'; dead.style.left = '0'; dead.style.right = '0'; }
+                trackWrap.appendChild(dead);
+            }
+            if (minFrac > 0) {
+                const dead = document.createElement('div');
+                dead.className = 'fader-dead-space';
+                if (isHorizontal) { dead.style.left = '0'; dead.style.right = `${(1 - minFrac) * 100}%`; dead.style.top = '0'; dead.style.bottom = '0'; }
+                else { dead.style.bottom = '0'; dead.style.top = `${(1 - minFrac) * 100}%`; dead.style.left = '0'; dead.style.right = '0'; }
+                trackWrap.appendChild(dead);
+            }
+        }
+
         const handle = document.createElement('div');
         handle.className = 'fader-handle';
         handle.setAttribute('role', 'slider');
@@ -2263,7 +2306,10 @@ class PanelApp {
         let currentValue = 0;
         if (valueBinding?.key) {
             const sv = this.state[valueBinding.key];
-            if (sv !== undefined && sv !== null) currentValue = Number(sv);
+            if (sv !== undefined && sv !== null) {
+                // Reverse-scale device value to display value
+                currentValue = this._reverseScale(Number(sv), min, max, outputMin, outputMax, scaleToFull);
+            }
         }
         currentValue = Math.max(min, Math.min(max, currentValue));
         const initFrac = (currentValue - min) / (max - min);
@@ -2285,7 +2331,11 @@ class PanelApp {
                 const clientY = e.touches ? e.touches[0].clientY : e.clientY;
                 frac = 1 - Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
             }
-            const val = min + frac * (max - min);
+            let val = min + frac * (max - min);
+            // Clamp to output range when not scaling (dead space mode)
+            if (hasOutputRange && !scaleToFull) {
+                val = Math.max(outputMin, Math.min(outputMax, val));
+            }
             return Math.round(val / step) * step;
         };
 
@@ -2380,11 +2430,20 @@ class PanelApp {
                 element: el,
                 elementDef: element,
                 binding: valueBinding,
-                _fader: { handle, valueDisplay, min, max, unit, horizontal: isHorizontal },
+                _fader: { handle, valueDisplay, min, max, unit, horizontal: isHorizontal, outputMin, outputMax, scaleToFull },
             });
         }
 
         return el;
+    }
+
+    _reverseScale(deviceValue, displayMin, displayMax, outputMin, outputMax, scaleToFull) {
+        if (outputMin == null || outputMax == null) return deviceValue;
+        if (scaleToFull === false) return deviceValue;
+        const outputRange = outputMax - outputMin;
+        if (outputRange === 0) return displayMin;
+        const frac = (deviceValue - outputMin) / outputRange;
+        return displayMin + frac * (displayMax - displayMin);
     }
 
     _faderScaleMarks(min, max) {
@@ -2407,8 +2466,8 @@ class PanelApp {
         if (raw === undefined || raw === null) return;
         if (b._lastFaderRaw === raw) return;
         b._lastFaderRaw = raw;
-        const { handle, valueDisplay, min, max, unit, horizontal } = b._fader;
-        const value = Math.max(min, Math.min(max, Number(raw)));
+        const { handle, valueDisplay, min, max, unit, horizontal, outputMin, outputMax, scaleToFull } = b._fader;
+        const value = Math.max(min, Math.min(max, this._reverseScale(Number(raw), min, max, outputMin, outputMax, scaleToFull)));
         const frac = (value - min) / (max - min);
         if (horizontal) handle.style.left = `${frac * 100}%`;
         else handle.style.bottom = `${frac * 100}%`;
@@ -3229,17 +3288,18 @@ class PanelApp {
     }
 
     evaluateSliderValue(b) {
-        const { element, binding, fill, valueDisplay, isVertical } = b;
-        const value = this.state[binding.key];
-        if (value !== undefined && value !== null) {
-            if (b._lastSliderRaw === value) return;
-            b._lastSliderRaw = value;
-            element.value = value;
+        const { element, binding, fill, valueDisplay, isVertical, outputMin, outputMax, scaleToFull } = b;
+        const rawValue = this.state[binding.key];
+        if (rawValue !== undefined && rawValue !== null) {
+            if (b._lastSliderRaw === rawValue) return;
+            b._lastSliderRaw = rawValue;
+            const min = parseFloat(element.min);
+            const max = parseFloat(element.max);
+            const displayValue = this._reverseScale(Number(rawValue), min, max, outputMin, outputMax, scaleToFull);
+            element.value = displayValue;
             // Update fill bar
             if (fill) {
-                const min = parseFloat(element.min);
-                const max = parseFloat(element.max);
-                const pct = max > min ? ((parseFloat(value) - min) / (max - min)) * 100 : 0;
+                const pct = max > min ? ((displayValue - min) / (max - min)) * 100 : 0;
                 if (isVertical) {
                     fill.style.height = pct + '%';
                 } else {
@@ -3249,7 +3309,7 @@ class PanelApp {
             // Update value display
             if (valueDisplay) {
                 const step = parseFloat(element.step) || 1;
-                valueDisplay.textContent = step < 1 ? parseFloat(value).toFixed(1) : String(Math.round(parseFloat(value)));
+                valueDisplay.textContent = step < 1 ? parseFloat(displayValue).toFixed(1) : String(Math.round(displayValue));
             }
         }
     }

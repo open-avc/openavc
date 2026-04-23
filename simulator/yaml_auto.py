@@ -74,13 +74,26 @@ class YAMLAutoSimulator(TCPSimulator):
         # OSC-specific: build address-based handlers from responses
         self._osc_address_handlers: list[tuple[str, list[dict]]] = []
         self._osc_script_handlers: list[OSCScriptHandler] = []
+        # Push notification tracking: prevent echo during command processing
+        self._handling_command = False
+        self._handling_osc = False
+        # UDP push: track last client for unsolicited responses
+        self._last_udp_client: tuple[str, int] | None = None
+        # OSC push: track client and build reverse state→address map
+        self._last_osc_client: tuple[str, int] | None = None
+        self._osc_state_to_address: dict[str, tuple[str, int, str, dict[str, str] | None]] = {}
         if self._is_osc:
             self._build_osc_address_handlers()
+            self._build_osc_state_reverse_map()
 
         # Merge explicit simulator: section if present
         sim_section = driver_def.get("simulator", {})
         if sim_section:
             self._merge_simulator_section(sim_section)
+
+        # push_state: whether this simulator pushes state changes to connected
+        # drivers (matching real device behavior). Set in simulator: section.
+        self._push_state = sim_section.get("push_state", False)
 
         logger.info(
             "Auto-gen simulator for %s: %d command handlers, %d query handlers, %d state responses",
@@ -154,6 +167,8 @@ class YAMLAutoSimulator(TCPSimulator):
         self, data: bytes, addr: tuple[str, int]
     ) -> None:
         """Async handler for UDP datagram processing (supports delays)."""
+        self._last_udp_client = addr
+
         if self._network_layer:
             await self._network_layer.apply_latency(self.device_id)
 
@@ -181,6 +196,8 @@ class YAMLAutoSimulator(TCPSimulator):
         """Handle an incoming OSC datagram: decode, match, respond."""
         from server.transport.osc_codec import osc_decode_bundle, osc_encode_message
 
+        self._last_osc_client = addr
+
         if self._network_layer:
             await self._network_layer.apply_latency(self.device_id)
 
@@ -194,16 +211,20 @@ class YAMLAutoSimulator(TCPSimulator):
             logger.warning("%s: OSC decode error: %s", self.device_id, e)
             return
 
-        for osc_address, osc_args in messages:
-            responses = self._handle_osc_message(osc_address, osc_args)
-            if responses and self._udp_transport:
-                for resp_addr, resp_args in responses:
-                    resp_data = osc_encode_message(resp_addr, resp_args)
-                    if self.has_error_behavior("corrupt_response"):
-                        from simulator.osc_simulator import _corrupt_bytes
-                        resp_data = _corrupt_bytes(resp_data)
-                    self._udp_transport.sendto(resp_data, addr)
-                    self.log_protocol("out", resp_data)
+        self._handling_osc = True
+        try:
+            for osc_address, osc_args in messages:
+                responses = self._handle_osc_message(osc_address, osc_args)
+                if responses and self._udp_transport:
+                    for resp_addr, resp_args in responses:
+                        resp_data = osc_encode_message(resp_addr, resp_args)
+                        if self.has_error_behavior("corrupt_response"):
+                            from simulator.osc_simulator import _corrupt_bytes
+                            resp_data = _corrupt_bytes(resp_data)
+                        self._udp_transport.sendto(resp_data, addr)
+                        self.log_protocol("out", resp_data)
+        finally:
+            self._handling_osc = False
 
     def _handle_osc_message(
         self, address: str, args: list[tuple[str, Any]]
@@ -217,6 +238,26 @@ class YAMLAutoSimulator(TCPSimulator):
         Also checks script handlers from the simulator: section.
         """
         import fnmatch
+
+        # Special system addresses (handle before address handlers so they
+        # aren't intercepted by response patterns)
+        if address == "/xremote":
+            # Real X32 starts pushing state changes after /xremote. Send back
+            # a heartbeat so the connection watchdog sees activity.
+            return [("/xremote", [])]
+        if address == "/info":
+            model = self._state.get("console_model", "Simulator")
+            firmware = self._state.get("firmware_version", "1.0.0")
+            return [("/info", [
+                ("s", "V2.07"), ("s", "osc-server"),
+                ("s", model), ("s", firmware),
+            ])]
+        if address == "/status":
+            return [("/status", [
+                ("s", "active"), ("s", "127.0.0.1"), ("s", "osc-server"),
+            ])]
+        if address.startswith("/-action/") or address.startswith("/-show/"):
+            return [(address, args)] if args else [(address, [])]
 
         # Try script handlers first (from simulator: command_handlers with address:)
         for handler in self._osc_script_handlers:
@@ -251,21 +292,6 @@ class YAMLAutoSimulator(TCPSimulator):
                 if resp_args:
                     return [(address, resp_args)]
                 return [(address, [])]
-
-        # Special system addresses
-        if address == "/xremote":
-            return None  # Acknowledge silently (subscription renewal)
-        if address == "/info":
-            model = self._state.get("console_model", "Simulator")
-            firmware = self._state.get("firmware_version", "1.0.0")
-            return [("/info", [
-                ("s", "V2.07"), ("s", "osc-server"),
-                ("s", model), ("s", firmware),
-            ])]
-        if address == "/status":
-            return [("/status", [
-                ("s", "active"), ("s", "127.0.0.1"), ("s", "osc-server"),
-            ])]
 
         logger.debug("%s: unmatched OSC address: %s", self.device_id, address)
         return None
@@ -316,6 +342,13 @@ class YAMLAutoSimulator(TCPSimulator):
     # ── Protocol handling ──
 
     def handle_command(self, data: bytes) -> bytes | None:
+        self._handling_command = True
+        try:
+            return self._dispatch_command(data)
+        finally:
+            self._handling_command = False
+
+    def _dispatch_command(self, data: bytes) -> bytes | None:
         text = data.decode("utf-8", errors="replace").strip()
         if not text:
             return None
@@ -615,6 +648,33 @@ class YAMLAutoSimulator(TCPSimulator):
             self.driver_id, len(self._osc_address_handlers),
         )
 
+    def _build_osc_state_reverse_map(self) -> None:
+        """Build reverse map: state_key → (osc_address, arg_idx, tag, reverse_value_map).
+
+        Used to push state changes from the simulator UI to the connected driver
+        via OSC messages (the OSC equivalent of TCP notifications).
+        """
+        for addr_pattern, mappings in self._osc_address_handlers:
+            for mapping in mappings:
+                state_key = mapping.get("state")
+                if not state_key:
+                    continue
+                arg_idx = mapping.get("arg", 0)
+                value_type = mapping.get("type", "float")
+                tag = _type_to_osc_tag(value_type)
+
+                reverse_map: dict[str, str] | None = None
+                value_map = mapping.get("map")
+                if value_map:
+                    reverse_map = {
+                        str(state_val).lower(): str(osc_val)
+                        for osc_val, state_val in value_map.items()
+                    }
+
+                self._osc_state_to_address[state_key] = (
+                    addr_pattern, arg_idx, tag, reverse_map,
+                )
+
     def _infer_query_response_var(self, query_text: str) -> str | None:
         """Try to figure out which state var a query returns.
 
@@ -723,11 +783,64 @@ class YAMLAutoSimulator(TCPSimulator):
     # ── State change notifications ──
 
     def set_state(self, key: str, value: Any) -> None:
-        """Override to broadcast notifications to connected TCP clients."""
+        """Override to broadcast state changes to connected clients (TCP, UDP, and OSC)."""
+        # Clamp numeric values to declared min/max before storing
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            state_vars = self._driver_def.get("state_variables", {})
+            var_def = state_vars.get(key, {})
+            v_min = var_def.get("min")
+            v_max = var_def.get("max")
+            if v_min is not None and value < v_min:
+                value = type(value)(v_min)
+            if v_max is not None and value > v_max:
+                value = type(value)(v_max)
+
         old = self._state.get(key)
         super().set_state(key, value)
         if old == value:
             return
+
+        # Push state changes to connected drivers — only when push_state is
+        # enabled (matching real device behavior) and the change came from a
+        # non-protocol source (simulator UI, API, error injection).
+        if not self._push_state:
+            pass
+        elif (
+            self._is_osc
+            and not self._handling_osc
+            and self._last_osc_client
+            and self._udp_transport
+            and key in self._osc_state_to_address
+        ):
+            self._push_osc_state(key, value)
+        elif (
+            not self._is_udp
+            and not self._is_osc
+            and not self._handling_command
+            and self._clients
+            and key in self._state_responses
+        ):
+            resp = self._state_responses[key]
+            response_text = resp.format(value)
+            delimiter = self._get_delimiter()
+            push_data = (response_text + delimiter).encode()
+            asyncio.ensure_future(self.push(push_data))
+        elif (
+            self._is_udp
+            and not self._is_osc
+            and not self._handling_command
+            and self._last_udp_client
+            and self._udp_transport
+            and key in self._state_responses
+        ):
+            resp = self._state_responses[key]
+            response_text = resp.format(value)
+            delimiter = self._get_delimiter()
+            push_data = (response_text + delimiter).encode()
+            self._udp_transport.sendto(push_data, self._last_udp_client)
+            self.log_protocol("out", push_data)
+
+        # Manual TCP notification (legacy: explicit notifications: section in simulator YAML)
         if not self._notification_map or key not in self._notification_map:
             return
 
@@ -749,6 +862,37 @@ class YAMLAutoSimulator(TCPSimulator):
         if self._clients:
             asyncio.ensure_future(self.push(data))
 
+    def _push_osc_state(self, key: str, value: Any) -> None:
+        """Send an OSC message to the connected driver for a state change."""
+        from server.transport.osc_codec import osc_encode_message
+
+        addr, _arg_idx, tag, reverse_map = self._osc_state_to_address[key]
+
+        if reverse_map:
+            lookup = str(value).lower()
+            raw = reverse_map.get(lookup)
+            if raw is None:
+                return
+            if tag == "i":
+                osc_value: Any = int(raw)
+            elif tag == "f":
+                osc_value = float(raw)
+            else:
+                osc_value = raw
+        else:
+            if tag == "f":
+                osc_value = float(value)
+            elif tag == "i":
+                osc_value = int(value) if not isinstance(value, bool) else (1 if value else 0)
+            elif tag == "s":
+                osc_value = str(value)
+            else:
+                osc_value = value
+
+        data = osc_encode_message(addr, [(tag, osc_value)])
+        self._udp_transport.sendto(data, self._last_osc_client)
+        self.log_protocol("out", data)
+
     # ── Helpers ──
 
     def _get_delimiter(self) -> str:
@@ -758,21 +902,35 @@ class YAMLAutoSimulator(TCPSimulator):
         return delim.replace("\\r", "\r").replace("\\n", "\n")
 
     def _coerce_value(self, state_key: str, value: Any) -> Any:
-        """Coerce a value to the state variable's declared type."""
+        """Coerce a value to the state variable's declared type and clamp to range."""
         state_vars = self._driver_def.get("state_variables", {})
         var_def = state_vars.get(state_key, {})
         var_type = var_def.get("type", "string")
 
         if var_type == "integer":
             try:
-                return int(value)
+                result = int(value)
             except (ValueError, TypeError):
                 return 0
+            v_min = var_def.get("min")
+            v_max = var_def.get("max")
+            if v_min is not None:
+                result = max(int(v_min), result)
+            if v_max is not None:
+                result = min(int(v_max), result)
+            return result
         elif var_type == "number":
             try:
-                return float(value)
+                result = float(value)
             except (ValueError, TypeError):
                 return 0.0
+            v_min = var_def.get("min")
+            v_max = var_def.get("max")
+            if v_min is not None:
+                result = max(float(v_min), result)
+            if v_max is not None:
+                result = min(float(v_max), result)
+            return result
         elif var_type == "boolean":
             if isinstance(value, bool):
                 return value

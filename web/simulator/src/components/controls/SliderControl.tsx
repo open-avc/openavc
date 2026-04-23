@@ -7,8 +7,9 @@ interface Props {
 }
 
 export function SliderControl({ control, state, onStateChange }: Props) {
-  const value = Number(state[control.key] ?? control.min);
-  const step = control.step ?? (Number.isInteger(control.min) && Number.isInteger(control.max) ? 1 : 0.1);
+  const raw = Number(state[control.key] ?? control.min);
+  const value = Math.max(control.min, Math.min(control.max, raw));
+  const step = control.step ?? (control.max - control.min > 1 ? 1 : 0.01);
 
   return (
     <div className="ctrl-slider">

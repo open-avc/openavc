@@ -41,6 +41,27 @@ export function SimulatorEditor({ draft, onUpdate }: SimulatorEditorProps) {
         command handlers makes the simulation more realistic.
       </p>
 
+      {/* Push State */}
+      <div style={rowStyle}>
+        <h3 style={{ fontSize: "var(--font-size-base)", marginBottom: "var(--space-sm)" }}>
+          State Push Behavior
+        </h3>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "var(--font-size-sm)", cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={sim.push_state ?? false}
+            onChange={(e) => update({ push_state: e.target.checked })}
+          />
+          Push state changes to connected drivers
+        </label>
+        <p style={helpStyle}>
+          Enable this if the real device pushes unsolicited updates (verbose mode,
+          subscriptions, notifications). When enabled, state changes from the
+          simulator UI are sent to the driver immediately. When disabled, changes
+          are only visible when the driver polls.
+        </p>
+      </div>
+
       {/* Initial State */}
       <div style={rowStyle}>
         <h3 style={{ fontSize: "var(--font-size-base)", marginBottom: "var(--space-sm)" }}>

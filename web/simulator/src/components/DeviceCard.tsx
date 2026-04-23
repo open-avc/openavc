@@ -68,6 +68,12 @@ export function DeviceCard({ device }: { device: DeviceInfo }) {
         )}
       </div>
 
+      {/* Push state indicator */}
+      <div style={{ padding: "2px 8px", fontSize: 10, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4 }}>
+        <span style={{ width: 6, height: 6, borderRadius: "50%", background: device.push_state ? "var(--accent)" : "var(--border-color)", display: "inline-block" }} />
+        {device.push_state ? "Pushes state changes" : "Poll-only (no push)"}
+      </div>
+
       {/* Declarative controls or category-specific panel */}
       {device.controls && device.controls.length > 0 ? (
         <div className="controls-panel">
