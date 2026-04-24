@@ -88,6 +88,9 @@ class Engine:
         self._state_sub_ids: list[str] = []
         self._event_sub_ids: list[str] = []
 
+        # Reload serialization
+        self._reload_lock = asyncio.Lock()
+
         # Tracking
         self._start_time: float = 0
         self._running = False
@@ -397,6 +400,10 @@ class Engine:
 
     async def reload_project(self) -> None:
         """Hot-reload project.avc without full restart."""
+        async with self._reload_lock:
+            await self._reload_project_inner()
+
+    async def _reload_project_inner(self) -> None:
         log.info("Reloading project...")
         self.project = load_project(self.project_path)
         self._project_revision += 1

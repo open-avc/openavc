@@ -411,6 +411,27 @@ class SimulationManager:
         # Removed devices that need cleanup
         removed = simulated_ids - current_device_ids
 
+        # Re-apply redirects to existing simulated devices whose driver
+        # instances may have been replaced by _sync_devices() during reload
+        continuing = simulated_ids & current_device_ids
+        for device_id in continuing:
+            driver = dm._devices.get(device_id)
+            if not driver:
+                continue
+            sim_port = self._sim_ports[device_id]
+            if driver.config.get("host") != "127.0.0.1" or driver.config.get("port") != sim_port:
+                self._original_configs[device_id] = {
+                    "host": driver.config.get("host", ""),
+                    "port": driver.config.get("port", 0),
+                }
+                driver.config["host"] = "127.0.0.1"
+                driver.config["port"] = sim_port
+                log.info("Re-applied simulation redirect for %s to port %d", device_id, sim_port)
+                try:
+                    await dm.reconnect_device(device_id)
+                except Exception as e:
+                    log.warning("Failed to reconnect %s to simulator after reload: %s", device_id, e)
+
         if not added and not removed:
             return
 
