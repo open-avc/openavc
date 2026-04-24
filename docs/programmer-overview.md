@@ -83,7 +83,7 @@ The **Project Library** (visible at the bottom of the Program view) stores saved
 - **Import/Export**: download project files as `.avc` or `.zip`, upload files from other instances
 - **Delete**: remove a saved project from the library
 
-OpenAVC automatically creates a backup before important operations like opening a different project, creating a blank project, AI changes, and cloud config pushes. Backups are ZIP files that include the project file, scripts, and assets, so restoring always returns you to a complete working state.
+OpenAVC automatically creates a backup before important operations like opening a different project, creating a blank project, AI changes, and cloud config pushes. Backups are ZIP files that include the project file, scripts, assets, and persisted variable state, so restoring always returns you to a complete working state.
 
 ### Backups
 

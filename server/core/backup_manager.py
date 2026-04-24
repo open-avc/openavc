@@ -6,6 +6,7 @@ Backups are ZIP files stored in {project_dir}/backups/ containing:
   - backup_meta.json     (reason, timestamp, project name, version)
   - scripts/             (all .py script files)
   - assets/              (all asset files)
+  - state.json           (persisted variable state, if present)
 
 Backups are created at meaningful boundaries (project replacement, AI changes,
 cloud pushes, manual request, periodic timer) — NOT on every save.
@@ -108,6 +109,11 @@ def create_backup(
                 for f in assets_dir.iterdir():
                     if f.is_file():
                         zf.write(f, f"assets/{f.name}")
+
+            # Persisted variable state
+            state_file = project_dir / "state.json"
+            if state_file.is_file():
+                zf.write(state_file, "state.json")
 
         cleanup_backups(backup_d, keep=max_backups)
         log.info(f"Backup created: {filename} ({reason})")
@@ -227,15 +233,23 @@ def restore_from_backup(backup_path: Path, project_dir: Path) -> None:
                         with zf.open(name) as src:
                             (scripts_dir / fname).write_bytes(src.read())
 
-            # Extract assets
+            # Extract assets (clear existing first to remove orphans)
             assets_dir = project_dir / "assets"
             assets_dir.mkdir(parents=True, exist_ok=True)
+            for f in assets_dir.iterdir():
+                if f.is_file():
+                    f.unlink()
             for name in names:
                 if name.startswith("assets/") and name != "assets/":
                     fname = Path(name).name
                     if fname:
                         with zf.open(name) as src:
                             (assets_dir / fname).write_bytes(src.read())
+
+            # Restore persisted variable state
+            if "state.json" in names:
+                with zf.open("state.json") as src:
+                    (project_dir / "state.json").write_bytes(src.read())
 
         log.info(f"Restored from ZIP backup: {backup_path.name}")
 
