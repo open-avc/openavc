@@ -187,7 +187,7 @@ OpenAVC serves HTTP only. It does not terminate TLS. For HTTPS, place a reverse 
 
 ### Rate limiting
 
-Rate limiting is enabled by default on the HTTP REST API. These limits apply to external integrations and tools making HTTP requests to the server. They do not apply to the touch panel UI (which uses WebSocket) or to the command pipeline between the server and AV hardware, which has no rate limiting — commands are sent to devices the instant they are received.
+Rate limiting is enabled by default on the HTTP REST API for remote clients. Requests from localhost (127.0.0.1, ::1) are exempt, since the primary use case is a single user on the same machine. Remote clients are subject to the limits below. Rate limiting does not apply to the touch panel UI (which uses WebSocket) or to the command pipeline between the server and AV hardware — commands are sent to devices the instant they are received.
 
 | Tier | Limit | Applies to |
 |------|-------|-----------|

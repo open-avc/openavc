@@ -61,7 +61,7 @@ Standard 5-field cron expressions (minute, hour, day-of-month, month, day-of-wee
 | `-` | `1-5` | Range (Monday through Friday) |
 | `/` | `*/15` | Step (every 15) |
 
-> **Precision note:** Schedule triggers are checked every 30 seconds. For most AV scheduling (startup/shutdown at a specific hour), this is more than sufficient. If you need sub-minute precision, use script timers instead.
+> **Precision note:** Schedule triggers are checked every 60 seconds. For most AV scheduling (startup/shutdown at a specific hour), this is more than sufficient. If you need sub-minute precision, use script timers instead.
 
 ## Running a Script on a Schedule
 
