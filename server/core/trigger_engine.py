@@ -256,7 +256,7 @@ class TriggerEngine:
                         cron = croniter(cron_expr, now)
                         prev = cron.get_prev(datetime)
                         delta = (now - prev).total_seconds()
-                        if delta > 30:
+                        if delta > 60:
                             continue
                         # Prevent duplicate fires
                         last = last_fires.get(t["id"])

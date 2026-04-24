@@ -99,6 +99,17 @@ async def get_community_plugins(force: bool = False) -> tuple[list[dict], str | 
     return await _cache.get(force=force)
 
 
+_SAFE_ID_RE = re.compile(r"^[a-z0-9_]+$")
+
+
+def _validate_plugin_id(plugin_id: str) -> None:
+    if not plugin_id or not _SAFE_ID_RE.match(plugin_id):
+        raise ValueError(
+            f"Invalid plugin ID '{plugin_id}': must be lowercase letters, "
+            "numbers, and underscores only"
+        )
+
+
 # ──── Install ────
 
 
@@ -113,6 +124,7 @@ async def install_plugin(plugin_id: str, file_url: str) -> dict[str, Any]:
     Returns:
         {"status": "installed", "plugin_id": plugin_id}
     """
+    _validate_plugin_id(plugin_id)
     PLUGIN_REPO_DIR.mkdir(parents=True, exist_ok=True)
     plugin_dir = PLUGIN_REPO_DIR / plugin_id
 
@@ -863,6 +875,7 @@ async def uninstall_plugin(plugin_id: str, project_plugins: dict | None = None) 
         plugin_id: Plugin to uninstall.
         project_plugins: Current project's plugins dict (for safety check).
     """
+    _validate_plugin_id(plugin_id)
     plugin_dir = PLUGIN_REPO_DIR / plugin_id
 
     if not plugin_dir.exists():
@@ -893,6 +906,7 @@ async def update_plugin(plugin_id: str, file_url: str) -> dict[str, Any]:
     """
     Update a plugin by removing the old version and installing the new one.
     """
+    _validate_plugin_id(plugin_id)
     plugin_dir = PLUGIN_REPO_DIR / plugin_id
 
     if not plugin_dir.exists():

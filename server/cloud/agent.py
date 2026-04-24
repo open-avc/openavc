@@ -388,10 +388,14 @@ class CloudAgent:
         if not self._connected or not self._session or not self._ws:
             return
 
-        # Check throttle
+        # Check global and per-type throttle
+        global_throttle = self._throttles.get("global")
+        if global_throttle and not global_throttle.is_set():
+            log.debug("Cloud agent: global throttle active, dropping message")
+            return
         throttle_event = self._throttles.get(msg_type)
         if throttle_event and not throttle_event.is_set():
-            log.debug(f"Cloud agent: message type {msg_type} is throttled, buffering")
+            log.debug(f"Cloud agent: message type {msg_type} is throttled, dropping")
             return
 
         # Build message

@@ -211,14 +211,11 @@ class Sequencer:
         Reset sequence counters for a new session.
 
         Called after a fresh handshake. The send buffer is preserved
-        (messages will be replayed), but sequence counters restart.
+        so messages can be replayed with new sequence numbers.
         """
         with self._lock:
             self._next_seq = 1
             self._last_downstream_seq = 0
-            # Clear the send buffer — old messages have stale sequence numbers
-            # that would collide with the new session's numbering
-            self._send_buffer.clear()
             # Don't reset last_ack_seq — used for resume negotiation
 
     def clear_buffer(self) -> None:

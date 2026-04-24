@@ -172,6 +172,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         _cleanup(now)
 
         client_ip = _get_client_ip(request)
+
+        # Exempt localhost from rate limiting — primary deployment is single-user local
+        if client_ip in ("127.0.0.1", "::1", "localhost"):
+            return await call_next(request)
         buckets = _ip_buckets.get(client_ip)
         if buckets is None:
             buckets = _IPBuckets()

@@ -214,7 +214,11 @@ class YAMLAutoSimulator(TCPSimulator):
         self._handling_osc = True
         try:
             for osc_address, osc_args in messages:
-                responses = self._handle_osc_message(osc_address, osc_args)
+                try:
+                    responses = self._handle_osc_message(osc_address, osc_args)
+                except Exception:
+                    logger.exception("%s: error handling OSC %s", self.device_id, osc_address)
+                    continue
                 if responses and self._udp_transport:
                     for resp_addr, resp_args in responses:
                         resp_data = osc_encode_message(resp_addr, resp_args)

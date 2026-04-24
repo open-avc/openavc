@@ -714,8 +714,8 @@ class TestSequencer:
         seq.reset_for_new_session()
         assert seq.next_seq == 1
         assert seq.last_downstream_seq == 0
-        # Buffer cleared to prevent sequence number collisions
-        assert seq.buffer_count == 0
+        # Buffer preserved for replay after reconnect
+        assert seq.buffer_count == 2
 
     def test_clear_buffer(self):
         seq = Sequencer()
