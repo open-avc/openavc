@@ -213,8 +213,8 @@ def test_strict_tier_limit():
         assert r.status_code == 429
 
 
-def test_strict_exceeded_blocks_all_tiers():
-    """When strict tier is exceeded, ALL requests from that IP are blocked."""
+def test_strict_exceeded_blocks_only_strict():
+    """When strict tier is exceeded, only strict-tier requests are blocked."""
     app = _make_app(strict_limit=2)
     client = TestClient(app)
 
@@ -223,12 +223,15 @@ def test_strict_exceeded_blocks_all_tiers():
         # Exhaust strict tier
         for _ in range(2):
             client.post("/api/devices/d1/command")
-        # Standard tier should also be blocked
+        # Strict tier should be blocked
+        r = client.post("/api/devices/d1/command")
+        assert r.status_code == 429
+        # Standard tier should still work
         r = client.get("/api/devices")
-        assert r.status_code == 429
-        # Open tier should also be blocked
+        assert r.status_code == 200
+        # Open tier should still work
         r = client.get("/api/status")
-        assert r.status_code == 429
+        assert r.status_code == 200
 
 
 def test_auth_failure_counts_strict():
@@ -242,9 +245,12 @@ def test_auth_failure_counts_strict():
         for _ in range(2):
             r = client.get("/api/protected")
             assert r.status_code == 401
-        # Now even a different endpoint should be blocked
-        r = client.get("/api/devices")
+        # Strict-tier endpoints should be blocked
+        r = client.post("/api/devices/d1/command")
         assert r.status_code == 429
+        # Standard tier should still work (auth failures only block strict)
+        r = client.get("/api/devices")
+        assert r.status_code == 200
 
 
 def test_429_response_format():

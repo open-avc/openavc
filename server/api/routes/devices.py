@@ -1,5 +1,6 @@
 """Device CRUD, commands, settings, and connection REST API endpoints."""
 
+import re
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
@@ -16,6 +17,15 @@ from server.core.project_loader import DeviceConfig, save_project
 from server.core.project_migration import CONNECTION_FIELDS
 
 router = APIRouter()
+
+_MAX_NAME_LEN = 128
+
+
+def _sanitize_device_name(name: str) -> str:
+    """Strip HTML tags, collapse whitespace, enforce length limit."""
+    name = re.sub(r"<[^>]+>", "", name)
+    name = " ".join(name.split())
+    return name[:_MAX_NAME_LEN]
 
 
 # --- Devices ---
@@ -55,7 +65,9 @@ async def update_device(device_id: str, body: DeviceUpdateRequest) -> dict[str, 
 
     # Build updated config — split connection fields into connections table
     existing = engine.project.devices[device_idx]
-    new_name = body.name if body.name is not None else existing.name
+    new_name = _sanitize_device_name(body.name) if body.name is not None else existing.name
+    if not new_name:
+        raise HTTPException(status_code=422, detail="Device name cannot be blank")
     new_driver = body.driver if body.driver is not None else existing.driver
 
     # Validate driver exists

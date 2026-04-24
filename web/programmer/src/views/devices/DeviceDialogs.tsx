@@ -486,6 +486,7 @@ export function AddDeviceDialog({
             value={deviceName}
             onChange={(e) => setDeviceName(e.target.value)}
             placeholder="e.g., Main Projector"
+            maxLength={128}
             style={{ width: "100%" }}
           />
         </div>
@@ -773,6 +774,7 @@ export function EditDeviceDialog({
             value={deviceName}
             onChange={(e) => setDeviceName(e.target.value)}
             placeholder="e.g., Main Projector"
+            maxLength={128}
             style={{ width: "100%" }}
           />
         </div>

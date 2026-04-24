@@ -182,13 +182,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             _ip_buckets[client_ip] = buckets
         buckets.last_seen = now
 
-        # If strict tier is exceeded, block all requests from this IP
-        if buckets.strict.is_exceeded(now):
-            retry = buckets.strict.time_until_open(now)
-            _log_limited(client_ip, "strict", request.url.path, now)
-            return _make_429(retry)
-
-        # Check the tier-specific window
+        # Check only the tier this request belongs to
         window = buckets.get_window(tier)
         if window.is_exceeded(now):
             retry = window.time_until_open(now)

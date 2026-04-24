@@ -320,6 +320,9 @@ async def add_device(req: AddDeviceRequest) -> dict[str, Any]:
         name = discovered.model or discovered.device_name or f"{discovered.manufacturer or 'Device'} ({req.ip})"
     if not name:
         name = f"{req.driver_id} ({req.ip})"
+    # Sanitize: strip HTML, collapse whitespace, limit length
+    name = re.sub(r"<[^>]+>", "", name)
+    name = " ".join(name.split())[:128]
 
     # Merge suggested config with any overrides from the request
     config = {"host": req.ip}
