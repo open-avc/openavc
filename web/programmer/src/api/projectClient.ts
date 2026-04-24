@@ -7,8 +7,7 @@ import { BASE, request } from "./base";
 
 // --- Project ---
 
-export async function getProject(): Promise<ProjectConfig> {
-  // For large projects, parse JSON in a Web Worker to avoid blocking the main thread
+export async function getProject(): Promise<ProjectConfig & { _etag?: string }> {
   const res = await fetch(`${BASE}/project`, {
     headers: { "Content-Type": "application/json" },
   });
@@ -16,11 +15,12 @@ export async function getProject(): Promise<ProjectConfig> {
     const body = await res.text();
     throw new Error(`API ${res.status}: ${body}`);
   }
+  const etag = res.headers.get("etag") ?? undefined;
   const text = await res.text();
 
-  // Only use worker for large payloads (>500KB)
+  let data: ProjectConfig;
   if (text.length > 512_000 && typeof Worker !== "undefined") {
-    return new Promise<ProjectConfig>((resolve, reject) => {
+    data = await new Promise<ProjectConfig>((resolve, reject) => {
       const worker = new Worker(
         new URL("../workers/projectParser.ts", import.meta.url),
         { type: "module" }
@@ -32,31 +32,53 @@ export async function getProject(): Promise<ProjectConfig> {
       };
       worker.onerror = () => {
         worker.terminate();
-        resolve(JSON.parse(text));  // Fallback to main-thread parse
+        resolve(JSON.parse(text));
       };
       worker.postMessage(text);
     });
+  } else {
+    data = JSON.parse(text);
   }
 
-  return JSON.parse(text);
+  if (etag) (data as any)._etag = etag;
+  return data;
 }
 
 export async function getSystemStatus(): Promise<Record<string, unknown>> {
   return request("/status");
 }
 
+export class ConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ConflictError";
+  }
+}
+
 export async function saveProject(
   project: ProjectConfig,
-  revision?: number
-): Promise<{ status: string; revision?: number }> {
-  const body: Record<string, unknown> = { ...project };
-  if (revision !== undefined) {
-    body._revision = revision;
-  }
-  return request("/project", {
+  etag?: string
+): Promise<{ status: string; etag?: string }> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (etag) headers["If-Match"] = etag;
+
+  const res = await fetch(`${BASE}/project`, {
     method: "PUT",
-    body: JSON.stringify(body),
+    headers,
+    body: JSON.stringify(project),
   });
+
+  if (res.status === 409) {
+    throw new ConflictError("Project was modified by another session. Reload to see the latest changes.");
+  }
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`API ${res.status}: ${body}`);
+  }
+
+  const result = await res.json();
+  const newEtag = res.headers.get("etag") ?? undefined;
+  return { status: result.status, etag: newEtag };
 }
 
 export async function reloadProject(): Promise<{ status: string }> {

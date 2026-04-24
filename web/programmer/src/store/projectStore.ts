@@ -19,7 +19,8 @@ interface ProjectStore {
   savePending: boolean;  // true while debouncedSave timer is pending
   error: string | null;
   dirty: boolean;
-  revision: number | null;  // server revision counter
+  revision: number | null;  // kept for WebSocket project.reloaded detection
+  etag: string | null;  // ETag for optimistic concurrency
   conflictDetected: boolean;  // true when 409 received
 
   // Undo/redo
@@ -49,6 +50,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   error: null,
   dirty: false,
   revision: null,
+  etag: null,
   conflictDetected: false,
 
   undoStack: [],
@@ -61,12 +63,11 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     set({ loading: true, error: null });
     try {
       const raw = await api.getProject();
-      // Extract runtime revision from response
-      const revision = (raw as any)._revision ?? null;
-      delete (raw as any)._revision;
-      // Double-check dirty hasn't been set while we were fetching
+      const etag = (raw as any)._etag ?? null;
+      delete (raw as any)._etag;
+      const revision = etag ? parseInt(etag.replace(/"/g, ""), 10) || null : null;
       if (!get().dirty) {
-        set({ project: raw, loading: false, dirty: false, revision, conflictDetected: false });
+        set({ project: raw, loading: false, dirty: false, etag, revision, conflictDetected: false });
       } else {
         set({ loading: false });
       }
@@ -76,16 +77,17 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   },
 
   save: async (retryCount = 0) => {
-    const { project, revision } = get();
+    const { project, etag } = get();
     if (!project) return;
     set({ saving: true, savePending: false, error: null });
     try {
-      const result = await api.saveProject(project, revision ?? undefined);
-      set({ saving: false, dirty: false, revision: result.revision ?? null, conflictDetected: false });
+      const result = await api.saveProject(project, etag ?? undefined);
+      const newEtag = result.etag ?? null;
+      const newRevision = newEtag ? parseInt(newEtag.replace(/"/g, ""), 10) || null : null;
+      set({ saving: false, dirty: false, etag: newEtag, revision: newRevision, conflictDetected: false });
     } catch (e) {
-      // Handle 409 Conflict — another session modified the project
-      if (String(e).includes("409")) {
-        set({ saving: false, conflictDetected: true, error: "Project was modified by another session. Reload to see the latest changes." });
+      if (e instanceof api.ConflictError) {
+        set({ saving: false, conflictDetected: true, error: e.message });
         return;
       }
       const maxRetries = 2;
@@ -158,9 +160,10 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     set({ loading: true, error: null, dirty: false, conflictDetected: false });
     try {
       const raw = await api.getProject();
-      const revision = (raw as any)._revision ?? null;
-      delete (raw as any)._revision;
-      set({ project: raw, loading: false, dirty: false, revision, conflictDetected: false, undoStack: [], redoStack: [] });
+      const etag = (raw as any)._etag ?? null;
+      delete (raw as any)._etag;
+      const revision = etag ? parseInt(etag.replace(/"/g, ""), 10) || null : null;
+      set({ project: raw, loading: false, dirty: false, etag, revision, conflictDetected: false, undoStack: [], redoStack: [] });
     } catch (e) {
       set({ error: String(e), loading: false });
     }

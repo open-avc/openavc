@@ -3,6 +3,7 @@
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import JSONResponse
 
 from server.api._engine import _get_engine
 from server.api.errors import api_error as _api_error
@@ -17,13 +18,15 @@ open_router = APIRouter()
 
 
 @router.get("/project")
-async def get_project() -> dict[str, Any]:
-    """Get the full project configuration (includes runtime revision counter)."""
+async def get_project() -> JSONResponse:
+    """Get the full project configuration with ETag for concurrency control."""
     engine = _get_engine()
     if engine.project:
         data = engine.project.model_dump(mode="json")
-        data["_revision"] = engine._project_revision
-        return data
+        return JSONResponse(
+            content=data,
+            headers={"ETag": f'"{engine._project_revision}"'},
+        )
     raise HTTPException(status_code=404, detail="No project loaded")
 
 
@@ -39,10 +42,9 @@ async def reload_project() -> dict[str, Any]:
 async def save_project_config(request: Request) -> dict[str, Any]:
     """Save a full project configuration, then reload.
 
-    If the request body contains a ``_revision`` field, the server checks
-    it against the current revision.  A mismatch means another client
-    saved since this client last loaded — return 409 Conflict so the
-    frontend can prompt the user.
+    Supports optimistic concurrency via If-Match header containing the
+    ETag from a previous GET.  A mismatch means another client saved
+    since this client last loaded — returns 409 Conflict.
     """
     # Limit request body to 10 MB to prevent memory exhaustion
     content_length = request.headers.get("content-length")
@@ -54,18 +56,27 @@ async def save_project_config(request: Request) -> dict[str, Any]:
     engine = _get_engine()
     body = await request.json()
 
-    # Optimistic concurrency check (14.3)
+    # Optimistic concurrency: If-Match header (preferred) or legacy _revision body field
+    if_match = request.headers.get("if-match")
     client_revision = body.pop("_revision", None)
-    if client_revision is not None:
+
+    expected_rev: int | None = None
+    if if_match is not None:
         try:
-            rev = int(client_revision)
+            expected_rev = int(if_match.strip('"'))
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="Invalid If-Match value")
+    elif client_revision is not None:
+        try:
+            expected_rev = int(client_revision)
         except (ValueError, TypeError):
             raise HTTPException(status_code=400, detail="Invalid _revision value")
-        if rev != engine._project_revision:
-            raise HTTPException(
-                status_code=409,
-                detail="Project was modified by another session. Reload to see the latest changes.",
-            )
+
+    if expected_rev is not None and expected_rev != engine._project_revision:
+        raise HTTPException(
+            status_code=409,
+            detail="Project was modified by another session. Reload to see the latest changes.",
+        )
 
     try:
         project = ProjectConfig(**body)
@@ -73,7 +84,10 @@ async def save_project_config(request: Request) -> dict[str, Any]:
         raise _api_error(422, "Invalid project configuration", e)
     save_project(engine.project_path, project)
     await engine.reload_project()
-    return {"status": "saved", "revision": engine._project_revision}
+    return JSONResponse(
+        content={"status": "saved"},
+        headers={"ETag": f'"{engine._project_revision}"'},
+    )
 
 
 @router.get("/project/validate-drivers")
