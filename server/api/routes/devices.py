@@ -410,8 +410,8 @@ async def update_connections_bulk(request: Request) -> dict[str, Any]:
     engine.project.connections = table
     save_project(engine.project_path, engine.project)
 
-    # Hot-reload all devices with new connections
-    await engine._sync_devices()
+    # Hot-reload devices with new connections
+    await engine.reload_project()
     return {"status": "updated", "count": len(table)}
 
 
@@ -476,5 +476,5 @@ async def import_connections(request: Request) -> dict[str, Any]:
 
     engine.project.connections = cleaned
     save_project(engine.project_path, engine.project)
-    await engine._sync_devices()
+    await engine.reload_project()
     return {"status": "imported", "count": len(cleaned)}

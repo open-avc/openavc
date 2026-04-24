@@ -413,7 +413,7 @@ class TriggerEngine:
 
         # 6. Overlap policy
         overlap = t.get("overlap", "skip")
-        if macro_id in self.macros._running:
+        if self.macros.is_macro_running(macro_id):
             if overlap == "skip":
                 log.debug(f"Trigger {trigger_id} skipped — macro already running")
                 await self.events.emit(

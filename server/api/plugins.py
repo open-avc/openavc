@@ -227,7 +227,7 @@ async def update_plugin_config(plugin_id: str, request: Request) -> dict[str, An
     save_project(engine.project_path, engine.project)
 
     # Restart if running
-    if plugin_id in engine.plugin_loader._instances:
+    if engine.plugin_loader.is_running(plugin_id):
         await engine.plugin_loader.stop_plugin(plugin_id)
         await engine.plugin_loader.start_plugin(plugin_id, new_config)
 
@@ -355,7 +355,7 @@ async def update_plugin_endpoint(plugin_id: str, request: Request) -> dict[str, 
 
     try:
         # Stop plugin if running (must happen before files are deleted)
-        was_running = plugin_id in engine.plugin_loader._instances
+        was_running = engine.plugin_loader.is_running(plugin_id)
         if was_running:
             await engine.plugin_loader.stop_plugin(plugin_id)
 
@@ -389,7 +389,7 @@ async def uninstall_plugin_endpoint(plugin_id: str) -> dict[str, Any]:
 
     try:
         # Stop plugin if running
-        if plugin_id in engine.plugin_loader._instances:
+        if engine.plugin_loader.is_running(plugin_id):
             await engine.plugin_loader.stop_plugin(plugin_id)
 
         result = await uninstall_plugin(plugin_id, project_plugins)
@@ -405,8 +405,7 @@ async def uninstall_plugin_endpoint(plugin_id: str) -> dict[str, Any]:
             save_project(engine.project_path, engine.project)
 
         # Clear missing plugin state if tracked
-        if plugin_id in engine.plugin_loader._missing_plugins:
-            del engine.plugin_loader._missing_plugins[plugin_id]
+        engine.plugin_loader.clear_missing(plugin_id)
 
         return result
     except ValueError as e:

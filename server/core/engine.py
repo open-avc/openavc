@@ -544,7 +544,7 @@ class Engine:
         for d in self.project.devices:
             project_devices[d.id] = self.resolved_device_config(d)
 
-        running_ids = set(self.devices._device_configs.keys())
+        running_ids = set(self.devices.get_device_configs().keys())
         project_ids = set(project_devices.keys())
 
         # Remove devices no longer in project and clean up orphaned state keys
@@ -565,7 +565,7 @@ class Engine:
         # Update changed devices — compare raw project config AND connection
         # table entries separately to detect IP/port changes
         for device_id in running_ids & project_ids:
-            old_config = self.devices._device_configs.get(device_id, {})
+            old_config = self.devices.get_device_config(device_id) or {}
             new_config = project_devices[device_id]
             old_conn = old_config.get("config", {})
             new_conn = new_config.get("config", {})
@@ -579,20 +579,14 @@ class Engine:
         if not self.project:
             return
 
-        old_plugins = set(self.plugin_loader._instances.keys()) | set(
-            pid for pid, s in self.plugin_loader._status.items()
-            if s in ("stopped", "missing", "incompatible", "error")
-        )
+        old_plugins = self.plugin_loader.get_known_plugin_ids()
         new_plugins = set(self.project.plugins.keys())
 
         # Plugins removed from project
         for plugin_id in old_plugins - new_plugins:
-            if plugin_id in self.plugin_loader._instances:
+            if self.plugin_loader.is_running(plugin_id):
                 await self.plugin_loader.stop_plugin(plugin_id)
-            # Clear status tracking
-            self.plugin_loader._status.pop(plugin_id, None)
-            self.plugin_loader._missing_plugins.pop(plugin_id, None)
-            self.plugin_loader._incompatible_plugins.pop(plugin_id, None)
+            self.plugin_loader.remove_plugin_tracking(plugin_id)
 
         # Plugins added to project
         for plugin_id in new_plugins - old_plugins:
@@ -608,11 +602,8 @@ class Engine:
             new_config = entry.config if hasattr(entry, "config") else entry.get("config", {})
             new_enabled = entry.enabled if hasattr(entry, "enabled") else entry.get("enabled", False)
 
-            was_running = plugin_id in self.plugin_loader._instances
-            old_config = {}
-            if was_running:
-                api = self.plugin_loader._apis.get(plugin_id)
-                old_config = api._config if api else {}
+            was_running = self.plugin_loader.is_running(plugin_id)
+            old_config = self.plugin_loader.get_running_config(plugin_id) if was_running else {}
 
             if was_running and not new_enabled:
                 await self.plugin_loader.stop_plugin(plugin_id)
@@ -1037,7 +1028,7 @@ class Engine:
         for dev in self.project.devices:
             if dev.id == device_id:
                 # Sync from device_manager's config (which was updated in-place)
-                dm_config = self.devices._device_configs.get(device_id, {})
+                dm_config = self.devices.get_device_config(device_id) or {}
                 remaining = dm_config.get("pending_settings", {})
                 dev.pending_settings = remaining
                 break

@@ -510,6 +510,25 @@ class PluginLoader:
         """Remove a plugin from the missing-plugins tracker."""
         self._missing_plugins.pop(plugin_id, None)
 
+    def get_known_plugin_ids(self) -> set[str]:
+        """Return IDs of all plugins that have been loaded, are missing, or have a status."""
+        ids: set[str] = set()
+        ids.update(self._instances.keys())
+        ids.update(pid for pid, s in self._status.items()
+                   if s in ("stopped", "missing", "incompatible", "error"))
+        return ids
+
+    def remove_plugin_tracking(self, plugin_id: str) -> None:
+        """Remove all internal tracking for a plugin (status, missing, incompatible)."""
+        self._status.pop(plugin_id, None)
+        self._missing_plugins.pop(plugin_id, None)
+        self._incompatible_plugins.pop(plugin_id, None)
+
+    def get_running_config(self, plugin_id: str) -> dict[str, Any]:
+        """Return the config dict of a running plugin, or empty dict if not running."""
+        api = self._apis.get(plugin_id)
+        return api._config if api else {}
+
     # ──── Info & Status ────
 
     def list_plugins(self) -> list[dict[str, Any]]:

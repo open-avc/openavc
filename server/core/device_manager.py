@@ -329,6 +329,14 @@ class DeviceManager:
 
         return result
 
+    def get_device_configs(self) -> dict[str, dict[str, Any]]:
+        """Return a shallow copy of the device config dict (device_id → config)."""
+        return dict(self._device_configs)
+
+    def get_device_config(self, device_id: str) -> dict[str, Any] | None:
+        """Return a single device's config dict, or None if not tracked."""
+        return self._device_configs.get(device_id)
+
     async def retry_orphaned_device(self, device_id: str) -> bool:
         """Re-attempt adding an orphaned device (e.g., after installing its driver).
 
