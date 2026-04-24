@@ -73,6 +73,8 @@ A conditional step checks a state value and runs one set of steps if the conditi
 3. Add steps to the **Then** block (runs when condition is true)
 4. Optionally add steps to the **Else** block (runs when condition is false)
 
+Comparisons automatically handle type differences between device state and your condition value. A device that reports volume as `"-12.5"` (text) will correctly compare against a numeric threshold like `-20`. Similarly, `"true"` (text) matches `true` (boolean). You don't need to worry about the internal type — just enter the value you expect.
+
 Conditionals can be nested (a conditional inside a conditional) up to 5 levels deep. Macros that call other macros via "Run Macro" steps can nest up to 10 levels deep. For most rooms, one level of each is enough.
 
 ## Wait Until
