@@ -3,6 +3,22 @@ import yaml from "js-yaml";
 import type { DriverDefinition, DriverInfo, CommunityDriver, InstalledDriver } from "../api/types";
 import * as api from "../api/restClient";
 
+function parseApiError(e: unknown): string {
+  if (!(e instanceof Error)) return String(e);
+  const match = e.message.match(/^API \d+: (.+)/s);
+  if (!match) return e.message;
+  try {
+    const body = JSON.parse(match[1]);
+    const detail = body?.detail;
+    if (typeof detail === "string") return detail;
+    if (detail?.message) {
+      const errors: string[] = detail.errors ?? [];
+      return errors.length ? `${detail.message}:\n${errors.join("\n")}` : detail.message;
+    }
+  } catch { /* not JSON, use raw */ }
+  return e.message;
+}
+
 const EMPTY_DEFINITION: DriverDefinition = {
   id: "",
   name: "",
@@ -79,7 +95,7 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => ({
       const defs = await api.listDriverDefinitions();
       set({ definitions: defs, loading: false });
     } catch (e) {
-      set({ error: String(e), loading: false });
+      set({ error: parseApiError(e), loading: false });
     }
   },
 
@@ -125,7 +141,7 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => ({
       set({ saving: false, dirty: false, selectedId: draft.id });
       await get().loadDefinitions();
     } catch (e) {
-      set({ saving: false, error: String(e) });
+      set({ saving: false, error: parseApiError(e) });
     }
   },
 
@@ -138,7 +154,7 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => ({
       }
       await get().loadDefinitions();
     } catch (e) {
-      set({ error: String(e) });
+      set({ error: parseApiError(e) });
     }
   },
 
@@ -154,7 +170,7 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => ({
       await get().loadDefinitions();
       get().selectDriver(definition.id);
     } catch (e) {
-      set({ saving: false, error: String(e) });
+      set({ saving: false, error: parseApiError(e) });
     }
   },
 
@@ -192,7 +208,7 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => ({
       const drivers = await api.fetchCommunityDrivers();
       set({ communityDrivers: drivers, communityLoading: false });
     } catch (e) {
-      set({ communityError: String(e), communityLoading: false });
+      set({ communityError: parseApiError(e), communityLoading: false });
     }
   },
 
