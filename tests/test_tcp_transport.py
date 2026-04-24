@@ -848,10 +848,9 @@ async def test_fixed_length_parser():
 # --- Error in on_data callback ---
 
 
-async def test_on_data_exception_triggers_disconnect(echo_server):
-    """If on_data raises, the transport disconnects for recovery."""
+async def test_on_data_exception_does_not_disconnect(echo_server):
+    """If on_data raises, the transport logs the error but stays connected."""
     server, port = echo_server
-    disconnect_called = asyncio.Event()
 
     def bad_callback(data):
         raise ValueError("callback exploded")
@@ -859,21 +858,14 @@ async def test_on_data_exception_triggers_disconnect(echo_server):
     transport = await TCPTransport.create(
         "127.0.0.1", port,
         on_data=bad_callback,
-        on_disconnect=lambda: disconnect_called.set(),
+        on_disconnect=lambda: None,
         delimiter=b"\r",
     )
 
     await transport.send(b"trigger\r")
+    await asyncio.sleep(0.3)
 
-    # Give time for the response to arrive and the callback to blow up
-    try:
-        await asyncio.wait_for(disconnect_called.wait(), timeout=2.0)
-    except asyncio.TimeoutError:
-        pass
-
-    # Transport should have disconnected
-    # (The disconnect happens asynchronously via create_task, so give a moment)
-    await asyncio.sleep(0.2)
-    assert not transport.connected
+    # Transport should still be connected despite the callback error
+    assert transport.connected
 
     await transport.close()

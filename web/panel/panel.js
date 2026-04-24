@@ -1573,7 +1573,7 @@ class PanelApp {
                 btn.addEventListener('click', () => {
                     // Presets trigger a macro
                     if (preset.macro) {
-                        this.send({ type: 'macro.run', macro_id: preset.macro });
+                        this.send({ type: 'macro.execute', macro_id: preset.macro });
                     }
                 });
                 presetBar.appendChild(btn);
@@ -2912,7 +2912,7 @@ class PanelApp {
                     // Plugin requests a device command or state change
                     if (msg.action === 'device.command' && msg.device && msg.command) {
                         this.ws?.send(JSON.stringify({
-                            type: 'device.command',
+                            type: 'command',
                             device_id: msg.device,
                             command: msg.command,
                             params: msg.params || {},

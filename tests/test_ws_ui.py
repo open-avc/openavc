@@ -346,10 +346,10 @@ async def test_ws_panel_cannot_send_restricted_types(engine_and_client):
         websocket.receive_json()
         websocket.receive_json()
 
+        # state.set and macro.execute are now allowed for panel (presets + plugin iframes)
+        # but project.reload is still restricted
         websocket.send_json({
-            "type": "state.set",
-            "key": "var.channel",
-            "value": "hacked",
+            "type": "project.reload",
         })
 
         msg = websocket.receive_json()

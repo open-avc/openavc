@@ -309,9 +309,8 @@ class SerialTransport:
             result = self._on_data(data)
             if asyncio.iscoroutine(result):
                 asyncio.create_task(result)
-        except Exception:  # Catch-all: isolates driver callback errors from transport
-            log.exception("Error in serial on_data callback — triggering disconnect for recovery")
-            asyncio.get_running_loop().create_task(self._handle_disconnect())
+        except Exception:
+            log.exception("Error in serial on_data callback — continuing (transport still connected)")
 
     async def _handle_disconnect(self) -> None:
         """Handle unexpected disconnection."""

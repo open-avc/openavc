@@ -74,15 +74,17 @@ class ConfigurableDriver(BaseDriver):
                 if not mappings and "set" in resp:
                     # Convert shorthand: {"set": {"input": "$1", "mute": "true"}}
                     # to mappings: [{"group": 1, "state": "input"}, ...]
+                    state_vars = self._definition.get("state_variables", {})
                     for state_key, value_expr in resp["set"].items():
+                        var_def = state_vars.get(state_key, {})
+                        var_type = var_def.get("type", "string") if isinstance(var_def, dict) else "string"
                         if isinstance(value_expr, str) and value_expr.startswith("$"):
                             try:
                                 group = int(value_expr[1:])
                             except ValueError:
                                 group = 0
-                            mappings.append({"group": group, "state": state_key, "type": "string"})
+                            mappings.append({"group": group, "state": state_key, "type": var_type})
                         else:
-                            # Literal value — store as a static mapping
                             mappings.append({"group": 0, "state": state_key, "value": value_expr})
 
                 self._compiled_responses.append((pattern, mappings))
@@ -93,8 +95,16 @@ class ConfigurableDriver(BaseDriver):
                 )
 
     async def connect(self) -> None:
-        """Connect and send on_connect initialization commands."""
+        """Connect and send on_connect initialization commands.
+
+        Defers polling until after on_connect and initial state queries
+        complete, so the watchdog doesn't start counting before the
+        device is fully initialized.
+        """
+        saved_poll_interval = self.config.get("poll_interval", 0)
+        self.config["poll_interval"] = 0
         await super().connect()
+        self.config["poll_interval"] = saved_poll_interval
 
         on_connect = self._definition.get("on_connect", [])
         if on_connect and self.transport and self.transport.connected:
@@ -125,12 +135,12 @@ class ConfigurableDriver(BaseDriver):
                 # Query all OSC state variable addresses to fetch initial state.
                 # OSC convention: sending an address with no args returns the
                 # current value. This populates state immediately on connect.
+                query_delay = max(delay, 0.005)
                 for addr_pattern, _mappings in self._osc_responses:
                     try:
                         addr = self._safe_substitute(addr_pattern, self.config) if "{" in addr_pattern else addr_pattern
                         await self.transport.send(osc_encode_message(addr))
-                        if delay:
-                            await asyncio.sleep(delay)
+                        await asyncio.sleep(query_delay)
                     except Exception as e:
                         log.warning(f"[{self.device_id}] OSC initial query failed: {e}")
             else:
@@ -143,6 +153,9 @@ class ConfigurableDriver(BaseDriver):
                             await asyncio.sleep(delay)
                     except Exception as e:
                         log.warning(f"[{self.device_id}] on_connect command failed: {e}")
+
+        if saved_poll_interval > 0:
+            await self.start_polling(saved_poll_interval)
 
     async def send_command(
         self, command: str, params: dict[str, Any] | None = None
@@ -666,15 +679,15 @@ class ConfigurableDriver(BaseDriver):
             except ValueError:
                 log.warning("Cannot coerce %r to integer, returning raw string", raw)
                 return raw
-        elif value_type == "float":
+        elif value_type in ("float", "number"):
             try:
                 return float(raw)
             except ValueError:
-                log.warning("Cannot coerce %r to float, returning raw string", raw)
+                log.warning("Cannot coerce %r to %s, returning raw string", raw, value_type)
                 return raw
         elif value_type == "boolean":
             return raw.lower() in ("1", "true", "yes", "on")
-        return raw  # string
+        return raw  # string or enum
 
 
 def create_configurable_driver_class(

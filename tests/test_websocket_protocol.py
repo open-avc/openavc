@@ -73,23 +73,25 @@ def _make_engine():
 
 
 @pytest.mark.asyncio
-async def test_panel_cannot_set_state():
-    """Panel clients cannot send state.set messages."""
+async def test_panel_can_set_state():
+    """Panel clients can send state.set (needed for plugin iframes)."""
     ws = FakeWS()
-    with patch("server.api.ws._engine", _make_engine()):
+    engine = _make_engine()
+    engine.state.get.return_value = None
+    with patch("server.api.ws._engine", engine):
         await _handle_message(ws, {"type": "state.set", "key": "var.foo", "value": 1}, "panel")
     assert len(ws.sent) == 1
-    assert ws.sent[0]["type"] == "error"
-    assert "Panel clients" in ws.sent[0]["message"]
+    assert ws.sent[0]["type"] == "state.set.ack"
 
 
 @pytest.mark.asyncio
-async def test_panel_cannot_execute_macro():
-    """Panel clients cannot send macro.execute messages."""
+async def test_panel_can_execute_macro():
+    """Panel clients can send macro.execute (needed for presets)."""
     ws = FakeWS()
-    with patch("server.api.ws._engine", _make_engine()):
+    engine = _make_engine()
+    with patch("server.api.ws._engine", engine):
         await _handle_message(ws, {"type": "macro.execute", "macro_id": "test"}, "panel")
-    assert ws.sent[0]["type"] == "error"
+    engine.macros.execute.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -284,11 +286,12 @@ async def test_ui_route_dispatches():
 
 def test_panel_allowed_types_includes_expected():
     """Verify core panel message types are in the allowed set."""
-    for msg_type in ["ui.press", "ui.release", "ui.change", "ui.page", "command", "pong"]:
+    for msg_type in ["ui.press", "ui.release", "ui.change", "ui.page", "command",
+                     "macro.execute", "state.set", "pong"]:
         assert msg_type in _PANEL_ALLOWED_TYPES
 
 
 def test_programmer_only_types_excluded_from_panel():
     """Verify programmer-only message types are NOT in the panel allowed set."""
-    for msg_type in ["state.set", "macro.execute", "project.reload", "isc.send", "isc.broadcast"]:
+    for msg_type in ["project.reload", "isc.send", "isc.broadcast"]:
         assert msg_type not in _PANEL_ALLOWED_TYPES

@@ -253,14 +253,28 @@ class TestUnknownOperator:
 
 class TestTypeMismatch:
     def test_string_number_eq(self):
-        # Python "5" != 5
-        assert eval_operator("eq", "5", 5) is False
+        # Numeric coercion: "5" == 5 (important for device state comparisons)
+        assert eval_operator("eq", "5", 5) is True
+        assert eval_operator("eq", "5.0", 5) is True
+        assert eval_operator("ne", "5", 5) is False
+
+    def test_string_number_gt(self):
+        # Numeric coercion for ordering
+        assert eval_operator("gt", "-12.5", -20) is True
+        assert eval_operator("lt", "-12.5", -20) is False
+        assert eval_operator("gte", "10", 10) is True
+
+    def test_non_numeric_string_gt_returns_false(self):
+        # Non-numeric strings can't be compared to numbers — returns False
+        assert eval_operator("gt", "abc", 5) is False
 
     def test_bool_int_eq(self):
         # Python True == 1
         assert eval_operator("eq", True, 1) is True
 
-    def test_string_gt_number_raises(self):
-        # Python 3 doesn't compare str > int
-        with pytest.raises(TypeError):
-            eval_operator("gt", "abc", 5)
+    def test_bool_string_eq(self):
+        # Boolean string coercion: "true" == True
+        assert eval_operator("eq", "true", True) is True
+        assert eval_operator("eq", "false", True) is False
+        assert eval_operator("eq", "TRUE", True) is True
+        assert eval_operator("ne", "false", False) is False
