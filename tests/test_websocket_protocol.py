@@ -235,17 +235,15 @@ async def test_macro_execute_missing_macro_id():
 
 
 @pytest.mark.asyncio
-async def test_ui_page_broadcasts_navigation():
-    """ui.page emits event and broadcasts navigation."""
+async def test_ui_page_sends_navigate_to_sender():
+    """ui.page emits event and sends navigation back to the sender only."""
     ws = FakeWS()
     engine = _make_engine()
     with patch("server.api.ws._engine", engine):
         await _handle_message(ws, {"type": "ui.page", "page_id": "page2"}, "panel")
     engine.events.emit.assert_awaited_once_with("ui.page.page2")
-    engine.broadcast_ws.assert_awaited_once()
-    broadcast_msg = engine.broadcast_ws.call_args[0][0]
-    assert broadcast_msg["type"] == "ui.navigate"
-    assert broadcast_msg["page_id"] == "page2"
+    engine.broadcast_ws.assert_not_awaited()
+    assert any(m.get("type") == "ui.navigate" and m.get("page_id") == "page2" for m in ws.sent)
 
 
 @pytest.mark.asyncio

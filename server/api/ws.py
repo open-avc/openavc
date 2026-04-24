@@ -313,8 +313,8 @@ async def _handle_message(
             await _send_ws_error(ws, msg_type, "Missing page_id")
             return
         await _engine.events.emit(f"ui.page.{page_id}")
-        # Broadcast page navigation to all connected clients (including sender)
-        await _engine.broadcast_ws({"type": "ui.navigate", "page_id": page_id})
+        # Confirm navigation to sender only — each panel manages its own page
+        await ws.send_json({"type": "ui.navigate", "page_id": page_id})
 
     elif msg_type == "command":
         device_id = msg.get("device_id", "")
