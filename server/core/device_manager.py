@@ -182,8 +182,8 @@ class DeviceManager:
 
     async def remove_device(self, device_id: str) -> None:
         """Disconnect and remove a device (handles both active and orphaned)."""
-        # Cancel reconnect if running
-        self._cancel_reconnect(device_id)
+        # Cancel reconnect if running — await so reconnect loop finishes
+        await self._cancel_reconnect(device_id)
 
         driver = self._devices.pop(device_id, None)
         if driver:
@@ -449,9 +449,9 @@ class DeviceManager:
 
     async def disconnect_all(self) -> None:
         """Disconnect all devices gracefully (called at shutdown)."""
-        # Cancel all reconnect tasks first
+        # Cancel all reconnect tasks first — await each so loops finish cleanly
         for device_id in list(self._reconnect_tasks.keys()):
-            self._cancel_reconnect(device_id)
+            await self._cancel_reconnect(device_id)
 
         for device_id, driver in self._devices.items():
             try:
@@ -539,11 +539,15 @@ class DeviceManager:
         task.add_done_callback(_log_task_exception)
         self._reconnect_tasks[device_id] = task
 
-    def _cancel_reconnect(self, device_id: str) -> None:
-        """Cancel a running reconnect task."""
+    async def _cancel_reconnect(self, device_id: str) -> None:
+        """Cancel a running reconnect task and wait for it to finish."""
         task = self._reconnect_tasks.pop(device_id, None)
         if task and not task.done():
             task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
 
     async def _reconnect_loop(self, device_id: str, max_attempts: int = 120) -> None:
         """
@@ -606,13 +610,7 @@ class DeviceManager:
             raise ValueError(f"Device '{device_id}' not found")
         driver = self._devices[device_id]
         # Cancel any existing auto-reconnect task first
-        task = self._reconnect_tasks.pop(device_id, None)
-        if task and not task.done():
-            task.cancel()
-            try:
-                await task
-            except (asyncio.CancelledError, Exception):
-                pass
+        await self._cancel_reconnect(device_id)
         # Clear stale reconnect_failed state
         self.state.set(f"device.{device_id}.reconnect_failed", None, source="device_manager")
         # Disconnect and reconnect

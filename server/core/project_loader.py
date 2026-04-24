@@ -10,7 +10,7 @@ import os
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -117,7 +117,7 @@ class MacroStep(BaseModel):
     # timeout: seconds to wait before giving up; None means never time out
     # on_timeout: "fail" (default) raises and triggers stop_on_error handling; "continue" proceeds silently
     timeout: float | None = None
-    on_timeout: str | None = None
+    on_timeout: Literal["fail", "continue"] | None = None
 
     # Step-level guard: skip this step if condition is true
     skip_if: StepCondition | None = None
@@ -136,7 +136,14 @@ class TriggerCondition(BaseModel):
 class TriggerConfig(BaseModel):
     """Trigger definition — when should a macro fire automatically."""
     id: str
-    type: str  # "schedule" | "state_change" | "event" | "startup"
+    type: Literal["schedule", "state_change", "event", "startup"]
+
+    @field_validator("id")
+    @classmethod
+    def id_no_dots(cls, v: str) -> str:
+        if "." in v:
+            raise ValueError(f"Trigger ID '{v}' must not contain dots (used as state key separator)")
+        return v
     enabled: bool = True
 
     # Schedule
@@ -154,7 +161,7 @@ class TriggerConfig(BaseModel):
     delay_seconds: float = 0
     debounce_seconds: float = 0
     cooldown_seconds: float = 0
-    overlap: str = "skip"  # "skip" | "queue" | "allow"
+    overlap: Literal["skip", "queue", "allow"] = "skip"
 
     # Guard conditions
     conditions: list[TriggerCondition] = Field(default_factory=list)
@@ -250,7 +257,7 @@ class PageBackground(BaseModel):
     color: str | None = None
     image: str | None = None  # asset reference e.g. "assets://bg.jpg"
     image_opacity: float = 1.0
-    image_size: str = "cover"
+    image_size: Literal["cover", "contain", "stretch"] = "cover"
     image_position: str = "center"
     gradient: dict[str, Any] | None = None  # {type, angle, from, to}
 
@@ -327,7 +334,7 @@ class DriverDependency(BaseModel):
     driver_id: str
     driver_name: str = ""
     version: str = ""
-    source: str = ""  # "builtin" | "community" | "user"
+    source: Literal["builtin", "community", "user", "unknown", ""] = ""
 
 
 class PluginDependency(BaseModel):
@@ -335,7 +342,7 @@ class PluginDependency(BaseModel):
     plugin_id: str
     plugin_name: str = ""
     version: str = ""
-    source: str = ""  # "community" | "user" | "unknown"
+    source: Literal["community", "user", "unknown", ""] = ""
     platforms: list[str] = Field(default_factory=lambda: ["all"])
 
 

@@ -276,7 +276,7 @@ async def test_start_reconnect_creates_task(dm, core):
     assert "test_dev" in dm._reconnect_tasks
 
     # Cancel and clean up
-    dm._cancel_reconnect("test_dev")
+    await dm._cancel_reconnect("test_dev")
     assert "test_dev" not in dm._reconnect_tasks
 
 
@@ -294,7 +294,7 @@ async def test_start_reconnect_idempotent(dm, core):
 
     assert task1 is task2  # Same task, not replaced
 
-    dm._cancel_reconnect("test_dev")
+    await dm._cancel_reconnect("test_dev")
 
 
 async def test_cancel_reconnect(dm, core):
@@ -307,7 +307,7 @@ async def test_cancel_reconnect(dm, core):
     dm._start_reconnect("test_dev")
     assert "test_dev" in dm._reconnect_tasks
 
-    dm._cancel_reconnect("test_dev")
+    await dm._cancel_reconnect("test_dev")
     assert "test_dev" not in dm._reconnect_tasks
 
 
@@ -327,4 +327,4 @@ async def test_on_device_disconnected_triggers_reconnect(dm, core):
     await asyncio.sleep(0.05)  # Let event handler run
     assert "test_dev" in dm._reconnect_tasks
 
-    dm._cancel_reconnect("test_dev")
+    await dm._cancel_reconnect("test_dev")
