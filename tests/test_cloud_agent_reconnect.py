@@ -631,7 +631,7 @@ class TestSequencerReconnect:
         assert msgs == []
 
     def test_reset_for_new_session(self):
-        """Reset clears counters and buffer for a new session."""
+        """Reset clears counters but preserves buffer for replay."""
         seq = Sequencer()
         seq.assign_seq({"type": "heartbeat"})
         seq.assign_seq({"type": "heartbeat"})
@@ -641,7 +641,8 @@ class TestSequencerReconnect:
         seq.reset_for_new_session()
         assert seq.next_seq == 1
         assert seq.last_downstream_seq == 0
-        assert seq.buffer_count == 0
+        # Buffer is preserved for message replay after reconnection
+        assert seq.buffer_count == 2
         # last_ack_seq is preserved for resume negotiation
         assert seq.last_ack_seq == old_ack
 
