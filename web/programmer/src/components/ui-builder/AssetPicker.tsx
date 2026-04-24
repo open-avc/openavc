@@ -194,6 +194,9 @@ function AssetBrowserModal({
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Project Assets"
       style={{
         position: "fixed",
         inset: 0,

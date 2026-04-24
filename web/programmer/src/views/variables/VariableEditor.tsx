@@ -796,6 +796,9 @@ export function VariablesSubTab() {
       {/* Rename dialog (10.5) */}
       {renameTarget && (
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Rename Variable"
           style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}
           onClick={() => setRenameTarget(null)}
         >

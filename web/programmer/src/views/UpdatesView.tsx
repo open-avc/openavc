@@ -339,7 +339,7 @@ export function UpdatesView() {
 
       {/* Progress Modal */}
       {showProgressModal && (
-        <div style={{
+        <div role="dialog" aria-modal="true" aria-label="Update Progress" style={{
           position: "fixed",
           inset: 0,
           background: "rgba(0,0,0,0.7)",

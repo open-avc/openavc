@@ -165,6 +165,9 @@ export function MacroView() {
       {/* Script conversion preview dialog (9.6) */}
       {scriptPreview && (
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Script Conversion Preview"
           style={{
             position: "fixed",
             inset: 0,

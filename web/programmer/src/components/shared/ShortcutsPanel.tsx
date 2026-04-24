@@ -43,6 +43,9 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
 export function ShortcutsPanel({ onClose }: { onClose: () => void }) {
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Keyboard Shortcuts"
       style={{
         position: "fixed",
         inset: 0,

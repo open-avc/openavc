@@ -581,6 +581,9 @@ function CommunityDriverDetail({
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Community Driver Details"
       onClick={onClose}
       style={{
         position: "fixed",

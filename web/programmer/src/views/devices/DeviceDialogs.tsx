@@ -348,6 +348,9 @@ export function AddDeviceDialog({
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Add Device"
       style={{
         position: "fixed",
         inset: 0,
@@ -671,6 +674,9 @@ export function EditDeviceDialog({
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Edit Device"
       style={{
         position: "fixed",
         inset: 0,

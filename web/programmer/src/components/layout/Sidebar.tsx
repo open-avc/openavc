@@ -179,7 +179,7 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
         </span>
       </button>
       {showSimConfirm && (
-        <div style={{
+        <div role="dialog" aria-modal="true" aria-label="Start Device Simulation" style={{
           position: "fixed", inset: 0, zIndex: 10000,
           display: "flex", alignItems: "center", justifyContent: "center",
           background: "rgba(0,0,0,0.6)",

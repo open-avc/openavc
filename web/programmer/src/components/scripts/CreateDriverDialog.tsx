@@ -62,6 +62,9 @@ export function CreateDriverDialog({ onSubmit, onCancel, existingIds = [] }: Cre
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Create Python Driver"
       style={{
         position: "fixed",
         inset: 0,

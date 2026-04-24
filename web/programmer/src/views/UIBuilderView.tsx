@@ -1382,6 +1382,9 @@ export function UIBuilderView() {
       {/* Validation results */}
       {validationIssues !== null && (
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Validation Results"
           style={{
             position: "fixed", inset: 0, zIndex: 1000,
             display: "flex", alignItems: "center", justifyContent: "center",
@@ -1500,6 +1503,9 @@ function UISettingsDialog({
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Panel Settings"
       style={{
         position: "fixed",
         inset: 0,

@@ -196,6 +196,9 @@ function IconBrowserModal({
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Choose Icon"
       style={{
         position: "fixed",
         inset: 0,

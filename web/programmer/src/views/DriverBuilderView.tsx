@@ -272,6 +272,9 @@ function ImportDialog({
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Import Driver Definition"
       style={{
         position: "fixed",
         inset: 0,

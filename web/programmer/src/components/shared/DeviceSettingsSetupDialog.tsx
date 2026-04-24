@@ -119,6 +119,9 @@ export function DeviceSettingsSetupDialog({
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Device Setup"
       style={{
         position: "fixed",
         inset: 0,
