@@ -180,11 +180,11 @@ class TCPTransport:
         """
         Send data and wait for the next complete response message.
 
-        Useful for query/response protocols (e.g., PJLink status queries).
+        Holds the send lock through the response wait so concurrent callers
+        can't interleave requests on the same connection. This matches AV
+        protocol behavior where each connection handles one query at a time.
         """
         async with self._send_lock:
-            # Atomically: set flag, clear queue, send — all under lock
-            # to prevent responses from arriving between operations
             self._waiting_for_response = True
             while not self._response_queue.empty():
                 self._response_queue.get_nowait()
@@ -194,16 +194,16 @@ class TCPTransport:
                 self._waiting_for_response = False
                 raise
 
-        try:
-            response = await asyncio.wait_for(
-                self._response_queue.get(), timeout=timeout
-            )
-            return response
-        except asyncio.TimeoutError:
-            log.warning(f"TCP send_and_wait timeout for {self.host}:{self.port}")
-            raise
-        finally:
-            self._waiting_for_response = False
+            try:
+                response = await asyncio.wait_for(
+                    self._response_queue.get(), timeout=timeout
+                )
+                return response
+            except asyncio.TimeoutError:
+                log.warning(f"TCP send_and_wait timeout for {self.host}:{self.port}")
+                raise
+            finally:
+                self._waiting_for_response = False
 
     async def close(self) -> None:
         """Close the connection gracefully."""
