@@ -1125,7 +1125,13 @@ export function UIBuilderView() {
                           if (!currentPage || !project) return;
                           const existingIds = new Set(pages.flatMap((p) => p.elements.map((e) => e.id)));
                           const { columns, rows: gridRows } = currentPage.grid;
-                          const occupied = new Set(currentPage.elements.map((el) => `${el.grid_area.col},${el.grid_area.row}`));
+                          const occupied = new Set<string>();
+                          for (const el of currentPage.elements) {
+                            const { col: ec, row: er, col_span: cs, row_span: rs } = el.grid_area;
+                            for (let r = er; r < er + rs; r++)
+                              for (let c = ec; c < ec + cs; c++)
+                                occupied.add(`${c},${r}`);
+                          }
                           let col = 1, row = 1;
                           for (let r = 1; r <= gridRows; r++) {
                             for (let c = 1; c <= columns; c++) {

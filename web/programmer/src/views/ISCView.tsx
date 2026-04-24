@@ -380,9 +380,14 @@ export function ISCView() {
               Authentication
             </h3>
             <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", marginBottom: "var(--space-md)", lineHeight: 1.5 }}>
-              Shared secret key. All instances must use the same key to connect.
-              Leave empty for open mode (LAN-only, no authentication).
+              Shared secret key required for ISC connections.
+              All instances must use the same key to communicate.
             </div>
+            {!authKey && (
+              <div style={{ fontSize: "var(--font-size-sm)", color: "var(--color-warning, #f59e0b)", marginBottom: "var(--space-sm)", lineHeight: 1.5 }}>
+                No auth key set. ISC will reject all incoming connections until a key is configured.
+              </div>
+            )}
 
             <div style={{ display: "flex", gap: "var(--space-xs)", alignItems: "center" }}>
               <input
@@ -390,7 +395,7 @@ export function ISCView() {
                 style={{ ...fieldInput, flex: 1 }}
                 value={authKey}
                 onChange={(e) => setAuthKey(e.target.value)}
-                placeholder="Shared auth key (optional)"
+                placeholder="Shared auth key (required)"
               />
               <button
                 onClick={() => setAuthVisible(!authVisible)}

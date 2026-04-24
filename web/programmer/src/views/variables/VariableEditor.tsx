@@ -360,7 +360,7 @@ export function VariablesSubTab() {
                 <input
                   style={fieldInput}
                   value={newId}
-                  onChange={(e) => setNewId(e.target.value)}
+                  onChange={(e) => setNewId(e.target.value.replace(/[^a-zA-Z0-9_]/g, ""))}
                   placeholder="e.g. room_active"
                   autoFocus
                   onKeyDown={(e) => e.key === "Enter" && handleCreate()}
@@ -811,13 +811,13 @@ export function VariablesSubTab() {
               <input
                 style={{ ...detailInput, marginTop: 4 }}
                 value={renameTarget.newId}
-                onChange={(e) => setRenameTarget({ ...renameTarget, newId: e.target.value })}
+                onChange={(e) => setRenameTarget({ ...renameTarget, newId: e.target.value.replace(/[^a-zA-Z0-9_]/g, "") })}
                 placeholder="new_variable_id"
                 autoFocus
                 onKeyDown={(e) => e.key === "Enter" && handleConfirmRename()}
               />
               <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
-                New key: <code style={codeStyle}>var.{renameTarget.newId.trim().replace(/[^a-zA-Z0-9_]/g, "_") || "..."}</code>
+                New key: <code style={codeStyle}>var.{renameTarget.newId.trim() || "..."}</code>
               </div>
             </div>
             {renameTarget.usages.length > 0 && (

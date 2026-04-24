@@ -92,7 +92,13 @@ function App() {
   }, []);
 
   const handleViewChange = useCallback(
-    (view: typeof activeView) => navigateTo(view),
+    (view: typeof activeView) => {
+      const current = useNavigationStore.getState().activeView;
+      if (current === "ui-builder" && view !== "ui-builder" && useProjectStore.getState().dirty) {
+        if (!window.confirm("You have unsaved UI changes. Leave without saving?")) return;
+      }
+      navigateTo(view);
+    },
     [navigateTo],
   );
 

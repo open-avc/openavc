@@ -311,7 +311,8 @@ async def add_device(req: AddDeviceRequest) -> dict[str, Any]:
     # Build device ID from driver + IP suffix (handle IPv4 and IPv6)
     import re
     ip_suffix = re.sub(r'[.:\-]', '_', req.ip)
-    device_id = f"{req.driver_id}_{ip_suffix}"
+    raw_id = f"{req.driver_id}_{ip_suffix}"
+    device_id = re.sub(r'[^a-z0-9_]', '_', raw_id.lower())
 
     # Use provided name, or build one from discovery info
     name = req.name

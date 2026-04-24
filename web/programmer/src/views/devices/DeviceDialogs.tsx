@@ -284,7 +284,11 @@ export function AddDeviceDialog({
     const merged = { ...prefill.config, ...conn };
     const vals: Record<string, string> = {};
     for (const [k, v] of Object.entries(merged)) {
-      vals[k] = String(v ?? "");
+      if (v != null && typeof v === "object") {
+        vals[k] = JSON.stringify(v);
+      } else {
+        vals[k] = String(v ?? "");
+      }
     }
     return vals;
   });
@@ -573,7 +577,11 @@ export function EditDeviceDialog({
     const merged = { ...device.config, ...conn };
     const vals: Record<string, string> = {};
     for (const [k, v] of Object.entries(merged)) {
-      vals[k] = String(v ?? "");
+      if (v != null && typeof v === "object") {
+        vals[k] = JSON.stringify(v);
+      } else {
+        vals[k] = String(v ?? "");
+      }
     }
     return vals;
   });
@@ -614,10 +622,30 @@ export function EditDeviceDialog({
     setError("");
     try {
       const config: Record<string, unknown> = {};
+      const schema = (driverInfo?.config_schema ?? {}) as Record<string, Record<string, unknown>>;
       for (const [key, val] of Object.entries(configValues)) {
         if (val === "") continue;
-        const num = Number(val);
-        config[key] = isNaN(num) ? val : num;
+        const fieldType = String(schema[key]?.type || "");
+        if (fieldType === "boolean") {
+          config[key] = val === "true";
+        } else if (fieldType === "integer" || fieldType === "number" || fieldType === "float") {
+          const isSimpleNumber = /^-?\d+(\.\d+)?$/.test(val);
+          config[key] = isSimpleNumber ? Number(val) : val;
+        } else {
+          // Try parsing as JSON for object-type values (command_map, etc.)
+          try {
+            const parsed = JSON.parse(val);
+            if (typeof parsed === "object" && parsed !== null) {
+              config[key] = parsed;
+            } else {
+              const isSimpleNumber = /^-?\d+(\.\d+)?$/.test(val);
+              config[key] = isSimpleNumber ? Number(val) : val;
+            }
+          } catch (_) {
+            const isSimpleNumber = /^-?\d+(\.\d+)?$/.test(val);
+            config[key] = isSimpleNumber ? Number(val) : val;
+          }
+        }
       }
 
       const updateData: Record<string, unknown> = {
