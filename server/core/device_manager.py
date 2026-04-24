@@ -443,16 +443,24 @@ class DeviceManager:
         ]
 
     async def connect_all(self) -> list[str]:
-        """Connect all devices (called at startup). Returns list of failed device IDs."""
+        """Connect all devices concurrently. Returns list of failed device IDs."""
         failed: list[str] = []
-        for device_id, driver in self._devices.items():
-            if not driver.get_state("connected"):
-                try:
-                    await driver.connect()
-                except Exception as e:
-                    log.warning(f"Failed to connect '{device_id}': {e}")
-                    failed.append(device_id)
-                    self._start_reconnect(device_id)
+
+        async def _connect_one(device_id: str, driver: Any) -> None:
+            try:
+                await asyncio.wait_for(driver.connect(), timeout=30)
+            except Exception as e:
+                log.warning(f"Failed to connect '{device_id}': {e}")
+                failed.append(device_id)
+                self._start_reconnect(device_id)
+
+        tasks = [
+            _connect_one(did, drv)
+            for did, drv in self._devices.items()
+            if not drv.get_state("connected")
+        ]
+        if tasks:
+            await asyncio.gather(*tasks)
         return failed
 
     async def disconnect_all(self) -> None:
