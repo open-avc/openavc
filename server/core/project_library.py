@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import re
 import shutil
+import tempfile
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -60,6 +62,21 @@ def _lib_dir() -> Path:
 
 def _load_avc(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _atomic_write_text(path: Path, content: str) -> None:
+    """Write text to a file atomically via temp + rename."""
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.replace(tmp, str(path))
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def _read_scripts_dir(scripts_dir: Path) -> dict[str, str]:
@@ -263,7 +280,7 @@ def save_to_library(
     data["project"]["modified"] = now
 
     avc_path = project_dir / "project.avc"
-    avc_path.write_text(json.dumps(data, indent=4, ensure_ascii=False), encoding="utf-8")
+    _atomic_write_text(avc_path, json.dumps(data, indent=4, ensure_ascii=False))
 
     if scripts_dir.exists():
         dest_scripts = project_dir / "scripts"
@@ -299,7 +316,7 @@ def update_project_meta(project_id: str, name: str | None, description: str | No
         data["project"]["description"] = description
     data["project"]["modified"] = datetime.now().isoformat()
 
-    avc_path.write_text(json.dumps(data, indent=4, ensure_ascii=False), encoding="utf-8")
+    _atomic_write_text(avc_path, json.dumps(data, indent=4, ensure_ascii=False))
     log.info(f"Updated project '{sid}' metadata")
 
 
@@ -321,7 +338,7 @@ def duplicate_project(source_id: str, new_id: str, new_name: str) -> None:
     project_dir.mkdir(parents=True, exist_ok=True)
 
     avc_path = project_dir / "project.avc"
-    avc_path.write_text(json.dumps(data, indent=4, ensure_ascii=False), encoding="utf-8")
+    _atomic_write_text(avc_path, json.dumps(data, indent=4, ensure_ascii=False))
 
     if scripts:
         dest_scripts = project_dir / "scripts"

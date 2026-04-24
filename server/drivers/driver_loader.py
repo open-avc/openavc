@@ -17,8 +17,10 @@ from __future__ import annotations
 
 import importlib.util
 import inspect
+import os
 import re
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -303,7 +305,17 @@ def save_driver_definition(
         allow_unicode=True,
         sort_keys=False,
     )
-    filepath.write_text(text, encoding="utf-8")
+    fd, tmp = tempfile.mkstemp(dir=str(directory), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.replace(tmp, str(filepath))
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
     log.info(f"Saved driver definition: {filepath}")
     return filepath
