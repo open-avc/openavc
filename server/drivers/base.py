@@ -92,6 +92,13 @@ class BaseDriver(ABC):
         appropriate transport (TCP or serial). Override this method for
         custom connection logic (e.g., greeting handshakes).
         """
+        if self.transport:
+            try:
+                await self.transport.close()
+            except Exception:
+                pass
+            self.transport = None
+
         transport_type = self.DRIVER_INFO.get("transport", "tcp")
         frame_parser = self._create_frame_parser()
         delimiter = self._resolve_delimiter()

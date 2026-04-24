@@ -73,6 +73,8 @@ class Engine:
 
         # WebSocket clients (set of WebSocket connections)
         self._ws_clients: set = set()
+        # Per-client namespace filters: id(ws) -> tuple of prefix strings
+        self._ws_ns_filters: dict[int, tuple[str, ...]] = {}
 
         # State batching for WebSocket push
         self._state_batch: dict[str, Any] = {}
@@ -405,73 +407,109 @@ class Engine:
 
     async def _reload_project_inner(self) -> None:
         log.info("Reloading project...")
-        self.project = load_project(self.project_path)
-        self._project_revision += 1
-        self._dirty_since_backup = True
 
-        # Sync variables: initialize new defaults, clean up orphaned keys
-        project_var_ids = {v.id for v in self.project.variables}
-        for var in self.project.variables:
-            key = f"var.{var.id}"
-            if self.state.get(key) is None:
-                self.state.set(key, var.default, source="system")
-        # Remove orphaned var.* state keys for deleted variables
-        all_var_keys = self.state.get_namespace("var.")
-        orphaned_vars = [vid for vid in all_var_keys if vid not in project_var_ids]
-        for vid in orphaned_vars:
-            self.state.delete(f"var.{vid}")
-        if orphaned_vars:
-            log.info(f"Cleaned up {len(orphaned_vars)} orphaned variable state key(s)")
+        # Snapshot current state for rollback on failure
+        prev_project = self.project
+        prev_revision = self._project_revision
+        prev_dirty = self._dirty_since_backup
 
-        # Update persistent variable keys
-        if self.persister:
-            persistent_keys = {
-                f"var.{v.id}" for v in self.project.variables if v.persist
-            }
-            self.persister.update_keys(persistent_keys)
+        try:
+            self.project = load_project(self.project_path)
+            self._project_revision += 1
+            self._dirty_since_backup = True
 
-        # Sync devices: remove deleted, add new, update changed
-        await self._sync_devices()
+            # Sync variables: initialize new defaults, clean up orphaned keys
+            project_var_ids = {v.id for v in self.project.variables}
+            for var in self.project.variables:
+                key = f"var.{var.id}"
+                if self.state.get(key) is None:
+                    self.state.set(key, var.default, source="system")
+            # Remove orphaned var.* state keys for deleted variables
+            all_var_keys = self.state.get_namespace("var.")
+            orphaned_vars = [vid for vid in all_var_keys if vid not in project_var_ids]
+            for vid in orphaned_vars:
+                self.state.delete(f"var.{vid}")
+            if orphaned_vars:
+                log.info(f"Cleaned up {len(orphaned_vars)} orphaned variable state key(s)")
 
-        # If simulation is active, sync simulated devices with the new project state
-        if self.simulation.active:
-            await self.simulation.sync()
+            # Update persistent variable keys
+            if self.persister:
+                persistent_keys = {
+                    f"var.{v.id}" for v in self.project.variables if v.persist
+                }
+                self.persister.update_keys(persistent_keys)
 
-        # Sync plugins: add new, remove deleted, restart changed
-        await self._sync_plugins()
+            # Sync devices: remove deleted, add new, update changed
+            await self._sync_devices()
 
-        # Reload macros and device groups
-        macros_data = [m.model_dump() for m in self.project.macros]
-        self.macros.load_macros(macros_data)
-        groups_data = [g.model_dump() for g in self.project.device_groups]
-        self.macros.load_groups(groups_data)
+            # If simulation is active, sync simulated devices with the new project state
+            if self.simulation.active:
+                await self.simulation.sync()
 
-        # Reload triggers
-        await self.triggers.stop()
-        macros_data_triggers = [m.model_dump() for m in self.project.macros]
-        self.triggers.load_triggers(macros_data_triggers)
-        await self.triggers.start()
+            # Sync plugins: add new, remove deleted, restart changed
+            await self._sync_plugins()
 
-        # Re-register UI bindings
-        self._register_ui_bindings()
+            # Cancel running macros before replacing definitions
+            await self.macros.cancel_all()
 
-        # Re-bind variable sources
-        self._bind_variable_sources()
+            # Reload macros and device groups
+            macros_data = [m.model_dump() for m in self.project.macros]
+            self.macros.load_macros(macros_data)
+            groups_data = [g.model_dump() for g in self.project.device_groups]
+            self.macros.load_groups(groups_data)
 
-        # Re-register variable validation listeners
-        self._register_variable_validation()
+            # Reload triggers
+            await self.triggers.stop()
+            macros_data_triggers = [m.model_dump() for m in self.project.macros]
+            self.triggers.load_triggers(macros_data_triggers)
+            await self.triggers.start()
 
-        # Reload scripts
-        if self.scripts:
-            scripts_data = [s.model_dump() for s in self.project.scripts]
-            self.scripts.reload_scripts(scripts_data)
+            # Re-register UI bindings
+            self._register_ui_bindings()
 
-        # Reload ISC config
-        await self._reload_isc()
+            # Re-bind variable sources
+            self._bind_variable_sources()
 
-        # Update mDNS advertiser with new project name
-        if self.mdns_advertiser:
-            self.mdns_advertiser.update_name(self.project.project.name)
+            # Re-register variable validation listeners
+            self._register_variable_validation()
+
+            # Reload scripts
+            if self.scripts:
+                scripts_data = [s.model_dump() for s in self.project.scripts]
+                self.scripts.reload_scripts(scripts_data)
+
+            # Reload ISC config
+            await self._reload_isc()
+
+            # Update mDNS advertiser with new project name
+            if self.mdns_advertiser:
+                self.mdns_advertiser.update_name(self.project.project.name)
+
+        except Exception:
+            log.error("Reload failed, rolling back to previous project state",
+                      exc_info=True)
+            self.project = prev_project
+            self._project_revision = prev_revision
+            self._dirty_since_backup = prev_dirty
+
+            # Best-effort: re-sync lightweight subsystems with the restored project
+            try:
+                macros_data = [m.model_dump() for m in self.project.macros]
+                self.macros.load_macros(macros_data)
+                groups_data = [g.model_dump() for g in self.project.device_groups]
+                self.macros.load_groups(groups_data)
+
+                await self.triggers.stop()
+                self.triggers.load_triggers(macros_data)
+                await self.triggers.start()
+
+                self._register_ui_bindings()
+                self._bind_variable_sources()
+                self._register_variable_validation()
+            except Exception:
+                log.error("Rollback re-sync also failed", exc_info=True)
+
+            raise
 
         # Push new UI definition to all connected panels
         await self.broadcast_ws({
@@ -927,29 +965,65 @@ class Engine:
 
     # --- WebSocket Management ---
 
-    def add_ws_client(self, ws) -> None:
-        """Register a WebSocket client."""
+    def add_ws_client(self, ws, ns_prefixes: tuple[str, ...] | None = None) -> None:
+        """Register a WebSocket client with optional namespace filter."""
         self._ws_clients.add(ws)
+        if ns_prefixes:
+            self._ws_ns_filters[id(ws)] = ns_prefixes
         log.info(f"WebSocket client connected ({len(self._ws_clients)} total)")
 
     def remove_ws_client(self, ws) -> None:
         """Unregister a WebSocket client."""
         self._ws_clients.discard(ws)
+        self._ws_ns_filters.pop(id(ws), None)
         log.info(f"WebSocket client disconnected ({len(self._ws_clients)} total)")
 
     async def broadcast_ws(self, message: dict[str, Any]) -> None:
         """Send a JSON message to all connected WebSocket clients."""
         if not self._ws_clients:
             return
-        text = json.dumps(message)
+
+        is_state_update = message.get("type") == "state.update"
+        has_any_filters = bool(self._ws_ns_filters)
+
+        # Fast path: no namespace filters or not a state update
+        if not is_state_update or not has_any_filters:
+            text = json.dumps(message)
+            disconnected = []
+            for ws in list(self._ws_clients):
+                try:
+                    await ws.send_text(text)
+                except Exception:
+                    disconnected.append(ws)
+            for ws in disconnected:
+                self._ws_clients.discard(ws)
+                self._ws_ns_filters.pop(id(ws), None)
+            return
+
+        # Slow path: filter state.update per client
+        changes = message.get("changes", {})
+        full_text: str | None = None
         disconnected = []
         for ws in list(self._ws_clients):
             try:
-                await ws.send_text(text)
-            except Exception:  # WebSocket send can raise any connection-related error
+                ns = self._ws_ns_filters.get(id(ws))
+                if ns:
+                    filtered = {k: v for k, v in changes.items()
+                                if k.startswith(ns)}
+                    if not filtered:
+                        continue
+                    await ws.send_text(json.dumps({
+                        "type": "state.update", "changes": filtered,
+                    }))
+                else:
+                    if full_text is None:
+                        full_text = json.dumps(message)
+                    await ws.send_text(full_text)
+            except Exception:
                 disconnected.append(ws)
         for ws in disconnected:
             self._ws_clients.discard(ws)
+            self._ws_ns_filters.pop(id(ws), None)
 
     async def _on_pending_settings_applied(
         self, event: str, payload: dict[str, Any]

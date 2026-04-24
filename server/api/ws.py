@@ -63,7 +63,6 @@ async def websocket_endpoint(ws: WebSocket) -> None:
         await ws.close(code=1011, reason="Engine not started")
         return
 
-    _engine.add_ws_client(ws)
     ws_id = id(ws)
     ping_task = None
 
@@ -77,12 +76,14 @@ async def websocket_endpoint(ws: WebSocket) -> None:
             return  # Catch-all: ping loop must exit silently on any error
 
     try:
-        # Send initial state snapshot (optionally filtered by namespace prefixes)
+        # Send initial state snapshot BEFORE subscribing to broadcasts,
+        # so the client has a baseline before receiving incremental updates
         namespaces_param = query_params.get("namespaces", "")
+        ns_prefixes: tuple[str, ...] | None = None
         full_state = _engine.state.snapshot()
         if namespaces_param:
-            prefixes = tuple(ns.strip() + "." for ns in namespaces_param.split(",") if ns.strip())
-            state_snapshot = {k: v for k, v in full_state.items() if k.startswith(prefixes)}
+            ns_prefixes = tuple(ns.strip() + "." for ns in namespaces_param.split(",") if ns.strip())
+            state_snapshot = {k: v for k, v in full_state.items() if k.startswith(ns_prefixes)}
         else:
             state_snapshot = full_state
         await ws.send_json({
@@ -96,6 +97,9 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                 "type": "ui.definition",
                 "ui": _engine.project.ui.model_dump(mode="json"),
             })
+
+        # Now subscribe to broadcasts — client has its baseline
+        _engine.add_ws_client(ws, ns_prefixes=ns_prefixes)
 
         # Start heartbeat
         ping_task = asyncio.create_task(_ping_loop())

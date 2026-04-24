@@ -197,9 +197,10 @@ class DeviceManager:
 
         self._device_configs.pop(device_id, None)
 
-        # Clear orphan state keys if they were set
-        self.state.set(f"device.{device_id}.orphaned", None, source="config")
-        self.state.set(f"device.{device_id}.orphan_reason", None, source="config")
+        # Clear all state keys for this device
+        device_keys = self.state.get_namespace(f"device.{device_id}.")
+        for key in device_keys:
+            self.state.delete(f"device.{device_id}.{key}")
 
         log.info(f"Removed device '{device_id}'")
 
@@ -604,10 +605,16 @@ class DeviceManager:
         if device_id not in self._devices:
             raise ValueError(f"Device '{device_id}' not found")
         driver = self._devices[device_id]
-        # Cancel any existing reconnect task
+        # Cancel any existing auto-reconnect task first
         task = self._reconnect_tasks.pop(device_id, None)
         if task and not task.done():
             task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
+        # Clear stale reconnect_failed state
+        self.state.set(f"device.{device_id}.reconnect_failed", None, source="device_manager")
         # Disconnect and reconnect
         try:
             await driver.disconnect()
