@@ -696,33 +696,34 @@ class TestSequencerReconnect:
 class TestHandshakeErrorClassification:
     """Tests for HandshakeError fatal vs retriable classification."""
 
-    # These are the fatal reasons checked in agent._connection_loop
-    FATAL_REASONS = ("invalid_key", "system_revoked", "system_not_found")
+    # These are the fatal reasons checked in agent._connection_loop.
+    # Must match the cloud platform's actual rejection codes.
+    FATAL_REASONS = ("unknown_system", "no_key", "bad_system_id")
 
     def test_handshake_error_stores_reason(self):
         """HandshakeError stores the reason attribute."""
-        err = HandshakeError("Key is invalid", reason="invalid_key")
-        assert err.reason == "invalid_key"
-        assert "Key is invalid" in str(err)
+        err = HandshakeError("System not found", reason="unknown_system")
+        assert err.reason == "unknown_system"
+        assert "System not found" in str(err)
 
     def test_handshake_error_default_reason(self):
         """HandshakeError defaults to 'unknown' reason."""
         err = HandshakeError("Something failed")
         assert err.reason == "unknown"
 
-    def test_invalid_key_is_fatal(self):
-        """invalid_key is a fatal reason (agent should not retry)."""
-        err = HandshakeError("Bad key", reason="invalid_key")
+    def test_unknown_system_is_fatal(self):
+        """unknown_system is a fatal reason (agent should not retry)."""
+        err = HandshakeError("Not found", reason="unknown_system")
         assert err.reason in self.FATAL_REASONS
 
-    def test_system_revoked_is_fatal(self):
-        """system_revoked is a fatal reason."""
-        err = HandshakeError("Revoked", reason="system_revoked")
+    def test_no_key_is_fatal(self):
+        """no_key is a fatal reason."""
+        err = HandshakeError("No active key", reason="no_key")
         assert err.reason in self.FATAL_REASONS
 
-    def test_system_not_found_is_fatal(self):
-        """system_not_found is a fatal reason."""
-        err = HandshakeError("Not found", reason="system_not_found")
+    def test_bad_system_id_is_fatal(self):
+        """bad_system_id is a fatal reason."""
+        err = HandshakeError("Invalid ID format", reason="bad_system_id")
         assert err.reason in self.FATAL_REASONS
 
     def test_timeout_is_retriable(self):
@@ -746,10 +747,6 @@ class TestHandshakeErrorClassification:
         assert err.reason not in self.FATAL_REASONS
 
     def test_fatal_reasons_match_agent_code(self):
-        """The fatal reasons list matches what the agent checks.
-
-        In agent._connection_loop:
-            if e.reason in ("invalid_key", "system_revoked", "system_not_found"):
-        """
-        agent_fatal_set = {"invalid_key", "system_revoked", "system_not_found"}
+        """The fatal reasons list matches what the agent checks."""
+        agent_fatal_set = {"unknown_system", "no_key", "bad_system_id"}
         assert set(self.FATAL_REASONS) == agent_fatal_set

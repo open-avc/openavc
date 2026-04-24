@@ -446,13 +446,13 @@ class TestHandshake:
         await recv_queue.put(json.dumps({
             "type": AUTH_FAILED,
             "ts": "...",
-            "payload": {"reason": "system_revoked", "message": "Key revoked"},
+            "payload": {"reason": "unknown_system", "message": "System not found"},
         }))
 
         with pytest.raises(HandshakeError) as exc_info:
             await hs.perform(lambda m: asyncio.sleep(0), recv_queue.get)
 
-        assert exc_info.value.reason == "system_revoked"
+        assert exc_info.value.reason == "unknown_system"
 
     @pytest.mark.asyncio
     async def test_handshake_version_mismatch(self):

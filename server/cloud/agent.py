@@ -218,7 +218,7 @@ class CloudAgent:
                 await self._connect_and_run()
             except HandshakeError as e:
                 log.error(f"Cloud agent: handshake failed — {e} (reason: {e.reason})")
-                if e.reason in ("invalid_key", "system_revoked", "system_not_found"):
+                if e.reason in ("unknown_system", "no_key", "bad_system_id"):
                     # Fatal — don't retry, key is permanently invalid
                     log.error("Cloud agent: system key is invalid or revoked. Stopping.")
                     self._running = False
