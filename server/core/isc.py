@@ -81,6 +81,16 @@ def get_or_create_instance_id(project_path: Path) -> str:
     return instance_id
 
 
+def _is_private_ip(ip: str) -> bool:
+    """Check if an IP address is in a private/local range."""
+    import ipaddress
+    try:
+        addr = ipaddress.IPv4Address(ip)
+        return addr.is_private or addr.is_loopback or addr.is_link_local
+    except (ValueError, ipaddress.AddressValueError):
+        return False
+
+
 def _get_local_ip() -> str:
     """Detect the primary local IP address."""
     try:
@@ -630,9 +640,7 @@ class ISCManager:
         self._beacon_rate[source_ip] = now
 
         # Validate source is a private/local IP (not spoofed from internet)
-        if not (source_ip.startswith("10.") or source_ip.startswith("192.168.") or
-                source_ip.startswith("172.") or source_ip.startswith("127.") or
-                source_ip.startswith("169.254.")):
+        if not _is_private_ip(source_ip):
             return
 
         try:
@@ -691,6 +699,11 @@ class ISCManager:
                 attempt = 0  # Reset on successful connection
             except asyncio.CancelledError:
                 return
+            except ConnectionRefusedError as e:
+                if "duplicate" in str(e):
+                    log.debug(f"ISC: Peer {peer_id[:8]} already connected (duplicate), stopping outbound")
+                    return
+                log.debug(f"ISC: Outbound to {peer_id[:8]} refused: {e}")
             except Exception as e:
                 log.debug(f"ISC: Outbound to {peer_id[:8]} failed: {e}")
 
@@ -729,9 +742,6 @@ class ISCManager:
             if resp.get("type") == "isc.reject":
                 reason = resp.get("reason", "unknown")
                 log.warning(f"ISC: Peer {peer_id[:8]} rejected: {reason}")
-                if reason == "duplicate":
-                    # They already have a connection to us — stop retrying
-                    return
                 raise ConnectionRefusedError(reason)
 
             if resp.get("type") != "isc.welcome":
