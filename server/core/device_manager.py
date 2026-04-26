@@ -169,6 +169,7 @@ class DeviceManager:
             f"device.{device_id}.name", name, source=f"device.{device_id}"
         )
 
+        self.state.set(f"device.{device_id}.enabled", True, source="config")
         log.info(f"Added device '{device_id}' ({name}) using driver '{driver_id}'")
 
         # Attempt connection
@@ -509,7 +510,7 @@ class DeviceManager:
             # Notify the engine to persist the change
             await self.events.emit(
                 "device.pending_settings_applied",
-                {"device_id": device_id, "applied": applied_keys},
+                {"device_id": device_id, "applied": applied_keys, "remaining": dict(pending)},
             )
 
     async def store_pending_settings(
@@ -643,7 +644,6 @@ class DeviceManager:
             pass
         try:
             await driver.connect()
-            self.state.set(f"device.{device_id}.connected", True, source="device_manager")
             log.info(f"Reconnected device: {device_id}")
         except Exception as e:
             self.state.set(f"device.{device_id}.connected", False, source="device_manager")

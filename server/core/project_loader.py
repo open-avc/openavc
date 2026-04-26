@@ -314,6 +314,13 @@ class ScriptConfig(BaseModel):
     enabled: bool = True
     description: str = ""
 
+    @field_validator("id")
+    @classmethod
+    def id_no_dots(cls, v: str) -> str:
+        if "." in v:
+            raise ValueError(f"Script ID '{v}' must not contain dots (used as state key separator)")
+        return v
+
 
 class ISCConfig(BaseModel):
     enabled: bool = False

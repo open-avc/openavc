@@ -768,7 +768,7 @@ class ISCManager:
                 if peer is None:
                     peer = PeerInfo(
                         instance_id=peer_id, name=real_name, host=host, port=port,
-                        source="mdns",
+                        source="discovered",
                     )
                     self._peers[peer_id] = peer
                 peer.connected = True

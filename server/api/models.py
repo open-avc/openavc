@@ -2,9 +2,10 @@
 Pydantic models for the REST API request/response bodies.
 """
 
+import re
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class CommandRequest(BaseModel):
@@ -54,12 +55,22 @@ class ScriptSourceRequest(BaseModel):
     source: str
 
 
+_SCRIPT_ID_RE = re.compile(r"^[a-z0-9_]+$")
+
+
 class ScriptCreateRequest(BaseModel):
     id: str
     file: str
     description: str = ""
     source: str = ""
     enabled: bool = True
+
+    @field_validator("id")
+    @classmethod
+    def validate_id(cls, v: str) -> str:
+        if not v or not _SCRIPT_ID_RE.match(v):
+            raise ValueError("Script ID must be lowercase alphanumeric with underscores")
+        return v
 
 
 class DriverDefinitionRequest(BaseModel):

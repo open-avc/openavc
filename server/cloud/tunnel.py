@@ -67,6 +67,10 @@ class TunnelHandler:
             log.error("Tunnel open: missing tunnel_id or tunnel_data_url")
             return
 
+        if not tunnel_data_url.startswith(("wss://", "ws://")):
+            log.error("Tunnel open: invalid tunnel_data_url scheme (expected wss:// or ws://)")
+            return
+
         log.info(f"Tunnel open: {tunnel_id} → localhost:{target_port}")
 
         conn = TunnelConnection(tunnel_id=tunnel_id, target_port=target_port)

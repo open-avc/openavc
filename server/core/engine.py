@@ -1025,11 +1025,9 @@ class Engine:
             return
 
         # Update the project config to clear applied pending settings
+        remaining = payload.get("remaining", {})
         for dev in self.project.devices:
             if dev.id == device_id:
-                # Sync from device_manager's config (which was updated in-place)
-                dm_config = self.devices.get_device_config(device_id) or {}
-                remaining = dm_config.get("pending_settings", {})
                 dev.pending_settings = remaining
                 break
 

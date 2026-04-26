@@ -620,13 +620,7 @@ def _create_mdns_socket() -> socket.socket:
     # Allow multiple processes to bind to the same port
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
-    # Bind to mDNS port
-    # On Windows, bind to INADDR_ANY; on Linux, bind to multicast group
-    import sys
-    if sys.platform == "win32":
-        sock.bind(("", MDNS_PORT))
-    else:
-        sock.bind(("", MDNS_PORT))
+    sock.bind(("", MDNS_PORT))
 
     # Join the mDNS multicast group
     mreq = struct.pack(
