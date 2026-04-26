@@ -745,6 +745,40 @@ def _check_native_dep(dep: dict) -> bool:
             base = base[3:]
         return ctypes.util.find_library(base) is not None
 
+    elif check_type == "registry":
+        if platform_mod.system() != "Windows":
+            return False
+        key_path = check.get("key", "")
+        if not key_path:
+            return False
+        try:
+            import winreg
+            hive_map = {
+                "HKLM": winreg.HKEY_LOCAL_MACHINE,
+                "HKCU": winreg.HKEY_CURRENT_USER,
+            }
+            parts = key_path.replace("/", "\\").split("\\", 1)
+            hive = hive_map.get(parts[0].upper())
+            if hive is None or len(parts) < 2:
+                return False
+            with winreg.OpenKey(hive, parts[1]):
+                return True
+        except (OSError, ImportError):
+            return False
+
+    elif check_type == "command":
+        cmd = check.get("command", "")
+        if not cmd:
+            return False
+        try:
+            import shlex
+            result = subprocess.run(
+                shlex.split(cmd), capture_output=True, timeout=10, shell=False,
+            )
+            return result.returncode == 0
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+
     return False
 
 
