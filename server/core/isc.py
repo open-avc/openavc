@@ -20,7 +20,10 @@ Architecture:
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import hmac as hmac_mod
 import json
+import secrets
 import socket
 import uuid
 from dataclasses import dataclass, field
@@ -61,6 +64,27 @@ PING_TIMEOUT = 10.0
 
 # State batch window (seconds)
 STATE_BATCH_INTERVAL = 0.2
+
+
+# ---------------------------------------------------------------------------
+# HMAC Challenge-Response Auth
+# ---------------------------------------------------------------------------
+
+def _derive_isc_hmac_key(auth_key: str) -> bytes:
+    """Derive a fixed-length HMAC key from the user-provided auth key string."""
+    return hashlib.sha256(auth_key.encode("utf-8")).digest()
+
+
+def _compute_isc_hmac(auth_key: str, nonce: str) -> str:
+    """Compute HMAC-SHA256(derived_key, nonce) and return as hex."""
+    key = _derive_isc_hmac_key(auth_key)
+    return hmac_mod.new(key, nonce.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def _verify_isc_hmac(auth_key: str, nonce: str, response_hex: str) -> bool:
+    """Verify an HMAC response using constant-time comparison."""
+    expected = _compute_isc_hmac(auth_key, nonce)
+    return hmac_mod.compare_digest(expected, response_hex)
 
 
 # ---------------------------------------------------------------------------
@@ -460,7 +484,6 @@ class ISCManager:
         """
         peer_id = hello.get("instance_id", "")
         peer_name = hello.get("name", "")
-        peer_auth = hello.get("auth_key", "")
         peer_version = hello.get("version", "")
 
         if not peer_id:
@@ -472,9 +495,24 @@ class ISCManager:
             log.warning(f"ISC: Rejected {peer_id[:8]} — no auth key configured")
             return None
 
-        if peer_auth != self._auth_key:
-            await _ws_send_fastapi(ws, {"type": "isc.reject", "reason": "auth_key_mismatch"})
-            log.warning(f"ISC: Rejected {peer_id[:8]} — auth key mismatch")
+        # HMAC challenge-response: send a nonce, peer must prove it has the key
+        nonce = secrets.token_hex(32)
+        await _ws_send_fastapi(ws, {"type": "isc.challenge", "nonce": nonce})
+
+        try:
+            auth_text = await asyncio.wait_for(ws.receive_text(), timeout=10.0)
+            auth_msg = json.loads(auth_text)
+        except (asyncio.TimeoutError, json.JSONDecodeError):
+            await _ws_send_fastapi(ws, {"type": "isc.reject", "reason": "auth_timeout"})
+            return None
+
+        if auth_msg.get("type") != "isc.auth":
+            await _ws_send_fastapi(ws, {"type": "isc.reject", "reason": "expected isc.auth"})
+            return None
+
+        if not _verify_isc_hmac(self._auth_key, nonce, auth_msg.get("response", "")):
+            await _ws_send_fastapi(ws, {"type": "isc.reject", "reason": "auth_failed"})
+            log.warning(f"ISC: Rejected {peer_id[:8]} — HMAC verification failed")
             return None
 
         # Duplicate check — if we already have an outbound to this peer,
@@ -729,17 +767,16 @@ class ISCManager:
         log.debug(f"ISC: Connecting to {url}")
 
         async with websockets.connect(url, close_timeout=5) as ws:
-            # Send hello
+            # Send hello (no auth key — challenge-response handles auth)
             await ws.send(json.dumps({
                 "type": "isc.hello",
                 "instance_id": self.instance_id,
                 "name": self.instance_name,
-                "auth_key": self._auth_key,
                 "version": _platform_version,
                 "protocol": ISC_PROTOCOL_VERSION,
             }))
 
-            # Wait for welcome or reject
+            # Wait for challenge or reject
             resp_text = await asyncio.wait_for(ws.recv(), timeout=10)
             resp = json.loads(resp_text)
 
@@ -748,8 +785,28 @@ class ISCManager:
                 log.warning(f"ISC: Peer {peer_id[:8]} rejected: {reason}")
                 raise ConnectionRefusedError(reason)
 
+            if resp.get("type") != "isc.challenge":
+                raise ConnectionError(f"Expected isc.challenge, got: {resp.get('type')}")
+
+            # Respond to challenge with HMAC
+            nonce = resp.get("nonce", "")
+            hmac_response = _compute_isc_hmac(self._auth_key, nonce)
+            await ws.send(json.dumps({
+                "type": "isc.auth",
+                "response": hmac_response,
+            }))
+
+            # Wait for welcome or reject
+            welcome_text = await asyncio.wait_for(ws.recv(), timeout=10)
+            resp = json.loads(welcome_text)
+
+            if resp.get("type") == "isc.reject":
+                reason = resp.get("reason", "unknown")
+                log.warning(f"ISC: Peer {peer_id[:8]} rejected: {reason}")
+                raise ConnectionRefusedError(reason)
+
             if resp.get("type") != "isc.welcome":
-                raise ConnectionError(f"Unexpected response: {resp.get('type')}")
+                raise ConnectionError(f"Expected isc.welcome, got: {resp.get('type')}")
 
             # Update peer info from welcome
             real_id = resp.get("instance_id", peer_id)

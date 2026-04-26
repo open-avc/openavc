@@ -218,12 +218,25 @@ def test_clear_isc_state(isc, state):
 class FakeWebSocket:
     """Minimal mock of a FastAPI WebSocket for testing accept_inbound."""
 
-    def __init__(self):
+    def __init__(self, auth_key: str = ""):
         self.sent: list[str] = []
         self._closed = False
+        self._auth_key = auth_key
 
     async def send_text(self, data: str) -> None:
         self.sent.append(data)
+
+    async def receive_text(self) -> str:
+        """Auto-respond to challenge with HMAC if auth_key is set."""
+        from server.core.isc import _compute_isc_hmac
+        last_msg = json.loads(self.sent[-1]) if self.sent else {}
+        if last_msg.get("type") == "isc.challenge" and self._auth_key:
+            nonce = last_msg["nonce"]
+            return json.dumps({
+                "type": "isc.auth",
+                "response": _compute_isc_hmac(self._auth_key, nonce),
+            })
+        return json.dumps({"type": "isc.auth", "response": "bad"})
 
     async def close(self) -> None:
         self._closed = True
@@ -234,12 +247,11 @@ class FakeWebSocket:
 
 async def test_accept_inbound_no_auth_configured(isc_no_auth):
     """When no auth key is configured, all inbound connections are rejected."""
-    ws = FakeWebSocket()
+    ws = FakeWebSocket(auth_key="any_value")
     hello = {
         "type": "isc.hello",
         "instance_id": "peer-aaa",
         "name": "Lobby",
-        "auth_key": "any_value",
         "version": "0.1.0",
     }
     peer_id = await isc_no_auth.accept_inbound(ws, hello)
@@ -250,12 +262,11 @@ async def test_accept_inbound_no_auth_configured(isc_no_auth):
 
 
 async def test_accept_inbound_success(isc_with_auth):
-    ws = FakeWebSocket()
+    ws = FakeWebSocket(auth_key="secret123")
     hello = {
         "type": "isc.hello",
         "instance_id": "peer-aaa",
         "name": "Lobby",
-        "auth_key": "secret123",
         "version": "0.1.0",
     }
     peer_id = await isc_with_auth.accept_inbound(ws, hello)
@@ -264,6 +275,7 @@ async def test_accept_inbound_success(isc_with_auth):
     assert isc_with_auth._peers["peer-aaa"].connected is True
 
     msgs = ws.get_sent_msgs()
+    assert any(m["type"] == "isc.challenge" for m in msgs)
     assert any(m["type"] == "isc.welcome" for m in msgs)
 
 
@@ -277,27 +289,25 @@ async def test_accept_inbound_missing_id(isc):
 
 
 async def test_accept_inbound_auth_mismatch(isc_with_auth):
-    ws = FakeWebSocket()
+    ws = FakeWebSocket(auth_key="wrong_key")
     hello = {
         "type": "isc.hello",
         "instance_id": "peer-bad",
         "name": "Hacker",
-        "auth_key": "wrong_key",
     }
     peer_id = await isc_with_auth.accept_inbound(ws, hello)
     assert peer_id is None
     msgs = ws.get_sent_msgs()
-    assert msgs[0]["type"] == "isc.reject"
-    assert "auth_key" in msgs[0]["reason"]
+    assert any(m["type"] == "isc.reject" for m in msgs)
+    assert any("auth_failed" in m.get("reason", "") for m in msgs)
 
 
 async def test_accept_inbound_auth_success(isc_with_auth):
-    ws = FakeWebSocket()
+    ws = FakeWebSocket(auth_key="secret123")
     hello = {
         "type": "isc.hello",
         "instance_id": "peer-ok",
         "name": "Friend",
-        "auth_key": "secret123",
     }
     peer_id = await isc_with_auth.accept_inbound(ws, hello)
     assert peer_id == "peer-ok"
@@ -310,10 +320,9 @@ async def test_accept_inbound_auth_success(isc_with_auth):
 async def test_handle_state_message(isc, state):
     """isc.state message should apply remote state."""
     # First register a peer
-    ws = FakeWebSocket()
+    ws = FakeWebSocket(auth_key="testkey")
     await isc.accept_inbound(ws, {
-        "type": "isc.hello", "instance_id": "peer-x", "name": "X", "auth_key": "testkey",
-    })
+        "type": "isc.hello", "instance_id": "peer-x", "name": "X",     })
 
     await isc.handle_message("peer-x", {
         "type": "isc.state",
@@ -326,10 +335,9 @@ async def test_handle_state_message(isc, state):
 
 async def test_handle_command_message(isc, devices):
     """isc.command should execute on local DeviceManager and send result."""
-    ws = FakeWebSocket()
+    ws = FakeWebSocket(auth_key="testkey")
     await isc.accept_inbound(ws, {
-        "type": "isc.hello", "instance_id": "peer-cmd", "name": "Cmd", "auth_key": "testkey",
-    })
+        "type": "isc.hello", "instance_id": "peer-cmd", "name": "Cmd",     })
     ws.sent.clear()  # Clear welcome messages
 
     await isc.handle_message("peer-cmd", {
@@ -391,10 +399,9 @@ async def test_handle_event_message(isc, events):
     received = []
     events.on("isc.peer-ev.*", lambda e, p: received.append((e, p)))
 
-    ws = FakeWebSocket()
+    ws = FakeWebSocket(auth_key="testkey")
     await isc.accept_inbound(ws, {
-        "type": "isc.hello", "instance_id": "peer-ev", "name": "Ev", "auth_key": "testkey",
-    })
+        "type": "isc.hello", "instance_id": "peer-ev", "name": "Ev",     })
 
     await isc.handle_message("peer-ev", {
         "type": "isc.event",
@@ -410,10 +417,9 @@ async def test_handle_event_message(isc, events):
 
 async def test_handle_ping(isc):
     """isc.ping should respond with isc.pong."""
-    ws = FakeWebSocket()
+    ws = FakeWebSocket(auth_key="testkey")
     await isc.accept_inbound(ws, {
-        "type": "isc.hello", "instance_id": "peer-ping", "name": "P", "auth_key": "testkey",
-    })
+        "type": "isc.hello", "instance_id": "peer-ping", "name": "P",     })
     ws.sent.clear()
 
     await isc.handle_message("peer-ping", {"type": "isc.ping"})
@@ -428,10 +434,9 @@ async def test_handle_ping(isc):
 
 async def test_peer_disconnected(isc, events):
     """Disconnecting a peer should update tracking and emit event."""
-    ws = FakeWebSocket()
+    ws = FakeWebSocket(auth_key="testkey")
     await isc.accept_inbound(ws, {
-        "type": "isc.hello", "instance_id": "peer-dc", "name": "DC", "auth_key": "testkey",
-    })
+        "type": "isc.hello", "instance_id": "peer-dc", "name": "DC",     })
     assert isc._peers["peer-dc"].connected is True
 
     disconnected = []
@@ -484,14 +489,12 @@ async def test_duplicate_connection_smaller_id_rejects_inbound(isc):
         connected=True,
     )
 
-    ws_in = FakeWebSocket()
+    ws_in = FakeWebSocket(auth_key="testkey")
     result = await isc.accept_inbound(ws_in, {
-        "type": "isc.hello", "instance_id": "zzzz-9999", "name": "Z", "auth_key": "testkey",
-    })
+        "type": "isc.hello", "instance_id": "zzzz-9999", "name": "Z",     })
     assert result is None  # Rejected
     msgs = ws_in.get_sent_msgs()
-    assert msgs[0]["type"] == "isc.reject"
-    assert msgs[0]["reason"] == "duplicate"
+    assert any(m["type"] == "isc.reject" and m["reason"] == "duplicate" for m in msgs)
 
     # Outbound connection still there
     assert "zzzz-9999" in isc._connections
@@ -507,10 +510,9 @@ async def test_duplicate_connection_larger_id_accepts_inbound(isc):
         connected=True,
     )
 
-    ws_in = FakeWebSocket()
+    ws_in = FakeWebSocket(auth_key="testkey")
     result = await isc.accept_inbound(ws_in, {
-        "type": "isc.hello", "instance_id": "0000-0000", "name": "Zero", "auth_key": "testkey",
-    })
+        "type": "isc.hello", "instance_id": "0000-0000", "name": "Zero",     })
     assert result == "0000-0000"  # Accepted
     # New inbound connection replaces old outbound
     assert isc._connections["0000-0000"].direction == "inbound"
