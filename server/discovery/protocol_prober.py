@@ -944,15 +944,16 @@ async def probe_favicon(ip: str, port: int = 80) -> ProbeResult | None:
 
 # Map of port -> active probe functions
 _PORT_PROBES: dict[int, list] = {
-    22: [probe_ssh_banner],
+    22: [probe_ssh_banner, probe_shure_active],
+    23: [probe_shure_active],
     445: [probe_smb],
     4352: [probe_pjlink],
     1515: [probe_samsung_mdc],
     10500: [probe_visca],
     1688: [probe_crestron_cip],
-    80: [probe_http],
+    80: [probe_http, probe_favicon],
     443: [probe_tls_cert, probe_http],
-    8080: [probe_http],
+    8080: [probe_http, probe_favicon],
     8443: [probe_tls_cert],
     9090: [probe_http],
 }
