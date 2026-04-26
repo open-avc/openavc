@@ -341,7 +341,7 @@ export function UIBuilderView() {
           }
         }
       }
-      if (e.ctrlKey || e.metaKey) {
+      if ((e.ctrlKey || e.metaKey) && !inInput) {
         if (e.key === "z" && !e.shiftKey) {
           e.preventDefault();
           undo();

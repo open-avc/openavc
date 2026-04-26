@@ -327,7 +327,7 @@ export function UpdatesView() {
               <button
                 style={secondaryBtn}
                 onClick={() => setShowRollbackConfirm(true)}
-                disabled={updateStatus !== "idle"}
+                disabled={updateStatus !== "idle" && updateStatus !== "error"}
               >
                 <RotateCcw size={14} />
                 <span>{"Rollback to v" + (status.rollback_version || "?")}</span>

@@ -3469,6 +3469,17 @@ class PanelApp {
             return;
         }
 
+        if (this.currentTheme && this.currentTheme.id === themeId) {
+            this._applyThemeData(this.currentTheme, overrides, settings);
+            const newDefaults = JSON.stringify(this.themeElementDefaults || {});
+            if (prevDefaults !== newDefaults && this.snapshotReceived) {
+                this._themeApplyInProgress = true;
+                this.renderCurrentPage();
+                this._themeApplyInProgress = false;
+            }
+            return;
+        }
+
         const pathParts = location.pathname.split('/panel');
         const basePath = pathParts[0] || '';
 
