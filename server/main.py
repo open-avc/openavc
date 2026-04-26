@@ -74,7 +74,14 @@ async def _initialize_engine(app: FastAPI) -> None:
         data_dir = get_system_config().data_dir
         if check_rollback_needed(data_dir):
             from server.updater.rollback import perform_rollback
-            perform_rollback(data_dir)
+            success = perform_rollback(data_dir)
+            if success:
+                import os
+                # Windows: exit 42 tells NSSM not to restart (installer handles it)
+                # Linux: exit 0 triggers systemd restart, ExecStartPre applies rollback
+                exit_code = 42 if sys.platform == "win32" else 0
+                log.warning("Rollback initiated, exiting process (code %d)", exit_code)
+                os._exit(exit_code)
 
         await engine.start()
 

@@ -159,7 +159,7 @@ When an update is available, the response includes the version, changelog, and w
 | Deployment | Self-Update | What Happens |
 |---|---|---|
 | Windows installer | Yes | Downloads and runs new installer silently |
-| Linux package | Yes | Downloads archive, replaces app directory, restarts service |
+| Linux package | Yes | Downloads archive, writes instruction file, restarts. A helper script applies the update before the service starts. |
 | Docker | No | Shows notification with `docker compose pull` command |
 | Git/dev | No | Shows notification with `git pull` instructions |
 

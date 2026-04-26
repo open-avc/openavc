@@ -123,12 +123,28 @@ begin
   end;
 end;
 
+// Cache the running installer for future rollback.
+// Without this, the first update has no cached installer to roll back to.
+procedure CacheInstallerForRollback();
+var
+  CacheDir: String;
+  VersionedName: String;
+begin
+  CacheDir := ExpandConstant('{commonappdata}\OpenAVC\update-cache');
+  VersionedName := 'OpenAVC-Setup-{#MyAppVersion}.exe';
+  if not DirExists(CacheDir) then
+    ForceDirectories(CacheDir);
+  if not FileExists(CacheDir + '\' + VersionedName) then
+    FileCopy(ExpandConstant('{srcexe}'), CacheDir + '\' + VersionedName, False);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
   begin
     AddFirewallRule();
     SeedDefaultProject();
+    CacheInstallerForRollback();
   end;
 end;
 

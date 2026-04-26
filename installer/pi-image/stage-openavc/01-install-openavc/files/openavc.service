@@ -8,6 +8,7 @@ Type=exec
 User=openavc
 Group=openavc
 WorkingDirectory=/opt/openavc
+ExecStartPre=-+/opt/openavc/update-helper.sh /var/lib/openavc
 ExecStart=/opt/openavc/venv/bin/python -m server.main
 Restart=always
 RestartSec=5

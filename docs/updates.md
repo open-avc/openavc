@@ -45,7 +45,7 @@ How updates are applied depends on how OpenAVC was installed:
 | Deployment | Can self-update? | How it works |
 |-----------|-----------------|-------------|
 | **Windows Installer** | Yes | Downloads and runs the new installer silently |
-| **Linux (install.sh)** | Yes | Stops the service, extracts the new archive, rebuilds dependencies, restarts |
+| **Linux (install.sh)** | Yes | Downloads the archive, restarts the service. A helper script applies the update on startup. |
 | **Docker** | No | Shows instructions: `docker compose pull && docker compose up -d` |
 | **Git (development)** | No | Shows a notification to pull the latest code |
 

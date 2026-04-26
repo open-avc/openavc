@@ -13,6 +13,11 @@ install -m 644 "$FILES_DIR/openavc.service" \
 install -m 644 "$FILES_DIR/openavc-panel.service" \
     "${ROOTFS_DIR}/etc/systemd/system/openavc-panel.service"
 
+# Copy update helper script (referenced by ExecStartPre in openavc.service)
+INSTALLER_DIR="$(dirname "$0")/../../.."
+install -m 755 "$INSTALLER_DIR/update-helper.sh" \
+    "${ROOTFS_DIR}/opt/openavc/update-helper.sh"
+
 # Copy kiosk launcher script
 mkdir -p "${ROOTFS_DIR}/opt/openavc/scripts"
 install -m 755 "$FILES_DIR/panel-kiosk.sh" \

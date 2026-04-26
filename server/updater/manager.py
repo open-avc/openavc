@@ -329,7 +329,7 @@ class UpdateManager:
             if self._deployment_type == DeploymentType.WINDOWS_INSTALLER:
                 self._apply_windows(artifact_path, release.version)
             elif self._deployment_type == DeploymentType.LINUX_PACKAGE:
-                await self._apply_linux(artifact_path)
+                self._apply_linux(artifact_path, release.version)
 
             # Step 5: Record success and restart
             self._add_history_entry(__version__, release.version, "success")
@@ -338,7 +338,7 @@ class UpdateManager:
             log.info("Update to v%s applied, restarting...", release.version)
 
             # Schedule restart in background so the response can be sent first
-            asyncio.get_event_loop().call_later(1.0, self._restart_process)
+            asyncio.get_running_loop().call_later(1.0, self._restart_process)
 
             return {"success": True, "message": f"Update to v{release.version} started"}
 
@@ -407,7 +407,7 @@ class UpdateManager:
             if self._deployment_type == DeploymentType.WINDOWS_INSTALLER:
                 self._apply_windows(artifact_path, target_version)
             elif self._deployment_type == DeploymentType.LINUX_PACKAGE:
-                await self._apply_linux(artifact_path)
+                self._apply_linux(artifact_path, target_version)
 
             # Step 6: Record success and restart
             self._add_history_entry(__version__, target_version, "success")
@@ -415,7 +415,7 @@ class UpdateManager:
             self._set_state("system.update_status", "restarting")
             log.info("Update to v%s applied (cloud URL), restarting...", target_version)
 
-            asyncio.get_event_loop().call_later(1.0, self._restart_process)
+            asyncio.get_running_loop().call_later(1.0, self._restart_process)
 
             return {"success": True, "message": f"Update to v{target_version} started"}
 
@@ -452,24 +452,15 @@ class UpdateManager:
     def _apply_windows(self, artifact_path: Path, new_version: str) -> None:
         """Apply update on Windows via silent installer execution.
 
-        Caches the current installer for rollback, then launches the new one.
+        The Inno Setup installer caches itself during installation
+        (CacheInstallerForRollback in setup.iss), so rollback is always possible.
         """
-        from server.system_config import INSTALL_DIR
-
-        cache_dir = self._data_dir / "update-cache"
-        cache_dir.mkdir(parents=True, exist_ok=True)
-
-        # Cache the current installer for rollback
-        current_installer = INSTALL_DIR / "unins000.exe"
-        if current_installer.exists():
-            # Find the current version's setup exe if cached from a prior update
-            # The Inno Setup uninstaller is always present but we cache the full setup
-            pass  # Previous installer is already in cache from prior downloads
-
         log.info("Launching silent installer: %s", artifact_path.name)
 
         # Launch installer silently — it will stop the NSSM service,
-        # replace files, and restart the service automatically
+        # replace files, and restart the service automatically.
+        # NSSM exit code 42 (set in install-service.bat) prevents NSSM from
+        # restarting the process before the installer finishes.
         subprocess.Popen(
             [
                 str(artifact_path),
@@ -481,77 +472,37 @@ class UpdateManager:
             if sys.platform == "win32" else 0,
         )
 
-    async def _apply_linux(self, artifact_path: Path) -> None:
-        """Apply update on Linux: stop service, backup current, extract, rebuild venv, restart."""
-        app_dir = Path("/opt/openavc")
-        previous_dir = app_dir.parent / "openavc.previous"
+    def _apply_linux(self, artifact_path: Path, to_version: str) -> None:
+        """Write update instruction for the ExecStartPre helper script.
 
-        # Step 1: Stop the systemd service
-        log.info("Stopping openavc service...")
-        proc = await asyncio.create_subprocess_exec(
-            "sudo", "systemctl", "stop", "openavc",
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await proc.communicate()
-        if proc.returncode != 0:
-            raise RuntimeError(
-                f"Failed to stop openavc service (exit {proc.returncode}): {stderr.decode()}"
-            )
-
-        try:
-            # Step 2: Back up current install to .previous (for rollback)
-            if previous_dir.exists():
-                shutil.rmtree(previous_dir)
-            shutil.copytree(str(app_dir), str(previous_dir), symlinks=True)
-            log.info("Backed up current install to %s", previous_dir)
-
-            # Step 3: Extract new archive over current install
-            log.info("Extracting %s to %s", artifact_path.name, app_dir)
-            proc = await asyncio.create_subprocess_exec(
-                "sudo", "tar", "xzf", str(artifact_path),
-                "-C", str(app_dir), "--strip-components=1",
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-            )
-            _, stderr = await proc.communicate()
-            if proc.returncode != 0:
-                raise RuntimeError(f"tar extraction failed: {stderr.decode()}")
-
-            # Step 4: Rebuild venv dependencies
-            venv_pip = app_dir / "venv" / "bin" / "pip"
-            requirements = app_dir / "requirements.txt"
-            if venv_pip.exists() and requirements.exists():
-                log.info("Rebuilding venv dependencies...")
-                proc = await asyncio.create_subprocess_exec(
-                    "sudo", str(venv_pip), "install", "-r", str(requirements),
-                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-                )
-                _, stderr = await proc.communicate()
-                if proc.returncode != 0:
-                    raise RuntimeError(
-                        f"pip install failed (exit {proc.returncode}): {stderr.decode()}"
-                    )
-
-        finally:
-            # Step 5: Always restart the service (even if extraction failed,
-            # the service needs to come back up)
-            log.info("Starting openavc service...")
-            proc = await asyncio.create_subprocess_exec(
-                "sudo", "systemctl", "start", "openavc",
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-            )
-            await proc.communicate()
+        The helper script (update-helper.sh) runs as root before the service
+        starts, bypassing ProtectSystem=strict. It reads the instruction file,
+        backs up the current install, extracts the tarball, and rebuilds the
+        venv. After this method returns, the caller exits the process so
+        systemd restarts the service and triggers the helper script.
+        """
+        instruction = {
+            "artifact": str(artifact_path),
+            "from_version": __version__,
+            "to_version": to_version,
+        }
+        instruction_path = self._data_dir / "apply-update.json"
+        instruction_path.write_text(json.dumps(instruction), encoding="utf-8")
+        log.info("Wrote update instruction: %s -> v%s (%s)", __version__, to_version, instruction_path)
 
     def _restart_process(self) -> None:
-        """Restart the current process (Windows service restart or direct)."""
+        """Exit the process so the external update mechanism can apply changes.
+
+        Windows: exit code 42 tells NSSM not to restart (installer handles it).
+        Linux: exit code 0 triggers systemd restart; ExecStartPre applies the update.
+        """
+        import os
         if self._deployment_type == DeploymentType.WINDOWS_INSTALLER:
-            # On Windows, the installer handles the service restart.
-            # If we got here without the installer, force exit so NSSM restarts us.
-            log.info("Exiting process for NSSM restart...")
-            import os
-            os._exit(0)
+            log.info("Exiting for update — installer handles restart (exit 42)")
+            os._exit(42)
         elif self._deployment_type == DeploymentType.LINUX_PACKAGE:
-            # Linux: systemd restart is handled in _apply_linux
-            pass
+            log.info("Exiting for update — systemd will apply and restart (exit 0)")
+            os._exit(0)
 
     async def rollback(self) -> dict[str, Any]:
         """Rollback to the previous version."""
@@ -578,6 +529,10 @@ class UpdateManager:
         if success:
             self._add_history_entry(__version__, "rollback", "success")
             self._set_state("system.update_status", "restarting")
+            # Schedule process exit so the API response can be sent first.
+            # On Windows, the installer (launched by perform_rollback) handles restart.
+            # On Linux, systemd restarts the service and ExecStartPre applies the rollback.
+            asyncio.get_running_loop().call_later(1.0, self._restart_process)
             return {"success": True, "message": "Rollback initiated, server will restart"}
         else:
             self._set_state("system.update_status", "error")

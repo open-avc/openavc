@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import logging
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -182,43 +181,24 @@ def _rollback_windows(data_dir: Path, from_version: str, to_version: str) -> boo
 
 
 def _rollback_linux(data_dir: Path, from_version: str, to_version: str) -> bool:
-    """Rollback on Linux by restoring /opt/openavc.previous/."""
-    app_dir = Path("/opt/openavc")
-    previous_dir = app_dir.parent / "openavc.previous"
+    """Write a rollback instruction for the ExecStartPre helper script.
 
-    if not previous_dir.is_dir():
-        log.error("Rollback failed: %s does not exist", previous_dir)
+    The actual rollback (swapping /opt/openavc.previous back into place) is
+    performed by update-helper.sh which runs as root before the service starts,
+    bypassing ProtectSystem=strict. The caller must exit the process after this
+    returns True so systemd restarts the service and triggers the helper script.
+    """
+    rollback_marker = data_dir / "apply-rollback"
+    try:
+        rollback_marker.write_text("", encoding="utf-8")
+    except OSError as e:
+        log.error("Rollback failed: could not write rollback marker: %s", e)
         return False
 
     log.warning(
-        "Automatic rollback: restoring %s (v%s failed after update from v%s)",
-        previous_dir, to_version, from_version,
+        "Rollback marker written (v%s failed after update from v%s). "
+        "Rollback will apply on next service start.",
+        to_version, from_version,
     )
-
-    # Clear the marker before rollback to prevent rollback loops
     clear_pending_marker(data_dir)
-
-    try:
-        # Replace current install with the previous one
-        failed_dir = app_dir.parent / "openavc.failed"
-        if failed_dir.exists():
-            shutil.rmtree(failed_dir)
-
-        # Move current (failed) out of the way
-        shutil.move(str(app_dir), str(failed_dir))
-        # Move previous into place
-        shutil.move(str(previous_dir), str(app_dir))
-        # Clean up the failed install
-        shutil.rmtree(failed_dir, ignore_errors=True)
-
-        log.info("Rollback restored previous install. Restarting service...")
-
-        # Restart the service with the restored code
-        subprocess.run(
-            ["sudo", "systemctl", "restart", "openavc"],
-            check=False,
-        )
-        return True
-    except OSError as e:
-        log.error("Rollback failed during file operations: %s", e)
-        return False
+    return True

@@ -31,6 +31,9 @@ REM Configure restart on failure
 "%INSTALL_DIR%\nssm.exe" set OpenAVC AppExit Default Restart
 "%INSTALL_DIR%\nssm.exe" set OpenAVC AppRestartDelay 5000
 
+REM Exit code 42 = update/rollback in progress, don't restart (installer handles it)
+"%INSTALL_DIR%\nssm.exe" set OpenAVC AppExit 42 Exit
+
 REM Configure logging (NSSM's own stdout/stderr capture)
 "%INSTALL_DIR%\nssm.exe" set OpenAVC AppStdout "%DATA_DIR%\logs\service-stdout.log"
 "%INSTALL_DIR%\nssm.exe" set OpenAVC AppStderr "%DATA_DIR%\logs\service-stderr.log"
