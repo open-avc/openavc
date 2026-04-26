@@ -127,19 +127,21 @@ export async function fetchDevice(id: string): Promise<DeviceInfo> {
 }
 
 export async function setDeviceState(id: string, key: string, value: unknown): Promise<void> {
-  await fetch(`${BASE}/api/devices/${id}/state`, {
+  const res = await fetch(`${BASE}/api/devices/${id}/state`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ key, value }),
   });
+  if (!res.ok) throw new Error(`Set state failed: ${res.status} ${res.statusText}`);
 }
 
 export async function toggleError(id: string, mode: string, active: boolean): Promise<void> {
-  await fetch(`${BASE}/api/devices/${id}/errors/${mode}`, {
+  const res = await fetch(`${BASE}/api/devices/${id}/errors/${mode}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ active }),
   });
+  if (!res.ok) throw new Error(`Toggle error failed: ${res.status} ${res.statusText}`);
 }
 
 export async function fetchLog(id: string, limit = 200): Promise<LogEntry[]> {
