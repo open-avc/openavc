@@ -418,6 +418,11 @@ class Engine:
             self._project_revision += 1
             self._dirty_since_backup = True
 
+            # Stop triggers and cancel macros first — prevents triggers from
+            # firing on state keys that are about to be cleaned up
+            await self.triggers.stop()
+            await self.macros.cancel_all()
+
             # Sync variables: initialize new defaults, clean up orphaned keys
             project_var_ids = {v.id for v in self.project.variables}
             for var in self.project.variables:
@@ -449,17 +454,13 @@ class Engine:
             # Sync plugins: add new, remove deleted, restart changed
             await self._sync_plugins()
 
-            # Cancel running macros before replacing definitions
-            await self.macros.cancel_all()
-
             # Reload macros and device groups
             macros_data = [m.model_dump() for m in self.project.macros]
             self.macros.load_macros(macros_data)
             groups_data = [g.model_dump() for g in self.project.device_groups]
             self.macros.load_groups(groups_data)
 
-            # Reload triggers
-            await self.triggers.stop()
+            # Reload and restart triggers (stopped earlier before variable sync)
             macros_data_triggers = [m.model_dump() for m in self.project.macros]
             self.triggers.load_triggers(macros_data_triggers)
             await self.triggers.start()
@@ -499,7 +500,6 @@ class Engine:
                 groups_data = [g.model_dump() for g in self.project.device_groups]
                 self.macros.load_groups(groups_data)
 
-                await self.triggers.stop()
                 self.triggers.load_triggers(macros_data)
                 await self.triggers.start()
 
