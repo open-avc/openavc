@@ -16,6 +16,7 @@ import asyncio
 import json
 import sys
 import tempfile
+from pathlib import Path
 from typing import Any
 
 from server.system_config import APP_DIR, DRIVER_DEFINITIONS_DIR, DRIVER_REPO_DIR
@@ -152,6 +153,7 @@ class SimulationManager:
         json.dump(sim_config, config_file)
         config_file.close()
         config_path = config_file.name
+        self._config_path = config_path
 
         log.info("Starting simulator with %d devices...", len(devices_config))
         log.info("Driver paths: %s", driver_paths)
@@ -353,6 +355,9 @@ class SimulationManager:
                 pass
             log.info("Simulator process stopped")
         self._process = None
+        if hasattr(self, "_config_path") and self._config_path:
+            Path(self._config_path).unlink(missing_ok=True)
+            self._config_path = None
 
     async def _redirect_connections(self) -> None:
         """Swap device host/port to point at the simulator."""

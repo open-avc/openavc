@@ -30,8 +30,6 @@ class ReleaseInfo:
     prerelease: bool
     changelog: str
     published_at: str
-    download_url: str = ""
-    checksum_url: str = ""
     assets: list[dict[str, str]] = field(default_factory=list)
 
 

@@ -275,7 +275,7 @@ class TestInstallPlugin:
         with patch("server.core.plugin_installer.httpx.AsyncClient", return_value=mock_client):
             result = await install_plugin(
                 "sample_community",
-                "https://example.com/sample_community.zip",
+                "https://raw.githubusercontent.com/open-avc/openavc-plugins/main/sample_community.zip",
             )
 
         assert result["status"] == "installed"
@@ -297,7 +297,7 @@ class TestInstallPlugin:
         with patch("server.core.plugin_installer.httpx.AsyncClient", return_value=mock_client):
             result = await install_plugin(
                 "single_file",
-                "https://example.com/single_file_plugin.py",
+                "https://raw.githubusercontent.com/open-avc/openavc-plugins/main/single_file_plugin.py",
             )
 
         assert result["status"] == "installed"
@@ -308,7 +308,7 @@ class TestInstallPlugin:
         (plugin_repo / "existing").mkdir()
 
         with pytest.raises(ValueError, match="already installed"):
-            await install_plugin("existing", "https://example.com/existing.zip")
+            await install_plugin("existing", "https://raw.githubusercontent.com/open-avc/openavc-plugins/main/existing.zip")
 
     async def test_install_http_failure_cleans_up(self, plugin_repo):
         """If download fails, partial directory is cleaned up."""
@@ -323,7 +323,7 @@ class TestInstallPlugin:
 
         with patch("server.core.plugin_installer.httpx.AsyncClient", return_value=mock_client):
             with pytest.raises(httpx.HTTPStatusError):
-                await install_plugin("bad_download", "https://example.com/bad.zip")
+                await install_plugin("bad_download", "https://raw.githubusercontent.com/open-avc/openavc-plugins/main/bad.zip")
 
         # Directory should not remain after failure
         assert not (plugin_repo / "bad_download").exists()

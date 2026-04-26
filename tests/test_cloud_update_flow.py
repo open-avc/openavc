@@ -135,7 +135,7 @@ async def test_apply_cloud_update_full_flow(tmp_path):
     # Verify history was recorded
     assert len(mgr._history) == 1
     assert mgr._history[0]["to_version"] == "1.0.0"
-    assert mgr._history[0]["status"] == "success"
+    assert mgr._history[0]["status"] == "pending"
 
 
 @pytest.mark.asyncio

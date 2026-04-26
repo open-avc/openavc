@@ -30,6 +30,7 @@ from time import time
 from typing import Any, TYPE_CHECKING
 
 from server.utils.logger import get_logger
+from server.version import __version__ as _platform_version
 
 if TYPE_CHECKING:
     from server.core.device_manager import DeviceManager
@@ -508,7 +509,7 @@ class ISCManager:
             "type": "isc.welcome",
             "instance_id": self.instance_id,
             "name": self.instance_name,
-            "version": "0.1.0",
+            "version": _platform_version,
             "protocol": ISC_PROTOCOL_VERSION,
         })
 
@@ -621,7 +622,7 @@ class ISCManager:
             "instance_id": self.instance_id,
             "name": self.instance_name,
             "port": self.http_port,
-            "version": "0.1.0",
+            "version": _platform_version,
             "protocol": ISC_PROTOCOL_VERSION,
         }).encode()
         return DISCOVERY_MAGIC + payload
@@ -638,6 +639,9 @@ class ISCManager:
         if now - last_seen < 5.0:
             return
         self._beacon_rate[source_ip] = now
+        if len(self._beacon_rate) > 500:
+            cutoff = now - 30.0
+            self._beacon_rate = {ip: t for ip, t in self._beacon_rate.items() if t > cutoff}
 
         # Validate source is a private/local IP (not spoofed from internet)
         if not _is_private_ip(source_ip):
@@ -731,7 +735,7 @@ class ISCManager:
                 "instance_id": self.instance_id,
                 "name": self.instance_name,
                 "auth_key": self._auth_key,
-                "version": "0.1.0",
+                "version": _platform_version,
                 "protocol": ISC_PROTOCOL_VERSION,
             }))
 

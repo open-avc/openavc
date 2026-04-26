@@ -69,7 +69,7 @@ def create_backup(
         return None
 
     backup_d = _backup_dir(project_dir)
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     slug = _reason_slug(reason)
     filename = f"backup_{stamp}_{slug}.zip"
     backup_path = backup_d / filename

@@ -310,8 +310,12 @@ class PluginAPI:
         """Current platform identifier (win_x64, linux_x64, linux_arm64, etc.)."""
         return self._platform_id
 
+    _VALID_LOG_LEVELS = {"debug", "info", "warning", "error", "critical"}
+
     def log(self, message: str, level: str = "info") -> None:
         """Log a message. Appears in System Log with plugin name as source."""
+        if level not in self._VALID_LOG_LEVELS:
+            level = "info"
         if self._log_fn:
             self._log_fn(self._plugin_id, message, level)
         else:
