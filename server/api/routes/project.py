@@ -46,15 +46,22 @@ async def save_project_config(request: Request) -> dict[str, Any]:
     ETag from a previous GET.  A mismatch means another client saved
     since this client last loaded — returns 409 Conflict.
     """
-    # Limit request body to 10 MB to prevent memory exhaustion
+    max_body = 10 * 1024 * 1024
     content_length = request.headers.get("content-length")
     try:
-        if content_length and int(content_length) > 10 * 1024 * 1024:
+        if content_length and int(content_length) > max_body:
             raise HTTPException(status_code=413, detail="Project file too large (max 10 MB)")
     except (ValueError, TypeError):
-        pass  # Malformed content-length header — let FastAPI handle the body
+        pass
+    raw = await request.body()
+    if len(raw) > max_body:
+        raise HTTPException(status_code=413, detail="Project file too large (max 10 MB)")
+    import json as _json
+    try:
+        body = _json.loads(raw)
+    except _json.JSONDecodeError:
+        raise HTTPException(status_code=422, detail="Invalid JSON")
     engine = _get_engine()
-    body = await request.json()
 
     # Optimistic concurrency: If-Match header (preferred) or legacy _revision body field
     if_match = request.headers.get("if-match")

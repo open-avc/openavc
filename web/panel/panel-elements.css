@@ -68,6 +68,9 @@
     text-align: center;
     padding: 8px;
     word-wrap: break-word;
+    overflow-wrap: anywhere;
+    min-width: 0;
+    line-height: 1.3;
 }
 .panel-button:hover {
     /* Derive hover from button bg via filter — no separate token needed. */

@@ -63,6 +63,8 @@ class StateStore:
         """Get a state value."""
         return self._store.get(key, default)
 
+    _VALID_PREFIXES = ("device.", "var.", "ui.", "system.", "isc.", "plugin.")
+
     def set(self, key: str, value: Any, source: str = "system") -> None:
         """
         Set a state value. If the value actually changed:
@@ -71,6 +73,9 @@ class StateStore:
         3. Notify matching listeners
         4. Emit events on the EventBus
         """
+        if not any(key.startswith(p) for p in self._VALID_PREFIXES):
+            log.debug("State key '%s' has unknown namespace prefix (source=%s)", key, source)
+
         old_value = self._store.get(key)
         if old_value == value and type(old_value) is type(value):
             return  # No change, skip notifications
