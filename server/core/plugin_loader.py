@@ -730,7 +730,11 @@ class PluginLoader:
         logger_fn = getattr(log, level, log.info)
         logger_fn(f"[Plugin:{plugin_id}] {message}")
         # Also emit as event for the IDE system log
-        asyncio.get_event_loop().call_soon(
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        loop.call_soon(
             lambda: asyncio.create_task(
                 self._events.emit("log.plugin", {
                     "plugin_id": plugin_id,
