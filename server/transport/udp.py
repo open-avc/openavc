@@ -110,7 +110,7 @@ class UDPTransport:
             except OSError as e:
                 log.error(f"[{self._name}] UDP send failed to {host}:{port}: {e}")
                 raise
-            log.info(f"[{self._name}] TX: {_format_data(data)} -> {host}:{port}")
+            log.debug(f"[{self._name}] TX: {_format_data(data)} -> {host}:{port}")
             if self._inter_command_delay > 0:
                 await asyncio.sleep(self._inter_command_delay)
 
@@ -199,7 +199,7 @@ class UDPTransport:
         """Route an incoming datagram to the response queue and/or callback."""
         import time
         self.last_data_received = time.monotonic()
-        log.info(f"[{self._name}] RX: {_format_data(data)} <- {addr[0]}:{addr[1]}")
+        log.debug(f"[{self._name}] RX: {_format_data(data)} <- {addr[0]}:{addr[1]}")
 
         # If someone is waiting for a response, put it in the queue
         if self._waiting_for_response:

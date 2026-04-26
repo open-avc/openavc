@@ -100,26 +100,11 @@ class OSCTransport:
             return False
 
         probe = osc_encode_message("/info")
-
-        self._udp._waiting_for_response = True
-        while not self._udp._response_queue.empty():
-            self._udp._response_queue.get_nowait()
-
         try:
-            self._udp._transport.sendto(probe, (self._udp.host, self._udp.port))
-        except OSError:
-            self._udp._waiting_for_response = False
-            return False
-
-        try:
-            await asyncio.wait_for(
-                self._udp._response_queue.get(), timeout=timeout
-            )
+            await self._udp.send_and_wait(probe, timeout=timeout)
             return True
-        except asyncio.TimeoutError:
+        except (asyncio.TimeoutError, OSError):
             return False
-        finally:
-            self._udp._waiting_for_response = False
 
     async def close(self) -> None:
         """Close all sockets."""
@@ -164,7 +149,7 @@ class _OSCListenProtocol(asyncio.DatagramProtocol):
         import time
         if self._parent is not None:
             self._parent._listen_last_data = time.monotonic()
-        log.info(f"[{self._name}] RX: ({len(data)} bytes) <- {addr[0]}:{addr[1]}")
+        log.debug(f"[{self._name}] RX: ({len(data)} bytes) <- {addr[0]}:{addr[1]}")
         if self._on_data is not None:
             try:
                 result = self._on_data(data)

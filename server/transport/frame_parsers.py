@@ -118,9 +118,9 @@ class LengthPrefixFrameParser(FrameParser):
             total = self._header_size + payload_len
             # Reject obviously bogus lengths
             if total > self._max_buffer:
-                log.warning(f"Length-prefix parser: claimed size {total} exceeds max {self._max_buffer}, clearing buffer")
-                self._buffer = b""
-                break
+                log.warning(f"Length-prefix parser: claimed size {total} exceeds max {self._max_buffer}, skipping byte")
+                self._buffer = self._buffer[1:]
+                continue
             if len(self._buffer) < total:
                 break
             if self._include_header:

@@ -168,7 +168,7 @@ class TCPTransport:
         try:
             self._writer.write(data)
             await self._writer.drain()
-            log.info(f"[{self._name}] TX: {self._format_data(data)}")
+            log.debug(f"[{self._name}] TX: {self._format_data(data)}")
             if self._inter_command_delay > 0:
                 await asyncio.sleep(self._inter_command_delay)
         except (ConnectionError, OSError) as e:
@@ -263,7 +263,7 @@ class TCPTransport:
 
     def _deliver_message(self, data: bytes) -> None:
         """Deliver a complete message to the callback and/or response queue."""
-        log.info(f"[{self._name}] RX: {self._format_data(data)}")
+        log.debug(f"[{self._name}] RX: {self._format_data(data)}")
 
         # If someone is waiting for a response, put it in the queue
         if self._waiting_for_response:

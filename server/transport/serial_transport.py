@@ -183,7 +183,7 @@ class SerialTransport:
             raise ConnectionError("Not connected")
 
         if self._simulate:
-            log.info(f"[{self._name}] TX: {self._format_data(data)}")
+            log.debug(f"[{self._name}] TX: {self._format_data(data)}")
             if self._inter_command_delay > 0:
                 await asyncio.sleep(self._inter_command_delay)
             return
@@ -191,7 +191,7 @@ class SerialTransport:
         try:
             self._writer.write(data)
             await self._writer.drain()
-            log.info(f"[{self._name}] TX: {self._format_data(data)}")
+            log.debug(f"[{self._name}] TX: {self._format_data(data)}")
             if self._inter_command_delay > 0:
                 await asyncio.sleep(self._inter_command_delay)
         except (OSError, ConnectionError) as e:
@@ -300,7 +300,7 @@ class SerialTransport:
 
     def _deliver_message(self, data: bytes) -> None:
         """Deliver a complete message to callback and/or response queue."""
-        log.info(f"[{self._name}] RX: {self._format_data(data)}")
+        log.debug(f"[{self._name}] RX: {self._format_data(data)}")
 
         if self._waiting_for_response:
             self._response_queue.put_nowait(data)
