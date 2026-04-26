@@ -114,11 +114,10 @@ function SystemLogTab() {
     if (deviceFilter !== "all") {
       // Match on source field (contains device ID) or message mentioning the device
       const df = deviceFilter.toLowerCase();
-      result = result.filter((e) =>
-        e.source.toLowerCase() === df ||
-        e.source.toLowerCase().includes(`.${df}.`) ||
-        e.source.toLowerCase().endsWith(`.${df}`)
-      );
+      result = result.filter((e) => {
+        const parts = e.source.toLowerCase().split(".");
+        return parts.includes(df);
+      });
     }
     return result;
   }, [entries, categoryFilter, levelFilter, deviceFilter]);

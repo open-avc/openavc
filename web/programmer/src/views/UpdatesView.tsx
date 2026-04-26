@@ -366,14 +366,16 @@ export function UpdatesView() {
                 const currentIndex = currentStep ? STEPS.findIndex(s => s.id === currentStep) : -1;
                 const isDone = stepIndex < currentIndex;
                 const isActive = step.id === currentStep;
-                const isPending = stepIndex > currentIndex;
+                const isFailed = updateStatus === "error" && isActive;
+                const isPending = stepIndex > currentIndex && !isFailed;
 
                 return (
                   <div key={step.id} style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", fontSize: "var(--font-size-sm)" }}>
                     {isDone && <CheckCircle size={16} style={{ color: "var(--color-success)", flexShrink: 0 }} />}
-                    {isActive && <Loader size={16} style={{ color: "var(--accent)", flexShrink: 0, animation: "spin 1s linear infinite" }} />}
+                    {isActive && !isFailed && <Loader size={16} style={{ color: "var(--accent)", flexShrink: 0, animation: "spin 1s linear infinite" }} />}
+                    {isFailed && <XCircle size={16} style={{ color: "var(--color-error)", flexShrink: 0 }} />}
                     {isPending && <div style={{ width: 16, height: 16, borderRadius: "50%", border: "2px solid var(--border-color)", flexShrink: 0 }} />}
-                    <span style={{ color: isPending ? "var(--text-muted)" : "var(--text-primary)", fontWeight: isActive ? 500 : 400 }}>
+                    <span style={{ color: isFailed ? "var(--color-error)" : isPending ? "var(--text-muted)" : "var(--text-primary)", fontWeight: isActive ? 500 : 400 }}>
                       {step.label}
                       {isActive && step.id === "download" && updateProgress > 0 && (" (" + updateProgress + "%)")}
                     </span>
