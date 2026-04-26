@@ -348,6 +348,22 @@ if programmer_dir.exists():
 
 
 if __name__ == "__main__":
+    import socket as _sock
+    _test = _sock.socket(_sock.AF_INET, _sock.SOCK_STREAM)
+    try:
+        _test.bind((config.BIND_ADDRESS, config.HTTP_PORT))
+        _test.close()
+    except OSError:
+        _test.close()
+        print(
+            f"\n*** Port {config.HTTP_PORT} is already in use. ***\n"
+            f"Another application (or another copy of OpenAVC) is using this port.\n"
+            f"To use a different port, set the OPENAVC_PORT environment variable:\n"
+            f"  OPENAVC_PORT=9090 python -m server.main\n"
+            f"Or set it in system.json under network.http_port.\n"
+        )
+        raise SystemExit(1)
+
     uvicorn.run(
         "server.main:app",
         host=config.BIND_ADDRESS,
