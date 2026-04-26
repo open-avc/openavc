@@ -1,12 +1,21 @@
 import { useState, useEffect, useCallback } from "react";
 import { ViewContainer } from "../components/layout/ViewContainer";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
+import { CopyButton } from "../components/shared/CopyButton";
 import {
   getCloudStatus,
   cloudPair,
   cloudUnpair,
   type CloudStatus,
 } from "../api/restClient";
+
+function formatUptime(s: number): string {
+  if (s < 60) return `${Math.floor(s)}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  const h = Math.floor(s / 3600);
+  const mn = Math.floor((s % 3600) / 60);
+  return `${h}h ${mn}m`;
+}
 
 const cardStyle: React.CSSProperties = {
   background: "var(--bg-surface)",
@@ -163,24 +172,26 @@ export function CloudSettingsView() {
           {isPaired && (
             <>
               <div style={labelStyle}>System ID</div>
-              <div style={valueStyle}>
+              <div style={{ ...valueStyle, display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
                 <code style={{ fontSize: "var(--font-size-sm)" }}>
                   {status?.system_id}
                 </code>
+                {status?.system_id && <CopyButton value={status.system_id} />}
               </div>
 
               <div style={labelStyle}>Cloud Endpoint</div>
-              <div style={valueStyle}>
+              <div style={{ ...valueStyle, display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
                 <code style={{ fontSize: "var(--font-size-sm)" }}>
                   {status?.endpoint}
                 </code>
+                {status?.endpoint && <CopyButton value={status.endpoint} />}
               </div>
 
               {status?.connected && status?.uptime != null && (
                 <>
                   <div style={labelStyle}>Connection Uptime</div>
                   <div style={valueStyle}>
-                    {Math.floor(status.uptime / 60)} minutes
+                    {formatUptime(status.uptime)}
                   </div>
                 </>
               )}
@@ -188,10 +199,11 @@ export function CloudSettingsView() {
               {status?.session_id && (
                 <>
                   <div style={labelStyle}>Session ID</div>
-                  <div style={valueStyle}>
+                  <div style={{ ...valueStyle, display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
                     <code style={{ fontSize: "var(--font-size-sm)" }}>
                       {status.session_id}
                     </code>
+                    <CopyButton value={status.session_id} />
                   </div>
                 </>
               )}

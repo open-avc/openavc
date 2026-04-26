@@ -109,6 +109,7 @@ export function DriverList({
             >
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div
+                  title={def.name}
                   style={{
                     fontWeight: 500,
                     fontSize: "var(--font-size-sm)",

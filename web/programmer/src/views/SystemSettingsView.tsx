@@ -155,23 +155,25 @@ function PasswordField({
         placeholder={isRedacted ? "Set (hidden)" : placeholder}
         onChange={(e) => onChange(e.target.value)}
       />
-      <button
-        type="button"
-        onClick={() => setVisible(!visible)}
-        style={{
-          position: "absolute",
-          right: 8,
-          top: "50%",
-          transform: "translateY(-50%)",
-          background: "none",
-          border: "none",
-          color: "var(--text-muted)",
-          cursor: "pointer",
-          padding: 4,
-        }}
-      >
-        {visible ? <EyeOff size={14} /> : <Eye size={14} />}
-      </button>
+      {!isRedacted && (
+        <button
+          type="button"
+          onClick={() => setVisible(!visible)}
+          style={{
+            position: "absolute",
+            right: 8,
+            top: "50%",
+            transform: "translateY(-50%)",
+            background: "none",
+            border: "none",
+            color: "var(--text-muted)",
+            cursor: "pointer",
+            padding: 4,
+          }}
+        >
+          {visible ? <EyeOff size={14} /> : <Eye size={14} />}
+        </button>
+      )}
     </div>
   );
 }
