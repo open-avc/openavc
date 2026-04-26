@@ -246,10 +246,20 @@ class SimulationManager:
 
         # Fallback: if API query failed, use sequential assignment
         if not self._sim_ports:
+            import socket
             log.warning("Falling back to sequential port assignment")
-            for i, dev_cfg in enumerate(devices_config):
+            port = 19000
+            for dev_cfg in devices_config:
                 device_id = dev_cfg["device_id"]
-                self._sim_ports[device_id] = 19000 + i
+                while port < 19500:
+                    try:
+                        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                            s.bind(("127.0.0.1", port))
+                        break
+                    except OSError:
+                        port += 1
+                self._sim_ports[device_id] = port
+                port += 1
 
         self._active = True
 
