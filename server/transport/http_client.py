@@ -101,6 +101,7 @@ class HTTPClientTransport:
         self._client: httpx.AsyncClient | None = None
         self._last_response: HTTPResponse | None = None
         self.last_data_received: float = 0.0
+        self.connected: bool = False
 
     async def open(self) -> None:
         """Create the httpx.AsyncClient session with configured auth and TLS."""
@@ -137,6 +138,7 @@ class HTTPClientTransport:
             transport=transport,
         )
 
+        self.connected = True
         log.info(
             f"HTTP client opened: {self.base_url} "
             f"(auth={self.auth_type}, ssl_verify={self.verify_ssl})"
@@ -147,6 +149,7 @@ class HTTPClientTransport:
         if self._client is not None:
             await self._client.aclose()
             self._client = None
+            self.connected = False
             log.info(f"HTTP client closed: {self.base_url}")
 
     async def verify(self, timeout: float = 5.0) -> bool:

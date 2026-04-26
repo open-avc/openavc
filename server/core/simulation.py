@@ -309,8 +309,8 @@ class SimulationManager:
         try:
             while self._active and self._process:
                 if self._process.returncode is not None:
-                    log.info("Simulator process exited externally (code %s)", self._process.returncode)
-                    # Process died — restore connections and reset state
+                    exit_code = self._process.returncode
+                    log.info("Simulator process exited externally (code %s)", exit_code)
                     await self._restore_connections()
                     self._process = None
                     self._sim_ports.clear()
@@ -319,6 +319,9 @@ class SimulationManager:
                     self._active = False
                     self.engine.state.set("system.simulation_active", False, source="simulation")
                     self.engine.state.set("system.simulation_ui_url", None, source="simulation")
+                    await self.engine.events.emit("simulation.crashed", {
+                        "exit_code": exit_code,
+                    })
                     return
                 await asyncio.sleep(1.0)
         except asyncio.CancelledError:

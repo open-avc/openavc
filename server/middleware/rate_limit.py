@@ -143,6 +143,10 @@ def _cleanup(now: float) -> None:
     stale_warns = [k for k, t in _warn_dedup.items() if now - t > STALE_THRESHOLD]
     for k in stale_warns:
         del _warn_dedup[k]
+    if len(_warn_dedup) > 10000:
+        oldest = sorted(_warn_dedup, key=_warn_dedup.get)[:5000]  # type: ignore[arg-type]
+        for k in oldest:
+            del _warn_dedup[k]
 
 
 def _make_429(retry_after: float) -> Response:

@@ -361,14 +361,13 @@ def _parse_nbstat_response(data: bytes) -> dict[str, str] | None:
             if not name or name.startswith("\x00"):
                 continue
 
-            # Type 0x00 = Workstation, Type 0x20 = File Server
-            if name_type == 0x00 and hostname is None:
-                hostname = name
-            # Type 0x00 with GROUP flag (bit 15 of flags) = workgroup
-            elif name_type == 0x00 and workgroup is None:
+            if name_type == 0x00:
                 flag_word = struct.unpack(">H", data[offset - 2:offset])[0]
-                if flag_word & 0x8000:
+                is_group = bool(flag_word & 0x8000)
+                if is_group and workgroup is None:
                     workgroup = name
+                elif not is_group and hostname is None:
+                    hostname = name
 
         if not hostname:
             return None

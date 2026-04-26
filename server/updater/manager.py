@@ -137,7 +137,11 @@ class UpdateManager:
             await self._verify_checksum(checksum_url=checksum_url,
                                         artifact_path=artifact_path, artifact_name=artifact_name)
         else:
-            log.warning("No SHA256SUMS.txt in release, skipping checksum verification")
+            log.error(
+                "No SHA256SUMS.txt in release assets for v%s — update artifact "
+                "was NOT verified. This is expected for development releases.",
+                release.version,
+            )
 
         return artifact_path
 
