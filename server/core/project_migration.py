@@ -98,4 +98,11 @@ def migrate_project(data: dict) -> tuple[dict, bool]:
             current = target_ver
             migrated = True
 
+    if current != CURRENT_VERSION:
+        log.warning(
+            "Project version %s does not match current platform version %s "
+            "— some features may not work correctly",
+            current, CURRENT_VERSION,
+        )
+
     return data, migrated

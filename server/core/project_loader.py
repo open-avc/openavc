@@ -126,13 +126,6 @@ class MacroStep(BaseModel):
     skip_if_offline: bool = False
 
 
-class TriggerCondition(BaseModel):
-    """Guard condition — macro only fires if ALL conditions are true."""
-    key: str
-    operator: str = "eq"
-    value: Any = None
-
-
 class TriggerConfig(BaseModel):
     """Trigger definition — when should a macro fire automatically."""
     id: str
@@ -164,7 +157,7 @@ class TriggerConfig(BaseModel):
     overlap: Literal["skip", "queue", "allow"] = "skip"
 
     # Guard conditions
-    conditions: list[TriggerCondition] = Field(default_factory=list)
+    conditions: list[StepCondition] = Field(default_factory=list)
 
 
 class MacroConfig(BaseModel):
@@ -300,7 +293,7 @@ class UISettings(BaseModel):
 
 
 class MasterElement(UIElement):
-    pages: Any = "*"  # "*" for all pages, or list of page IDs
+    pages: str | list[str] = "*"
 
 
 class PageGroup(BaseModel):
