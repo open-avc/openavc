@@ -103,11 +103,6 @@ class StateStore:
                 # No running event loop — skip async events (happens in sync tests)
                 pass
 
-    def bulk_set(self, updates: dict[str, Any], source: str = "system") -> None:
-        """Set multiple values. Each changed key fires its own notifications."""
-        for key, value in updates.items():
-            self.set(key, value, source)
-
     def set_batch(self, updates: dict[str, Any], source: str = "system") -> None:
         """
         Atomically set multiple values — all state is updated before any

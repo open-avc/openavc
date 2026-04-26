@@ -69,15 +69,6 @@ def test_unsubscribe(state):
     assert len(calls) == 1  # No new call
 
 
-def test_bulk_set(state):
-    calls = []
-    state.subscribe("var.*", lambda k, o, n, s: calls.append(k))
-    state.bulk_set({"var.a": 1, "var.b": 2, "var.c": 3})
-    assert len(calls) == 3
-    assert state.get("var.a") == 1
-    assert state.get("var.b") == 2
-    assert state.get("var.c") == 3
-
 
 def test_get_namespace(state):
     state.set("device.proj1.power", "on")

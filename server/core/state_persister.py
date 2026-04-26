@@ -116,9 +116,6 @@ class StatePersister:
             value = self._state_store.get(key)
             if value is not None:
                 data[key] = value
-            else:
-                # Still persist explicit None/default
-                data[key] = self._state_store.get(key)
 
         content = json.dumps(data, indent=2, ensure_ascii=False)
 
