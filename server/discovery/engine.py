@@ -689,14 +689,17 @@ class DiscoveryEngine:
                 installed_ids = {h.driver_id for h in self.driver_matcher.hints}
 
             # Run installed driver matching
+            finalize_total = len(self.results)
             if self.driver_matcher:
-                for device in self.results.values():
+                for i, device in enumerate(self.results.values()):
                     matches = self.driver_matcher.match_device(device)
                     if matches:
                         device.matched_drivers = matches
                         if "driver_matched" not in device.sources:
                             device.sources.append("driver_matched")
                         await self._emit_device_update(device, "driver_match")
+                    if finalize_total > 0:
+                        await self._update_intra_progress((i + 1) / finalize_total * 0.5)
 
             # Run community driver matching
             community_drivers = await self.community_index.get_drivers()
@@ -704,7 +707,7 @@ class DiscoveryEngine:
                 community_matcher = CommunityDriverMatcher(
                     community_drivers, installed_ids,
                 )
-                for device in self.results.values():
+                for i, device in enumerate(self.results.values()):
                     community_matches = community_matcher.match_device(device)
                     if community_matches:
                         device.matched_drivers.extend(community_matches)
@@ -713,6 +716,8 @@ class DiscoveryEngine:
                             key=lambda m: (0 if m.source == "installed" else 1, -m.confidence),
                         )
                         await self._emit_device_update(device, "community_match")
+                    if finalize_total > 0:
+                        await self._update_intra_progress(0.5 + (i + 1) / finalize_total * 0.5)
 
             # Remove devices that were not re-discovered in this scan
             stale_ips = [ip for ip, dev in self.results.items() if not dev.alive]
