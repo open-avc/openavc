@@ -66,8 +66,10 @@ export function ISCView() {
       ]);
       setStatus(statusRes);
       setPeers(Array.isArray(peersRes) ? peersRes : []);
-    } catch {
-      // ISC not available
+    } catch (err) {
+      console.warn("ISC status fetch failed:", err);
+      setStatus({ enabled: false });
+      setPeers([]);
     }
   }, []);
 
@@ -120,6 +122,7 @@ export function ISCView() {
   const handleAddPeer = useCallback(() => {
     if (!project || !newPeer.trim()) return;
     const addr = newPeer.trim();
+    if (!/^[\w.-]+(:\d{1,5})?$/.test(addr)) return;
     if (manualPeers.includes(addr)) return;
     update({
       isc: { ...project.isc, peers: [...manualPeers, addr] },

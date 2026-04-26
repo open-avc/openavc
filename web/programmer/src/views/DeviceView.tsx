@@ -55,6 +55,7 @@ export function DeviceView() {
     });
   }, []);
 
+  const stateVersion = useConnectionStore((s) => s.stateVersion);
   const deviceConfigs = project?.devices ?? [];
 
   const deviceGroups = project?.device_groups ?? [];
@@ -137,7 +138,8 @@ export function DeviceView() {
       statusCounts: { total: deviceConfigs.length, online, offline, orphaned: orphanedCount },
       deviceGroupNames: deviceToAllGroups,
     };
-  }, [deviceConfigs, deviceGroups, search, connections, statusFilter]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deviceConfigs, deviceGroups, search, connections, statusFilter, stateVersion]);
 
   const handleDeviceDeleted = useCallback(
     (deletedId: string) => {
