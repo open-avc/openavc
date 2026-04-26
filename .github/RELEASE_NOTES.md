@@ -1,39 +1,79 @@
 ## OSC Transport
 
-OpenAVC now supports Open Sound Control (OSC) as a built-in transport type alongside TCP, Serial, UDP, and HTTP. Build drivers for OSC devices using the Driver Builder UI or .avcdriver YAML files, no Python required. Commands use OSC address paths and typed arguments, responses match by address pattern instead of regex.
+OpenAVC now supports Open Sound Control (OSC) as a built-in transport type alongside TCP, Serial, UDP, and HTTP. Build drivers for OSC devices using the Driver Builder UI or .avcdriver YAML files, no Python required.
 
 The first OSC driver ships with this release: **Behringer X32**, covering the full console (32 input channels, 16 mix buses, 6 matrices, 8 DCAs, 8 aux inputs, 8 FX returns, main stereo/mono, scene recall). Also compatible with the Midas M32. Install it from Browse Drivers.
 
+## Per-Panel Page Navigation
+
+Each connected panel now tracks its own current page independently. Previously, navigating on one panel changed the page on every connected panel.
+
+## Faster Startup
+
+Devices now connect concurrently at startup instead of one at a time. Spaces with many devices will come online noticeably faster.
+
+## Device Connection Visibility
+
+When a device is offline, the Programmer IDE now shows why (connection refused, timeout, DNS failure) and the reconnect attempt count. The sidebar shows live online/offline counts. Connectionless transports (OSC, HTTP) now correctly verify reachability instead of always reporting "connected."
+
+## ISC Security
+
+Inter-System Communication now uses HMAC challenge-response authentication instead of plaintext shared keys.
+
+## Project Save Conflict Detection
+
+Multiple sessions editing the same project will no longer silently overwrite each other. Stale saves get a conflict warning instead of quietly winning.
+
 ## New Drivers
 
-- **Audio-Technica ATDM-1012 Digital SmartMixer.** 12 input channels, output levels, presets, auto mix control, and phantom power. Full simulator included.
-- **Audio-Technica ATDM-0604 Digital SmartMixer.** 6 input channels with the same control set. Full simulator included.
-- **Behringer X32 Digital Mixer (OSC).** Full console control over OSC. Faders, mutes, pans, channel names, bus sends, DCAs, matrices, aux inputs, FX returns, scene/snippet/cue recall.
+- **Audio-Technica ATDM-1012 Digital SmartMixer.** Full simulator included.
+- **Audio-Technica ATDM-0604 Digital SmartMixer.** Full simulator included.
+- **Behringer X32 Digital Mixer (OSC).** Full console control over OSC.
 
-## Simulator: OSC Support
+## Driver Fixes
 
-The device simulator now supports OSC devices. A new `OSCSimulator` base class handles UDP/OSC message decoding and address-based routing. YAML drivers with `transport: osc` get automatic simulation from their response definitions: messages with arguments update state and echo back, messages without arguments return current values.
-
-## Connection Health for All Transports
-
-Devices using connectionless transports (OSC, HTTP) now correctly report their connection status. Previously, these devices would show as "connected" immediately even if the hardware wasn't reachable. Now:
-
-- **On connect:** OSC devices are verified with an `/info` probe. HTTP devices are verified with a HEAD request. If the device doesn't respond, it enters the auto-reconnect loop.
-- **Ongoing:** The poll loop monitors for responses. If a device stops responding for several consecutive poll cycles, it's marked as disconnected and auto-reconnect begins.
-
-## Variable and Macro Editor Fixes
-
-A batch of fixes across the variable and macro editors: condition row rendering, trigger cooldown fields, variable delete confirmation, default variable values, and consistent spacing throughout.
-
-## Binding Editor Improvements
-
-- Status LED labels can now display text alongside the color indicator.
-- Date/time elements support day-of-week format tokens.
-- Matrix drag operations no longer leak into other UI areas.
-- Multi-state feedback labels render correctly on buttons with icons.
-- Fader elements respond to keyboard arrow keys with configurable step sizes.
+Fixes across Samsung MDC, LG SICP, Extron SIS, Crestron NVX, Novastar H Series, vMix, Sony Bravia, PJLink, Audio-Technica, Sonos, and Dante DDM. Improved state polling, fixed response parsing, reduced log noise, and corrected simulator controls.
 
 ## YAML Driver Enhancements
 
-- **on_connect commands:** YAML drivers can now send initialization commands when the transport connects, using the `on_connect` list in the driver definition.
-- **Simulator push notifications:** YAML driver simulators can broadcast unsolicited state change messages to connected clients using the `notifications` section.
+- **On-connect commands.** Send initialization commands automatically when the transport connects.
+- **Simulator push notifications.** Simulators can broadcast unsolicited state changes to connected clients.
+- **Fader range scaling.** Map protocol values (e.g. 0-255) to display ranges (e.g. 0-100%) on panels.
+
+## Security Hardening
+
+- Authentication tokens no longer exposed in error responses.
+- Project library and AI proxy endpoints now require authentication.
+- Plugin installation validates filenames, URLs, and version requirements.
+- Driver loading detects and rejects duplicate Python driver IDs.
+- URL inputs validated against SSRF attacks.
+
+## Programmer IDE
+
+- Startup errors surfaced as a popup on Windows instead of failing silently.
+- Clear error message when the server port is already in use.
+- Improved Cloud view UX (copy buttons, uptime, password field).
+- Discovery scan reports progress during finalize phase.
+- Update system shows which step failed and tracks pending updates.
+- ARIA dialog attributes on all modals.
+
+## Editor Fixes
+
+Fixes across the variable, macro, and binding editors: condition rendering, trigger cooldowns, variable defaults, multi-state feedback labels, matrix drag containment, fader keyboard step, and status LED text labels. Date/time elements support day-of-week format tokens.
+
+## Engine Reliability
+
+- Overlapping project reloads are serialized.
+- Triggers stop before variable cleanup during reload.
+- Device removal is serialized to prevent state corruption.
+- Backup restore clears orphaned assets and includes persisted state.
+- Project and driver saves use atomic writes.
+- New/Open/Restore properly clears all previous project data from the UI.
+
+## Linux Update System
+
+The update and rollback system has been redesigned around a systemd ExecStartPre helper script for more reliable rollback and cleaner service integration.
+
+## Plugin System
+
+The loader now enforces `min_openavc_version` so incompatible plugins fail with a clear message instead of crashing.
