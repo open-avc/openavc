@@ -127,8 +127,8 @@ class GenericTCPDriver(BaseDriver):
 
         formatted = re.sub(r"\{(\w+)\}", _replace, raw_cmd)
 
-        # Encode and send (handle escape sequences like \r\n)
-        data = formatted.encode().decode("unicode_escape").encode()
+        from server.transport.binary_helpers import encode_escape_sequences
+        data = encode_escape_sequences(formatted)
         await self.transport.send(data)
         log.debug(f"[{self.device_id}] Sent command '{command}': {data!r}")
 

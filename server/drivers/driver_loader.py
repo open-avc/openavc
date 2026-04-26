@@ -242,13 +242,13 @@ def load_python_drivers(directories: list[Path | str]) -> int:
     from server.core.device_manager import register_driver
 
     count = 0
+    seen_ids: set[str] = set()
     for dir_path in directories:
         dir_path = Path(dir_path)
         if not dir_path.exists():
             continue
 
         for filepath in sorted(dir_path.glob("*.py")):
-            # Skip __init__.py and other non-driver files
             if filepath.name.startswith("_"):
                 continue
 
@@ -257,11 +257,15 @@ def load_python_drivers(directories: list[Path | str]) -> int:
                 continue
 
             driver_id = driver_class.DRIVER_INFO.get("id", "")
+            if driver_id in seen_ids:
+                log.warning(f"Duplicate Python driver ID '{driver_id}' in {filepath.name} — skipping")
+                continue
+            seen_ids.add(driver_id)
             try:
                 register_driver(driver_class)
                 count += 1
                 log.info(f"Loaded Python driver: {driver_id} from {filepath.name}")
-            except Exception:  # Catch-all: isolates one bad driver from breaking all loading
+            except Exception:
                 log.exception(f"Failed to register Python driver from {filepath}")
 
     return count
