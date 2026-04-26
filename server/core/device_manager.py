@@ -545,6 +545,7 @@ class DeviceManager:
             return
 
         log.info(f"[{device_id}] Transport disconnected — starting auto-reconnect")
+        self.state.set(f"device.{device_id}.offline_reason", "transport_disconnected", source="device_manager")
         self._start_reconnect(device_id)
 
     def _start_reconnect(self, device_id: str) -> None:
@@ -583,6 +584,10 @@ class DeviceManager:
                     return
 
                 delay = delays[min(attempt, len(delays) - 1)]
+                self.state.set(
+                    f"device.{device_id}.reconnect_attempt", attempt + 1,
+                    source="device_manager",
+                )
                 log.info(
                     f"[{device_id}] Reconnect attempt {attempt + 1}/{max_attempts} in {delay}s..."
                 )
@@ -599,7 +604,8 @@ class DeviceManager:
                     await driver.stop_polling()
                     await driver.connect()
                     log.info(f"[{device_id}] Reconnected successfully")
-                    # Apply pending settings after successful reconnect
+                    self.state.set(f"device.{device_id}.offline_reason", None, source="device_manager")
+                    self.state.set(f"device.{device_id}.reconnect_attempt", None, source="device_manager")
                     await self._apply_pending_settings(device_id)
                     return
                 except Exception as e:
@@ -627,8 +633,9 @@ class DeviceManager:
         driver = self._devices[device_id]
         # Cancel any existing auto-reconnect task first
         await self._cancel_reconnect(device_id)
-        # Clear stale reconnect_failed state
         self.state.set(f"device.{device_id}.reconnect_failed", None, source="device_manager")
+        self.state.set(f"device.{device_id}.offline_reason", None, source="device_manager")
+        self.state.set(f"device.{device_id}.reconnect_attempt", None, source="device_manager")
         # Disconnect and reconnect
         try:
             await driver.disconnect()
