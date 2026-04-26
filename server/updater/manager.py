@@ -159,31 +159,17 @@ class UpdateManager:
 
         log.info("Downloading update artifact: %s", url)
 
-        headers: dict[str, str] = {}
+        if artifact_path.exists():
+            artifact_path.unlink()
+
         downloaded = 0
         total = 0
-        file_mode = "wb"
-        if artifact_path.exists():
-            downloaded = artifact_path.stat().st_size
-            headers["Range"] = f"bytes={downloaded}-"
-            file_mode = "ab"
-            log.info("Resuming download from byte %d", downloaded)
-
         async with httpx.AsyncClient(timeout=300.0, follow_redirects=True) as client:
-            async with client.stream("GET", url, headers=headers) as response:
-                if response.status_code == 416:
-                    log.info("Download already complete (416), re-downloading")
-                    downloaded = 0
-                    file_mode = "wb"
-                elif response.status_code == 206:
-                    total = downloaded + int(response.headers.get("content-length", 0))
-                else:
-                    response.raise_for_status()
-                    total = int(response.headers.get("content-length", 0))
-                    downloaded = 0
-                    file_mode = "wb"
+            async with client.stream("GET", url) as response:
+                response.raise_for_status()
+                total = int(response.headers.get("content-length", 0))
 
-                with open(artifact_path, file_mode) as f:
+                with open(artifact_path, "wb") as f:
                     async for chunk in response.aiter_bytes(chunk_size=65536):
                         f.write(chunk)
                         downloaded += len(chunk)
@@ -570,7 +556,7 @@ class UpdateManager:
         """Get update history."""
         return list(self._history)
 
-    async def start_auto_check(self, interval_hours: int = 1) -> None:
+    async def start_auto_check(self, interval_hours: int = 24) -> None:
         """Start periodic background update checks."""
         if self._auto_check_task and not self._auto_check_task.done():
             return  # Already running

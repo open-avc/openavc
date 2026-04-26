@@ -110,8 +110,18 @@ async def install_community_driver(body: CommunityDriverInstallRequest) -> dict[
     driver_repo = _get_driver_repo_dir()
     driver_repo.mkdir(parents=True, exist_ok=True)
 
-    # Determine file type from URL
+    # Validate URL points to GitHub
     url = body.file_url
+    from urllib.parse import urlparse
+    parsed_url = urlparse(url)
+    allowed_hosts = {"raw.githubusercontent.com", "github.com", "api.github.com"}
+    if not parsed_url.hostname or parsed_url.hostname not in allowed_hosts:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Driver URL must be from GitHub ({', '.join(sorted(allowed_hosts))})",
+        )
+
+    # Determine file type from URL
     if url.endswith(".avcdriver"):
         ext = ".avcdriver"
     elif url.endswith(".py"):

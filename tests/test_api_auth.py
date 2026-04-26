@@ -294,7 +294,7 @@ class TestGetWsAuthSubprotocol:
 
     def test_extracts_auth_subprotocol(self):
         headers = {"sec-websocket-protocol": "auth.mytoken123"}
-        assert get_ws_auth_subprotocol(headers) == "auth.mytoken123"
+        assert get_ws_auth_subprotocol(headers) == "auth"
 
     def test_returns_none_when_no_auth_subprotocol(self):
         headers = {"sec-websocket-protocol": "graphql-ws"}
@@ -345,12 +345,12 @@ class TestMultipleSubprotocols:
 
     def test_get_subprotocol_extracts_from_multiple(self):
         headers = {"sec-websocket-protocol": "graphql-ws, auth.mytoken, chat"}
-        assert get_ws_auth_subprotocol(headers) == "auth.mytoken"
+        assert get_ws_auth_subprotocol(headers) == "auth"
 
-    def test_get_subprotocol_returns_first_auth(self):
-        """If multiple auth. subprotocols exist, return the first one."""
+    def test_get_subprotocol_returns_auth_for_first_match(self):
+        """If multiple auth. subprotocols exist, return generic 'auth'."""
         headers = {"sec-websocket-protocol": "auth.first, auth.second"}
-        assert get_ws_auth_subprotocol(headers) == "auth.first"
+        assert get_ws_auth_subprotocol(headers) == "auth"
 
     def test_get_subprotocol_none_when_no_auth_in_list(self):
         headers = {"sec-websocket-protocol": "graphql-ws, chat, v2"}

@@ -108,5 +108,5 @@ def get_ws_auth_subprotocol(headers: dict) -> str | None:
     for proto in ws_protocols.split(","):
         proto = proto.strip()
         if proto.startswith("auth."):
-            return proto
+            return "auth"
     return None

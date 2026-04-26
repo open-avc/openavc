@@ -119,14 +119,14 @@ async def validate_drivers() -> dict[str, Any]:
 # --- Project Library ---
 
 
-@open_router.get("/library")
+@router.get("/library")
 async def list_library() -> list[dict[str, Any]]:
     """List all saved projects in the library."""
     from server.core.project_library import list_projects
     return list_projects()
 
 
-@open_router.get("/library/{project_id}")
+@router.get("/library/{project_id}")
 async def get_library_project(project_id: str) -> dict[str, Any]:
     """Get a saved project with script contents."""
     from server.core.project_library import get_project
