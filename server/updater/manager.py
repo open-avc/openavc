@@ -72,6 +72,13 @@ class UpdateManager:
             except (json.JSONDecodeError, OSError):
                 self._history = []
 
+        # Confirm pending updates: if the last entry is "pending", the update
+        # succeeded because we're running the new version now.
+        if self._history and self._history[-1].get("status") == "pending":
+            self._history[-1]["status"] = "success"
+            log.info("Confirmed update to v%s succeeded", self._history[-1].get("to_version", "?"))
+            self._save_history()
+
     def _save_history(self) -> None:
         """Save update history to disk."""
         history_path = self._data_dir / "update-history.json"
@@ -322,12 +329,13 @@ class UpdateManager:
                 self._apply_linux(artifact_path, release.version)
 
             # Step 5: Record success and restart
-            self._add_history_entry(__version__, release.version, "success")
+            # Record as "pending" — confirmed on next startup when the new
+            # version actually runs (avoids false "success" if restart fails)
+            self._add_history_entry(__version__, release.version, "pending")
 
             self._set_state("system.update_status", "restarting")
             log.info("Update to v%s applied, restarting...", release.version)
 
-            # Schedule restart in background so the response can be sent first
             asyncio.get_running_loop().call_later(1.0, self._restart_process)
 
             return {"success": True, "message": f"Update to v{release.version} started"}
@@ -399,8 +407,7 @@ class UpdateManager:
             elif self._deployment_type == DeploymentType.LINUX_PACKAGE:
                 self._apply_linux(artifact_path, target_version)
 
-            # Step 6: Record success and restart
-            self._add_history_entry(__version__, target_version, "success")
+            self._add_history_entry(__version__, target_version, "pending")
 
             self._set_state("system.update_status", "restarting")
             log.info("Update to v%s applied (cloud URL), restarting...", target_version)
