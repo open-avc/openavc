@@ -25,7 +25,7 @@ export function ProjectView() {
   const save = useProjectStore((s) => s.save);
   const updateProject = useProjectStore((s) => s.updateProject);
   const setProject = useProjectStore((s) => s.setProject);
-  const loadProject = useProjectStore((s) => s.load);
+  const forceReloadProject = useProjectStore((s) => s.forceReload);
 
   // Library state
   const [library, setLibrary] = useState<LibraryProject[]>([]);
@@ -153,7 +153,7 @@ export function ProjectView() {
       setShowBlank(false);
       setBlankName("New Room");
       setBlankId("");
-      await loadProject();
+      await forceReloadProject();
     } catch (e) {
       showError(String(e));
     } finally {
@@ -167,7 +167,7 @@ export function ProjectView() {
     try {
       await api.openFromLibrary(showOpen, openName.trim(), openId.trim() || undefined);
       setShowOpen(null);
-      await loadProject();
+      await forceReloadProject();
     } catch (e) {
       showError(String(e));
     } finally {
@@ -248,7 +248,7 @@ export function ProjectView() {
     setBusy(true);
     try {
       await api.restoreBackup(filename);
-      await loadProject();
+      await forceReloadProject();
       showSuccess("Project restored successfully.");
       await refreshBackups();
     } catch (e) {
