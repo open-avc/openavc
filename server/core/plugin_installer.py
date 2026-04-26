@@ -57,6 +57,20 @@ def _safe_zip_target(base_dir: Path, relative_path: str) -> Path | None:
     return target
 
 
+_ALLOWED_DOMAINS = {"raw.githubusercontent.com", "github.com", "api.github.com"}
+
+
+def _validate_url_domain(url: str) -> None:
+    """Reject URLs that don't point to GitHub."""
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    if not parsed.hostname or parsed.hostname not in _ALLOWED_DOMAINS:
+        raise ValueError(
+            f"Plugin URL must be from GitHub ({', '.join(sorted(_ALLOWED_DOMAINS))}), "
+            f"got: {parsed.hostname or url}"
+        )
+
+
 # ──── Community Index Cache ────
 
 
@@ -125,6 +139,7 @@ async def install_plugin(plugin_id: str, file_url: str) -> dict[str, Any]:
         {"status": "installed", "plugin_id": plugin_id}
     """
     _validate_plugin_id(plugin_id)
+    _validate_url_domain(file_url)
     PLUGIN_REPO_DIR.mkdir(parents=True, exist_ok=True)
     plugin_dir = PLUGIN_REPO_DIR / plugin_id
 
@@ -209,16 +224,20 @@ async def _download_github_directory(
     for entry in entries:
         name = entry.get("name", "")
         entry_type = entry.get("type", "")
+        safe_name = _sanitize_filename(name)
+        if not safe_name:
+            log.warning(f"Skipping file with unsafe name: {name!r}")
+            continue
         if entry_type == "file":
             download_url = entry.get("download_url", "")
             if download_url:
                 file_resp = await client.get(download_url)
                 file_resp.raise_for_status()
-                target = dest_dir / name
+                target = dest_dir / safe_name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(file_resp.content)
         elif entry_type == "dir":
-            sub_dir = dest_dir / name
+            sub_dir = dest_dir / safe_name
             sub_dir.mkdir(parents=True, exist_ok=True)
             await _download_github_directory(
                 client, f"{repo_path}/{name}", sub_dir,

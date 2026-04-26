@@ -69,9 +69,16 @@ def register_plugin_class(plugin_class: type) -> None:
     """Register a plugin class in the global registry."""
     info = getattr(plugin_class, "PLUGIN_INFO", None)
     if info and "id" in info:
+        plugin_id = info["id"]
         with _REGISTRY_LOCK:
-            _PLUGIN_CLASS_REGISTRY[info["id"]] = plugin_class
-        log.debug(f"Registered plugin class: {info['id']}")
+            if plugin_id in _PLUGIN_CLASS_REGISTRY:
+                existing = _PLUGIN_CLASS_REGISTRY[plugin_id]
+                log.warning(
+                    "Plugin ID '%s' already registered (%s), overwriting with %s",
+                    plugin_id, existing.__module__, plugin_class.__module__,
+                )
+            _PLUGIN_CLASS_REGISTRY[plugin_id] = plugin_class
+        log.debug(f"Registered plugin class: {plugin_id}")
 
 
 def unregister_plugin_class(plugin_id: str) -> bool:
@@ -282,6 +289,20 @@ class PluginLoader:
                 f"Plugin not compatible with current platform '{self._platform_id}'. "
                 f"Supported: {platforms}"
             )
+
+        # min_openavc_version check
+        min_version = info.get("min_openavc_version")
+        if min_version:
+            from server.version import __version__
+            from packaging.version import Version, InvalidVersion
+            try:
+                if Version(__version__) < Version(min_version):
+                    return False, (
+                        f"Plugin requires OpenAVC v{min_version} or later "
+                        f"(current: v{__version__})"
+                    )
+            except InvalidVersion:
+                pass
 
         # CONFIG_SCHEMA validation (basic)
         schema = getattr(plugin_class, "CONFIG_SCHEMA", None)
