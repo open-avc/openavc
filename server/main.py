@@ -347,6 +347,34 @@ if programmer_dir.exists():
     )
 
 
+def _write_startup_error(error_type: str, message: str) -> None:
+    """Write a startup error file so the tray app (or other monitors) can report it."""
+    from server.system_config import get_data_dir
+    import json as _json
+    try:
+        data_dir = get_data_dir()
+        data_dir.mkdir(parents=True, exist_ok=True)
+        error_file = data_dir / "startup-error.json"
+        error_file.write_text(_json.dumps({
+            "error": error_type,
+            "message": message,
+            "timestamp": __import__("datetime").datetime.now().isoformat(),
+        }), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _clear_startup_error() -> None:
+    """Remove the startup error file on successful start."""
+    from server.system_config import get_data_dir
+    try:
+        error_file = get_data_dir() / "startup-error.json"
+        if error_file.exists():
+            error_file.unlink()
+    except OSError:
+        pass
+
+
 if __name__ == "__main__":
     import socket as _sock
     _test = _sock.socket(_sock.AF_INET, _sock.SOCK_STREAM)
@@ -355,14 +383,17 @@ if __name__ == "__main__":
         _test.close()
     except OSError:
         _test.close()
-        print(
-            f"\n*** Port {config.HTTP_PORT} is already in use. ***\n"
-            f"Another application (or another copy of OpenAVC) is using this port.\n"
-            f"To use a different port, set the OPENAVC_PORT environment variable:\n"
-            f"  OPENAVC_PORT=9090 python -m server.main\n"
-            f"Or set it in system.json under network.http_port.\n"
+        msg = (
+            f"Port {config.HTTP_PORT} is already in use.\n"
+            f"Another application (or another copy of OpenAVC) is using this port.\n\n"
+            f"To fix this, change the port in Settings > System,\n"
+            f"or set the OPENAVC_PORT environment variable."
         )
+        print(f"\n*** {msg} ***\n")
+        _write_startup_error("port_in_use", msg)
         raise SystemExit(1)
+
+    _clear_startup_error()
 
     uvicorn.run(
         "server.main:app",

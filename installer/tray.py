@@ -45,6 +45,8 @@ else:
 SERVICE_NAME = 'OpenAVC'
 DEFAULT_PORT = 8080
 POLL_INTERVAL = 5  # seconds
+DATA_DIR = Path(os.environ.get('PROGRAMDATA', 'C:\\ProgramData')) / 'OpenAVC'
+STARTUP_ERROR_FILE = DATA_DIR / 'startup-error.json'
 
 
 def _get_port() -> int:
@@ -109,6 +111,16 @@ def _service_command(command: str) -> bool:
         return False
 
 
+def _show_error_dialog(title: str, message: str) -> None:
+    """Show a Windows message box on a background thread (non-blocking)."""
+    try:
+        import ctypes
+        # MB_OK | MB_ICONWARNING | MB_TOPMOST
+        ctypes.windll.user32.MessageBoxW(0, message, title, 0x30 | 0x40000)
+    except Exception:
+        pass
+
+
 class OpenAVCTray:
     """OpenAVC system tray application."""
 
@@ -119,6 +131,31 @@ class OpenAVCTray:
         self._version: str = ''
         self._device_info: str = ''
         self._update_available: str = ''
+        self._startup_error: str = ''
+        self._error_shown: bool = False
+
+    def _check_startup_error(self) -> None:
+        """Check for a startup error file written by the server."""
+        try:
+            if not STARTUP_ERROR_FILE.exists():
+                self._startup_error = ''
+                self._error_shown = False
+                return
+
+            data = json.loads(STARTUP_ERROR_FILE.read_text(encoding='utf-8'))
+            self._startup_error = data.get('message', 'Unknown startup error')
+
+            if not self._error_shown:
+                self._error_shown = True
+                t = threading.Thread(
+                    target=_show_error_dialog,
+                    args=('OpenAVC - Failed to Start', self._startup_error),
+                    daemon=True,
+                )
+                t.start()
+
+        except (json.JSONDecodeError, OSError):
+            pass
 
     def _poll_status(self):
         """Background thread that polls the server health endpoint."""
@@ -127,6 +164,8 @@ class OpenAVCTray:
             if health and health.get('status') == 'healthy':
                 self._server_status = 'running'
                 self._version = health.get('version', self._version)
+                self._startup_error = ''
+                self._error_shown = False
                 devices = health.get('devices', {})
                 total = devices.get('total', 0)
                 connected = devices.get('connected', 0)
@@ -137,6 +176,7 @@ class OpenAVCTray:
             else:
                 self._server_status = 'stopped'
                 self._device_info = ''
+                self._check_startup_error()
 
             time.sleep(POLL_INTERVAL)
 
@@ -173,6 +213,8 @@ class OpenAVCTray:
             parts.append('Running')
             if self._device_info:
                 parts.append(self._device_info)
+        elif self._startup_error:
+            parts.append('Error - see popup')
         else:
             parts.append('Stopped')
         if self._update_available:
