@@ -87,6 +87,24 @@ Filename: "{app}\uninstall-service.bat"; Parameters: """{app}"""; Flags: runhidd
 Filename: "taskkill.exe"; Parameters: "/F /IM openavc-tray.exe"; Flags: runhidden; RunOnceId: "KillTray"; Components: tray
 
 [Code]
+// Stop the NSSM service and kill processes BEFORE file copy.
+// Without this, openavc-server.exe is locked and Inno Setup silently
+// skips it during /VERYSILENT upgrades — the update "succeeds" but
+// the old binary remains.
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  ResultCode: Integer;
+  NssmPath: String;
+begin
+  Result := '';
+  NeedsRestart := False;
+  NssmPath := ExpandConstant('{app}\nssm.exe');
+  if FileExists(NssmPath) then
+    Exec(NssmPath, 'stop OpenAVC', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec('taskkill.exe', '/F /IM openavc-server.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec('taskkill.exe', '/F /IM openavc-tray.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;
+
 // Add firewall rule during install, remove during uninstall
 
 procedure AddFirewallRule();

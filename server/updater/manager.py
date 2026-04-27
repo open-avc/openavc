@@ -72,11 +72,17 @@ class UpdateManager:
             except (json.JSONDecodeError, OSError):
                 self._history = []
 
-        # Confirm pending updates: if the last entry is "pending", the update
-        # succeeded because we're running the new version now.
         if self._history and self._history[-1].get("status") == "pending":
-            self._history[-1]["status"] = "success"
-            log.info("Confirmed update to v%s succeeded", self._history[-1].get("to_version", "?"))
+            expected = self._history[-1].get("to_version", "")
+            if expected and expected == __version__:
+                self._history[-1]["status"] = "success"
+                log.info("Confirmed update to v%s succeeded", expected)
+            else:
+                self._history[-1]["status"] = "failed"
+                self._history[-1]["error"] = (
+                    f"Update did not apply: expected v{expected}, running v{__version__}"
+                )
+                log.warning("Update to v%s failed — still running v%s", expected, __version__)
             self._save_history()
 
     def _save_history(self) -> None:
@@ -188,7 +194,15 @@ class UpdateManager:
                             pct = min(int(downloaded * 100 / total), 99)
                             self._set_state("system.update_progress", pct)
 
-        log.info("Downloaded: %s (%d bytes)", artifact_path.name, artifact_path.stat().st_size)
+        actual_size = artifact_path.stat().st_size
+        log.info("Downloaded: %s (%d bytes, expected %d)", artifact_path.name, actual_size, total)
+
+        if total > 0 and actual_size != total:
+            artifact_path.unlink(missing_ok=True)
+            raise RuntimeError(
+                f"Download incomplete: got {actual_size} bytes, expected {total}"
+            )
+
         return artifact_path
 
     async def _verify_checksum(self, *, checksum_url: str, artifact_path: Path,
@@ -223,9 +237,14 @@ class UpdateManager:
         actual_hash = sha256.hexdigest().lower()
 
         if actual_hash != expected_hash:
+            file_size = artifact_path.stat().st_size
+            log.error(
+                "Checksum mismatch for %s (%d bytes): expected %s, got %s",
+                artifact_name, file_size, expected_hash, actual_hash,
+            )
             artifact_path.unlink(missing_ok=True)
             raise RuntimeError(
-                f"Checksum mismatch for {artifact_name}: "
+                f"Checksum mismatch for {artifact_name} ({file_size} bytes): "
                 f"expected {expected_hash[:16]}..., got {actual_hash[:16]}..."
             )
 
