@@ -1,79 +1,26 @@
-## OSC Transport
+## Update System
 
-OpenAVC now supports Open Sound Control (OSC) as a built-in transport type alongside TCP, Serial, UDP, and HTTP. Build drivers for OSC devices using the Driver Builder UI or .avcdriver YAML files, no Python required.
+Fixed several issues that would have prevented in-app updates from working correctly on Linux and Pi deployments. The update helper script, release archive format, and artifact naming are now aligned end to end. Windows silent updates and rollback were also hardened.
 
-The first OSC driver ships with this release: **Behringer X32**, covering the full console (32 input channels, 16 mix buses, 6 matrices, 8 DCAs, 8 aux inputs, 8 FX returns, main stereo/mono, scene recall). Also compatible with the Midas M32. Install it from Browse Drivers.
+## Macro and Trigger Reliability
 
-## Per-Panel Page Navigation
+- Macros called from two different triggers at the same time no longer incorrectly block each other as "circular." Each execution chain now tracks its own call stack independently.
+- Cancel groups (mutual preemption) now work correctly when two macros in the same group start simultaneously. Previously both could run.
+- Startup triggers no longer silently fail to fire due to the task reference being garbage collected.
+- Disabling a trigger while a macro is queued now correctly prevents it from firing when the queue drains.
 
-Each connected panel now tracks its own current page independently. Previously, navigating on one panel changed the page on every connected panel.
+## Serial and UDP Device Communication
 
-## Faster Startup
+Serial and UDP transports now hold the send lock through the full send-and-wait cycle, matching TCP. Previously, a polling query could interleave between a command send and its response, returning the wrong data to the caller. This fixes intermittent wrong state values on serial devices (RS-232 projectors, displays, DSPs) under load.
 
-Devices now connect concurrently at startup instead of one at a time. Spaces with many devices will come online noticeably faster.
+## Device Reconnection
 
-## Device Connection Visibility
+Manual reconnect no longer causes a spurious double-connect. Previously, disconnecting a device for reconnection triggered the auto-reconnect handler, which would tear down the newly established connection two seconds later.
 
-When a device is offline, the Programmer IDE now shows why (connection refused, timeout, DNS failure) and the reconnect attempt count. The sidebar shows live online/offline counts. Connectionless transports (OSC, HTTP) now correctly verify reachability instead of always reporting "connected."
+## Cloud State Sync
 
-## ISC Security
+When many devices reconnect at once, the cloud dashboard no longer shows stale values. The state relay now keeps the latest value per key instead of truncating the oldest entries. Batches that exceed the size limit are sent in chunks instead of being dropped.
 
-Inter-System Communication now uses HMAC challenge-response authentication instead of plaintext shared keys.
+## Project Migration
 
-## Project Save Conflict Detection
-
-Multiple sessions editing the same project will no longer silently overwrite each other. Stale saves get a conflict warning instead of quietly winning.
-
-## New Drivers
-
-- **Audio-Technica ATDM-1012 Digital SmartMixer.** Full simulator included.
-- **Audio-Technica ATDM-0604 Digital SmartMixer.** Full simulator included.
-- **Behringer X32 Digital Mixer (OSC).** Full console control over OSC.
-
-## Driver Fixes
-
-Fixes across Samsung MDC, LG SICP, Extron SIS, Crestron NVX, Novastar H Series, vMix, Sony Bravia, PJLink, Audio-Technica, Sonos, and Dante DDM. Improved state polling, fixed response parsing, reduced log noise, and corrected simulator controls.
-
-## YAML Driver Enhancements
-
-- **On-connect commands.** Send initialization commands automatically when the transport connects.
-- **Simulator push notifications.** Simulators can broadcast unsolicited state changes to connected clients.
-- **Fader range scaling.** Map protocol values (e.g. 0-255) to display ranges (e.g. 0-100%) on panels.
-
-## Security Hardening
-
-- Authentication tokens no longer exposed in error responses.
-- Project library and AI proxy endpoints now require authentication.
-- Plugin installation validates filenames, URLs, and version requirements.
-- Driver loading detects and rejects duplicate Python driver IDs.
-- URL inputs validated against SSRF attacks.
-
-## Programmer IDE
-
-- Startup errors surfaced as a popup on Windows instead of failing silently.
-- Clear error message when the server port is already in use.
-- Improved Cloud view UX (copy buttons, uptime, password field).
-- Discovery scan reports progress during finalize phase.
-- Update system shows which step failed and tracks pending updates.
-- ARIA dialog attributes on all modals.
-
-## Editor Fixes
-
-Fixes across the variable, macro, and binding editors: condition rendering, trigger cooldowns, variable defaults, multi-state feedback labels, matrix drag containment, fader keyboard step, and status LED text labels. Date/time elements support day-of-week format tokens.
-
-## Engine Reliability
-
-- Overlapping project reloads are serialized.
-- Triggers stop before variable cleanup during reload.
-- Device removal is serialized to prevent state corruption.
-- Backup restore clears orphaned assets and includes persisted state.
-- Project and driver saves use atomic writes.
-- New/Open/Restore properly clears all previous project data from the UI.
-
-## Linux Update System
-
-The update and rollback system has been redesigned around a systemd ExecStartPre helper script for more reliable rollback and cleaner service integration.
-
-## Plugin System
-
-The loader now enforces `min_openavc_version` so incompatible plugins fail with a clear message instead of crashing.
+Upgrading project files from v0.3.0 to v0.4.0 now correctly converts per-device group assignments into device group entries. Previously, group assignments were silently dropped during migration.
