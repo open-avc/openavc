@@ -276,6 +276,13 @@ install_files() {
     tar -xzf "$ARCHIVE_PATH" -C "$INSTALL_DIR"
     ok "Extracted to ${INSTALL_DIR}/"
 
+    # Place update helper script where systemd ExecStartPre expects it
+    if [ -f "$INSTALL_DIR/installer/update-helper.sh" ]; then
+        cp "$INSTALL_DIR/installer/update-helper.sh" "$INSTALL_DIR/update-helper.sh"
+        chmod 755 "$INSTALL_DIR/update-helper.sh"
+        ok "Update helper installed"
+    fi
+
     # Clean up archive
     rm -f "$ARCHIVE_PATH"
 }
@@ -325,7 +332,7 @@ install_service() {
     if [ -f "$INSTALL_DIR/installer/openavc.service" ]; then
         cp "$INSTALL_DIR/installer/openavc.service" "$service_file"
     else
-        # Fallback: write the service file inline
+        # Fallback: write the service file inline (must match installer/openavc.service)
         cat > "$service_file" << 'UNIT'
 [Unit]
 Description=OpenAVC Room Control Server
@@ -337,15 +344,17 @@ Type=exec
 User=openavc
 Group=openavc
 WorkingDirectory=/opt/openavc
+ExecStartPre=-+/opt/openavc/update-helper.sh /var/lib/openavc
 ExecStart=/opt/openavc/venv/bin/python -m server.main
 Restart=always
 RestartSec=5
 Environment=OPENAVC_DATA_DIR=/var/lib/openavc
 Environment=OPENAVC_LOG_DIR=/var/log/openavc
+Environment=OPENAVC_PROJECT=/var/lib/openavc/projects/default/project.avc
 Environment=OPENAVC_BIND=0.0.0.0
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/var/lib/openavc /var/log/openavc
+ReadWritePaths=/var/lib/openavc /var/log/openavc /opt/openavc/driver_repo /opt/openavc/plugin_repo
 ProtectHome=true
 PrivateTmp=true
 

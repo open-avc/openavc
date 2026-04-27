@@ -49,14 +49,20 @@ handle_update() {
         return
     fi
 
-    # Extract new version over current install
-    tar xzf "$ARTIFACT" -C "$APP_DIR" --strip-components=1
+    # Extract new version over current install (archive has no wrapper directory)
+    tar xzf "$ARTIFACT" -C "$APP_DIR"
     if [ $? -ne 0 ]; then
         echo "$LOG_TAG: extraction failed, restoring from backup"
         rm -rf "$APP_DIR"
         mv "$PREVIOUS" "$APP_DIR"
         rm -f "$UPDATE_FILE"
         return
+    fi
+
+    # Self-update: replace this script with the version from the new release
+    if [ -f "$APP_DIR/installer/update-helper.sh" ]; then
+        cp "$APP_DIR/installer/update-helper.sh" "$APP_DIR/update-helper.sh"
+        chmod 755 "$APP_DIR/update-helper.sh"
     fi
 
     # Rebuild venv dependencies if pip and requirements.txt exist

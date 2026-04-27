@@ -224,6 +224,7 @@ jobs:
             themes/ \
             installer/seed/ \
             installer/openavc.service \
+            installer/update-helper.sh \
             requirements.txt \
             pyproject.toml \
             LICENSE
@@ -294,6 +295,7 @@ jobs:
             themes/ \
             installer/seed/ \
             installer/openavc.service \
+            installer/update-helper.sh \
             requirements.txt \
             pyproject.toml \
             LICENSE

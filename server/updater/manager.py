@@ -72,14 +72,14 @@ class UpdateManager:
             except (json.JSONDecodeError, OSError):
                 self._history = []
 
-        if self._history and self._history[-1].get("status") == "pending":
-            expected = self._history[-1].get("to_version", "")
+        if self._history and self._history[0].get("status") == "pending":
+            expected = self._history[0].get("to_version", "")
             if expected and expected == __version__:
-                self._history[-1]["status"] = "success"
+                self._history[0]["status"] = "success"
                 log.info("Confirmed update to v%s succeeded", expected)
             else:
-                self._history[-1]["status"] = "failed"
-                self._history[-1]["error"] = (
+                self._history[0]["status"] = "failed"
+                self._history[0]["error"] = (
                     f"Update did not apply: expected v{expected}, running v{__version__}"
                 )
                 log.warning("Update to v%s failed — still running v%s", expected, __version__)
@@ -118,7 +118,7 @@ class UpdateManager:
         import platform
         machine = platform.machine().lower()
         if machine in ("x86_64", "amd64"):
-            arch = "x86_64"
+            arch = "amd64"
         elif machine in ("aarch64", "arm64"):
             arch = "arm64"
         else:
