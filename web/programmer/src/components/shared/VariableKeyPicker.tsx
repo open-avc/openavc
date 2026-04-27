@@ -605,7 +605,7 @@ const fieldStyle: React.CSSProperties = {
 const btnPrimary: React.CSSProperties = {
   padding: "4px 14px",
   borderRadius: "var(--border-radius)",
-  background: "var(--accent)",
+  background: "var(--accent-bg)",
   color: "#fff",
   fontSize: "var(--font-size-sm)",
   border: "none",

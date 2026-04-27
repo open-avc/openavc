@@ -451,7 +451,7 @@ function FaderControl({
             left: -4,
             width: 16,
             height: 12,
-            background: assignment?.feedback_key ? "var(--accent)" : "var(--text-muted)",
+            background: assignment?.feedback_key ? "var(--accent-bg)" : "var(--text-muted)",
             borderRadius: 2,
           }}
         />
@@ -803,14 +803,14 @@ function RoutingMatrix({
                   width: 140,
                 }}
               />
-              <button onClick={handleSavePreset} style={{ ...btnStyle, background: "var(--accent)", color: "white" }}>Save</button>
+              <button onClick={handleSavePreset} style={{ ...btnStyle, background: "var(--accent-bg)", color: "white" }}>Save</button>
               <button onClick={() => { setShowSaveDialog(false); setNewPresetName(""); }} style={btnStyle}>Cancel</button>
             </div>
           )}
 
           {/* Update existing */}
           {activePreset && isDirty && (
-            <button onClick={handleUpdatePreset} style={{ ...btnStyle, background: "var(--accent)", color: "white" }}>
+            <button onClick={handleUpdatePreset} style={{ ...btnStyle, background: "var(--accent-bg)", color: "white" }}>
               Update "{activePreset}"
             </button>
           )}
@@ -908,7 +908,7 @@ function RoutingMatrix({
                             width: 24,
                             height: 24,
                             borderRadius: 3,
-                            background: active ? "var(--accent)" : "var(--bg-surface)",
+                            background: active ? "var(--accent-bg)" : "var(--bg-surface)",
                             border: "1px solid var(--border-color)",
                             cursor: "pointer",
                             transition: "background var(--transition-fast)",

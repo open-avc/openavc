@@ -21,7 +21,7 @@ const bubbleBase: React.CSSProperties = {
 const userBubble: React.CSSProperties = {
   ...bubbleBase,
   whiteSpace: "pre-wrap",
-  background: "var(--accent)",
+  background: "var(--accent-bg)",
   color: "#fff",
   marginLeft: "auto",
 };
@@ -73,7 +73,7 @@ export function ChatMessage({ message, canUndo, onUndo }: ChatMessageProps) {
           width: 28,
           height: 28,
           borderRadius: "50%",
-          background: isUser ? "var(--accent)" : "var(--bg-hover)",
+          background: isUser ? "var(--accent-bg)" : "var(--bg-hover)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",

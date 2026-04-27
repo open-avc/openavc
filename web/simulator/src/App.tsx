@@ -1,4 +1,4 @@
-import { Monitor, Power } from "lucide-react";
+import { Power } from "lucide-react";
 import { useSimStore } from "./store/useSimStore";
 import { DeviceCard } from "./components/DeviceCard";
 import { ProtocolLog } from "./components/ProtocolLog";
@@ -59,7 +59,7 @@ export default function App() {
       {/* Header */}
       <div className="header">
         <div className="header-title">
-          <Monitor size={20} />
+          <img src="/logo-square.png" alt="OpenAVC" style={{ width: 22, height: 22, borderRadius: 3 }} />
           OpenAVC Simulator
           <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 400 }}>
             {devices.length} device{devices.length !== 1 ? "s" : ""}

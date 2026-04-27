@@ -288,7 +288,7 @@ const inputStyle: React.CSSProperties = {
 const createBtnStyle: React.CSSProperties = {
   padding: "6px 16px",
   borderRadius: "var(--border-radius)",
-  background: "var(--accent)",
+  background: "var(--accent-bg)",
   color: "#fff",
   fontSize: "var(--font-size-sm)",
   border: "none",

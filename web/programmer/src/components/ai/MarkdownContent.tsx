@@ -17,7 +17,7 @@ export function MarkdownContent({ content, streaming }: MarkdownContentProps) {
             display: "inline-block",
             width: 6,
             height: 14,
-            background: "var(--accent)",
+            background: "var(--accent-bg)",
             marginLeft: 2,
             verticalAlign: "text-bottom",
             animation: "blink 1s step-end infinite",

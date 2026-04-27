@@ -238,7 +238,7 @@ export function DeviceView() {
               style={{
                 padding: "var(--space-xs) var(--space-md)",
                 borderRadius: "var(--border-radius)",
-                background: subTab === tab.id ? "var(--accent)" : "var(--bg-hover)",
+                background: subTab === tab.id ? "var(--accent-bg)" : "var(--bg-hover)",
                 color: subTab === tab.id ? "var(--text-on-accent)" : "var(--text-secondary)",
                 fontSize: "var(--font-size-sm)",
                 fontWeight: subTab === tab.id ? 600 : 400,
@@ -296,7 +296,7 @@ export function DeviceView() {
               gap: "var(--space-xs)",
               padding: "var(--space-xs) var(--space-md)",
               borderRadius: "var(--border-radius)",
-              background: "var(--accent)",
+              background: "var(--accent-bg)",
               color: "var(--text-on-accent)",
               fontSize: "var(--font-size-sm)",
             }}
@@ -360,7 +360,7 @@ export function DeviceView() {
                   onClick={() => setStatusFilter(f.key)}
                   style={{
                     padding: "1px 6px", borderRadius: 3, fontSize: 11, cursor: "pointer",
-                    background: statusFilter === f.key ? "var(--accent)" : "var(--bg-hover)",
+                    background: statusFilter === f.key ? "var(--accent-bg)" : "var(--bg-hover)",
                     color: statusFilter === f.key ? "#fff" : "var(--text-secondary)",
                     border: "none",
                   }}

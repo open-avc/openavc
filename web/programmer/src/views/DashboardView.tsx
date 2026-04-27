@@ -90,7 +90,7 @@ function QRCodeDialog({ url, onClose }: { url: string; onClose: () => void }) {
           style={{
             marginTop: "var(--space-sm)",
             padding: "var(--space-sm) var(--space-lg)",
-            background: "var(--accent)",
+            background: "var(--accent-bg)",
             color: "#fff",
             border: "none",
             borderRadius: "var(--border-radius)",
@@ -397,7 +397,7 @@ export function DashboardView() {
               style={{
                 ...cardStyle,
                 marginBottom: "var(--space-xl)",
-                borderColor: "rgba(33,150,243,0.3)",
+                borderColor: "rgba(138,180,147,0.3)",
                 display: "flex",
                 alignItems: "center",
                 gap: "var(--space-md)",
@@ -421,7 +421,7 @@ export function DashboardView() {
 
           {/* Getting Started — shown when project is empty */}
           {devices.length === 0 && project.macros.length === 0 && (
-            <div style={{ ...cardStyle, marginBottom: "var(--space-xl)", borderColor: "var(--accent)", background: "var(--color-info-bg)" }}>
+            <div style={{ ...cardStyle, marginBottom: "var(--space-xl)", borderColor: "var(--accent-bg)", background: "var(--color-info-bg)" }}>
               <div style={{ fontSize: "var(--font-size-md)", fontWeight: 600, marginBottom: "var(--space-md)" }}>
                 Getting Started
               </div>
@@ -442,7 +442,7 @@ export function DashboardView() {
                     onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
                     onMouseLeave={(e) => (e.currentTarget.style.background = "var(--bg-surface)")}
                   >
-                    <div style={{ width: 24, height: 24, borderRadius: "50%", background: "var(--accent)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+                    <div style={{ width: 24, height: 24, borderRadius: "50%", background: "var(--accent-bg)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
                       {item.step}
                     </div>
                     <div style={{ flex: 1 }}>

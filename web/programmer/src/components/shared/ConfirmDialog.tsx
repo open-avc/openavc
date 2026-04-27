@@ -109,7 +109,7 @@ export function ConfirmDialog({
             style={{
               padding: "var(--space-sm) var(--space-lg)",
               borderRadius: "var(--border-radius)",
-              background: destructive ? "var(--color-error)" : "var(--accent)",
+              background: destructive ? "var(--color-error)" : "var(--accent-bg)",
               color: destructive ? "#fff" : "var(--text-on-accent)",
             }}
           >

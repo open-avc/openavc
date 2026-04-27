@@ -455,7 +455,7 @@ export function DiscoveryPanel() {
               style={{
                 height: "100%",
                 width: `${Math.round(displayProgress * 100)}%`,
-                background: "var(--accent)",
+                background: "var(--accent-bg)",
                 transition: "width 0.8s ease-out",
               }}
             />
@@ -667,7 +667,7 @@ function DeviceCard({
               fontSize: "var(--font-size-xs)",
               padding: "2px 6px",
               borderRadius: "var(--radius)",
-              background: "var(--accent)",
+              background: "var(--accent-bg)",
               color: "var(--bg-main)",
             }}
           >

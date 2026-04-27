@@ -37,7 +37,7 @@ const btnStyle: React.CSSProperties = {
 
 const primaryBtn: React.CSSProperties = {
   ...btnStyle,
-  background: "var(--accent)",
+  background: "var(--accent-bg)",
   color: "#fff",
   border: "1px solid var(--accent)",
 };
@@ -231,7 +231,7 @@ export function UpdatesView() {
 
         {/* Instructions for non-self-updating deployments */}
         {hasUpdate && !canSelfUpdate && (
-          <div style={{ ...cardStyle, marginBottom: "var(--space-xl)", borderColor: "var(--accent)", background: "var(--color-info-bg)" }}>
+          <div style={{ ...cardStyle, marginBottom: "var(--space-xl)", borderColor: "var(--accent-bg)", background: "var(--color-info-bg)" }}>
             <div style={{ fontSize: "var(--font-size-sm)" }}>
               {checkResult?.instructions ?? ("A new version is available. Update to v" + updateAvailable + " using your deployment method.")}
             </div>
@@ -390,7 +390,7 @@ export function UpdatesView() {
                 <div style={{
                   height: "100%",
                   width: updateProgress + "%",
-                  background: "var(--accent)",
+                  background: "var(--accent-bg)",
                   transition: "width 0.3s ease",
                   borderRadius: 2,
                 }} />

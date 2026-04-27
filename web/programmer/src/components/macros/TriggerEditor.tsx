@@ -244,7 +244,7 @@ function ScheduleEditor({
                 padding: "2px 8px",
                 borderRadius: 4,
                 border: "1px solid var(--border-color)",
-                background: activeDays.has(DAY_VALUES[i]) ? "var(--accent)" : "transparent",
+                background: activeDays.has(DAY_VALUES[i]) ? "var(--accent-bg)" : "transparent",
                 color: activeDays.has(DAY_VALUES[i]) ? "#fff" : "var(--text-secondary)",
                 fontSize: 11,
                 cursor: "pointer",
@@ -902,7 +902,7 @@ function TimingHelp() {
       {expanded && (
         <div style={{
           marginTop: 6, padding: "var(--space-sm)", borderRadius: 4,
-          background: "rgba(33,150,243,0.06)", border: "1px solid rgba(33,150,243,0.15)",
+          background: "rgba(138,180,147,0.06)", border: "1px solid rgba(138,180,147,0.15)",
           fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.6,
         }}>
           <div style={{ marginBottom: 6 }}>

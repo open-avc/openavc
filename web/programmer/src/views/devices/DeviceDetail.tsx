@@ -502,7 +502,7 @@ export function DeviceDetail({
                     gap: "var(--space-xs)",
                     padding: "var(--space-sm) var(--space-lg)",
                     borderRadius: "var(--border-radius)",
-                    background: selectedCommand ? "var(--accent)" : "var(--bg-hover)",
+                    background: selectedCommand ? "var(--accent-bg)" : "var(--bg-hover)",
                     color: selectedCommand ? "var(--text-on-accent)" : "var(--text-muted)",
                     opacity: sending ? 0.6 : 1,
                   }}
@@ -888,7 +888,7 @@ function DeviceLog({ deviceId }: { deviceId: string }) {
           style={{
             padding: "2px 8px",
             borderRadius: "var(--border-radius)",
-            background: tab === "protocol" ? "var(--accent)" : "var(--bg-hover)",
+            background: tab === "protocol" ? "var(--accent-bg)" : "var(--bg-hover)",
             color: tab === "protocol" ? "#fff" : "var(--text-secondary)",
             fontSize: 11,
             fontWeight: tab === "protocol" ? 600 : 400,
@@ -903,7 +903,7 @@ function DeviceLog({ deviceId }: { deviceId: string }) {
           style={{
             padding: "2px 8px",
             borderRadius: "var(--border-radius)",
-            background: tab === "state" ? "var(--accent)" : "var(--bg-hover)",
+            background: tab === "state" ? "var(--accent-bg)" : "var(--bg-hover)",
             color: tab === "state" ? "#fff" : "var(--text-secondary)",
             fontSize: 11,
             fontWeight: tab === "state" ? 600 : 400,

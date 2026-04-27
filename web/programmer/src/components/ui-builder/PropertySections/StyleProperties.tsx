@@ -13,7 +13,7 @@ const SHADOW_PRESETS: Record<string, string> = {
   sm: "0 2px 4px rgba(0,0,0,0.2)",
   md: "0 4px 8px rgba(0,0,0,0.3)",
   lg: "0 8px 16px rgba(0,0,0,0.4)",
-  glow: "0 0 12px rgba(33,150,243,0.5)",
+  glow: "0 0 12px rgba(138,180,147,0.5)",
   inset: "inset 0 2px 4px rgba(0,0,0,0.3)",
 };
 

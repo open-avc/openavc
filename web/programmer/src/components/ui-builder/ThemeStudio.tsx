@@ -1565,7 +1565,7 @@ function ThemePickerColumn({
         <div
           style={{
             padding: "6px 10px 8px",
-            background: isSelected ? "var(--accent-dim, rgba(33,150,243,0.12))" : "var(--bg-surface)",
+            background: isSelected ? "var(--accent-dim, rgba(138,180,147,0.12))" : "var(--bg-surface)",
             borderTop: "1px solid var(--border-color)",
           }}
         >
@@ -1781,7 +1781,7 @@ function SegmentedControl({
               padding: "5px 14px",
               fontSize: 11,
               fontWeight: selected ? 600 : 400,
-              background: selected ? "var(--accent)" : "var(--bg-hover)",
+              background: selected ? "var(--accent-bg)" : "var(--bg-hover)",
               color: selected ? "#fff" : "var(--text-secondary)",
               border: "none",
               borderRight: i < options.length - 1 ? "1px solid var(--border-color)" : "none",
@@ -2173,7 +2173,7 @@ function EditorColumn({
               alignItems: "center",
               gap: 4,
               padding: "6px 12px",
-              background: "var(--accent)",
+              background: "var(--accent-bg)",
               color: "#fff",
               border: "none",
               borderRadius: 4,
@@ -2213,7 +2213,7 @@ function EditorColumn({
             alignItems: "center",
             gap: 4,
             padding: "6px 12px",
-            background: isCustom ? "var(--bg-hover)" : "var(--accent)",
+            background: isCustom ? "var(--bg-hover)" : "var(--accent-bg)",
             color: isCustom ? "var(--text-primary)" : "#fff",
             border: isCustom ? "1px solid var(--border-color)" : "none",
             borderRadius: 4,

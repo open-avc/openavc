@@ -52,7 +52,7 @@ export function MacroList({ macros, selectedId, onSelect, onAdd, onDelete }: Mac
             gap: 4,
             padding: "2px 8px",
             borderRadius: "var(--border-radius)",
-            background: "var(--accent)",
+            background: "var(--accent-bg)",
             color: "#fff",
             fontSize: "var(--font-size-sm)",
             border: "none",

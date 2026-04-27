@@ -153,7 +153,7 @@ export function AIChatView() {
               style={{
                 padding: "var(--space-xs) var(--space-md)",
                 borderRadius: "var(--border-radius)",
-                background: "var(--accent)",
+                background: "var(--accent-bg)",
                 color: "#fff",
                 fontSize: "var(--font-size-sm)",
                 textDecoration: "none",
@@ -237,7 +237,7 @@ export function AIChatView() {
                   gap: "var(--space-xs)",
                   padding: "var(--space-xs) var(--space-md)",
                   borderRadius: "var(--border-radius)",
-                  background: "var(--accent)",
+                  background: "var(--accent-bg)",
                   color: "#fff",
                   fontSize: "var(--font-size-sm)",
                   border: "none",
@@ -434,7 +434,7 @@ export function AIChatView() {
                   width: 6,
                   height: 6,
                   borderRadius: "50%",
-                  background: "var(--accent)",
+                  background: "var(--accent-bg)",
                   animation: "pulse 1s infinite",
                 }}
               />

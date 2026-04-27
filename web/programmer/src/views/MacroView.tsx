@@ -275,7 +275,7 @@ export function MacroView() {
                   style={{
                     padding: "var(--space-xs) var(--space-md)",
                     borderRadius: "var(--border-radius)",
-                    background: "var(--accent)",
+                    background: "var(--accent-bg)",
                     color: "#fff",
                     fontSize: "var(--font-size-sm)",
                     border: "none",

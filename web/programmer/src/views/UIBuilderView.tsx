@@ -1703,7 +1703,7 @@ function UISettingsDialog({
             style={{
               padding: "var(--space-sm) var(--space-lg)",
               borderRadius: "var(--border-radius)",
-              background: dirty ? "var(--accent)" : "var(--bg-hover)",
+              background: dirty ? "var(--accent-bg)" : "var(--bg-hover)",
               border: "none",
               cursor: dirty ? "pointer" : "default",
               opacity: dirty ? 1 : 0.5,

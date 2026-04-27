@@ -110,7 +110,7 @@ export class ViewErrorBoundary extends Component<Props, State> {
                 onClick={() => this.setState({ error: null, componentStack: null })}
                 style={{
                   padding: "var(--space-sm) var(--space-lg)",
-                  background: "var(--accent)",
+                  background: "var(--accent-bg)",
                   color: "var(--text-on-accent)",
                   border: "none",
                   borderRadius: "var(--border-radius)",

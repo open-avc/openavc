@@ -49,7 +49,7 @@ export function DriverList({
             width: "100%",
             padding: "var(--space-sm) var(--space-md)",
             borderRadius: "var(--border-radius)",
-            background: "var(--accent)",
+            background: "var(--accent-bg)",
             color: "var(--text-on-accent)",
             fontSize: "var(--font-size-sm)",
             justifyContent: "center",

@@ -63,7 +63,7 @@ export function DeviceListItem({
           {groupNames && groupNames.length > 0 && groupNames.map((gn) => (
             <span key={gn} style={{
               fontSize: 9, padding: "0 4px", borderRadius: 3,
-              background: "rgba(33,150,243,0.12)", color: "var(--accent)",
+              background: "rgba(138,180,147,0.12)", color: "var(--accent)",
               lineHeight: "16px",
             }}>{gn}</span>
           ))}

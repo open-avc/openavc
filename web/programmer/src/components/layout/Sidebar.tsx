@@ -94,7 +94,7 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
   return (
     <nav className={styles.sidebar}>
       <div className={styles.logo} style={{ position: "relative" }}>
-        <Monitor size={24} />
+        <img src={`${import.meta.env.BASE_URL}logo-square.png`} alt="OpenAVC" style={{ width: 28, height: 28, borderRadius: 4 }} />
         {dirty && (
           <div
             title="Unsaved changes"
@@ -217,7 +217,7 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
                 await startSimulation();
               }} style={{
                 padding: "6px 16px", borderRadius: 4, fontSize: 13,
-                background: "var(--accent)", color: "#fff",
+                background: "var(--accent-bg)", color: "#fff",
               }}>Start Simulation</button>
             </div>
           </div>

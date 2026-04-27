@@ -2,38 +2,41 @@
   color-scheme: dark;
 
   /* Background layers */
-  --bg-base: #1a1a2e;
-  --bg-primary: #1a1a2e;
-  --bg-surface: #1e1e32;
-  --bg-elevated: #252540;
-  --bg-hover: #2a2a48;
-  --bg-selected: #2196f3;
+  --bg-base: #141a1e;
+  --bg-primary: #141a1e;
+  --bg-surface: #1c2428;
+  --bg-elevated: #242e33;
+  --bg-hover: #2d363b;
+  --bg-selected: #4a7d5c;
 
   /* Text */
   --text-primary: #e0e0e0;
-  --text-secondary: #a0a0b0;
-  --text-muted: #8888a0;
+  --text-secondary: #a0a8b0;
+  --text-muted: #6b7f89;
   --text-on-accent: #ffffff;
 
-  /* Accent */
-  --accent: #2196f3;
-  --accent-hover: #1e88e5;
-  --accent-dim: rgba(33, 150, 243, 0.15);
+  /* Accent — bright green for text/icons (7.5:1 on dark bg) */
+  --accent: #8AB493;
+  --accent-hover: #9ac5a8;
+  --accent-dim: rgba(138, 180, 147, 0.15);
+  /* Darker green for filled buttons (4.86:1 with white text) */
+  --accent-bg: #4a7d5c;
+  --accent-bg-hover: #5f9a73;
 
   /* Status */
   --color-success: #4caf50;
   --color-warning: #ff9800;
   --color-error: #f44336;
-  --color-info: #2196f3;
+  --color-info: #8AB493;
 
   /* Status backgrounds (15% opacity) */
   --color-success-bg: rgba(76, 175, 80, 0.15);
   --color-warning-bg: rgba(255, 152, 0, 0.15);
   --color-error-bg: rgba(244, 67, 54, 0.15);
-  --color-info-bg: rgba(33, 150, 243, 0.15);
+  --color-info-bg: rgba(138, 180, 147, 0.15);
 
   /* Borders */
-  --border-color: #333350;
+  --border-color: #2e3a40;
   --border-radius: 6px;
 
   /* Sizing */
@@ -66,4 +69,42 @@
   /* Transitions */
   --transition-fast: 120ms ease;
   --transition-base: 200ms ease;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --bg-base: #f5f6f7;
+  --bg-primary: #f5f6f7;
+  --bg-surface: #ffffff;
+  --bg-elevated: #ebedf0;
+  --bg-hover: #e2e4e8;
+  --bg-selected: #4a7d5c;
+
+  --text-primary: #1a1d21;
+  --text-secondary: #555b65;
+  --text-muted: #7d838d;
+  --text-on-accent: #ffffff;
+
+  --accent: #3d654b;
+  --accent-hover: #33523e;
+  --accent-dim: rgba(74, 125, 92, 0.10);
+  --accent-bg: #4a7d5c;
+  --accent-bg-hover: #3d654b;
+
+  --color-success: #2e7d32;
+  --color-warning: #e65100;
+  --color-error: #c62828;
+  --color-info: #3d654b;
+
+  --color-success-bg: rgba(46, 125, 50, 0.10);
+  --color-warning-bg: rgba(230, 81, 0, 0.10);
+  --color-error-bg: rgba(198, 40, 40, 0.10);
+  --color-info-bg: rgba(74, 125, 92, 0.10);
+
+  --border-color: #d5d8dc;
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.10);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
 }

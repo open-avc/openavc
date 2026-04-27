@@ -935,7 +935,7 @@ function ErrorState({
           gap: "var(--space-xs)",
           padding: "var(--space-sm) var(--space-lg)",
           borderRadius: "var(--border-radius)",
-          background: "var(--accent)",
+          background: "var(--accent-bg)",
           color: "#fff",
           border: "none",
           cursor: "pointer",

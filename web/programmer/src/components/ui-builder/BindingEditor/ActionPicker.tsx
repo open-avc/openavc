@@ -218,7 +218,7 @@ function DeviceCommandConfig({
               <div style={{
                 display: "flex", alignItems: "flex-start", gap: 6,
                 marginTop: 4, padding: "6px 8px", borderRadius: 4,
-                background: "rgba(33,150,243,0.08)", border: "1px solid rgba(33,150,243,0.15)",
+                background: "rgba(138,180,147,0.08)", border: "1px solid rgba(138,180,147,0.15)",
                 fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.4,
               }}>
                 <Info size={13} style={{ flexShrink: 0, marginTop: 1, color: "var(--accent)" }} />

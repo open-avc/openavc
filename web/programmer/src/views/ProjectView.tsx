@@ -295,7 +295,7 @@ export function ProjectView() {
 
   const accentBtnStyle: React.CSSProperties = {
     ...btnStyle,
-    background: dirty ? "var(--accent)" : "var(--bg-hover)",
+    background: dirty ? "var(--accent-bg)" : "var(--bg-hover)",
     color: dirty ? "var(--text-on-accent)" : "var(--text-muted)",
   };
 
@@ -560,7 +560,7 @@ export function ProjectView() {
             style={{
               padding: "var(--space-xs) var(--space-md)",
               borderRadius: "var(--border-radius)",
-              background: "var(--accent)",
+              background: "var(--accent-bg)",
               color: "var(--accent-text)",
               fontSize: "var(--font-size-sm)",
               cursor: "pointer",
@@ -643,7 +643,7 @@ export function ProjectView() {
           <textarea style={{ ...dialogInputStyle, minHeight: 60, resize: "vertical" }} value={saveAsDesc} onChange={(e) => setSaveAsDesc(e.target.value)} placeholder="Optional" />
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-sm)" }}>
             <button onClick={() => setShowSaveAs(false)} style={btnStyle}>Cancel</button>
-            <button onClick={handleSaveAs} style={{ ...btnStyle, background: "var(--accent)", color: "var(--text-on-accent)" }} disabled={busy || !saveAsId.trim() || !saveAsName.trim()}>
+            <button onClick={handleSaveAs} style={{ ...btnStyle, background: "var(--accent-bg)", color: "var(--text-on-accent)" }} disabled={busy || !saveAsId.trim() || !saveAsName.trim()}>
               {busy ? "Saving..." : "Save"}
             </button>
           </div>
@@ -661,7 +661,7 @@ export function ProjectView() {
           <input style={dialogInputStyle} value={blankId} onChange={(e) => setBlankId(e.target.value)} placeholder="Auto-generated from name" />
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-sm)" }}>
             <button onClick={() => setShowBlank(false)} style={btnStyle}>Cancel</button>
-            <button onClick={handleBlank} style={{ ...btnStyle, background: "var(--accent)", color: "var(--text-on-accent)" }} disabled={busy || !blankName.trim()}>
+            <button onClick={handleBlank} style={{ ...btnStyle, background: "var(--accent-bg)", color: "var(--text-on-accent)" }} disabled={busy || !blankName.trim()}>
               {busy ? "Creating..." : "Create"}
             </button>
           </div>
@@ -679,7 +679,7 @@ export function ProjectView() {
           <input style={dialogInputStyle} value={openId} onChange={(e) => setOpenId(e.target.value)} placeholder="Auto-generated from name" />
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-sm)" }}>
             <button onClick={() => setShowOpen(null)} style={btnStyle}>Cancel</button>
-            <button onClick={handleOpen} style={{ ...btnStyle, background: "var(--accent)", color: "var(--text-on-accent)" }} disabled={busy || !openName.trim()}>
+            <button onClick={handleOpen} style={{ ...btnStyle, background: "var(--accent-bg)", color: "var(--text-on-accent)" }} disabled={busy || !openName.trim()}>
               {busy ? "Opening..." : "Open"}
             </button>
           </div>
@@ -694,7 +694,7 @@ export function ProjectView() {
           <input style={dialogInputStyle} value={dupName} onChange={(e) => setDupName(e.target.value)} />
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-sm)" }}>
             <button onClick={() => setShowDuplicate(null)} style={btnStyle}>Cancel</button>
-            <button onClick={handleDuplicate} style={{ ...btnStyle, background: "var(--accent)", color: "var(--text-on-accent)" }} disabled={busy || !dupId.trim() || !dupName.trim()}>
+            <button onClick={handleDuplicate} style={{ ...btnStyle, background: "var(--accent-bg)", color: "var(--text-on-accent)" }} disabled={busy || !dupId.trim() || !dupName.trim()}>
               {busy ? "Duplicating..." : "Duplicate"}
             </button>
           </div>

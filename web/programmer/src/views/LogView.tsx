@@ -51,7 +51,7 @@ function TabButton({
       style={{
         padding: "var(--space-xs) var(--space-md)",
         borderRadius: "var(--border-radius)",
-        background: active ? "var(--accent)" : "var(--bg-hover)",
+        background: active ? "var(--accent-bg)" : "var(--bg-hover)",
         color: active ? "#fff" : "var(--text-primary)",
         fontSize: "var(--font-size-sm)",
         fontWeight: active ? 600 : 400,

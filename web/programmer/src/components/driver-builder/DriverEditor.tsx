@@ -137,7 +137,7 @@ export function DriverEditor({
             gap: "var(--space-xs)",
             padding: "var(--space-sm) var(--space-lg)",
             borderRadius: "var(--border-radius)",
-            background: dirty ? "var(--accent)" : "var(--bg-hover)",
+            background: dirty ? "var(--accent-bg)" : "var(--bg-hover)",
             color: dirty ? "var(--text-on-accent)" : "var(--text-muted)",
             opacity: saving ? 0.6 : 1,
           }}

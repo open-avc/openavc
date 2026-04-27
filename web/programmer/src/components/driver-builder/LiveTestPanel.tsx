@@ -116,7 +116,7 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
               gap: "var(--space-xs)",
               padding: "var(--space-sm) var(--space-lg)",
               borderRadius: "var(--border-radius)",
-              background: host && command ? "var(--accent)" : "var(--bg-hover)",
+              background: host && command ? "var(--accent-bg)" : "var(--bg-hover)",
               color:
                 host && command
                   ? "var(--text-on-accent)"

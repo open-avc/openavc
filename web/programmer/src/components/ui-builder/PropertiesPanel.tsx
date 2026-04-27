@@ -995,7 +995,7 @@ function Section({
           padding: "6px 8px",
           fontSize: "var(--font-size-sm)",
           fontWeight: 600,
-          background: highlight ? "rgba(33,150,243,0.06)" : "var(--bg-surface)",
+          background: highlight ? "rgba(138,180,147,0.06)" : "var(--bg-surface)",
           color: "var(--text-primary)",
           textAlign: "left",
         }}
@@ -1073,7 +1073,7 @@ function ThemeSection({
                 padding: 6,
                 borderRadius: 6,
                 border: isSelected ? "2px solid var(--accent)" : "1px solid var(--border-color)",
-                background: isSelected ? "var(--accent-dim, rgba(33,150,243,0.12))" : "var(--bg-surface)",
+                background: isSelected ? "var(--accent-dim, rgba(138,180,147,0.12))" : "var(--bg-surface)",
                 cursor: "pointer",
                 textAlign: "center",
               }}

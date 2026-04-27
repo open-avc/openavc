@@ -416,7 +416,7 @@ export function FeedbackBindingEditor({
                   padding: "var(--space-sm)", borderRadius: "var(--border-radius)",
                   border: `1px solid ${isLive ? "var(--accent)" : "var(--border-color)"}`,
                   display: "flex", flexDirection: "column", gap: 6,
-                  background: isLive ? "var(--accent-dim, rgba(33,150,243,0.05))" : undefined,
+                  background: isLive ? "var(--accent-dim, rgba(138,180,147,0.05))" : undefined,
                 }}
               >
                 {/* State key row */}
@@ -432,7 +432,7 @@ export function FeedbackBindingEditor({
                     title="Set as default"
                     style={{
                       padding: "2px 6px", fontSize: 10, borderRadius: 3, cursor: "pointer",
-                      background: isDefault ? "var(--accent)" : "var(--bg-hover)",
+                      background: isDefault ? "var(--accent-bg)" : "var(--bg-hover)",
                       color: isDefault ? "#fff" : "var(--text-muted)",
                       border: "none",
                     }}
@@ -559,7 +559,7 @@ export function FeedbackBindingEditor({
                     flex: 1, padding: "6px 12px", borderRadius: "var(--border-radius)",
                     fontSize: "var(--font-size-sm)", cursor: "pointer",
                     fontWeight: String(condition.equals) === v ? 600 : 400,
-                    background: String(condition.equals) === v ? "var(--accent)" : "var(--bg-hover)",
+                    background: String(condition.equals) === v ? "var(--accent-bg)" : "var(--bg-hover)",
                     color: String(condition.equals) === v ? "var(--text-on-accent, #fff)" : "var(--text-secondary)",
                     border: "1px solid " + (String(condition.equals) === v ? "var(--accent)" : "var(--border-color)"),
                   }}

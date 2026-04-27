@@ -496,7 +496,7 @@ export function ScriptView() {
                 title="Save and hot-reload the driver (Ctrl+Shift+R)"
                 style={{
                   ...actionBtnStyle,
-                  background: "var(--accent)",
+                  background: "var(--accent-bg)",
                   color: "#fff",
                 }}
               >
@@ -509,7 +509,7 @@ export function ScriptView() {
                 title="Save the current script and reload all script handlers (Ctrl+Shift+R)"
                 style={{
                   ...actionBtnStyle,
-                  background: "var(--accent)",
+                  background: "var(--accent-bg)",
                   color: "#fff",
                 }}
               >

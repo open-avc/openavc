@@ -575,7 +575,7 @@ export function AddDeviceDialog({
             style={{
               padding: "var(--space-sm) var(--space-lg)",
               borderRadius: "var(--border-radius)",
-              background: "var(--accent)",
+              background: "var(--accent-bg)",
               color: "var(--text-on-accent)",
             }}
           >
@@ -867,7 +867,7 @@ export function EditDeviceDialog({
             style={{
               padding: "var(--space-sm) var(--space-lg)",
               borderRadius: "var(--border-radius)",
-              background: "var(--accent)",
+              background: "var(--accent-bg)",
               color: "var(--text-on-accent)",
               opacity: saving ? 0.6 : 1,
             }}

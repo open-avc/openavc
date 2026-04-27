@@ -75,7 +75,7 @@ export function ActivitySubTab() {
               borderRadius: 12,
               fontSize: 11,
               border: "1px solid " + (filter === f ? "var(--accent)" : "var(--border-color)"),
-              background: filter === f ? "rgba(33,150,243,0.15)" : "transparent",
+              background: filter === f ? "rgba(138,180,147,0.15)" : "transparent",
               color: filter === f ? "var(--accent)" : "var(--text-secondary)",
               cursor: "pointer",
             }}

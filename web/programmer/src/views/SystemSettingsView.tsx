@@ -91,9 +91,9 @@ const btnStyle: React.CSSProperties = {
   fontWeight: 500,
   cursor: "pointer",
   transition: "all var(--transition-fast)",
-  background: "var(--accent)",
-  color: "#fff",
-  border: "1px solid var(--accent)",
+  background: "var(--accent-bg)",
+  color: "var(--text-on-accent)",
+  border: "1px solid var(--accent-bg)",
 };
 
 const warningBox: React.CSSProperties = {
@@ -115,7 +115,7 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
       type="button"
       style={{
         ...toggleStyle,
-        background: checked ? "var(--accent)" : "var(--bg-hover, #555)",
+        background: checked ? "var(--accent-bg)" : "var(--bg-hover, #555)",
       }}
       onClick={() => onChange(!checked)}
     >
@@ -178,7 +178,17 @@ function PasswordField({
   );
 }
 
+function getTheme(): "dark" | "light" {
+  return (localStorage.getItem("openavc-theme") as "dark" | "light") || "dark";
+}
+
+function setTheme(theme: "dark" | "light") {
+  localStorage.setItem("openavc-theme", theme);
+  document.documentElement.dataset.theme = theme;
+}
+
 export function SystemSettingsView() {
+  const [theme, setThemeState] = useState<"dark" | "light">(getTheme);
   const [config, setConfig] = useState<SystemConfig | null>(null);
   const [dirty, setDirty] = useState<Partial<SystemConfig>>({});
   const [saving, setSaving] = useState(false);
@@ -307,6 +317,26 @@ export function SystemSettingsView() {
             <span>The server is accessible on the network with no authentication. Anyone on your network can open the Programmer IDE and modify your project. Set a <strong>programmer password</strong> below to require a login.</span>
           </div>
         )}
+
+        {/* Appearance */}
+        <h3 style={sectionTitle}>Appearance</h3>
+        <div style={cardStyle}>
+          <div style={fieldRow}>
+            <label style={labelStyle}>Theme</label>
+            <select
+              style={selectStyle}
+              value={theme}
+              onChange={(e) => {
+                const t = e.target.value as "dark" | "light";
+                setThemeState(t);
+                setTheme(t);
+              }}
+            >
+              <option value="dark">Dark</option>
+              <option value="light">Light</option>
+            </select>
+          </div>
+        </div>
 
         {/* Network */}
         <h3 style={sectionTitle}>Network</h3>

@@ -902,7 +902,7 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
                   gap: "var(--space-xs)",
                   padding: "var(--space-xs) var(--space-md)",
                   borderRadius: "var(--border-radius)",
-                  background: "var(--accent)",
+                  background: "var(--accent-bg)",
                   color: "var(--text-on-accent)",
                   fontSize: "var(--font-size-sm)",
                   fontWeight: 500,
@@ -923,7 +923,7 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
               gap: "var(--space-xs)",
               padding: "var(--space-xs) var(--space-md)",
               borderRadius: "var(--border-radius)",
-              background: "var(--accent)",
+              background: "var(--accent-bg)",
               color: "var(--text-on-accent)",
               fontSize: "var(--font-size-sm)",
               fontWeight: 500,
@@ -1208,7 +1208,7 @@ export function PluginsView() {
               style={{
                 padding: "var(--space-xs) var(--space-md)",
                 fontSize: "var(--font-size-sm)",
-                background: tab === "installed" ? "var(--accent)" : "transparent",
+                background: tab === "installed" ? "var(--accent-bg)" : "transparent",
                 color: tab === "installed" ? "var(--text-on-accent)" : "var(--text-secondary)",
                 fontWeight: tab === "installed" ? 600 : 400,
               }}
@@ -1220,7 +1220,7 @@ export function PluginsView() {
               style={{
                 padding: "var(--space-xs) var(--space-md)",
                 fontSize: "var(--font-size-sm)",
-                background: tab === "browse" ? "var(--accent)" : "transparent",
+                background: tab === "browse" ? "var(--accent-bg)" : "transparent",
                 color: tab === "browse" ? "var(--text-on-accent)" : "var(--text-secondary)",
                 fontWeight: tab === "browse" ? 600 : 400,
               }}

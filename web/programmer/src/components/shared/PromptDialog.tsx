@@ -135,7 +135,7 @@ export function PromptDialog({
             style={{
               padding: "var(--space-sm) var(--space-lg)",
               borderRadius: "var(--border-radius)",
-              background: "var(--accent)",
+              background: "var(--accent-bg)",
               color: "var(--text-on-accent)",
               opacity: value.trim() ? 1 : 0.5,
             }}

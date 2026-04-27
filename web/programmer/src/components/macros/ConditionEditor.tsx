@@ -84,7 +84,7 @@ export function ConditionEditor({ condition, onChange }: ConditionEditorProps) {
       {showHelp && (
         <div style={{
           padding: "var(--space-sm)", borderRadius: 4, fontSize: 11,
-          background: "rgba(33,150,243,0.06)", border: "1px solid rgba(33,150,243,0.15)",
+          background: "rgba(138,180,147,0.06)", border: "1px solid rgba(138,180,147,0.15)",
           color: "var(--text-secondary)", lineHeight: 1.5,
         }}>
           {OPERATORS.map((op) => (

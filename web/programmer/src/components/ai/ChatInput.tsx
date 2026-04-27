@@ -86,7 +86,7 @@ export function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
         style={{
           padding: "8px 12px",
           borderRadius: "var(--border-radius)",
-          background: disabled || !text.trim() ? "var(--bg-hover)" : "var(--accent)",
+          background: disabled || !text.trim() ? "var(--bg-hover)" : "var(--accent-bg)",
           color: disabled || !text.trim() ? "var(--text-muted)" : "#fff",
           border: "none",
           cursor: disabled || !text.trim() ? "not-allowed" : "pointer",
