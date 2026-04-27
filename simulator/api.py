@@ -60,6 +60,7 @@ class ErrorAction(BaseModel):
 
 _manager: SimulatorManager | None = None
 _ws_clients: list[WebSocket] = []
+_shutdown_task: asyncio.Task | None = None
 
 
 def set_manager(manager: SimulatorManager) -> None:
@@ -250,17 +251,38 @@ async def set_network_preset(req: PresetRequest):
 
 async def ws_endpoint(websocket: WebSocket):
     """WebSocket for real-time state updates and protocol log streaming."""
+    global _shutdown_task
     await websocket.accept()
     _ws_clients.append(websocket)
+    if _shutdown_task is not None:
+        _shutdown_task.cancel()
+        _shutdown_task = None
+        logger.info("Client reconnected, cancelled auto-shutdown")
     try:
         while True:
-            # Keep alive — client can also send commands here in the future
             await websocket.receive_text()
-            # For now, ignore client messages (future: filter subscriptions)
     except WebSocketDisconnect:
         pass
     finally:
         _ws_clients.remove(websocket)
+        if not _ws_clients:
+            logger.info("Last UI client disconnected, shutting down in 5s")
+            _shutdown_task = asyncio.create_task(_delayed_shutdown())
+
+
+async def _delayed_shutdown() -> None:
+    """Wait a grace period, then shut down the simulator process."""
+    import os
+    import signal
+    try:
+        await asyncio.sleep(5)
+        logger.info("No clients reconnected, shutting down simulator")
+        if _manager:
+            await _manager.stop_all()
+        await asyncio.sleep(0.5)
+        os.kill(os.getpid(), signal.SIGTERM)
+    except asyncio.CancelledError:
+        pass
 
 
 def _broadcast_change(change_type: str, data: dict) -> None:

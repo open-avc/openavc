@@ -322,7 +322,7 @@ class SimulationManager:
             while self._active and self._process:
                 if self._process.returncode is not None:
                     exit_code = self._process.returncode
-                    log.info("Simulator process exited externally (code %s)", exit_code)
+                    log.info("Simulator process exited (code %s)", exit_code)
                     await self._restore_connections()
                     self._process = None
                     self._sim_ports.clear()
@@ -331,7 +331,8 @@ class SimulationManager:
                     self._active = False
                     self.engine.state.set("system.simulation_active", False, source="simulation")
                     self.engine.state.set("system.simulation_ui_url", None, source="simulation")
-                    await self.engine.events.emit("simulation.crashed", {
+                    event = "simulation.stopped" if exit_code == 0 else "simulation.crashed"
+                    await self.engine.events.emit(event, {
                         "exit_code": exit_code,
                     })
                     return

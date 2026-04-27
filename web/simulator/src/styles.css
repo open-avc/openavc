@@ -129,6 +129,9 @@ input, select {
   border: 1px solid var(--border-color);
   border-radius: 8px;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 160px);
 }
 
 .device-card-header {
@@ -194,6 +197,14 @@ input, select {
 .state-value.on { color: var(--color-success); }
 .state-value.off { color: var(--text-muted); }
 .state-value.warming { color: var(--color-warning); }
+
+/* ── Device Card Body (scrollable) ── */
+
+.device-card-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
 
 /* ── Controls ── */
 

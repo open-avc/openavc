@@ -75,13 +75,15 @@ export function DeviceCard({ device }: { device: DeviceInfo }) {
       </div>
 
       {/* Declarative controls or category-specific panel */}
-      {device.controls && device.controls.length > 0 ? (
-        <div className="controls-panel">
-          <DynamicControls controls={device.controls} state={device.state} onStateChange={handleStateChange} />
-        </div>
-      ) : (
-        <Panel device={device} onStateChange={handleStateChange} />
-      )}
+      <div className="device-card-body">
+        {device.controls && device.controls.length > 0 ? (
+          <div className="controls-panel">
+            <DynamicControls controls={device.controls} state={device.state} onStateChange={handleStateChange} />
+          </div>
+        ) : (
+          <Panel device={device} onStateChange={handleStateChange} />
+        )}
+      </div>
 
       {/* Error injection */}
       {errors.length > 0 && (

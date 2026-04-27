@@ -262,6 +262,30 @@ function DriverSearchSelect({
 
 // --- Add Device Dialog ---
 
+function generateDeviceDefaults(
+  driver: DriverInfo,
+  existingDevices: DeviceConfig[],
+): { id: string; name: string } {
+  const existingIds = new Set(existingDevices.map((d) => d.id));
+  const existingNames = new Set(existingDevices.map((d) => d.name));
+
+  // ID: category-based like "projector_1", "display_2"
+  const base = driver.category || "device";
+  let idNum = 1;
+  while (existingIds.has(`${base}_${idNum}`)) idNum++;
+  const id = `${base}_${idNum}`;
+
+  // Name: driver name like "PJLink Class 1", append " 2" if taken
+  let name = driver.name;
+  if (existingNames.has(name)) {
+    let nameNum = 2;
+    while (existingNames.has(`${driver.name} ${nameNum}`)) nameNum++;
+    name = `${driver.name} ${nameNum}`;
+  }
+
+  return { id, name };
+}
+
 export function AddDeviceDialog({
   onClose,
   prefill,
@@ -277,6 +301,8 @@ export function AddDeviceDialog({
   const [deviceId, setDeviceId] = useState(prefill ? "" : "");
   const [deviceName, setDeviceName] = useState(prefill?.name ? `${prefill.name} (Copy)` : "");
   const [selectedDriver, setSelectedDriver] = useState(prefill?.driver ?? "");
+  const [idTouchedByUser, setIdTouchedByUser] = useState(!!prefill);
+  const [nameTouchedByUser, setNameTouchedByUser] = useState(!!prefill?.name);
   const [configValues, setConfigValues] = useState<Record<string, string>>(() => {
     if (!prefill) return {};
     // Merge device.config with connection table overrides (host, port, etc.)
@@ -402,7 +428,7 @@ export function AddDeviceDialog({
               marginBottom: "var(--space-xs)",
             }}
           >
-            Driver
+            Driver <span style={{ color: "var(--color-error, #ef4444)" }}>*</span>
           </label>
           <DriverSearchSelect
             drivers={drivers}
@@ -416,6 +442,11 @@ export function AddDeviceDialog({
                 if (v !== "" && v != null) prefilled[k] = String(v);
               }
               setConfigValues(prefilled);
+              if (newDriver) {
+                const generated = generateDeviceDefaults(newDriver, project?.devices ?? []);
+                if (!idTouchedByUser) setDeviceId(generated.id);
+                if (!nameTouchedByUser) setDeviceName(generated.name);
+              }
             }}
           />
           {driverInfo?.help?.overview && (
@@ -447,13 +478,14 @@ export function AddDeviceDialog({
               marginBottom: "var(--space-xs)",
             }}
           >
-            Device ID
+            Device ID <span style={{ color: "var(--color-error, #ef4444)" }}>*</span>
           </label>
           <input
             value={deviceId}
-            onChange={(e) =>
-              setDeviceId(e.target.value.replace(/[^a-z0-9_]/gi, "").toLowerCase())
-            }
+            onChange={(e) => {
+              setIdTouchedByUser(true);
+              setDeviceId(e.target.value.replace(/[^a-z0-9_]/gi, "").toLowerCase());
+            }}
             placeholder="e.g., projector_room_1"
             style={{
               width: "100%",
@@ -487,7 +519,10 @@ export function AddDeviceDialog({
           </label>
           <input
             value={deviceName}
-            onChange={(e) => setDeviceName(e.target.value)}
+            onChange={(e) => {
+              setNameTouchedByUser(true);
+              setDeviceName(e.target.value);
+            }}
             placeholder="e.g., Main Projector"
             maxLength={128}
             style={{ width: "100%" }}
