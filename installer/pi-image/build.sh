@@ -120,6 +120,9 @@ tar czf "$OPENAVC_ARCHIVE" \
 ARCHIVE_SIZE=$(du -h "$OPENAVC_ARCHIVE" | cut -f1)
 echo "Archive created: $ARCHIVE_SIZE"
 
+# Copy update-helper.sh into the stage files directory so 00-run.sh can find it
+cp "$REPO_ROOT/installer/update-helper.sh" "$STAGE_DIR/01-install-openavc/files/update-helper.sh"
+
 # --- Configure pi-gen ---
 
 echo ""

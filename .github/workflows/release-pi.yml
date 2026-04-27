@@ -88,6 +88,9 @@ jobs:
             requirements.txt \
             pyproject.toml
 
+      - name: Stage update-helper.sh
+        run: cp installer/update-helper.sh installer/pi-image/stage-openavc/01-install-openavc/files/update-helper.sh
+
       - name: Configure pi-gen
         env:
           SEMVER: ${{ steps.ver.outputs.version }}
