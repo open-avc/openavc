@@ -115,6 +115,7 @@ class DeviceManager:
         self._device_configs: dict[str, dict[str, Any]] = {}
         self._reconnect_tasks: dict[str, asyncio.Task] = {}
         self._orphaned_devices: dict[str, dict[str, Any]] = {}  # devices with missing drivers
+        self._intentional_disconnect: set[str] = set()  # suppress auto-reconnect
 
         # Auto-reconnect when a device transport drops mid-session
         self.events.on(
@@ -540,6 +541,10 @@ class DeviceManager:
         if device_id not in self._devices:
             return
 
+        # Skip if this is an intentional disconnect (reconnect_device, remove, update)
+        if device_id in self._intentional_disconnect:
+            return
+
         # Check the device isn't disabled
         config = self._device_configs.get(device_id, {})
         if not config.get("enabled", True):
@@ -637,15 +642,19 @@ class DeviceManager:
         self.state.set(f"device.{device_id}.reconnect_failed", None, source="device_manager")
         self.state.set(f"device.{device_id}.offline_reason", None, source="device_manager")
         self.state.set(f"device.{device_id}.reconnect_attempt", None, source="device_manager")
-        # Disconnect and reconnect
+        # Suppress auto-reconnect during intentional disconnect
+        self._intentional_disconnect.add(device_id)
         try:
-            await driver.disconnect()
-        except Exception:
-            pass
-        try:
-            await driver.connect()
-            log.info(f"Reconnected device: {device_id}")
-        except Exception as e:
-            self.state.set(f"device.{device_id}.connected", False, source="device_manager")
-            log.warning(f"Reconnect failed for {device_id}: {e}")
-            self._start_reconnect(device_id)
+            try:
+                await driver.disconnect()
+            except Exception:
+                pass
+            try:
+                await driver.connect()
+                log.info(f"Reconnected device: {device_id}")
+            except Exception as e:
+                self.state.set(f"device.{device_id}.connected", False, source="device_manager")
+                log.warning(f"Reconnect failed for {device_id}: {e}")
+                self._start_reconnect(device_id)
+        finally:
+            self._intentional_disconnect.discard(device_id)

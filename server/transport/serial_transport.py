@@ -200,9 +200,12 @@ class SerialTransport:
             raise
 
     async def send_and_wait(self, data: bytes, timeout: float = 5.0) -> bytes:
-        """Send data and wait for the next complete response."""
+        """Send data and wait for the next complete response.
+
+        The lock is held through the entire send+wait cycle to prevent
+        concurrent sends from interleaving with the response.
+        """
         async with self._send_lock:
-            # Atomically: set flag, clear queue, send — all under lock
             self._waiting_for_response = True
             while not self._response_queue.empty():
                 self._response_queue.get_nowait()
@@ -212,16 +215,16 @@ class SerialTransport:
                 self._waiting_for_response = False
                 raise
 
-        try:
-            response = await asyncio.wait_for(
-                self._response_queue.get(), timeout=timeout,
-            )
-            return response
-        except asyncio.TimeoutError:
-            log.warning(f"Serial send_and_wait timeout on {self.port}")
-            raise
-        finally:
-            self._waiting_for_response = False
+            try:
+                response = await asyncio.wait_for(
+                    self._response_queue.get(), timeout=timeout,
+                )
+                return response
+            except asyncio.TimeoutError:
+                log.warning(f"Serial send_and_wait timeout on {self.port}")
+                raise
+            finally:
+                self._waiting_for_response = False
 
     async def close(self) -> None:
         """Close the serial port gracefully."""

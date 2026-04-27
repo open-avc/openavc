@@ -77,7 +77,8 @@ class TriggerEngine:
         self._event_handler_ids: list[str] = []
         self._state_sub_ids: list[str] = []
         self._cron_task: asyncio.Task | None = None
-        self._active_trigger_chain: set[str] = set()  # macro IDs currently firing from triggers
+        self._startup_tasks: list[asyncio.Task] = []
+        self._active_trigger_chain: set[str] = set()  # trigger IDs currently firing
         self._running = False
 
     def load_triggers(self, macros_data: list[dict[str, Any]]) -> None:
@@ -136,8 +137,9 @@ class TriggerEngine:
 
             elif ttype == "startup":
                 delay = t.get("delay_seconds", 0)
-                t = asyncio.create_task(self._fire_startup(ts, delay))
-                t.add_done_callback(_log_task_exception)
+                startup_task = asyncio.create_task(self._fire_startup(ts, delay))
+                startup_task.add_done_callback(_log_task_exception)
+                self._startup_tasks.append(startup_task)
 
         # Start cron loop if any schedule triggers exist
         if has_cron and HAS_CRONITER:
@@ -161,6 +163,12 @@ class TriggerEngine:
             except asyncio.CancelledError:
                 pass
             self._cron_task = None
+
+        # Cancel startup tasks
+        for task in self._startup_tasks:
+            if not task.done():
+                task.cancel()
+        self._startup_tasks.clear()
 
         # Cancel all pending debounce/delay tasks
         for ts in self._triggers.values():
@@ -436,11 +444,12 @@ class TriggerEngine:
                 return
             # overlap == "allow" falls through
 
-        # 7. Circular check
-        if macro_id in self._active_trigger_chain:
+        # 7. Circular chain detection (per trigger, not per macro — two
+        #    different triggers may legitimately fire the same macro)
+        if trigger_id in self._active_trigger_chain:
             log.warning(
                 f"Trigger {trigger_id} blocked — circular chain detected "
-                f"(macro '{ts.macro_name}' already in chain)"
+                f"(trigger already active for macro '{ts.macro_name}')"
             )
             await self.events.emit(
                 "trigger.skipped",
@@ -462,7 +471,7 @@ class TriggerEngine:
             await asyncio.sleep(1)
             if not self._running:
                 return
-            if ts.trigger.get("disabled"):
+            if not ts.trigger.get("enabled", True):
                 log.debug(f"Trigger {trigger_id} disabled during queue wait — aborting")
                 return
             if not self.macros.is_macro_running(macro_id):
@@ -491,7 +500,7 @@ class TriggerEngine:
         ts.last_fired = time.time()
         # Persist cooldown timestamp so it survives restarts
         self.state.set(f"system.trigger.{trigger_id}.last_fired", ts.last_fired, source="system")
-        self._active_trigger_chain.add(macro_id)
+        self._active_trigger_chain.add(trigger_id)
 
         log.info(
             f"Trigger {trigger_id} fired macro '{ts.macro_name}' "
@@ -512,7 +521,7 @@ class TriggerEngine:
         except Exception:  # Catch-all: isolates macro execution errors from trigger pipeline
             log.exception(f"Trigger {trigger_id} macro execution failed")
         finally:
-            self._active_trigger_chain.discard(macro_id)
+            self._active_trigger_chain.discard(trigger_id)
 
     # --- Condition evaluation ---
 

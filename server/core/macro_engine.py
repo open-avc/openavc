@@ -35,8 +35,6 @@ class MacroEngine:
         self._macros: dict[str, dict[str, Any]] = {}  # id -> macro config
         self._groups: dict[str, list[str]] = {}  # group_id -> [device_ids]
         self._running: dict[str, asyncio.Task] = {}  # id -> running task
-        self._call_stack: set[str] = set()  # macro IDs currently executing (recursion guard)
-        self._call_stack_lock = asyncio.Lock()  # serialize recursion checks
         self._max_depth = 10  # maximum nested macro call depth
         self._max_conditional_depth = 5  # maximum nesting of conditional steps
 
@@ -96,53 +94,60 @@ class MacroEngine:
         if self._groups:
             log.info(f"Loaded {len(self._groups)} device group(s)")
 
-    async def execute(self, macro_id: str, context: dict[str, Any] | None = None) -> None:
+    async def execute(
+        self, macro_id: str, context: dict[str, Any] | None = None,
+        _call_chain: frozenset[str] | None = None,
+    ) -> None:
         """
         Execute a macro by ID.
 
         Args:
             macro_id: The macro to execute.
             context: Optional context dict passed through to steps.
+            _call_chain: Internal — tracks the current execution chain to
+                detect circular/recursive calls without blocking independent
+                concurrent chains.
         """
         macro = self._macros.get(macro_id)
         if macro is None:
             raise ValueError(f"Macro '{macro_id}' not found")
 
-        # Recursion guard: prevent self-referencing or circular macro calls
-        # Hold lock through the guard check AND adding to call_stack + starting
-        # execution, to prevent two concurrent calls from both passing the check
-        async with self._call_stack_lock:
-            if macro_id in self._call_stack:
-                raise ValueError(
-                    f"Macro '{macro_id}' blocked — circular/recursive call detected "
-                    f"(call stack: {' -> '.join(self._call_stack)} -> {macro_id})"
-                )
-            if len(self._call_stack) >= self._max_depth:
-                raise ValueError(
-                    f"Macro '{macro_id}' blocked — max nesting depth ({self._max_depth}) reached"
-                )
-            self._call_stack.add(macro_id)
+        if _call_chain is None:
+            _call_chain = frozenset()
 
-            name = macro.get("name", macro_id)
-            steps = macro.get("steps", [])
-            stop_on_error = macro.get("stop_on_error", False)
-            cancel_group = macro.get("cancel_group")
+        if macro_id in _call_chain:
+            raise ValueError(
+                f"Macro '{macro_id}' blocked — circular/recursive call detected "
+                f"(call chain: {' -> '.join(_call_chain)} -> {macro_id})"
+            )
+        if len(_call_chain) >= self._max_depth:
+            raise ValueError(
+                f"Macro '{macro_id}' blocked — max nesting depth ({self._max_depth}) reached"
+            )
+        _call_chain = _call_chain | {macro_id}
 
-        # Cancel group preemption: cancel other running macros in the same group
+        name = macro.get("name", macro_id)
+        steps = macro.get("steps", [])
+        stop_on_error = macro.get("stop_on_error", False)
+        cancel_group = macro.get("cancel_group")
+
+        # Register in _running BEFORE cancel group so concurrent macros in
+        # the same group can see each other and preempt correctly
+        task = asyncio.current_task()
+        if task is not None:
+            self._running[macro_id] = task
+
         if cancel_group:
             await self._cancel_group(cancel_group, macro_id)
 
         log.info(f"Executing macro '{name}' ({len(steps)} steps)")
-        task = asyncio.current_task()
-        if task is not None:
-            self._running[macro_id] = task
         await self.events.emit(
             f"macro.started.{macro_id}",
             {"macro_id": macro_id, "name": name, "total_steps": len(steps)},
         )
 
         try:
-            await self.execute_steps(steps, context, macro_id, stop_on_error)
+            await self.execute_steps(steps, context, macro_id, stop_on_error, _call_chain=_call_chain)
             await self.events.emit(
                 f"macro.completed.{macro_id}",
                 {"macro_id": macro_id, "name": name},
@@ -161,8 +166,6 @@ class MacroEngine:
                 {"macro_id": macro_id, "name": name, "error": str(e)},
             )
         finally:
-            async with self._call_stack_lock:
-                self._call_stack.discard(macro_id)
             self._running.pop(macro_id, None)
 
     async def execute_steps(
@@ -172,6 +175,7 @@ class MacroEngine:
         macro_id: str | None = None,
         stop_on_error: bool = False,
         _conditional_depth: int = 0,
+        _call_chain: frozenset[str] | None = None,
     ) -> None:
         """
         Execute a list of steps sequentially.
@@ -200,7 +204,7 @@ class MacroEngine:
                 )
 
             try:
-                await self._execute_step(step, context, _conditional_depth, macro_id, stop_on_error)
+                await self._execute_step(step, context, _conditional_depth, macro_id, stop_on_error, _call_chain)
             except Exception as e:  # Catch-all: isolates individual step errors from halting the macro
                 step_detail = self._step_error_detail(step, i, total)
                 log.error(f"Macro step failed: {step_detail} — {e}")
@@ -298,6 +302,7 @@ class MacroEngine:
         self, step: dict[str, Any], context: dict[str, Any],
         _conditional_depth: int = 0, macro_id: str | None = None,
         stop_on_error: bool = False,
+        _call_chain: frozenset[str] | None = None,
     ) -> None:
         """Execute a single macro step."""
         action = step.get("action", "")
@@ -389,7 +394,7 @@ class MacroEngine:
         elif action == "macro":
             sub_macro_id = step.get("macro", "")
             log.debug(f"  Macro step: call macro '{sub_macro_id}'")
-            await self.execute(sub_macro_id, context)
+            await self.execute(sub_macro_id, context, _call_chain=_call_chain)
 
         elif action == "event.emit":
             event_name = step.get("event", "")
@@ -435,6 +440,7 @@ class MacroEngine:
                         then_steps, context, macro_id,
                         stop_on_error=stop_on_error,
                         _conditional_depth=_conditional_depth + 1,
+                        _call_chain=_call_chain,
                     )
             else:
                 else_steps = step.get("else_steps") or []
@@ -444,6 +450,7 @@ class MacroEngine:
                         else_steps, context, macro_id,
                         stop_on_error=stop_on_error,
                         _conditional_depth=_conditional_depth + 1,
+                        _call_chain=_call_chain,
                     )
                 else:
                     log.debug("  Conditional: false, no else-steps")

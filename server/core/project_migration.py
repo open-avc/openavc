@@ -61,13 +61,30 @@ def migrate_0_2_to_0_3(data: dict) -> dict:
 def migrate_0_3_to_0_4(data: dict) -> dict:
     """
     Migrate from 0.3.0 to 0.4.0:
-    - Add empty device_groups list
-    - Remove group field from devices (now handled by device_groups)
+    - Convert per-device group field into device_groups entries
     - Bump version
     """
-    data.setdefault("device_groups", [])
+    # Collect group assignments from devices
+    groups_map: dict[str, list[str]] = {}
     for device in data.get("devices", []):
-        device.pop("group", None)
+        group_name = device.pop("group", None)
+        if group_name:
+            groups_map.setdefault(group_name, []).append(device.get("id", ""))
+
+    # Only create device_groups if there were actual group assignments
+    existing = data.get("device_groups")
+    if not existing:
+        data["device_groups"] = [
+            {
+                "id": name.lower().replace(" ", "_"),
+                "name": name,
+                "device_ids": ids,
+            }
+            for name, ids in groups_map.items()
+        ]
+    else:
+        data.setdefault("device_groups", [])
+
     data["openavc_version"] = "0.4.0"
     return data
 

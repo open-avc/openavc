@@ -137,6 +137,8 @@ def _seed_zip_to_library(zip_path: Path, project_id: str, lib: Path) -> None:
 
         data = json.loads(zf.read(avc_names[0]).decode("utf-8"))
         data, _ = migrate_project(data)
+        from server.core.project_loader import ProjectConfig
+        ProjectConfig(**data)  # validate before writing
         (project_dir / "project.avc").write_text(
             json.dumps(data, indent=4, ensure_ascii=False), encoding="utf-8"
         )

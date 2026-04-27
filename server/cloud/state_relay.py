@@ -189,15 +189,19 @@ class StateRelay:
                 if not batch:
                     continue
 
-                # Enforce max batch size
+                # Deduplicate: keep only the last value per key (the cloud
+                # cares about current state, not intermediate transitions)
+                deduped: dict[str, dict[str, Any]] = {}
+                for entry in batch:
+                    deduped[entry["key"]] = entry
+                batch = list(deduped.values())
+
                 max_size = self._agent._config.get("state_batch_max_size", 500)
                 if len(batch) > max_size:
-                    # Keep oldest entries to maintain causality order
                     log.warning(
-                        f"State relay: batch overflow — {len(batch)} changes, "
-                        f"keeping oldest {max_size}"
+                        f"State relay: batch overflow — {len(batch)} keys, "
+                        f"sending in chunks of {max_size}"
                     )
-                    batch = batch[:max_size]
 
                 # Format timestamps as ISO strings
                 changes = []
@@ -211,8 +215,10 @@ class StateRelay:
                         change["deleted"] = True
                     changes.append(change)
 
-                # Send
-                await self._agent.send_message(STATE_BATCH, {"changes": changes})
+                # Send (chunked if over max_size)
+                for i in range(0, len(changes), max_size):
+                    chunk = changes[i:i + max_size]
+                    await self._agent.send_message(STATE_BATCH, {"changes": chunk})
                 log.debug(f"State relay: sent {len(changes)} change(s)")
 
         except asyncio.CancelledError:

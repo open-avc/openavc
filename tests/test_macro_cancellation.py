@@ -78,7 +78,7 @@ async def test_cancel_not_running(engine):
 
 @pytest.mark.asyncio
 async def test_cancel_cleanup(engine, state):
-    """Cancelled macro is removed from _running and _call_stack."""
+    """Cancelled macro is removed from _running."""
     engine.load_macros([{
         "id": "test_macro",
         "name": "Test",
@@ -92,7 +92,6 @@ async def test_cancel_cleanup(engine, state):
     await asyncio.sleep(0.05)
 
     assert "test_macro" not in engine._running
-    assert "test_macro" not in engine._call_stack
 
 
 # ===== cancel_group preemption =====

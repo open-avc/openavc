@@ -157,21 +157,21 @@ class UDPTransport:
                 f"{self.host}:{self.port}"
             )
 
-        try:
-            response = await asyncio.wait_for(
-                self._response_queue.get(), timeout=timeout
-            )
-            if self._inter_command_delay > 0:
-                await asyncio.sleep(self._inter_command_delay)
-            return response
-        except asyncio.TimeoutError:
-            log.warning(
-                f"[{self._name}] UDP send_and_wait timeout "
-                f"({self.host}:{self.port})"
-            )
-            raise
-        finally:
-            self._waiting_for_response = False
+            try:
+                response = await asyncio.wait_for(
+                    self._response_queue.get(), timeout=timeout
+                )
+                if self._inter_command_delay > 0:
+                    await asyncio.sleep(self._inter_command_delay)
+                return response
+            except asyncio.TimeoutError:
+                log.warning(
+                    f"[{self._name}] UDP send_and_wait timeout "
+                    f"({self.host}:{self.port})"
+                )
+                raise
+            finally:
+                self._waiting_for_response = False
 
     async def broadcast(self, data: bytes, port: int) -> None:
         """Send a UDP broadcast datagram."""

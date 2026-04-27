@@ -96,15 +96,16 @@ def _build_fake_install(target_dir: Path, version: str = "1.0.0") -> None:
 def _build_update_tarball(staging_dir: Path, version: str) -> Path:
     """Build a tarball that matches what the CI pipeline produces.
 
-    Real CI output: openavc-{version}/server/main.py, etc.
-    The helper script extracts with --strip-components=1.
+    Real CI output is flat (no wrapper directory): server/main.py, etc.
+    The helper script extracts with ``tar xzf -C $APP_DIR``.
     """
     content_dir = staging_dir / f"openavc-{version}"
     _build_fake_install(content_dir, version)
 
     tarball_path = staging_dir / f"openavc-{version}-linux-x86_64.tar.gz"
     with tarfile.open(tarball_path, "w:gz") as tar:
-        tar.add(content_dir, arcname=f"openavc-{version}")
+        for child in content_dir.iterdir():
+            tar.add(child, arcname=child.name)
 
     return tarball_path
 
@@ -520,7 +521,7 @@ class TestHelperScriptApplyUpdate:
         """The script must:
         1. Read apply-update.json
         2. Back up the app dir to .previous
-        3. Extract the tarball (with --strip-components=1) over the app dir
+        3. Extract the tarball over the app dir
         4. Remove apply-update.json
         5. Exit 0
         """
