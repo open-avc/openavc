@@ -280,6 +280,11 @@ class YAMLAutoSimulator(TCPSimulator):
                     state_key = mapping.get("state")
                     if state_key and arg_idx < len(args):
                         _, value = args[arg_idx]
+                        value_map = mapping.get("map")
+                        if value_map:
+                            mapped = value_map.get(str(value))
+                            if mapped is not None:
+                                value = mapped
                         self.set_state(state_key, self._coerce_value(state_key, value))
                 # Echo the message back (standard OSC feedback pattern)
                 return [(address, args)]
@@ -292,6 +297,14 @@ class YAMLAutoSimulator(TCPSimulator):
                     if state_key:
                         value = self._state.get(state_key, 0)
                         tag = _type_to_osc_tag(value_type)
+                        # Apply reverse value map (e.g., mute false → OSC 1)
+                        reverse_info = self._osc_state_to_address.get(state_key)
+                        if reverse_info:
+                            _, _, _, reverse_map = reverse_info
+                            if reverse_map:
+                                raw = reverse_map.get(str(value).lower())
+                                if raw is not None:
+                                    value = int(raw) if tag == "i" else float(raw) if tag == "f" else raw
                         resp_args.append((tag, value))
                 if resp_args:
                     return [(address, resp_args)]
