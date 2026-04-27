@@ -104,7 +104,7 @@ Full documentation is available at [docs.openavc.com](https://docs.openavc.com).
 
 ## Community
 
-- [Discord](https://discord.gg/Qv5fPUKZ) - Chat, support, and discussion
+- [Discord](https://discord.gg/FHcuxG5aTa) - Chat, support, and discussion
 - [Community Drivers](https://github.com/open-avc/openavc-drivers) - Device drivers for projectors, displays, switchers, DSPs, cameras, and more
 - [Community Plugins](https://github.com/open-avc/openavc-plugins) - Extensions like Stream Deck integration, MQTT bridges, and custom control surfaces
 - [Cloud Platform](https://cloud.openavc.com) - Remote monitoring, alerts, and fleet management
