@@ -1,26 +1,17 @@
-## Update System
+## Branding and Theming
 
-Fixed several issues that would have prevented in-app updates from working correctly on Linux and Pi deployments. The update helper script, release archive format, and artifact naming are now aligned end to end. Windows silent updates and rollback were also hardened.
+The Programmer IDE and Simulator now use the OpenAVC brand palette. The blue accent is replaced with the sage green from the logo across all views, buttons, and status indicators. Both apps show the OpenAVC favicon and logo. A dark/light theme toggle is available in System Settings.
 
-## Macro and Trigger Reliability
+## Add Device Dialog
 
-- Macros called from two different triggers at the same time no longer incorrectly block each other as "circular." Each execution chain now tracks its own call stack independently.
-- Cancel groups (mutual preemption) now work correctly when two macros in the same group start simultaneously. Previously both could run.
-- Startup triggers no longer silently fail to fire due to the task reference being garbage collected.
-- Disabling a trigger while a macro is queued now correctly prevents it from firing when the queue drains.
+Selecting a driver now auto-fills the Device ID and Display Name. IDs are generated from the driver category (e.g., `projector_1`, `display_2`) and names from the driver name, with automatic numbering to avoid conflicts. Both fields are editable if you want to override them. Driver and Device ID are now marked as required.
 
-## Serial and UDP Device Communication
+## Simulator
 
-Serial and UDP transports now hold the send lock through the full send-and-wait cycle, matching TCP. Previously, a polling query could interleave between a command send and its response, returning the wrong data to the caller. This fixes intermittent wrong state values on serial devices (RS-232 projectors, displays, DSPs) under load.
+- Device cards with many controls (like the Behringer X32) no longer clip at the bottom. The controls area scrolls independently within each card.
+- Closing the simulator browser tab now shuts down the simulator process after a 5-second grace period. The main server detects the exit and cleans up simulation state automatically. Refreshing the tab within 5 seconds cancels the shutdown.
+- OSC simulators now correctly apply value maps when responding to state queries and processing incoming commands. This fixes initial state mismatch between the simulator and main server on startup for drivers with inverted value mappings.
 
-## Device Reconnection
+## Pi Image Build
 
-Manual reconnect no longer causes a spurious double-connect. Previously, disconnecting a device for reconnection triggered the auto-reconnect handler, which would tear down the newly established connection two seconds later.
-
-## Cloud State Sync
-
-When many devices reconnect at once, the cloud dashboard no longer shows stale values. The state relay now keeps the latest value per key instead of truncating the oldest entries. Batches that exceed the size limit are sent in chunks instead of being dropped.
-
-## Project Migration
-
-Upgrading project files from v0.3.0 to v0.4.0 now correctly converts per-device group assignments into device group entries. Previously, group assignments were silently dropped during migration.
+Fixed the build script referencing `update-helper.sh` via a relative path that breaks when pi-gen copies the stage into its own directory tree. The file is now staged into the build files directory alongside everything else.
