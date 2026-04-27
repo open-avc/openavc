@@ -15,19 +15,27 @@ import secrets
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
-from server import config
+from server.system_config import get_system_config
 
 _basic = HTTPBasic(auto_error=False)
 
 
+def _get_password() -> str:
+    return get_system_config().get("auth", "programmer_password", "")
+
+
+def _get_api_key() -> str:
+    return get_system_config().get("auth", "api_key", "")
+
+
 def _check_password(provided: str) -> bool:
     """Timing-safe comparison against the configured programmer password."""
-    return secrets.compare_digest(provided, config.PROGRAMMER_PASSWORD)
+    return secrets.compare_digest(provided, _get_password())
 
 
 def _check_api_key(provided: str) -> bool:
     """Timing-safe comparison against the configured API key."""
-    return secrets.compare_digest(provided, config.API_KEY)
+    return secrets.compare_digest(provided, _get_api_key())
 
 
 async def require_programmer_auth(
@@ -42,17 +50,17 @@ async def require_programmer_auth(
 
     If neither PROGRAMMER_PASSWORD nor API_KEY is configured, access is open.
     """
-    # No auth configured — fully open
-    if not config.PROGRAMMER_PASSWORD and not config.API_KEY:
+    pw = _get_password()
+    api_key = _get_api_key()
+
+    if not pw and not api_key:
         return
 
-    # Check X-API-Key header
-    api_key = request.headers.get("x-api-key", "")
-    if api_key and config.API_KEY and _check_api_key(api_key):
+    provided_key = request.headers.get("x-api-key", "")
+    if provided_key and api_key and _check_api_key(provided_key):
         return
 
-    # Check HTTP Basic
-    if credentials and config.PROGRAMMER_PASSWORD:
+    if credentials and pw:
         if _check_password(credentials.password):
             return
 
@@ -72,27 +80,26 @@ def check_ws_auth(query_params: dict, headers: dict) -> bool:
 
     Returns True if auth passes or is not required.
     """
-    # No auth configured — open
-    if not config.PROGRAMMER_PASSWORD and not config.API_KEY:
+    pw = _get_password()
+    api_key = _get_api_key()
+
+    if not pw and not api_key:
         return True
 
-    # Check X-API-Key header
-    api_key = headers.get("x-api-key", "")
-    if api_key:
-        if config.API_KEY and _check_api_key(api_key):
+    provided_key = headers.get("x-api-key", "")
+    if provided_key:
+        if api_key and _check_api_key(provided_key):
             return True
 
-    # Check Sec-WebSocket-Protocol header for "auth.<token>" subprotocol.
-    # Usage: new WebSocket(url, ["auth.MY_PASSWORD"])
     ws_protocols = headers.get("sec-websocket-protocol", "")
     for proto in ws_protocols.split(","):
         proto = proto.strip()
         if proto.startswith("auth."):
-            token = proto[5:]  # strip "auth." prefix
+            token = proto[5:]
             if token:
-                if config.PROGRAMMER_PASSWORD and _check_password(token):
+                if pw and _check_password(token):
                     return True
-                if config.API_KEY and _check_api_key(token):
+                if api_key and _check_api_key(token):
                     return True
 
     return False

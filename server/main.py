@@ -186,7 +186,9 @@ class ProgrammerAuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         if not request.url.path.startswith("/programmer"):
             return await call_next(request)
-        if not config.PROGRAMMER_PASSWORD:
+        from server.system_config import get_system_config
+        pw = get_system_config().get("auth", "programmer_password", "")
+        if not pw:
             return await call_next(request)
 
         auth = request.headers.get("authorization", "")
@@ -197,8 +199,7 @@ class ProgrammerAuthMiddleware(BaseHTTPMiddleware):
                 _, password = decoded.split(":", 1)
             except (ValueError, UnicodeDecodeError):
                 password = ""
-        # Always run constant-time comparison regardless of decode success
-        if secrets.compare_digest(password, config.PROGRAMMER_PASSWORD):
+        if secrets.compare_digest(password, pw):
             return await call_next(request)
 
         return Response(
