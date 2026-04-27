@@ -439,17 +439,6 @@ export function SystemSettingsView() {
               For third-party integrations. If you have external systems (control scripts, middleware, or other software) that connect to the OpenAVC REST API or WebSocket, set an API key here and provide it to those systems. Not needed unless you are building custom integrations.
             </span>
           </div>
-          <div style={fieldRow}>
-            <label style={labelStyle}>Panel lock code</label>
-            <PasswordField
-              value={auth.panel_lock_code}
-              placeholder="No lock code set"
-              onChange={(v) => update("auth", "panel_lock_code", v)}
-            />
-            <span style={helpText}>
-              Prevents users from navigating away from the touch panel. Set a PIN here if the panel runs on a shared or public-facing display and you don't want people exiting it.
-            </span>
-          </div>
         </div>
 
         {/* Logging */}
