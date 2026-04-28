@@ -116,17 +116,22 @@ The panel and the plugin iframe communicate through `window.postMessage`. All me
 
 | Message Type | When Sent | Payload |
 |-------------|-----------|---------|
-| `openavc:init` | Once, when the iframe loads | `{config, theme, state}`: initial configuration, current theme variables, and initial state values |
-| `openavc:state` | On every state change | `{key, value}`: the state key that changed and its new value |
-| `openavc:theme` | When the panel theme changes | `{variables}`: full set of theme CSS variables |
+| `openavc:init` | Once, when the iframe loads | `{config, theme, elementId}`: the element's `plugin_config` values, the active theme's CSS variables, and this element's ID |
+| `openavc:state` | On every state change in the system | `{key, value}`: the state key that changed and its new value |
+
+The iframe receives the initial state by listening for `openavc:state` messages; current values are not bundled into the init payload.
 
 **iframe to panel (outgoing messages):**
 
-| Message Type | Purpose | Payload |
-|-------------|---------|---------|
-| `openavc:command` | Send a device command | `{device, command, params}` |
-| `openavc:set_state` | Write a state value | `{key, value}` |
-| `openavc:navigate` | Navigate to a page | `{page}` |
+Outgoing messages use `type: "openavc:action"` for both device commands and state writes, with an `action` field selecting the operation. Page navigation uses its own message type.
+
+| Message Type | `action` | Purpose | Payload |
+|-------------|----------|---------|---------|
+| `openavc:action` | `device.command` | Send a device command | `{device, command, params}` |
+| `openavc:action` | `state.set` | Write a state key | `{key, value}` |
+| `openavc:navigate` | — | Navigate to a page | `{page}` |
+
+State writes from iframes are restricted to the `var.*` and `plugin.*` namespaces. Writes to `device.*`, `system.*`, `isc.*`, `ui.*`, or any other internal namespace are rejected.
 
 ### Example: Custom Status Display
 
@@ -168,20 +173,13 @@ A minimal panel element that shows a state value with a colored background:
                 case 'openavc:init':
                     config = msg.config || {};
                     document.getElementById('title').textContent = config.title || 'Status';
-                    document.body.style.backgroundColor = msg.theme?.panel_bg || '#1a1a2e';
-                    if (config.state_key && msg.state?.[config.state_key] !== undefined) {
-                        document.getElementById('value').textContent = msg.state[config.state_key];
-                    }
+                    document.body.style.backgroundColor = msg.theme?.['--panel-bg'] || '#1a1a2e';
                     break;
 
                 case 'openavc:state':
                     if (msg.key === config.state_key) {
                         document.getElementById('value').textContent = msg.value;
                     }
-                    break;
-
-                case 'openavc:theme':
-                    document.body.style.backgroundColor = msg.variables?.panel_bg || '#1a1a2e';
                     break;
             }
         });
@@ -192,12 +190,14 @@ A minimal panel element that shows a state value with a colored background:
 
 ### Security
 
-Plugin iframes are sandboxed with `allow-scripts allow-same-origin`. This means:
+Plugin iframes are sandboxed with `allow-scripts`. This gives the iframe an opaque origin, which means:
 
-- The iframe can run JavaScript and make network requests to the same origin
+- The iframe can run JavaScript
 - The iframe **cannot** access the parent panel DOM
+- The iframe **cannot** read or write cookies, localStorage, or any same-origin resources
 - The iframe **cannot** navigate the parent page
 - The iframe **cannot** open popups
+- Network requests are subject to CORS like any cross-origin request
 
 All interaction with the panel goes through the postMessage API. This prevents a plugin from accidentally or intentionally breaking the panel interface.
 
