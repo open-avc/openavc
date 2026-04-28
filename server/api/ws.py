@@ -202,6 +202,13 @@ _PANEL_ALLOWED_TYPES = frozenset({
     "log.subscribe", "log.unsubscribe", "pong",
 })
 
+# Key namespaces panel clients are allowed to write via state.set.
+# Panel state.set exists for plugin iframes and panel-driven user variables.
+# Panels are unauthenticated, so writes to device/system/isc/ui/trigger keys
+# (which would let a panel defeat trigger cooldowns, fool skip_if_offline guards,
+# or pollute ISC mesh state) are rejected. Programmer clients are unaffected.
+_PANEL_STATE_SET_PREFIXES = ("var.", "plugin.")
+
 
 async def _handle_message(
     ws: WebSocket, msg: dict[str, Any], client_type: str = "panel"
@@ -353,6 +360,10 @@ async def _handle_message(
         value = msg.get("value")
         if not _is_flat_primitive(value):
             await _send_ws_error(ws, msg_type, "Value must be a flat primitive (str, int, float, bool, or null)")
+            return
+        if client_type == "panel" and not key.startswith(_PANEL_STATE_SET_PREFIXES):
+            allowed = ", ".join(p + "*" for p in _PANEL_STATE_SET_PREFIXES)
+            await _send_ws_error(ws, msg_type, f"Panel clients can only set keys under: {allowed}")
             return
         try:
             _engine.state.set(key, value, source="ws")

@@ -4,7 +4,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from server.api.ws import _handle_message, _is_flat_primitive, _PANEL_ALLOWED_TYPES
+from server.api.ws import (
+    _handle_message,
+    _is_flat_primitive,
+    _PANEL_ALLOWED_TYPES,
+    _PANEL_STATE_SET_PREFIXES,
+)
 
 
 # ── _is_flat_primitive tests ──
@@ -82,6 +87,102 @@ async def test_panel_can_set_state():
         await _handle_message(ws, {"type": "state.set", "key": "var.foo", "value": 1}, "panel")
     assert len(ws.sent) == 1
     assert ws.sent[0]["type"] == "state.set.ack"
+
+
+@pytest.mark.asyncio
+async def test_panel_can_set_plugin_namespace():
+    """Panel clients can set plugin.* keys (plugin iframe state)."""
+    ws = FakeWS()
+    engine = _make_engine()
+    with patch("server.api.ws._engine", engine):
+        await _handle_message(
+            ws, {"type": "state.set", "key": "plugin.my_plugin.foo", "value": "bar"}, "panel"
+        )
+    engine.state.set.assert_called_once_with("plugin.my_plugin.foo", "bar", source="ws")
+    assert ws.sent[0]["type"] == "state.set.ack"
+    assert ws.sent[0]["success"] is True
+
+
+@pytest.mark.asyncio
+async def test_panel_cannot_set_device_namespace():
+    """Panel clients cannot overwrite device state (e.g. device.<id>.connected)."""
+    ws = FakeWS()
+    engine = _make_engine()
+    with patch("server.api.ws._engine", engine):
+        await _handle_message(
+            ws,
+            {"type": "state.set", "key": "device.proj1.connected", "value": True},
+            "panel",
+        )
+    engine.state.set.assert_not_called()
+    assert ws.sent[0]["type"] == "error"
+    assert ws.sent[0]["source_type"] == "state.set"
+    assert "var.*" in ws.sent[0]["message"]
+    assert "plugin.*" in ws.sent[0]["message"]
+
+
+@pytest.mark.asyncio
+async def test_panel_cannot_set_system_namespace():
+    """Panel clients cannot overwrite system state (e.g. trigger cooldown markers)."""
+    ws = FakeWS()
+    engine = _make_engine()
+    with patch("server.api.ws._engine", engine):
+        await _handle_message(
+            ws,
+            {"type": "state.set", "key": "system.trigger.t1.last_fired", "value": 0},
+            "panel",
+        )
+    engine.state.set.assert_not_called()
+    assert ws.sent[0]["type"] == "error"
+
+
+@pytest.mark.asyncio
+async def test_panel_cannot_set_isc_namespace():
+    """Panel clients cannot pollute ISC mesh state."""
+    ws = FakeWS()
+    engine = _make_engine()
+    with patch("server.api.ws._engine", engine):
+        await _handle_message(
+            ws,
+            {"type": "state.set", "key": "isc.peer1.foo", "value": "bar"},
+            "panel",
+        )
+    engine.state.set.assert_not_called()
+    assert ws.sent[0]["type"] == "error"
+
+
+@pytest.mark.asyncio
+async def test_panel_cannot_set_ui_namespace():
+    """Panel clients cannot directly write ui.* keys (only ui.* events)."""
+    ws = FakeWS()
+    engine = _make_engine()
+    with patch("server.api.ws._engine", engine):
+        await _handle_message(
+            ws,
+            {"type": "state.set", "key": "ui.element1.value", "value": 42},
+            "panel",
+        )
+    engine.state.set.assert_not_called()
+    assert ws.sent[0]["type"] == "error"
+
+
+@pytest.mark.asyncio
+async def test_programmer_can_set_any_namespace():
+    """Programmer clients are not restricted by the panel namespace allowlist."""
+    ws = FakeWS()
+    engine = _make_engine()
+    with patch("server.api.ws._engine", engine):
+        await _handle_message(
+            ws,
+            {"type": "state.set", "key": "device.proj1.connected", "value": True},
+            "programmer",
+        )
+    engine.state.set.assert_called_once_with("device.proj1.connected", True, source="ws")
+
+
+def test_panel_state_set_prefixes_are_documented_namespaces():
+    """The panel allowlist should map to var.* (user variables) and plugin.* (iframes)."""
+    assert _PANEL_STATE_SET_PREFIXES == ("var.", "plugin.")
 
 
 @pytest.mark.asyncio
