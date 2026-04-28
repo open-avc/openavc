@@ -258,6 +258,21 @@ class PanelApp {
                 }
                 break;
 
+            case 'state.delete':
+                if (Array.isArray(msg.keys) && msg.keys.length > 0) {
+                    for (const key of msg.keys) {
+                        delete this.state[key];
+                    }
+                    this._scheduleBindingEvaluation(msg.keys);
+                    // Plugin iframes get a null value notification — preserves
+                    // their existing contract (they saw value=null before the
+                    // server emitted explicit state.delete messages).
+                    for (const key of msg.keys) {
+                        this._notifyPluginIframes(key, null);
+                    }
+                }
+                break;
+
             case 'ui.definition':
                 // Embedded iframes take their definition from the parent
                 // programmer window via postMessage — ignore server-pushed

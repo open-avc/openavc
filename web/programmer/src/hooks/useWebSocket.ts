@@ -74,6 +74,11 @@ export function useWebSocket() {
         applyStateUpdate(msg.changes as Record<string, unknown>);
       }
 
+      // Explicit key removals (sent when state.delete() is called server-side)
+      if (msg.type === "state.delete" && Array.isArray(msg.keys)) {
+        useConnectionStore.getState().applyStateDelete(msg.keys as string[]);
+      }
+
       // Project was modified (by AI, fleet push, or other source) — refetch
       if (msg.type === "project.reloaded") {
         const store = useProjectStore.getState();

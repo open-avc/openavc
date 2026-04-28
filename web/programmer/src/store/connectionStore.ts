@@ -7,6 +7,7 @@ interface ConnectionStore {
 
   setConnected: (v: boolean) => void;
   applyStateUpdate: (changes: Record<string, unknown>) => void;
+  applyStateDelete: (keys: string[]) => void;
   setFullState: (state: Record<string, unknown>) => void;
   removeKeysWithPrefix: (prefix: string) => void;
 }
@@ -23,6 +24,21 @@ export const useConnectionStore = create<ConnectionStore>((set) => ({
       liveState: { ...s.liveState, ...changes },
       stateVersion: s.stateVersion + 1,
     })),
+
+  applyStateDelete: (keys) =>
+    set((s) => {
+      if (keys.length === 0) return s;
+      const next = { ...s.liveState };
+      let changed = false;
+      for (const key of keys) {
+        if (key in next) {
+          delete next[key];
+          changed = true;
+        }
+      }
+      if (!changed) return s;
+      return { liveState: next, stateVersion: s.stateVersion + 1 };
+    }),
 
   setFullState: (liveState) => set((s) => ({ liveState, stateVersion: s.stateVersion + 1 })),
 

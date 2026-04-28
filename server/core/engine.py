@@ -40,6 +40,11 @@ def _log_task_exception(task: asyncio.Task) -> None:
         log.error(f"Background task {task.get_name()!r} failed: {exc}", exc_info=exc)
 
 
+# Sentinel used to distinguish deleted keys (absent from the store) from
+# keys that exist with a None value. Used by _on_state_change.
+_STATE_MISSING = object()
+
+
 class Engine:
     """
     Main runtime engine. Singleton per OpenAVC instance.
@@ -78,6 +83,10 @@ class Engine:
 
         # State batching for WebSocket push
         self._state_batch: dict[str, Any] = {}
+        # Keys that were deleted (rather than set) since the last flush.
+        # Tracked separately so the flush loop can emit a state.delete WS
+        # message — clients can't tell delete from set-to-None otherwise.
+        self._state_deleted_keys: set[str] = set()
         self._batch_task: asyncio.Task | None = None
         self._batch_lock = asyncio.Lock()
 
@@ -974,11 +983,14 @@ class Engine:
         if not self._ws_clients:
             return
 
-        is_state_update = message.get("type") == "state.update"
+        msg_type = message.get("type")
+        # state.update and state.delete carry per-key payloads; a client with
+        # ns_prefixes should only receive keys under those namespaces.
+        is_filterable = msg_type in ("state.update", "state.delete")
         has_any_filters = bool(self._ws_ns_filters)
 
-        # Fast path: no namespace filters or not a state update
-        if not is_state_update or not has_any_filters:
+        # Fast path: no namespace filters or not a filterable message type
+        if not is_filterable or not has_any_filters:
             text = json.dumps(message)
             disconnected = []
             for ws in list(self._ws_clients):
@@ -991,14 +1003,20 @@ class Engine:
                 self._ws_ns_filters.pop(id(ws), None)
             return
 
-        # Slow path: filter state.update per client
-        changes = message.get("changes", {})
+        # Slow path: filter per client based on message type
         full_text: str | None = None
         disconnected = []
         for ws in list(self._ws_clients):
             try:
                 ns = self._ws_ns_filters.get(id(ws))
-                if ns:
+                if not ns:
+                    if full_text is None:
+                        full_text = json.dumps(message)
+                    await ws.send_text(full_text)
+                    continue
+
+                if msg_type == "state.update":
+                    changes = message.get("changes", {})
                     filtered = {k: v for k, v in changes.items()
                                 if k.startswith(ns)}
                     if not filtered:
@@ -1006,10 +1024,14 @@ class Engine:
                     await ws.send_text(json.dumps({
                         "type": "state.update", "changes": filtered,
                     }))
-                else:
-                    if full_text is None:
-                        full_text = json.dumps(message)
-                    await ws.send_text(full_text)
+                else:  # state.delete
+                    keys = message.get("keys", [])
+                    filtered_keys = [k for k in keys if k.startswith(ns)]
+                    if not filtered_keys:
+                        continue
+                    await ws.send_text(json.dumps({
+                        "type": "state.delete", "keys": filtered_keys,
+                    }))
             except Exception:
                 disconnected.append(ws)
         for ws in disconnected:
@@ -1064,39 +1086,64 @@ class Engine:
         Safe in single-threaded asyncio: this sync callback runs atomically
         between awaits of the flush loop. The lock is acquired in the flush
         loop to guard the read-clear operation.
+
+        Distinguishes deletion from set-to-None by probing the store: when
+        StateStore.delete() fires the listener, the key has already been
+        removed. Deletes go to _state_deleted_keys; sets go to _state_batch.
+        Either action clears the key from the other bucket so a delete-then-set
+        (or set-then-delete) within one window resolves to the latest action.
         """
-        self._state_batch[key] = new_value
+        is_deleted = new_value is None and self.state.get(key, _STATE_MISSING) is _STATE_MISSING
+        if is_deleted:
+            self._state_batch.pop(key, None)
+            self._state_deleted_keys.add(key)
+        else:
+            self._state_deleted_keys.discard(key)
+            self._state_batch[key] = new_value
 
     async def _flush_state_batch_loop(self) -> None:
         """Periodically flush batched state changes to WebSocket clients."""
         try:
             while self._running:
                 await asyncio.sleep(0.05)  # 50ms = max 20 updates/sec
-                if not self._state_batch:
+                if not self._state_batch and not self._state_deleted_keys:
                     continue
-                # Swap out the batch atomically — even though _on_state_change
-                # is sync and can't interleave with us between awaits, this
-                # pattern is safe if callers ever change.
-                batch = self._state_batch
-                self._state_batch = {}
-                await self.broadcast_ws({
-                    "type": "state.update",
-                    "changes": batch,
-                })
+                await self._flush_state_batch()
         except asyncio.CancelledError:
             pass
         finally:
-            # Flush any remaining batched state before exiting
-            if self._state_batch:
-                batch = self._state_batch
-                self._state_batch = {}
+            # Best-effort flush of any remaining batch during shutdown.
+            if self._state_batch or self._state_deleted_keys:
                 try:
-                    await self.broadcast_ws({
-                        "type": "state.update",
-                        "changes": batch,
-                    })
-                except Exception:  # Best-effort flush during shutdown; errors are non-critical
+                    await self._flush_state_batch()
+                except Exception:  # Errors are non-critical at shutdown
                     pass
+
+    async def _flush_state_batch(self) -> None:
+        """Drain _state_batch and _state_deleted_keys into WS messages.
+
+        Emits a state.update for set keys and a state.delete for deleted
+        keys. Atomic swap of the buffers ensures _on_state_change calls
+        between the two broadcasts land in the next flush window.
+        """
+        # Swap out the buffers atomically — sync _on_state_change can't
+        # interleave with us between awaits, but this pattern is safe if
+        # callers ever change.
+        batch = self._state_batch
+        self._state_batch = {}
+        deleted = self._state_deleted_keys
+        self._state_deleted_keys = set()
+
+        if batch:
+            await self.broadcast_ws({
+                "type": "state.update",
+                "changes": batch,
+            })
+        if deleted:
+            await self.broadcast_ws({
+                "type": "state.delete",
+                "keys": sorted(deleted),
+            })
 
     # --- Periodic backup ---
 

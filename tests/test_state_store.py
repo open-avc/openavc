@@ -117,6 +117,65 @@ def test_callback_exception_doesnt_break(state):
     assert state.get("var.a") == 1
 
 
+# --- delete() tests ---
+
+
+def test_delete_removes_key(state):
+    state.set("var.a", 1)
+    assert state.get("var.a") == 1
+    state.delete("var.a")
+    assert state.get("var.a") is None
+    # Key should be absent from snapshot, not just present-with-None
+    assert "var.a" not in state.snapshot()
+
+
+def test_delete_unknown_key_is_noop(state):
+    """Deleting a missing key should not raise or fire listeners."""
+    calls = []
+    state.subscribe("*", lambda k, o, n, s: calls.append(k))
+    state.delete("var.never_set")
+    assert calls == []
+
+
+def test_delete_fires_listener_with_none(state):
+    """delete() fires listeners just like set(key, None) would."""
+    state.set("var.a", "hello")
+    captured = []
+    state.subscribe("var.*", lambda k, o, n, s: captured.append((k, o, n, s)))
+    state.delete("var.a", source="test")
+    assert captured == [("var.a", "hello", None, "test")]
+
+
+def test_delete_distinguishable_from_set_to_none(state):
+    """At listener time, deleted keys are absent from the store, but a key
+    set to None is present. This is what consumers (engine, cloud relay) use
+    to distinguish the two cases.
+    """
+    set_to_none_state: dict[str, bool] = {}
+
+    def handler(key, old_value, new_value, source):
+        set_to_none_state[key] = key in state.snapshot()
+
+    state.subscribe("var.*", handler)
+    state.set("var.a", "hello")
+    state.set("var.a", None)  # set-to-None: key still in store
+    state.set("var.b", "world")
+    state.delete("var.b")  # delete: key absent from store
+
+    assert set_to_none_state["var.a"] is True   # set-to-None preserves the key
+    assert set_to_none_state["var.b"] is False  # delete removes the key
+
+
+def test_delete_appends_history(state):
+    state.set("var.a", 42)
+    state.delete("var.a", source="cleanup")
+    history = state.get_history(10)
+    assert history[-1]["key"] == "var.a"
+    assert history[-1]["old_value"] == 42
+    assert history[-1]["new_value"] is None
+    assert history[-1]["source"] == "cleanup"
+
+
 # --- Variable binding tests ---
 
 
