@@ -88,7 +88,6 @@ class Engine:
         # message — clients can't tell delete from set-to-None otherwise.
         self._state_deleted_keys: set[str] = set()
         self._batch_task: asyncio.Task | None = None
-        self._batch_lock = asyncio.Lock()
 
         # Variable-to-state binding subscriptions
         self._var_binding_subs: list[str] = []
