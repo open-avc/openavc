@@ -642,11 +642,11 @@ class TestPluginAPINamespaceIsolation:
 
     @pytest.mark.asyncio
     async def test_variable_set_writes_to_var_namespace(self, wired, mock_macros, mock_devices):
-        """variable_set bypasses plugin namespace, writing to var.<id>."""
+        """variable_set writes to var.<id> when variable_write is declared."""
         state, events = wired
         api, _reg = _make_api(
             "varwriter",
-            ["state_write"],
+            ["variable_write"],
             state, events, mock_macros, mock_devices,
         )
         await api.variable_set("room_mode", "presentation")
@@ -657,11 +657,53 @@ class TestPluginAPINamespaceIsolation:
         state, events = wired
         api, _reg = _make_api(
             "varwriter",
-            ["state_write"],
+            ["variable_write"],
             state, events, mock_macros, mock_devices,
         )
         with pytest.raises(PluginPermissionError, match="flat primitives"):
             await api.variable_set("complex", {"a": 1})
+
+    @pytest.mark.asyncio
+    async def test_variable_set_requires_variable_write(self, wired, mock_macros, mock_devices):
+        """variable_set requires variable_write — state_write alone is insufficient."""
+        state, events = wired
+        api, _reg = _make_api(
+            "stateonly",
+            ["state_write"],
+            state, events, mock_macros, mock_devices,
+        )
+        with pytest.raises(PluginPermissionError, match="variable_write"):
+            await api.variable_set("room_mode", "presentation")
+        assert state.get("var.room_mode") is None
+
+    @pytest.mark.asyncio
+    async def test_variable_write_does_not_grant_state_set(self, wired, mock_macros, mock_devices):
+        """variable_write and state_write are independent — variable_write alone
+        does not let a plugin set keys in its own plugin.<id>.* namespace."""
+        state, events = wired
+        api, _reg = _make_api(
+            "varonly",
+            ["variable_write"],
+            state, events, mock_macros, mock_devices,
+        )
+        with pytest.raises(PluginPermissionError, match="state_write"):
+            await api.state_set("status", "running")
+
+    @pytest.mark.asyncio
+    async def test_plugin_with_both_capabilities_can_use_both(
+        self, wired, mock_macros, mock_devices
+    ):
+        """A plugin granted both capabilities can use both APIs."""
+        state, events = wired
+        api, _reg = _make_api(
+            "both",
+            ["state_write", "variable_write"],
+            state, events, mock_macros, mock_devices,
+        )
+        await api.state_set("status", "running")
+        await api.variable_set("room_mode", "active")
+        assert state.get("plugin.both.status") == "running"
+        assert state.get("var.room_mode") == "active"
 
     # ── Event name auto-prefixing ──
 
@@ -794,12 +836,14 @@ class TestPluginAPINamespaceIsolation:
         assert "state_read" in str(exc_info.value)
 
     @pytest.mark.asyncio
-    async def test_variable_set_requires_state_write(self, wired, mock_macros, mock_devices):
+    async def test_variable_set_requires_variable_write_capability(
+        self, wired, mock_macros, mock_devices
+    ):
         state, events = wired
         api, _reg = _make_api(
             "noperm", ["state_read"], state, events, mock_macros, mock_devices
         )
-        with pytest.raises(PluginPermissionError, match="state_write"):
+        with pytest.raises(PluginPermissionError, match="variable_write"):
             await api.variable_set("room_mode", "off")
 
 

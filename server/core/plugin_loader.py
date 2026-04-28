@@ -29,7 +29,8 @@ REQUIRED_MANIFEST_FIELDS = {"id", "name", "version", "author", "description", "c
 
 # Valid capability values
 VALID_CAPABILITIES = {
-    "state_read", "state_write", "event_emit", "event_subscribe",
+    "state_read", "state_write", "variable_write",
+    "event_emit", "event_subscribe",
     "macro_execute", "device_command", "network_listen", "usb_access",
 }
 

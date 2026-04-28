@@ -103,12 +103,13 @@ class PluginAPI:
         self._registry.track_state_key(key)
 
     async def variable_set(self, variable_id: str, value: Any) -> None:
-        """Set a user-defined variable value. Requires: state_write.
+        """Set a user-defined variable value. Requires: variable_write.
 
-        Writes to var.<variable_id> in the state store. This bypasses the
-        plugin namespace restriction since user variables are shared state.
+        Writes to var.<variable_id> in the state store. User variables are
+        shared room-logic state, so writing to them is gated by a separate
+        capability from plugin-namespace state_write.
         """
-        self._require("state_write")
+        self._require("variable_write")
         if value is not None and not isinstance(value, (str, int, float, bool)):
             raise PluginPermissionError(
                 f"Variable values must be flat primitives, got {type(value).__name__}"
