@@ -220,3 +220,78 @@ def test_invalid_regex_skipped():
     state.set_event_bus(events)
     drv = cls("test", {}, state, events)
     assert len(drv._compiled_responses) == 0
+
+
+# --- Legacy YAML key deprecation warnings ---
+
+
+def _build_minimal_definition(driver_id: str, *, response_key: str, command_key: str) -> dict:
+    """Build a minimal definition that uses the requested response/command key."""
+    return {
+        "id": driver_id,
+        "name": driver_id,
+        "transport": "tcp",
+        "commands": {
+            "ping": {
+                "label": "Ping",
+                command_key: "PING\\r",
+                "params": {},
+            },
+        },
+        "responses": [
+            {response_key: r"PONG", "mappings": []},
+        ],
+        "state_variables": {},
+    }
+
+
+def test_legacy_pattern_key_warns_once_per_driver_id(caplog):
+    from server.drivers.configurable import _WARNED_LEGACY_KEYS
+    _WARNED_LEGACY_KEYS.clear()
+
+    definition = _build_minimal_definition(
+        "legacy_pattern_test", response_key="pattern", command_key="send"
+    )
+    with caplog.at_level("WARNING"):
+        create_configurable_driver_class(definition)
+    matches = [r for r in caplog.records if "deprecated YAML key 'pattern'" in r.getMessage()]
+    assert len(matches) == 1, f"Expected exactly one warning, got {[r.getMessage() for r in matches]}"
+
+    # Same driver_id, second class build — no new warning
+    caplog.clear()
+    with caplog.at_level("WARNING"):
+        create_configurable_driver_class(definition)
+    matches = [r for r in caplog.records if "deprecated YAML key 'pattern'" in r.getMessage()]
+    assert matches == []
+
+
+def test_legacy_string_key_warns_once_per_driver_id(caplog):
+    from server.drivers.configurable import _WARNED_LEGACY_KEYS
+    _WARNED_LEGACY_KEYS.clear()
+
+    definition = _build_minimal_definition(
+        "legacy_string_test", response_key="match", command_key="string"
+    )
+    with caplog.at_level("WARNING"):
+        create_configurable_driver_class(definition)
+    matches = [r for r in caplog.records if "deprecated YAML key 'string'" in r.getMessage()]
+    assert len(matches) == 1, f"Expected exactly one warning, got {[r.getMessage() for r in matches]}"
+
+    caplog.clear()
+    with caplog.at_level("WARNING"):
+        create_configurable_driver_class(definition)
+    matches = [r for r in caplog.records if "deprecated YAML key 'string'" in r.getMessage()]
+    assert matches == []
+
+
+def test_canonical_keys_emit_no_deprecation_warning(caplog):
+    from server.drivers.configurable import _WARNED_LEGACY_KEYS
+    _WARNED_LEGACY_KEYS.clear()
+
+    definition = _build_minimal_definition(
+        "canonical_keys_test", response_key="match", command_key="send"
+    )
+    with caplog.at_level("WARNING"):
+        create_configurable_driver_class(definition)
+    matches = [r for r in caplog.records if "deprecated YAML key" in r.getMessage()]
+    assert matches == []

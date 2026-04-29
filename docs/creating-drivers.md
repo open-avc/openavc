@@ -466,7 +466,7 @@ The shorthand `set` format is recommended (cleaner, matches community driver con
   #   - { group: 1, state: power, type: string, map: { "0": "off", "1": "on" } }
 ```
 
-- `match`: A regular expression. Use capture groups `()` to extract values. (The key `pattern` is accepted as an alias.)
+- `match`: A regular expression. Use capture groups `()` to extract values.
 - `set`: Maps capture groups to state variables. `"$1"` refers to the first capture group, `"$2"` to the second, etc. Literal strings without `$` set a static value.
 
 **Verbose format** (used when you need type conversion or value maps):

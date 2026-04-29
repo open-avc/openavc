@@ -27,6 +27,44 @@ from server.utils.logger import get_logger
 log = get_logger(__name__)
 
 
+# Tracks (driver_id, legacy_key) tuples that have already been warned about,
+# so a deprecation message fires once per driver type rather than per instance
+# or per response handled.
+_WARNED_LEGACY_KEYS: set[tuple[str, str]] = set()
+
+
+def _warn_legacy_key(driver_id: str, legacy_key: str, replacement: str) -> None:
+    """Emit a one-time deprecation warning for a legacy YAML driver key."""
+    marker = (driver_id, legacy_key)
+    if marker in _WARNED_LEGACY_KEYS:
+        return
+    _WARNED_LEGACY_KEYS.add(marker)
+    log.warning(
+        "Driver '%s' uses deprecated YAML key '%s'; use '%s' instead. "
+        "Both are accepted today but the alias may be removed in a future release.",
+        driver_id, legacy_key, replacement,
+    )
+
+
+def _warn_legacy_keys_in_definition(driver_def: dict[str, Any]) -> None:
+    """Scan a driver definition for deprecated YAML keys and warn once each."""
+    driver_id = driver_def.get("id", "?")
+
+    for cmd_def in driver_def.get("commands", {}).values():
+        if not isinstance(cmd_def, dict):
+            continue
+        if "send" not in cmd_def and "string" in cmd_def:
+            _warn_legacy_key(driver_id, "string", "send")
+            break  # one warning per driver_id is enough
+
+    for resp in driver_def.get("responses", []):
+        if not isinstance(resp, dict):
+            continue
+        if "match" not in resp and "pattern" in resp:
+            _warn_legacy_key(driver_id, "pattern", "match")
+            break
+
+
 class ConfigurableDriver(BaseDriver):
     """
     A driver that interprets a JSON driver definition at runtime.
@@ -62,8 +100,8 @@ class ConfigurableDriver(BaseDriver):
                 continue
 
             try:
-                # Accept both "pattern" and "match" keys
-                raw_pattern = resp.get("pattern", "") or resp.get("match", "")
+                # Canonical key is "match"; "pattern" remains accepted as an alias.
+                raw_pattern = resp.get("match", "") or resp.get("pattern", "")
                 if not raw_pattern:
                     continue
                 resolved = self._safe_substitute(raw_pattern, self.config)
@@ -91,7 +129,7 @@ class ConfigurableDriver(BaseDriver):
             except re.error as e:
                 log.warning(
                     f"[{self.device_id}] Invalid response pattern "
-                    f"'{resp.get('pattern', resp.get('match', ''))}': {e}"
+                    f"'{resp.get('match', resp.get('pattern', ''))}': {e}"
                 )
 
     async def connect(self) -> None:
@@ -180,10 +218,10 @@ class ConfigurableDriver(BaseDriver):
         if self._is_http_command(cmd_def):
             return await self._send_http_command(command, cmd_def, params)
 
-        # Get the raw command string (accept both "string" and "send" keys)
-        raw = cmd_def.get("string", "") or cmd_def.get("send", "")
+        # Canonical key is "send"; "string" remains accepted as an alias.
+        raw = cmd_def.get("send", "") or cmd_def.get("string", "")
         if not raw:
-            log.warning(f"[{self.device_id}] Command '{command}' has no string/send")
+            log.warning(f"[{self.device_id}] Command '{command}' has no send string")
             return None
 
         # Substitute {param} placeholders — merge config values so drivers
@@ -700,6 +738,8 @@ def create_configurable_driver_class(
     attributes, ready to be registered in the driver registry.
     """
     driver_id = driver_def.get("id", "unknown")
+
+    _warn_legacy_keys_in_definition(driver_def)
 
     # Build DRIVER_INFO from the definition
     driver_info: dict[str, Any] = {
