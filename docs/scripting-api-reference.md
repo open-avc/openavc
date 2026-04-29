@@ -49,6 +49,8 @@ async def handle(key, old_value, new_value):
 
 **Handler signature:** `async def handler(key: str, old_value, new_value)`
 
+**Timing:** the handler runs *after* the change is applied — the new value is already in the store. Handlers cannot intercept or pre-empt a change. Sibling handlers run concurrently with no defined order. See the scripting guide for details.
+
 ---
 
 ## Event Object

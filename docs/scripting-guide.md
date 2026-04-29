@@ -92,6 +92,17 @@ async def any_device_power_changed(key, old_value, new_value):
     log.info(f"{key}: {old_value} -> {new_value}")
 ```
 
+#### Timing
+
+Your handler runs **after** the value is updated. By the time the body executes, the new value is already in the store and other listeners have already started reacting. You cannot "intercept" a change or block it from being seen — `@on_state_change` is for *reacting* to changes, not gating them.
+
+A few practical consequences:
+
+- `state.get(key)` at the start of your handler returns `new_value` (or possibly an even newer value, if more changes have happened since your handler was scheduled).
+- Multiple matching handlers run concurrently. Don't depend on a specific order between sibling `@on_state_change` handlers.
+- Long-running handlers don't block other state changes. The system schedules each handler as an independent task.
+- `@on_state_change("device.x.power")` and `@on_event("state.changed.device.x.power")` have effectively the same timing — both fire as async tasks after the change. Prefer `@on_state_change` for clearer intent.
+
 ## Proxy Objects
 
 ### devices (Device Control)
