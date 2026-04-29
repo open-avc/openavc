@@ -144,8 +144,6 @@ export function DeviceView() {
   const handleDeviceDeleted = useCallback(
     (deletedId: string) => {
       if (selectedId === deletedId) setSelectedId(null);
-      // Clean up phantom state keys from the frontend store
-      useConnectionStore.getState().removeKeysWithPrefix(`device.${deletedId}`);
       reloadProject();
     },
     [selectedId, reloadProject]
@@ -176,11 +174,9 @@ export function DeviceView() {
 
   const doBulkDelete = useCallback(async () => {
     setBulkDeleteConfirm(null);
-    const { removeKeysWithPrefix } = useConnectionStore.getState();
     for (const id of selectedIds) {
       try {
         await api.deleteDevice(id);
-        removeKeysWithPrefix(`device.${id}`);
       } catch (err) {
         console.error(`Failed to delete device ${id}:`, err);
       }
