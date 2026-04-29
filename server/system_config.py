@@ -68,6 +68,7 @@ DEFAULTS: dict[str, Any] = {
         "control_interface": "",
     },
     "auth": {
+        "programmer_username": "",
         "programmer_password": "",
         "api_key": "",
         "panel_lock_code": "",
@@ -111,6 +112,7 @@ ENV_OVERRIDES: dict[tuple[str, str], tuple[str, type]] = {
     ("network", "http_port"): ("OPENAVC_PORT", int),
     ("network", "bind_address"): ("OPENAVC_BIND", str),
     ("network", "control_interface"): ("OPENAVC_CONTROL_INTERFACE", str),
+    ("auth", "programmer_username"): ("OPENAVC_PROGRAMMER_USERNAME", str),
     ("auth", "programmer_password"): ("OPENAVC_PROGRAMMER_PASSWORD", str),
     ("auth", "api_key"): ("OPENAVC_API_KEY", str),
     ("auth", "panel_lock_code"): ("OPENAVC_PANEL_LOCK_CODE", str),

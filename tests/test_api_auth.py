@@ -1,5 +1,6 @@
 """Tests for the authentication module (server/api/auth.py)."""
 
+import base64
 from unittest.mock import MagicMock
 
 import pytest
@@ -53,8 +54,9 @@ def _make_app_with_protected_route() -> FastAPI:
     return app
 
 
-def _set_auth(monkeypatch, password: str = "", api_key: str = ""):
+def _set_auth(monkeypatch, password: str = "", api_key: str = "", username: str = ""):
     """Patch the live auth getters to return the given values."""
+    monkeypatch.setattr(auth_mod, "_get_username", lambda: username)
     monkeypatch.setattr(auth_mod, "_get_password", lambda: password)
     monkeypatch.setattr(auth_mod, "_get_api_key", lambda: api_key)
 
@@ -393,3 +395,122 @@ class TestFastAPIIntegration:
         resp = client.get("/guarded")
         assert resp.status_code == 401
         assert resp.headers.get("www-authenticate") == "Basic"
+
+
+# ---------------------------------------------------------------------------
+# 9. Username + password combined check
+# ---------------------------------------------------------------------------
+
+class TestUsernameAndPassword:
+    """When a username is configured, both username and password must match."""
+
+    @pytest.mark.asyncio
+    async def test_correct_user_and_pass_succeeds(self, monkeypatch):
+        _set_auth(monkeypatch, username="aaron", password="secret")
+
+        request = _make_request()
+        creds = HTTPBasicCredentials(username="aaron", password="secret")
+        result = await require_programmer_auth(request, credentials=creds)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_wrong_username_raises_401(self, monkeypatch):
+        _set_auth(monkeypatch, username="aaron", password="secret")
+
+        request = _make_request()
+        creds = HTTPBasicCredentials(username="someone-else", password="secret")
+        with pytest.raises(HTTPException) as exc_info:
+            await require_programmer_auth(request, credentials=creds)
+        assert exc_info.value.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_wrong_password_with_correct_username_raises_401(self, monkeypatch):
+        _set_auth(monkeypatch, username="aaron", password="secret")
+
+        request = _make_request()
+        creds = HTTPBasicCredentials(username="aaron", password="wrong")
+        with pytest.raises(HTTPException) as exc_info:
+            await require_programmer_auth(request, credentials=creds)
+        assert exc_info.value.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_empty_username_config_accepts_any_username(self, monkeypatch):
+        """Legacy mode: password set, no username — any username works."""
+        _set_auth(monkeypatch, username="", password="secret")
+
+        request = _make_request()
+        creds = HTTPBasicCredentials(username="anything", password="secret")
+        result = await require_programmer_auth(request, credentials=creds)
+        assert result is None
+
+    def test_integration_user_and_pass(self, monkeypatch):
+        _set_auth(monkeypatch, username="aaron", password="secret")
+
+        app = _make_app_with_protected_route()
+        client = TestClient(app)
+
+        ok = client.get("/guarded", auth=("aaron", "secret"))
+        assert ok.status_code == 200
+
+        wrong_user = client.get("/guarded", auth=("nope", "secret"))
+        assert wrong_user.status_code == 401
+
+        wrong_pass = client.get("/guarded", auth=("aaron", "nope"))
+        assert wrong_pass.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# 10. WebSocket Authorization: Basic header (browser-cached HTTP Basic creds)
+# ---------------------------------------------------------------------------
+
+class TestWsAuthBasicHeader:
+    """Browsers send Authorization: Basic on WS handshake when creds are cached."""
+
+    def test_basic_header_with_correct_user_and_pass(self, monkeypatch):
+        _set_auth(monkeypatch, username="aaron", password="secret")
+
+        encoded = base64.b64encode(b"aaron:secret").decode("ascii")
+        headers = {"authorization": f"Basic {encoded}"}
+        assert check_ws_auth({}, headers) is True
+
+    def test_basic_header_with_wrong_password(self, monkeypatch):
+        _set_auth(monkeypatch, username="aaron", password="secret")
+
+        encoded = base64.b64encode(b"aaron:wrong").decode("ascii")
+        headers = {"authorization": f"Basic {encoded}"}
+        assert check_ws_auth({}, headers) is False
+
+    def test_basic_header_with_wrong_username(self, monkeypatch):
+        _set_auth(monkeypatch, username="aaron", password="secret")
+
+        encoded = base64.b64encode(b"someone:secret").decode("ascii")
+        headers = {"authorization": f"Basic {encoded}"}
+        assert check_ws_auth({}, headers) is False
+
+    def test_basic_header_with_password_only_legacy(self, monkeypatch):
+        """No username configured: any username in the header is accepted."""
+        _set_auth(monkeypatch, password="secret")
+
+        encoded = base64.b64encode(b"anything:secret").decode("ascii")
+        headers = {"authorization": f"Basic {encoded}"}
+        assert check_ws_auth({}, headers) is True
+
+    def test_malformed_basic_header_falls_through(self, monkeypatch):
+        _set_auth(monkeypatch, password="secret")
+
+        # Garbage base64 — should not authenticate, must not raise
+        headers = {"authorization": "Basic !!!notbase64!!!"}
+        assert check_ws_auth({}, headers) is False
+
+    def test_non_basic_authorization_header_ignored(self, monkeypatch):
+        _set_auth(monkeypatch, password="secret")
+
+        headers = {"authorization": "Bearer some-token"}
+        assert check_ws_auth({}, headers) is False
+
+    def test_basic_header_without_colon_ignored(self, monkeypatch):
+        _set_auth(monkeypatch, password="secret")
+
+        encoded = base64.b64encode(b"justastring").decode("ascii")
+        headers = {"authorization": f"Basic {encoded}"}
+        assert check_ws_auth({}, headers) is False

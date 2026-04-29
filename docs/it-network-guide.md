@@ -72,13 +72,17 @@ To allow network access, set the `OPENAVC_BIND` environment variable before star
 - **Docker:** Pass `-e OPENAVC_BIND=0.0.0.0` to `docker run` (Docker deployments do this by default)
 - **Windows Installer:** The installed service is pre-configured to accept network connections
 
-Setting the bind address to `0.0.0.0` means OpenAVC will accept connections on all network interfaces. When you do this, you should also set a password to protect the configuration interface:
+Setting the bind address to `0.0.0.0` means OpenAVC will accept connections on all network interfaces. When you do this, you should also set credentials to protect the configuration interface. Set both a username and a password:
 
-- **Windows (PowerShell):** `$env:OPENAVC_PROGRAMMER_PASSWORD = "your-password"`
-- **Linux:** `export OPENAVC_PROGRAMMER_PASSWORD=your-password`
-- **Docker:** Pass `-e OPENAVC_PROGRAMMER_PASSWORD=your-password` to `docker run`
+- **Windows (PowerShell):**
+  - `$env:OPENAVC_PROGRAMMER_USERNAME = "your-username"`
+  - `$env:OPENAVC_PROGRAMMER_PASSWORD = "your-password"`
+- **Linux:**
+  - `export OPENAVC_PROGRAMMER_USERNAME=your-username`
+  - `export OPENAVC_PROGRAMMER_PASSWORD=your-password`
+- **Docker:** Pass `-e OPENAVC_PROGRAMMER_USERNAME=your-username -e OPENAVC_PROGRAMMER_PASSWORD=your-password` to `docker run`
 
-The application logs a warning at startup if it is bound to all interfaces without a password configured. The end-user touch panel remains accessible without a password; only the configuration interface (Programmer) is protected.
+The application logs a warning at startup if it is bound to all interfaces without a password configured. The end-user touch panel remains accessible without credentials; only the configuration interface (Programmer) is protected.
 
 ---
 
@@ -170,16 +174,18 @@ OpenAVC is typically deployed on an isolated AV VLAN where the controller is not
 
 | Method | Configuration | When to use |
 |--------|--------------|-------------|
-| HTTP Basic (password) | `OPENAVC_PROGRAMMER_PASSWORD` env var or `auth.programmer_password` in `system.json` | Set this when the server is network-accessible and you want to prevent unauthorized access to the Programmer IDE. The browser prompts for a password. This is for humans logging in via a browser. |
+| HTTP Basic (username + password) | `OPENAVC_PROGRAMMER_USERNAME` and `OPENAVC_PROGRAMMER_PASSWORD` env vars, or `auth.programmer_username` and `auth.programmer_password` in `system.json` | Set this when the server is network-accessible and you want to prevent unauthorized access to the Programmer IDE. The browser prompts for both username and password. This is for humans logging in via a browser. |
 | API key (token) | `OPENAVC_API_KEY` env var or `auth.api_key` in `system.json` | Set this if you have third-party integrations (control scripts, middleware, or external software) that connect to the REST API or WebSocket. Provide the key via the `X-API-Key` header. Not needed unless you are building custom integrations. |
 
-You do not need to set both. Either one protects the Programmer IDE and API endpoints. The password is for humans (browser login), the API key is for machines (HTTP headers). If both are set, either credential is accepted.
+You do not need to set both. Either one protects the Programmer IDE and API endpoints. The username/password is for humans (browser login), the API key is for machines (HTTP headers). If both are set, either credential is accepted.
+
+If a programmer password is set without a username, any username entered at the browser prompt is accepted as long as the password matches. Setting a username is recommended when authentication is required.
 
 When authentication is enabled:
 - The **Panel** (end-user touch interface) remains accessible without credentials
-- The **Programmer** (configuration interface) requires the password
+- The **Programmer** (configuration interface) requires the username and password
 - All configuration-changing API endpoints require authentication
-- Password comparison uses constant-time algorithms to prevent timing attacks
+- Username and password comparisons both use constant-time algorithms to prevent timing attacks
 
 ### TLS/HTTPS
 

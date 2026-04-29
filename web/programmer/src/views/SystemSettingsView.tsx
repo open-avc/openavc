@@ -25,6 +25,21 @@ const sectionTitle: React.CSSProperties = {
   marginBottom: "var(--space-md)",
 };
 
+const subCardTitle: React.CSSProperties = {
+  fontSize: "var(--font-size-md)",
+  fontWeight: 600,
+  color: "var(--text-primary)",
+  margin: 0,
+  marginBottom: "var(--space-xs)",
+};
+
+const subCardDescription: React.CSSProperties = {
+  fontSize: "var(--font-size-sm)",
+  color: "var(--text-secondary)",
+  marginBottom: "var(--space-lg)",
+  lineHeight: 1.5,
+};
+
 const fieldRow: React.CSSProperties = {
   display: "grid",
   gridTemplateColumns: "200px 1fr",
@@ -314,7 +329,7 @@ export function SystemSettingsView() {
         {noAuth && publicBind && (
           <div style={warningBox}>
             <AlertTriangle size={16} style={{ color: "rgb(255, 152, 0)", flexShrink: 0, marginTop: 2 }} />
-            <span>The server is accessible on the network with no authentication. Anyone on your network can open the Programmer IDE and modify your project. Set a <strong>programmer password</strong> below to require a login.</span>
+            <span>The server is accessible on the network with no authentication. Anyone on your network can open the Programmer IDE and modify your project. Set a <strong>programmer login</strong> below to require credentials.</span>
           </div>
         )}
 
@@ -404,29 +419,56 @@ export function SystemSettingsView() {
           </div>
         </div>
 
-        {/* Authentication */}
-        <h3 style={sectionTitle}>Authentication</h3>
+        {/* Access */}
+        <h3 style={sectionTitle}>Access</h3>
+        <div style={{
+          fontSize: "var(--font-size-sm)",
+          color: "var(--text-secondary)",
+          marginBottom: "var(--space-md)",
+          lineHeight: 1.5,
+        }}>
+          Access controls are optional. When the server is only accessible locally (bind address <code>127.0.0.1</code>), no credentials are needed.
+          When the server is accessible on the network (<code>0.0.0.0</code>), set at least one of the options below to prevent unauthorized access.
+          The Panel UI is never protected so end users can always reach it.
+        </div>
+
         <div style={cardStyle}>
-          <div style={{
-            fontSize: "var(--font-size-sm)",
-            color: "var(--text-secondary)",
-            marginBottom: "var(--space-lg)",
-            lineHeight: 1.5,
-          }}>
-            Authentication is optional. When the server is only accessible locally (bind address <code>127.0.0.1</code>), no credentials are needed.
-            When the server is accessible on the network (<code>0.0.0.0</code>), set at least one of the options below to prevent unauthorized access to the Programmer IDE and API.
-            The Panel UI is never password-protected so end users can always reach it.
+          <h4 style={subCardTitle}>Programmer login</h4>
+          <div style={subCardDescription}>
+            For humans opening the Programmer IDE in a browser. When set, the browser prompts for username and password before showing the IDE.
           </div>
           <div style={fieldRow}>
-            <label style={labelStyle}>Programmer password</label>
+            <label style={labelStyle}>Username</label>
+            <input
+              style={inputStyle}
+              type="text"
+              autoComplete="off"
+              spellCheck={false}
+              value={auth.programmer_username}
+              placeholder="No username set"
+              onChange={(e) => update("auth", "programmer_username", e.target.value)}
+            />
+            <span style={helpText}>
+              Required if a password is set. The browser asks for both username and password.
+            </span>
+          </div>
+          <div style={fieldRow}>
+            <label style={labelStyle}>Password</label>
             <PasswordField
               value={auth.programmer_password}
               placeholder="No password set"
               onChange={(v) => update("auth", "programmer_password", v)}
             />
             <span style={helpText}>
-              Protects the Programmer IDE with a browser login prompt. Set this if anyone else on your network could access the server and you want to prevent them from modifying the project. This is for humans logging in via a browser.
+              Set this if anyone else on your network could open the Programmer IDE.
             </span>
+          </div>
+        </div>
+
+        <div style={cardStyle}>
+          <h4 style={subCardTitle}>API key (for integrations)</h4>
+          <div style={subCardDescription}>
+            For external systems — control scripts, middleware, or other software that connects to the OpenAVC REST API or WebSocket. Not needed unless you are building a custom integration.
           </div>
           <div style={fieldRow}>
             <label style={labelStyle}>API key</label>
@@ -436,7 +478,7 @@ export function SystemSettingsView() {
               onChange={(v) => update("auth", "api_key", v)}
             />
             <span style={helpText}>
-              For third-party integrations. If you have external systems (control scripts, middleware, or other software) that connect to the OpenAVC REST API or WebSocket, set an API key here and provide it to those systems. Not needed unless you are building custom integrations.
+              Provide this to external systems via the <code>X-API-Key</code> header.
             </span>
           </div>
         </div>

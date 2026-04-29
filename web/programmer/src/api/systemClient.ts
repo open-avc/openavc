@@ -213,7 +213,7 @@ export async function importTheme(file: File): Promise<{ status: string; id: str
 
 export interface SystemConfig {
   network: { http_port: number; bind_address: string; control_interface: string };
-  auth: { programmer_password: string; api_key: string; panel_lock_code: string };
+  auth: { programmer_username: string; programmer_password: string; api_key: string; panel_lock_code: string };
   isc: { enabled: boolean; discovery_enabled: boolean; auth_key: string };
   logging: { level: string; file_enabled: boolean; max_size_mb: number; max_files: number };
   updates: { check_enabled: boolean; channel: string; auto_check_interval_hours: number; auto_backup_before_update: boolean; notify_only: boolean };
