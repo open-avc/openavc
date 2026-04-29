@@ -63,6 +63,17 @@ export function useWebSocket() {
       }, 300);
     };
 
+    // Plugin events arrive in bursts during engine reload (2N events for N
+    // plugins); debounce so we issue at most one listPlugins+extensions fetch
+    // per burst.
+    let pluginRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+    const debouncedPluginRefresh = () => {
+      if (pluginRefreshTimer) clearTimeout(pluginRefreshTimer);
+      pluginRefreshTimer = setTimeout(() => {
+        usePluginStore.getState().load();
+      }, 300);
+    };
+
     const unsub = ws.onMessage((msg) => {
       // Full state snapshot (sent by server on WS connect)
       if (msg.type === "state.snapshot" && msg.state) {
@@ -301,12 +312,13 @@ export function useWebSocket() {
         msg.type === "plugin.error" ||
         msg.type === "plugin.missing"
       ) {
-        usePluginStore.getState().load();
+        debouncedPluginRefresh();
       }
     });
 
     return () => {
       if (reloadTimer) clearTimeout(reloadTimer);
+      if (pluginRefreshTimer) clearTimeout(pluginRefreshTimer);
       unsub();
       unsubConnect();
       unsubDisconnect();
