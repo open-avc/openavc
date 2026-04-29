@@ -203,3 +203,65 @@ async def test_broadcast_state_delete_skips_client_with_no_matching_keys(engine)
     })
 
     assert sent == []
+
+
+# --- Disconnect handling: a failing send removes the client ---
+
+
+@pytest.mark.asyncio
+async def test_broadcast_fast_path_drops_failing_client(engine):
+    """Fast-path send failure drops the client; surviving clients still receive."""
+    received_ok: list[dict] = []
+
+    class GoodWS:
+        async def send_text(self, text: str):
+            import json
+            received_ok.append(json.loads(text))
+
+    class BadWS:
+        async def send_text(self, text: str):
+            raise RuntimeError("connection closed")
+
+    good = GoodWS()
+    bad = BadWS()
+    engine.add_ws_client(good)
+    engine.add_ws_client(bad)
+    assert bad in engine._ws_clients
+
+    await engine.broadcast_ws({"type": "ping"})
+
+    assert received_ok == [{"type": "ping"}]
+    assert bad not in engine._ws_clients
+    assert good in engine._ws_clients
+
+
+@pytest.mark.asyncio
+async def test_broadcast_slow_path_drops_failing_client(engine):
+    """Slow-path (filtered) send failure drops the client."""
+    received_ok: list[dict] = []
+
+    class GoodWS:
+        async def send_text(self, text: str):
+            import json
+            received_ok.append(json.loads(text))
+
+    class BadWS:
+        async def send_text(self, text: str):
+            raise RuntimeError("connection closed")
+
+    good = GoodWS()
+    bad = BadWS()
+    # Both subscribed to var.* so the slow path is exercised on both
+    engine.add_ws_client(good, ns_prefixes=("var.",))
+    engine.add_ws_client(bad, ns_prefixes=("var.",))
+    assert bad in engine._ws_clients
+
+    await engine.broadcast_ws({
+        "type": "state.delete",
+        "keys": ["var.a"],
+    })
+
+    assert received_ok == [{"type": "state.delete", "keys": ["var.a"]}]
+    assert bad not in engine._ws_clients
+    assert id(bad) not in engine._ws_ns_filters
+    assert good in engine._ws_clients

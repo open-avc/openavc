@@ -991,51 +991,57 @@ class Engine:
         # Fast path: no namespace filters or not a filterable message type
         if not is_filterable or not has_any_filters:
             text = json.dumps(message)
-            disconnected = []
-            for ws in list(self._ws_clients):
-                try:
-                    await ws.send_text(text)
-                except Exception:
-                    disconnected.append(ws)
-            for ws in disconnected:
-                self._ws_clients.discard(ws)
-                self._ws_ns_filters.pop(id(ws), None)
+            clients = list(self._ws_clients)
+            results = await asyncio.gather(
+                *(ws.send_text(text) for ws in clients),
+                return_exceptions=True,
+            )
+            for ws, result in zip(clients, results):
+                if isinstance(result, Exception):
+                    self._ws_clients.discard(ws)
+                    self._ws_ns_filters.pop(id(ws), None)
             return
 
         # Slow path: filter per client based on message type
         full_text: str | None = None
-        disconnected = []
+        sends: list[tuple[Any, Any]] = []  # (ws, send_coroutine)
         for ws in list(self._ws_clients):
-            try:
-                ns = self._ws_ns_filters.get(id(ws))
-                if not ns:
-                    if full_text is None:
-                        full_text = json.dumps(message)
-                    await ws.send_text(full_text)
-                    continue
+            ns = self._ws_ns_filters.get(id(ws))
+            if not ns:
+                if full_text is None:
+                    full_text = json.dumps(message)
+                sends.append((ws, ws.send_text(full_text)))
+                continue
 
-                if msg_type == "state.update":
-                    changes = message.get("changes", {})
-                    filtered = {k: v for k, v in changes.items()
-                                if k.startswith(ns)}
-                    if not filtered:
-                        continue
-                    await ws.send_text(json.dumps({
-                        "type": "state.update", "changes": filtered,
-                    }))
-                else:  # state.delete
-                    keys = message.get("keys", [])
-                    filtered_keys = [k for k in keys if k.startswith(ns)]
-                    if not filtered_keys:
-                        continue
-                    await ws.send_text(json.dumps({
-                        "type": "state.delete", "keys": filtered_keys,
-                    }))
-            except Exception:
-                disconnected.append(ws)
-        for ws in disconnected:
-            self._ws_clients.discard(ws)
-            self._ws_ns_filters.pop(id(ws), None)
+            if msg_type == "state.update":
+                changes = message.get("changes", {})
+                filtered = {k: v for k, v in changes.items()
+                            if k.startswith(ns)}
+                if not filtered:
+                    continue
+                sends.append((ws, ws.send_text(json.dumps({
+                    "type": "state.update", "changes": filtered,
+                }))))
+            else:  # state.delete
+                keys = message.get("keys", [])
+                filtered_keys = [k for k in keys if k.startswith(ns)]
+                if not filtered_keys:
+                    continue
+                sends.append((ws, ws.send_text(json.dumps({
+                    "type": "state.delete", "keys": filtered_keys,
+                }))))
+
+        if not sends:
+            return
+        clients_to_send = [ws for ws, _ in sends]
+        results = await asyncio.gather(
+            *(coro for _, coro in sends),
+            return_exceptions=True,
+        )
+        for ws, result in zip(clients_to_send, results):
+            if isinstance(result, Exception):
+                self._ws_clients.discard(ws)
+                self._ws_ns_filters.pop(id(ws), None)
 
     async def _on_pending_settings_applied(
         self, event: str, payload: dict[str, Any]
