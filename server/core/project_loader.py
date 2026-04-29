@@ -12,7 +12,19 @@ import tempfile
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+class _ForwardCompatModel(BaseModel):
+    """Base for project schema models.
+
+    `extra="allow"` preserves unknown fields through load/save, so a project
+    file written by a newer platform isn't destructively re-saved by an older
+    one. Unknown fields land in `__pydantic_extra__` and round-trip through
+    `model_dump()`.
+    """
+
+    model_config = ConfigDict(extra="allow")
 
 from server.utils.logger import get_logger
 
@@ -22,7 +34,7 @@ log = get_logger(__name__)
 # --- Pydantic Models ---
 
 
-class ProjectMeta(BaseModel):
+class ProjectMeta(_ForwardCompatModel):
     id: str
     name: str
     description: str = ""
@@ -30,7 +42,7 @@ class ProjectMeta(BaseModel):
     modified: str = ""
 
 
-class DeviceConfig(BaseModel):
+class DeviceConfig(_ForwardCompatModel):
     id: str
     driver: str
     name: str
@@ -46,7 +58,7 @@ class DeviceConfig(BaseModel):
         return v
 
 
-class DeviceGroup(BaseModel):
+class DeviceGroup(_ForwardCompatModel):
     id: str
     name: str
     device_ids: list[str] = Field(default_factory=list)
@@ -59,14 +71,14 @@ class DeviceGroup(BaseModel):
         return v
 
 
-class VariableValidation(BaseModel):
+class VariableValidation(_ForwardCompatModel):
     """Optional validation rules for a variable."""
     min: float | None = None  # number type: minimum value
     max: float | None = None  # number type: maximum value
     allowed: list[str] | None = None  # string type: allowed values (enum)
 
 
-class VariableConfig(BaseModel):
+class VariableConfig(_ForwardCompatModel):
     id: str
     type: str = "string"
 
@@ -86,14 +98,14 @@ class VariableConfig(BaseModel):
     validation: VariableValidation | None = None  # optional validation rules
 
 
-class StepCondition(BaseModel):
+class StepCondition(_ForwardCompatModel):
     """Condition for conditional steps and skip_if guards."""
     key: str
     operator: str = "eq"  # eq, ne, gt, lt, gte, lte, truthy, falsy
     value: Any = None
 
 
-class MacroStep(BaseModel):
+class MacroStep(_ForwardCompatModel):
     action: str  # "device.command", "group.command", "delay", "state.set", "macro", "event.emit", "conditional", "wait_until"
     # Fields used by different action types (all optional, validated at runtime)
     device: str | None = None
@@ -126,7 +138,7 @@ class MacroStep(BaseModel):
     skip_if_offline: bool = False
 
 
-class TriggerConfig(BaseModel):
+class TriggerConfig(_ForwardCompatModel):
     """Trigger definition — when should a macro fire automatically."""
     id: str
     type: Literal["schedule", "state_change", "event", "startup"]
@@ -160,7 +172,7 @@ class TriggerConfig(BaseModel):
     conditions: list[StepCondition] = Field(default_factory=list)
 
 
-class MacroConfig(BaseModel):
+class MacroConfig(_ForwardCompatModel):
     id: str
     name: str
 
@@ -176,14 +188,14 @@ class MacroConfig(BaseModel):
     cancel_group: str | None = None  # macros in the same group preempt each other
 
 
-class GridArea(BaseModel):
+class GridArea(_ForwardCompatModel):
     col: int = 1
     row: int = 1
     col_span: int = 1
     row_span: int = 1
 
 
-class UIElement(BaseModel):
+class UIElement(_ForwardCompatModel):
     id: str
     type: str  # "button", "label", "slider", "status_led", "page_nav", etc.
     label: str | None = None
@@ -241,12 +253,12 @@ class UIElement(BaseModel):
     bindings: dict[str, Any] = Field(default_factory=dict)
 
 
-class GridConfig(BaseModel):
+class GridConfig(_ForwardCompatModel):
     columns: int = 12
     rows: int = 8
 
 
-class PageBackground(BaseModel):
+class PageBackground(_ForwardCompatModel):
     color: str | None = None
     image: str | None = None  # asset reference e.g. "assets://bg.jpg"
     image_opacity: float = 1.0
@@ -255,7 +267,7 @@ class PageBackground(BaseModel):
     gradient: dict[str, Any] | None = None  # {type, angle, from, to}
 
 
-class OverlayConfig(BaseModel):
+class OverlayConfig(_ForwardCompatModel):
     width: int | None = None
     height: int | None = None
     position: str = "center"
@@ -265,7 +277,7 @@ class OverlayConfig(BaseModel):
     side: str | None = None
 
 
-class UIPage(BaseModel):
+class UIPage(_ForwardCompatModel):
     id: str
     name: str
     page_type: str = "page"
@@ -275,7 +287,7 @@ class UIPage(BaseModel):
     elements: list[UIElement] = Field(default_factory=list)
 
 
-class UISettings(BaseModel):
+class UISettings(_ForwardCompatModel):
     theme: str = "dark"
     theme_id: str = ""
     theme_overrides: dict[str, Any] = Field(default_factory=dict)
@@ -296,19 +308,19 @@ class MasterElement(UIElement):
     pages: str | list[str] = "*"
 
 
-class PageGroup(BaseModel):
+class PageGroup(_ForwardCompatModel):
     name: str
     pages: list[str] = Field(default_factory=list)  # list of page IDs
 
 
-class UIConfig(BaseModel):
+class UIConfig(_ForwardCompatModel):
     settings: UISettings = Field(default_factory=UISettings)
     pages: list[UIPage] = Field(default_factory=list)
     master_elements: list[MasterElement] = Field(default_factory=list)
     page_groups: list[PageGroup] = Field(default_factory=list)
 
 
-class ScriptConfig(BaseModel):
+class ScriptConfig(_ForwardCompatModel):
     id: str
     file: str
     enabled: bool = True
@@ -322,14 +334,14 @@ class ScriptConfig(BaseModel):
         return v
 
 
-class ISCConfig(BaseModel):
+class ISCConfig(_ForwardCompatModel):
     enabled: bool = False
     shared_state: list[str] = Field(default_factory=list)
     auth_key: str = ""
     peers: list[str] = Field(default_factory=list)  # Manual peer addresses, e.g. ["192.168.1.10:8080"]
 
 
-class DriverDependency(BaseModel):
+class DriverDependency(_ForwardCompatModel):
     """A driver required by this project (auto-populated on save)."""
     driver_id: str
     driver_name: str = ""
@@ -337,7 +349,7 @@ class DriverDependency(BaseModel):
     source: Literal["builtin", "community", "user", "unknown", ""] = ""
 
 
-class PluginDependency(BaseModel):
+class PluginDependency(_ForwardCompatModel):
     """A plugin required by this project (auto-populated on save)."""
     plugin_id: str
     plugin_name: str = ""
@@ -346,13 +358,13 @@ class PluginDependency(BaseModel):
     platforms: list[str] = Field(default_factory=lambda: ["all"])
 
 
-class PluginConfig(BaseModel):
+class PluginConfig(_ForwardCompatModel):
     """Configuration for a single plugin in the project file."""
     enabled: bool = False
     config: dict[str, Any] = Field(default_factory=dict)
 
 
-class ProjectConfig(BaseModel):
+class ProjectConfig(_ForwardCompatModel):
     openavc_version: str = "0.4.0"
     project: ProjectMeta
     devices: list[DeviceConfig] = Field(default_factory=list)

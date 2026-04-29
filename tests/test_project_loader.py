@@ -174,6 +174,66 @@ def test_invalid_project_raises():
     Path(tmp_path).unlink()
 
 
+# --- Forward-compat: unknown fields survive load/save round-trip ---
+
+
+def test_unknown_top_level_field_survives_round_trip():
+    """A future top-level section (e.g., new in v0.5.0) round-trips through v0.4.0."""
+    data = {
+        "openavc_version": "0.4.0",
+        "project": {"id": "fc1", "name": "FC Test"},
+        "lighting_scenes": [
+            {"id": "scene1", "name": "House lights up"},
+        ],
+    }
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".json", delete=False
+    ) as f:
+        json.dump(data, f)
+        tmp_path = f.name
+
+    project = load_project(tmp_path)
+    save_project(tmp_path, project)
+    saved = json.loads(Path(tmp_path).read_text())
+
+    assert "lighting_scenes" in saved
+    assert saved["lighting_scenes"] == [{"id": "scene1", "name": "House lights up"}]
+
+    Path(tmp_path).unlink()
+
+
+def test_unknown_nested_field_survives_round_trip():
+    """A future field on a nested model (e.g., DeviceConfig) round-trips through v0.4.0."""
+    data = {
+        "openavc_version": "0.4.0",
+        "project": {"id": "fc2", "name": "FC Nested"},
+        "devices": [
+            {
+                "id": "dev1",
+                "name": "Future Projector",
+                "driver": "pjlink_class1",
+                "config": {},
+                "max_concurrent_calls": 4,  # hypothetical v0.5.0 field
+            },
+        ],
+    }
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".json", delete=False
+    ) as f:
+        json.dump(data, f)
+        tmp_path = f.name
+
+    project = load_project(tmp_path)
+    save_project(tmp_path, project)
+    saved = json.loads(Path(tmp_path).read_text())
+
+    saved_devices = saved.get("devices", [])
+    assert len(saved_devices) == 1
+    assert saved_devices[0].get("max_concurrent_calls") == 4
+
+    Path(tmp_path).unlink()
+
+
 # --- UI Overhaul model tests ---
 
 
