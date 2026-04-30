@@ -64,6 +64,9 @@ export function CommunityBrowser() {
   const installedIdSet = new Set(installedDrivers.map((d) => d.id));
   const installedVersions = new Map(installedDrivers.map((d) => [d.id, d.version ?? ""]));
 
+  // Build a map of driver id -> name for deprecated drivers' replacement lookup
+  const driverNameById = new Map(communityDrivers.map((d) => [d.id, d.name]));
+
   const filteredDrivers = communityDrivers.filter((driver) => {
     // Category filter
     if (activeCategory !== "All") {
@@ -74,12 +77,20 @@ export function CommunityBrowser() {
     // Search filter
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      return (
-        driver.name.toLowerCase().includes(q) ||
-        driver.manufacturer.toLowerCase().includes(q) ||
-        driver.description.toLowerCase().includes(q) ||
-        driver.id.toLowerCase().includes(q)
-      );
+      if (driver.name.toLowerCase().includes(q)) return true;
+      if (driver.manufacturer.toLowerCase().includes(q)) return true;
+      if (driver.description.toLowerCase().includes(q)) return true;
+      if (driver.id.toLowerCase().includes(q)) return true;
+      if (driver.tags?.some((t) => t.toLowerCase().includes(q))) return true;
+      if (
+        driver.compatible_models?.some(
+          (cm) =>
+            cm.manufacturer.toLowerCase().includes(q) ||
+            cm.models.some((m) => m.toLowerCase().includes(q)),
+        )
+      )
+        return true;
+      return false;
     }
     return true;
   });
@@ -260,9 +271,15 @@ export function CommunityBrowser() {
                 installing={installingIds.has(driver.id)}
                 installError={installErrors[driver.id] || null}
                 updateAvailable={hasUpdate(installedVersions.get(driver.id) ?? "", driver.version)}
+                replacementName={
+                  driver.deprecated && driver.replacement_id
+                    ? driverNameById.get(driver.replacement_id) ?? driver.replacement_id
+                    : null
+                }
                 onInstall={handleInstall}
                 onUpdate={handleUpdate}
                 onSelect={setSelectedDriver}
+                onTagClick={setSearchQuery}
               />
             ))}
           </div>
@@ -294,9 +311,18 @@ export function CommunityBrowser() {
           installing={installingIds.has(selectedDriver.id)}
           installError={installErrors[selectedDriver.id] || null}
           updateAvailable={hasUpdate(installedVersions.get(selectedDriver.id) ?? "", selectedDriver.version)}
+          replacementName={
+            selectedDriver.deprecated && selectedDriver.replacement_id
+              ? driverNameById.get(selectedDriver.replacement_id) ?? selectedDriver.replacement_id
+              : null
+          }
           onInstall={handleInstall}
           onUpdate={handleUpdate}
           onClose={() => setSelectedDriver(null)}
+          onTagClick={(tag) => {
+            setSearchQuery(tag);
+            setSelectedDriver(null);
+          }}
         />
       )}
     </div>
@@ -311,19 +337,25 @@ function DriverCard({
   installing,
   installError,
   updateAvailable,
+  replacementName,
   onInstall,
   onUpdate,
   onSelect,
+  onTagClick,
 }: {
   driver: CommunityDriver;
   installed: boolean;
   installing: boolean;
   installError: string | null;
   updateAvailable: boolean;
+  replacementName: string | null;
   onInstall: (driver: CommunityDriver) => void;
   onUpdate: (driver: CommunityDriver) => void;
   onSelect: (driver: CommunityDriver) => void;
+  onTagClick: (tag: string) => void;
 }) {
+  const compatibleModelCount =
+    driver.compatible_models?.reduce((acc, cm) => acc + cm.models.length, 0) ?? 0;
   const [hovered, setHovered] = useState(false);
 
   const catColor = CATEGORY_COLORS[driver.category.toLowerCase()] || "#888";
@@ -344,6 +376,7 @@ function DriverCard({
         border: "1px solid var(--border-color)",
         transition: "background 0.15s",
         cursor: "pointer",
+        opacity: driver.deprecated ? 0.65 : 1,
       }}
     >
       {/* Header row: name + badges */}
@@ -376,6 +409,30 @@ function DriverCard({
             {driver.simulated && (
               <span title="Simulator available" style={{ display: "flex", flexShrink: 0 }}>
                 <PlayCircle size={14} style={{ color: "var(--accent)" }} />
+              </span>
+            )}
+            {driver.deprecated && (
+              <span
+                title={
+                  replacementName
+                    ? `Deprecated — use ${replacementName} instead`
+                    : "Deprecated"
+                }
+                style={{
+                  marginLeft: "var(--space-xs)",
+                  padding: "0 6px",
+                  borderRadius: "3px",
+                  fontSize: "10px",
+                  fontWeight: 600,
+                  background: "rgba(239, 68, 68, 0.15)",
+                  color: "var(--color-error)",
+                  border: "1px solid rgba(239, 68, 68, 0.4)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                  flexShrink: 0,
+                }}
+              >
+                Deprecated
               </span>
             )}
           </div>
@@ -433,6 +490,34 @@ function DriverCard({
         </span>
       </div>
 
+      {/* Tags */}
+      {driver.tags && driver.tags.length > 0 && (
+        <div style={{ display: "flex", gap: "var(--space-xs)", flexWrap: "wrap" }}>
+          {driver.tags.map((tag) => (
+            <button
+              key={tag}
+              onClick={(e) => {
+                e.stopPropagation();
+                onTagClick(tag);
+              }}
+              title={`Search for "${tag}"`}
+              style={{
+                padding: "1px 6px",
+                borderRadius: "3px",
+                fontSize: "10px",
+                fontWeight: 500,
+                background: "rgba(96,165,250,0.10)",
+                color: "#60a5fa",
+                border: "1px solid rgba(96,165,250,0.25)",
+                cursor: "pointer",
+              }}
+            >
+              {tag}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Description */}
       <div
         style={{
@@ -448,6 +533,13 @@ function DriverCard({
       >
         {driver.description}
       </div>
+
+      {compatibleModelCount > 0 && (
+        <div style={{ fontSize: "11px", color: "#888" }}>
+          Compatible with {compatibleModelCount}{" "}
+          {compatibleModelCount === 1 ? "model" : "models"}
+        </div>
+      )}
 
       {/* Install error */}
       {installError && (
@@ -571,21 +663,29 @@ function CommunityDriverDetail({
   installing,
   installError,
   updateAvailable,
+  replacementName,
   onInstall,
   onUpdate,
   onClose,
+  onTagClick,
 }: {
   driver: CommunityDriver;
   installed: boolean;
   installing: boolean;
   installError: string | null;
   updateAvailable: boolean;
+  replacementName: string | null;
   onInstall: (driver: CommunityDriver) => void;
   onUpdate: (driver: CommunityDriver) => void;
   onClose: () => void;
+  onTagClick: (tag: string) => void;
 }) {
   const catColor = CATEGORY_COLORS[driver.category.toLowerCase()] || "#888";
   const transportColor = TRANSPORT_COLORS[driver.transport.toLowerCase()] || "#888";
+  const confidenceLabel = (c: string) =>
+    c === "full" ? "Full support" : c === "partial" ? "Partial support" : "Untested";
+  const confidenceColor = (c: string) =>
+    c === "full" ? "#10b981" : c === "partial" ? "#f59e0b" : "#94a3b8";
 
   return (
     <div
@@ -615,6 +715,26 @@ function CommunityDriverDetail({
           padding: "var(--space-lg)",
         }}
       >
+        {/* Deprecation banner */}
+        {driver.deprecated && (
+          <div
+            style={{
+              marginBottom: "var(--space-md)",
+              padding: "var(--space-sm) var(--space-md)",
+              background: "rgba(239, 68, 68, 0.1)",
+              border: "1px solid rgba(239, 68, 68, 0.3)",
+              borderRadius: "var(--radius)",
+              color: "var(--color-error)",
+              fontSize: "var(--font-size-sm)",
+            }}
+          >
+            <strong>Deprecated.</strong>{" "}
+            {replacementName
+              ? `Use ${replacementName} instead.`
+              : "Do not install for new projects."}
+          </div>
+        )}
+
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
           <div>
@@ -699,6 +819,31 @@ function CommunityDriverDetail({
           </span>
         </div>
 
+        {/* Tags */}
+        {driver.tags && driver.tags.length > 0 && (
+          <div style={{ marginTop: "var(--space-sm)", display: "flex", gap: "var(--space-xs)", flexWrap: "wrap" }}>
+            {driver.tags.map((tag) => (
+              <button
+                key={tag}
+                onClick={() => onTagClick(tag)}
+                title={`Search for "${tag}"`}
+                style={{
+                  padding: "2px 8px",
+                  borderRadius: "3px",
+                  fontSize: "11px",
+                  fontWeight: 500,
+                  background: "rgba(96,165,250,0.10)",
+                  color: "#60a5fa",
+                  border: "1px solid rgba(96,165,250,0.25)",
+                  cursor: "pointer",
+                }}
+              >
+                {tag}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Full description */}
         <div style={{ marginTop: "var(--space-lg)", lineHeight: 1.6, fontSize: "var(--font-size-sm)" }}>
           {driver.description}
@@ -742,6 +887,66 @@ function CommunityDriverDetail({
           </div>
         )}
 
+        {/* Help overview (when driver carries help.overview) */}
+        {driver.help?.overview && (
+          <div style={{ marginTop: "var(--space-md)" }}>
+            <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginBottom: 4, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Overview
+            </div>
+            <div style={{ fontSize: "var(--font-size-sm)", lineHeight: 1.5, color: "var(--text-muted)", whiteSpace: "pre-wrap" }}>
+              {driver.help.overview}
+            </div>
+          </div>
+        )}
+
+        {/* Compatible models */}
+        {driver.compatible_models && driver.compatible_models.length > 0 && (
+          <div style={{ marginTop: "var(--space-md)" }}>
+            <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginBottom: 4, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Compatible Devices
+            </div>
+            {driver.compatible_models.map((cm, idx) => (
+              <div
+                key={idx}
+                style={{
+                  marginTop: idx === 0 ? 0 : "var(--space-sm)",
+                  padding: "var(--space-sm) var(--space-md)",
+                  background: "rgba(255,255,255,0.03)",
+                  borderRadius: "var(--radius)",
+                  border: "1px solid var(--border-color)",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", marginBottom: 4 }}>
+                  <span style={{ fontSize: "var(--font-size-sm)", fontWeight: 600, color: "#ccc" }}>
+                    {cm.manufacturer}
+                  </span>
+                  <span
+                    style={{
+                      padding: "1px 6px",
+                      borderRadius: "3px",
+                      fontSize: "10px",
+                      fontWeight: 500,
+                      background: `${confidenceColor(cm.confidence)}22`,
+                      color: confidenceColor(cm.confidence),
+                      border: `1px solid ${confidenceColor(cm.confidence)}44`,
+                    }}
+                  >
+                    {confidenceLabel(cm.confidence)}
+                  </span>
+                </div>
+                <div style={{ fontSize: "12px", color: "var(--text-muted)", lineHeight: 1.5 }}>
+                  {cm.models.join(", ")}
+                </div>
+                {cm.notes && (
+                  <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: 4, fontStyle: "italic" }}>
+                    {cm.notes}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Note about help */}
         <div
           style={{
@@ -755,7 +960,7 @@ function CommunityDriverDetail({
             fontStyle: "italic",
           }}
         >
-          Install this driver to see setup instructions, configuration details, and available commands.
+          Install this driver to see configuration details and available commands.
         </div>
 
         {/* Install error */}
