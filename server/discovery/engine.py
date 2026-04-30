@@ -15,7 +15,7 @@ from server.discovery.protocol_prober import probe_device as run_protocol_probes
 from server.discovery.oui_database import OUIDatabase
 from server.discovery.driver_matcher import DriverMatcher, CommunityDriverMatcher
 from server.discovery.hints import load_driver_hints
-from server.discovery.community_index import CommunityIndexCache
+from server.discovery.community_index import CommunityDevicesCache, CommunityIndexCache
 from server.discovery.mdns_scanner import MDNSScanner
 from server.discovery.ssdp_scanner import SSDPScanner
 from server.discovery.snmp_scanner import SNMPScanner
@@ -139,6 +139,7 @@ class DiscoveryEngine:
         self.oui_db = OUIDatabase()
         self.driver_matcher: DriverMatcher | None = None
         self.community_index = CommunityIndexCache()
+        self.community_devices = CommunityDevicesCache()
         self.results: dict[str, DiscoveredDevice] = {}
         self.scan_status = ScanStatus()
         self._scan_task: asyncio.Task | None = None
@@ -227,8 +228,9 @@ class DiscoveryEngine:
         # Community driver matching
         community_drivers = await self.community_index.get_drivers()
         if community_drivers:
+            devices_lookup = await self.community_devices.get_lookup()
             community_matcher = CommunityDriverMatcher(
-                community_drivers, installed_ids,
+                community_drivers, installed_ids, devices_lookup=devices_lookup,
             )
             community_matches = community_matcher.match_device(device)
             device.matched_drivers.extend(community_matches)
@@ -704,8 +706,9 @@ class DiscoveryEngine:
             # Run community driver matching
             community_drivers = await self.community_index.get_drivers()
             if community_drivers:
+                devices_lookup = await self.community_devices.get_lookup()
                 community_matcher = CommunityDriverMatcher(
-                    community_drivers, installed_ids,
+                    community_drivers, installed_ids, devices_lookup=devices_lookup,
                 )
                 for i, device in enumerate(self.results.values()):
                     community_matches = community_matcher.match_device(device)

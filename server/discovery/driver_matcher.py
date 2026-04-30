@@ -221,14 +221,26 @@ class CommunityDriverMatcher:
 
     Community matches use the same scoring signals as installed driver matching
     but apply a 0.7 penalty multiplier so they never outrank installed drivers.
+
+    When `devices_lookup` is provided (the reverse-indexed devices.json catalog),
+    a discovered device with a known (manufacturer, model) gets an authoritative
+    suggestion at high confidence. Heuristic scoring still runs alongside.
     """
 
     PENALTY = 0.7  # Community matches are penalized vs installed
+
+    # Confidence-to-score for exact device-catalog hits (before PENALTY).
+    _EXACT_CONFIDENCE_SCORES = {
+        "full": 0.95,
+        "partial": 0.75,
+        "untested": 0.55,
+    }
 
     def __init__(
         self,
         community_drivers: list[dict[str, Any]],
         installed_ids: set[str],
+        devices_lookup: dict[tuple[str, str], list[dict[str, Any]]] | None = None,
     ) -> None:
         # Filter out already-installed and utility drivers
         self.drivers = [
@@ -236,20 +248,29 @@ class CommunityDriverMatcher:
             if d.get("id") not in installed_ids
             and d.get("category") != "utility"
         ]
+        self._driver_by_id = {d["id"]: d for d in self.drivers if d.get("id")}
+        self.devices_lookup = devices_lookup or {}
 
     def match_device(self, device: DiscoveredDevice) -> list[DriverMatch]:
         """Find matching community drivers for a discovered device."""
-        matches: list[DriverMatch] = []
+        # Step 1: exact (manufacturer, model) hits from the device catalog.
+        exact_matches = self._exact_device_matches(device)
+        exact_ids = {m.driver_id for m in exact_matches}
+
+        # Step 2: heuristic scoring across remaining drivers (existing logic).
+        matches: list[DriverMatch] = list(exact_matches)
         device_protocols = {p.lower() for p in device.protocols}
         device_ports = set(device.open_ports)
         dev_mfg = (device.manufacturer or "").lower()
         dev_cat = (device.category or "").lower()
 
         for drv in self.drivers:
+            drv_id = drv.get("id", "")
+            if drv_id in exact_ids:
+                continue  # Already added via exact device-catalog hit
             score = 0.0
             reasons: list[str] = []
 
-            drv_id = drv.get("id", "")
             drv_mfg = drv.get("manufacturer", "").lower()
             drv_cat = drv.get("category", "").lower()
             drv_ports = drv.get("ports", [])
@@ -316,3 +337,53 @@ class CommunityDriverMatcher:
 
         matches.sort(key=lambda m: m.confidence, reverse=True)
         return matches
+
+    def _exact_device_matches(self, device: DiscoveredDevice) -> list[DriverMatch]:
+        """Resolve (device.manufacturer, device.model) against the devices catalog.
+
+        When a discovered device's manufacturer + model are both known, the
+        catalog provides an authoritative driver mapping with a confidence tag
+        that's been curated per driver. The PENALTY still applies so installed
+        drivers that responded to a probe outrank these.
+        """
+        if not self.devices_lookup or not device.manufacturer or not device.model:
+            return []
+        key = (device.manufacturer.lower(), device.model.lower())
+        drv_refs = self.devices_lookup.get(key, [])
+        if not drv_refs:
+            return []
+
+        results: list[DriverMatch] = []
+        for ref in drv_refs:
+            ref_id = ref.get("id")
+            drv = self._driver_by_id.get(ref_id)
+            if drv is None:
+                continue  # Driver in catalog but filtered out (installed/utility)
+            confidence = ref.get("confidence", "untested")
+            base_score = self._EXACT_CONFIDENCE_SCORES.get(confidence, 0.55)
+            score = round(base_score * self.PENALTY, 2)
+
+            reasons = [f"Exact match: {device.manufacturer} {device.model} ({confidence})"]
+            if ref.get("notes"):
+                reasons.append(ref["notes"])
+
+            config: dict[str, Any] = {"host": device.ip}
+            drv_ports = drv.get("ports", [])
+            for p in drv_ports:
+                if p in device.open_ports:
+                    config["port"] = p
+                    break
+            else:
+                if drv_ports:
+                    config["port"] = drv_ports[0]
+
+            results.append(DriverMatch(
+                driver_id=ref_id,
+                driver_name=drv.get("name", ref_id),
+                confidence=score,
+                match_reasons=reasons,
+                suggested_config=config,
+                source="community",
+                description=drv.get("description", ""),
+            ))
+        return results

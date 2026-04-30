@@ -772,6 +772,83 @@ class TestCommunityDriverMatcher:
         matches = matcher.match_device(device)
         assert matches[0].suggested_config["host"] == "10.0.0.30"
 
+    def test_exact_device_catalog_match_outranks_heuristics(self):
+        """When devices_lookup is provided and (mfr, model) is known, the catalog
+        wins over a same-driver heuristic match (no double-counting).
+        """
+        devices_lookup = {
+            ("kramer", "vs-88uhda"): [
+                {"id": "kramer_p3000", "confidence": "full"},
+            ],
+        }
+        matcher = CommunityDriverMatcher(
+            self._make_community_drivers(),
+            installed_ids=set(),
+            devices_lookup=devices_lookup,
+        )
+        device = DiscoveredDevice(
+            ip="10.0.0.40",
+            manufacturer="Kramer",
+            model="VS-88UHDA",
+            category="switcher",
+            open_ports=[5000],
+            protocols=["kramer_p3000"],
+        )
+        matches = matcher.match_device(device)
+        # Only one match for kramer_p3000 — heuristic was suppressed.
+        kramer_matches = [m for m in matches if m.driver_id == "kramer_p3000"]
+        assert len(kramer_matches) == 1
+        # Exact `full` (0.95 * 0.7 PENALTY ≈ 0.66) outranks the
+        # heuristic max of (0.40+0.25+0.10+0.15)*0.7 = 0.63.
+        assert kramer_matches[0].confidence > 0.63
+        assert any(
+            "Exact match" in r for r in kramer_matches[0].match_reasons
+        )
+
+    def test_exact_match_uses_first_open_port(self):
+        devices_lookup = {
+            ("kramer", "vs-88uhda"): [
+                {"id": "kramer_p3000", "confidence": "partial"},
+            ],
+        }
+        matcher = CommunityDriverMatcher(
+            self._make_community_drivers(),
+            installed_ids=set(),
+            devices_lookup=devices_lookup,
+        )
+        device = DiscoveredDevice(
+            ip="10.0.0.50",
+            manufacturer="Kramer",
+            model="VS-88UHDA",
+            open_ports=[5000],
+        )
+        matches = matcher.match_device(device)
+        assert matches[0].suggested_config == {"host": "10.0.0.50", "port": 5000}
+
+    def test_exact_match_skipped_when_model_missing(self):
+        devices_lookup = {
+            ("kramer", "vs-88uhda"): [
+                {"id": "kramer_p3000", "confidence": "full"},
+            ],
+        }
+        matcher = CommunityDriverMatcher(
+            self._make_community_drivers(),
+            installed_ids=set(),
+            devices_lookup=devices_lookup,
+        )
+        device = DiscoveredDevice(
+            ip="10.0.0.60",
+            manufacturer="Kramer",  # no model
+            open_ports=[5000],
+            protocols=["kramer_p3000"],
+        )
+        matches = matcher.match_device(device)
+        # Falls back to heuristic, which still matches kramer_p3000
+        assert len(matches) == 1
+        assert matches[0].driver_id == "kramer_p3000"
+        # Heuristic confidence (penalized), not exact-match confidence
+        assert matches[0].confidence < 0.66
+
 
 # =============================================================================
 # Hints Module Tests
