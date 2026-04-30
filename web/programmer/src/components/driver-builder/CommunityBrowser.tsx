@@ -14,7 +14,10 @@ const CATEGORIES = [
   "Switcher",
   "Audio",
   "Camera",
+  "Video",
+  "Streaming",
   "Lighting",
+  "Power",
   "Utility",
 ] as const;
 
@@ -24,7 +27,10 @@ const CATEGORY_COLORS: Record<string, string> = {
   switcher: "#9b59b6",
   audio: "#2ecc71",
   camera: "#e74c3c",
+  video: "#16a085",
+  streaming: "#d35400",
   lighting: "#f1c40f",
+  power: "#c0392b",
   utility: "#95a5a6",
 };
 
@@ -32,6 +38,8 @@ const TRANSPORT_COLORS: Record<string, string> = {
   tcp: "#007acc",
   serial: "#e67e22",
   udp: "#2ecc71",
+  http: "#1abc9c",
+  osc: "#9b59b6",
 };
 
 export function CommunityBrowser() {

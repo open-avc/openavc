@@ -601,6 +601,18 @@ export interface CommunityDriver {
   protocols?: string[];
   ports?: number[];
   min_platform_version?: string;
+  // Schema v1 fields produced by openavc-drivers/scripts/build_index.py
+  source_url?: string;
+  tags?: string[];
+  help?: { overview: string; setup: string };
+  deprecated?: boolean;
+  replacement_id?: string;
+  compatible_models?: Array<{
+    manufacturer: string;
+    models: string[];
+    confidence: 'full' | 'partial' | 'untested';
+    notes?: string;
+  }>;
 }
 
 export interface InstalledDriver {
