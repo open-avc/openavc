@@ -751,3 +751,48 @@ class TestHandshakeErrorClassification:
         """The fatal reasons list matches what the agent checks."""
         agent_fatal_set = {"unknown_system", "no_key", "bad_system_id"}
         assert set(self.FATAL_REASONS) == agent_fatal_set
+
+
+# ===========================================================================
+# 7. Regression: every except HandshakeError must reference the imported class
+# ===========================================================================
+
+
+class TestExceptionHandlerWiring:
+    """Regression guard for the resume-rejection reconnect loop.
+
+    Bug: a fix written to clear the agent's buffer on resume rejection used
+    `except handshake.HandshakeError` where `handshake` was a Handshake
+    *instance*, not the module. The lookup raised AttributeError at
+    exception-matching time, the original HandshakeError never matched, the
+    buffer was never cleared, and the agent looped forever after every cloud
+    restart until the local process was killed.
+
+    This test parses agent.py with ast and asserts every `except` clause
+    catching HandshakeError uses the bare imported name. It catches typos of
+    the form `except <anything>.HandshakeError` regardless of location.
+    """
+
+    def test_handshake_error_handlers_use_bare_name(self):
+        import ast
+        from pathlib import Path
+
+        src = Path("server/cloud/agent.py").read_text()
+        tree = ast.parse(src)
+
+        bad_handlers: list[tuple[int, str]] = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ExceptHandler) or node.type is None:
+                continue
+            # An except clause may catch a tuple of types, a single Name, or
+            # an Attribute (the bug). Walk the type expression and reject
+            # any Attribute whose attr is "HandshakeError".
+            for sub in ast.walk(node.type):
+                if isinstance(sub, ast.Attribute) and sub.attr == "HandshakeError":
+                    bad_handlers.append((node.lineno, ast.unparse(node.type)))
+
+        assert not bad_handlers, (
+            "Found except clauses using attribute lookup for HandshakeError. "
+            "Use the bare imported name (`except HandshakeError`). "
+            f"Offenders: {bad_handlers}"
+        )

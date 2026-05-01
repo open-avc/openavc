@@ -339,7 +339,7 @@ class CloudAgent:
                         disconnected_at=self._disconnect_time or "",
                     )
                     await self._replay_buffered(replay_from)
-                except handshake.HandshakeError as e:
+                except HandshakeError as e:
                     log.warning(
                         "Cloud agent: resume rejected by cloud (%s); "
                         "dropping %d buffered message(s) and continuing on the fresh session.",
