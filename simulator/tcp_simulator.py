@@ -51,6 +51,20 @@ class TCPSimulator(BaseSimulator):
         """
         return None
 
+    async def authenticate_client(
+        self,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+        client_id: str,
+    ) -> bool:
+        """Optional pre-read-loop auth gate. Default: pass-through.
+
+        Subclasses that simulate Telnet-style login override this to drive
+        the prompt/credential exchange before the normal command read loop
+        starts. Return True to admit the client, False to drop it.
+        """
+        return True
+
     @abstractmethod
     def handle_command(self, data: bytes) -> bytes | None:
         """Handle incoming data from the driver, return response bytes or None.
@@ -191,6 +205,12 @@ class TCPSimulator(BaseSimulator):
                 writer.write(greeting)
                 await writer.drain()
                 self.log_protocol("out", greeting, client_id)
+
+            # Auth gate (no-op by default; YAMLAutoSimulator implements it
+            # for drivers declaring an `auth:` section).
+            if not await self.authenticate_client(reader, writer, client_id):
+                logger.info("%s: client %s failed auth — disconnecting", self.name, client_id)
+                return
 
             # Read loop
             while self._running:

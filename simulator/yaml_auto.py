@@ -123,6 +123,88 @@ class YAMLAutoSimulator(TCPSimulator):
             driver_def = yaml.safe_load(f)
         return cls(device_id=device_id, config=config, driver_def=driver_def)
 
+    async def authenticate_client(
+        self,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+        client_id: str,
+    ) -> bool:
+        """Mirror the driver-side login handshake declared in `auth:`.
+
+        For round-trip testing: send the prompts in order, accept whatever
+        the client sends as credentials (no validation), then send the
+        success_pattern (if defined) and admit the client. Real-hardware
+        validation is the device's job — the simulator only needs to make
+        the handshake play out the same way the driver expects.
+        """
+        auth_def = self._driver_def.get("auth")
+        if not isinstance(auth_def, dict):
+            return True
+        if auth_def.get("type", "telnet_login") != "telnet_login":
+            return True
+
+        username_prompt = auth_def.get("username_prompt", "")
+        password_prompt = auth_def.get("password_prompt", "")
+        success_pattern = auth_def.get("success_pattern")
+        line_ending = auth_def.get("line_ending", "\r\n")
+        timeout = float(auth_def.get("timeout_seconds", 10))
+
+        # Strip regex anchors / escapes for emission — what the driver
+        # sees on the wire is the literal string the device would print.
+        # The driver matches it with regex so we just send a sensible
+        # rendering. For typical prompts ("login: ", "Password: ") the
+        # YAML carries the literal text and no regex metachars.
+        prompt_user = self._render_prompt_literal(username_prompt)
+        prompt_pass = self._render_prompt_literal(password_prompt)
+        success_text = self._render_prompt_literal(success_pattern) if success_pattern else None
+
+        try:
+            ending = line_ending.encode("utf-8") if isinstance(line_ending, str) else line_ending
+
+            # Send username prompt, await any input as the username line.
+            writer.write(prompt_user.encode("utf-8"))
+            await writer.drain()
+            self.log_protocol("out", prompt_user.encode("utf-8"), client_id)
+            await asyncio.wait_for(reader.readline(), timeout=timeout)
+
+            # Send password prompt, await the password line.
+            writer.write(prompt_pass.encode("utf-8"))
+            await writer.drain()
+            self.log_protocol("out", prompt_pass.encode("utf-8"), client_id)
+            await asyncio.wait_for(reader.readline(), timeout=timeout)
+
+            # Send success indicator if declared.
+            if success_text:
+                writer.write(success_text.encode("utf-8") + ending)
+                await writer.drain()
+                self.log_protocol("out", success_text.encode("utf-8"), client_id)
+
+            return True
+        except asyncio.TimeoutError:
+            logger.warning("%s: client %s auth timed out", self.name, client_id)
+            return False
+        except (ConnectionError, OSError):
+            return False
+
+    @staticmethod
+    def _render_prompt_literal(pattern: str) -> str:
+        """Best-effort regex→literal: strip common regex metacharacters.
+
+        For YAML auth prompts we expect literal text in 95% of cases
+        ("login: ", "Password: "). If a driver author writes a fancy
+        regex, the simulator will still emit something readable; the
+        exact wire format isn't important since we accept any input.
+        """
+        if pattern is None:
+            return ""
+        # Strip regex anchors and escapes.
+        out = pattern
+        out = re.sub(r"\\[brnt]", " ", out)
+        out = re.sub(r"^\^", "", out)
+        out = re.sub(r"\$$", "", out)
+        out = out.replace("\\", "")
+        return out
+
     # ── UDP / OSC / HTTP transport overrides ──
 
     async def start(self, port: int) -> None:

@@ -14,7 +14,7 @@ Python drivers can be created and edited directly in the **Code** view of the Pr
 |--------|-------------|----------|
 | Driver Builder UI | Beginner | Text-based protocols (Extron SIS, Kramer, generic RS-232) |
 | .avcdriver File | Intermediate | Text-based protocols, sharing drivers as files |
-| Python Driver | Advanced | Binary protocols, authentication handshakes, complex state |
+| Python Driver | Advanced | Binary protocols, complex state, custom auth schemes |
 
 ---
 
@@ -329,6 +329,7 @@ Notice how much cleaner this is compared to JSON: comments explain the protocol,
 | `state_variables` | No | State properties this driver exposes. |
 | `commands` | No | Commands this driver can send. |
 | `responses` | No | Regex patterns for parsing device replies. |
+| `auth` | No | Login handshake performed between TCP connect and `on_connect`. See `auth` section below. |
 | `on_connect` | No | List of raw commands sent immediately after connecting. Use for enabling verbose/feedback mode or requesting initial state. |
 | `polling` | No | Periodic status query configuration. |
 | `frame_parser` | No | Advanced: custom framing (see below). |
@@ -501,6 +502,34 @@ on_connect:
 ```
 
 Many AV devices can push state changes in real-time (volume knob turned, input switched from front panel) but only after the controller enables feedback mode. Without `on_connect`, the driver relies entirely on polling and misses changes between poll cycles.
+
+#### `auth` section
+
+For Telnet-style devices that present `Username:` / `Password:` prompts before accepting commands. The handshake runs after the TCP connection is established and before `on_connect` commands are sent. Add `username` and `password` fields to `default_config` and `config_schema` so the user can enter credentials in the Add Device dialog.
+
+```yaml
+auth:
+  type: telnet_login              # only type supported today
+  username_prompt: "login: "      # regex matched against incoming bytes
+  password_prompt: "Password: "   # regex matched against incoming bytes
+  success_pattern: "GNET> "       # optional regex; if omitted, success is assumed
+  failure_pattern: "Login incorrect"  # optional regex; matches => fail fast
+  username_field: username        # which config field holds the username (default: "username")
+  password_field: password        # which config field holds the password (default: "password")
+  skip_if_empty: true             # if true and username is blank, the handshake is skipped (default: true)
+  timeout_seconds: 10             # how long to wait for each prompt before failing
+  line_ending: "\r\n"             # appended after username and password (default: "\r\n")
+```
+
+**How it works:**
+
+1. The transport's frame parser is dropped to raw mode for the duration of the handshake. This lets the driver see partial prompts like `Login: ` that have no trailing newline.
+2. The driver waits for `username_prompt` to appear in the incoming bytes, then sends `<username><line_ending>`.
+3. It waits for `password_prompt`, then sends `<password><line_ending>`.
+4. If `success_pattern` is set, the driver waits for it. Otherwise it briefly drains any post-password noise and assumes success.
+5. The original frame parser is restored, then `on_connect` runs.
+
+If the device's auth scheme isn't a prompt-and-response Telnet login (for example, a `LOGIN <password>` command-style auth or JSON-RPC `login` method), `auth: type: telnet_login` does not fit and you should use a Python driver.
 
 #### `polling` section
 
@@ -847,7 +876,7 @@ Most OSC devices reply to the sender's port (set `listen_port: 0`, the default).
 Python drivers give you full control. Use this method when:
 
 - The device uses a **binary protocol** (bytes, checksums, length headers).
-- The device requires an **authentication handshake** on connect.
+- The device's authentication scheme isn't a Telnet-style `Username:` / `Password:` prompt handshake. (Prompt-driven Telnet auth is supported declaratively via the `.avcdriver` `auth` section — use that first. Python is needed for `LOGIN <password>` command-style auth, JSON-RPC login, OAuth, challenge-response, etc.)
 - You need **complex state logic** that can't be expressed as regex patterns.
 - The device uses a **non-standard transport** (UDP, HTTP, etc.).
 

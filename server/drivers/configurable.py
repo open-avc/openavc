@@ -91,6 +91,13 @@ class ConfigurableDriver(BaseDriver):
         self._compiled_responses: list[tuple[re.Pattern[str], list[dict[str, Any]]]] = []
         self._osc_responses: list[tuple[str, list[dict[str, Any]]]] = []
 
+        # Telnet/serial login handshake state. Active only during
+        # _perform_auth_handshake() — outside that window on_data_received
+        # falls through to normal response matching.
+        self._auth_mode: bool = False
+        self._auth_buffer: bytearray = bytearray()
+        self._auth_event: asyncio.Event = asyncio.Event()
+
         for resp in self._definition.get("responses", []):
             # OSC responses use "address" key instead of "pattern"/"match"
             if "address" in resp:
@@ -141,8 +148,66 @@ class ConfigurableDriver(BaseDriver):
         """
         saved_poll_interval = self.config.get("poll_interval", 0)
         self.config["poll_interval"] = 0
-        await super().connect()
+
+        # Enable auth-buffering BEFORE the TCP connect so any prompt the
+        # device emits the moment the connection opens lands in the auth
+        # buffer instead of being run through the normal response matcher.
+        # _perform_auth_handshake() turns this back off when it's done.
+        auth_def = self._definition.get("auth")
+        has_auth = isinstance(auth_def, dict) and self._auth_should_run(auth_def)
+        if has_auth:
+            self._auth_buffer = bytearray()
+            self._auth_event = asyncio.Event()
+            self._auth_mode = True
+
+        try:
+            await super().connect()
+        except Exception:
+            self._auth_mode = False
+            raise
+
+        # Many login prompts arrive without the protocol's delimiter (e.g.
+        # bare "Login: "), so the transport's delimiter-based frame parser
+        # would buffer them indefinitely. Drop the parser for the duration
+        # of the handshake and reinstate it once login completes.
+        if has_auth and self.transport is not None:
+            saved_parser = getattr(self.transport, "_frame_parser", None)
+            if hasattr(self.transport, "_frame_parser"):
+                # If the parser had buffered any pre-auth bytes, flush them
+                # into the auth buffer so we don't lose the prompt.
+                if saved_parser is not None and hasattr(saved_parser, "_buffer"):
+                    pending = bytes(saved_parser._buffer)
+                    if pending:
+                        self._auth_buffer.extend(pending)
+                        self._auth_event.set()
+                        saved_parser._buffer = b""
+                self.transport._frame_parser = None  # type: ignore[union-attr]
+            self._saved_frame_parser = saved_parser
+        else:
+            self._saved_frame_parser = None
+
         self.config["poll_interval"] = saved_poll_interval
+
+        # Perform Telnet/serial login handshake before on_connect commands
+        # if the driver definition declares an `auth:` section.
+        if has_auth and self.transport and self.transport.connected:
+            try:
+                await self._perform_auth_handshake()
+            except Exception as e:
+                log.error(f"[{self.device_id}] Auth handshake failed: {e}")
+                if self.transport:
+                    try:
+                        await self.transport.close()
+                    except Exception:
+                        pass
+                    self.transport = None
+                self._connected = False
+                self.set_state("connected", False)
+                raise ConnectionError(
+                    f"[{self.device_id}] Authentication failed: {e}"
+                ) from e
+        else:
+            self._auth_mode = False
 
         on_connect = self._definition.get("on_connect", [])
         if on_connect and self.transport and self.transport.connected:
@@ -194,6 +259,153 @@ class ConfigurableDriver(BaseDriver):
 
         if saved_poll_interval > 0:
             await self.start_polling(saved_poll_interval)
+
+    def _auth_should_run(self, auth_def: dict[str, Any]) -> bool:
+        """Quick gate used by connect() to decide whether to buffer
+        incoming bytes for the handshake. Mirrors the early-exit checks
+        in _perform_auth_handshake so the two stay aligned."""
+        if auth_def.get("type", "telnet_login") != "telnet_login":
+            return False
+        if not auth_def.get("username_prompt") or not auth_def.get("password_prompt"):
+            return False
+        username_field = auth_def.get("username_field", "username")
+        username = str(self.config.get(username_field, "") or "")
+        if auth_def.get("skip_if_empty", True) and not username:
+            return False
+        return True
+
+    async def _perform_auth_handshake(self) -> None:
+        """Run the Telnet-style login handshake declared in `auth:` (if any).
+
+        YAML schema (top-level `auth:` block):
+            auth:
+              type: telnet_login
+              username_prompt: "login: "        # regex
+              password_prompt: "Password: "     # regex
+              success_pattern: "GNET> "         # optional regex
+              failure_pattern: "Login incorrect" # optional regex
+              username_field: username           # config field, default "username"
+              password_field: password           # config field, default "password"
+              skip_if_empty: true                # default true — empty user => skip
+              timeout_seconds: 10
+              line_ending: "\r\n"
+
+        The handshake bypasses the transport's frame parser so partial
+        prompts like "Login: " (no trailing newline) are visible. The
+        original frame parser is restored after the handshake completes.
+        """
+        auth_def = self._definition.get("auth")
+        if not isinstance(auth_def, dict):
+            self._auth_mode = False
+            return
+
+        if not self._auth_should_run(auth_def):
+            self._auth_mode = False
+            return
+
+        username_field = auth_def.get("username_field", "username")
+        password_field = auth_def.get("password_field", "password")
+        username = str(self.config.get(username_field, "") or "")
+        password = str(self.config.get(password_field, "") or "")
+
+        username_prompt = auth_def.get("username_prompt", "")
+        password_prompt = auth_def.get("password_prompt", "")
+        success_pattern = auth_def.get("success_pattern")
+        failure_pattern = auth_def.get("failure_pattern")
+        timeout = float(auth_def.get("timeout_seconds", 10))
+        line_ending = auth_def.get("line_ending", "\r\n")
+
+        try:
+            user_re = re.compile(username_prompt)
+            pass_re = re.compile(password_prompt)
+            success_re = re.compile(success_pattern) if success_pattern else None
+            failure_re = re.compile(failure_pattern) if failure_pattern else None
+        except re.error as e:
+            raise ValueError(f"Invalid auth regex pattern: {e}") from e
+
+        # connect() already swapped the transport to raw mode and stashed
+        # the original parser on self._saved_frame_parser. We just restore
+        # it in the finally block below.
+        saved_parser = getattr(self, "_saved_frame_parser", None)
+
+        try:
+            ending = _safe_encode_escapes(line_ending)
+            log.info(f"[{self.device_id}] Starting auth handshake")
+
+            # Stage 1: wait for username prompt, send username.
+            await self._auth_wait_for(user_re, failure_re, timeout)
+            await self.transport.send(username.encode("utf-8") + ending)
+            log.debug(f"[{self.device_id}] Auth: sent username")
+
+            # Stage 2: wait for password prompt, send password.
+            await self._auth_wait_for(pass_re, failure_re, timeout)
+            await self.transport.send(password.encode("utf-8") + ending)
+            log.debug(f"[{self.device_id}] Auth: sent password")
+
+            # Stage 3: optionally wait for a success indicator. Without one,
+            # we assume success once the password is sent (the next command
+            # sent will fail visibly if auth was rejected).
+            if success_re is not None:
+                await self._auth_wait_for(success_re, failure_re, timeout)
+                log.info(f"[{self.device_id}] Auth handshake complete")
+            else:
+                # Drain any post-password noise so it doesn't pollute the
+                # first real command's response window.
+                try:
+                    await asyncio.wait_for(self._auth_event.wait(), timeout=0.5)
+                except asyncio.TimeoutError:
+                    pass
+                log.info(
+                    f"[{self.device_id}] Auth handshake complete "
+                    f"(no success_pattern; assuming OK)"
+                )
+        finally:
+            self._auth_mode = False
+            self._auth_buffer = bytearray()
+            if hasattr(self.transport, "_frame_parser"):
+                self.transport._frame_parser = saved_parser  # type: ignore[union-attr]
+
+    async def _auth_wait_for(
+        self,
+        target: re.Pattern[str],
+        failure: re.Pattern[str] | None,
+        timeout: float,
+    ) -> None:
+        """Wait until `target` regex matches accumulated auth bytes.
+
+        Raises ConnectionError if `failure` matches first or if the timeout
+        elapses without a match. Patterns are string regexes — they're
+        matched against the buffer's UTF-8 decoding (errors=replace).
+        """
+        deadline = asyncio.get_event_loop().time() + timeout
+        while True:
+            # Clear the event BEFORE inspecting the buffer so we don't drop
+            # a set() that arrives between check and clear. If new data
+            # arrives between clear and check, the buffer already contains
+            # it; if it arrives after the check, the set() will unblock
+            # the wait() below.
+            self._auth_event.clear()
+            text = self._auth_buffer.decode("utf-8", errors="replace")
+            if failure is not None and failure.search(text):
+                raise ConnectionError(
+                    f"login rejected by device "
+                    f"(matched failure pattern in {text!r})"
+                )
+            if target.search(text):
+                return
+
+            remaining = deadline - asyncio.get_event_loop().time()
+            if remaining <= 0:
+                raise ConnectionError(
+                    f"timeout waiting for {target.pattern!r}; got {text!r}"
+                )
+
+            try:
+                await asyncio.wait_for(self._auth_event.wait(), timeout=remaining)
+            except asyncio.TimeoutError:
+                raise ConnectionError(
+                    f"timeout waiting for {target.pattern!r}; got {text!r}"
+                ) from None
 
     async def send_command(
         self, command: str, params: dict[str, Any] | None = None
@@ -404,6 +616,14 @@ class ConfigurableDriver(BaseDriver):
 
     async def on_data_received(self, data: bytes) -> None:
         """Match response against pre-compiled patterns, update state."""
+        # During the login handshake, capture all bytes raw and let the
+        # handshake state machine decide when to send credentials. Skip
+        # the normal response-matching path entirely.
+        if self._auth_mode:
+            self._auth_buffer.extend(data)
+            self._auth_event.set()
+            return
+
         if self._definition.get("transport") == "osc":
             await self._handle_osc_response(data)
             return
