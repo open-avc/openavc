@@ -8,8 +8,11 @@ Works at two levels:
   Level 0: Pure auto-gen from commands + responses + state_variables
   Level 1: Enhanced with explicit simulator: section (merged on top)
 
-Supports TCP (default) and UDP transports. UDP drivers get a datagram
-server instead of a TCP stream server.
+Supports TCP (default), UDP, OSC, and HTTP transports. UDP/OSC drivers
+get a datagram server instead of a TCP stream server. HTTP drivers get
+an aiohttp web server; incoming requests are synthesized to a text command
+line ("METHOD /path?query") and dispatched through the same handler
+machinery as TCP.
 """
 
 from __future__ import annotations
@@ -19,6 +22,7 @@ import logging
 import re
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote
 
 import yaml
 
@@ -56,11 +60,15 @@ class YAMLAutoSimulator(TCPSimulator):
 
         self._driver_def = driver_def
 
-        # UDP/OSC transport support — overrides TCP server with UDP datagram server
+        # UDP/OSC/HTTP transport support — overrides TCP server with the
+        # appropriate alternate server in start()/stop().
         transport = driver_def.get("transport", "tcp")
         self._is_udp = transport == "udp"
         self._is_osc = transport == "osc"
+        self._is_http = transport == "http"
         self._udp_transport: asyncio.DatagramTransport | None = None
+        self._http_runner: Any = None  # aiohttp.web.AppRunner when HTTP
+        self._http_site: Any = None    # aiohttp.web.TCPSite when HTTP
 
         # Build handlers from driver definition
         self._command_handlers: list[CommandHandler] = []
@@ -115,10 +123,13 @@ class YAMLAutoSimulator(TCPSimulator):
             driver_def = yaml.safe_load(f)
         return cls(device_id=device_id, config=config, driver_def=driver_def)
 
-    # ── UDP transport overrides ──
+    # ── UDP / OSC / HTTP transport overrides ──
 
     async def start(self, port: int) -> None:
-        """Start the simulator server (TCP, UDP, or OSC based on driver transport)."""
+        """Start the simulator server (TCP, UDP, OSC, or HTTP based on driver transport)."""
+        if self._is_http:
+            await self._start_http(port)
+            return
         if not self._is_udp and not self._is_osc:
             await super().start(port)
             return
@@ -139,6 +150,9 @@ class YAMLAutoSimulator(TCPSimulator):
 
     async def stop(self) -> None:
         """Stop the simulator server."""
+        if self._is_http:
+            await self._stop_http()
+            return
         if not self._is_udp and not self._is_osc:
             await super().stop()
             return
@@ -148,6 +162,102 @@ class YAMLAutoSimulator(TCPSimulator):
             self._udp_transport.close()
             self._udp_transport = None
         logger.info("%s stopped", self.name)
+
+    # ── HTTP transport ──
+
+    async def _start_http(self, port: int) -> None:
+        """Start an aiohttp server that synthesizes incoming requests into
+        text commands and dispatches them through the existing handler chain.
+
+        The synthesized command line format is:
+            "METHOD /path?query|<body>"   (body section omitted when empty)
+        with the path + query URL-decoded so command_handlers regex can match
+        the original (un-encoded) characters from the driver's `path:` field.
+        """
+        from aiohttp import web
+
+        self._port = port
+        app = web.Application()
+        app.router.add_route("*", "/{path:.*}", self._handle_http_request)
+
+        self._http_runner = web.AppRunner(app)
+        await self._http_runner.setup()
+        self._http_site = web.TCPSite(self._http_runner, "127.0.0.1", port)
+        await self._http_site.start()
+        self._running = True
+        logger.info(
+            "%s started on HTTP port %d (driver: %s)",
+            self.name, port, self.driver_id,
+        )
+
+    async def _stop_http(self) -> None:
+        """Stop the HTTP server."""
+        self._running = False
+        if self._http_runner:
+            await self._http_runner.cleanup()
+            self._http_runner = None
+            self._http_site = None
+        logger.info("%s stopped", self.name)
+
+    async def _handle_http_request(self, request: Any) -> Any:
+        """Convert an aiohttp request to a synthesized command line, dispatch
+        it through the standard handler machinery, and wrap the response.
+
+        Status code is 200 when a handler matched, 404 when no handler matched.
+        Response body comes from whatever the handler returned via respond().
+        """
+        from aiohttp import web
+
+        method = request.method
+        raw_path = "/" + request.match_info.get("path", "")
+        if request.query_string:
+            raw_path += "?" + request.query_string
+        # URL-decode so handlers can match the un-encoded form (e.g. "#" not "%23")
+        decoded_path = unquote(raw_path)
+        body_text = await request.text()
+
+        log_text = f"{method} {decoded_path}"
+        if body_text:
+            log_text += f" | {body_text[:200]}"
+        self.log_protocol("in", log_text)
+
+        # Network conditions and error injection (same as HTTPSimulator base)
+        if self._network_layer and self._network_layer.should_drop(self.device_id):
+            await asyncio.sleep(30)
+            return web.Response(status=504, text="Gateway Timeout")
+        if self.has_error_behavior("no_response"):
+            await asyncio.sleep(30)
+            return web.Response(status=504, text="Gateway Timeout")
+        if self._network_layer:
+            await self._network_layer.apply_latency(self.device_id)
+        delay = (
+            self._delays.get("command_response")
+            or self._delays.get("request_response", 0)
+        )
+        if delay > 0:
+            await asyncio.sleep(delay)
+
+        # Synthesize the command line that handlers regex against. Body is
+        # appended after a "|" delimiter so handlers can reference it when
+        # they need to (POST/PUT bodies).
+        if body_text:
+            command_line = f"{method} {decoded_path}|{body_text}"
+        else:
+            command_line = f"{method} {decoded_path}"
+
+        try:
+            response_bytes = self.handle_command(command_line.encode("utf-8"))
+        except Exception:
+            logger.exception("%s: error in handle_command", self.name)
+            return web.Response(status=500, text="Simulator error")
+
+        if response_bytes is None:
+            self.log_protocol("out", "404")
+            return web.Response(status=404, text="")
+
+        response_text = response_bytes.decode("utf-8", errors="replace")
+        self.log_protocol("out", f"200 | {response_text[:200]}")
+        return web.Response(status=200, text=response_text)
 
     def _handle_udp_datagram(self, data: bytes, addr: tuple[str, int]) -> None:
         """Process an incoming UDP datagram and send response."""
@@ -913,7 +1023,13 @@ class YAMLAutoSimulator(TCPSimulator):
     # ── Helpers ──
 
     def _get_delimiter(self) -> str:
-        """Get the line delimiter as a string."""
+        """Get the line delimiter as a string.
+
+        HTTP responses don't have a line delimiter — the response body is
+        whatever the handler returned, with no trailing CRLF.
+        """
+        if self._is_http:
+            return ""
         delim = self._driver_def.get("delimiter", "\r\n")
         # Handle escaped sequences
         return delim.replace("\\r", "\r").replace("\\n", "\n")
