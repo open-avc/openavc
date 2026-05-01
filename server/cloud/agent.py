@@ -322,17 +322,30 @@ class CloudAgent:
             # Reset sequencer for new session
             self._sequencer.reset_for_new_session()
 
-            # Handle reconnection resume
+            # Handle reconnection resume. Resume failure (e.g. cloud restarted
+            # and lost the prior session) must not tear down the fresh session
+            # we just established — drop the buffered messages and continue.
+            # Buffered payloads are heartbeats and state batches; losing them
+            # is acceptable, looping the connection forever is not.
             is_reconnect = self._disconnect_time is not None
             if is_reconnect and self._sequencer.buffer_count > 0:
-                replay_from = await handshake.send_resume(
-                    send=self._send_raw,
-                    recv=self._recv_raw,
-                    last_ack_seq=self._sequencer.last_ack_seq,
-                    buffered_count=self._sequencer.buffer_count,
-                    disconnected_at=self._disconnect_time or "",
-                )
-                await self._replay_buffered(replay_from)
+                buffered = self._sequencer.buffer_count
+                try:
+                    replay_from = await handshake.send_resume(
+                        send=self._send_raw,
+                        recv=self._recv_raw,
+                        last_ack_seq=self._sequencer.last_ack_seq,
+                        buffered_count=buffered,
+                        disconnected_at=self._disconnect_time or "",
+                    )
+                    await self._replay_buffered(replay_from)
+                except handshake.HandshakeError as e:
+                    log.warning(
+                        "Cloud agent: resume rejected by cloud (%s); "
+                        "dropping %d buffered message(s) and continuing on the fresh session.",
+                        e.reason, buffered,
+                    )
+                    self._sequencer.clear_buffer()
 
             # Connected!
             self._connected = True
