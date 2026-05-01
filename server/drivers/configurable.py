@@ -520,6 +520,10 @@ class ConfigurableDriver(BaseDriver):
             path: URL path (e.g., "/api/power")
             body: JSON body string with {param} substitution
             query_params: Query parameters dict with {param} substitution
+            headers: Per-request headers dict with {param} substitution.
+                     Use to set Content-Type for non-JSON bodies (e.g.
+                     "text/xml" for XML APIs like Cisco xAPI), or any
+                     other custom header the device requires.
 
         Parameter substitution uses a safe approach: only {name} tokens
         where name matches a known parameter or config key are replaced.
@@ -539,6 +543,7 @@ class ConfigurableDriver(BaseDriver):
         method = cmd_def.get("method", "GET").upper()
         raw_path = cmd_def.get("path", "/")
         raw_body = cmd_def.get("body")
+        headers = self._build_http_headers(cmd_def.get("headers"), all_params)
 
         # Substitute params in path using safe substitution
         path = self._safe_substitute(raw_path, all_params)
@@ -557,7 +562,8 @@ class ConfigurableDriver(BaseDriver):
                     f"sending as raw content"
                 )
                 response = await self.transport.request(
-                    method, path, content=body_str.encode("utf-8")
+                    method, path, content=body_str.encode("utf-8"),
+                    headers=headers,
                 )
                 return await self._process_http_response(command, response)
 
@@ -573,9 +579,24 @@ class ConfigurableDriver(BaseDriver):
                     query_params[k] = v
 
         response = await self.transport.request(
-            method, path, params=query_params, json_body=json_body
+            method, path, params=query_params, json_body=json_body,
+            headers=headers,
         )
         return await self._process_http_response(command, response)
+
+    def _build_http_headers(
+        self, raw_headers: Any, params: dict[str, Any]
+    ) -> dict[str, str] | None:
+        """Substitute {param} placeholders in YAML-defined HTTP headers."""
+        if not raw_headers or not isinstance(raw_headers, dict):
+            return None
+        out: dict[str, str] = {}
+        for k, v in raw_headers.items():
+            if isinstance(v, str):
+                out[k] = self._safe_substitute(v, params)
+            else:
+                out[k] = str(v)
+        return out
 
     @staticmethod
     def _safe_substitute(template: str, params: dict[str, Any]) -> str:
@@ -796,6 +817,9 @@ class ConfigurableDriver(BaseDriver):
             method = write_def.get("method", "POST").upper()
             raw_path = write_def.get("path", "/")
             raw_body = write_def.get("body")
+            headers = self._build_http_headers(
+                write_def.get("headers"), all_params
+            )
 
             path = self._safe_substitute(raw_path, all_params)
 
@@ -807,12 +831,13 @@ class ConfigurableDriver(BaseDriver):
                     json_body = _json.loads(body_str)
                 except (ValueError, _json.JSONDecodeError):
                     response = await self.transport.request(
-                        method, path, content=body_str.encode("utf-8")
+                        method, path, content=body_str.encode("utf-8"),
+                        headers=headers,
                     )
                     return response
 
             response = await self.transport.request(
-                method, path, json_body=json_body
+                method, path, json_body=json_body, headers=headers
             )
 
             # Run response through pattern matching

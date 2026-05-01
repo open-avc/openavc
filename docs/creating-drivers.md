@@ -705,9 +705,23 @@ polling:
 |-------|----------|-------------|
 | `method` | No | HTTP method: `GET`, `POST`, `PUT`, `DELETE`. Default: `GET`. |
 | `path` | Yes | URL path (appended to `http://host:port`). Supports `{param}` substitution. |
-| `body` | No | Request body (JSON string). Supports `{param}` substitution. Used with POST/PUT. |
+| `body` | No | Request body. Parsed as JSON when possible (Content-Type set to `application/json`); otherwise sent as raw bytes (no Content-Type unless you set one in `headers`). Supports `{param}` substitution. Used with POST/PUT. |
 | `query_params` | No | Query parameters as key-value pairs. Supports `{param}` substitution. |
+| `headers` | No | Custom request headers as a key-value map. Use this when the device requires a specific `Content-Type` for non-JSON bodies (e.g. `text/xml` for SOAP / Cisco RoomOS xAPI), or any other custom header. Values support `{param}` substitution. |
 | `params` | No | Parameter definitions (same as TCP/serial commands). |
+
+Example with custom headers (XML body):
+
+```yaml
+commands:
+  put_xml:
+    method: POST
+    path: "/putxml"
+    headers: { Content-Type: "text/xml" }
+    body: "<Command><Audio><Volume><Set><Level>{level}</Level></Set></Volume></Audio></Command>"
+    params:
+      level: { type: integer, required: true, default: 50, min: 0, max: 100 }
+```
 
 #### HTTP config fields
 
