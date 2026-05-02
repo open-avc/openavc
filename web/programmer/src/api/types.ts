@@ -400,11 +400,21 @@ export interface ProjectConfig {
 
 export interface DriverCommandDef {
   label: string;
-  string: string;
-  send?: string;
+  // TCP / serial / UDP — the wire string sent to the device.
+  // The runtime also accepts the legacy `string` key as an alias and
+  // emits a deprecation warning when it sees it. Read with
+  // `cmd.send ?? cmd.string ?? ""`; always write to `send`.
+  send: string;
+  string?: string;
+  // HTTP — REST request shape. method defaults to GET.
+  // headers and query_params support {param} substitution from the
+  // command's params map and the device config.
   method?: string;
   path?: string;
   body?: string;
+  headers?: Record<string, string>;
+  query_params?: Record<string, string>;
+  // OSC.
   address?: string;
   args?: { type: string; value: string }[];
   params: Record<string, { type: string; required?: boolean; values?: string[]; help?: string }>;

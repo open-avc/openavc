@@ -9,6 +9,20 @@ interface PollingConfigProps {
 export function PollingConfig({ draft, onUpdate }: PollingConfigProps) {
   const polling = draft.polling ?? {};
   const queries = polling.queries ?? [];
+  const defaultConfig = (draft.default_config ?? {}) as Record<string, unknown>;
+  const pollIntervalRaw = defaultConfig.poll_interval;
+  const pollInterval =
+    typeof pollIntervalRaw === "number"
+      ? pollIntervalRaw
+      : typeof pollIntervalRaw === "string"
+        ? parseInt(pollIntervalRaw) || 0
+        : 0;
+
+  const updatePollInterval = (value: number) => {
+    onUpdate({
+      default_config: { ...defaultConfig, poll_interval: value },
+    });
+  };
 
   const updatePolling = (partial: Record<string, unknown>) => {
     onUpdate({ polling: { ...polling, ...partial } });
@@ -53,10 +67,8 @@ export function PollingConfig({ draft, onUpdate }: PollingConfigProps) {
         <label style={labelStyle}>Poll Interval (seconds)</label>
         <input
           type="number"
-          value={polling.interval ?? 0}
-          onChange={(e) =>
-            updatePolling({ interval: parseInt(e.target.value) || 0 })
-          }
+          value={pollInterval}
+          onChange={(e) => updatePollInterval(parseInt(e.target.value) || 0)}
           min={0}
           style={{ width: 120 }}
         />
@@ -67,7 +79,9 @@ export function PollingConfig({ draft, onUpdate }: PollingConfigProps) {
             marginTop: "var(--space-xs)",
           }}
         >
-          Set to 0 to disable polling. Typical: 10–30 seconds.
+          Set to 0 to disable polling. Typical: 10–30 seconds. Stored as
+          <code> default_config.poll_interval</code> so device config can
+          override it per-instance.
         </div>
       </div>
 

@@ -143,7 +143,7 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
             {Object.entries(draft.commands).map(([name, cmd]) => (
               <button
                 key={name}
-                onClick={() => setCommand(cmd.string)}
+                onClick={() => setCommand(cmd.send ?? cmd.string ?? "")}
                 style={{
                   padding: "var(--space-xs) var(--space-sm)",
                   borderRadius: "var(--border-radius)",

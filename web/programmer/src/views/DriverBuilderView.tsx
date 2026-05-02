@@ -169,6 +169,7 @@ export function DriverPanel() {
                 saving={saving}
                 error={error}
                 isNew={isNew}
+                originalId={selectedId}
                 onUpdate={updateDraft}
                 onSave={save}
                 onExport={() => selectedId && handleExport(selectedId)}
@@ -264,11 +265,26 @@ function ImportDialog({
   error,
 }: {
   onFile: () => void;
-  onPaste: (json: string) => void;
+  onPaste: (text: string) => void;
   onClose: () => void;
   error: string | null;
 }) {
   const [pasteText, setPasteText] = useState("");
+  const yamlPlaceholder = `id: my_driver
+name: My Driver
+manufacturer: Acme
+category: switcher
+version: 1.0.0
+transport: tcp
+delimiter: "\\r\\n"
+default_config:
+  port: 23
+  poll_interval: 10
+commands:
+  power_on:
+    label: Power On
+    send: "PWR ON\\r"
+  ...`;
 
   return (
     <div
@@ -361,14 +377,14 @@ function ImportDialog({
             marginBottom: "var(--space-md)",
           }}
         >
-          or paste JSON below
+          or paste a driver definition below (YAML or JSON)
         </div>
 
         <textarea
           value={pasteText}
           onChange={(e) => setPasteText(e.target.value)}
-          placeholder='{"id": "my_driver", "name": "My Driver", "transport": "tcp", ...}'
-          rows={8}
+          placeholder={yamlPlaceholder}
+          rows={10}
           style={{
             width: "100%",
             fontFamily: "var(--font-mono)",

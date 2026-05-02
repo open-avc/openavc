@@ -20,11 +20,30 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
       counter++;
       name = `command_${counter}`;
     }
+    // Seed the new command's shape from the driver's transport so users
+    // see the right fields immediately.
+    let initial: DriverCommandDef;
+    if (draft.transport === "http") {
+      initial = {
+        label: "New Command",
+        send: "",
+        method: "GET",
+        path: "/",
+        params: {},
+      };
+    } else if (draft.transport === "osc") {
+      initial = {
+        label: "New Command",
+        send: "",
+        address: "/",
+        args: [],
+        params: {},
+      };
+    } else {
+      initial = { label: "New Command", send: "", params: {} };
+    }
     onUpdate({
-      commands: {
-        ...commands,
-        [name]: { label: "New Command", string: "", params: {} },
-      },
+      commands: { ...commands, [name]: initial },
     });
     setExpanded(name);
   };
@@ -37,10 +56,17 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
   };
 
   const updateCommand = (name: string, partial: Partial<DriverCommandDef>) => {
+    // Merge, then strip any keys whose value is `undefined` so we don't
+    // serialize `key: null` into YAML when the caller wanted to delete a
+    // legacy field (e.g., `string` after migrating to `send`).
+    const merged = { ...commands[name], ...partial } as Record<string, unknown>;
+    for (const k of Object.keys(merged)) {
+      if (merged[k] === undefined) delete merged[k];
+    }
     onUpdate({
       commands: {
         ...commands,
-        [name]: { ...commands[name], ...partial },
+        [name]: merged as unknown as DriverCommandDef,
       },
     });
   };
@@ -215,13 +241,21 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
                       onChange={(args) => updateCommand(name, { args } as any)}
                     />
                   </div>
+                ) : draft.transport === "http" ? (
+                  <HttpCommandFields
+                    cmd={cmd}
+                    onUpdate={(partial) => updateCommand(name, partial)}
+                  />
                 ) : (
                   <div style={{ marginBottom: "var(--space-md)" }}>
                     <label style={labelStyle}>Command String</label>
                     <input
-                      value={cmd.string}
+                      value={cmd.send ?? cmd.string ?? ""}
                       onChange={(e) =>
-                        updateCommand(name, { string: e.target.value })
+                        updateCommand(name, {
+                          send: e.target.value,
+                          string: undefined,
+                        })
                       }
                       placeholder="e.g., %1POWR {value}\r"
                       style={{ width: "100%", fontFamily: "var(--font-mono)" }}
@@ -263,6 +297,231 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
         }}
       >
         <Plus size={14} /> Add Command
+      </button>
+    </div>
+  );
+}
+
+const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
+
+function HttpCommandFields({
+  cmd,
+  onUpdate,
+}: {
+  cmd: DriverCommandDef;
+  onUpdate: (partial: Partial<DriverCommandDef>) => void;
+}) {
+  const labelStyle: React.CSSProperties = {
+    display: "block",
+    fontSize: "var(--font-size-sm)",
+    color: "var(--text-secondary)",
+    marginBottom: "var(--space-xs)",
+  };
+  const helpStyle: React.CSSProperties = {
+    fontSize: "11px",
+    color: "var(--text-muted)",
+    marginTop: "var(--space-xs)",
+  };
+
+  return (
+    <div style={{ marginBottom: "var(--space-md)" }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "120px 1fr",
+          gap: "var(--space-sm)",
+          marginBottom: "var(--space-md)",
+        }}
+      >
+        <div>
+          <label style={labelStyle}>Method</label>
+          <select
+            value={(cmd.method ?? "GET").toUpperCase()}
+            onChange={(e) => onUpdate({ method: e.target.value })}
+            style={{ width: "100%" }}
+          >
+            {HTTP_METHODS.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label style={labelStyle}>Path</label>
+          <input
+            value={cmd.path ?? ""}
+            onChange={(e) => onUpdate({ path: e.target.value })}
+            placeholder="/api/{app_key}/lights/{light_id}/state"
+            style={{ width: "100%", fontFamily: "var(--font-mono)" }}
+          />
+        </div>
+      </div>
+      <div style={helpStyle}>
+        Path is appended to the device's base URL. Use{" "}
+        <code>{"{param_name}"}</code> for placeholders — both command params
+        and device config keys (like <code>{"{host}"}</code>,{" "}
+        <code>{"{app_key}"}</code>) are substituted.
+      </div>
+
+      <div style={{ marginTop: "var(--space-md)" }}>
+        <label style={labelStyle}>Body</label>
+        <textarea
+          value={cmd.body ?? ""}
+          onChange={(e) => onUpdate({ body: e.target.value })}
+          placeholder='{"on": true}  or  &lt;Command>...&lt;/Command>'
+          rows={4}
+          style={{
+            width: "100%",
+            fontFamily: "var(--font-mono)",
+            fontSize: "var(--font-size-sm)",
+            resize: "vertical",
+          }}
+        />
+        <div style={helpStyle}>
+          Sent as the request body. JSON is parsed and re-serialized; anything
+          else is sent as a raw byte string (set <code>Content-Type</code> in
+          headers below for XML, form-urlencoded, etc.). Leave blank for{" "}
+          <code>GET</code> / <code>DELETE</code>.
+        </div>
+      </div>
+
+      <div style={{ marginTop: "var(--space-md)" }}>
+        <label style={labelStyle}>Headers</label>
+        <KeyValueList
+          values={cmd.headers ?? {}}
+          onChange={(headers) =>
+            onUpdate({
+              headers: Object.keys(headers).length ? headers : undefined,
+            })
+          }
+          keyPlaceholder="Header-Name"
+          valuePlaceholder='e.g. text/xml'
+          monoValue
+        />
+        <div style={helpStyle}>
+          Per-request headers, applied on top of the transport's default
+          headers. Common: <code>Content-Type: text/xml</code> for XML APIs.
+          Values support <code>{"{param}"}</code> substitution.
+        </div>
+      </div>
+
+      <div style={{ marginTop: "var(--space-md)" }}>
+        <label style={labelStyle}>Query Parameters</label>
+        <KeyValueList
+          values={cmd.query_params ?? {}}
+          onChange={(query_params) =>
+            onUpdate({
+              query_params: Object.keys(query_params).length
+                ? query_params
+                : undefined,
+            })
+          }
+          keyPlaceholder="key"
+          valuePlaceholder="value"
+          monoValue
+        />
+        <div style={helpStyle}>
+          Appended to the URL as <code>?key=value&amp;...</code>. Values support{" "}
+          <code>{"{param}"}</code> substitution.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function KeyValueList({
+  values,
+  onChange,
+  keyPlaceholder,
+  valuePlaceholder,
+  monoValue,
+}: {
+  values: Record<string, string>;
+  onChange: (next: Record<string, string>) => void;
+  keyPlaceholder?: string;
+  valuePlaceholder?: string;
+  monoValue?: boolean;
+}) {
+  // Render insertion-ordered to keep the user's typing flow stable.
+  const entries = Object.entries(values);
+
+  const updateRow = (index: number, key: string, value: string) => {
+    const next: Record<string, string> = {};
+    entries.forEach(([k, v], i) => {
+      if (i === index) {
+        if (key) next[key] = value;
+      } else {
+        next[k] = v;
+      }
+    });
+    onChange(next);
+  };
+
+  const removeRow = (index: number) => {
+    const next: Record<string, string> = {};
+    entries.forEach(([k, v], i) => {
+      if (i !== index) next[k] = v;
+    });
+    onChange(next);
+  };
+
+  const addRow = () => {
+    // Insert an empty placeholder key the user can fill in.
+    let key = "";
+    let counter = 1;
+    while (key === "" || key in values) {
+      key = `key${counter}`;
+      counter++;
+    }
+    onChange({ ...values, [key]: "" });
+  };
+
+  return (
+    <div>
+      {entries.map(([k, v], i) => (
+        <div
+          key={i}
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 2fr auto",
+            gap: "var(--space-sm)",
+            marginBottom: "var(--space-xs)",
+            alignItems: "center",
+          }}
+        >
+          <input
+            value={k}
+            onChange={(e) => updateRow(i, e.target.value, v)}
+            placeholder={keyPlaceholder}
+            style={{ fontFamily: "var(--font-mono)", fontSize: "var(--font-size-sm)" }}
+          />
+          <input
+            value={v}
+            onChange={(e) => updateRow(i, k, e.target.value)}
+            placeholder={valuePlaceholder}
+            style={{
+              fontFamily: monoValue ? "var(--font-mono)" : "inherit",
+              fontSize: "var(--font-size-sm)",
+            }}
+          />
+          <button
+            onClick={() => removeRow(i)}
+            style={{ padding: "2px", color: "var(--text-muted)" }}
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
+      ))}
+      <button
+        onClick={addRow}
+        style={{
+          fontSize: "var(--font-size-sm)",
+          color: "var(--accent)",
+          padding: "var(--space-xs) 0",
+        }}
+      >
+        + Add
       </button>
     </div>
   );

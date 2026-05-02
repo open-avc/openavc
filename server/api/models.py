@@ -5,7 +5,7 @@ Pydantic models for the REST API request/response bodies.
 import re
 from typing import Any
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class CommandRequest(BaseModel):
@@ -74,6 +74,15 @@ class ScriptCreateRequest(BaseModel):
 
 
 class DriverDefinitionRequest(BaseModel):
+    # The YAML driver schema is intentionally extensible — fields like
+    # `discovery`, `device_settings`, `simulator`, `help`, `on_connect`,
+    # `auth`, `protocols`, `min_platform_version`, etc. are read by the
+    # ConfigurableDriver runtime and validated by
+    # `validate_driver_definition()` in driver_loader.py. This API model
+    # acts only as a transit container; allow extra fields so they survive
+    # the round-trip to disk instead of being silently stripped.
+    model_config = ConfigDict(extra="allow")
+
     id: str
     name: str
     manufacturer: str = "Generic"

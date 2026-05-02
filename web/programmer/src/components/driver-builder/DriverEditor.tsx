@@ -1,6 +1,8 @@
-import { useState } from "react";
-import { Save, Download } from "lucide-react";
+import { useState, useMemo } from "react";
+import { Save, Download, FileCode, Copy, Check } from "lucide-react";
+import yaml from "js-yaml";
 import type { DriverDefinition } from "../../api/types";
+import { useProjectStore } from "../../store/projectStore";
 import { TransportPicker } from "./TransportPicker";
 import { CommandBuilder } from "./CommandBuilder";
 import { ResponseBuilder } from "./ResponseBuilder";
@@ -29,6 +31,8 @@ interface DriverEditorProps {
   saving: boolean;
   error: string | null;
   isNew: boolean;
+  /** The id this driver was loaded under. null for a brand-new draft. */
+  originalId: string | null;
   onUpdate: (partial: Partial<DriverDefinition>) => void;
   onSave: () => void;
   onExport: () => void;
@@ -40,11 +44,45 @@ export function DriverEditor({
   saving,
   error,
   isNew,
+  originalId,
   onUpdate,
   onSave,
   onExport,
 }: DriverEditorProps) {
   const [activeTab, setActiveTab] = useState<TabId>("general");
+  const [yamlPaneOpen, setYamlPaneOpen] = useState(false);
+  const [yamlCopied, setYamlCopied] = useState(false);
+  const project = useProjectStore((s) => s.project);
+
+  const yamlPreview = useMemo(() => {
+    try {
+      return yaml.dump(draft, {
+        lineWidth: 120,
+        noCompatMode: true,
+        quotingType: '"',
+        skipInvalid: true,
+      });
+    } catch (e) {
+      return `# YAML serialization failed: ${e instanceof Error ? e.message : String(e)}`;
+    }
+  }, [draft]);
+
+  const copyYaml = async () => {
+    try {
+      await navigator.clipboard.writeText(yamlPreview);
+      setYamlCopied(true);
+      setTimeout(() => setYamlCopied(false), 1500);
+    } catch {
+      // ignore — older browsers / no permissions
+    }
+  };
+
+  // Devices in the current project that reference the loaded driver by its
+  // original id. Used to warn the user that renaming will orphan them.
+  const devicesUsingDriver = originalId
+    ? (project?.devices ?? []).filter((d) => d.driver === originalId)
+    : [];
+  const idChanged = originalId !== null && draft.id !== originalId;
 
   const tabs: { id: TabId; label: string }[] = [
     { id: "general", label: "General" },
@@ -110,10 +148,28 @@ export function DriverEditor({
           </span>
         )}
 
+        <button
+          onClick={() => setYamlPaneOpen((v) => !v)}
+          title={yamlPaneOpen ? "Hide YAML preview" : "Show live YAML preview of the driver"}
+          aria-pressed={yamlPaneOpen}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--space-xs)",
+            padding: "var(--space-sm) var(--space-lg)",
+            borderRadius: "var(--border-radius)",
+            background: yamlPaneOpen ? "var(--accent-bg)" : "var(--bg-hover)",
+            color: yamlPaneOpen ? "var(--text-on-accent)" : "var(--text-primary)",
+            fontSize: "var(--font-size-sm)",
+          }}
+        >
+          <FileCode size={14} /> YAML
+        </button>
+
         {!isNew && (
           <button
             onClick={onExport}
-            title="Export as .json file"
+            title="Download this driver as a .avcdriver file"
             style={{
               display: "flex",
               alignItems: "center",
@@ -124,7 +180,7 @@ export function DriverEditor({
               fontSize: "var(--font-size-sm)",
             }}
           >
-            <Download size={14} /> Export
+            <Download size={14} /> Export .avcdriver
           </button>
         )}
 
@@ -179,14 +235,23 @@ export function DriverEditor({
         ))}
       </div>
 
-      {/* Tab content */}
+      {/* Tab content + optional live YAML pane */}
       <div
         style={{
           flex: 1,
-          overflow: "auto",
-          padding: "var(--space-lg)",
+          display: "flex",
+          minHeight: 0,
+          overflow: "hidden",
         }}
       >
+        <div
+          style={{
+            flex: 1,
+            overflow: "auto",
+            padding: "var(--space-lg)",
+            minWidth: 0,
+          }}
+        >
         {activeTab === "general" && (
           <div>
             <div style={rowStyle}>
@@ -201,10 +266,9 @@ export function DriverEditor({
                   })
                 }
                 placeholder="e.g., extron_sw4"
-                disabled={!isNew}
-                style={{ width: "100%", opacity: isNew ? 1 : 0.6 }}
+                style={{ width: "100%" }}
               />
-              {!isNew && (
+              {isNew ? (
                 <div
                   style={{
                     fontSize: "11px",
@@ -212,7 +276,37 @@ export function DriverEditor({
                     marginTop: "var(--space-xs)",
                   }}
                 >
-                  ID cannot be changed after creation
+                  Lowercase letters, digits, and underscores only.
+                </div>
+              ) : idChanged ? (
+                <div
+                  style={{
+                    fontSize: "11px",
+                    marginTop: "var(--space-xs)",
+                    padding: "var(--space-xs) var(--space-sm)",
+                    borderRadius: "var(--border-radius)",
+                    background: "rgba(255, 152, 0, 0.15)",
+                    color: "var(--color-warning, #d97706)",
+                    border: "1px solid rgba(255, 152, 0, 0.4)",
+                  }}
+                >
+                  Renaming from <code>{originalId}</code> to <code>{draft.id || "?"}</code>.
+                  {devicesUsingDriver.length > 0
+                    ? ` ${devicesUsingDriver.length} device${devicesUsingDriver.length === 1 ? "" : "s"} in the current project reference the old id and will need to be reassigned (${devicesUsingDriver.map((d) => d.name || d.id).join(", ")}).`
+                    : " No devices in the current project reference this driver."}
+                </div>
+              ) : (
+                <div
+                  style={{
+                    fontSize: "11px",
+                    color: "var(--text-muted)",
+                    marginTop: "var(--space-xs)",
+                  }}
+                >
+                  Lowercase letters, digits, and underscores only.
+                  {devicesUsingDriver.length > 0
+                    ? ` In use by ${devicesUsingDriver.length} device${devicesUsingDriver.length === 1 ? "" : "s"} in the current project — renaming will orphan them.`
+                    : ""}
                 </div>
               )}
             </div>
@@ -343,6 +437,85 @@ export function DriverEditor({
         )}
 
         {activeTab === "test" && <LiveTestPanel draft={draft} />}
+        </div>
+
+        {yamlPaneOpen && (
+          <div
+            style={{
+              width: "42%",
+              minWidth: 360,
+              maxWidth: 720,
+              borderLeft: "1px solid var(--border-color)",
+              display: "flex",
+              flexDirection: "column",
+              background: "var(--bg-surface)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "var(--space-sm)",
+                padding: "var(--space-sm) var(--space-md)",
+                borderBottom: "1px solid var(--border-color)",
+                fontSize: "var(--font-size-sm)",
+                color: "var(--text-secondary)",
+                flexShrink: 0,
+              }}
+            >
+              <FileCode size={14} />
+              <span style={{ flex: 1 }}>
+                Live YAML preview
+                <span style={{ color: "var(--text-muted)", marginLeft: 6 }}>
+                  (read-only)
+                </span>
+              </span>
+              <button
+                onClick={copyYaml}
+                title="Copy YAML to clipboard"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                  padding: "2px 8px",
+                  borderRadius: "var(--border-radius)",
+                  background: "var(--bg-hover)",
+                  fontSize: "11px",
+                }}
+              >
+                {yamlCopied ? <Check size={12} /> : <Copy size={12} />}
+                {yamlCopied ? "Copied" : "Copy"}
+              </button>
+            </div>
+            <pre
+              style={{
+                flex: 1,
+                margin: 0,
+                padding: "var(--space-md)",
+                overflow: "auto",
+                fontFamily: "var(--font-mono)",
+                fontSize: "var(--font-size-sm)",
+                lineHeight: 1.5,
+                color: "var(--text-primary)",
+                whiteSpace: "pre",
+              }}
+            >
+              {yamlPreview}
+            </pre>
+            <div
+              style={{
+                padding: "var(--space-xs) var(--space-md)",
+                borderTop: "1px solid var(--border-color)",
+                fontSize: "11px",
+                color: "var(--text-muted)",
+                flexShrink: 0,
+              }}
+            >
+              This is exactly what gets saved as the .avcdriver file.
+              Edits flow back through the form.
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
