@@ -14,6 +14,7 @@ import { SimulatorEditor } from "./SimulatorEditor";
 import { LiveTestPanel } from "./LiveTestPanel";
 import { LifecycleEditor } from "./LifecycleEditor";
 import { AuthEditor } from "./AuthEditor";
+import { FrameParserEditor } from "./FrameParserEditor";
 
 type TabId =
   | "general"
@@ -418,6 +419,7 @@ export function DriverEditor({
             <TransportPicker draft={draft} onUpdate={onUpdate} />
             <AuthEditor draft={draft} onUpdate={onUpdate} />
             <LifecycleEditor draft={draft} onUpdate={onUpdate} />
+            <FrameParserEditor draft={draft} onUpdate={onUpdate} />
           </>
         )}
 
