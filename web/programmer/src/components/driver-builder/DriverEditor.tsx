@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Save, Download, FileCode, Copy, Check } from "lucide-react";
+import { Save, Download, FileCode, Copy, Check, ExternalLink } from "lucide-react";
 import yaml from "js-yaml";
 import type { DriverDefinition } from "../../api/types";
 import { useProjectStore } from "../../store/projectStore";
@@ -20,6 +20,7 @@ import { ConfigSchemaEditor } from "./ConfigSchemaEditor";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { IssueList } from "./IssueList";
 import { validateDriver, issuesFor } from "./validateDriver";
+import { DOCS } from "./docLinks";
 
 type TabId =
   | "general"
@@ -285,6 +286,7 @@ export function DriverEditor({
         >
         {activeTab === "general" && (
           <div>
+            <LearnMore href={DOCS.general} label="Driver definition reference" />
             <IssueList issues={issuesFor(issues, "general")} />
             <div style={rowStyle}>
               <label style={labelStyle}>Driver ID</label>
@@ -450,6 +452,7 @@ export function DriverEditor({
               title="Transport"
               subtitle="How the driver talks to the device — TCP, serial, UDP, OSC, HTTP."
               meta={draft.transport || "not set"}
+              helpHref={DOCS.transport}
             >
               <TransportPicker draft={draft} onUpdate={onUpdate} />
             </CollapsibleSection>
@@ -459,6 +462,7 @@ export function DriverEditor({
               subtitle="Optional login handshake — for devices that present a login: / password: prompt after connect."
               meta={authEnabled ? "enabled" : "disabled"}
               defaultOpen={authEnabled}
+              helpHref={DOCS.auth}
             >
               <AuthEditor draft={draft} onUpdate={onUpdate} />
             </CollapsibleSection>
@@ -468,6 +472,7 @@ export function DriverEditor({
               subtitle="Commands sent automatically on every connect — verbose-mode toggles, GET ALL requests, push subscriptions."
               meta={countMeta(onConnectCount, "command")}
               defaultOpen={onConnectCount > 0}
+              helpHref={DOCS.onConnect}
             >
               <LifecycleEditor draft={draft} onUpdate={onUpdate} />
             </CollapsibleSection>
@@ -477,6 +482,7 @@ export function DriverEditor({
               subtitle="Advanced — only for binary protocols framed by length prefix or fixed length. Most drivers leave this off."
               meta={frameParserEnabled ? "enabled" : "disabled"}
               defaultOpen={frameParserEnabled}
+              helpHref={DOCS.frameParser}
             >
               <FrameParserEditor draft={draft} onUpdate={onUpdate} />
             </CollapsibleSection>
@@ -486,6 +492,7 @@ export function DriverEditor({
               subtitle="Per-device settings users fill in (display IDs, instance tags, custom passwords). Become {placeholders} in commands."
               meta={countMeta(configFieldCount, "field")}
               defaultOpen={configFieldCount > 0}
+              helpHref={DOCS.configSchema}
             >
               <ConfigSchemaEditor draft={draft} onUpdate={onUpdate} />
             </CollapsibleSection>
@@ -499,6 +506,7 @@ export function DriverEditor({
               title="State Variables"
               subtitle="Read-only values the driver reports — power, input, mute, volume. Use these in command parameters and panel bindings."
               meta={countMeta(stateCount, "variable")}
+              helpHref={DOCS.stateVariables}
             >
               <StateVariableEditor draft={draft} onUpdate={onUpdate} />
             </CollapsibleSection>
@@ -507,6 +515,7 @@ export function DriverEditor({
               title="Commands"
               subtitle="Actions the driver can perform — power on, switch input, set volume. Reference state variables and config fields with {placeholders}."
               meta={countMeta(commandCount, "command")}
+              helpHref={DOCS.commands}
             >
               <CommandBuilder draft={draft} onUpdate={onUpdate} />
             </CollapsibleSection>
@@ -515,6 +524,7 @@ export function DriverEditor({
               title="Responses"
               subtitle="Patterns matched against incoming data — capture groups update state variables."
               meta={countMeta(responseCount, "pattern")}
+              helpHref={DOCS.responses}
             >
               <ResponseBuilder draft={draft} onUpdate={onUpdate} />
             </CollapsibleSection>
@@ -524,6 +534,7 @@ export function DriverEditor({
               subtitle="Periodic queries that keep state variables fresh on devices that don't push updates."
               meta={countMeta(pollingQueryCount, "query")}
               defaultOpen={pollingQueryCount > 0}
+              helpHref={DOCS.polling}
             >
               <PollingConfig draft={draft} onUpdate={onUpdate} />
             </CollapsibleSection>
@@ -533,6 +544,7 @@ export function DriverEditor({
               subtitle="Writable values stored on the device hardware — labels, IDs, lock codes. Pending writes queue while offline."
               meta={countMeta(settingCount, "setting")}
               defaultOpen={settingCount > 0}
+              helpHref={DOCS.deviceSettings}
             >
               <DeviceSettingsEditor draft={draft} onUpdate={onUpdate} />
             </CollapsibleSection>
@@ -541,6 +553,7 @@ export function DriverEditor({
 
         {activeTab === "discovery" && (
           <>
+            <LearnMore href={DOCS.discovery} label="Discovery hints reference" />
             <IssueList issues={issuesFor(issues, "discovery")} />
             <DiscoveryHintsEditor draft={draft} onUpdate={onUpdate} />
           </>
@@ -548,6 +561,7 @@ export function DriverEditor({
 
         {activeTab === "simulation" && (
           <>
+            <LearnMore href={DOCS.simulation} label="Writing simulators guide" />
             <IssueList issues={issuesFor(issues, "simulation")} />
             <SimulatorEditor draft={draft} onUpdate={onUpdate} />
           </>
@@ -900,5 +914,28 @@ function PublishingSection({
         validated against real hardware.
       </div>
     </div>
+  );
+}
+
+/** Top-of-tab "Learn more" link. Used for tabs whose content isn't wrapped
+ *  in a CollapsibleSection (which carries its own helpHref). */
+function LearnMore({ href, label }: { href: string; label: string }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        fontSize: "11px",
+        color: "var(--text-muted)",
+        textDecoration: "none",
+        marginBottom: "var(--space-md)",
+      }}
+    >
+      <ExternalLink size={11} /> {label}
+    </a>
   );
 }

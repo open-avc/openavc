@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
 
 interface CollapsibleSectionProps {
   title: string;
@@ -9,6 +9,8 @@ interface CollapsibleSectionProps {
   subtitle?: string;
   /** Whether the section is open on first render. Default true. */
   defaultOpen?: boolean;
+  /** Optional "Learn more" link rendered next to the meta hint. */
+  helpHref?: string;
   children: ReactNode;
 }
 
@@ -22,6 +24,7 @@ export function CollapsibleSection({
   meta,
   subtitle,
   defaultOpen = true,
+  helpHref,
   children,
 }: CollapsibleSectionProps) {
   const [open, setOpen] = useState(defaultOpen);
@@ -93,6 +96,28 @@ export function CollapsibleSection({
           >
             {meta}
           </span>
+        )}
+        {helpHref && (
+          <a
+            href={helpHref}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            title="Open documentation in a new tab"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 3,
+              fontSize: "11px",
+              color: "var(--text-muted)",
+              textDecoration: "none",
+              flexShrink: 0,
+              padding: "2px 6px",
+              borderRadius: "var(--border-radius)",
+            }}
+          >
+            <ExternalLink size={11} /> Learn more
+          </a>
         )}
       </button>
       {open && (
