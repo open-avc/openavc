@@ -159,6 +159,7 @@ export function DriverPanel() {
             await duplicateDriver(id);
             setViewTab("create");
           }}
+          onBrowseCommunity={() => setViewTab("browse-community")}
         />
       ) : viewTab === "create" ? (
         <div style={{ display: "flex", flex: 1, minHeight: 0 }}>

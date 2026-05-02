@@ -36,11 +36,14 @@ interface InstalledDriversViewProps {
   onOpenInBuilder?: (driverId: string) => void;
   /** Duplicate a built-in driver into the user repo and switch to the editor. */
   onCustomizeCopy?: (driverId: string) => Promise<void> | void;
+  /** Switch DriverPanel viewTab to "browse-community" — wired by the parent. */
+  onBrowseCommunity?: () => void;
 }
 
 export function InstalledDriversView({
   onOpenInBuilder,
   onCustomizeCopy,
+  onBrowseCommunity,
 }: InstalledDriversViewProps = {}) {
   const registeredDrivers = useDriverBuilderStore((s) => s.registeredDrivers);
   const installedDrivers = useDriverBuilderStore((s) => s.installedDrivers);
@@ -167,9 +170,35 @@ export function InstalledDriversView({
                 textAlign: "center",
                 color: "var(--text-muted)",
                 fontSize: "var(--font-size-sm)",
+                lineHeight: 1.5,
               }}
             >
-              {searchQuery ? "No drivers match your search." : "No drivers installed."}
+              {searchQuery ? (
+                "No drivers match your search."
+              ) : (
+                <>
+                  No drivers in the catalog yet.
+                  {onBrowseCommunity && (
+                    <>
+                      <br />
+                      <button
+                        onClick={onBrowseCommunity}
+                        style={{
+                          marginTop: "var(--space-sm)",
+                          padding: "var(--space-xs) var(--space-md)",
+                          borderRadius: "var(--border-radius, var(--radius))",
+                          background: "var(--accent-bg)",
+                          color: "var(--text-on-accent)",
+                          fontSize: "var(--font-size-sm)",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Browse Community
+                      </button>
+                    </>
+                  )}
+                </>
+              )}
             </div>
           ) : (
             filteredDrivers.map((d) => {

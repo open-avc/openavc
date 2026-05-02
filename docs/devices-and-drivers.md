@@ -90,14 +90,20 @@ The Driver Library is inside the **Devices** view. Click **Devices** in the side
 
 The Installed tab shows all drivers available on this system. This includes default drivers that ship with OpenAVC and any community or custom drivers you have installed.
 
-The left panel lists all registered drivers. Click a driver to see its details:
+The left panel lists all registered drivers. Click a driver to see its details. The detail header carries the per-driver actions:
+
+- **Open in Builder** — open a YAML driver in the Driver Builder for editing.
+- **Customize a Copy** — built-in drivers are read-only; this clones one into your library so you can edit the copy.
+- **Open in Code Editor** — open a Python driver in the script editor.
+- **Uninstall** — remove the driver from the system. The button is disabled while a device in the current project uses it; the detail panel lists those devices so you know what to move first.
+
+The body of the detail panel shows:
 
 - **Overview.** What the driver controls and which devices it supports.
 - **Setup instructions.** Step-by-step guide for connecting and configuring the device.
 - **Configuration.** The settings you need to provide (IP address, port, display ID, etc.).
 - **Commands.** All available commands with descriptions.
 - **State variables.** What state the driver exposes (power, volume, input, etc.).
-- **Uninstall.** Remove the driver from the system (disabled if a device in the current project uses it).
 
 ### Create Tab
 
@@ -134,9 +140,9 @@ To remove a driver you no longer need:
 
 1. Open the **Installed** tab in Driver Library
 2. Click the driver in the left panel
-3. Scroll to the bottom and click **Uninstall Driver**
+3. Click **Uninstall** in the detail header, then confirm
 
-You cannot uninstall a driver while a device in the project is using it. Remove the device first, then uninstall the driver. You can always reinstall from Browse Community.
+You cannot uninstall a driver while a device in the project is using it. The Uninstall button is disabled in that case, and the detail panel lists the devices that reference the driver. Remove or reassign those devices first, then uninstall. You can always reinstall from Browse Community.
 
 ## Device Discovery
 
