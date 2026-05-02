@@ -658,22 +658,241 @@ async def delete_driver_definition_endpoint(driver_id: str) -> dict:
 
 @router.post("/driver-definitions/{driver_id}/test-command")
 async def test_driver_command(driver_id: str, body: TestCommandRequest) -> dict:
-    """Test a command against live hardware via a temporary connection."""
+    """Test a driver command against live hardware.
+
+    If the request includes a `definition` and `command_name`, the endpoint
+    instantiates the actual `ConfigurableDriver` runtime — running auth and
+    on_connect just like production — and sends the named command. This is
+    the production code path: anything that works in the test panel will
+    work when the driver is wired into a real device.
+
+    Falls back to a raw send-and-wait when only `command_string` is given,
+    for one-off "what does this device say if I send X" probes.
+    """
     _rate_limit_test(f"test_command:{driver_id}")
+
+    if body.definition and body.command_name:
+        return await _test_via_configurable_driver(body)
+
+    return await _test_raw(body)
+
+
+async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
+    """Run a command through the live ConfigurableDriver code path.
+
+    Builds an isolated StateStore + EventBus, instantiates a one-shot driver
+    from the supplied definition with `poll_interval` forced to 0, hooks
+    on_data_received to capture incoming bytes, and reports the response,
+    state changes, and any errors back to the caller.
+    """
     import asyncio
-    from server.transport.tcp import TCPTransport
+    from server.core.state_store import StateStore
+    from server.core.event_bus import EventBus
+    from server.drivers.configurable import create_configurable_driver_class
+
+    # Build the per-test config: definition's defaults, then user overrides
+    # (host, port, credentials), then poll forced off so we don't start a
+    # background poller for a one-shot test.
+    definition = dict(body.definition or {})
+    default_config = dict(definition.get("default_config") or {})
+    config = {
+        **default_config,
+        **(body.config_overrides or {}),
+        "host": body.host,
+        "port": body.port,
+        "poll_interval": 0,
+    }
+    # Patch the definition so the runtime sees poll-off.
+    definition["default_config"] = {**default_config, "poll_interval": 0}
+
+    state = StateStore()
+    events = EventBus()
+
+    try:
+        driver_cls = create_configurable_driver_class(definition)
+    except Exception as e:
+        return {
+            "success": False,
+            "sent": None,
+            "received": [],
+            "state_changes": {},
+            "error": f"Driver definition is invalid: {e}",
+        }
+
+    # Capture state changes so the panel can show what the command moved.
+    initial_state: dict[str, Any] = {}
+
+    driver = driver_cls(
+        device_id=f"test_{definition.get('id', 'driver')}",
+        config=config,
+        state=state,
+        events=events,
+    )
+    initial_state = dict(state.snapshot()) if hasattr(state, "snapshot") else {}
+
+    # Hook on_data_received to capture inbound bytes for display while still
+    # running the production response-matching logic so state changes happen.
+    received_chunks: list[bytes] = []
+    response_event = asyncio.Event()
+    original_on_data = driver.on_data_received
+
+    async def capture_on_data(data: bytes) -> None:
+        received_chunks.append(data)
+        response_event.set()
+        await original_on_data(data)
+
+    driver.on_data_received = capture_on_data  # type: ignore[method-assign]
+
+    sent_repr: str | None = None
+    error_text: str | None = None
+
+    try:
+        try:
+            await driver.connect()
+        except Exception as e:
+            return {
+                "success": False,
+                "sent": None,
+                "received": [_decode_for_display(b) for b in received_chunks],
+                "state_changes": {},
+                "error": f"Connect failed: {e}",
+            }
+
+        cmd_def = (definition.get("commands") or {}).get(body.command_name)
+        if cmd_def is None:
+            return {
+                "success": False,
+                "sent": None,
+                "received": [_decode_for_display(b) for b in received_chunks],
+                "state_changes": {},
+                "error": f"Unknown command '{body.command_name}'",
+            }
+
+        sent_repr = _describe_outgoing(definition, cmd_def, config, body.params or {})
+
+        # send_command is fire-and-forget for TCP/OSC. For HTTP it returns
+        # the response synchronously and on_data_received gets called with
+        # the body, so capture_on_data fires the event in either case.
+        try:
+            send_result = await driver.send_command(
+                body.command_name, body.params or {}
+            )
+        except Exception as e:
+            error_text = f"Send failed: {e}"
+            send_result = None
+
+        # If nothing has come back yet, give the device a moment to reply.
+        if not received_chunks and error_text is None:
+            try:
+                await asyncio.wait_for(response_event.wait(), timeout=body.timeout)
+            except asyncio.TimeoutError:
+                # No response is OK for fire-and-forget commands — surface
+                # it as info, not an error, so users can tell the difference.
+                if send_result is False or send_result is None:
+                    error_text = "No response within timeout"
+
+    finally:
+        try:
+            await driver.disconnect()
+        except Exception:
+            pass
+
+    final_state = dict(state.snapshot()) if hasattr(state, "snapshot") else {}
+    state_changes = {
+        k: v
+        for k, v in final_state.items()
+        if initial_state.get(k) != v and not k.endswith(".connected")
+    }
+
+    return {
+        "success": error_text is None,
+        "sent": sent_repr,
+        "received": [_decode_for_display(b) for b in received_chunks],
+        "state_changes": state_changes,
+        "error": error_text,
+    }
+
+
+def _decode_for_display(data: bytes) -> str:
+    """Best-effort decoding for the test panel UI.
+
+    Tries UTF-8 first; falls back to a hex preview for binary protocols.
+    """
+    try:
+        text = data.decode("utf-8")
+        # If it round-trips and renders, show as text.
+        if text.isprintable() or any(c in text for c in "\r\n\t"):
+            return text
+    except UnicodeDecodeError:
+        pass
+    return data.hex()
+
+
+def _describe_outgoing(
+    definition: dict[str, Any],
+    cmd_def: dict[str, Any],
+    config: dict[str, Any],
+    params: dict[str, Any],
+) -> str:
+    """Build a human-readable summary of what was sent on the wire.
+
+    Used by the test panel so authors can see which placeholders resolved to
+    which values — the same string the runtime substitutes, not the raw
+    template.
+    """
+    from server.drivers.configurable import ConfigurableDriver
+
+    transport = definition.get("transport", "tcp")
+    all_params = {**config, **params}
+
+    if "address" in cmd_def:  # OSC
+        addr = ConfigurableDriver._safe_substitute(
+            cmd_def.get("address", ""), all_params
+        )
+        args = cmd_def.get("args") or []
+        arg_summary = ", ".join(
+            f"{a.get('type', 's')}={a.get('value', '')}" for a in args
+        )
+        return f"OSC {addr}" + (f" [{arg_summary}]" if arg_summary else "")
+
+    if transport == "http" or "method" in cmd_def or "path" in cmd_def:
+        method = cmd_def.get("method", "GET").upper()
+        path = ConfigurableDriver._safe_substitute(
+            cmd_def.get("path", "/"), all_params
+        )
+        return f"{method} {path}"
+
+    raw = cmd_def.get("send", "") or cmd_def.get("string", "")
+    return ConfigurableDriver._safe_substitute(raw, all_params) if raw else ""
+
+
+async def _test_raw(body: TestCommandRequest) -> dict:
+    """Legacy raw-bytes test path — open transport, send command_string, wait.
+
+    No auth, no on_connect. Used when a user types a one-off probe in the
+    raw command field without selecting a defined command.
+    """
+    import asyncio
+
+    if not body.command_string:
+        raise HTTPException(
+            status_code=422,
+            detail="Provide either a definition + command_name or a command_string",
+        )
 
     if body.transport == "http":
-        return await _test_http_command(body)
+        return await _test_http_raw(body)
 
     if body.transport == "osc":
-        return await _test_osc_command(body)
+        return await _test_osc_raw(body)
 
     if body.transport not in ("tcp",):
         raise HTTPException(
             status_code=422,
             detail="Only TCP, HTTP, and OSC test connections are supported",
         )
+
+    from server.transport.tcp import TCPTransport
 
     delimiter = body.delimiter.encode().decode("unicode_escape").encode()
     response_text = None
@@ -689,7 +908,13 @@ async def test_driver_command(driver_id: str, body: TestCommandRequest) -> dict:
             timeout=body.timeout,
         )
     except ConnectionError as e:
-        return {"success": False, "error": str(e), "response": None}
+        return {
+            "success": False,
+            "sent": body.command_string,
+            "received": [],
+            "state_changes": {},
+            "error": str(e),
+        }
 
     try:
         cmd_data = body.command_string.encode().decode("unicode_escape").encode()
@@ -704,16 +929,17 @@ async def test_driver_command(driver_id: str, body: TestCommandRequest) -> dict:
 
     return {
         "success": error_text is None,
-        "response": response_text,
+        "sent": body.command_string,
+        "received": [response_text] if response_text is not None else [],
+        "state_changes": {},
         "error": error_text,
     }
 
 
-async def _test_http_command(body: TestCommandRequest) -> dict:
-    """Test an HTTP command against a device."""
+async def _test_http_raw(body: TestCommandRequest) -> dict:
+    """Raw HTTP probe — parses 'METHOD /path' out of command_string."""
     import httpx
 
-    # command_string is the URL path, e.g. "/api/status" or "GET /api/power"
     cmd = body.command_string.strip()
     method = "GET"
     path = cmd
@@ -725,6 +951,7 @@ async def _test_http_command(body: TestCommandRequest) -> dict:
 
     scheme = "https" if body.port == 443 else "http"
     url = f"{scheme}://{body.host}:{body.port}{path}"
+    sent = f"{method} {url}"
 
     try:
         async with httpx.AsyncClient(
@@ -733,17 +960,31 @@ async def _test_http_command(body: TestCommandRequest) -> dict:
             resp = await client.request(method, url)
             return {
                 "success": True,
-                "response": f"HTTP {resp.status_code}\n{resp.text[:2000]}",
+                "sent": sent,
+                "received": [f"HTTP {resp.status_code}\n{resp.text[:2000]}"],
+                "state_changes": {},
                 "error": None,
             }
     except httpx.TimeoutException:
-        return {"success": False, "response": None, "error": "HTTP request timed out"}
+        return {
+            "success": False,
+            "sent": sent,
+            "received": [],
+            "state_changes": {},
+            "error": "HTTP request timed out",
+        }
     except Exception as e:
-        return {"success": False, "response": None, "error": str(e)}
+        return {
+            "success": False,
+            "sent": sent,
+            "received": [],
+            "state_changes": {},
+            "error": str(e),
+        }
 
 
-async def _test_osc_command(body: TestCommandRequest) -> dict:
-    """Test an OSC command against a device."""
+async def _test_osc_raw(body: TestCommandRequest) -> dict:
+    """Raw OSC probe — sends the address with no args."""
     import asyncio
     from server.transport.osc_codec import osc_encode_message, osc_decode_message
     from server.transport.udp import UDPTransport
@@ -754,12 +995,9 @@ async def _test_osc_command(body: TestCommandRequest) -> dict:
 
     response_text = None
     error_text = None
+    sent = f"OSC {address}"
 
-    udp = UDPTransport(
-        host=body.host,
-        port=body.port,
-        name="osc_test",
-    )
+    udp = UDPTransport(host=body.host, port=body.port, name="osc_test")
     try:
         await udp.open()
         msg = osc_encode_message(address)
@@ -779,7 +1017,9 @@ async def _test_osc_command(body: TestCommandRequest) -> dict:
 
     return {
         "success": error_text is None,
-        "response": response_text,
+        "sent": sent,
+        "received": [response_text] if response_text is not None else [],
+        "state_changes": {},
         "error": error_text,
     }
 

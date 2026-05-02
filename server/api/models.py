@@ -102,12 +102,38 @@ class DriverDefinitionRequest(BaseModel):
 
 
 class TestCommandRequest(BaseModel):
+    """Driver Builder live-test request.
+
+    Two modes:
+
+    1. Definition mode (preferred): caller provides the full driver
+       `definition` (the live, possibly-unsaved YAML dict) along with
+       `command_name` + `params` and any `config_overrides` (host, port,
+       credentials). The endpoint instantiates a real ConfigurableDriver,
+       runs auth + on_connect, then sends the named command — exactly
+       matching the production code path.
+
+    2. Raw mode (legacy fallback): caller provides `command_string` and
+       a transport. The endpoint opens a transport, sends the bytes, and
+       returns whatever comes back. No auth or on_connect.
+    """
+
+    # Common
     host: str
     port: int = 23
     transport: str = "tcp"
-    command_string: str
-    delimiter: str = "\\r"
     timeout: float = 5.0
+
+    # Definition mode
+    definition: dict[str, Any] | None = None
+    command_name: str | None = None
+    params: dict[str, Any] = {}
+    config_overrides: dict[str, Any] = {}
+
+    # Raw mode (legacy) — also used as the substituted display string in
+    # responses so the UI can show what was actually sent.
+    command_string: str = ""
+    delimiter: str = "\\r"
 
 
 class PythonDriverCreateRequest(BaseModel):

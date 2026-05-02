@@ -50,17 +50,33 @@ export async function deleteDriverDefinition(
   return request(`/driver-definitions/${id}`, { method: "DELETE" });
 }
 
+export interface TestCommandResult {
+  success: boolean;
+  sent: string | null;
+  received: string[];
+  state_changes: Record<string, unknown>;
+  error: string | null;
+}
+
+export interface TestCommandRequest {
+  host: string;
+  port: number;
+  transport: string;
+  timeout?: number;
+  /** Definition mode: full driver definition + which command to invoke. */
+  definition?: DriverDefinition;
+  command_name?: string;
+  params?: Record<string, unknown>;
+  config_overrides?: Record<string, unknown>;
+  /** Raw mode (legacy fallback) — only used when definition+command_name absent. */
+  command_string?: string;
+  delimiter?: string;
+}
+
 export async function testDriverCommand(
   driverId: string,
-  data: {
-    host: string;
-    port: number;
-    transport: string;
-    command_string: string;
-    delimiter: string;
-    timeout?: number;
-  }
-): Promise<{ success: boolean; response: string | null; error: string | null }> {
+  data: TestCommandRequest,
+): Promise<TestCommandResult> {
   return request(`/driver-definitions/${driverId}/test-command`, {
     method: "POST",
     body: JSON.stringify(data),
