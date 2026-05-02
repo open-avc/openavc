@@ -14,25 +14,73 @@ function getPattern(resp: DriverResponseDef): string {
   return resp.address ?? resp.pattern ?? resp.match ?? "";
 }
 
-/** Read mappings, converting set shorthand if needed. */
+/** Read mappings, converting set shorthand if needed. Preserves static
+ *  literal values (so round-trip doesn't lose them on edit). */
 function getMappings(resp: DriverResponseDef): DriverResponseMapping[] {
   if (resp.mappings) return resp.mappings;
   if (!resp.set) return [];
-  // Convert {input: "$1"} → [{group: 1, state: "input", type: "string"}]
   const mappings: DriverResponseMapping[] = [];
   for (const [stateKey, valueExpr] of Object.entries(resp.set)) {
-    if (typeof valueExpr === "string" && valueExpr.startsWith("$")) {
-      const group = parseInt(valueExpr.slice(1), 10) || 0;
+    if (typeof valueExpr === "string" && /^\$\d+$/.test(valueExpr)) {
+      // Capture-group reference like "$1"
+      const group = parseInt(valueExpr.slice(1), 10);
       mappings.push({ group, state: stateKey, type: "string" });
     } else {
-      mappings.push({ group: 0, state: stateKey, type: "string" });
+      // Static literal — preserve the value verbatim under `value`
+      mappings.push({ group: 0, state: stateKey, value: valueExpr });
     }
   }
   return mappings;
 }
 
-/** Build a response def in the canonical match/set format used by .avcdriver YAML. */
-function buildResponse(pattern: string, mappings: DriverResponseMapping[]): DriverResponseDef {
+/** True if every mapping fits the `set:` shorthand: each is either a
+ *  pure capture-group reference (no `type`/`map`/`arg` extras) or a
+ *  static literal. Used to decide which output form preserves the
+ *  driver author's original intent. */
+function canUseSetShorthand(mappings: DriverResponseMapping[]): boolean {
+  if (mappings.length === 0) return false;
+  const seenStates = new Set<string>();
+  for (const m of mappings) {
+    if (!m.state) return false;
+    if (seenStates.has(m.state)) return false;
+    seenStates.add(m.state);
+    if (m.arg !== undefined) return false;
+    if (m.map !== undefined) return false;
+    // Static literal mapping: group=0, value present
+    if (m.group === 0 && m.value !== undefined) continue;
+    // Capture-group mapping: group>0, no `type` or default string type
+    if (m.group > 0 && (m.type === undefined || m.type === "string")) continue;
+    return false;
+  }
+  return true;
+}
+
+/** Build a response def, preserving the original form (set: shorthand or
+ *  mappings:) of the loaded response when the new mappings still fit. */
+function buildResponse(
+  pattern: string,
+  mappings: DriverResponseMapping[],
+  original: DriverResponseDef,
+): DriverResponseDef {
+  // OSC responses always use mappings + address.
+  if (original.address !== undefined) {
+    return { address: pattern, mappings };
+  }
+  // Choose set: shorthand when (a) the original used it AND (b) the
+  // current mapping shape still fits the shorthand. Otherwise fall back
+  // to the explicit mappings form.
+  const originalWasSet = original.set !== undefined && original.mappings === undefined;
+  if (originalWasSet && canUseSetShorthand(mappings)) {
+    const set: Record<string, unknown> = {};
+    for (const m of mappings) {
+      if (m.group === 0 && m.value !== undefined) {
+        set[m.state] = m.value;
+      } else {
+        set[m.state] = `$${m.group}`;
+      }
+    }
+    return { match: pattern, set };
+  }
   return { match: pattern, mappings };
 }
 
@@ -56,7 +104,7 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
       onUpdate({
         responses: [
           ...responses,
-          buildResponse("", [{ group: 1, state: "", type: "string" }]),
+          buildResponse("", [{ group: 1, state: "", type: "string" }], {}),
         ],
       });
     }
@@ -184,7 +232,7 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
               <input
                 value={pattern}
                 onChange={(e) =>
-                  updateResponse(i, buildResponse(e.target.value, mappings))
+                  updateResponse(i, buildResponse(e.target.value, mappings, resp))
                 }
                 placeholder="e.g., In(\d+) All"
                 style={{
@@ -240,7 +288,7 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
                 onChange={(e) => {
                   const next = [...mappings];
                   next[mi] = { ...mapping, state: e.target.value };
-                  updateResponse(i, buildResponse(pattern, next));
+                  updateResponse(i, buildResponse(pattern, next, resp));
                 }}
                 style={{ flex: 1, fontSize: "var(--font-size-sm)" }}
               >
@@ -256,7 +304,7 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
                 onChange={(e) => {
                   const next = [...mappings];
                   next[mi] = { ...mapping, type: e.target.value };
-                  updateResponse(i, buildResponse(pattern, next));
+                  updateResponse(i, buildResponse(pattern, next, resp));
                 }}
                 style={{ width: 90, fontSize: "var(--font-size-sm)" }}
               >
@@ -268,7 +316,7 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
               <button
                 onClick={() => {
                   const next = mappings.filter((_, j) => j !== mi);
-                  updateResponse(i, buildResponse(pattern, next));
+                  updateResponse(i, buildResponse(pattern, next, resp));
                 }}
                 style={{ padding: "2px", color: "var(--text-muted)" }}
               >
@@ -279,7 +327,7 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
                 onChange={(updated) => {
                   const next = [...mappings];
                   next[mi] = updated;
-                  updateResponse(i, buildResponse(pattern, next));
+                  updateResponse(i, buildResponse(pattern, next, resp));
                 }}
               />
             </div>
@@ -302,7 +350,7 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
                 updateResponse(i, buildResponse(pattern, [
                   ...mappings,
                   { group: nextGroup, state: "", type: "string" },
-                ]));
+                ], resp));
               }
             }}
             style={{

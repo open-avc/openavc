@@ -443,17 +443,26 @@ export interface DriverResponseMapping {
   arg?: number;
   state: string;
   type?: string;
+  // Static literal — used when group=0. The runtime sets state to this
+  // value verbatim rather than reading a capture group. Comes from the
+  // `set: { state: <literal> }` shorthand in YAML drivers.
+  value?: unknown;
   map?: Record<string, string>;
 }
 
 export interface DriverResponseDef {
   // YAML .avcdriver format uses match/set, Driver Builder UI uses pattern/mappings.
-  // Both are accepted; the runtime handles either.
+  // Both are accepted; the runtime handles either. The builder preserves
+  // whichever form was loaded so byte-equal round-trips stay byte-equal.
   pattern?: string;
   match?: string;
   address?: string;
   mappings?: DriverResponseMapping[];
-  set?: Record<string, string>;
+  // Shorthand for capture-or-static mappings:
+  //   set: { volume: "$1" }       — capture group reference
+  //   set: { mute: "true" }       — static string
+  //   set: { signal: true }       — static boolean
+  set?: Record<string, unknown>;
 }
 
 export interface DriverDiscoveryHints {
