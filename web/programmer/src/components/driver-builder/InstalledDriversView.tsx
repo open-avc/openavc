@@ -1,11 +1,23 @@
 import { useState, useEffect } from "react";
-import { Search, Trash2 } from "lucide-react";
+import { Search, Trash2, Pencil, Copy, Code } from "lucide-react";
 import { useDriverBuilderStore } from "../../store/driverBuilderStore";
 import { useProjectStore } from "../../store/projectStore";
+import { useNavigationStore } from "../../store/navigationStore";
 import { parseApiError } from "../../api/errors";
-import type { DriverInfo } from "../../api/types";
+import type { DriverInfo, InstalledDriver } from "../../api/types";
 
 const GENERIC_IDS = new Set(["generic_tcp", "generic_serial", "generic_http"]);
+
+const headerBtnStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "var(--space-xs)",
+  padding: "var(--space-xs) var(--space-md)",
+  borderRadius: "var(--border-radius, var(--radius))",
+  background: "var(--bg-hover)",
+  fontSize: "var(--font-size-sm)",
+  cursor: "pointer",
+};
 
 const CATEGORY_COLORS: Record<string, string> = {
   projector: "#e74c3c",
@@ -18,15 +30,29 @@ const CATEGORY_COLORS: Record<string, string> = {
   utility: "#95a5a6",
 };
 
-export function InstalledDriversView() {
+interface InstalledDriversViewProps {
+  /** Switch DriverPanel viewTab to "create" with this driver loaded in the editor. */
+  onOpenInBuilder?: (driverId: string) => void;
+  /** Duplicate a built-in driver into the user repo and switch to the editor. */
+  onCustomizeCopy?: (driverId: string) => Promise<void> | void;
+}
+
+export function InstalledDriversView({
+  onOpenInBuilder,
+  onCustomizeCopy,
+}: InstalledDriversViewProps = {}) {
   const registeredDrivers = useDriverBuilderStore((s) => s.registeredDrivers);
   const installedDrivers = useDriverBuilderStore((s) => s.installedDrivers);
+  const definitions = useDriverBuilderStore((s) => s.definitions);
   const loadRegisteredDrivers = useDriverBuilderStore((s) => s.loadRegisteredDrivers);
   const loadInstalledDrivers = useDriverBuilderStore((s) => s.loadInstalledDrivers);
+  const loadDefinitions = useDriverBuilderStore((s) => s.loadDefinitions);
   const uninstallDriver = useDriverBuilderStore((s) => s.uninstallDriver);
   const project = useProjectStore((s) => s.project);
+  const navigateTo = useNavigationStore((s) => s.navigateTo);
+  const selectedId = useDriverBuilderStore((s) => s.installedDriverId);
+  const setSelectedId = useDriverBuilderStore((s) => s.setInstalledDriverId);
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [confirmUninstall, setConfirmUninstall] = useState(false);
   const [uninstalling, setUninstalling] = useState(false);
@@ -35,7 +61,8 @@ export function InstalledDriversView() {
   useEffect(() => {
     loadRegisteredDrivers();
     loadInstalledDrivers();
-  }, [loadRegisteredDrivers, loadInstalledDrivers]);
+    loadDefinitions();
+  }, [loadRegisteredDrivers, loadInstalledDrivers, loadDefinitions]);
 
   // Reset confirm/error state when selection changes
   useEffect(() => {
@@ -44,6 +71,10 @@ export function InstalledDriversView() {
   }, [selectedId]);
 
   const installedIdSet = new Set(installedDrivers.map((d) => d.id));
+  const installedById = new Map<string, InstalledDriver>(
+    installedDrivers.map((d) => [d.id, d])
+  );
+  const definitionById = new Map(definitions.map((d) => [d.id, d]));
 
   const filteredDrivers = registeredDrivers.filter((d) => {
     if (GENERIC_IDS.has(d.id)) return false;
@@ -58,10 +89,23 @@ export function InstalledDriversView() {
 
   const selectedDriver = registeredDrivers.find((d) => d.id === selectedId) || null;
   const canUninstall = selectedId ? installedIdSet.has(selectedId) : false;
+  const selectedInstalled = selectedId ? installedById.get(selectedId) ?? null : null;
+  const selectedDefinition = selectedId ? definitionById.get(selectedId) ?? null : null;
+  const isPython = selectedInstalled?.format === "python";
+  const isBuiltin = selectedDefinition?.source === "builtin"
+    || (!selectedInstalled && !!selectedDefinition);
 
   const devicesUsingDriver = selectedDriver && project
     ? project.devices.filter((d) => d.driver === selectedDriver.id)
     : [];
+
+  const handleOpenInCodeEditor = (driverId: string, filename?: string) => {
+    navigateTo("scripts", {
+      type: "python_driver",
+      id: driverId,
+      detail: filename ? `file:${filename}` : undefined,
+    });
+  };
 
   const handleUninstall = async () => {
     if (!selectedDriver) return;
@@ -127,39 +171,70 @@ export function InstalledDriversView() {
               {searchQuery ? "No drivers match your search." : "No drivers installed."}
             </div>
           ) : (
-            filteredDrivers.map((d) => (
-              <div
-                key={d.id}
-                onClick={() => setSelectedId(d.id)}
-                style={{
-                  padding: "var(--space-sm) var(--space-md)",
-                  cursor: "pointer",
-                  borderBottom: "1px solid var(--border-color)",
-                  background: selectedId === d.id ? "var(--accent-dim, rgba(59,130,246,0.1))" : "transparent",
-                }}
-              >
+            filteredDrivers.map((d) => {
+              const installedRow = installedById.get(d.id);
+              const formatBadge = installedRow?.format === "python" ? "PY" : null;
+              return (
                 <div
+                  key={d.id}
+                  onClick={() => setSelectedId(d.id)}
                   style={{
-                    fontWeight: 500,
-                    fontSize: "var(--font-size-sm)",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
+                    padding: "var(--space-sm) var(--space-md)",
+                    cursor: "pointer",
+                    borderBottom: "1px solid var(--border-color)",
+                    background:
+                      selectedId === d.id ? "var(--accent-dim, rgba(59,130,246,0.1))" : "transparent",
                   }}
                 >
-                  {d.name}
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      fontWeight: 500,
+                      fontSize: "var(--font-size-sm)",
+                    }}
+                  >
+                    <span
+                      style={{
+                        flex: 1,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {d.name}
+                    </span>
+                    {formatBadge && (
+                      <span
+                        title="Python driver"
+                        style={{
+                          fontSize: 10,
+                          padding: "1px 5px",
+                          borderRadius: 3,
+                          background: "var(--bg-hover)",
+                          color: "var(--text-muted)",
+                          fontFamily: "var(--font-mono)",
+                          fontWeight: 600,
+                          flexShrink: 0,
+                        }}
+                      >
+                        {formatBadge}
+                      </span>
+                    )}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: "var(--font-size-xs)",
+                      color: "var(--text-muted)",
+                      marginTop: 2,
+                    }}
+                  >
+                    {d.manufacturer} &middot; {d.category || "Other"}
+                  </div>
                 </div>
-                <div
-                  style={{
-                    fontSize: "var(--font-size-xs)",
-                    color: "var(--text-muted)",
-                    marginTop: 2,
-                  }}
-                >
-                  {d.manufacturer} &middot; {d.category || "Other"}
-                </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
 
@@ -181,11 +256,26 @@ export function InstalledDriversView() {
         {selectedDriver ? (
           <DriverDetailPanel
             driver={selectedDriver}
+            installed={selectedInstalled}
+            isPython={isPython}
+            isBuiltin={isBuiltin}
             canUninstall={canUninstall}
             devicesUsingDriver={devicesUsingDriver.map((d) => d.name || d.id)}
             confirmUninstall={confirmUninstall}
             uninstalling={uninstalling}
             uninstallError={uninstallError}
+            canOpenInBuilder={!!onOpenInBuilder && !isPython && !!selectedDefinition}
+            onOpenInBuilder={
+              onOpenInBuilder ? () => onOpenInBuilder(selectedDriver.id) : undefined
+            }
+            onCustomizeCopy={
+              onCustomizeCopy ? () => onCustomizeCopy(selectedDriver.id) : undefined
+            }
+            onOpenInCodeEditor={
+              isPython
+                ? () => handleOpenInCodeEditor(selectedDriver.id, selectedInstalled?.filename)
+                : undefined
+            }
             onRequestUninstall={() => {
               setUninstallError(null);
               setConfirmUninstall(true);
@@ -216,22 +306,36 @@ export function InstalledDriversView() {
 
 function DriverDetailPanel({
   driver,
+  installed,
+  isPython,
+  isBuiltin,
   canUninstall,
   devicesUsingDriver,
   confirmUninstall,
   uninstalling,
   uninstallError,
+  canOpenInBuilder,
+  onOpenInBuilder,
+  onCustomizeCopy,
+  onOpenInCodeEditor,
   onRequestUninstall,
   onConfirmUninstall,
   onCancelUninstall,
   onDismissUninstallError,
 }: {
   driver: DriverInfo;
+  installed: InstalledDriver | null;
+  isPython: boolean;
+  isBuiltin: boolean;
   canUninstall: boolean;
   devicesUsingDriver: string[];
   confirmUninstall: boolean;
   uninstalling: boolean;
   uninstallError: string | null;
+  canOpenInBuilder: boolean;
+  onOpenInBuilder?: () => void;
+  onCustomizeCopy?: () => void;
+  onOpenInCodeEditor?: () => void;
   onRequestUninstall: () => void;
   onConfirmUninstall: () => void;
   onCancelUninstall: () => void;
@@ -256,6 +360,38 @@ function DriverDetailPanel({
           }}
         >
           <h2 style={{ margin: 0, fontSize: "1.25rem", flex: 1 }}>{driver.name}</h2>
+          {/* Edit / Customize / Code editor actions */}
+          {!confirmUninstall && (
+            <>
+              {isPython && onOpenInCodeEditor && (
+                <button
+                  onClick={onOpenInCodeEditor}
+                  title="Open this Python driver in the Code Editor"
+                  style={headerBtnStyle}
+                >
+                  <Code size={14} /> Open in Code Editor
+                </button>
+              )}
+              {!isPython && canOpenInBuilder && !isBuiltin && onOpenInBuilder && (
+                <button
+                  onClick={onOpenInBuilder}
+                  title="Open this driver in the Driver Builder"
+                  style={headerBtnStyle}
+                >
+                  <Pencil size={14} /> Open in Builder
+                </button>
+              )}
+              {!isPython && isBuiltin && onCustomizeCopy && (
+                <button
+                  onClick={onCustomizeCopy}
+                  title="Built-in drivers can't be edited in place. Clones to your library so you can customize."
+                  style={headerBtnStyle}
+                >
+                  <Copy size={14} /> Customize a Copy
+                </button>
+              )}
+            </>
+          )}
           {canUninstall && (
             confirmUninstall ? (
               <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
@@ -329,6 +465,11 @@ function DriverDetailPanel({
           <span>{driver.manufacturer}</span>
           {driver.version && <span>&middot; v{driver.version}</span>}
           {driver.author && <span>&middot; {driver.author}</span>}
+          {installed?.filename && (
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>
+              &middot; {installed.filename}
+            </span>
+          )}
         </div>
         <div style={{ display: "flex", gap: "var(--space-xs)", marginTop: "var(--space-sm)" }}>
           {driver.category && (

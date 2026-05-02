@@ -60,6 +60,8 @@ export function ScriptView() {
         pendingLineRef.current = parseInt(focus.detail.slice(5), 10);
       }
       handleSelectScript(focus.id);
+    } else if (focus?.type === "python_driver") {
+      doSelect(focus.id, "driver");
     }
   }, []);
 

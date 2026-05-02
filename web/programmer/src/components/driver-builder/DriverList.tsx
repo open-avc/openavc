@@ -1,4 +1,4 @@
-import { Plus, Upload, Download, Trash2, Copy, Lock } from "lucide-react";
+import { Plus, Upload, Download, Trash2, Copy, Lock, ExternalLink } from "lucide-react";
 import type { DriverDefinition } from "../../api/types";
 
 interface DriverListProps {
@@ -10,6 +10,7 @@ interface DriverListProps {
   onExport: (id: string) => void;
   onDuplicate: (id: string) => void;
   onDelete: (id: string) => void;
+  onViewAsInstalled?: (id: string) => void;
 }
 
 export function DriverList({
@@ -21,6 +22,7 @@ export function DriverList({
   onExport,
   onDuplicate,
   onDelete,
+  onViewAsInstalled,
 }: DriverListProps) {
   return (
     <div
@@ -202,6 +204,23 @@ export function DriverList({
                 >
                   <Download size={14} />
                 </button>
+                {onViewAsInstalled && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onViewAsInstalled(def.id);
+                    }}
+                    title="View this driver in the Installed catalog"
+                    style={{
+                      padding: "2px",
+                      borderRadius: "var(--border-radius)",
+                      color: "var(--text-muted)",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <ExternalLink size={14} />
+                  </button>
+                )}
                 {!isBuiltin && (
                   <button
                     onClick={(e) => {

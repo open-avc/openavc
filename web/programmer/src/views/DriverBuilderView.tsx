@@ -44,6 +44,7 @@ export function DriverPanel() {
     error,
     loadDefinitions,
     selectDriver,
+    setInstalledDriverId,
     newDriver,
     updateDraft,
     save,
@@ -149,7 +150,16 @@ export function DriverPanel() {
       </div>
 
       {viewTab === "installed" ? (
-        <InstalledDriversView />
+        <InstalledDriversView
+          onOpenInBuilder={(id) => {
+            selectDriver(id);
+            setViewTab("create");
+          }}
+          onCustomizeCopy={async (id) => {
+            await duplicateDriver(id);
+            setViewTab("create");
+          }}
+        />
       ) : viewTab === "create" ? (
         <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
           <DriverList
@@ -161,6 +171,10 @@ export function DriverPanel() {
             onExport={handleExport}
             onDuplicate={duplicateDriver}
             onDelete={handleDelete}
+            onViewAsInstalled={(id) => {
+              setInstalledDriverId(id);
+              setViewTab("installed");
+            }}
           />
 
           <div style={{ flex: 1, overflow: "hidden" }}>

@@ -26,6 +26,9 @@ const EMPTY_DEFINITION: DriverDefinition = {
 interface DriverBuilderState {
   definitions: DriverDefinition[];
   selectedId: string | null;
+  /** Selection in the Installed tab — separate from the editor's selectedId
+   *  so navigating between tabs preserves both contexts independently. */
+  installedDriverId: string | null;
   draft: DriverDefinition;
   dirty: boolean;
   saving: boolean;
@@ -43,6 +46,7 @@ interface DriverBuilderState {
 
   loadDefinitions: () => Promise<void>;
   selectDriver: (id: string | null) => void;
+  setInstalledDriverId: (id: string | null) => void;
   newDriver: () => void;
   updateDraft: (partial: Partial<DriverDefinition>) => void;
   save: () => Promise<void>;
@@ -63,6 +67,7 @@ interface DriverBuilderState {
 export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => ({
   definitions: [],
   selectedId: null,
+  installedDriverId: null,
   draft: { ...EMPTY_DEFINITION },
   dirty: false,
   saving: false,
@@ -84,6 +89,8 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => ({
       set({ error: parseApiError(e), loading: false });
     }
   },
+
+  setInstalledDriverId: (id) => set({ installedDriverId: id }),
 
   selectDriver: (id) => {
     const { definitions } = get();
