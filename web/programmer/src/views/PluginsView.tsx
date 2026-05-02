@@ -877,7 +877,7 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
           </div>
         </div>
         {!isMissing && !isIncompat && (
-          <div style={{ display: "flex", gap: "var(--space-sm)" }}>
+          <div style={{ display: "flex", gap: "var(--space-sm)", alignItems: "center", flexWrap: "wrap" }}>
             {isRunning ? (
               <button
                 onClick={() => disablePlugin(plugin.plugin_id)}
@@ -913,6 +913,76 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
                 Enable
               </button>
             )}
+            {confirmUninstall ? (
+              <>
+                <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-error)" }}>
+                  Uninstall this plugin?
+                </span>
+                <button
+                  onClick={async () => {
+                    try {
+                      await api.uninstallPlugin(plugin.plugin_id);
+                      setConfirmUninstall(false);
+                      setSelectedId(null);
+                      load();
+                    } catch (e) {
+                      setUninstallError(parseApiError(e));
+                      setConfirmUninstall(false);
+                    }
+                  }}
+                  style={{
+                    padding: "var(--space-xs) var(--space-md)",
+                    borderRadius: "var(--border-radius)",
+                    background: "var(--color-error, #dc2626)",
+                    color: "#fff",
+                    fontSize: "var(--font-size-sm)",
+                  }}
+                >
+                  Yes, Uninstall
+                </button>
+                <button
+                  onClick={() => setConfirmUninstall(false)}
+                  style={{
+                    padding: "var(--space-xs) var(--space-md)",
+                    borderRadius: "var(--border-radius)",
+                    background: "var(--bg-hover)",
+                    fontSize: "var(--font-size-sm)",
+                  }}
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => {
+                  if (isRunning) {
+                    setUninstallError("Disable the plugin before uninstalling.");
+                    return;
+                  }
+                  setUninstallError(null);
+                  setConfirmUninstall(true);
+                }}
+                title={
+                  isRunning
+                    ? "Disable the plugin before uninstalling."
+                    : "Removes the plugin files. You can reinstall from Browse."
+                }
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "var(--space-xs)",
+                  padding: "var(--space-xs) var(--space-md)",
+                  borderRadius: "var(--border-radius)",
+                  background: "var(--bg-hover)",
+                  color: isRunning ? "var(--text-muted)" : "var(--color-error, #dc2626)",
+                  fontSize: "var(--font-size-sm)",
+                  cursor: "pointer",
+                  opacity: isRunning ? 0.6 : 1,
+                }}
+              >
+                <Trash2 size={14} /> Uninstall
+              </button>
+            )}
           </div>
         )}
         {isMissing && (
@@ -935,6 +1005,42 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
           </button>
         )}
       </div>
+
+      {/* Uninstall error / status, next to the action */}
+      {uninstallError && (
+        <div
+          style={{
+            padding: "var(--space-sm) var(--space-md)",
+            marginBottom: "var(--space-md)",
+            background: "rgba(220,38,38,0.1)",
+            border: "1px solid rgba(220,38,38,0.3)",
+            borderRadius: "var(--border-radius)",
+            color: "var(--color-error)",
+            fontSize: "var(--font-size-sm)",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            gap: "var(--space-sm)",
+          }}
+        >
+          <span style={{ whiteSpace: "pre-wrap" }}>{uninstallError}</span>
+          <button
+            onClick={() => setUninstallError(null)}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "var(--color-error)",
+              cursor: "pointer",
+              fontSize: "var(--font-size-sm)",
+              padding: 0,
+              lineHeight: 1,
+            }}
+            aria-label="Dismiss error"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Description */}
       {info.description && (
@@ -1060,110 +1166,6 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
         </div>
       )}
 
-      {/* Uninstall */}
-      {!isMissing && (
-        <div style={{ marginTop: "var(--space-xl)", paddingTop: "var(--space-md)", borderTop: "1px solid var(--border-color)" }}>
-          {uninstallError && (
-            <div
-              style={{
-                padding: "var(--space-sm) var(--space-md)",
-                marginBottom: "var(--space-md)",
-                background: "rgba(220,38,38,0.1)",
-                border: "1px solid rgba(220,38,38,0.3)",
-                borderRadius: "var(--border-radius)",
-                color: "var(--color-error)",
-                fontSize: "var(--font-size-sm)",
-              }}
-            >
-              {uninstallError}
-            </div>
-          )}
-          {!confirmUninstall ? (
-            <div>
-              <button
-                onClick={() => {
-                  if (isRunning) {
-                    setUninstallError("Disable the plugin before uninstalling.");
-                    return;
-                  }
-                  setUninstallError(null);
-                  setConfirmUninstall(true);
-                }}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "var(--space-xs)",
-                  padding: "var(--space-xs) var(--space-md)",
-                  borderRadius: "var(--border-radius)",
-                  background: "rgba(220,38,38,0.1)",
-                  color: "var(--color-error, #dc2626)",
-                  fontSize: "var(--font-size-sm)",
-                  cursor: "pointer",
-                }}
-              >
-                <Trash2 size={14} /> Uninstall Plugin
-              </button>
-              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
-                Removes the plugin files. You can reinstall from Browse.
-              </div>
-            </div>
-          ) : (
-            <div
-              style={{
-                padding: "var(--space-md)",
-                borderRadius: "var(--border-radius)",
-                background: "rgba(220,38,38,0.08)",
-                border: "1px solid rgba(220,38,38,0.2)",
-              }}
-            >
-              <div style={{ fontWeight: 500, marginBottom: "var(--space-sm)", fontSize: "var(--font-size-sm)" }}>
-                Uninstall &quot;{info.name}&quot;?
-              </div>
-              <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", marginBottom: "var(--space-md)" }}>
-                Plugin files will be removed. You can reinstall from the community repository later.
-              </div>
-              <div style={{ display: "flex", gap: "var(--space-sm)" }}>
-                <button
-                  onClick={async () => {
-                    try {
-                      await api.uninstallPlugin(plugin.plugin_id);
-                      setConfirmUninstall(false);
-                      setSelectedId(null);
-                      load();
-                    } catch (e) {
-                      setUninstallError(parseApiError(e));
-                      setConfirmUninstall(false);
-                    }
-                  }}
-                  style={{
-                    padding: "var(--space-xs) var(--space-md)",
-                    borderRadius: "var(--border-radius)",
-                    background: "var(--color-error, #dc2626)",
-                    color: "#fff",
-                    fontSize: "var(--font-size-sm)",
-                    fontWeight: 500,
-                    cursor: "pointer",
-                  }}
-                >
-                  Uninstall
-                </button>
-                <button
-                  onClick={() => setConfirmUninstall(false)}
-                  style={{
-                    padding: "var(--space-xs) var(--space-md)",
-                    borderRadius: "var(--border-radius)",
-                    background: "var(--bg-hover)",
-                    fontSize: "var(--font-size-sm)",
-                    cursor: "pointer",
-                  }}
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }

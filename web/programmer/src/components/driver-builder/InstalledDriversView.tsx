@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Search, Trash2 } from "lucide-react";
 import { useDriverBuilderStore } from "../../store/driverBuilderStore";
-import { ConfirmDialog } from "../shared/ConfirmDialog";
+import { useProjectStore } from "../../store/projectStore";
 import { parseApiError } from "../../api/errors";
 import type { DriverInfo } from "../../api/types";
 
@@ -24,16 +24,24 @@ export function InstalledDriversView() {
   const loadRegisteredDrivers = useDriverBuilderStore((s) => s.loadRegisteredDrivers);
   const loadInstalledDrivers = useDriverBuilderStore((s) => s.loadInstalledDrivers);
   const uninstallDriver = useDriverBuilderStore((s) => s.uninstallDriver);
+  const project = useProjectStore((s) => s.project);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [confirmUninstall, setConfirmUninstall] = useState<string | null>(null);
+  const [confirmUninstall, setConfirmUninstall] = useState(false);
+  const [uninstalling, setUninstalling] = useState(false);
   const [uninstallError, setUninstallError] = useState<string | null>(null);
 
   useEffect(() => {
     loadRegisteredDrivers();
     loadInstalledDrivers();
   }, [loadRegisteredDrivers, loadInstalledDrivers]);
+
+  // Reset confirm/error state when selection changes
+  useEffect(() => {
+    setConfirmUninstall(false);
+    setUninstallError(null);
+  }, [selectedId]);
 
   const installedIdSet = new Set(installedDrivers.map((d) => d.id));
 
@@ -51,16 +59,23 @@ export function InstalledDriversView() {
   const selectedDriver = registeredDrivers.find((d) => d.id === selectedId) || null;
   const canUninstall = selectedId ? installedIdSet.has(selectedId) : false;
 
+  const devicesUsingDriver = selectedDriver && project
+    ? project.devices.filter((d) => d.driver === selectedDriver.id)
+    : [];
+
   const handleUninstall = async () => {
-    if (!confirmUninstall) return;
+    if (!selectedDriver) return;
+    setUninstalling(true);
     setUninstallError(null);
     try {
-      await uninstallDriver(confirmUninstall);
-      if (selectedId === confirmUninstall) setSelectedId(null);
-      setConfirmUninstall(null);
+      await uninstallDriver(selectedDriver.id);
+      setSelectedId(null);
+      setConfirmUninstall(false);
     } catch (e) {
       setUninstallError(parseApiError(e));
-      setConfirmUninstall(null);
+      setConfirmUninstall(false);
+    } finally {
+      setUninstalling(false);
     }
   };
 
@@ -167,11 +182,16 @@ export function InstalledDriversView() {
           <DriverDetailPanel
             driver={selectedDriver}
             canUninstall={canUninstall}
-            onUninstall={() => {
-              setUninstallError(null);
-              setConfirmUninstall(selectedDriver.id);
-            }}
+            devicesUsingDriver={devicesUsingDriver.map((d) => d.name || d.id)}
+            confirmUninstall={confirmUninstall}
+            uninstalling={uninstalling}
             uninstallError={uninstallError}
+            onRequestUninstall={() => {
+              setUninstallError(null);
+              setConfirmUninstall(true);
+            }}
+            onConfirmUninstall={handleUninstall}
+            onCancelUninstall={() => setConfirmUninstall(false)}
             onDismissUninstallError={() => setUninstallError(null)}
           />
         ) : (
@@ -189,17 +209,6 @@ export function InstalledDriversView() {
           </div>
         )}
       </div>
-
-      {/* Uninstall confirmation */}
-      {confirmUninstall && (
-        <ConfirmDialog
-          title="Uninstall Driver"
-          message={`Are you sure you want to uninstall "${registeredDrivers.find((d) => d.id === confirmUninstall)?.name || confirmUninstall}"? You can reinstall it from the community repo later.`}
-          confirmLabel="Uninstall"
-          onConfirm={handleUninstall}
-          onCancel={() => setConfirmUninstall(null)}
-        />
-      )}
     </div>
   );
 }
@@ -208,26 +217,105 @@ export function InstalledDriversView() {
 function DriverDetailPanel({
   driver,
   canUninstall,
-  onUninstall,
+  devicesUsingDriver,
+  confirmUninstall,
+  uninstalling,
   uninstallError,
+  onRequestUninstall,
+  onConfirmUninstall,
+  onCancelUninstall,
   onDismissUninstallError,
 }: {
   driver: DriverInfo;
   canUninstall: boolean;
-  onUninstall: () => void;
+  devicesUsingDriver: string[];
+  confirmUninstall: boolean;
+  uninstalling: boolean;
   uninstallError: string | null;
+  onRequestUninstall: () => void;
+  onConfirmUninstall: () => void;
+  onCancelUninstall: () => void;
   onDismissUninstallError: () => void;
 }) {
   const help = driver.help;
   const configSchema = driver.config_schema || {};
   const commands = driver.commands || {};
   const stateVars = driver.state_variables || {};
+  const inUse = devicesUsingDriver.length > 0;
 
   return (
     <div>
       {/* Header */}
       <div style={{ marginBottom: "var(--space-lg)" }}>
-        <h2 style={{ margin: 0, fontSize: "1.25rem" }}>{driver.name}</h2>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--space-md)",
+            flexWrap: "wrap",
+          }}
+        >
+          <h2 style={{ margin: 0, fontSize: "1.25rem", flex: 1 }}>{driver.name}</h2>
+          {canUninstall && (
+            confirmUninstall ? (
+              <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
+                <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-error, var(--danger))" }}>
+                  Uninstall this driver?
+                </span>
+                <button
+                  onClick={onConfirmUninstall}
+                  disabled={uninstalling}
+                  style={{
+                    padding: "var(--space-xs) var(--space-md)",
+                    borderRadius: "var(--border-radius, var(--radius))",
+                    background: "var(--color-error, var(--danger))",
+                    color: "#fff",
+                    fontSize: "var(--font-size-sm)",
+                    opacity: uninstalling ? 0.6 : 1,
+                  }}
+                >
+                  {uninstalling ? "Uninstalling..." : "Yes, Uninstall"}
+                </button>
+                <button
+                  onClick={onCancelUninstall}
+                  disabled={uninstalling}
+                  style={{
+                    padding: "var(--space-xs) var(--space-md)",
+                    borderRadius: "var(--border-radius, var(--radius))",
+                    background: "var(--bg-hover)",
+                    fontSize: "var(--font-size-sm)",
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={onRequestUninstall}
+                disabled={inUse}
+                title={
+                  inUse
+                    ? `In use by ${devicesUsingDriver.length} device(s). Remove or reassign them before uninstalling.`
+                    : "Removes the driver file. You can reinstall from Browse Community."
+                }
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "var(--space-xs)",
+                  padding: "var(--space-xs) var(--space-md)",
+                  borderRadius: "var(--border-radius, var(--radius))",
+                  background: "var(--bg-hover)",
+                  color: inUse ? "var(--text-muted)" : "var(--color-error, var(--danger))",
+                  fontSize: "var(--font-size-sm)",
+                  cursor: inUse ? "not-allowed" : "pointer",
+                  opacity: inUse ? 0.6 : 1,
+                }}
+              >
+                <Trash2 size={14} /> Uninstall
+              </button>
+            )
+          )}
+        </div>
         <div
           style={{
             display: "flex",
@@ -257,6 +345,67 @@ function DriverDetailPanel({
             </span>
           )}
         </div>
+
+        {/* Uninstall error / in-use warning live next to the action */}
+        {uninstallError && (
+          <div
+            style={{
+              marginTop: "var(--space-sm)",
+              padding: "var(--space-sm) var(--space-md)",
+              background: "var(--danger-dim, rgba(220,38,38,0.1))",
+              border: "1px solid var(--danger)",
+              borderRadius: "var(--radius)",
+              color: "var(--danger)",
+              fontSize: "var(--font-size-sm)",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              gap: "var(--space-sm)",
+            }}
+          >
+            <span style={{ whiteSpace: "pre-wrap" }}>{uninstallError}</span>
+            <button
+              onClick={onDismissUninstallError}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "var(--danger)",
+                cursor: "pointer",
+                fontSize: "var(--font-size-sm)",
+                padding: 0,
+                lineHeight: 1,
+              }}
+              aria-label="Dismiss error"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+        {canUninstall && inUse && !uninstallError && (
+          <div
+            style={{
+              marginTop: "var(--space-sm)",
+              padding: "var(--space-sm) var(--space-md)",
+              background: "rgba(244,67,54,0.08)",
+              borderRadius: "var(--radius)",
+              fontSize: 12,
+              color: "var(--text-secondary)",
+            }}
+          >
+            <strong>In use:</strong> {devicesUsingDriver.length} device(s) reference this driver:
+            <ul style={{ margin: "4px 0 0 16px", padding: 0 }}>
+              {devicesUsingDriver.slice(0, 5).map((name, i) => (
+                <li key={i}>{name}</li>
+              ))}
+              {devicesUsingDriver.length > 5 && (
+                <li>...and {devicesUsingDriver.length - 5} more</li>
+              )}
+            </ul>
+            <div style={{ marginTop: 4 }}>
+              Remove or reassign these devices before uninstalling.
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Overview */}
@@ -368,55 +517,6 @@ function DriverDetailPanel({
         </Section>
       )}
 
-      {/* Uninstall */}
-      {canUninstall && (
-        <div style={{ marginTop: "var(--space-lg)", paddingTop: "var(--space-md)", borderTop: "1px solid var(--border-color)" }}>
-          {uninstallError && (
-            <div
-              style={{
-                padding: "var(--space-sm) var(--space-md)",
-                marginBottom: "var(--space-md)",
-                background: "var(--danger-dim, rgba(220,38,38,0.1))",
-                border: "1px solid var(--danger)",
-                borderRadius: "var(--radius)",
-                color: "var(--danger)",
-                fontSize: "var(--font-size-sm)",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "flex-start",
-                gap: "var(--space-sm)",
-              }}
-            >
-              <span style={{ whiteSpace: "pre-wrap" }}>{uninstallError}</span>
-              <button
-                onClick={onDismissUninstallError}
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  color: "var(--danger)",
-                  cursor: "pointer",
-                  fontSize: "var(--font-size-sm)",
-                  padding: 0,
-                  lineHeight: 1,
-                }}
-                aria-label="Dismiss error"
-              >
-                ✕
-              </button>
-            </div>
-          )}
-          <button
-            className="btn btn-sm btn-danger"
-            onClick={onUninstall}
-            style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}
-          >
-            <Trash2 size={14} /> Uninstall Driver
-          </button>
-          <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: 4 }}>
-            Removes the driver file. You can reinstall from Browse Community.
-          </div>
-        </div>
-      )}
     </div>
   );
 }
