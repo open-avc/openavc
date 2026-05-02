@@ -1,33 +1,49 @@
-## Browse Drivers Refresh
+The Driver Builder gets a major overhaul in this release, with a redesigned tab layout, real-time validation, inline help, and first-class editors for protocol features you previously had to write by hand. Cloud reliability also gets a tune-up, and a couple of platform bugs are fixed.
 
-The Browse Drivers panel in the Programmer IDE now surfaces the full driver catalog. Video, Streaming, and Power are first-class categories, and drivers using HTTP or OSC transports are now properly tagged. Each driver shows its tags, an overview of what the driver covers, the list of compatible models, and a deprecated badge when the author has marked it for replacement.
+## Driver Builder
 
-## Declarative Telnet Login
+The 10-tab layout has been collapsed to 6, with related fields grouped together. Each tab carries a validation badge so you can see at a glance which sections need attention, and validation messages appear inline next to the field they refer to instead of in a wall at the top.
 
-`.avcdriver` files can now declare a Telnet-style `Username:` / `Password:` login handshake without any Python. Add an `auth:` block to the driver definition and the platform handles the prompt-and-respond exchange between the TCP connect and the first command. The Atlona OmniStream and Lutron HomeWorks QS community drivers use this to support devices with login authentication enabled out of the box.
+Every section now has a help link to the relevant documentation page. Built-in drivers are visually distinguished from drivers you've added.
 
-## Smarter Discovery
+New first-class editors for things that used to require hand-editing the YAML:
 
-Network discovery now uses a curated device catalog from the community driver repo to identify equipment by exact manufacturer and model. When a scan recognizes a device that matches a known model, OpenAVC suggests the right driver directly instead of guessing from open ports.
+- Frame parsers for binary protocols
+- Telnet authentication blocks
+- on_connect lifecycle hooks
+- OSC argument types and value bounds
+- Discovery hints (UPnP types)
+- Full command parameter schemas
+- Catalog metadata and help fields
 
-## Programmer Login
+HTTP commands are now fully supported in the builder, including custom headers.
 
-The Programmer IDE now has its own login screen. When you set a Programmer username and password in System Settings, integrators are prompted to sign in before they can edit the project. The Panel UI is unaffected and continues to use its own access settings.
+The Live Test panel rebuilds the driver against the same code path it'll run in production, so what you test is what gets shipped.
 
-## Simulator Improvements
+You can also duplicate an existing driver as a starting point for a new one.
 
-The auto-generated simulator now handles HTTP-based YAML drivers, so you can test REST-style devices without writing a custom `_sim.py`. The simulator also mirrors the new declarative login handshake, so drivers with `auth:` blocks can be exercised end to end without real hardware.
+## Drivers and Plugins management
 
-## Stability and Polish
+Cleaner navigation between the driver list and the editor. The action toolbar moved into the header for easier reach, and now refuses to uninstall a driver or plugin that's in use by your current project, with a clear message about what's depending on it. Uninstall errors that do happen are clearer about why.
 
-- WebSocket broadcasts now fan out concurrently, smoothing out UI updates when many panels are connected to a busy room.
-- Project files preserve fields they don't recognize, making it safer to roll back to an older OpenAVC after editing on a newer one.
-- Plugins now use a dedicated `variable_write` capability for setting user variables, separate from plugin-namespace state writes.
-- Panels can no longer write outside the `var.*` and `plugin.*` state namespaces over WebSocket.
-- Programmer and Panel passwords set at runtime are enforced immediately without restarting the server.
-- A new `state.delete` WebSocket message replaces the previous workaround for clearing state keys when devices are removed.
-- The Programmer IDE debounces plugin event refetches, eliminating a flicker on plugin-heavy projects.
+Browse Drivers now splits multi-brand drivers (a single driver supporting many manufacturer SKUs) into one card per brand, so a search for "Sony" actually finds the Sony devices instead of hiding them inside a generic entry.
 
-## Driver Definitions
+## Cloud
 
-The canonical YAML keys for command and response definitions are now `send` and `match`. The legacy `string` and `pattern` aliases still load, but the platform logs a one-time deprecation warning so driver authors can migrate at their own pace.
+Two reliability fixes:
+
+- The cloud agent could end up in a reconnect loop after a handshake error because of a typo in the exception handler. Connections now recover cleanly.
+- A failed session resume previously dropped the entire connection. The agent now drops the unsendable message buffer and continues.
+
+## AI assistant
+
+The AI's driver search and device match tools now query the community driver index for real instead of returning placeholder data. Asking the assistant to find a driver for a specific device now works.
+
+## Bug fixes
+
+- **Windows:** The Rollback section no longer appears on fresh installs. Previously it would show "Previous version: vunknown" with a "Rollback to v?" button before any update had ever been applied.
+- **Pi image:** Fixed an issue where Pi OS Trixie's userconfig service was overriding our auto-login configuration on first boot, leaving the display sitting on a blank kiosk screen. Newly flashed Pi images now boot directly to the OpenAVC info page or panel.
+
+## Documentation
+
+The Driver Builder walkthrough has been rewritten for the new editor.
