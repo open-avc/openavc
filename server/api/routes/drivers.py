@@ -482,14 +482,27 @@ def _get_driver_dirs() -> list[Path]:
 
 @router.get("/driver-definitions")
 async def list_driver_definitions() -> list[dict]:
-    """List all JSON driver definitions."""
+    """List all JSON driver definitions.
+
+    Adds a `source` field to each entry: `"builtin"` for drivers that ship
+    in the platform's read-only definitions directory, `"user"` for drivers
+    that live in the user/community driver_repo (created via the Driver
+    Builder or installed from the community catalog). The Driver Builder
+    uses this to gate edit-in-place vs. customize-a-copy.
+    """
     from server.drivers.driver_loader import list_driver_definitions as _list
+    from server.system_config import DRIVER_DEFINITIONS_DIR
 
     dirs = _get_driver_dirs()
     definitions = _list(dirs)
-    # Strip internal _source_file from response
+    builtin_root = str(Path(DRIVER_DEFINITIONS_DIR).resolve())
     for d in definitions:
-        d.pop("_source_file", None)
+        source_file = d.pop("_source_file", "")
+        try:
+            resolved = str(Path(source_file).resolve()) if source_file else ""
+            d["source"] = "builtin" if resolved.startswith(builtin_root) else "user"
+        except OSError:
+            d["source"] = "user"
     return definitions
 
 

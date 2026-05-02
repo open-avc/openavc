@@ -545,6 +545,11 @@ export interface DriverDefinition {
   // type='telnet_login' is implemented (prompt-driven Telnet/SSH banner
   // login). Username/password come from device config keys named here.
   auth?: DriverAuthDef;
+  // Where the file lives on disk — set by the list endpoint, not authored.
+  // "builtin": ships with the platform (read-only, can't delete or edit
+  // in place; use Customize a Copy). "user": lives in driver_repo, freely
+  // editable. Absent on a brand-new draft that hasn't been saved yet.
+  source?: "builtin" | "user";
 }
 
 export interface DriverAuthDef {

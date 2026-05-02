@@ -1,4 +1,4 @@
-import { Plus, Upload, Download, Trash2, Copy } from "lucide-react";
+import { Plus, Upload, Download, Trash2, Copy, Lock } from "lucide-react";
 import type { DriverDefinition } from "../../api/types";
 
 interface DriverListProps {
@@ -92,92 +92,136 @@ export function DriverList({
             Create a new driver or import an .avcdriver file.
           </p>
         ) : (
-          definitions.map((def) => (
-            <button
-              key={def.id}
-              onClick={() => onSelect(def.id)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                width: "100%",
-                padding: "var(--space-sm) var(--space-md)",
-                borderRadius: "var(--border-radius)",
-                background:
-                  selectedId === def.id ? "var(--accent-dim)" : "transparent",
-                textAlign: "left",
-                marginBottom: "var(--space-xs)",
-                gap: "var(--space-sm)",
-              }}
-            >
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div
-                  title={def.name}
-                  style={{
-                    fontWeight: 500,
-                    fontSize: "var(--font-size-sm)",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {def.name}
+          definitions.map((def) => {
+            const isBuiltin = def.source === "builtin";
+            // Built-in drivers ship with the platform and can't be edited
+            // in place — clicking the row offers a copy instead, so users
+            // can't accidentally damage a stock driver. The Lock icon and
+            // muted styling cue that.
+            const handleRowClick = () => {
+              if (isBuiltin) {
+                onDuplicate(def.id);
+              } else {
+                onSelect(def.id);
+              }
+            };
+            return (
+              <button
+                key={def.id}
+                onClick={handleRowClick}
+                title={
+                  isBuiltin
+                    ? "Built-in driver — click to create an editable copy."
+                    : def.name
+                }
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  width: "100%",
+                  padding: "var(--space-sm) var(--space-md)",
+                  borderRadius: "var(--border-radius)",
+                  background:
+                    selectedId === def.id ? "var(--accent-dim)" : "transparent",
+                  textAlign: "left",
+                  marginBottom: "var(--space-xs)",
+                  gap: "var(--space-sm)",
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    {isBuiltin && (
+                      <Lock
+                        size={11}
+                        style={{
+                          color: "var(--text-muted)",
+                          flexShrink: 0,
+                        }}
+                      />
+                    )}
+                    <span
+                      style={{
+                        fontWeight: 500,
+                        fontSize: "var(--font-size-sm)",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        minWidth: 0,
+                        color: isBuiltin ? "var(--text-secondary)" : undefined,
+                      }}
+                    >
+                      {def.name}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      fontSize: "11px",
+                      color: "var(--text-muted)",
+                    }}
+                  >
+                    {def.manufacturer} · {def.category}
+                    {isBuiltin && " · built-in"}
+                  </div>
                 </div>
-                <div
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDuplicate(def.id);
+                  }}
+                  title={
+                    isBuiltin
+                      ? "Customize a copy — clones to your driver library"
+                      : "Duplicate driver — create an editable copy"
+                  }
                   style={{
-                    fontSize: "11px",
+                    padding: "2px",
+                    borderRadius: "var(--border-radius)",
                     color: "var(--text-muted)",
+                    flexShrink: 0,
                   }}
                 >
-                  {def.manufacturer} · {def.category}
-                </div>
-              </div>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDuplicate(def.id);
-                }}
-                title="Duplicate driver — create an editable copy"
-                style={{
-                  padding: "2px",
-                  borderRadius: "var(--border-radius)",
-                  color: "var(--text-muted)",
-                  flexShrink: 0,
-                }}
-              >
-                <Copy size={14} />
+                  <Copy size={14} />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onExport(def.id);
+                  }}
+                  title="Export driver as .avcdriver file"
+                  style={{
+                    padding: "2px",
+                    borderRadius: "var(--border-radius)",
+                    color: "var(--text-muted)",
+                    flexShrink: 0,
+                  }}
+                >
+                  <Download size={14} />
+                </button>
+                {!isBuiltin && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete(def.id);
+                    }}
+                    title="Delete driver"
+                    style={{
+                      padding: "2px",
+                      borderRadius: "var(--border-radius)",
+                      color: "var(--text-muted)",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
               </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onExport(def.id);
-                }}
-                title="Export driver as .avcdriver file"
-                style={{
-                  padding: "2px",
-                  borderRadius: "var(--border-radius)",
-                  color: "var(--text-muted)",
-                  flexShrink: 0,
-                }}
-              >
-                <Download size={14} />
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete(def.id);
-                }}
-                title="Delete driver"
-                style={{
-                  padding: "2px",
-                  borderRadius: "var(--border-radius)",
-                  color: "var(--text-muted)",
-                  flexShrink: 0,
-                }}
-              >
-                <Trash2 size={14} />
-              </button>
-            </button>
-          ))
+            );
+          })
         )}
       </div>
     </div>
