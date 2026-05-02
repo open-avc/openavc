@@ -3,6 +3,7 @@ import { Save, Download, FileCode, Copy, Check } from "lucide-react";
 import yaml from "js-yaml";
 import type { DriverDefinition } from "../../api/types";
 import { useProjectStore } from "../../store/projectStore";
+import { useDriverBuilderStore } from "../../store/driverBuilderStore";
 import { TransportPicker } from "./TransportPicker";
 import { CommandBuilder } from "./CommandBuilder";
 import { ResponseBuilder } from "./ResponseBuilder";
@@ -17,6 +18,8 @@ import { AuthEditor } from "./AuthEditor";
 import { FrameParserEditor } from "./FrameParserEditor";
 import { ConfigSchemaEditor } from "./ConfigSchemaEditor";
 import { CollapsibleSection } from "./CollapsibleSection";
+import { IssueList } from "./IssueList";
+import { validateDriver, issuesFor } from "./validateDriver";
 
 type TabId =
   | "general"
@@ -54,6 +57,12 @@ export function DriverEditor({
   const [yamlPaneOpen, setYamlPaneOpen] = useState(false);
   const [yamlCopied, setYamlCopied] = useState(false);
   const project = useProjectStore((s) => s.project);
+  const allDefinitions = useDriverBuilderStore((s) => s.definitions);
+
+  const issues = useMemo(
+    () => validateDriver(draft, allDefinitions, originalId),
+    [draft, allDefinitions, originalId],
+  );
 
   const yamlPreview = useMemo(() => {
     try {
@@ -276,6 +285,7 @@ export function DriverEditor({
         >
         {activeTab === "general" && (
           <div>
+            <IssueList issues={issuesFor(issues, "general")} />
             <div style={rowStyle}>
               <label style={labelStyle}>Driver ID</label>
               <input
@@ -435,6 +445,7 @@ export function DriverEditor({
 
         {activeTab === "connection" && (
           <>
+            <IssueList issues={issuesFor(issues, "connection")} />
             <CollapsibleSection
               title="Transport"
               subtitle="How the driver talks to the device — TCP, serial, UDP, OSC, HTTP."
@@ -483,6 +494,7 @@ export function DriverEditor({
 
         {activeTab === "behavior" && (
           <>
+            <IssueList issues={issuesFor(issues, "behavior")} />
             <CollapsibleSection
               title="State Variables"
               subtitle="Read-only values the driver reports — power, input, mute, volume. Use these in command parameters and panel bindings."
@@ -528,11 +540,17 @@ export function DriverEditor({
         )}
 
         {activeTab === "discovery" && (
-          <DiscoveryHintsEditor draft={draft} onUpdate={onUpdate} />
+          <>
+            <IssueList issues={issuesFor(issues, "discovery")} />
+            <DiscoveryHintsEditor draft={draft} onUpdate={onUpdate} />
+          </>
         )}
 
         {activeTab === "simulation" && (
-          <SimulatorEditor draft={draft} onUpdate={onUpdate} />
+          <>
+            <IssueList issues={issuesFor(issues, "simulation")} />
+            <SimulatorEditor draft={draft} onUpdate={onUpdate} />
+          </>
         )}
 
         {activeTab === "test" && <LiveTestPanel draft={draft} />}

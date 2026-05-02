@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus, Trash2, ChevronDown, ChevronRight } from "lucide-react";
 import type {
   DriverCommandDef,
@@ -556,15 +556,24 @@ function ParamEditor({
     onChange(next);
   };
 
-  const renameParam = (oldName: string, newName: string) => {
-    const cleaned = newName.replace(/[^a-zA-Z0-9_]/g, "");
-    if (!cleaned || cleaned === oldName) return;
-    if (cleaned in params) return;
+  const renameParam = (oldName: string, newName: string): { ok: boolean; reason?: string } => {
+    const trimmed = newName.trim();
+    if (!trimmed || trimmed === oldName) return { ok: true };
+    if (trimmed in params) {
+      return { ok: false, reason: `A parameter named "${trimmed}" already exists.` };
+    }
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(trimmed)) {
+      return {
+        ok: false,
+        reason: "Use letters, digits, and underscores only — must start with a letter or underscore.",
+      };
+    }
     const next: typeof params = {};
     for (const [k, v] of Object.entries(params)) {
-      next[k === oldName ? cleaned : k] = v;
+      next[k === oldName ? trimmed : k] = v;
     }
     onChange(next);
+    return { ok: true };
   };
 
   const updateParam = (name: string, partial: Partial<DriverParamDef>) => {
@@ -591,7 +600,7 @@ function ParamEditor({
           key={name}
           name={name}
           def={params[name]}
-          onRename={(next) => renameParam(name, next)}
+          tryRename={(next) => renameParam(name, next)}
           onUpdate={(partial) => updateParam(name, partial)}
           onRemove={() => removeParam(name)}
         />
@@ -613,16 +622,44 @@ function ParamEditor({
 function ParamRow({
   name,
   def,
-  onRename,
+  tryRename,
   onUpdate,
   onRemove,
 }: {
   name: string;
   def: DriverParamDef;
-  onRename: (next: string) => void;
+  tryRename: (next: string) => { ok: boolean; reason?: string };
   onUpdate: (partial: Partial<DriverParamDef>) => void;
   onRemove: () => void;
 }) {
+  // Local buffer for the name input — lets the user keep typing illegal
+  // characters without us rewriting the field underfoot. We commit (or
+  // revert) on blur, and surface the rejection reason inline so the user
+  // knows what happened.
+  const [draftName, setDraftName] = useState(name);
+  const [renameError, setRenameError] = useState<string | null>(null);
+
+  // Re-sync if the canonical name changes from outside (parent rename).
+  useEffect(() => {
+    setDraftName(name);
+    setRenameError(null);
+  }, [name]);
+
+  const commitRename = () => {
+    if (draftName === name) {
+      setRenameError(null);
+      return;
+    }
+    const result = tryRename(draftName);
+    if (!result.ok) {
+      setRenameError(result.reason ?? "Invalid name.");
+      // Leave the bad text in the input so the user can fix it instead
+      // of guessing what they typed.
+    } else {
+      setRenameError(null);
+    }
+  };
+
   const labelStyle: React.CSSProperties = {
     display: "block",
     fontSize: "11px",
@@ -654,15 +691,34 @@ function ParamRow({
         <div>
           <span style={labelStyle}>Name</span>
           <input
-            value={name}
-            onChange={(e) => onRename(e.target.value)}
-            onBlur={(e) => onRename(e.target.value)}
+            value={draftName}
+            onChange={(e) => setDraftName(e.target.value)}
+            onBlur={commitRename}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+              if (e.key === "Escape") {
+                setDraftName(name);
+                setRenameError(null);
+              }
+            }}
             style={{
               width: "100%",
               fontSize: "var(--font-size-sm)",
               fontFamily: "var(--font-mono)",
+              borderColor: renameError ? "var(--color-error)" : undefined,
             }}
           />
+          {renameError && (
+            <div
+              style={{
+                fontSize: 11,
+                color: "var(--color-error)",
+                marginTop: 2,
+              }}
+            >
+              {renameError}
+            </div>
+          )}
         </div>
         <div>
           <span style={labelStyle}>Display Label</span>
