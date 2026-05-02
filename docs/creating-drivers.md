@@ -35,108 +35,162 @@ Python drivers can be created and edited directly in the **Code** view of the Pr
 
 The Driver Builder is a visual tool inside the Programmer IDE. Open it by clicking **Devices** in the sidebar, then selecting the **Drivers** tab and clicking the **Create** tab.
 
-### Step-by-step Walkthrough
+### How the editor is laid out
+
+The editor has six tabs across the top, each grouping a single concern:
+
+| Tab | What lives here |
+|-----|-----------------|
+| **General** | Identity (id, name, manufacturer, category, version, author, description), Help & Setup text, Publishing metadata (min platform version, protocols, tags, source URL) |
+| **Connection** | Transport (TCP/serial/UDP/OSC/HTTP), Authentication, Connect Sequence (`on_connect`), Frame Parser, Configuration Fields (`config_schema`) |
+| **Behavior** | State Variables, Commands, Responses, Polling, Device Settings |
+| **Discovery** | Discovery hints (mDNS, SSDP, OUI, ports, protocols) |
+| **Simulation** | Simulator definition (initial state, controls, command handlers, error modes) |
+| **Test** | Live tester — runs commands through the real driver runtime against a device |
+
+The Connection and Behavior tabs use collapsible sub-sections. Each section header shows a count or status hint (`5 commands`, `enabled`, `none`) so you can scan a tab without expanding everything. Sections that are populated open by default; empty optional ones (Authentication, Connect Sequence, Frame Parser, Polling, Device Settings, Configuration Fields) collapse on a fresh driver to keep the surface clean.
+
+Every section header carries a "Learn more" link that opens the matching part of these docs in a new tab.
+
+### Validation
+
+Validation runs on every keystroke. Issues appear as inline rows at the top of the affected tab, and the tab label shows a colored dot — red for errors (block save), amber for warnings (publish-quality, don't block).
+
+What's flagged:
+
+- **Driver ID**: missing, illegal characters, or duplicates of another saved driver.
+- **Driver name**: missing.
+- **Publish quality** (warnings): missing `description`, `version`, `author`, or `help.overview`.
+- **Commands**: any `{placeholder}` in the wire string (send/path/body/headers/query_params/address/args) that doesn't resolve to a declared parameter or config field. Catches typos that would otherwise leave a literal `{level}` on the wire.
+- **Parameter names**: illegal characters surface as an inline error instead of being silently stripped.
+
+### Step-by-step walkthrough
 
 #### 1. Create a new driver
 
-Click **Create New Driver** in the left panel. The editor opens with seven tabs.
+Click **Create New Driver** in the left panel. The editor opens on the **General** tab.
 
-#### 2. General tab: Name your driver
+The driver list distinguishes built-in drivers (shipped with the platform — lock icon, "built-in" tag) from user drivers (created or installed). Clicking a built-in offers **Customize a Copy** instead of opening it for in-place editing — built-in files are read-only.
+
+#### 2. General tab: identity, help text, publishing
+
+Fill in identity:
 
 | Field | Example | Notes |
 |-------|---------|-------|
-| Driver ID | `extron_sw4` | Lowercase, no spaces. Cannot be changed later. |
-| Driver Name | `Extron SW4 HD 4K` | Human-readable. Shown in the "Add Device" dialog. |
+| Driver ID | `extron_sw4` | Lowercase letters, digits, underscores. Renamable later if no devices in the current project reference it. |
+| Driver Name | `Extron SW4 HD 4K` | Shown in the Add Device dialog. |
 | Manufacturer | `Extron` | |
-| Category | `Switcher` | Pick from the dropdown. |
-| Version | `1.0.0` | |
+| Category | Switcher | Dropdown — pick the closest fit. |
+| Version | `1.0.0` | Semver. Bump on every meaningful change. |
 | Author | `Your Name` | |
-| Description | `Controls Extron SW4 HD 4K HDMI switcher via RS-232 or TCP.` | |
+| Description | `Controls Extron SW4 HD 4K HDMI switcher via RS-232 or TCP.` | One sentence. Shown in the catalog. |
 
-#### 3. Transport tab: How to connect
+Below the identity block, the **Help & Setup** section takes two markdown fields:
 
-- **Transport Type**: TCP (network) or Serial (RS-232/RS-485).
-- **Message Delimiter**: The character(s) that mark the end of every message. Check your device's protocol guide. Common values:
-  - `\r` for most AV devices (Extron, Kramer, PJLink)
-  - `\r\n` for some network devices
-  - `\n` is rare
-- **Default Port** (TCP) or **Default Baud Rate** (Serial): Pre-filled when adding this device.
+- **Overview** — what the device is, who uses it.
+- **Setup Instructions** — step-by-step the integrator follows to get the device talking (IP setup, pairing, physical buttons).
 
-#### 4. State Variables tab: What to track
+Both appear in the Add Device dialog when someone picks this driver.
 
-Define the properties you want to read from the device. Each state variable becomes visible in the Devices view and available for macros, scripts, and UI bindings.
+The **Publishing** section holds catalog metadata (`min_platform_version`, `protocols`, `tags`, `source_url`, default ports, simulated flag). Verified is server-controlled and read-only.
 
-| Variable ID | Label | Help Text | Type |
-|-------------|-------|-----------|------|
-| `input` | Current Input | Active input number | Integer |
-| `volume` | Volume | Volume level 0-100 | Integer |
-| `mute` | Mute | Audio mute state | Boolean |
+#### 3. Connection tab: how the driver talks to the device
 
-Types: `string`, `integer`, `number`, `float`, `boolean`, `enum`.
+The Transport section is required — pick TCP, serial, UDP, OSC, or HTTP. Transport-specific fields appear:
 
-The **Help Text** column is optional but recommended. It's shown in the Driver Builder and used by the AI assistant to understand what each variable represents.
+- **TCP**: default port, message delimiter, optional inter-command delay, TLS.
+- **Serial**: baudrate, parity, bytesize, stopbits.
+- **HTTP**: base URL form, default headers, auth (token / api key), timeout.
+- **OSC**: dual UDP socket settings.
+- **UDP**: default port.
 
-#### 5. Commands tab: What to send
+Common to text protocols: **Message Delimiter** marks the end of each message. `\r` for most AV gear (Extron, Kramer, PJLink), `\r\n` for some network devices.
 
-Click **Add Command**, then fill in:
+The other Connection sub-sections are optional:
 
-| Field | Example | Notes |
-|-------|---------|-------|
-| Command ID | `set_input` | Used in macros and scripts. |
-| Display Label | `Set Input` | Shown in the UI. |
-| Help Text | `Switch the active input source.` | Shown when selecting this command in the IDE and used by the AI assistant. |
-| Command String | `{input}!\r` | The raw bytes to send. Use `{param_name}` for parameter placeholders. |
-| Parameters | `input` (Integer) | Defines what the user fills in when using this command. |
+- **Authentication** — for devices that present a `login:` / `password:` prompt over Telnet or SSH after connect (Lutron HomeWorks QS, some Cisco gear, legacy serial-over-IP gateways). Off by default.
+- **Connect Sequence** (`on_connect`) — wire strings sent automatically on every connect. Common uses: enabling verbose/feedback mode (Extron `\x1b3CV\r\n`), initial state dumps (`< GET ALL >`), OSC subscriptions (`/xremote`).
+- **Frame Parser** — advanced. Only for binary protocols framed by length prefix or fixed length. Most drivers leave this off and rely on the message delimiter instead.
+- **Configuration Fields** (`config_schema`) — per-device settings users fill in on the Add Device dialog (display IDs, instance tags, custom passwords). Become `{placeholders}` in command strings.
 
-**Parameter placeholders**: The string `{input}!\r` with parameter `input=3` becomes `3!\r` when sent.
+#### 4. Behavior tab: state, commands, responses, polling, settings
 
-**Escape sequences**: The following escape sequences are supported in command strings and delimiters: `\r` (carriage return), `\n` (newline), `\t` (tab), `\\` (literal backslash), `\xHH` (hex byte, e.g. `\x1B` for ESC).
+Order matters here. Build them in the order they appear:
 
-**Example commands for an Extron switcher**:
+**State Variables** — the read-only properties the driver reports. Each entry has a type (string, integer, number, boolean, enum), an optional label and help text, and for numerics optional min/max/step (used by the simulator and panel UI to auto-generate sliders).
 
-| Command ID | Label | String | Parameters |
-|------------|-------|--------|------------|
+| Variable ID | Label | Type | Notes |
+|-------------|-------|------|-------|
+| `input` | Current Input | Integer | |
+| `volume` | Volume | Integer | min 0, max 100 |
+| `mute` | Mute | Boolean | |
+
+**Commands** — actions the driver can perform. Each command's shape depends on the transport:
+
+- **TCP / serial / UDP**: a single **Send** field. `{param_name}` placeholders substitute parameter values; `{config_key}` placeholders substitute device config (e.g., `{set_id}`).
+- **HTTP**: method, path, body, headers, query params. Every field supports `{placeholders}`.
+- **OSC**: address + a typed argument list (`f`/`i`/`s`/`h`/`d`/`T`/`F`/`N`).
+
+**Parameters** for each command let users fill in what to send. Each parameter has a type, optional required flag, label, help, default, and (numeric) min/max bounds or (enum) allowed values.
+
+**Escape sequences** in command strings: `\r`, `\n`, `\t`, `\\`, `\xHH` (hex byte, e.g. `\x1B` for ESC).
+
+Example for an Extron switcher:
+
+| Command ID | Label | Send | Parameters |
+|------------|-------|------|------------|
 | `set_input` | Set Input | `{input}!\r` | `input` (Integer) |
-| `set_volume` | Set Volume | `{level}V\r` | `level` (Integer) |
+| `set_volume` | Set Volume | `{level}V\r` | `level` (Integer, min 0, max 100) |
 | `mute_on` | Mute On | `1Z\r` | (none) |
 | `mute_off` | Mute Off | `0Z\r` | (none) |
 | `query_input` | Query Input | `!\r` | (none) |
 
-#### 6. Responses tab: How to parse replies
+**Responses** — patterns matched against incoming data. Capture groups update state variables.
 
-Each response pattern is a regular expression (regex) that matches a line the device sends back. When a match is found, capture groups are mapped to state variables.
+| Regex Pattern | Mapping |
+|---------------|---------|
+| `In(\d+) All` | group 1 → `input` (integer) |
+| `POWR=(\d)` | group 1 → `power` (string) with map `{"0": "off", "1": "on"}` |
 
-**Example**: The Extron switcher responds `In3 All` when input 3 is selected.
+The **set:** shorthand is also supported (`set: {mute: "$1"}` for capture-group references, `set: {signal: true}` for static literals). The builder preserves whichever form was loaded so byte-equal round-trips stay byte-equal.
 
-| Regex Pattern | Group | State Variable | Type |
-|---------------|-------|----------------|------|
-| `In(\d+) All` | 1 | `input` | Integer |
+**Polling** — periodic queries that keep state fresh on devices that don't push updates. Set the interval (seconds) and list the command names (or raw query strings) to send each cycle.
 
-- **Group 1** means the first `(\d+)` capture group, the number.
-- **Type** tells the system how to convert the captured string: `integer` parses it as a number, `boolean` treats `1`/`true`/`on` as true, `string` keeps it as-is.
+**Device Settings** — writable values stored on the device hardware (labels, IDs, lock codes). Pending writes queue while the device is offline and replay on reconnect. Less common than state variables — most drivers don't need this.
 
-**Value maps**: For devices that return codes instead of readable values, you can add a value map. For example, if a projector returns `POWR=0` for off and `POWR=1` for on:
+#### 5. Discovery tab (optional)
 
-| Regex Pattern | Group | State Variable | Type | Map |
-|---------------|-------|----------------|------|-----|
-| `POWR=(\d)` | 1 | `power` | String | `{"0": "off", "1": "on"}` |
+Hints the discovery engine uses to match found devices to this driver: ports, MAC OUI prefixes, protocol identifiers, mDNS service names, hostname patterns, SSDP/UPnP device-type URN substrings.
 
-Value maps are configured in the JSON definition (see Method 2). The UI shows a type dropdown.
+Skip this if the device isn't auto-discoverable.
 
-#### 7. Polling tab: Automatic status queries
+#### 6. Simulation tab (optional)
 
-If the device doesn't push status changes on its own, you can poll it periodically.
+Adds simulator support so the driver can be exercised without real hardware. Most drivers can rely on auto-generated simulation; the editor here lets you customize initial state, push behavior, command handlers, error modes, and (for richer simulators) state machines and controls. See [Writing Simulators](https://docs.openavc.com/writing-simulators/) for the full guide.
 
-- **Poll Interval**: How often to send queries (seconds). Set to 0 to disable. Typical: 10--30 seconds.
-- **Poll Queries**: The command strings to send each cycle. For example, `!\r` to query the current input.
+#### 7. Test tab: run it against a device
 
-#### 8. Live Test tab: Try it out
+The test panel runs commands through the real `ConfigurableDriver` runtime — auth handshake and connect sequence run first, parameter substitution and response patterns work the same as production. Anything that works here will work when the driver is wired into a project device.
 
-Enter a device's IP address and port, type a command string, and hit Send. You'll see the raw response from the device. Use this to verify your command strings and response patterns before saving.
+For each test:
 
-#### 9. Save
+- **Host / Port** — defaults to the driver's `default_config.port`. Override per test.
+- **Driver Config** — fields declared in `config_schema` (credentials, instance tags) appear here so you can fill them in without saving them to defaults.
+- **Command** — pick a defined command from the dropdown. The form below shows its parameters with typed inputs, and a live wire-format preview shows the substituted string that will go on the wire.
+- **Raw probe** — also available in the dropdown. Sends arbitrary bytes without auth or on_connect. Useful for one-off "what does this device say" checks.
 
-Click **Save**. The driver is immediately available in the "Add Device" dialog. The definition file is saved to the `driver_repo/` directory.
+Each result shows what was sent, every received chunk (with `\r` and `\n` made visible), and any state variable changes the responses produced.
+
+#### Live YAML preview
+
+Click the **YAML** button in the editor header to open a side pane showing the serialized driver in real time. Read-only — it's exactly what gets saved as the `.avcdriver` file. Useful for double-checking that the form output matches what you'd write by hand.
+
+#### Save, duplicate, export
+
+- **Save** — writes to `driver_repo/`. Available in the Add Device dialog immediately.
+- **Duplicate** (copy icon in the driver list) — clones the driver with a unique ID and `(Copy)` appended to the name. Replaces the export/reimport ritual for branching a driver. The verified flag is cleared on the copy since it hasn't been validated.
+- **Export .avcdriver** — downloads the driver file to share with others or commit to a git repo.
 
 ### Importing and Exporting Drivers
 
@@ -1498,7 +1552,7 @@ For the complete simulator guide with all control types, state machines, and Pyt
 
 **Common causes:**
 
-1. **Wrong delimiter.** If the delimiter doesn't match what the device sends, messages are never split correctly and response patterns never see a complete line. Check your device's protocol manual. Try `\r\n`, `\r`, and `\n`. Use the Live Test tab to see raw responses.
+1. **Wrong delimiter.** If the delimiter doesn't match what the device sends, messages are never split correctly and response patterns never see a complete line. Check your device's protocol manual. Try `\r\n`, `\r`, and `\n`. Use the Test tab to see raw responses.
 
 2. **Response pattern doesn't match.** Open the device log in the Programmer IDE and look at the `RX` lines. Copy the exact text and test your regex pattern against it. Common mistakes:
    - Forgetting to escape special regex characters (`.`, `(`, `)`, `+`, `*`)
