@@ -12,6 +12,7 @@ import { DiscoveryHintsEditor } from "./DiscoveryHintsEditor";
 import { DeviceSettingsEditor } from "./DeviceSettingsEditor";
 import { SimulatorEditor } from "./SimulatorEditor";
 import { LiveTestPanel } from "./LiveTestPanel";
+import { LifecycleEditor } from "./LifecycleEditor";
 
 type TabId =
   | "general"
@@ -405,7 +406,10 @@ export function DriverEditor({
         )}
 
         {activeTab === "transport" && (
-          <TransportPicker draft={draft} onUpdate={onUpdate} />
+          <>
+            <TransportPicker draft={draft} onUpdate={onUpdate} />
+            <LifecycleEditor draft={draft} onUpdate={onUpdate} />
+          </>
         )}
 
         {activeTab === "states" && (

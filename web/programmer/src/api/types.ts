@@ -496,6 +496,10 @@ export interface DriverDefinition {
   device_settings?: Record<string, DriverDeviceSettingDef>;
   simulator?: DriverSimulatorDef;
   help?: { overview?: string; setup?: string };
+  // Sequence of wire strings sent immediately after connect (and after any
+  // auth handshake completes). Used for verbose-mode toggles, GET ALL, push
+  // subscriptions. The runtime substitutes config-key placeholders.
+  on_connect?: string[];
 }
 
 // --- API response types ---
