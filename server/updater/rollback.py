@@ -102,10 +102,16 @@ def check_rollback_needed(data_dir: Path) -> bool:
 def can_rollback(app_dir: Path) -> bool:
     """Check if a previous version is available for rollback."""
     if sys.platform == "win32":
-        # Windows: check for cached previous installer in the data directory
+        # Windows: a cached installer for a version OTHER than the running one
+        # must exist. The fresh-install path caches the running version's own
+        # installer, which is not a rollback target.
         from server.system_config import get_system_config
+        from server.version import __version__
         cache_dir = get_system_config().data_dir / "update-cache"
-        return any(cache_dir.glob("OpenAVC-Setup-*.exe")) if cache_dir.exists() else False
+        if not cache_dir.exists():
+            return False
+        current = f"OpenAVC-Setup-{__version__}.exe"
+        return any(inst.name != current for inst in cache_dir.glob("OpenAVC-Setup-*.exe"))
     else:
         # Linux: check for /opt/openavc.previous/
         previous = app_dir.parent / f"{app_dir.name}.previous"
