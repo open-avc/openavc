@@ -422,7 +422,7 @@ class TestWindowsInstallerCaching:
 
     def test_rollback_succeeds_when_previous_installer_cached(self, tmp_path):
         """After CacheInstallerForRollback, the cache has v1.0.0.exe.
-        Rollback from v2.0.0 to v1.0.0 should find and launch it."""
+        Rollback from v2.0.0 to v1.0.0 should find and schedule it."""
         write_pending_marker(tmp_path, "1.0.0", "2.0.0")
         cache_dir = tmp_path / "update-cache"
         cache_dir.mkdir()
@@ -432,17 +432,14 @@ class TestWindowsInstallerCaching:
         (cache_dir / "OpenAVC-Setup-2.0.0.exe").write_bytes(b"v2 installer")
 
         with patch("server.updater.rollback.sys") as mock_sys, \
-             patch("server.updater.rollback.subprocess") as mock_sub:
+             patch("server.updater.rollback._launch_installer_via_scheduler", return_value=True) as mock_launcher:
             mock_sys.platform = "win32"
-            mock_sub.DETACHED_PROCESS = 0x8
-            mock_sub.CREATE_NEW_PROCESS_GROUP = 0x200
-            mock_sub.Popen.return_value = MagicMock()
 
             result = perform_rollback(tmp_path)
 
         assert result is True
-        launched_exe = mock_sub.Popen.call_args[0][0][0]
-        assert "1.0.0" in launched_exe, "Must launch the v1.0.0 installer, not v2.0.0"
+        launched = mock_launcher.call_args[0][0]
+        assert "1.0.0" in launched.name, "Must launch the v1.0.0 installer, not v2.0.0"
 
     def test_rollback_fails_without_cached_installer(self, tmp_path):
         """Before the UP-2 fix: only the v2.0.0 installer was in cache.

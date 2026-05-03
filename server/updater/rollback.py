@@ -11,11 +11,49 @@ import json
 import logging
 import subprocess
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
 
 log = logging.getLogger(__name__)
 
 PENDING_UPDATE_MARKER = "pending-update"
+
+
+def _launch_installer_via_scheduler(installer: Path, label: str) -> bool:
+    """Schedule a one-time Windows task to run the installer ~10s from now.
+
+    Launching the installer as a direct child via subprocess.Popen does not
+    work under NSSM. NSSM 2.24 walks the service's process tree on exit and
+    kills every descendant by parent-PID enumeration (not via Job Objects),
+    so any installer launched as a child is killed before it can replace
+    files. CREATE_BREAKAWAY_FROM_JOB does not help — the parent PID is set
+    at CreateProcess time and cannot be changed.
+
+    Task Scheduler runs the task in its own process tree under taskhostw.exe,
+    completely outside NSSM's awareness. The installer survives our exit.
+    """
+    run_at = (datetime.now() + timedelta(seconds=10)).strftime("%H:%M:%S")
+    task_name = f"OpenAVCUpdate-{label}"
+    try:
+        subprocess.run(
+            [
+                "schtasks", "/create", "/f",
+                "/tn", task_name,
+                "/sc", "once",
+                "/st", run_at,
+                "/ru", "SYSTEM",
+                "/tr", f'"{installer}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART',
+            ],
+            check=True, capture_output=True, text=True, timeout=30,
+        )
+        log.info("Scheduled installer task '%s' to run at %s", task_name, run_at)
+        return True
+    except subprocess.CalledProcessError as e:
+        log.error("Failed to schedule installer task: %s", e.stderr.strip() if e.stderr else e)
+        return False
+    except (OSError, subprocess.TimeoutExpired) as e:
+        log.error("Failed to schedule installer task: %s", e)
+        return False
 
 
 def write_pending_marker(data_dir: Path, from_version: str, to_version: str) -> None:
@@ -163,27 +201,14 @@ def _rollback_windows(data_dir: Path, from_version: str, to_version: str) -> boo
             return False
         installer = candidates[-1]
     log.warning(
-        "Automatic rollback: running cached installer %s (v%s failed after update from v%s)",
+        "Automatic rollback: scheduling cached installer %s (v%s failed after update from v%s)",
         installer.name, to_version, from_version,
     )
 
     # Clear the marker before rollback to prevent rollback loops
     clear_pending_marker(data_dir)
 
-    try:
-        subprocess.Popen(
-            [
-                str(installer),
-                "/VERYSILENT",
-                "/SUPPRESSMSGBOXES",
-                "/NORESTART",
-            ],
-            creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
-        )
-        return True
-    except OSError as e:
-        log.error("Rollback failed: could not launch installer: %s", e)
-        return False
+    return _launch_installer_via_scheduler(installer, f"rollback-{from_version}")
 
 
 def _rollback_linux(data_dir: Path, from_version: str, to_version: str) -> bool:

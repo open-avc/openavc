@@ -12,8 +12,6 @@ import hashlib
 import json
 import logging
 import shutil
-import subprocess
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -466,27 +464,23 @@ class UpdateManager:
         log.info("Checksum verified for %s", artifact_path.name)
 
     def _apply_windows(self, artifact_path: Path, new_version: str) -> None:
-        """Apply update on Windows via silent installer execution.
+        """Apply update on Windows via silent installer scheduled through Task Scheduler.
 
         The Inno Setup installer caches itself during installation
         (CacheInstallerForRollback in setup.iss), so rollback is always possible.
-        """
-        log.info("Launching silent installer: %s", artifact_path.name)
 
-        # Launch installer silently — it will stop the NSSM service,
-        # replace files, and restart the service automatically.
-        # NSSM exit code 42 (set in install-service.bat) prevents NSSM from
-        # restarting the process before the installer finishes.
-        subprocess.Popen(
-            [
-                str(artifact_path),
-                "/VERYSILENT",
-                "/SUPPRESSMSGBOXES",
-                "/NORESTART",
-            ],
-            creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
-            if sys.platform == "win32" else 0,
-        )
+        The installer runs via Windows Task Scheduler rather than as a child
+        process. NSSM 2.24 walks the service's process tree on exit and kills
+        every descendant by parent-PID enumeration, so any installer launched
+        as a child of the dying server gets killed before it can replace files.
+        Task Scheduler runs the task in its own process tree under
+        taskhostw.exe, completely outside NSSM's awareness.
+        """
+        from server.updater.rollback import _launch_installer_via_scheduler
+
+        log.info("Scheduling silent installer: %s", artifact_path.name)
+        if not _launch_installer_via_scheduler(artifact_path, new_version):
+            raise RuntimeError("Failed to schedule installer task")
 
     def _apply_linux(self, artifact_path: Path, to_version: str) -> None:
         """Write update instruction for the ExecStartPre helper script.
