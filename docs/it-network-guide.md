@@ -69,7 +69,7 @@ To allow network access, set the `OPENAVC_BIND` environment variable before star
 - **Windows (PowerShell):** `$env:OPENAVC_BIND = "0.0.0.0"` then start the application
 - **Windows (Command Prompt):** `set OPENAVC_BIND=0.0.0.0` then start the application
 - **Linux:** `export OPENAVC_BIND=0.0.0.0` then start the application, or add it to the systemd service file
-- **Docker:** Pass `-e OPENAVC_BIND=0.0.0.0` to `docker run` (Docker deployments do this by default)
+- **Docker:** Add `OPENAVC_BIND=0.0.0.0` under an `environment:` block in the compose file (Docker deployments do this by default)
 - **Windows Installer:** The installed service is pre-configured to accept network connections
 
 Setting the bind address to `0.0.0.0` means OpenAVC will accept connections on all network interfaces. When you do this, you should also set credentials to protect the configuration interface. Set both a username and a password:
@@ -80,7 +80,7 @@ Setting the bind address to `0.0.0.0` means OpenAVC will accept connections on a
 - **Linux:**
   - `export OPENAVC_PROGRAMMER_USERNAME=your-username`
   - `export OPENAVC_PROGRAMMER_PASSWORD=your-password`
-- **Docker:** Pass `-e OPENAVC_PROGRAMMER_USERNAME=your-username -e OPENAVC_PROGRAMMER_PASSWORD=your-password` to `docker run`
+- **Docker:** Add `OPENAVC_PROGRAMMER_USERNAME` and `OPENAVC_PROGRAMMER_PASSWORD` under an `environment:` block in the compose file
 
 The application logs a warning at startup if it is bound to all interfaces without a password configured. The end-user touch panel remains accessible without credentials; only the configuration interface (Programmer) is protected.
 
@@ -420,15 +420,14 @@ If you also want a separate tablet or browser on another machine to access the t
 
 ### Option 3: Docker
 
+Download the maintained compose file and start it (Linux Docker hosts only):
+
 ```
-docker run -d \
-  -p 8080:8080 \
-  -e OPENAVC_PROGRAMMER_PASSWORD=your-password \
-  -v openavc-data:/data \
-  ghcr.io/open-avc/openavc
+curl -fsSL https://raw.githubusercontent.com/open-avc/openavc/main/installer/docker-compose.yml -o docker-compose.yml
+docker compose up -d
 ```
 
-Access at `http://<host-ip>:8080/programmer`. Docker deployments accept network connections by default. The container's network requirements are identical to a bare-metal installation.
+Set a programmer password by adding `OPENAVC_PROGRAMMER_PASSWORD` under an `environment:` block in the compose file before starting. Access at `http://<host-ip>:8080/programmer`. The compose file uses host networking so the container's network requirements are identical to a bare-metal installation.
 
 ---
 

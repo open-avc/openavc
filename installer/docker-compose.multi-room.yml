@@ -5,6 +5,14 @@
 #
 # Start:   docker compose -f docker-compose.multi-room.yml up -d
 # Update:  docker compose -f docker-compose.multi-room.yml pull && docker compose -f docker-compose.multi-room.yml up -d
+#
+# Discovery note: this multi-room layout uses bridge networking because each
+# room needs its own port (8081/8082/8083). Containers in bridge mode cannot
+# reach AV devices on your physical LAN, so device discovery WILL NOT WORK
+# here -- you'll need to add devices manually by IP. If you need discovery,
+# either run one room per physical host using docker-compose.yml (host
+# networking), or set up macvlan networking so each container gets its own
+# LAN IP.
 
 services:
   room-101:

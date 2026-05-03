@@ -9,8 +9,17 @@ services:
   openavc:
     image: ghcr.io/open-avc/openavc:latest
     container_name: openavc
-    ports:
-      - "8080:8080"
+    # Host networking is required for device discovery and mDNS to reach
+    # AV equipment on your LAN. Linux only -- on Docker Desktop for Windows
+    # or Mac the container still cannot see your physical LAN due to the
+    # WSL2/HyperKit network isolation, and you should use the native
+    # installer instead if you need discovery.
+    network_mode: host
+    # NET_RAW lets the unprivileged `openavc` user run ping for the
+    # discovery sweep (the image's ping binary has the matching file
+    # capability set).
+    cap_add:
+      - NET_RAW
     volumes:
       - openavc-data:/data
     restart: unless-stopped

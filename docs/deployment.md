@@ -25,7 +25,7 @@ See [Getting Started](getting-started.md) for detailed installation steps coveri
 | Method | Install Command / Action |
 |--------|--------------------------|
 | **Windows Installer** | Download from [GitHub Releases](https://github.com/open-avc/openavc/releases) and run the `.exe` |
-| **Docker** | `docker run -d -p 8080:8080 -v openavc-data:/data ghcr.io/open-avc/openavc:latest` |
+| **Docker** | `curl -fsSL https://raw.githubusercontent.com/open-avc/openavc/main/installer/docker-compose.yml -o docker-compose.yml && docker compose up -d` |
 | **Linux** | `curl -sSL https://get.openavc.com \| sudo bash` |
 | **From Source** | `git clone`, `pip install`, `npm run build`, `python -m server.main` |
 
@@ -209,33 +209,28 @@ sudo systemctl start openavc
 
 ## Docker
 
-Run OpenAVC in a container with persistent data stored in a named volume:
-
-```yaml
-services:
-  openavc:
-    image: ghcr.io/open-avc/openavc:latest
-    container_name: openavc
-    ports:
-      - "8080:8080"
-    volumes:
-      - openavc-data:/data
-    restart: unless-stopped
-    # For serial/USB device passthrough:
-    # devices:
-    #   - /dev/ttyUSB0:/dev/ttyUSB0
-
-volumes:
-  openavc-data:
-```
+Download the maintained compose file and start the container. This is the supported install path -- the compose file pins the network and capability settings discovery needs, so don't try to translate it back into `docker run` flags or strip pieces out:
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/open-avc/openavc/main/installer/docker-compose.yml -o docker-compose.yml
 docker compose up -d          # Start
 docker compose pull           # Update to latest
 docker compose up -d          # Restart with new image
 ```
 
-For multi-space deployments, use separate containers with different ports and data volumes:
+For serial/USB device passthrough, uncomment the `devices:` block in the compose file.
+
+### Why the compose file uses host networking and NET_RAW
+
+Device discovery, mDNS, and SSDP all need the container to be reachable on, and able to send packets to, the same physical network as your AV equipment. With Docker's default bridge network the container sits behind NAT on a private 172.x subnet and cannot see your LAN, so scans return zero devices. `network_mode: host` puts the container directly on the host's network stack so discovery works. `cap_add: NET_RAW` lets OpenAVC's unprivileged user run the ICMP ping sweep that finds live hosts.
+
+### Docker Desktop on Windows or Mac
+
+Docker Desktop runs the Linux container inside a WSL2 (Windows) or HyperKit (Mac) virtual machine that does not share the host's LAN, so device discovery cannot work even with `network_mode: host`. If you need discovery on Windows or Mac, use the native installer instead. Docker Desktop is fine for evaluating the software or for IP-only deployments where you'll add devices manually.
+
+### Multi-space deployments
+
+For multiple rooms on a single host, use separate containers with different ports and data volumes. Multi-room layouts must use bridge networking (host mode would conflict on port 8080), which means **device discovery is not available in multi-room mode** and devices must be added manually by IP. If discovery matters, run one OpenAVC container per physical host using the single-room compose above, or set up macvlan networking so each container gets its own LAN IP.
 
 ```yaml
 services:

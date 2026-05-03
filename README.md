@@ -73,8 +73,10 @@ Download the installer from the [Releases](https://github.com/open-avc/openavc/r
 Flash the pre-built image to an SD card with [Raspberry Pi Imager](https://www.raspberrypi.com/software/). Power on and access the Programmer at `http://openavc.local:8080`. Connect an HDMI touch display for a built-in touch panel.
 
 ### Docker
+Linux Docker hosts. On Windows or Mac, use the Windows installer instead — Docker Desktop's container networking can't reach AV equipment on your LAN.
 ```bash
-docker run -d --name openavc -p 8080:8080 -v openavc-data:/data ghcr.io/open-avc/openavc:latest
+curl -fsSL https://raw.githubusercontent.com/open-avc/openavc/main/installer/docker-compose.yml -o docker-compose.yml
+docker compose up -d
 ```
 
 ### Linux

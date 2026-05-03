@@ -36,37 +36,14 @@ After installation, open **http://localhost:8080/programmer** in your browser to
 
 ## Docker
 
-Run OpenAVC in a container with persistent data:
+Linux Docker hosts only -- see [Deployment](deployment.md#docker) for the Docker Desktop limitation on Windows and Mac. Download the compose file and start it:
 
 ```bash
-docker run -d \
-  --name openavc \
-  -p 8080:8080 \
-  -v openavc-data:/data \
-  --restart unless-stopped \
-  ghcr.io/open-avc/openavc:latest
-```
-
-Or with Docker Compose:
-
-```yaml
-services:
-  openavc:
-    image: ghcr.io/open-avc/openavc:latest
-    container_name: openavc
-    ports:
-      - "8080:8080"
-    volumes:
-      - openavc-data:/data
-    restart: unless-stopped
-
-volumes:
-  openavc-data:
-```
-
-```bash
+curl -fsSL https://raw.githubusercontent.com/open-avc/openavc/main/installer/docker-compose.yml -o docker-compose.yml
 docker compose up -d
 ```
+
+The compose file ships with `network_mode: host` and `cap_add: NET_RAW` so device discovery and mDNS can reach AV equipment on your LAN. Don't strip those out -- discovery won't work without them.
 
 The container binds to `0.0.0.0` by default (network-accessible). Access at **http://\<host-ip\>:8080/programmer**.
 
