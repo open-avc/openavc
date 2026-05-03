@@ -63,6 +63,48 @@ export async function emitContextAction(
   });
 }
 
+// --- Plugin Macro Actions ---
+
+export type PluginMacroParamType =
+  | "text"
+  | "integer"
+  | "float"
+  | "boolean"
+  | "select"
+  | "state_key"
+  | "device_ref"
+  | "macro_ref";
+
+export interface PluginMacroActionParam {
+  key: string;
+  type: PluginMacroParamType;
+  label?: string;
+  description?: string;
+  required?: boolean;
+  default?: unknown;
+  min?: number;
+  max?: number;
+  step?: number;
+  /** Static options for `select` type */
+  options?: Array<{ value: string | number | boolean; label: string }>;
+  /** State key whose JSON value populates the dropdown for `select` type */
+  options_source?: string;
+}
+
+export interface PluginMacroAction {
+  action_type: string;
+  plugin_id: string;
+  plugin_name: string;
+  label: string;
+  description?: string;
+  icon?: string;
+  params: PluginMacroActionParam[];
+}
+
+export async function getPluginMacroActions(): Promise<{ actions: PluginMacroAction[] }> {
+  return request("/plugins/macro-actions");
+}
+
 export interface PluginExtension {
   id: string;
   label: string;

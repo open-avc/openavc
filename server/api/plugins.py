@@ -78,6 +78,16 @@ async def get_all_extensions() -> dict[str, Any]:
     return engine.plugin_loader.get_all_extensions()
 
 
+@router.get("/plugins/macro-actions")
+async def get_all_macro_actions() -> dict[str, Any]:
+    """Get all macro actions registered by running plugins.
+
+    Used by the macro builder to populate the action picker with plugin actions.
+    """
+    engine = _get_engine()
+    return {"actions": engine.plugin_loader.get_all_macro_actions()}
+
+
 # ──── Plugin Panel Files (serve HTML/JS/CSS for iframe-based panel elements) ────
 
 

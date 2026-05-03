@@ -53,6 +53,12 @@ import {
   getMacroCallees,
   detectCircularDependency,
 } from "./macroHelpers";
+import {
+  usePluginMacroActions,
+  findPluginAction,
+  defaultPluginActionParams,
+  pluginActionSummary,
+} from "./pluginMacroActions";
 import { CopyButton } from "../shared/CopyButton";
 import * as api from "../../api/restClient";
 
@@ -124,6 +130,19 @@ function SortableStepItem({
   };
 
   const typeInfo = getStepType(step.action);
+  const { actions: pluginActionsList } = usePluginMacroActions();
+  const pluginAction = !typeInfo ? findPluginAction(pluginActionsList, step.action) : undefined;
+  const isMissingPlugin = !typeInfo && !pluginAction && step.action.includes(".");
+
+  const labelText = typeInfo?.label ?? pluginAction?.label ?? (isMissingPlugin ? "Missing" : step.action);
+  const labelBg = typeInfo?.color ?? (pluginAction ? "#a855f7" : isMissingPlugin ? "#ef4444" : "#666");
+  const summaryText = typeInfo
+    ? typeInfo.summary(step, devices as any)
+    : pluginAction
+      ? pluginActionSummary(step, pluginAction)
+      : isMissingPlugin
+        ? `(plugin not installed) ${step.action}`
+        : "";
 
   return (
     <div ref={setNodeRef} style={style}>
@@ -170,14 +189,14 @@ function SortableStepItem({
             fontSize: 11,
             fontWeight: 600,
             color: "#fff",
-            background: typeInfo?.color ?? "#666",
+            background: labelBg,
             padding: "1px 6px",
             borderRadius: 3,
             textTransform: "uppercase",
             flexShrink: 0,
           }}
         >
-          {typeInfo?.label ?? step.action}
+          {labelText}
         </span>
         <span
           style={{
@@ -189,7 +208,7 @@ function SortableStepItem({
             whiteSpace: "nowrap",
           }}
         >
-          {typeInfo?.summary(step, devices as any) ?? ""}
+          {summaryText}
         </span>
         <div
           style={{
@@ -367,6 +386,8 @@ export function MacroEditor({
   }, [showAddMenu, showTemplates]);
   const [, setClipboardRevision] = useState(0); // force re-render on copy
 
+  const { actions: pluginMacroActions, refresh: refreshPluginActions } = usePluginMacroActions();
+
   const macroProgress = useLogStore((s) => s.macroProgress);
   const isRunning =
     macroProgress.macroId === macro.id && macroProgress.status === "running";
@@ -464,8 +485,16 @@ export function MacroEditor({
 
   const addStep = (action: string) => {
     const typeInfo = getStepType(action);
-    if (!typeInfo) return;
-    const newStep: MacroStep = { action, ...typeInfo.defaults() };
+    let newStep: MacroStep | null = null;
+    if (typeInfo) {
+      newStep = { action, ...typeInfo.defaults() };
+    } else {
+      const pluginAction = findPluginAction(pluginMacroActions, action);
+      if (pluginAction) {
+        newStep = { action, params: defaultPluginActionParams(pluginAction) };
+      }
+    }
+    if (!newStep) return;
     onUpdate({ ...macro, steps: [...macro.steps, newStep] });
     setExpandedStep(macro.steps.length);
     setShowAddMenu(false);
@@ -899,6 +928,102 @@ export function MacroEditor({
                   </div>
                 </div>
               ))}
+              {pluginMacroActions.length > 0 && (
+                <>
+                  <div style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "var(--space-xs) var(--space-md)",
+                    fontSize: 10,
+                    color: "var(--text-muted)",
+                    textTransform: "uppercase",
+                    letterSpacing: 0.5,
+                    borderTop: "1px solid var(--border-color)",
+                    marginTop: 4,
+                    background: "var(--bg-primary)",
+                  }}>
+                    <span>Plugin Actions</span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        refreshPluginActions();
+                      }}
+                      title="Refresh plugin actions"
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        color: "var(--text-muted)",
+                        cursor: "pointer",
+                        fontSize: 11,
+                        padding: 0,
+                      }}
+                    >
+                      ↻
+                    </button>
+                  </div>
+                  {(() => {
+                    // Group by plugin name for the menu
+                    const groups = new Map<string, typeof pluginMacroActions>();
+                    for (const a of pluginMacroActions) {
+                      const arr = groups.get(a.plugin_name) ?? [];
+                      arr.push(a);
+                      groups.set(a.plugin_name, arr);
+                    }
+                    return Array.from(groups.entries()).map(([pluginName, actions]) => (
+                      <div key={pluginName}>
+                        <div style={{
+                          padding: "var(--space-xs) var(--space-md)",
+                          fontSize: 10,
+                          color: "var(--text-muted)",
+                          fontWeight: 600,
+                        }}>
+                          {pluginName}
+                        </div>
+                        {actions.map((a) => (
+                          <div
+                            key={a.action_type}
+                            onClick={() => addStep(a.action_type)}
+                            style={{
+                              display: "flex",
+                              alignItems: "flex-start",
+                              gap: "var(--space-sm)",
+                              padding: "var(--space-sm) var(--space-md)",
+                              cursor: "pointer",
+                              fontSize: "var(--font-size-sm)",
+                            }}
+                            onMouseEnter={(e) =>
+                              ((e.currentTarget as HTMLElement).style.background =
+                                "var(--bg-hover)")
+                            }
+                            onMouseLeave={(e) =>
+                              ((e.currentTarget as HTMLElement).style.background =
+                                "transparent")
+                            }
+                          >
+                            <span
+                              style={{
+                                width: 8,
+                                height: 8,
+                                borderRadius: "50%",
+                                background: "#a855f7",
+                                flexShrink: 0,
+                                marginTop: 5,
+                              }}
+                            />
+                            <div>
+                              <div style={{ fontWeight: 500, color: "var(--text-primary)" }}>{a.label}</div>
+                              {a.description && (
+                                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>{a.description}</div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ));
+                  })()}
+                </>
+              )}
             </div>
           )}
 

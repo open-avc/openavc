@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any, TYPE_CHECKING
+from typing import Any, Awaitable, Callable, TYPE_CHECKING
 
 from server.core.condition_eval import eval_operator
 from server.core.event_bus import EventBus
@@ -21,6 +21,9 @@ if TYPE_CHECKING:
     from server.core.device_manager import DeviceManager
 
 log = get_logger(__name__)
+
+
+PluginActionHandler = Callable[[dict[str, Any], dict[str, Any]], Awaitable[None]]
 
 
 class MacroEngine:
@@ -37,6 +40,8 @@ class MacroEngine:
         self._running: dict[str, asyncio.Task] = {}  # id -> running task
         self._max_depth = 10  # maximum nested macro call depth
         self._max_conditional_depth = 5  # maximum nesting of conditional steps
+        # Plugin-registered actions: action_type -> (handler, plugin_id, label)
+        self._plugin_actions: dict[str, tuple[PluginActionHandler, str, str]] = {}
 
     def is_macro_running(self, macro_id: str) -> bool:
         """Check if a macro is currently running."""
@@ -93,6 +98,46 @@ class MacroEngine:
                 self._groups[group_id] = group.get("device_ids", [])
         if self._groups:
             log.info(f"Loaded {len(self._groups)} device group(s)")
+
+    def register_plugin_action(
+        self,
+        action_type: str,
+        handler: PluginActionHandler,
+        plugin_id: str,
+        label: str = "",
+    ) -> None:
+        """Register a plugin-provided macro action type.
+
+        Action type must be unique. The handler is called as
+        ``await handler(params, context)`` from the macro engine, with
+        ``$var.foo`` references in params already resolved.
+        """
+        existing = self._plugin_actions.get(action_type)
+        if existing is not None:
+            _, owning_plugin, _ = existing
+            raise ValueError(
+                f"Macro action '{action_type}' is already registered by plugin "
+                f"'{owning_plugin}' — cannot register for '{plugin_id}'"
+            )
+        self._plugin_actions[action_type] = (handler, plugin_id, label or action_type)
+        log.debug(f"Registered plugin macro action: {action_type} -> {plugin_id}")
+
+    def unregister_plugin_action(self, action_type: str) -> None:
+        """Remove a plugin-registered macro action type. No-op if missing."""
+        if action_type in self._plugin_actions:
+            del self._plugin_actions[action_type]
+            log.debug(f"Unregistered plugin macro action: {action_type}")
+
+    def unregister_plugin_actions(self, plugin_id: str) -> None:
+        """Remove all macro actions registered by a plugin."""
+        for action_type in [
+            k for k, (_, pid, _) in self._plugin_actions.items() if pid == plugin_id
+        ]:
+            del self._plugin_actions[action_type]
+
+    def get_plugin_action(self, action_type: str) -> tuple[PluginActionHandler, str, str] | None:
+        """Look up a registered plugin action. Returns (handler, plugin_id, label) or None."""
+        return self._plugin_actions.get(action_type)
 
     async def execute(
         self, macro_id: str, context: dict[str, Any] | None = None,
@@ -270,10 +315,14 @@ class MacroEngine:
             sub = step.get("macro", "")
             if sub:
                 parts.append(f"calling '{sub}'")
+        else:
+            plugin_action = self._plugin_actions.get(action)
+            if plugin_action is not None:
+                _handler, plugin_id, _label = plugin_action
+                parts.append(f"plugin '{plugin_id}'")
         return ", ".join(parts)
 
-    @staticmethod
-    def _auto_description(step: dict[str, Any]) -> str:
+    def _auto_description(self, step: dict[str, Any]) -> str:
         """Generate a human-readable description for a macro step."""
         action = step.get("action", "")
         if action == "device.command":
@@ -296,6 +345,10 @@ class MacroEngine:
             timeout = step.get("timeout")
             tmo = "no timeout" if timeout is None else f"{timeout}s"
             return f"Waiting for {key} ({tmo})"
+        plugin_action = self._plugin_actions.get(action)
+        if plugin_action is not None:
+            _handler, _plugin_id, label = plugin_action
+            return label
         return action
 
     async def _execute_step(
@@ -459,7 +512,13 @@ class MacroEngine:
             await self._execute_wait_until(step, macro_id)
 
         else:
-            raise ValueError(f"Unknown macro action: '{action}'")
+            plugin_action = self._plugin_actions.get(action)
+            if plugin_action is None:
+                raise ValueError(f"Unknown macro action: '{action}'")
+            handler, plugin_id, _label = plugin_action
+            params = self._resolve_params(step.get("params") or {})
+            log.debug(f"  Macro step: plugin action '{action}' ({plugin_id}) {params}")
+            await handler(params, context)
 
     async def _execute_wait_until(
         self, step: dict[str, Any], macro_id: str | None

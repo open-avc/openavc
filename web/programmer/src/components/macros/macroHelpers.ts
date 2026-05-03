@@ -428,7 +428,18 @@ function _generateStepLines(
         break;
       }
       default:
-        lines.push(`${indent}# Unsupported step type: ${step.action}`);
+        if (step.action.includes(".")) {
+          // Plugin-registered macro action — no script-side equivalent is
+          // generated automatically. The plugin's script module (if any)
+          // provides the call.
+          const params = step.params ? JSON.stringify(step.params) : "{}";
+          lines.push(
+            `${indent}# Plugin action '${step.action}' — call the plugin's script API directly`
+          );
+          lines.push(`${indent}# Params: ${params}`);
+        } else {
+          lines.push(`${indent}# Unsupported step type: ${step.action}`);
+        }
         break;
     }
   }

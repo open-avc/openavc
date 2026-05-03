@@ -36,6 +36,8 @@ Reorder steps by dragging the grip handle on the left side of each step. Toggle 
 
 **Copy and Paste Steps:** Right-click a step (or use the step menu) to copy it. Paste into the same macro or a different one. This works across macros, so you can reuse steps without rebuilding them.
 
+**Plugin Actions:** Installed plugins can add their own step types. They appear at the bottom of the Add Step menu under **Plugin Actions**, grouped by plugin name. Examples: an Audio Player plugin contributes `Play Sound`; an MQTT bridge plugin contributes `Publish Message`. Each plugin action shows the plugin's parameter form, supports dynamic `$var.foo` values just like built-in steps, and can be reordered, copied, and used inside conditionals like any other step. If you remove a plugin that a macro is using, the affected steps show a "Missing plugin" warning until you reinstall it or delete the steps.
+
 ## A Typical System-On Macro
 
 Here is a real-world example of a `system_on` macro for a conference room:

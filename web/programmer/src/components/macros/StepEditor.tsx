@@ -5,6 +5,15 @@ import type { StepPathSegment } from "../../store/logStore";
 import { VariableKeyPicker } from "../shared/VariableKeyPicker";
 import { ConditionEditor } from "./ConditionEditor";
 import { STEP_TYPES, getStepType } from "./macroHelpers";
+import {
+  usePluginMacroActions,
+  findPluginAction,
+  defaultPluginActionParams,
+} from "./pluginMacroActions";
+import type {
+  PluginMacroAction,
+  PluginMacroActionParam,
+} from "./pluginMacroActions";
 import * as api from "../../api/restClient";
 
 interface StepEditorProps {
@@ -17,6 +26,7 @@ interface StepEditorProps {
 
 export function StepEditor({ step, macros, currentMacroId, onChange, activeStepPath }: StepEditorProps) {
   const devices = useProjectStore((s) => s.project?.devices) ?? [];
+  const { actions: pluginActions } = usePluginMacroActions();
 
   const update = (patch: Partial<MacroStep>) => {
     onChange({ ...step, ...patch });
@@ -24,6 +34,9 @@ export function StepEditor({ step, macros, currentMacroId, onChange, activeStepP
 
   // Main editor per action type
   let editor: React.ReactNode;
+
+  // Plugin actions take precedence over the unknown-action fallback
+  const pluginAction = findPluginAction(pluginActions, step.action);
 
   switch (step.action) {
     case "device.command":
@@ -109,11 +122,26 @@ export function StepEditor({ step, macros, currentMacroId, onChange, activeStepP
       editor = <WaitUntilEditor step={step} onChange={update} />;
       break;
     default:
-      editor = (
-        <div style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}>
-          Unknown action: {step.action}
-        </div>
-      );
+      if (pluginAction) {
+        editor = (
+          <PluginActionEditor
+            step={step}
+            action={pluginAction}
+            onChange={update}
+          />
+        );
+      } else if (step.action.includes(".")) {
+        // Looks like a plugin action whose plugin isn't installed/running
+        editor = (
+          <MissingPluginActionEditor step={step} onChange={update} />
+        );
+      } else {
+        editor = (
+          <div style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}>
+            Unknown action: {step.action}
+          </div>
+        );
+      }
   }
 
   // For non-conditional steps, show optional skip_if and skip_if_offline toggles
@@ -869,16 +897,30 @@ function ConditionalEditor({
     onChange({ ...step, else_steps: steps });
   };
 
-  const addThenStep = (action: string) => {
+  const { actions: pluginActionsList } = usePluginMacroActions();
+
+  const buildNewStep = (action: string): MacroStep | null => {
     const typeInfo = getStepType(action);
-    if (!typeInfo) return;
-    onChange({ ...step, then_steps: [...thenSteps, { action, ...typeInfo.defaults() }] });
+    if (typeInfo) {
+      return { action, ...typeInfo.defaults() };
+    }
+    const pluginAction = findPluginAction(pluginActionsList, action);
+    if (pluginAction) {
+      return { action, params: defaultPluginActionParams(pluginAction) };
+    }
+    return null;
+  };
+
+  const addThenStep = (action: string) => {
+    const newStep = buildNewStep(action);
+    if (!newStep) return;
+    onChange({ ...step, then_steps: [...thenSteps, newStep] });
   };
 
   const addElseStep = (action: string) => {
-    const typeInfo = getStepType(action);
-    if (!typeInfo) return;
-    onChange({ ...step, else_steps: [...elseSteps, { action, ...typeInfo.defaults() }] });
+    const newStep = buildNewStep(action);
+    if (!newStep) return;
+    onChange({ ...step, else_steps: [...elseSteps, newStep] });
   };
 
   const removeThenStep = (index: number) => {
@@ -1112,6 +1154,7 @@ const inlineIconBtn: React.CSSProperties = {
 function AddStepDropdown({ onAdd }: { onAdd: (action: string) => void }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const { actions: pluginActions } = usePluginMacroActions();
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
@@ -1120,6 +1163,14 @@ function AddStepDropdown({ onAdd }: { onAdd: (action: string) => void }) {
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
+
+  // Group plugin actions by plugin name for the menu
+  const pluginGroups = new Map<string, PluginMacroAction[]>();
+  for (const a of pluginActions) {
+    const existing = pluginGroups.get(a.plugin_name) ?? [];
+    existing.push(a);
+    pluginGroups.set(a.plugin_name, existing);
+  }
 
   return (
     <div ref={ref} style={{ position: "relative" }}>
@@ -1152,6 +1203,8 @@ function AddStepDropdown({ onAdd }: { onAdd: (action: string) => void }) {
           boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
           zIndex: 20,
           minWidth: 200,
+          maxHeight: 360,
+          overflowY: "auto",
         }}>
           {STEP_TYPES.map((t) => (
             <div
@@ -1172,6 +1225,325 @@ function AddStepDropdown({ onAdd }: { onAdd: (action: string) => void }) {
               <span style={{ color: "var(--text-primary)" }}>{t.label}</span>
             </div>
           ))}
+          {Array.from(pluginGroups.entries()).map(([pluginName, actions]) => (
+            <div key={pluginName}>
+              <div style={{
+                padding: "var(--space-xs) var(--space-sm)",
+                fontSize: 10,
+                color: "var(--text-muted)",
+                textTransform: "uppercase",
+                letterSpacing: 0.5,
+                borderTop: "1px solid var(--border-color)",
+                marginTop: 4,
+              }}>
+                {pluginName}
+              </div>
+              {actions.map((a) => (
+                <div
+                  key={a.action_type}
+                  onClick={() => { onAdd(a.action_type); setOpen(false); }}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "var(--space-sm)",
+                    padding: "var(--space-xs) var(--space-sm)",
+                    cursor: "pointer",
+                    fontSize: 12,
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                >
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#a855f7", flexShrink: 0 }} />
+                  <span style={{ color: "var(--text-primary)" }}>{a.label}</span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- Plugin Action Editor (renders form from plugin's MACRO_ACTIONS schema) ---
+
+function PluginActionEditor({
+  step,
+  action,
+  onChange,
+}: {
+  step: MacroStep;
+  action: PluginMacroAction;
+  onChange: (patch: Partial<MacroStep>) => void;
+}) {
+  const params = (step.params ?? {}) as Record<string, unknown>;
+
+  const setParam = (key: string, value: unknown) => {
+    onChange({ params: { ...params, [key]: value } });
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+      <HelpText>
+        <strong style={{ color: "var(--text-secondary)" }}>{action.plugin_name}</strong>
+        {action.description ? <> — {action.description}</> : null}
+      </HelpText>
+      {action.params.length === 0 && (
+        <div style={hintStyle}>This action takes no parameters.</div>
+      )}
+      {action.params.map((param) => (
+        <PluginParamField
+          key={param.key}
+          param={param}
+          value={params[param.key]}
+          onChange={(v) => setParam(param.key, v)}
+        />
+      ))}
+    </div>
+  );
+}
+
+function PluginParamField({
+  param,
+  value,
+  onChange,
+}: {
+  param: PluginMacroActionParam;
+  value: unknown;
+  onChange: (value: unknown) => void;
+}) {
+  const macros = useProjectStore((s) => s.project?.macros) ?? [];
+  const devices = useProjectStore((s) => s.project?.devices) ?? [];
+
+  const isDynamic = typeof value === "string" && value.startsWith("$");
+  const supportsDynamic =
+    param.type === "text" ||
+    param.type === "integer" ||
+    param.type === "float" ||
+    param.type === "select";
+
+  const labelEl = (
+    <label style={labelStyle}>
+      {param.label || param.key}
+      {param.required && <span style={{ color: "#ef4444" }}> *</span>}
+    </label>
+  );
+
+  let input: React.ReactNode;
+
+  if (isDynamic && supportsDynamic) {
+    input = (
+      <VariableKeyPicker
+        value={String(value).slice(1)}
+        onChange={(key) => onChange(`$${key}`)}
+        showDeviceState
+        placeholder="Select state key..."
+        style={{ flex: 1 }}
+      />
+    );
+  } else {
+    switch (param.type) {
+      case "boolean":
+        input = (
+          <label style={{ display: "flex", alignItems: "center", gap: 6, flex: 1 }}>
+            <input
+              type="checkbox"
+              checked={Boolean(value)}
+              onChange={(e) => onChange(e.target.checked)}
+            />
+            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              {param.description ?? ""}
+            </span>
+          </label>
+        );
+        break;
+      case "integer":
+        input = (
+          <input
+            type="number"
+            step={1}
+            min={param.min}
+            max={param.max}
+            value={value === undefined || value === null ? "" : String(value)}
+            onChange={(e) =>
+              onChange(e.target.value === "" ? undefined : parseInt(e.target.value, 10))
+            }
+            style={inputStyle}
+          />
+        );
+        break;
+      case "float":
+        input = (
+          <input
+            type="number"
+            step={param.step ?? 0.1}
+            min={param.min}
+            max={param.max}
+            value={value === undefined || value === null ? "" : String(value)}
+            onChange={(e) =>
+              onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))
+            }
+            style={inputStyle}
+          />
+        );
+        break;
+      case "select": {
+        const options = param.options ?? [];
+        input = (
+          <select
+            value={value === undefined ? "" : String(value)}
+            onChange={(e) => onChange(e.target.value)}
+            style={inputStyle}
+          >
+            <option value="">Select...</option>
+            {options.map((opt) => (
+              <option key={String(opt.value)} value={String(opt.value)}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        );
+        break;
+      }
+      case "state_key":
+        input = (
+          <VariableKeyPicker
+            value={typeof value === "string" ? value : ""}
+            onChange={(key) => onChange(key)}
+            showDeviceState
+            placeholder="Select state key..."
+            style={{ flex: 1 }}
+          />
+        );
+        break;
+      case "device_ref":
+        input = (
+          <select
+            value={typeof value === "string" ? value : ""}
+            onChange={(e) => onChange(e.target.value)}
+            style={inputStyle}
+          >
+            <option value="">Select device...</option>
+            {devices.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+          </select>
+        );
+        break;
+      case "macro_ref":
+        input = (
+          <select
+            value={typeof value === "string" ? value : ""}
+            onChange={(e) => onChange(e.target.value)}
+            style={inputStyle}
+          >
+            <option value="">Select macro...</option>
+            {macros.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+        );
+        break;
+      case "text":
+      default:
+        input = (
+          <input
+            type="text"
+            value={typeof value === "string" ? value : ""}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={param.description ?? ""}
+            style={inputStyle}
+          />
+        );
+    }
+  }
+
+  return (
+    <div>
+      <div style={rowStyle}>
+        {labelEl}
+        {input}
+        {supportsDynamic && (
+          <button
+            onClick={() => {
+              if (isDynamic) onChange(param.default ?? "");
+              else onChange("$var.");
+            }}
+            title={isDynamic ? "Switch to static value" : "Use dynamic value from state variable"}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              padding: "3px 6px",
+              borderRadius: "var(--border-radius)",
+              border: `1px solid ${isDynamic ? "var(--accent)" : "var(--border-color)"}`,
+              background: isDynamic ? "rgba(138,180,147,0.15)" : "transparent",
+              color: isDynamic ? "var(--accent)" : "var(--text-muted)",
+              fontSize: 11,
+              cursor: "pointer",
+              flexShrink: 0,
+              fontFamily: "var(--font-mono)",
+            }}
+          >
+            $
+          </button>
+        )}
+      </div>
+      {!isDynamic && param.description && param.type !== "boolean" && (
+        <div style={{ ...hintStyle, marginLeft: 78 }}>{param.description}</div>
+      )}
+      {isDynamic && (
+        <div style={{ fontSize: 11, color: "var(--accent)", marginTop: 2, marginLeft: 78 }}>
+          Value will be read from state at runtime
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MissingPluginActionEditor({
+  step,
+  onChange: _onChange,
+}: {
+  step: MacroStep;
+  onChange: (patch: Partial<MacroStep>) => void;
+}) {
+  const pluginId = step.action.split(".")[0];
+  return (
+    <div
+      style={{
+        padding: "var(--space-sm) var(--space-md)",
+        borderRadius: "var(--border-radius)",
+        border: "1px solid #ef4444",
+        background: "rgba(239,68,68,0.08)",
+        color: "var(--text-secondary)",
+        fontSize: "var(--font-size-sm)",
+      }}
+    >
+      <div style={{ fontWeight: 500, color: "#ef4444", marginBottom: 4 }}>
+        Missing plugin: {pluginId}
+      </div>
+      <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
+        Action <code>{step.action}</code> is from a plugin that isn't installed or
+        enabled. Install or enable the plugin to edit this step. The macro will
+        fail at this step if run.
+      </div>
+      {step.params && Object.keys(step.params).length > 0 && (
+        <div
+          style={{
+            marginTop: "var(--space-sm)",
+            padding: "var(--space-xs)",
+            background: "var(--bg-primary)",
+            borderRadius: "var(--border-radius)",
+            fontFamily: "var(--font-mono)",
+            fontSize: 11,
+            color: "var(--text-muted)",
+          }}
+        >
+          {JSON.stringify(step.params, null, 2)}
         </div>
       )}
     </div>

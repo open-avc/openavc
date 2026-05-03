@@ -7,8 +7,10 @@ manages the start/stop lifecycle, and handles missing/incompatible plugins.
 
 import asyncio
 import importlib
+import inspect
 import os
 import platform
+import re
 import sys
 import threading
 from pathlib import Path
@@ -45,6 +47,15 @@ MIT_COMPATIBLE_LICENSES = {
 
 # Max consecutive callback failures before auto-disable
 MAX_CALLBACK_FAILURES = 10
+
+# Valid macro action param field types (mirrors the macro builder's renderer support)
+VALID_MACRO_ACTION_PARAM_TYPES = {
+    "text", "integer", "float", "boolean", "select",
+    "state_key", "device_ref", "macro_ref",
+}
+
+# Action name segment after "<plugin_id>." — lowercase letters, digits, underscores
+_MACRO_ACTION_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
 
 def get_platform_id() -> str:
@@ -89,6 +100,78 @@ def unregister_plugin_class(plugin_id: str) -> bool:
     if removed:
         log.info(f"Unregistered plugin class: {plugin_id}")
     return removed
+
+
+def validate_macro_actions(
+    macro_actions: Any, plugin_id: str, plugin_class: type
+) -> tuple[bool, str]:
+    """Validate a plugin's MACRO_ACTIONS declaration.
+
+    Returns (valid, error_message).
+    """
+    if not isinstance(macro_actions, dict):
+        return False, "MACRO_ACTIONS must be a dict"
+
+    expected_prefix = f"{plugin_id}."
+    for action_type, spec in macro_actions.items():
+        if not isinstance(action_type, str):
+            return False, f"action key {action_type!r} must be a string"
+        if not action_type.startswith(expected_prefix):
+            return False, (
+                f"action '{action_type}' must be prefixed with the plugin id "
+                f"('{expected_prefix}')"
+            )
+        suffix = action_type[len(expected_prefix):]
+        if not _MACRO_ACTION_NAME_RE.match(suffix):
+            return False, (
+                f"action '{action_type}' suffix must be lowercase letters, digits, "
+                f"or underscores (got '{suffix}')"
+            )
+        if not isinstance(spec, dict):
+            return False, f"action '{action_type}' spec must be a dict"
+
+        handler_name = spec.get("handler")
+        if not handler_name or not isinstance(handler_name, str):
+            return False, f"action '{action_type}' missing 'handler' (method name)"
+        handler = getattr(plugin_class, handler_name, None)
+        if handler is None:
+            return False, (
+                f"action '{action_type}' handler '{handler_name}' not found on "
+                f"plugin class"
+            )
+        if not inspect.iscoroutinefunction(handler):
+            return False, (
+                f"action '{action_type}' handler '{handler_name}' must be an "
+                f"async method"
+            )
+
+        params = spec.get("params", [])
+        if not isinstance(params, list):
+            return False, f"action '{action_type}' params must be a list"
+        seen_keys: set[str] = set()
+        for i, param in enumerate(params):
+            if not isinstance(param, dict):
+                return False, f"action '{action_type}' param[{i}] must be a dict"
+            key = param.get("key")
+            if not key or not isinstance(key, str):
+                return False, f"action '{action_type}' param[{i}] missing 'key'"
+            if key in seen_keys:
+                return False, f"action '{action_type}' has duplicate param key '{key}'"
+            seen_keys.add(key)
+            ptype = param.get("type")
+            if ptype not in VALID_MACRO_ACTION_PARAM_TYPES:
+                return False, (
+                    f"action '{action_type}' param '{key}' has invalid type "
+                    f"'{ptype}' (allowed: {sorted(VALID_MACRO_ACTION_PARAM_TYPES)})"
+                )
+            if ptype == "select" and not isinstance(param.get("options"), list) \
+                    and not param.get("options_source"):
+                return False, (
+                    f"action '{action_type}' select param '{key}' needs either "
+                    f"'options' (list) or 'options_source' (state key)"
+                )
+
+    return True, ""
 
 
 class PluginLoader:
@@ -310,6 +393,13 @@ class PluginLoader:
         if schema is not None and not isinstance(schema, dict):
             return False, "CONFIG_SCHEMA must be a dict"
 
+        # MACRO_ACTIONS validation
+        macro_actions = getattr(plugin_class, "MACRO_ACTIONS", None)
+        if macro_actions is not None:
+            valid, error = validate_macro_actions(macro_actions, info["id"], plugin_class)
+            if not valid:
+                return False, f"MACRO_ACTIONS invalid: {error}"
+
         return True, ""
 
     def is_platform_compatible(self, plugin_class: type) -> bool:
@@ -430,6 +520,7 @@ class PluginLoader:
         try:
             instance = plugin_class()
             await instance.start(api)
+            self._register_macro_actions(plugin_id, instance)
 
             self._instances[plugin_id] = instance
             self._registries[plugin_id] = registry
@@ -452,6 +543,7 @@ class PluginLoader:
             self._status[plugin_id] = "error"
             self._errors[plugin_id] = str(e)
             # Clean up any partial registrations
+            self._macros.unregister_plugin_actions(plugin_id)
             await registry.cleanup(self._state, self._events)
             await self._events.emit(
                 "plugin.error", {"plugin_id": plugin_id, "error": str(e)}
@@ -463,6 +555,10 @@ class PluginLoader:
         instance = self._instances.pop(plugin_id, None)
         registry = self._registries.pop(plugin_id, None)
         self._apis.pop(plugin_id, None)
+
+        # Unregister macro actions before stop() so in-flight macros can't
+        # dispatch to a half-shutdown plugin
+        self._macros.unregister_plugin_actions(plugin_id)
 
         if instance is not None:
             try:
@@ -627,6 +723,7 @@ class PluginLoader:
             "has_config_schema": hasattr(plugin_class, "CONFIG_SCHEMA"),
             "has_surface_layout": hasattr(plugin_class, "SURFACE_LAYOUT"),
             "has_extensions": hasattr(plugin_class, "EXTENSIONS"),
+            "has_macro_actions": bool(getattr(plugin_class, "MACRO_ACTIONS", None)),
         }
 
         if status == "error":
@@ -647,11 +744,48 @@ class PluginLoader:
         if surface:
             result["surface_layout"] = surface
 
+        # Include macro actions if available — strip 'handler' (internal-only)
+        macro_actions = getattr(plugin_class, "MACRO_ACTIONS", None)
+        if macro_actions:
+            result["macro_actions"] = {
+                action_type: {k: v for k, v in spec.items() if k != "handler"}
+                for action_type, spec in macro_actions.items()
+            }
+
         return result
 
     def get_plugin_status(self, plugin_id: str) -> str:
         """Get the current status of a plugin."""
         return self._status.get(plugin_id, "unknown")
+
+    def get_all_macro_actions(self) -> list[dict[str, Any]]:
+        """Get all macro actions from running plugins.
+
+        Returns a flat list, each entry shaped for the macro builder:
+        ``{action_type, plugin_id, plugin_name, label, description?, icon?, params}``
+        """
+        result: list[dict[str, Any]] = []
+        for plugin_id, instance in self._instances.items():
+            plugin_class = type(instance)
+            macro_actions = getattr(plugin_class, "MACRO_ACTIONS", None)
+            if not macro_actions:
+                continue
+            info = plugin_class.PLUGIN_INFO
+            plugin_name = info.get("name", plugin_id)
+            for action_type, spec in macro_actions.items():
+                entry = {
+                    "action_type": action_type,
+                    "plugin_id": plugin_id,
+                    "plugin_name": plugin_name,
+                    "label": spec.get("label") or action_type,
+                    "params": spec.get("params", []),
+                }
+                if spec.get("description"):
+                    entry["description"] = spec["description"]
+                if spec.get("icon"):
+                    entry["icon"] = spec["icon"]
+                result.append(entry)
+        return result
 
     def get_all_extensions(self) -> dict[str, Any]:
         """Get all extensions from running plugins, organized by extension type."""
@@ -746,6 +880,20 @@ class PluginLoader:
         await self._events.emit("plugin.auto_disabled", {"plugin_id": plugin_id})
 
     # ──── Internal ────
+
+    def _register_macro_actions(self, plugin_id: str, instance: Any) -> None:
+        """Register every MACRO_ACTIONS entry with the macro engine.
+
+        Validation already ran in validate_manifest, so we only need to bind
+        the handler method to the instance and pass it to the engine.
+        """
+        macro_actions = getattr(type(instance), "MACRO_ACTIONS", None)
+        if not macro_actions:
+            return
+        for action_type, spec in macro_actions.items():
+            handler = getattr(instance, spec["handler"])
+            label = spec.get("label") or action_type
+            self._macros.register_plugin_action(action_type, handler, plugin_id, label)
 
     def _plugin_log(self, plugin_id: str, message: str, level: str = "info") -> None:
         """Log a message from a plugin."""
