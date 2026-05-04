@@ -787,6 +787,7 @@ class PluginLoader:
             "version": info.get("version", ""),
             "author": info.get("author", ""),
             "description": info.get("description", ""),
+            "usage": info.get("usage", ""),
             "category": info.get("category", ""),
             "license": info.get("license", ""),
             "status": status,

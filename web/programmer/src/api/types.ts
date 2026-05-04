@@ -341,6 +341,12 @@ export interface PluginInfo {
   version: string;
   author: string;
   description: string;
+  /**
+   * Markdown-formatted "How to Use" content shown on the plugin detail page.
+   * Renders below the one-line description. Plugins set this in PLUGIN_INFO
+   * to give users in-IDE instructions instead of pointing at the README.
+   */
+  usage?: string;
   category: string;
   license?: string;
   status: string; // "running" | "stopped" | "error" | "missing" | "incompatible"

@@ -11,6 +11,7 @@ import type { PluginInfo, SchemaField } from "../api/types";
 import { SurfaceConfigurator } from "../components/plugins/SurfaceConfigurator";
 import { BrowsePlugins } from "../components/plugins/BrowsePlugins";
 import { VariableKeyPicker } from "../components/shared/VariableKeyPicker";
+import { MarkdownContent } from "../components/ai/MarkdownContent";
 import { useProjectStore } from "../store/projectStore";
 
 // ──── Status Dot ────
@@ -1019,6 +1020,26 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
         <p style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)", marginBottom: "var(--space-lg)" }}>
           {info.description}
         </p>
+      )}
+
+      {/* Usage / How to Use — markdown from PLUGIN_INFO.usage */}
+      {info.usage && (
+        <div
+          style={{
+            marginBottom: "var(--space-lg)",
+            padding: "var(--space-md)",
+            borderRadius: "var(--border-radius)",
+            background: "var(--bg-surface)",
+            border: "1px solid var(--border-color)",
+          }}
+        >
+          <h3 style={{ fontSize: "var(--font-size-sm)", fontWeight: 600, marginBottom: "var(--space-sm)", color: "var(--text-secondary)" }}>
+            How to Use
+          </h3>
+          <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-primary)" }}>
+            <MarkdownContent content={info.usage} />
+          </div>
+        </div>
       )}
 
       {/* Error message */}

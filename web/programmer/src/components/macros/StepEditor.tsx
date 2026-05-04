@@ -9,6 +9,7 @@ import {
   usePluginMacroActions,
   findPluginAction,
   defaultPluginActionParams,
+  resolveOptionsSource,
 } from "./pluginMacroActions";
 import type {
   PluginMacroAction,
@@ -1388,14 +1389,17 @@ function PluginParamField({
         );
         break;
       case "select": {
-        const options = param.options ?? [];
+        // Static options take precedence over options_source if both are set
+        const options = param.options ?? (param.options_source ? resolveOptionsSource(param.options_source) : []);
         input = (
           <select
             value={value === undefined ? "" : String(value)}
             onChange={(e) => onChange(e.target.value)}
             style={inputStyle}
           >
-            <option value="">Select...</option>
+            <option value="">
+              {options.length === 0 ? "(no options available — try ↻ refresh)" : "Select..."}
+            </option>
             {options.map((opt) => (
               <option key={String(opt.value)} value={String(opt.value)}>
                 {opt.label}
