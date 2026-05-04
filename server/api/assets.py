@@ -5,6 +5,7 @@ Handles uploading, listing, serving, and deleting project assets
 (images, icons, backgrounds, audio) used by the panel UI and plugins.
 """
 
+import json
 import re
 from pathlib import Path
 from typing import Any
@@ -96,6 +97,43 @@ def _assets_dir() -> Path:
     return assets_dir
 
 
+def _list_assets_metadata(assets_dir: Path) -> list[dict[str, Any]]:
+    """Build the asset metadata list shared between the API and state publishing."""
+    out: list[dict[str, Any]] = []
+    for f in sorted(assets_dir.iterdir()):
+        ext = f.suffix.lower()
+        if f.is_file() and ext in ALLOWED_EXTENSIONS:
+            out.append({
+                "name": f.name,
+                "size": f.stat().st_size,
+                "extension": ext.lstrip("."),
+                "type": _asset_type(ext),
+            })
+    return out
+
+
+def publish_assets_state(engine) -> None:
+    """Republish the project's asset catalog to the `project.assets` state key.
+
+    The value is a JSON-encoded list of ``{name, size, extension, type}``
+    objects — one per asset. State values must be flat primitives, hence
+    the JSON serialization. Plugins (e.g. Audio Player) subscribe to this
+    key so they can pick up newly-uploaded assets without polling.
+
+    Called at engine startup and after every upload/delete.
+    """
+    try:
+        project_dir = Path(engine.project_path).parent
+        assets_dir = project_dir / "assets"
+        if assets_dir.is_dir():
+            metadata = _list_assets_metadata(assets_dir)
+        else:
+            metadata = []
+        engine.state.set("project.assets", json.dumps(metadata), source="system")
+    except Exception:  # Catch-all: never block uploads on telemetry
+        log.exception("Failed to publish project.assets state")
+
+
 def _sanitize_filename(raw: str) -> str:
     """Sanitize filename: strip path components, validate characters."""
     # Strip any path components (prevent directory traversal)
@@ -161,16 +199,7 @@ async def serve_asset(project_id: str, filename: str):
 async def list_assets(project_id: str) -> dict[str, Any]:
     """List all assets in the project."""
     assets_dir = _assets_dir()
-    assets = []
-    for f in sorted(assets_dir.iterdir()):
-        ext = f.suffix.lower()
-        if f.is_file() and ext in ALLOWED_EXTENSIONS:
-            assets.append({
-                "name": f.name,
-                "size": f.stat().st_size,
-                "extension": ext.lstrip("."),
-                "type": _asset_type(ext),
-            })
+    assets = _list_assets_metadata(assets_dir)
     return {"assets": assets, "total_size": _get_total_size(assets_dir)}
 
 
@@ -215,6 +244,7 @@ async def upload_asset(project_id: str, file: UploadFile = File(...)) -> dict[st
     dest = assets_dir / filename
     dest.write_bytes(content)
     log.info(f"Asset uploaded: {filename} ({len(content)} bytes)")
+    publish_assets_state(_get_engine())
 
     return {
         "name": filename,
@@ -236,4 +266,5 @@ async def delete_asset(project_id: str, filename: str) -> dict[str, str]:
 
     path.unlink()
     log.info(f"Asset deleted: {safe_name}")
+    publish_assets_state(_get_engine())
     return {"status": "deleted", "name": safe_name}

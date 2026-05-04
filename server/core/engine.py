@@ -144,6 +144,11 @@ class Engine:
         # Load project-level drivers (community drivers installed via IDE)
         self._load_project_drivers()
 
+        # Publish project asset catalog so plugins (e.g. audio_player) can
+        # subscribe to project.assets and pick up uploaded files.
+        from server.api.assets import publish_assets_state
+        publish_assets_state(self)
+
         # Initialize state persister and load saved values
         state_file = self.project_path.parent / "state.json"
         self.persister = StatePersister(state_file, self.state)
