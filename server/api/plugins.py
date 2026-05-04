@@ -99,21 +99,45 @@ async def get_all_script_api() -> dict[str, Any]:
     return {"methods": engine.plugin_loader.get_all_script_api()}
 
 
-# ──── Plugin Panel Files (serve HTML/JS/CSS for iframe-based panel elements) ────
+# ──── Plugin Static Files ────
+
+# Content types served from plugin directories. Anything not on this list
+# is served as application/octet-stream — files plugins use as data, not
+# code. Executable types like .py and .sh are deliberately not listed and
+# fall through to octet-stream so browsers won't try to execute them.
+_PLUGIN_FILE_CONTENT_TYPES = {
+    ".html": "text/html",
+    ".js": "application/javascript",
+    ".css": "text/css",
+    ".json": "application/json",
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".woff2": "font/woff2",
+    ".woff": "font/woff",
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".ogg": "audio/ogg",
+    ".m4a": "audio/mp4",
+}
 
 
-@router.get("/plugins/{plugin_id}/panel/{file_path:path}")
-async def serve_plugin_panel_file(plugin_id: str, file_path: str):
-    """Serve static files from a plugin's panel/ directory for iframe rendering."""
+def _serve_plugin_file(plugin_id: str, subdir: str, file_path: str):
+    """Shared helper: serve a static file from a plugin directory subtree."""
     from server.config import get_config
 
     config = get_config()
-    plugin_dir = Path(config.plugin_repo_path) / plugin_id / "panel"
-    resolved = (plugin_dir / file_path).resolve()
+    base_dir = Path(config.plugin_repo_path) / plugin_id
+    if subdir:
+        base_dir = base_dir / subdir
+    resolved = (base_dir / file_path).resolve()
 
     # Security: prevent path traversal and symlink escape
     try:
-        resolved.relative_to(plugin_dir.resolve())
+        resolved.relative_to(base_dir.resolve())
     except ValueError:
         raise HTTPException(status_code=403, detail="Access denied")
     if resolved.is_symlink():
@@ -121,23 +145,29 @@ async def serve_plugin_panel_file(plugin_id: str, file_path: str):
     if not resolved.is_file():
         raise HTTPException(status_code=404, detail="File not found")
 
-    # Determine content type
-    suffix = resolved.suffix.lower()
-    content_types = {
-        ".html": "text/html",
-        ".js": "application/javascript",
-        ".css": "text/css",
-        ".json": "application/json",
-        ".svg": "image/svg+xml",
-        ".png": "image/png",
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".gif": "image/gif",
-        ".woff2": "font/woff2",
-        ".woff": "font/woff",
-    }
-    media_type = content_types.get(suffix, "application/octet-stream")
+    media_type = _PLUGIN_FILE_CONTENT_TYPES.get(
+        resolved.suffix.lower(), "application/octet-stream"
+    )
     return FileResponse(resolved, media_type=media_type)
+
+
+@router.get("/plugins/{plugin_id}/panel/{file_path:path}")
+async def serve_plugin_panel_file(plugin_id: str, file_path: str):
+    """Serve static files from a plugin's panel/ directory for iframe rendering."""
+    return _serve_plugin_file(plugin_id, "panel", file_path)
+
+
+@router.get("/plugins/{plugin_id}/files/{file_path:path}")
+async def serve_plugin_file(plugin_id: str, file_path: str):
+    """Serve any static file from inside a plugin's directory.
+
+    Used for plugin-bundled assets (sound libraries, images, fonts,
+    JSON data, etc.) that need to be fetched by the panel runtime.
+    Path traversal and symlinks are rejected. Unknown extensions are
+    served as application/octet-stream so browsers won't auto-execute
+    unexpected file types.
+    """
+    return _serve_plugin_file(plugin_id, "", file_path)
 
 
 # ──── Detail (dynamic path — must come after all static /plugins/* routes) ────

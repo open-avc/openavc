@@ -43,6 +43,10 @@ class PanelApp {
         this.themeElementDefaults = {};
         this.currentTheme = null;
         this._themeApplyInProgress = false;
+        // Audio playback (driven by plugin.audio_player.* state)
+        this._audioUnlocked = false;
+        this._lastAudioRequestId = null;
+        this._activeAudio = new Set();
     }
 
     start() {
@@ -67,6 +71,7 @@ class PanelApp {
             return;
         }
         this.setupIdleListeners();
+        this._setupAudioUnlock();
         this.connect();
     }
 
@@ -247,6 +252,9 @@ class PanelApp {
                 this.snapshotReceived = true;
                 this._hideLoadingState();
                 this.evaluateAllBindings();
+                // Seed audio dedupe id from current state so we don't replay
+                // the most recent sound when (re)connecting.
+                this._seedAudioDedupeFromSnapshot();
                 break;
 
             case 'state.update':
@@ -255,6 +263,9 @@ class PanelApp {
                 // Notify plugin iframes of state changes
                 for (const [k, v] of Object.entries(msg.changes || {})) {
                     this._notifyPluginIframes(k, v);
+                    if (k === 'plugin.audio_player.play_request') {
+                        this._handleAudioPlayRequest(v);
+                    }
                 }
                 break;
 
@@ -2961,6 +2972,122 @@ class PanelApp {
 
         this.applyStyle(el, this.getThemedStyle('plugin', element.style));
         return el;
+    }
+
+    // ──── Audio Playback (driven by Audio Player plugin state) ────
+
+    // Modern browsers block audio until the user has interacted with the page.
+    // We attach a one-time gesture listener that "unlocks" playback by
+    // priming a silent <audio> element. After that, subsequent .play() calls
+    // succeed silently. Edit/embedded modes don't need this — they don't
+    // receive live state.
+    _setupAudioUnlock() {
+        if (this.editMode) return;
+        const unlock = () => {
+            if (this._audioUnlocked) return;
+            const silent = new Audio(
+                'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA='
+            );
+            silent.volume = 0;
+            silent.play().then(() => {
+                this._audioUnlocked = true;
+                document.removeEventListener('pointerdown', unlock);
+                document.removeEventListener('keydown', unlock);
+                document.removeEventListener('touchstart', unlock);
+            }).catch(() => {
+                // Another gesture will retry — keep listener attached
+            });
+        };
+        document.addEventListener('pointerdown', unlock);
+        document.addEventListener('keydown', unlock);
+        document.addEventListener('touchstart', unlock);
+    }
+
+    // Capture the current play_request id at snapshot time so reconnects
+    // don't replay the last sound.
+    _seedAudioDedupeFromSnapshot() {
+        const raw = this.state['plugin.audio_player.play_request'];
+        if (!raw) return;
+        try {
+            const req = JSON.parse(raw);
+            if (req && req.id) this._lastAudioRequestId = req.id;
+        } catch {
+            // Ignore — bad JSON means nothing to dedupe against
+        }
+    }
+
+    _handleAudioPlayRequest(rawValue) {
+        if (!rawValue) return;
+        let req;
+        try {
+            req = JSON.parse(rawValue);
+        } catch {
+            return;
+        }
+        if (!req || typeof req !== 'object') return;
+        // Dedupe — every fresh request gets a new id
+        if (req.id && req.id === this._lastAudioRequestId) return;
+        if (req.id) this._lastAudioRequestId = req.id;
+
+        if (req.stop) {
+            this._stopAllAudio();
+            return;
+        }
+        // Honor global mute
+        if (this.state['plugin.audio_player.muted']) return;
+        // Compute final volume = master × request
+        const master = Number(this.state['plugin.audio_player.master_volume'] ?? 1.0);
+        const reqVol = Number(req.volume ?? 1.0);
+        const finalVol = Math.max(0, Math.min(1, (isFinite(master) ? master : 1) * (isFinite(reqVol) ? reqVol : 1)));
+        if (finalVol <= 0) return;
+        if (!req.sound) return;
+        this._playSound(req.sound, finalVol);
+    }
+
+    _resolveSoundUrl(soundId) {
+        if (!soundId || typeof soundId !== 'string') return null;
+        if (soundId.startsWith('assets://')) {
+            return this.resolveAssetUrl(soundId);
+        }
+        if (soundId.startsWith('http://') || soundId.startsWith('https://') || soundId.startsWith('/')) {
+            return soundId;
+        }
+        // Built-in sound — served from the audio_player plugin's sounds dir
+        const pathParts = location.pathname.split('/panel');
+        const basePath = pathParts[0] || '';
+        return `${basePath}/api/plugins/audio_player/files/sounds/${encodeURIComponent(soundId)}.mp3`;
+    }
+
+    _playSound(soundId, volume) {
+        const url = this._resolveSoundUrl(soundId);
+        if (!url) return;
+        const audio = new Audio(url);
+        audio.volume = volume;
+        this._activeAudio.add(audio);
+        const cleanup = () => this._activeAudio.delete(audio);
+        audio.addEventListener('ended', cleanup);
+        audio.addEventListener('error', () => {
+            console.warn(`[panel-audio] failed to load sound: ${soundId}`);
+            cleanup();
+        });
+        audio.play().catch((err) => {
+            // Most common cause: browser autoplay policy hasn't been satisfied
+            // yet. Drop the sound — stale notifications are worse than missed.
+            console.warn(`[panel-audio] play() rejected for ${soundId}: ${err && err.message}`);
+            cleanup();
+        });
+    }
+
+    _stopAllAudio() {
+        for (const audio of this._activeAudio) {
+            try {
+                audio.pause();
+                audio.currentTime = 0;
+            } catch {
+                // Ignore — element may already be in a non-resettable state
+            }
+        }
+        this._activeAudio.clear();
     }
 
     // Send state update to plugin iframes
