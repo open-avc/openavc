@@ -43,20 +43,6 @@ export interface DiscoveredDevice {
   snmp_info: Record<string, unknown> | null;
 }
 
-// Phase 7 (UI redesign) replaces DiscoveryView.tsx with a state-pill
-// design that consumes ``identification`` directly. Until then, this
-// transitional alias keeps the legacy view compiling — every legacy
-// "matched driver" entry is now derived from ``identification``.
-export interface DiscoveryDriverMatch {
-  driver_id: string;
-  driver_name: string;
-  confidence: number;
-  match_reasons: string[];
-  suggested_config: Record<string, unknown>;
-  source: "installed" | "community";
-  description: string;
-}
-
 export interface DiscoveryScanResult {
   scan_id: string;
   status: string;

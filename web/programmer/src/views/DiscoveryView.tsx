@@ -12,14 +12,19 @@ import {
   WifiOff,
   X,
   Download,
+  EyeOff,
+  Eye,
+  HelpCircle,
 } from "lucide-react";
 import { ViewContainer } from "../components/layout/ViewContainer";
+import { CopyButton } from "../components/shared/CopyButton";
 import { DeviceSettingsSetupDialog, hasDriverSetupSettings } from "../components/shared/DeviceSettingsSetupDialog";
 import { useDiscoveryStore } from "../store/discoveryStore";
 import { useProjectStore } from "../store/projectStore";
 import { useNavigationStore } from "../store/navigationStore";
 import * as api from "../api/restClient";
-import type { DriverInfo } from "../api/types";
+import type { DriverInfo, CommunityDriver } from "../api/types";
+import type { DeviceState, DiscoveryEvidence } from "../api/discoveryClient";
 import { showError } from "../store/toastStore";
 
 
@@ -43,12 +48,69 @@ const PORT_LABELS: Record<number, string> = {
   61000: "Shure",
 };
 
+const HIDDEN_KEY = "openavc_discovery_hidden_ips";
+
+function loadHiddenIps(): Set<string> {
+  try {
+    const raw = localStorage.getItem(HIDDEN_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return new Set(Array.isArray(arr) ? arr.filter((x): x is string => typeof x === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveHiddenIps(ips: Set<string>): void {
+  localStorage.setItem(HIDDEN_KEY, JSON.stringify([...ips]));
+}
+
 function categoryLabel(cat: string | null): string {
   if (!cat) return "Unknown";
   return cat.charAt(0).toUpperCase() + cat.slice(1);
 }
 
-type SortKey = "confidence" | "ip" | "manufacturer" | "category";
+function stateTone(state: DeviceState): { bg: string; fg: string; label: string } {
+  switch (state) {
+    case "identified":
+      return { bg: "rgba(16,185,129,0.15)", fg: "#10b981", label: "Identified" };
+    case "possible":
+      return { bg: "rgba(245,158,11,0.15)", fg: "#f59e0b", label: "Possible" };
+    default:
+      return { bg: "rgba(107,114,128,0.18)", fg: "#9ca3af", label: "Unknown" };
+  }
+}
+
+/** Plain-English one-liner describing the deterministic signal that produced a match. */
+function summarizeSource(source: string): string {
+  if (!source) return "no signal";
+  const [scheme, ...rest] = source.split(":");
+  const tail = rest.join(":");
+  switch (scheme) {
+    case "mdns":
+      return `mDNS announcement (${tail})`;
+    case "ssdp":
+      return `SSDP/UPnP announcement${tail ? ` (${tail})` : ""}`;
+    case "amx_ddp":
+      return `AMX DDP beacon${tail ? ` (${tail})` : ""}`;
+    case "broadcast":
+      return `${tail.replace(/_/g, " ")} broadcast probe`;
+    case "probe":
+      return `${tail.replace(/_/g, " ")} TCP probe`;
+    case "snmp":
+      return `SNMP ${tail}`;
+    case "oui":
+      return `MAC OUI ${tail}`;
+    case "hostname":
+      return `hostname pattern (${tail})`;
+    case "soft":
+      return "ambiguous soft signal";
+    default:
+      return source;
+  }
+}
+
+type SortKey = "state" | "ip" | "manufacturer" | "category";
 type FilterCategory = "all" | "projector" | "display" | "audio" | "camera" | "switcher" | "control" | "other";
 
 /** Standalone view with ViewContainer header. Used when Discovery has its own sidebar tab. */
@@ -72,6 +134,7 @@ export function DiscoveryPanel() {
   const portLabels = useDiscoveryStore((s) => s.portLabels);
   const setPortLabels = useDiscoveryStore((s) => s.setPortLabels);
   const clear = useDiscoveryStore((s) => s.clear);
+  const upsertDevice = useDiscoveryStore((s) => s.upsertDevice);
 
   // Merge hardcoded PORT_LABELS with dynamic community driver ports
   const allPortLabels = useMemo(() => {
@@ -83,15 +146,21 @@ export function DiscoveryPanel() {
     return merged;
   }, [portLabels]);
 
-  const [sortBy, setSortBy] = useState<SortKey>("confidence");
+  const [sortBy, setSortBy] = useState<SortKey>("state");
   const [filterCat, setFilterCat] = useState<FilterCategory>("all");
-  const [avOnly, setAvOnly] = useState(true);
+  const [hideUnknown, setHideUnknown] = useState(true);
+  const [showHidden, setShowHidden] = useState(false);
+  const [hiddenIps, setHiddenIps] = useState<Set<string>>(() => loadHiddenIps());
   const [expandedIp, setExpandedIp] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [subnets, setSubnets] = useState<string[]>([]);
   const [extraSubnet, setExtraSubnet] = useState(
     () => localStorage.getItem("openavc_discovery_extra_subnet") || ""
   );
+
+  // Driver catalogs (resolved once, used to label candidates and to route Add → install vs add)
+  const [installedDrivers, setInstalledDrivers] = useState<DriverInfo[]>([]);
+  const [communityDrivers, setCommunityDrivers] = useState<CommunityDriver[]>([]);
 
   // Settings state
   const [snmpEnabled, setSnmpEnabled] = useState(true);
@@ -104,7 +173,7 @@ export function DiscoveryPanel() {
   const [controlInterface, setControlInterface] = useState("");
   const [adapterLabel, setAdapterLabel] = useState("");
 
-  // Load subnets + config on mount
+  // Load subnets + config + driver catalogs on mount
   useEffect(() => {
     api.discoveryGetSubnets().then((r) => setSubnets(r.subnets)).catch(console.error);
     api.discoveryGetConfig().then((c) => {
@@ -114,7 +183,6 @@ export function DiscoveryPanel() {
       if (c.scan_depth) setScanDepth(c.scan_depth);
       if (c.max_subnet_size) setMaxSubnetSize(c.max_subnet_size);
     }).catch(console.error);
-    // If there are existing results, load them
     api.discoveryGetResults().then((r) => {
       if (r.devices.length > 0) {
         setDevices(r.devices);
@@ -123,7 +191,6 @@ export function DiscoveryPanel() {
       }
       if (r.port_labels) setPortLabels(r.port_labels);
     }).catch(console.error);
-    // Load control interface info for adapter indicator
     api.getSystemConfig().then((cfg) => {
       const ip = cfg.network?.control_interface || "";
       setControlInterface(ip);
@@ -135,7 +202,22 @@ export function DiscoveryPanel() {
         }).catch(() => setAdapterLabel(ip));
       }
     }).catch(() => {});
+    api.listDrivers().then(setInstalledDrivers).catch(console.error);
+    api.fetchCommunityDrivers().then(setCommunityDrivers).catch(console.error);
   }, [setDevices, setStatus, setPortLabels]);
+
+  const driverNameLookup = useMemo(() => {
+    const map = new Map<string, { name: string; source: "installed" | "community"; community?: CommunityDriver }>();
+    for (const d of installedDrivers) {
+      map.set(d.id, { name: d.name, source: "installed" });
+    }
+    for (const c of communityDrivers) {
+      if (!map.has(c.id)) {
+        map.set(c.id, { name: c.name, source: "community", community: c });
+      }
+    }
+    return map;
+  }, [installedDrivers, communityDrivers]);
 
   const handleStartScan = useCallback(async () => {
     try {
@@ -147,7 +229,6 @@ export function DiscoveryPanel() {
         scan_depth: scanDepth,
         max_subnet_size: maxSubnetSize,
       });
-      // Only set running after API confirms the scan started
       setStatus("running");
     } catch (e) {
       setStatus("idle");
@@ -185,37 +266,63 @@ export function DiscoveryPanel() {
     }
   }, []);
 
-  const totalDeviceCount = Object.keys(devices).length;
+  const handleHide = useCallback((ip: string) => {
+    setHiddenIps((prev) => {
+      const next = new Set(prev);
+      next.add(ip);
+      saveHiddenIps(next);
+      return next;
+    });
+  }, []);
 
-  // Filter & sort devices
+  const handleUnhide = useCallback((ip: string) => {
+    setHiddenIps((prev) => {
+      const next = new Set(prev);
+      next.delete(ip);
+      saveHiddenIps(next);
+      return next;
+    });
+  }, []);
+
+  const totalDeviceCount = Object.keys(devices).length;
+  const hiddenCount = useMemo(
+    () => Object.keys(devices).filter((ip) => hiddenIps.has(ip)).length,
+    [devices, hiddenIps],
+  );
+
   const deviceList = useMemo(() => {
     let list = Object.values(devices);
 
-    // AV-only filter
-    if (avOnly) {
+    // Hidden filter (toggle to show)
+    if (!showHidden) {
+      list = list.filter((d) => !hiddenIps.has(d.ip));
+    }
+
+    // Hide-unknown filter (was: "AV only")
+    if (hideUnknown) {
       list = list.filter((d) => {
-        if (d.category === "network") return false;
-        return (
-          d.open_ports.some((p) => p in allPortLabels && p !== 80 && p !== 443) ||
-          d.manufacturer !== null ||
-          d.identification?.state === "identified" ||
-          d.identification?.state === "possible"
-        );
+        const state = d.identification?.state ?? "unknown";
+        return state !== "unknown";
       });
     }
 
-    // Category filter
     if (filterCat !== "all") {
       list = list.filter((d) => d.category === filterCat);
     }
 
-    // Sort
     const stateRank = (s: string | undefined) =>
       s === "identified" ? 0 : s === "possible" ? 1 : 2;
+    const nameOf = (d: api.DiscoveredDevice) =>
+      (d.model || d.device_name || d.manufacturer || d.ip).toLowerCase();
+
     list.sort((a, b) => {
       switch (sortBy) {
-        case "confidence":
-          return stateRank(a.identification?.state) - stateRank(b.identification?.state);
+        case "state": {
+          const sa = stateRank(a.identification?.state);
+          const sb = stateRank(b.identification?.state);
+          if (sa !== sb) return sa - sb;
+          return nameOf(a).localeCompare(nameOf(b));
+        }
         case "ip":
           return a.ip.split(".").map(Number).reduce((s, n, i) => s + n * (256 ** (3 - i)), 0)
             - b.ip.split(".").map(Number).reduce((s, n, i) => s + n * (256 ** (3 - i)), 0);
@@ -229,7 +336,7 @@ export function DiscoveryPanel() {
     });
 
     return list;
-  }, [devices, sortBy, filterCat, avOnly]);
+  }, [devices, sortBy, filterCat, hideUnknown, showHidden, hiddenIps]);
 
   const isRunning = status === "running";
   const [scanCompletedAt, setScanCompletedAt] = useState<Date | null>(null);
@@ -241,7 +348,7 @@ export function DiscoveryPanel() {
     prevStatusRef.current = status;
   }, [status]);
 
-  // Smooth progress bar interpolation — lerp toward backend target
+  // Smooth progress bar interpolation
   const [displayProgress, setDisplayProgress] = useState(0);
   useEffect(() => {
     if (!isRunning) {
@@ -258,7 +365,6 @@ export function DiscoveryPanel() {
     return () => clearInterval(interval);
   }, [progress, isRunning, status]);
 
-  // Phase labels for user display
   const phaseLabel = phase === "ping_sweep" ? "Scanning network..."
     : phase === "port_scan" ? "Probing ports..."
     : phase === "protocol_probe" ? "Identifying devices..."
@@ -339,7 +445,7 @@ export function DiscoveryPanel() {
               </select>
               <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
                 {scanDepth === "quick" && "Basic port scan and protocol probes."}
-                {scanDepth === "standard" && "Full scan with TLS, SSH, NetBIOS, and SMB identification."}
+                {scanDepth === "standard" && "Full scan with passive listeners and broadcast probes."}
                 {scanDepth === "thorough" && "Extended ports, longer passive listen. Takes longer."}
               </span>
             </label>
@@ -460,6 +566,7 @@ export function DiscoveryPanel() {
           alignItems: "center",
           marginBottom: "var(--space-md)",
           fontSize: "var(--font-size-sm)",
+          flexWrap: "wrap",
         }}
       >
         <label>
@@ -477,16 +584,22 @@ export function DiscoveryPanel() {
         <label>
           Sort:{" "}
           <select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortKey)}>
-            <option value="confidence">Confidence</option>
+            <option value="state">State (identified first)</option>
             <option value="ip">IP Address</option>
             <option value="manufacturer">Manufacturer</option>
             <option value="category">Category</option>
           </select>
         </label>
-        <label style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
-          <input type="checkbox" checked={avOnly} onChange={(e) => setAvOnly(e.target.checked)} />
-          AV only
+        <label style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }} title="Hide devices that didn't match any driver">
+          <input type="checkbox" checked={hideUnknown} onChange={(e) => setHideUnknown(e.target.checked)} />
+          Hide unknown
         </label>
+        {hiddenCount > 0 && (
+          <label style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
+            <input type="checkbox" checked={showHidden} onChange={(e) => setShowHidden(e.target.checked)} />
+            Show hidden ({hiddenCount})
+          </label>
+        )}
         {status !== "idle" && (
           <span style={{ color: "var(--text-muted)", marginLeft: "auto" }}>
             {deviceList.length === totalDeviceCount
@@ -495,7 +608,7 @@ export function DiscoveryPanel() {
                   {deviceList.length} of {totalDeviceCount} devices{" "}
                   <span
                     style={{ cursor: "pointer", textDecoration: "underline" }}
-                    onClick={() => { setAvOnly(false); setFilterCat("all"); }}
+                    onClick={() => { setHideUnknown(false); setFilterCat("all"); setShowHidden(true); }}
                     title="Show all devices"
                   >
                     ({totalDeviceCount - deviceList.length} filtered)
@@ -537,6 +650,12 @@ export function DiscoveryPanel() {
               expanded={expandedIp === device.ip}
               onToggle={() => setExpandedIp(expandedIp === device.ip ? null : device.ip)}
               portLabels={allPortLabels}
+              driverNameLookup={driverNameLookup}
+              installedDrivers={installedDrivers}
+              hidden={hiddenIps.has(device.ip)}
+              onHide={() => handleHide(device.ip)}
+              onUnhide={() => handleUnhide(device.ip)}
+              onDeviceUpdated={upsertDevice}
             />
           ))}
           {deviceList.length === 0 && status !== "running" && (
@@ -552,65 +671,54 @@ export function DiscoveryPanel() {
 
 // --- Device Card ---
 
+type DriverEntry = { name: string; source: "installed" | "community"; community?: CommunityDriver };
+
 function DeviceCard({
   device,
   expanded,
   onToggle,
   portLabels,
+  driverNameLookup,
+  installedDrivers,
+  hidden,
+  onHide,
+  onUnhide,
+  onDeviceUpdated,
 }: {
   device: api.DiscoveredDevice;
   expanded: boolean;
   onToggle: () => void;
   portLabels: Record<number, string>;
+  driverNameLookup: Map<string, DriverEntry>;
+  installedDrivers: DriverInfo[];
+  hidden: boolean;
+  onHide: () => void;
+  onUnhide: () => void;
+  onDeviceUpdated: (device: api.DiscoveredDevice) => void;
 }) {
-  const upsertDevice = useDiscoveryStore((s) => s.upsertDevice);
-  const [addedViaInstall, setAddedViaInstall] = useState<{ name: string; deviceId?: string } | null>(null);
+  const [showWhy, setShowWhy] = useState(false);
+  const [addedDevice, setAddedDevice] = useState<{ name: string; deviceId?: string } | null>(null);
 
-  const displayName =
-    device.model
+  const ident = device.identification;
+  const state: DeviceState = ident?.state ?? "unknown";
+  const tone = stateTone(state);
+
+  const displayName = (() => {
+    if (state === "identified" && ident?.driver_id) {
+      const entry = driverNameLookup.get(ident.driver_id);
+      if (entry) return entry.name;
+    }
+    return device.model
       ? (device.manufacturer && !device.model.toLowerCase().includes(device.manufacturer.toLowerCase())
           ? `${device.manufacturer} ${device.model}`
           : device.model)
       : device.device_name ??
         (device.manufacturer ? `${device.manufacturer} Device` : "Unknown Device");
+  })();
 
   const protocolTag = device.protocols.length > 0
     ? device.protocols[0].replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())
     : null;
-
-  // Phase 6: TierMatcher emits a single ``identification`` per device.
-  // Phase 7 will redesign this view; for now we synthesize a legacy-shape
-  // candidate list so the existing per-driver action UI keeps working.
-  const matchedDrivers: api.DiscoveryDriverMatch[] = ((): api.DiscoveryDriverMatch[] => {
-    const ident = device.identification;
-    if (!ident) return [];
-    if (ident.state === "identified" && ident.driver_id) {
-      return [{
-        driver_id: ident.driver_id,
-        driver_name: ident.driver_id,
-        confidence: 1,
-        match_reasons: [ident.source],
-        suggested_config: {},
-        source: "installed",
-        description: "",
-      }];
-    }
-    if (ident.state === "possible") {
-      return ident.candidates.map((id) => ({
-        driver_id: id,
-        driver_name: id,
-        confidence: 0.5,
-        match_reasons: [ident.source],
-        suggested_config: {},
-        source: "installed",
-        description: "",
-      }));
-    }
-    return [];
-  })();
-  const installedMatches = matchedDrivers;
-  const communityMatches: api.DiscoveryDriverMatch[] = [];
-  const hasInstalledMatch = installedMatches.length > 0;
 
   return (
     <div
@@ -619,6 +727,7 @@ function DeviceCard({
         border: "1px solid var(--border-color)",
         borderRadius: "var(--radius)",
         overflow: "hidden",
+        opacity: hidden ? 0.5 : 1,
       }}
     >
       {/* Summary row */}
@@ -634,23 +743,13 @@ function DeviceCard({
       >
         {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
 
-        {(() => {
-          // Phase 6 placeholder. Phase 7 swaps in proper state pills.
-          const state = device.identification?.state ?? "unknown";
-          const tone = state === "identified"
-            ? { bg: "rgba(16,185,129,0.15)", fg: "#10b981" }
-            : state === "possible"
-              ? { bg: "rgba(245,158,11,0.15)", fg: "#f59e0b" }
-              : { bg: "rgba(107,114,128,0.15)", fg: "#6b7280" };
-          return (
-            <span style={{
-              fontSize: 10, fontWeight: 600, padding: "1px 6px", borderRadius: 3,
-              background: tone.bg, color: tone.fg, minWidth: 64, textAlign: "center",
-            }}>
-              {state}
-            </span>
-          );
-        })()}
+        <span style={{
+          fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 3,
+          background: tone.bg, color: tone.fg, minWidth: 76, textAlign: "center",
+          letterSpacing: 0.3,
+        }}>
+          {tone.label.toUpperCase()}
+        </span>
 
         <span style={{ fontFamily: "monospace", minWidth: 120, fontSize: "var(--font-size-sm)" }}>
           {device.ip}
@@ -700,6 +799,19 @@ function DeviceCard({
           </span>
         )}
 
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); hidden ? onUnhide() : onHide(); }}
+          title={hidden ? "Unhide this device" : "Hide this device from results"}
+          aria-label={hidden ? "Unhide device" : "Hide device"}
+          style={{
+            background: "none", border: "none", cursor: "pointer",
+            color: "var(--text-muted)", padding: 4, display: "inline-flex",
+          }}
+        >
+          {hidden ? <Eye size={14} /> : <EyeOff size={14} />}
+        </button>
+
         {device.alive ? (
           <Wifi size={14} style={{ color: "var(--success)" }} />
         ) : (
@@ -714,27 +826,69 @@ function DeviceCard({
             borderTop: "1px solid var(--border-color)",
             padding: "var(--space-md)",
             fontSize: "var(--font-size-sm)",
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: "var(--space-xs) var(--space-lg)",
+            display: "flex",
+            flexDirection: "column",
+            gap: "var(--space-md)",
           }}
         >
-          <DetailRow label="IP Address" value={device.ip} />
-          <DetailRow label="MAC Address" value={device.mac ?? "Unknown"} />
-          {device.hostname && <DetailRow label="Hostname" value={device.hostname} />}
-          <DetailRow label="Manufacturer" value={device.manufacturer ?? "Unknown"} />
-          <DetailRow label="Model" value={device.model ?? "Unknown"} />
-          <DetailRow label="Device Name" value={device.device_name ?? "None"} />
-          <DetailRow label="Firmware" value={device.firmware ?? "Unknown"} />
-          {device.serial_number && <DetailRow label="Serial Number" value={device.serial_number} />}
-          <DetailRow label="Category" value={categoryLabel(device.category)} />
-          <DetailRow label="State" value={device.identification?.state ?? "unknown"} />
-          <DetailRow
-            label="Protocols"
-            value={device.protocols.length > 0 ? device.protocols.join(", ") : "None identified"}
-          />
+          {/* Identification block (state-specific) */}
+          {addedDevice ? (
+            <div style={{ color: "var(--success)", display: "flex", alignItems: "center", gap: "var(--space-md)" }}>
+              <span>Added "{addedDevice.name}" to project.</span>
+              {addedDevice.deviceId && (
+                <button className="btn btn-sm btn-primary" onClick={() => {
+                  useNavigationStore.getState().navigateTo("devices", { type: "device", id: addedDevice.deviceId! });
+                }}>
+                  Go to Device &rarr;
+                </button>
+              )}
+            </div>
+          ) : (
+            <IdentificationSection
+              device={device}
+              installedDrivers={installedDrivers}
+              driverNameLookup={driverNameLookup}
+              onDeviceAdded={setAddedDevice}
+              onDeviceUpdated={onDeviceUpdated}
+            />
+          )}
 
-          <div style={{ gridColumn: "1 / -1" }}>
+          {/* "Why?" reveal */}
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowWhy(!showWhy)}
+              style={{
+                background: "none", border: "none", cursor: "pointer",
+                color: "var(--text-muted)", padding: 0, display: "inline-flex",
+                alignItems: "center", gap: 4, fontSize: "var(--font-size-xs)",
+              }}
+            >
+              <HelpCircle size={12} /> {showWhy ? "Hide evidence" : "Why this match?"}
+            </button>
+            {showWhy && (
+              <EvidenceList evidence={device.evidence_log} />
+            )}
+          </div>
+
+          {/* Detail rows */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-xs) var(--space-lg)" }}>
+            <DetailRow label="IP Address" value={device.ip} copyable />
+            <DetailRow label="MAC Address" value={device.mac ?? "Unknown"} copyable={!!device.mac} />
+            {device.hostname && <DetailRow label="Hostname" value={device.hostname} />}
+            <DetailRow label="Manufacturer" value={device.manufacturer ?? "Unknown"} />
+            <DetailRow label="Model" value={device.model ?? "Unknown"} />
+            {device.device_name && <DetailRow label="Device Name" value={device.device_name} />}
+            {device.firmware && <DetailRow label="Firmware" value={device.firmware} />}
+            {device.serial_number && <DetailRow label="Serial Number" value={device.serial_number} />}
+            <DetailRow label="Category" value={categoryLabel(device.category)} />
+            <DetailRow
+              label="Protocols"
+              value={device.protocols.length > 0 ? device.protocols.join(", ") : "None identified"}
+            />
+          </div>
+
+          <div>
             <strong>Open Ports:</strong>{" "}
             {device.open_ports.length > 0
               ? device.open_ports.map((p) => `${p} (${portLabels[p] ?? "unknown"})`).join(", ")
@@ -742,7 +896,7 @@ function DeviceCard({
           </div>
 
           {Object.keys(device.banners).length > 0 && (
-            <div style={{ gridColumn: "1 / -1" }}>
+            <div>
               <strong>Banners:</strong>
               {Object.entries(device.banners).map(([port, banner]) => (
                 <div key={port} style={{ fontFamily: "monospace", marginTop: 2, fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
@@ -753,9 +907,9 @@ function DeviceCard({
           )}
 
           {device.snmp_info && Object.keys(device.snmp_info).length > 0 && (
-            <div style={{ gridColumn: "1 / -1" }}>
+            <div>
               <strong>SNMP Info:</strong>
-              {Object.entries(device.snmp_info as Record<string, string>).map(([key, val]) => (
+              {Object.entries(device.snmp_info as Record<string, unknown>).map(([key, val]) => (
                 <div key={key} style={{ marginTop: 2, fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
                   {key}: {String(val).substring(0, 200)}
                 </div>
@@ -764,50 +918,10 @@ function DeviceCard({
           )}
 
           {device.mdns_services.length > 0 && (
-            <div style={{ gridColumn: "1 / -1" }}>
+            <div>
               <strong>mDNS Services:</strong> {device.mdns_services.join(", ")}
             </div>
           )}
-
-          <div style={{ gridColumn: "1 / -1" }}>
-            <strong>Evidence:</strong> {device.evidence_log.map((e) => e.source).join(", ") || "None"}
-          </div>
-
-          {/* Driver matches section */}
-          {addedViaInstall ? (
-            <div style={{ gridColumn: "1 / -1", borderTop: "1px solid var(--border-color)", paddingTop: "var(--space-sm)", marginTop: "var(--space-xs)" }}>
-              <div style={{ color: "var(--success)", display: "flex", alignItems: "center", gap: "var(--space-md)" }}>
-                <span>Added "{addedViaInstall.name}" to project.</span>
-                {addedViaInstall.deviceId && (
-                  <button className="btn btn-sm btn-primary" onClick={() => {
-                    useNavigationStore.getState().navigateTo("devices", { type: "device", id: addedViaInstall.deviceId! });
-                  }}>
-                    Go to Device &rarr;
-                  </button>
-                )}
-              </div>
-            </div>
-          ) : hasInstalledMatch ? (
-            <div style={{ gridColumn: "1 / -1", borderTop: "1px solid var(--border-color)", paddingTop: "var(--space-sm)", marginTop: "var(--space-xs)" }}>
-              <strong>Installed Driver Match:</strong>
-              {installedMatches.map((m) => (
-                <div key={m.driver_id} style={{ marginTop: 4 }}>
-                  <span style={{ fontWeight: 500 }}>{m.driver_name}</span>{" "}
-                  <span style={{ color: "var(--text-muted)" }}>
-                    ({Math.round(m.confidence * 100)}% — {m.match_reasons.join(", ")})
-                  </span>
-                </div>
-              ))}
-              <AddToProjectSection device={device} driverMatches={installedMatches} />
-            </div>
-          ) : communityMatches.length > 0 ? (
-            <CommunityMatchSection
-              device={device}
-              matches={communityMatches}
-              onDeviceUpdated={upsertDevice}
-              onDeviceAdded={setAddedViaInstall}
-            />
-          ) : null}
         </div>
       )}
     </div>
@@ -815,121 +929,194 @@ function DeviceCard({
 }
 
 
-// --- Add to Project (for installed drivers) ---
+// --- Identification section (state-specific add affordance) ---
 
-function AddToProjectSection({
+function IdentificationSection({
   device,
-  driverMatches,
+  installedDrivers,
+  driverNameLookup,
+  onDeviceAdded,
+  onDeviceUpdated,
 }: {
   device: api.DiscoveredDevice;
-  driverMatches: api.DiscoveryDriverMatch[];
+  installedDrivers: DriverInfo[];
+  driverNameLookup: Map<string, DriverEntry>;
+  onDeviceAdded: (info: { name: string; deviceId?: string }) => void;
+  onDeviceUpdated: (device: api.DiscoveredDevice) => void;
 }) {
-  const project = useProjectStore((s) => s.project);
-  const [adding, setAdding] = useState(false);
-  const [added, setAdded] = useState<string | null>(null);
-  const [addedDeviceId, setAddedDeviceId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedDriver, setSelectedDriver] = useState(driverMatches[0]?.driver_id ?? "");
-  const [driverInfoForSetup, setDriverInfoForSetup] = useState<DriverInfo | null>(null);
-  // Reset selection when matches change (e.g., after installing a new driver)
-  useEffect(() => {
-    if (driverMatches.length > 0 && !driverMatches.some((m) => m.driver_id === selectedDriver)) {
-      setSelectedDriver(driverMatches[0].driver_id);
-    }
-  }, [driverMatches, selectedDriver]);
-  const [setupText, setSetupText] = useState<string | null>(null);
-  const [showSetup, setShowSetup] = useState(false);
+  const ident = device.identification;
+  const state: DeviceState = ident?.state ?? "unknown";
 
-  const handleAdd = async () => {
-    // Try to fetch setup instructions before adding
-    if (!showSetup && !added) {
-      try {
-        const help = await api.getDriverHelp(selectedDriver);
-        if (help.setup) {
-          setSetupText(help.setup);
-          setShowSetup(true);
-          return; // Show setup first, user clicks again to confirm
-        }
-      } catch {
-        // No help available — proceed directly
-      }
-    }
-
-    setAdding(true);
-    setError(null);
-    try {
-      const result = await api.discoveryAddDevice({
-        ip: device.ip,
-        driver_id: selectedDriver,
-      });
-      setAdded(result.name);
-      setAddedDeviceId(result.device_id);
-
-      // Check if this driver has setup settings
-      try {
-        const drivers = await api.listDrivers();
-        const di = drivers.find((d) => d.id === selectedDriver);
-        if (di && hasDriverSetupSettings(di)) {
-          setDriverInfoForSetup(di);
-        }
-      } catch {
-        // Couldn't fetch driver info — skip setup
-      }
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setAdding(false);
-    }
-  };
-
-  if (added) {
+  if (state === "identified" && ident?.driver_id) {
     return (
-      <>
-        <div style={{ marginTop: "var(--space-sm)", color: "var(--success)", display: "flex", alignItems: "center", gap: "var(--space-md)" }}>
-          <span>Added "{added}" to project.</span>
-          {addedDeviceId && (
-            <button className="btn btn-sm btn-primary" onClick={() => {
-              useNavigationStore.getState().navigateTo("devices", { type: "device", id: addedDeviceId });
-            }}>
-              Go to Device &rarr;
-            </button>
-          )}
-        </div>
-        {driverInfoForSetup && addedDeviceId && (
-          <DeviceSettingsSetupDialog
-            deviceId={addedDeviceId}
-            driverInfo={driverInfoForSetup}
-            existingDeviceIds={(project?.devices ?? []).map((d) => d.id)}
-            onClose={() => setDriverInfoForSetup(null)}
-          />
-        )}
-      </>
+      <DriverAddRow
+        device={device}
+        driverId={ident.driver_id}
+        installedDrivers={installedDrivers}
+        driverNameLookup={driverNameLookup}
+        sourceLabel={summarizeSource(ident.source)}
+        onDeviceAdded={onDeviceAdded}
+        onDeviceUpdated={onDeviceUpdated}
+      />
+    );
+  }
+
+  if (state === "possible" && ident?.candidates.length) {
+    return (
+      <PossibleCandidates
+        device={device}
+        candidates={ident.candidates}
+        sourceLabel={summarizeSource(ident.source)}
+        installedDrivers={installedDrivers}
+        driverNameLookup={driverNameLookup}
+        onDeviceAdded={onDeviceAdded}
+        onDeviceUpdated={onDeviceUpdated}
+      />
     );
   }
 
   return (
-    <div style={{ marginTop: "var(--space-sm)" }}>
-      <div style={{ display: "flex", gap: "var(--space-sm)", alignItems: "center" }}>
-        {driverMatches.length > 1 && (
-          <select
-            value={selectedDriver}
-            onChange={(e) => {
-              setSelectedDriver(e.target.value);
-              setShowSetup(false);
-              setSetupText(null);
-            }}
-          >
-            {driverMatches.map((m) => (
-              <option key={m.driver_id} value={m.driver_id}>
-                {m.driver_name} ({Math.round(m.confidence * 100)}%)
-              </option>
-            ))}
-          </select>
+    <ManualDriverPicker
+      device={device}
+      installedDrivers={installedDrivers}
+      driverNameLookup={driverNameLookup}
+      onDeviceAdded={onDeviceAdded}
+      onDeviceUpdated={onDeviceUpdated}
+    />
+  );
+}
+
+
+// --- Single-driver add (identified, or one-click possible candidate) ---
+
+function DriverAddRow({
+  device,
+  driverId,
+  installedDrivers,
+  driverNameLookup,
+  sourceLabel,
+  onDeviceAdded,
+  onDeviceUpdated,
+}: {
+  device: api.DiscoveredDevice;
+  driverId: string;
+  installedDrivers: DriverInfo[];
+  driverNameLookup: Map<string, DriverEntry>;
+  sourceLabel: string;
+  onDeviceAdded: (info: { name: string; deviceId?: string }) => void;
+  onDeviceUpdated: (device: api.DiscoveredDevice) => void;
+}) {
+  const entry = driverNameLookup.get(driverId);
+  const driverName = entry?.name ?? driverId;
+  const isCommunity = entry?.source === "community";
+
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [setupText, setSetupText] = useState<string | null>(null);
+  const [showSetup, setShowSetup] = useState(false);
+  const [driverInfoForSetup, setDriverInfoForSetup] = useState<DriverInfo | null>(null);
+  const [addedDeviceId, setAddedDeviceId] = useState<string | null>(null);
+  const project = useProjectStore((s) => s.project);
+
+  const handleAdd = async () => {
+    setError(null);
+
+    if (isCommunity) {
+      // Install + add — no setup preview for community drivers (driver isn't installed yet)
+      setBusy(true);
+      try {
+        const community = entry?.community;
+        if (!community) {
+          setError("Community driver not found in catalog");
+          return;
+        }
+        const fileUrl = `https://raw.githubusercontent.com/open-avc/openavc-drivers/main/${community.file}`;
+        const result = await api.discoveryInstallAndMatch({
+          ip: device.ip,
+          driver_id: driverId,
+          file_url: fileUrl,
+        });
+        if (result.device) onDeviceUpdated(result.device);
+        if (result.status === "ok") {
+          onDeviceAdded({ name: result.name || driverName, deviceId: result.device_id });
+        } else if (result.status === "installed_not_added") {
+          setError(`Driver installed but could not add device: ${result.error}`);
+        }
+      } catch (e) {
+        setError(String(e));
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
+    // Installed driver — show setup help once before adding
+    if (!showSetup) {
+      try {
+        const help = await api.getDriverHelp(driverId);
+        if (help.setup) {
+          setSetupText(help.setup);
+          setShowSetup(true);
+          return;
+        }
+      } catch {
+        // No help — fall through and add directly
+      }
+    }
+
+    setBusy(true);
+    try {
+      const result = await api.discoveryAddDevice({ ip: device.ip, driver_id: driverId });
+      setAddedDeviceId(result.device_id);
+      const di = installedDrivers.find((d) => d.id === driverId);
+      if (di && hasDriverSetupSettings(di)) {
+        setDriverInfoForSetup(di);
+      } else {
+        onDeviceAdded({ name: result.name, deviceId: result.device_id });
+      }
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        padding: "var(--space-sm)",
+        background: "var(--bg-input)",
+        borderRadius: "var(--radius)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", flexWrap: "wrap" }}>
+        <span style={{ fontWeight: 500 }}>{driverName}</span>
+        {isCommunity && (
+          <span style={{
+            fontSize: "var(--font-size-xs)", padding: "1px 6px", borderRadius: 3,
+            background: "rgba(59,130,246,0.15)", color: "#3b82f6",
+          }}>
+            Community
+          </span>
         )}
-        <button className="btn btn-sm btn-primary" onClick={handleAdd} disabled={adding}>
-          <Plus size={14} /> {adding ? "Adding..." : showSetup ? "Confirm & Add" : "Add to Project"}
+        <span style={{ color: "var(--text-muted)", fontSize: "var(--font-size-xs)" }}>
+          {sourceLabel}
+        </span>
+        <button
+          className="btn btn-sm btn-primary"
+          onClick={handleAdd}
+          disabled={busy}
+          style={{ marginLeft: "auto" }}
+        >
+          <Plus size={14} />{" "}
+          {busy
+            ? (isCommunity ? "Installing..." : "Adding...")
+            : showSetup
+              ? "Confirm & Add"
+              : isCommunity
+                ? "Install & Add"
+                : "Add to Project"}
         </button>
-        {error && <span style={{ color: "var(--danger)", fontSize: "var(--font-size-xs)" }}>{error}</span>}
       </div>
 
       {showSetup && setupText && (
@@ -937,7 +1124,7 @@ function AddToProjectSection({
           style={{
             marginTop: "var(--space-sm)",
             padding: "var(--space-sm)",
-            background: "var(--bg-input)",
+            background: "var(--bg-surface)",
             borderRadius: "var(--radius)",
             fontSize: "var(--font-size-xs)",
             whiteSpace: "pre-line",
@@ -948,190 +1135,197 @@ function AddToProjectSection({
         </div>
       )}
 
-      {!showSetup && (
-        <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: 4 }}>
-          Creates a device in your project using the selected driver and connects immediately.
+      {error && (
+        <div style={{ color: "var(--danger)", fontSize: "var(--font-size-xs)", marginTop: 4 }}>
+          {error}
         </div>
+      )}
+
+      {driverInfoForSetup && addedDeviceId && (
+        <DeviceSettingsSetupDialog
+          deviceId={addedDeviceId}
+          driverInfo={driverInfoForSetup}
+          existingDeviceIds={(project?.devices ?? []).map((d) => d.id)}
+          onClose={() => {
+            setDriverInfoForSetup(null);
+            onDeviceAdded({ name: driverName, deviceId: addedDeviceId });
+          }}
+        />
       )}
     </div>
   );
 }
 
 
-// --- Community Driver Match Section ---
+// --- Possible-state candidates ---
 
-function CommunityMatchSection({
+function PossibleCandidates({
   device,
-  matches,
-  onDeviceUpdated,
+  candidates,
+  sourceLabel,
+  installedDrivers,
+  driverNameLookup,
   onDeviceAdded,
+  onDeviceUpdated,
 }: {
   device: api.DiscoveredDevice;
-  matches: api.DiscoveryDriverMatch[];
-  onDeviceUpdated: (device: api.DiscoveredDevice) => void;
+  candidates: string[];
+  sourceLabel: string;
+  installedDrivers: DriverInfo[];
+  driverNameLookup: Map<string, DriverEntry>;
   onDeviceAdded: (info: { name: string; deviceId?: string }) => void;
+  onDeviceUpdated: (device: api.DiscoveredDevice) => void;
 }) {
-  const [installing, setInstalling] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [showMore, setShowMore] = useState(false);
+  return (
+    <div>
+      <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginBottom: 4 }}>
+        Possible match from {sourceLabel}. Pick the right driver:
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
+        {candidates.map((id) => (
+          <DriverAddRow
+            key={id}
+            device={device}
+            driverId={id}
+            installedDrivers={installedDrivers}
+            driverNameLookup={driverNameLookup}
+            sourceLabel={sourceLabel}
+            onDeviceAdded={onDeviceAdded}
+            onDeviceUpdated={onDeviceUpdated}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
 
-  const topMatch = matches[0];
-  const otherMatches = matches.slice(1);
-  const badge = { text: "Possible match", color: "var(--warning, #e6a700)" };
 
-  const COMMUNITY_BASE = "https://raw.githubusercontent.com/open-avc/openavc-drivers/main/";
+// --- Manual driver picker (unknown state) ---
 
-  const handleInstallAndAdd = async (match: api.DiscoveryDriverMatch) => {
-    setInstalling(true);
-    setError(null);
+function ManualDriverPicker({
+  device,
+  installedDrivers,
+  driverNameLookup,
+  onDeviceAdded,
+  onDeviceUpdated,
+}: {
+  device: api.DiscoveredDevice;
+  installedDrivers: DriverInfo[];
+  driverNameLookup: Map<string, DriverEntry>;
+  onDeviceAdded: (info: { name: string; deviceId?: string }) => void;
+  onDeviceUpdated: (device: api.DiscoveredDevice) => void;
+}) {
+  const [picking, setPicking] = useState(false);
+  const [selected, setSelected] = useState<string>("");
 
-    try {
-      const resp = await api.fetchCommunityDrivers();
-      const communityDriver = resp.find((d) => d.id === match.driver_id);
-      if (!communityDriver) {
-        setError("Driver not found in community index");
-        setInstalling(false);
-        return;
-      }
+  const sortedInstalled = useMemo(
+    () => [...installedDrivers].sort((a, b) => a.name.localeCompare(b.name)),
+    [installedDrivers],
+  );
 
-      const result = await api.discoveryInstallAndMatch({
-        ip: device.ip,
-        driver_id: match.driver_id,
-        file_url: `${COMMUNITY_BASE}${communityDriver.file}`,
-      });
-
-      if (result.device) {
-        onDeviceUpdated(result.device);
-      }
-
-      if (result.status === "ok") {
-        onDeviceAdded({ name: result.name || match.driver_name, deviceId: result.device_id });
-      } else if (result.status === "installed_not_added") {
-        setError(`Driver installed but could not add device: ${result.error}`);
-      }
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setInstalling(false);
-    }
-  };
+  if (!picking) {
+    return (
+      <div style={{
+        padding: "var(--space-sm)", background: "var(--bg-input)",
+        borderRadius: "var(--radius)", display: "flex", alignItems: "center",
+        gap: "var(--space-sm)", flexWrap: "wrap",
+      }}>
+        <span style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}>
+          No driver matched this device automatically.
+        </span>
+        <button
+          className="btn btn-sm"
+          onClick={() => setPicking(true)}
+          style={{ marginLeft: "auto" }}
+        >
+          Pick driver manually
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ gridColumn: "1 / -1", borderTop: "1px solid var(--border-color)", paddingTop: "var(--space-sm)", marginTop: "var(--space-xs)" }}>
-      <strong>Community Driver Available:</strong>
-
-      {/* Top match — expanded */}
-      <div
-        style={{
-          marginTop: "var(--space-sm)",
-          padding: "var(--space-sm)",
-          background: "var(--bg-input)",
-          borderRadius: "var(--radius)",
-          fontSize: "var(--font-size-sm)",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
-          <span style={{ fontWeight: 500 }}>{topMatch.driver_name}</span>
-          <span
-            style={{
-              fontSize: "var(--font-size-xs)",
-              padding: "1px 6px",
-              borderRadius: "var(--radius)",
-              background: badge.color,
-              color: "var(--bg-main)",
-            }}
-          >
-            {badge.text}
-          </span>
-          <button
-            className="btn btn-sm btn-primary"
-            onClick={() => handleInstallAndAdd(topMatch)}
-            disabled={installing}
-            style={{ marginLeft: "auto" }}
-          >
-            <Plus size={14} /> {installing ? "Installing..." : "Install & Add to Project"}
-          </button>
-        </div>
-
-        <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: 4 }}>
-          {topMatch.match_reasons.join(" + ")}
-          {topMatch.description && ` \u2014 ${topMatch.description.substring(0, 120)}`}
-        </div>
-
-        {badge.text !== "Protocol verified" && (
-          <div style={{ fontSize: "var(--font-size-xs)", color: badge.color, marginTop: 4, fontStyle: "italic" }}>
-            This driver may work with your device. Install and verify with your equipment.
-          </div>
-        )}
-
-        {error && (
-          <div style={{ fontSize: "var(--font-size-xs)", color: "var(--danger)", marginTop: 4 }}>
-            Install failed: {error}
-          </div>
-        )}
+    <div style={{
+      padding: "var(--space-sm)", background: "var(--bg-input)",
+      borderRadius: "var(--radius)", display: "flex", flexDirection: "column",
+      gap: "var(--space-sm)",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", flexWrap: "wrap" }}>
+        <select
+          value={selected}
+          onChange={(e) => setSelected(e.target.value)}
+          style={{ flex: 1, minWidth: 240 }}
+        >
+          <option value="">Select an installed driver...</option>
+          {sortedInstalled.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.name} {d.manufacturer ? `(${d.manufacturer})` : ""}
+            </option>
+          ))}
+        </select>
+        <button
+          className="btn btn-sm"
+          onClick={() => { setPicking(false); setSelected(""); }}
+        >
+          Cancel
+        </button>
       </div>
-
-      {/* Other matches — collapsed */}
-      {otherMatches.length > 0 && (
-        <div style={{ marginTop: "var(--space-xs)" }}>
-          <button
-            className="btn btn-sm"
-            onClick={() => setShowMore(!showMore)}
-            style={{ fontSize: "var(--font-size-xs)", padding: "2px 8px" }}
-          >
-            {showMore ? "Hide" : `${otherMatches.length} other driver${otherMatches.length > 1 ? "s" : ""} may also work`}
-          </button>
-
-          {showMore && otherMatches.map((m) => {
-            const b = { text: "Possible match", color: "var(--warning, #e6a700)" };
-            return (
-              <div
-                key={m.driver_id}
-                style={{
-                  marginTop: 4,
-                  padding: "var(--space-xs) var(--space-sm)",
-                  background: "var(--bg-input)",
-                  borderRadius: "var(--radius)",
-                  fontSize: "var(--font-size-xs)",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "var(--space-sm)",
-                }}
-              >
-                <span style={{ fontWeight: 500 }}>{m.driver_name}</span>
-                <span
-                  style={{
-                    padding: "1px 4px",
-                    borderRadius: "var(--radius)",
-                    background: b.color,
-                    color: "var(--bg-main)",
-                  }}
-                >
-                  {b.text}
-                </span>
-                <button
-                  className="btn btn-sm"
-                  onClick={() => handleInstallAndAdd(m)}
-                  disabled={installing}
-                  style={{ marginLeft: "auto", fontSize: "var(--font-size-xs)", padding: "2px 8px" }}
-                >
-                  Install & Add
-                </button>
-              </div>
-            );
-          })}
-        </div>
+      {selected && (
+        <DriverAddRow
+          device={device}
+          driverId={selected}
+          installedDrivers={installedDrivers}
+          driverNameLookup={driverNameLookup}
+          sourceLabel="manual selection"
+          onDeviceAdded={onDeviceAdded}
+          onDeviceUpdated={onDeviceUpdated}
+        />
       )}
     </div>
   );
 }
 
 
-function DetailRow({ label, value }: { label: string; value: string }) {
+// --- Evidence list ("Why?" reveal) ---
+
+function EvidenceList({ evidence }: { evidence: DiscoveryEvidence[] }) {
+  if (evidence.length === 0) {
+    return (
+      <div style={{ marginTop: 4, fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
+        No evidence collected.
+      </div>
+    );
+  }
   return (
-    <div>
-      <span style={{ color: "var(--text-muted)" }}>{label}:</span>{" "}
-      <span>{value}</span>
+    <div style={{
+      marginTop: 4, padding: "var(--space-sm)",
+      background: "var(--bg-input)", borderRadius: "var(--radius)",
+      fontSize: "var(--font-size-xs)", color: "var(--text-muted)",
+      fontFamily: "monospace",
+    }}>
+      {evidence.map((e, i) => (
+        <div key={i} style={{ marginBottom: 4 }}>
+          <span style={{ color: "var(--accent)" }}>[{e.tier}]</span> {e.source}
+          {Object.keys(e.data).length > 0 && (
+            <span style={{ marginLeft: 8 }}>
+              {Object.entries(e.data).slice(0, 4).map(([k, v]) =>
+                `${k}=${typeof v === "string" ? v.substring(0, 60) : JSON.stringify(v).substring(0, 60)}`,
+              ).join(", ")}
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+
+function DetailRow({ label, value, copyable }: { label: string; value: string; copyable?: boolean }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+      <span style={{ color: "var(--text-muted)" }}>{label}:</span>
+      <span style={{ fontFamily: copyable ? "monospace" : "inherit" }}>{value}</span>
+      {copyable && value && value !== "Unknown" && <CopyButton value={value} />}
     </div>
   );
 }
