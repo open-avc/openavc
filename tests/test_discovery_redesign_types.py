@@ -150,20 +150,11 @@ class TestDiscoveredDeviceIntegration:
         assert out["identification"] is None
         assert out["evidence_log"] == []
 
-    def test_legacy_fields_unaffected(self):
-        # Adding the new identification slot must not break legacy DriverMatch usage.
-        from server.discovery.result import DriverMatch
-
+    def test_to_dict_omits_legacy_keys(self):
+        # The Phase 6 cleanup removed `matched_drivers`, `confidence`,
+        # and `sources` from the JSON shape entirely.
         d = DiscoveredDevice(ip="192.168.1.10")
-        d.matched_drivers.append(
-            DriverMatch(driver_id="pjlink_class1", driver_name="PJLink", confidence=0.85),
-        )
-        d.confidence = 0.85
-        d.sources.append("probe_confirmed")
-
         out = d.to_dict()
-        assert out["matched_drivers"][0]["driver_id"] == "pjlink_class1"
-        assert out["confidence"] == 0.85
-        assert "probe_confirmed" in out["sources"]
-        # New fields coexist
-        assert out["identification"] is None
+        assert "matched_drivers" not in out
+        assert "confidence" not in out
+        assert "sources" not in out

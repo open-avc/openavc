@@ -34,7 +34,6 @@ from server.discovery.snmp_scanner import (
 from server.discovery.result import (
     DiscoveredDevice,
     merge_device_info,
-    compute_confidence,
 )
 from server.discovery.engine import DiscoveryEngine, _resolve_hostnames
 
@@ -685,25 +684,6 @@ class TestEngineSNMPIntegration:
 
 
 # ============================================================
-# Confidence Scoring Tests (SNMP)
-# ============================================================
-
-
-class TestSNMPConfidenceScoring:
-    def test_snmp_identified_weight(self):
-        score = compute_confidence(["alive", "snmp_identified"])
-        assert score == pytest.approx(0.15, abs=0.01)
-
-    def test_full_active_plus_snmp(self):
-        score = compute_confidence([
-            "alive", "mac_known", "oui_av_mfg",
-            "av_port_open", "probe_confirmed", "snmp_identified",
-        ])
-        expected = 0.05 + 0.05 + 0.15 + 0.10 + 0.20 + 0.10
-        assert score == pytest.approx(expected, abs=0.01)
-
-
-# ============================================================
 # Merge Behavior Tests (SNMP)
 # ============================================================
 
@@ -731,7 +711,6 @@ class TestSNMPMerge:
         device = DiscoveredDevice(
             ip="192.168.1.50",
             manufacturer="Extron",
-            sources=["alive", "oui_av_mfg"],
         )
         merge_device_info(device, {
             "device_name": "Main-Switcher",

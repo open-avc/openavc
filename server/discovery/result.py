@@ -1,18 +1,17 @@
 """Discovery result models.
 
-Two generations of types live here during the discovery redesign:
+Phase 6 deterministic types only. Every device carries:
 
-1. Legacy: ``DriverMatch`` and ``DiscoveredDevice.confidence``/``sources`` —
-   the additive-scoring heuristic system. Still wired into the running
-   engine and UI until the redesign reaches the orchestrator swap.
+- An ``identification`` (``IdentificationMatch``) — the deterministic
+  state (``identified`` / ``possible`` / ``unknown``) produced by
+  ``TierMatcher.match()`` over the device's evidence log.
+- An ``evidence_log`` of ``Evidence`` records, one per signal observed
+  during the scan. This is the audit trail behind the UI's "Why?"
+  reveal and the data plumbing for future catalog-growth telemetry.
 
-2. New: ``DeviceState``, ``IdentificationMatch``, and ``Evidence`` —
-   deterministic three-state identification. Populated alongside legacy
-   fields as new tier-based probes land. The UI reads whichever is
-   present; once every probe writes the new types, the legacy fields
-   are removed.
-
-See discovery-redesign-plan.md for the full architecture.
+The legacy heuristic types (``DriverMatch``, ``compute_confidence``,
+``CONFIDENCE_WEIGHTS``, ``DiscoveredDevice.matched_drivers/sources/
+confidence``) were removed in the Phase 6 engine swap.
 """
 
 from __future__ import annotations
@@ -21,11 +20,6 @@ import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
-
-
-# ---------------------------------------------------------------------------
-# New deterministic types (discovery redesign)
-# ---------------------------------------------------------------------------
 
 
 class DeviceState(str, Enum):
@@ -99,8 +93,7 @@ class Evidence:
 class IdentificationMatch:
     """The tier-based identification result for a single device.
 
-    Replaces the legacy ``DriverMatch`` list of (driver_id, confidence)
-    tuples. There is exactly one IdentificationMatch per device.
+    There is exactly one IdentificationMatch per device.
 
     Fields by state:
     - ``identified``: ``driver_id`` is set; ``candidates`` is empty;
@@ -173,24 +166,6 @@ class IdentificationMatch:
         }
 
 
-# ---------------------------------------------------------------------------
-# Legacy types (kept until orchestrator swap)
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class DriverMatch:
-    """A potential driver match for a discovered device."""
-
-    driver_id: str
-    driver_name: str
-    confidence: float  # 0.0 to 1.0
-    match_reasons: list[str] = field(default_factory=list)
-    suggested_config: dict[str, Any] = field(default_factory=dict)
-    source: str = "installed"  # "installed" or "community"
-    description: str = ""  # For community drivers, from index.json
-
-
 @dataclass
 class DiscoveredDevice:
     """A device found during network discovery."""
@@ -210,24 +185,16 @@ class DiscoveredDevice:
     open_ports: list[int] = field(default_factory=list)
     banners: dict[int, str] = field(default_factory=dict)  # port -> banner text
 
-    # Discovery sources that contributed info
-    sources: list[str] = field(default_factory=list)
-
-    # Protocol identification
+    # Protocol identification (legacy display field — populated by probes,
+    # consumed by the UI as a comma-separated tag list).
     protocols: list[str] = field(default_factory=list)
 
-    # mDNS / SSDP info (Chunk 4)
+    # mDNS / SSDP info
     mdns_services: list[str] = field(default_factory=list)
     ssdp_info: dict[str, Any] | None = None
 
-    # SNMP info (Chunk 5)
+    # SNMP info
     snmp_info: dict[str, Any] | None = None
-
-    # Driver matching (Chunk 3)
-    matched_drivers: list[DriverMatch] = field(default_factory=list)
-
-    # Overall confidence (0.0 to 1.0)
-    confidence: float = 0.0
 
     # Category hint (from OUI or protocol)
     category: str | None = None
@@ -235,9 +202,7 @@ class DiscoveredDevice:
     # Responding status
     alive: bool = True
 
-    # ---- Discovery redesign: deterministic identification fields ----
-    # Populated alongside legacy fields as new tier-based probes land.
-    # See ``IdentificationMatch`` and ``Evidence`` above.
+    # Phase 6 deterministic identification.
     identification: IdentificationMatch | None = None
     evidence_log: list[Evidence] = field(default_factory=list)
 
@@ -254,24 +219,10 @@ class DiscoveredDevice:
             "serial_number": self.serial_number,
             "open_ports": self.open_ports,
             "banners": {str(k): v for k, v in self.banners.items()},
-            "sources": self.sources,
             "protocols": self.protocols,
             "mdns_services": self.mdns_services,
             "ssdp_info": self.ssdp_info,
             "snmp_info": self.snmp_info,
-            "matched_drivers": [
-                {
-                    "driver_id": m.driver_id,
-                    "driver_name": m.driver_name,
-                    "confidence": m.confidence,
-                    "match_reasons": m.match_reasons,
-                    "suggested_config": m.suggested_config,
-                    "source": m.source,
-                    "description": m.description,
-                }
-                for m in self.matched_drivers
-            ],
-            "confidence": self.confidence,
             "category": self.category,
             "alive": self.alive,
             "identification": (
@@ -281,55 +232,18 @@ class DiscoveredDevice:
         }
 
 
-# Confidence weights — each successful identification step adds to the score.
-# This additive heuristic system is being replaced by deterministic tier-based
-# matching (see discovery-redesign-plan.md). Dead entries that no code ever
-# set (favicon_matched, hint_matched) and entries from the removed
-# non-deterministic probes (tls_cert_matched, ssh_identified, smb_identified,
-# www_auth_matched) have been deleted.
-CONFIDENCE_WEIGHTS = {
-    "alive": 0.05,
-    "mac_known": 0.05,
-    "oui_av_mfg": 0.15,
-    "av_port_open": 0.10,
-    "banner_matched": 0.15,
-    "probe_confirmed": 0.20,
-    "snmp_identified": 0.10,
-    "mdns_advertised": 0.10,
-    "ssdp_identified": 0.10,
-    "model_known": 0.10,
-    "driver_matched": 0.20,
-    "netbios_resolved": 0.10,
-    "entity_mib_found": 0.10,
-}
-
-
-def compute_confidence(sources: list[str]) -> float:
-    """Compute confidence score from a list of source tags.
-
-    Each source tag maps to a weight. Score is capped at 1.0.
-    """
-    score = 0.0
-    for source in sources:
-        score += CONFIDENCE_WEIGHTS.get(source, 0.0)
-    return min(score, 1.0)
-
-
 def merge_device_info(
     existing: DiscoveredDevice,
     new_info: dict[str, Any],
-    source: str,
+    source: str,  # kept for API compatibility — not stored on the device
 ) -> None:
     """Merge new information into an existing device record.
 
     Rules:
       - Never overwrite with None (only enrich)
       - More specific info wins (longer strings)
-      - Track all sources that contributed
-      - Recalculate confidence after merge
     """
-    if source not in existing.sources:
-        existing.sources.append(source)
+    del source  # legacy parameter, retained so call sites keep their breadcrumb
 
     for key in ("mac", "hostname", "manufacturer", "model", "device_name",
                 "firmware", "serial_number", "category"):
@@ -362,6 +276,3 @@ def merge_device_info(
         existing.snmp_info = new_info["snmp_info"]
     if new_info.get("ssdp_info") and not existing.ssdp_info:
         existing.ssdp_info = new_info["ssdp_info"]
-
-    # Recalculate confidence
-    existing.confidence = compute_confidence(existing.sources)

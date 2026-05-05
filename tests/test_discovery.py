@@ -8,8 +8,6 @@ from server.discovery.oui_database import OUIDatabase
 from server.discovery.oui_data import AV_OUI_TABLE
 from server.discovery.result import (
     DiscoveredDevice,
-    DriverMatch,
-    compute_confidence,
     merge_device_info,
 )
 from server.discovery.network_scanner import get_local_subnets, _parse_cidr
@@ -91,7 +89,7 @@ class TestDiscoveredDevice:
         d = DiscoveredDevice(ip="192.168.1.1")
         assert d.ip == "192.168.1.1"
         assert d.mac is None
-        assert d.confidence == 0.0
+        assert d.identification is None
         assert d.alive is True
 
     def test_to_dict(self):
@@ -101,8 +99,6 @@ class TestDiscoveredDevice:
             manufacturer="Extron",
             category="switcher",
             open_ports=[23],
-            sources=["alive", "oui_av_mfg"],
-            confidence=0.2,
         )
         result = d.to_dict()
         assert result["ip"] == "192.168.1.50"
@@ -110,46 +106,8 @@ class TestDiscoveredDevice:
         assert result["manufacturer"] == "Extron"
         assert result["category"] == "switcher"
         assert 23 in result["open_ports"]
-        assert result["confidence"] == 0.2
-
-    def test_driver_match_in_dict(self):
-        d = DiscoveredDevice(ip="192.168.1.1")
-        d.matched_drivers.append(
-            DriverMatch(
-                driver_id="extron_sis",
-                driver_name="Extron SIS",
-                confidence=0.8,
-                match_reasons=["Port match"],
-                suggested_config={"host": "192.168.1.1", "port": 23},
-            )
-        )
-        result = d.to_dict()
-        assert len(result["matched_drivers"]) == 1
-        assert result["matched_drivers"][0]["driver_id"] == "extron_sis"
-
-
-class TestConfidenceScoring:
-    def test_empty_sources(self):
-        assert compute_confidence([]) == 0.0
-
-    def test_alive_only(self):
-        assert compute_confidence(["alive"]) == 0.05
-
-    def test_full_identification(self):
-        sources = ["alive", "mac_known", "oui_av_mfg", "av_port_open",
-                    "banner_matched", "probe_confirmed"]
-        score = compute_confidence(sources)
-        assert score == pytest.approx(0.70)
-
-    def test_capped_at_one(self):
-        all_sources = list(
-            __import__("server.discovery.result", fromlist=["CONFIDENCE_WEIGHTS"]).CONFIDENCE_WEIGHTS.keys()
-        )
-        score = compute_confidence(all_sources)
-        assert score == 1.0
-
-    def test_unknown_source_ignored(self):
-        assert compute_confidence(["alive", "unknown_source"]) == 0.05
+        assert result["identification"] is None
+        assert result["evidence_log"] == []
 
 
 class TestMergeDeviceInfo:
@@ -157,7 +115,6 @@ class TestMergeDeviceInfo:
         device = DiscoveredDevice(ip="192.168.1.1")
         merge_device_info(device, {"manufacturer": "Extron"}, "oui")
         assert device.manufacturer == "Extron"
-        assert "oui" in device.sources
 
     def test_does_not_overwrite_with_none(self):
         device = DiscoveredDevice(ip="192.168.1.1", manufacturer="Extron")
@@ -183,12 +140,6 @@ class TestMergeDeviceInfo:
         device = DiscoveredDevice(ip="192.168.1.1")
         merge_device_info(device, {"banners": {23: "Extron Banner"}}, "banner")
         assert device.banners[23] == "Extron Banner"
-
-    def test_source_not_duplicated(self):
-        device = DiscoveredDevice(ip="192.168.1.1")
-        merge_device_info(device, {"manufacturer": "Extron"}, "oui")
-        merge_device_info(device, {"model": "DTP"}, "oui")
-        assert device.sources.count("oui") == 1
 
 
 # ===== Network Scanner Tests =====

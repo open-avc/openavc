@@ -1,23 +1,14 @@
-"""Discovery hint parsers — both legacy + Phase 6 ``discovery:`` schema.
+"""Phase 6 ``discovery:`` schema parser + ``SignalIndex`` builder.
 
-Two shapes live here through the Phase 6 transition:
-
-1. Legacy ``DriverHint`` + ``load_driver_hints`` — feeds the heuristic
-   ``DriverMatcher`` (additive scoring). Still wired into the running
-   engine until the orchestrator swap.
-
-2. New ``DiscoveryHint`` + ``parse_driver_discovery`` /
-   ``build_signal_index`` — the deterministic schema described in the
-   plan. Drivers gradually migrate to the new ``discovery:`` block.
-
-Once the engine swaps over to ``TierMatcher`` and every driver is on
-the new schema, the legacy ``DriverHint`` block goes away. See
-``discovery-redesign-plan.md`` Phase 6.
+The new schema is opinionated: every driver declares at least one
+strong (Tier 1/2/3) signal or sets ``manual_only: true``. Validation
+happens at driver-load time; collisions raise from
+``SignalIndex.add_rule``. The matcher is deterministic — there is no
+score.
 """
 
 from __future__ import annotations
 
-import re
 import logging
 from dataclasses import dataclass, field
 from typing import Any
@@ -28,126 +19,6 @@ from server.discovery.tier_matcher import (
 )
 
 log = logging.getLogger("discovery.hints")
-
-
-# ---------------------------------------------------------------------------
-# Legacy DriverHint — heuristic matcher
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class DriverHint:
-    """Parsed legacy discovery hints from a single driver.
-
-    Used by the heuristic ``DriverMatcher``. Will be removed once the
-    engine swaps to the deterministic ``TierMatcher``. Do not extend.
-    """
-
-    driver_id: str
-    driver_name: str
-    manufacturer: str
-    category: str
-    transport: str
-    # From explicit discovery hints (optional)
-    ports: list[int] = field(default_factory=list)
-    mac_prefixes: list[str] = field(default_factory=list)
-    mdns_services: list[str] = field(default_factory=list)
-    upnp_types: list[str] = field(default_factory=list)
-    snmp_pattern: str | None = None
-    hostname_patterns: list[re.Pattern] = field(default_factory=list)
-    protocols: list[str] = field(default_factory=list)
-    # Inferred from driver config
-    default_port: int | None = None
-
-
-def load_driver_hints(registry: list[dict[str, Any]]) -> list[DriverHint]:
-    """Extract legacy discovery hints from all registered drivers.
-
-    Legacy path. Used by ``DriverMatcher`` until the engine swap.
-    """
-    hints: list[DriverHint] = []
-
-    for driver_info in registry:
-        driver_id = driver_info.get("id", "")
-        if not driver_id:
-            continue
-
-        # Skip generic drivers — they're templates, not real devices
-        if driver_id.startswith("generic_"):
-            continue
-
-        hint = DriverHint(
-            driver_id=driver_id,
-            driver_name=driver_info.get("name", driver_id),
-            manufacturer=driver_info.get("manufacturer", ""),
-            category=driver_info.get("category", ""),
-            transport=driver_info.get("transport", "tcp"),
-        )
-
-        # Load protocol declarations from driver metadata
-        protocols = driver_info.get("protocols", [])
-        if isinstance(protocols, str):
-            protocols = [protocols]
-        hint.protocols = [p.lower() for p in protocols if isinstance(p, str)]
-
-        # Infer default port from config_schema or default_config
-        default_config = driver_info.get("default_config", {})
-        config_schema = driver_info.get("config_schema", {})
-
-        port = default_config.get("port")
-        if port is None and "port" in config_schema:
-            port = config_schema["port"].get("default")
-        if isinstance(port, (int, float)):
-            hint.default_port = int(port)
-            hint.ports = [int(port)]
-
-        # Read explicit (legacy + new) discovery hints. The new schema's
-        # ``oui_prefixes`` is consumed here as ``mac_prefixes`` so the
-        # legacy matcher continues working through the migration.
-        discovery = driver_info.get("discovery", {}) or {}
-        if discovery:
-            if "ports" in discovery:
-                hint.ports = [int(p) for p in discovery["ports"]]
-            for key in ("mac_prefixes", "oui_prefixes"):
-                if key in discovery:
-                    hint.mac_prefixes = [
-                        p.lower().replace("-", ":") for p in discovery[key]
-                    ]
-            if "mdns_services" in discovery:
-                # Accept either bare strings or {service: ..., txt_match: ...} dicts.
-                services: list[str] = []
-                for entry in discovery["mdns_services"]:
-                    if isinstance(entry, str):
-                        services.append(entry)
-                    elif isinstance(entry, dict) and isinstance(entry.get("service"), str):
-                        services.append(entry["service"])
-                hint.mdns_services = services
-            for key in ("upnp_types", "ssdp_device_types"):
-                if key in discovery:
-                    hint.upnp_types = list(discovery[key])
-            if "snmp_pattern" in discovery:
-                hint.snmp_pattern = discovery["snmp_pattern"]
-            if "hostname_patterns" in discovery:
-                hint.hostname_patterns = [
-                    re.compile(p, re.IGNORECASE)
-                    for p in discovery["hostname_patterns"]
-                ]
-            if "default_port" in discovery:
-                hint.default_port = int(discovery["default_port"])
-
-        hints.append(hint)
-        log.debug(
-            "Loaded legacy hints for %s: mfg=%s cat=%s port=%s",
-            driver_id, hint.manufacturer, hint.category, hint.default_port,
-        )
-
-    log.info("Loaded legacy discovery hints for %d drivers", len(hints))
-    return hints
-
-
-# ---------------------------------------------------------------------------
-# Phase 6: New deterministic ``discovery:`` schema
-# ---------------------------------------------------------------------------
 
 
 # Tier 2 broadcast probe IDs. Each driver opting in declares the boolean

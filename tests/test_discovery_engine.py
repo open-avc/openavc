@@ -374,21 +374,31 @@ class TestScanPipeline:
         mock_ssdp._running = True
         mock_ssdp_cls.return_value = mock_ssdp
 
+        mock_amx_cls = MagicMock()
+        mock_amx = MagicMock()
+        mock_amx.start = AsyncMock(return_value={})
+        mock_amx.stop = AsyncMock()
+        mock_amx_cls.return_value = mock_amx
+
         mock_snmp_cls = MagicMock()
         mock_snmp = MagicMock()
         mock_snmp.scan_devices = AsyncMock(return_value={})
         mock_snmp_cls.return_value = mock_snmp
 
-        return mock_mdns_cls, mock_ssdp_cls, mock_snmp_cls
+        return mock_mdns_cls, mock_ssdp_cls, mock_amx_cls, mock_snmp_cls
 
     async def test_pipeline_with_no_live_hosts(self):
         """Pipeline completes when no hosts respond to ping."""
-        mock_mdns_cls, mock_ssdp_cls, mock_snmp_cls = self._mock_passive_scanners()
+        mock_mdns_cls, mock_ssdp_cls, mock_amx_cls, mock_snmp_cls = self._mock_passive_scanners()
 
         with patch("server.discovery.engine.ping_sweep", new_callable=AsyncMock, return_value=[]), \
              patch("server.discovery.engine.MDNSScanner", mock_mdns_cls), \
              patch("server.discovery.engine.SSDPScanner", mock_ssdp_cls), \
+             patch("server.discovery.engine.AMXDDPScanner", mock_amx_cls), \
              patch("server.discovery.engine.SNMPScanner", mock_snmp_cls), \
+             patch("server.discovery.engine.probe_pjlink_class2", new_callable=AsyncMock, return_value={}), \
+             patch("server.discovery.engine.probe_crestron_cip", new_callable=AsyncMock, return_value={}), \
+             patch("server.discovery.engine.probe_onvif", new_callable=AsyncMock, return_value={}), \
              patch("server.discovery.engine._resolve_hostnames", new_callable=AsyncMock, return_value={}):
             await self.engine._scan_pipeline(["192.168.1.0/30"])
 
@@ -397,7 +407,7 @@ class TestScanPipeline:
 
     async def test_pipeline_finds_devices(self):
         """Pipeline discovers devices through ping + port + ARP."""
-        mock_mdns_cls, mock_ssdp_cls, mock_snmp_cls = self._mock_passive_scanners()
+        mock_mdns_cls, mock_ssdp_cls, mock_amx_cls, mock_snmp_cls = self._mock_passive_scanners()
 
         with patch("server.discovery.engine.ping_sweep", new_callable=AsyncMock) as mock_ping, \
              patch("server.discovery.engine.harvest_arp_table", new_callable=AsyncMock) as mock_arp, \
@@ -406,7 +416,11 @@ class TestScanPipeline:
              patch("server.discovery.engine.run_protocol_probes", new_callable=AsyncMock, return_value=[]), \
              patch("server.discovery.engine.MDNSScanner", mock_mdns_cls), \
              patch("server.discovery.engine.SSDPScanner", mock_ssdp_cls), \
+             patch("server.discovery.engine.AMXDDPScanner", mock_amx_cls), \
              patch("server.discovery.engine.SNMPScanner", mock_snmp_cls), \
+             patch("server.discovery.engine.probe_pjlink_class2", new_callable=AsyncMock, return_value={}), \
+             patch("server.discovery.engine.probe_crestron_cip", new_callable=AsyncMock, return_value={}), \
+             patch("server.discovery.engine.probe_onvif", new_callable=AsyncMock, return_value={}), \
              patch("server.discovery.engine._resolve_hostnames", new_callable=AsyncMock, return_value={}):
 
             mock_ping.return_value = ["192.168.1.10", "192.168.1.20"]
@@ -434,12 +448,16 @@ class TestScanPipeline:
             ip="192.168.1.99", alive=False
         )
 
-        mock_mdns_cls, mock_ssdp_cls, mock_snmp_cls = self._mock_passive_scanners()
+        mock_mdns_cls, mock_ssdp_cls, mock_amx_cls, mock_snmp_cls = self._mock_passive_scanners()
 
         with patch("server.discovery.engine.ping_sweep", new_callable=AsyncMock, return_value=[]), \
              patch("server.discovery.engine.MDNSScanner", mock_mdns_cls), \
              patch("server.discovery.engine.SSDPScanner", mock_ssdp_cls), \
+             patch("server.discovery.engine.AMXDDPScanner", mock_amx_cls), \
              patch("server.discovery.engine.SNMPScanner", mock_snmp_cls), \
+             patch("server.discovery.engine.probe_pjlink_class2", new_callable=AsyncMock, return_value={}), \
+             patch("server.discovery.engine.probe_crestron_cip", new_callable=AsyncMock, return_value={}), \
+             patch("server.discovery.engine.probe_onvif", new_callable=AsyncMock, return_value={}), \
              patch("server.discovery.engine._resolve_hostnames", new_callable=AsyncMock, return_value={}):
             await self.engine._scan_pipeline(["192.168.1.0/24"])
 
@@ -448,7 +466,7 @@ class TestScanPipeline:
 
     async def test_pipeline_cancellation_cleans_up(self):
         """Cancelling during pipeline cleans up background tasks."""
-        mock_mdns_cls, mock_ssdp_cls, mock_snmp_cls = self._mock_passive_scanners()
+        mock_mdns_cls, mock_ssdp_cls, mock_amx_cls, mock_snmp_cls = self._mock_passive_scanners()
 
         async def cancel_during_ping(*args, **kwargs):
             raise asyncio.CancelledError()
@@ -456,6 +474,7 @@ class TestScanPipeline:
         with patch("server.discovery.engine.ping_sweep", side_effect=cancel_during_ping), \
              patch("server.discovery.engine.MDNSScanner", mock_mdns_cls), \
              patch("server.discovery.engine.SSDPScanner", mock_ssdp_cls), \
+             patch("server.discovery.engine.AMXDDPScanner", mock_amx_cls), \
              patch("server.discovery.engine.SNMPScanner", mock_snmp_cls):
             with pytest.raises(asyncio.CancelledError):
                 await self.engine._scan_pipeline(["192.168.1.0/24"])

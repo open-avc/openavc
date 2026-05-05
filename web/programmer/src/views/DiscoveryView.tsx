@@ -43,22 +43,9 @@ const PORT_LABELS: Record<number, string> = {
   61000: "Shure",
 };
 
-function confidenceStars(c: number): string {
-  if (c >= 0.6) return "\u2605\u2605\u2605";
-  if (c >= 0.3) return "\u2605\u2605\u2606";
-  if (c >= 0.1) return "\u2605\u2606\u2606";
-  return "\u2606\u2606\u2606";
-}
-
 function categoryLabel(cat: string | null): string {
   if (!cat) return "Unknown";
   return cat.charAt(0).toUpperCase() + cat.slice(1);
-}
-
-function confidenceBadge(confidence: number): { text: string; color: string } {
-  if (confidence >= 0.28) return { text: "Protocol verified", color: "var(--success)" };
-  if (confidence >= 0.18) return { text: "Strong match", color: "var(--accent)" };
-  return { text: "Possible match", color: "var(--warning, #e6a700)" };
 }
 
 type SortKey = "confidence" | "ip" | "manufacturer" | "category";
@@ -208,11 +195,11 @@ export function DiscoveryPanel() {
     if (avOnly) {
       list = list.filter((d) => {
         if (d.category === "network") return false;
-        // Show if: has AV port, has AV manufacturer, or has matched driver
         return (
           d.open_ports.some((p) => p in allPortLabels && p !== 80 && p !== 443) ||
           d.manufacturer !== null ||
-          d.matched_drivers.length > 0
+          d.identification?.state === "identified" ||
+          d.identification?.state === "possible"
         );
       });
     }
@@ -223,10 +210,12 @@ export function DiscoveryPanel() {
     }
 
     // Sort
+    const stateRank = (s: string | undefined) =>
+      s === "identified" ? 0 : s === "possible" ? 1 : 2;
     list.sort((a, b) => {
       switch (sortBy) {
         case "confidence":
-          return b.confidence - a.confidence;
+          return stateRank(a.identification?.state) - stateRank(b.identification?.state);
         case "ip":
           return a.ip.split(".").map(Number).reduce((s, n, i) => s + n * (256 ** (3 - i)), 0)
             - b.ip.split(".").map(Number).reduce((s, n, i) => s + n * (256 ** (3 - i)), 0);
@@ -589,8 +578,38 @@ function DeviceCard({
     ? device.protocols[0].replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())
     : null;
 
-  const installedMatches = device.matched_drivers.filter((m) => m.source === "installed");
-  const communityMatches = device.matched_drivers.filter((m) => m.source === "community");
+  // Phase 6: TierMatcher emits a single ``identification`` per device.
+  // Phase 7 will redesign this view; for now we synthesize a legacy-shape
+  // candidate list so the existing per-driver action UI keeps working.
+  const matchedDrivers: api.DiscoveryDriverMatch[] = ((): api.DiscoveryDriverMatch[] => {
+    const ident = device.identification;
+    if (!ident) return [];
+    if (ident.state === "identified" && ident.driver_id) {
+      return [{
+        driver_id: ident.driver_id,
+        driver_name: ident.driver_id,
+        confidence: 1,
+        match_reasons: [ident.source],
+        suggested_config: {},
+        source: "installed",
+        description: "",
+      }];
+    }
+    if (ident.state === "possible") {
+      return ident.candidates.map((id) => ({
+        driver_id: id,
+        driver_name: id,
+        confidence: 0.5,
+        match_reasons: [ident.source],
+        suggested_config: {},
+        source: "installed",
+        description: "",
+      }));
+    }
+    return [];
+  })();
+  const installedMatches = matchedDrivers;
+  const communityMatches: api.DiscoveryDriverMatch[] = [];
   const hasInstalledMatch = installedMatches.length > 0;
 
   return (
@@ -615,17 +634,23 @@ function DeviceCard({
       >
         {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
 
-        <span style={{ fontSize: "var(--font-size-sm)", minWidth: 32 }} title={`Confidence: ${Math.round(device.confidence * 100)}%`}>
-          {confidenceStars(device.confidence)}
-        </span>
-        {device.confidence >= 0.8 && (
-          <span style={{
-            fontSize: 10, fontWeight: 600, padding: "1px 5px", borderRadius: 3,
-            background: "rgba(16,185,129,0.15)", color: "#10b981",
-          }}>
-            Suggested
-          </span>
-        )}
+        {(() => {
+          // Phase 6 placeholder. Phase 7 swaps in proper state pills.
+          const state = device.identification?.state ?? "unknown";
+          const tone = state === "identified"
+            ? { bg: "rgba(16,185,129,0.15)", fg: "#10b981" }
+            : state === "possible"
+              ? { bg: "rgba(245,158,11,0.15)", fg: "#f59e0b" }
+              : { bg: "rgba(107,114,128,0.15)", fg: "#6b7280" };
+          return (
+            <span style={{
+              fontSize: 10, fontWeight: 600, padding: "1px 6px", borderRadius: 3,
+              background: tone.bg, color: tone.fg, minWidth: 64, textAlign: "center",
+            }}>
+              {state}
+            </span>
+          );
+        })()}
 
         <span style={{ fontFamily: "monospace", minWidth: 120, fontSize: "var(--font-size-sm)" }}>
           {device.ip}
@@ -703,7 +728,7 @@ function DeviceCard({
           <DetailRow label="Firmware" value={device.firmware ?? "Unknown"} />
           {device.serial_number && <DetailRow label="Serial Number" value={device.serial_number} />}
           <DetailRow label="Category" value={categoryLabel(device.category)} />
-          <DetailRow label="Confidence" value={`${Math.round(device.confidence * 100)}%`} />
+          <DetailRow label="State" value={device.identification?.state ?? "unknown"} />
           <DetailRow
             label="Protocols"
             value={device.protocols.length > 0 ? device.protocols.join(", ") : "None identified"}
@@ -745,7 +770,7 @@ function DeviceCard({
           )}
 
           <div style={{ gridColumn: "1 / -1" }}>
-            <strong>Discovery Sources:</strong> {device.sources.join(", ") || "None"}
+            <strong>Evidence:</strong> {device.evidence_log.map((e) => e.source).join(", ") || "None"}
           </div>
 
           {/* Driver matches section */}
@@ -952,7 +977,7 @@ function CommunityMatchSection({
 
   const topMatch = matches[0];
   const otherMatches = matches.slice(1);
-  const badge = confidenceBadge(topMatch.confidence);
+  const badge = { text: "Possible match", color: "var(--warning, #e6a700)" };
 
   const COMMUNITY_BASE = "https://raw.githubusercontent.com/open-avc/openavc-drivers/main/";
 
@@ -1058,7 +1083,7 @@ function CommunityMatchSection({
           </button>
 
           {showMore && otherMatches.map((m) => {
-            const b = confidenceBadge(m.confidence);
+            const b = { text: "Possible match", color: "var(--warning, #e6a700)" };
             return (
               <div
                 key={m.driver_id}

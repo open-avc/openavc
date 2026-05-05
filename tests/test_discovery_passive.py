@@ -36,7 +36,6 @@ from server.discovery.ssdp_scanner import (
 from server.discovery.result import (
     DiscoveredDevice,
     merge_device_info,
-    compute_confidence,
 )
 from server.discovery.engine import DiscoveryEngine
 
@@ -1150,46 +1149,6 @@ class TestEnginePassiveIntegration:
 
 
 # ============================================================
-# Confidence Scoring Tests (passive sources)
-# ============================================================
-
-
-class TestPassiveConfidenceScoring:
-    def test_mdns_advertised_weight(self):
-        score = compute_confidence(["alive", "mdns_advertised"])
-        assert score == pytest.approx(0.15, abs=0.01)
-
-    def test_ssdp_identified_weight(self):
-        score = compute_confidence(["alive", "ssdp_identified"])
-        assert score == pytest.approx(0.15, abs=0.01)
-
-    def test_combined_passive_and_active(self):
-        """Active + passive sources should combine."""
-        score = compute_confidence([
-            "alive", "mac_known", "oui_av_mfg",
-            "av_port_open", "mdns_advertised", "ssdp_identified",
-        ])
-        expected = 0.05 + 0.05 + 0.15 + 0.10 + 0.10 + 0.10
-        assert score == pytest.approx(expected, abs=0.01)
-
-    def test_passive_only_device(self):
-        """A device found only via passive means should have a score."""
-        score = compute_confidence(["mdns_advertised"])
-        assert score == 0.10
-
-    def test_passive_capped_at_one(self):
-        """Score should never exceed 1.0."""
-        # Just use all known sources
-        score = compute_confidence([
-            "alive", "mac_known", "oui_av_mfg", "av_port_open",
-            "banner_matched", "probe_confirmed", "snmp_identified",
-            "mdns_advertised", "ssdp_identified", "model_known",
-            "driver_matched", "netbios_resolved", "entity_mib_found",
-        ])
-        assert score <= 1.0
-
-
-# ============================================================
 # Merge Behavior Tests (passive data)
 # ============================================================
 
@@ -1239,7 +1198,6 @@ class TestPassiveMerge:
             mac="8c:71:f8:11:22:33",
             manufacturer="Samsung",
             open_ports=[80, 1515],
-            sources=["alive", "mac_known", "oui_av_mfg", "av_port_open"],
         )
         # mDNS gives us the hostname
         merge_device_info(device, {
