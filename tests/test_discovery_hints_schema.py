@@ -1,0 +1,180 @@
+"""Tests for the Phase 6 ``discovery:`` schema parser + signal-index builder.
+
+Validates that ``parse_driver_discovery`` accepts well-formed blocks,
+rejects malformed ones, and that ``build_signal_index`` raises on
+strong-signal collisions.
+"""
+
+import pytest
+
+from server.discovery.hints import (
+    DiscoveryHintError,
+    build_signal_index,
+    load_discovery_hints,
+    parse_driver_discovery,
+)
+from server.discovery.tier_matcher import (
+    KIND_ACTIVE_PROBE,
+    KIND_BROADCAST,
+    KIND_MDNS,
+    KIND_SSDP,
+)
+
+
+def _drv(driver_id: str, **discovery) -> dict:
+    return {
+        "id": driver_id,
+        "name": driver_id.replace("_", " ").title(),
+        "manufacturer": "Acme",
+        "category": "audio",
+        "transport": "tcp",
+        "discovery": discovery or {"manual_only": True},
+    }
+
+
+class TestStrongSignalRequirement:
+    def test_no_signal_no_manual_only_raises(self):
+        with pytest.raises(DiscoveryHintError, match="no strong signal"):
+            parse_driver_discovery({
+                "id": "lonely_driver",
+                "name": "Lonely",
+                "discovery": {"oui_prefixes": ["00:11:22"]},
+            })
+
+    def test_manual_only_without_signal_is_ok(self):
+        h = parse_driver_discovery(_drv("manual_widget", manual_only=True))
+        assert h is not None
+        assert h.manual_only is True
+        assert h.mdns_services == []
+
+    def test_one_strong_signal_satisfies(self):
+        h = parse_driver_discovery(_drv(
+            "extron_sis_driver", active_probes=["extron_sis"],
+        ))
+        assert h is not None
+        assert h.active_probes == ["extron_sis"]
+
+
+class TestSchemaParsing:
+    def test_mdns_string_or_dict(self):
+        h = parse_driver_discovery(_drv(
+            "ndi_source",
+            mdns_services=[
+                "_ndi._tcp.local.",
+                {"service": "_http._tcp.local.", "txt_match": {"manufacturer": "QSC"}},
+            ],
+        ))
+        assert h is not None
+        assert h.mdns_services[0] == {"service": "_ndi._tcp.local.", "txt_match": {}}
+        assert h.mdns_services[1]["txt_match"] == {"manufacturer": "QSC"}
+
+    def test_amx_ddp_required_make(self):
+        with pytest.raises(DiscoveryHintError, match="amx_ddp.make"):
+            parse_driver_discovery(_drv("polycom_ssc", amx_ddp={"model_pattern": "Sound*"}))
+
+    def test_amx_ddp_default_model_pattern(self):
+        h = parse_driver_discovery(_drv("polycom_ssc", amx_ddp={"make": "Polycom"}))
+        assert h is not None
+        assert h.amx_ddp == {"make": "Polycom", "model_pattern": "*"}
+
+    def test_onvif_bool_or_dict(self):
+        h1 = parse_driver_discovery(_drv("axis_camera", onvif=True))
+        assert h1 is not None
+        assert "onvif" in h1.broadcast_probes
+        h2 = parse_driver_discovery(_drv(
+            "axis_camera_specific", onvif={"manufacturer": "Axis"},
+        ))
+        assert h2 is not None
+        assert h2.onvif_manufacturer == "Axis"
+
+    def test_unknown_active_probe_raises(self):
+        with pytest.raises(DiscoveryHintError, match="unknown Tier 3 active probe"):
+            parse_driver_discovery(_drv("bad", active_probes=["http_banner"]))
+
+    def test_unknown_broadcast_probe_via_explicit_dict(self):
+        with pytest.raises(DiscoveryHintError, match="onvif must be a bool"):
+            parse_driver_discovery(_drv("bad_onvif", onvif="please"))
+
+    def test_snmp_pen_must_be_positive_int(self):
+        with pytest.raises(DiscoveryHintError, match="snmp_pen"):
+            parse_driver_discovery(_drv(
+                "bad_pen",
+                snmp_pen="17049",
+                active_probes=["extron_sis"],
+            ))
+
+    def test_template_drivers_skipped(self):
+        h = parse_driver_discovery({"id": "generic_tcp", "discovery": {}})
+        assert h is None
+
+
+class TestSignalIndexBuilder:
+    def test_strong_collision_raises(self):
+        registry = [
+            _drv("a", crestron_cip=True),
+            _drv("b", crestron_cip=True),
+        ]
+        hints = load_discovery_hints(registry)
+        with pytest.raises(ValueError, match="Signal collision"):
+            build_signal_index(hints)
+
+    def test_oui_collision_allowed(self):
+        # Soft signals (Tier 4) are allowed to overlap — produces possible state.
+        registry = [
+            _drv("dsp_a", active_probes=["tesira_ttp"], oui_prefixes=["00:90:5e"]),
+            _drv("dsp_b", active_probes=["qrc"], oui_prefixes=["00:90:5e"]),
+        ]
+        hints = load_discovery_hints(registry)
+        idx = build_signal_index(hints)
+        assert sorted(idx.find_soft_oui("00:90:5e:11:22:33")) == ["dsp_a", "dsp_b"]
+
+    def test_mdns_txt_filter_disambiguates(self):
+        registry = [
+            _drv("shure_p300", mdns_services=[
+                {"service": "_http._tcp.local.", "txt_match": {"manufacturer": "Shure"}},
+            ]),
+            _drv("qsc_core", mdns_services=[
+                {"service": "_http._tcp.local.", "txt_match": {"manufacturer": "QSC"}},
+            ]),
+        ]
+        idx = build_signal_index(load_discovery_hints(registry))
+        rule = idx.find_strong(KIND_MDNS, "_http._tcp.local.", txt={"manufacturer": "QSC"})
+        assert rule is not None and rule.driver_id == "qsc_core"
+
+    def test_active_probe_collision_raises(self):
+        registry = [
+            _drv("a", active_probes=["pjlink_class1"]),
+            _drv("b", active_probes=["pjlink_class1"]),
+        ]
+        with pytest.raises(ValueError, match="Signal collision"):
+            build_signal_index(load_discovery_hints(registry))
+
+    def test_manual_only_drivers_dont_register_signals(self):
+        registry = [
+            _drv("manual_widget", manual_only=True),
+        ]
+        idx = build_signal_index(load_discovery_hints(registry))
+        assert idx.driver_count() == 0
+
+    def test_indexing_covers_all_signal_kinds(self):
+        registry = [
+            _drv(
+                "kitchen_sink",
+                mdns_services=["_pjlink._tcp.local."],
+                ssdp_device_types=["urn:schemas-upnp-org:device:MediaRenderer:1"],
+                amx_ddp={"make": "Polycom", "model_pattern": "Sound*"},
+                pjlink_class2=True,
+                active_probes=["pjlink_class1"],
+                snmp_pen=17049,
+                oui_prefixes=["00:05:a6"],
+                hostname_patterns=["^kitchen-"],
+            ),
+        ]
+        idx = build_signal_index(load_discovery_hints(registry))
+        assert idx.find_strong(KIND_MDNS, "_pjlink._tcp.local.") is not None
+        assert idx.find_strong(KIND_SSDP, "urn:schemas-upnp-org:device:MediaRenderer:1") is not None
+        assert idx.find_strong(KIND_BROADCAST, "pjlink_class2") is not None
+        assert idx.find_strong(KIND_ACTIVE_PROBE, "pjlink_class1") is not None
+        assert idx.find_soft_pen(17049) == ["kitchen_sink"]
+        assert idx.find_soft_oui("00:05:a6:aa:bb:cc") == ["kitchen_sink"]
+        assert idx.find_soft_hostname("kitchen-pjlink-1") == ["kitchen_sink"]

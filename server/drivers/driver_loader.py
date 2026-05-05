@@ -107,6 +107,20 @@ def validate_driver_definition(driver_def: dict[str, Any]) -> list[str]:
                 f"'path'/'method' (HTTP), or 'address' (OSC)"
             )
 
+    # Validate the Phase 6 ``discovery:`` block. Templates (generic_*)
+    # are exempt — they don't participate in discovery. Every other
+    # driver must declare at least one strong signal or set
+    # ``discovery.manual_only: true``; signal collisions are caught
+    # later when the SignalIndex is built.
+    driver_id = driver_def.get("id", "") or ""
+    is_template = any(driver_id.startswith(p) for p in ("generic_",))
+    if not is_template:
+        from server.discovery.hints import DiscoveryHintError, parse_driver_discovery
+        try:
+            parse_driver_discovery(driver_def)
+        except DiscoveryHintError as exc:
+            errors.append(f"discovery: {exc}")
+
     # Validate state_variables structure
     valid_types = {"string", "integer", "number", "boolean", "enum", "float"}
     for var_name, var_def in driver_def.get("state_variables", {}).items():
