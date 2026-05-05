@@ -280,18 +280,38 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
                 >
                   {field.label}
                 </label>
-                <input
-                  type={field.secret ? "password" : "text"}
-                  value={configOverrides[field.key] ?? ""}
-                  onChange={(e) =>
-                    setConfigOverrides((prev) => ({
-                      ...prev,
-                      [field.key]: e.target.value,
-                    }))
-                  }
-                  placeholder={field.key}
-                  style={{ width: "100%", fontFamily: "var(--font-mono)" }}
-                />
+                {field.type === "text" ? (
+                  <textarea
+                    value={configOverrides[field.key] ?? ""}
+                    onChange={(e) =>
+                      setConfigOverrides((prev) => ({
+                        ...prev,
+                        [field.key]: e.target.value,
+                      }))
+                    }
+                    placeholder={field.key}
+                    rows={4}
+                    style={{
+                      width: "100%",
+                      fontFamily: "var(--font-mono)",
+                      fontSize: "var(--font-size-sm)",
+                      resize: "vertical",
+                    }}
+                  />
+                ) : (
+                  <input
+                    type={field.secret ? "password" : "text"}
+                    value={configOverrides[field.key] ?? ""}
+                    onChange={(e) =>
+                      setConfigOverrides((prev) => ({
+                        ...prev,
+                        [field.key]: e.target.value,
+                      }))
+                    }
+                    placeholder={field.key}
+                    style={{ width: "100%", fontFamily: "var(--font-mono)" }}
+                  />
+                )}
               </div>
             ))}
           </div>

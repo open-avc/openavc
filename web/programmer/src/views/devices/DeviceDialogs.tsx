@@ -110,6 +110,22 @@ function ConfigFieldInputs({
                 placeholder={placeholder}
                 style={{ width: "100%" }}
               />
+            ) : fieldType === "text" ? (
+              <textarea
+                value={configValues[key] ?? ""}
+                onChange={(e) =>
+                  setConfigValues((v) => ({ ...v, [key]: e.target.value }))
+                }
+                placeholder={placeholder}
+                rows={6}
+                style={{
+                  width: "100%",
+                  fontFamily: "var(--font-mono, monospace)",
+                  fontSize: "var(--font-size-sm)",
+                  resize: "vertical",
+                  minHeight: "120px",
+                }}
+              />
             ) : (
               <input
                 value={configValues[key] ?? ""}
@@ -670,6 +686,9 @@ export function EditDeviceDialog({
         } else if (fieldType === "integer" || fieldType === "number" || fieldType === "float") {
           const isSimpleNumber = /^-?\d+(\.\d+)?$/.test(val);
           config[key] = isSimpleNumber ? Number(val) : val;
+        } else if (fieldType === "text") {
+          // Multi-line text — preserve the raw string, no JSON / number coercion
+          config[key] = val;
         } else {
           // Try parsing as JSON for object-type values (command_map, etc.)
           try {

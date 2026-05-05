@@ -215,6 +215,7 @@ export function ConfigSchemaEditor({ draft, onUpdate }: ConfigSchemaEditorProps)
                       style={{ width: "100%" }}
                     >
                       <option value="string">String</option>
+                      <option value="text">Text (multi-line)</option>
                       <option value="integer">Integer</option>
                       <option value="number">Number</option>
                       <option value="boolean">Boolean</option>

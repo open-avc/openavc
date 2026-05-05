@@ -402,7 +402,9 @@ Notice how much cleaner this is compared to JSON: comments explain the protocol,
 }
 ```
 
-Types: `string`, `integer`, `number`, `float`, `boolean`, `enum`. For `enum`, add a `"values"` array.
+Types: `string`, `text`, `integer`, `number`, `float`, `boolean`, `enum`. For `enum`, add a `"values"` array.
+
+`text` renders as a multi-line monospace textarea in the Add Device dialog. Use it for config that doesn't fit in a single line — block lists for DSPs (e.g., Biamp Tesira's per-block declarations), zone definitions for room combiners, channel-name maps, custom command translation tables, anything the integrator pastes from manufacturer software. The raw string is preserved on save (no JSON parsing or number coercion); your driver parses it at `__init__` time.
 
 #### `device_settings` entry
 

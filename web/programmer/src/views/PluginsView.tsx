@@ -686,6 +686,24 @@ function SchemaFieldInput({
       input = <DeviceRefPicker value={String(value ?? "")} onChange={(v) => onChange(v)} />;
       break;
 
+    case "text":
+      input = (
+        <textarea
+          value={String(value ?? "")}
+          placeholder={field.placeholder}
+          rows={6}
+          onChange={(e) => onChange(e.target.value)}
+          style={{
+            ...inputStyle,
+            fontFamily: "var(--font-mono, monospace)",
+            fontSize: "var(--font-size-sm)",
+            resize: "vertical",
+            minHeight: "120px",
+          }}
+        />
+      );
+      break;
+
     case "string":
     default:
       input = (

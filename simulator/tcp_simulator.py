@@ -142,7 +142,8 @@ class TCPSimulator(BaseSimulator):
     # ── Internal ──
 
     async def _read_messages(
-        self, reader: asyncio.StreamReader
+        self, reader: asyncio.StreamReader,
+        buffer: bytearray | None = None,
     ) -> list[bytes] | None:
         """Read one or more messages from the stream.
 
@@ -150,6 +151,16 @@ class TCPSimulator(BaseSimulator):
             list[bytes] — one or more messages to process
             []          — timeout, no data (caller should continue)
             None        — connection closed (caller should break)
+
+        In line mode the optional `buffer` is used to preserve a partial
+        trailing line across reads — TCP can deliver a single command in
+        multiple chunks, especially during high-burst phases like a driver's
+        on-connect subscribe loop. Without the buffer, a chunk that ends
+        mid-line would be misinterpreted as a complete command and the next
+        chunk's leading fragment would be treated as a fresh command.
+        Drivers that fire a few commands at a time never hit this; bursty
+        drivers (e.g. Biamp Tesira's ~80-line subscribe-on-connect) do.
+        Callers in _handle_client own the buffer and pass it in.
         """
         if self._line_mode:
             # Flexible line reading: accept \r, \n, or \r\n as terminators.
@@ -162,8 +173,24 @@ class TCPSimulator(BaseSimulator):
                 return []
             if not raw:
                 return None
-            # Split on any combination of \r and \n, filter empties
-            parts = re.split(rb"[\r\n]+", raw)
+            # Append to the persistent partial-line buffer (if provided).
+            # If the chunk doesn't end with a delimiter, the trailing bytes
+            # stay in the buffer for the next read so we don't fragment a
+            # command across read boundaries.
+            if buffer is None:
+                buffer = bytearray()
+            buffer.extend(raw)
+            # Find the last delimiter byte; everything after it is partial.
+            # If there's no delimiter at all, all bytes are partial — emit
+            # nothing and wait for more data.
+            last_delim = max(buffer.rfind(b"\r"), buffer.rfind(b"\n"))
+            if last_delim < 0:
+                return []
+            complete = bytes(buffer[: last_delim + 1])
+            tail = bytes(buffer[last_delim + 1:])
+            buffer.clear()
+            buffer.extend(tail)
+            parts = re.split(rb"[\r\n]+", complete)
             return [p for p in parts if p]
 
         if self._delimiter:
@@ -198,6 +225,11 @@ class TCPSimulator(BaseSimulator):
         peer = writer.get_extra_info("peername")
         logger.info("%s: client connected from %s (id=%s)", self.name, peer, client_id)
 
+        # Per-client partial-line buffer for line-mode reads. _read_messages
+        # treats this as authoritative — any trailing bytes that don't end
+        # with a delimiter stay here and concatenate with the next chunk.
+        line_buffer: bytearray = bytearray()
+
         try:
             # Send greeting if defined
             greeting = await self.on_client_connected(client_id)
@@ -214,7 +246,7 @@ class TCPSimulator(BaseSimulator):
 
             # Read loop
             while self._running:
-                messages = await self._read_messages(reader)
+                messages = await self._read_messages(reader, buffer=line_buffer)
                 if messages is None:
                     break  # Connection closed
                 if not messages:
@@ -266,8 +298,14 @@ class TCPSimulator(BaseSimulator):
                 if disconnect:
                     break
 
-        except (ConnectionError, OSError):
-            pass
+        except (ConnectionError, OSError) as e:
+            logger.info(
+                "%s: client %s connection error: %s", self.name, client_id, e
+            )
+        except Exception:
+            logger.exception(
+                "%s: client %s unexpected error", self.name, client_id
+            )
         finally:
             self._clients.pop(client_id, None)
             try:
