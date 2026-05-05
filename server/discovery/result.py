@@ -1,9 +1,181 @@
-"""Discovery result models."""
+"""Discovery result models.
+
+Two generations of types live here during the discovery redesign:
+
+1. Legacy: ``DriverMatch`` and ``DiscoveredDevice.confidence``/``sources`` —
+   the additive-scoring heuristic system. Still wired into the running
+   engine and UI until the redesign reaches the orchestrator swap.
+
+2. New: ``DeviceState``, ``IdentificationMatch``, and ``Evidence`` —
+   deterministic three-state identification. Populated alongside legacy
+   fields as new tier-based probes land. The UI reads whichever is
+   present; once every probe writes the new types, the legacy fields
+   are removed.
+
+See discovery-redesign-plan.md for the full architecture.
+"""
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any
+
+
+# ---------------------------------------------------------------------------
+# New deterministic types (discovery redesign)
+# ---------------------------------------------------------------------------
+
+
+class DeviceState(str, Enum):
+    """Identification state for a discovered device.
+
+    The state itself is the confidence — there is no separate score.
+
+    - ``identified``: a Tier 1, 2, or 3 probe matched a driver
+      deterministically. ``IdentificationMatch.driver_id`` is set and the
+      UI offers one-click Add.
+    - ``possible``: one ambiguous strong signal (an OUI-only match, a
+      generic UPnP MediaRenderer, etc). May offer 1+ candidate drivers,
+      but requires user confirmation before adding.
+    - ``unknown``: host responded to ping/ARP but no driver matched.
+      The UI shows what we know (IP, MAC, OUI vendor, open ports) and
+      lets the user pick a driver manually or hide the device.
+    """
+
+    IDENTIFIED = "identified"
+    POSSIBLE = "possible"
+    UNKNOWN = "unknown"
+
+
+class SignalTier(str, Enum):
+    """Which discovery tier produced a signal.
+
+    Used in ``Evidence.tier`` so the UI's "Why?" reveal can show
+    the user *how* a device was identified.
+    """
+
+    PASSIVE_LISTENER = "tier1"     # mDNS, SSDP, AMX DDP
+    BROADCAST_PROBE = "tier2"      # PJLink Class 2, Crestron CIP, ONVIF, etc.
+    ACTIVE_PROBE = "tier3"         # PJLink Class 1, Extron SIS, Samsung MDC, etc.
+    ENRICHMENT = "tier4"           # SNMP, OUI, NetBIOS, reverse DNS
+
+
+@dataclass
+class Evidence:
+    """A single piece of evidence collected during discovery.
+
+    Every observed signal — mDNS service announcement, broadcast probe
+    response, active TCP probe response, SNMP PEN match, OUI lookup —
+    appends one Evidence record to the device. This is the audit trail
+    behind the "Why?" UI link and the data plumbing for future
+    catalog-growth telemetry.
+
+    ``tier`` is the discovery tier (see ``SignalTier``).
+    ``source`` is a stable, human-readable identifier for the signal
+    (e.g. ``"mdns:_netaudio-cmc._udp"``, ``"broadcast:crestron_cip"``,
+    ``"probe:pjlink_class1"``, ``"snmp:pen:21317"``).
+    ``data`` is whatever raw evidence the signal produced (TXT records,
+    response bytes, parsed sysObjectID, etc).
+    ``at`` is a unix timestamp for ordering and audit.
+    """
+
+    tier: SignalTier
+    source: str
+    data: dict[str, Any] = field(default_factory=dict)
+    at: float = field(default_factory=time.time)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "tier": self.tier.value,
+            "source": self.source,
+            "data": self.data,
+            "at": self.at,
+        }
+
+
+@dataclass
+class IdentificationMatch:
+    """The tier-based identification result for a single device.
+
+    Replaces the legacy ``DriverMatch`` list of (driver_id, confidence)
+    tuples. There is exactly one IdentificationMatch per device.
+
+    Fields by state:
+    - ``identified``: ``driver_id`` is set; ``candidates`` is empty;
+      ``source`` references the deterministic signal that matched.
+    - ``possible``: ``driver_id`` is None; ``candidates`` has 1+ ids;
+      ``source`` references the soft signal (OUI, generic UPnP, etc).
+    - ``unknown``: ``driver_id`` is None; ``candidates`` is empty;
+      ``reason`` explains why nothing matched.
+
+    All states carry the full ``evidence`` list — the audit trail of
+    every signal observed for the device, regardless of whether any
+    matched a driver. This is what the "Why?" UI link reveals.
+    """
+
+    state: DeviceState
+    driver_id: str | None = None
+    candidates: list[str] = field(default_factory=list)
+    source: str = ""
+    reason: str = ""
+    evidence: list[Evidence] = field(default_factory=list)
+
+    @classmethod
+    def identified(
+        cls,
+        driver_id: str,
+        source: str,
+        evidence: list[Evidence] | None = None,
+    ) -> "IdentificationMatch":
+        return cls(
+            state=DeviceState.IDENTIFIED,
+            driver_id=driver_id,
+            source=source,
+            evidence=list(evidence or []),
+        )
+
+    @classmethod
+    def possible(
+        cls,
+        candidates: list[str],
+        source: str,
+        evidence: list[Evidence] | None = None,
+    ) -> "IdentificationMatch":
+        return cls(
+            state=DeviceState.POSSIBLE,
+            candidates=list(candidates),
+            source=source,
+            evidence=list(evidence or []),
+        )
+
+    @classmethod
+    def unknown(
+        cls,
+        reason: str = "no_signal_matched",
+        evidence: list[Evidence] | None = None,
+    ) -> "IdentificationMatch":
+        return cls(
+            state=DeviceState.UNKNOWN,
+            reason=reason,
+            evidence=list(evidence or []),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "state": self.state.value,
+            "driver_id": self.driver_id,
+            "candidates": list(self.candidates),
+            "source": self.source,
+            "reason": self.reason,
+            "evidence": [e.to_dict() for e in self.evidence],
+        }
+
+
+# ---------------------------------------------------------------------------
+# Legacy types (kept until orchestrator swap)
+# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -63,6 +235,12 @@ class DiscoveredDevice:
     # Responding status
     alive: bool = True
 
+    # ---- Discovery redesign: deterministic identification fields ----
+    # Populated alongside legacy fields as new tier-based probes land.
+    # See ``IdentificationMatch`` and ``Evidence`` above.
+    identification: IdentificationMatch | None = None
+    evidence_log: list[Evidence] = field(default_factory=list)
+
     def to_dict(self) -> dict[str, Any]:
         """Serialize for JSON API response."""
         return {
@@ -96,6 +274,10 @@ class DiscoveredDevice:
             "confidence": self.confidence,
             "category": self.category,
             "alive": self.alive,
+            "identification": (
+                self.identification.to_dict() if self.identification else None
+            ),
+            "evidence_log": [e.to_dict() for e in self.evidence_log],
         }
 
 
