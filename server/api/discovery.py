@@ -61,6 +61,9 @@ async def refresh_all_device_matches() -> None:
     from server.core.device_manager import get_driver_registry
 
     _engine.load_driver_hints_from_registry(get_driver_registry())
+    # Re-fold the community catalog so un-installed drivers stay matchable
+    # — discovery's whole job is suggesting what to install next.
+    await _engine.refresh_signal_index_with_catalog()
 
     for ip in list(_engine.results.keys()):
         updated = await _engine.refresh_device_matches(ip)

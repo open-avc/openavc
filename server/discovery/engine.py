@@ -157,6 +157,7 @@ class DiscoveryEngine:
         self.discovery_hints: list[DiscoveryHint] = []
         self.signal_index: SignalIndex = SignalIndex()
         self.tier_matcher: TierMatcher = TierMatcher(self.signal_index)
+        self._installed_registry: list[dict[str, Any]] = []
         self.community_index = CommunityIndexCache()
         self.community_devices = CommunityDevicesCache()
         self.results: dict[str, DiscoveredDevice] = {}
@@ -186,20 +187,70 @@ class DiscoveryEngine:
         so the ARP/OUI scan phase can attach a friendly vendor name
         before the matcher runs.
         """
-        hints = load_discovery_hints(registry)
-        self.discovery_hints = hints
+        self._installed_registry = list(registry)
+        self._rebuild_signal_index(community_drivers=[])
+
+    async def refresh_signal_index_with_catalog(self) -> None:
+        """Re-fold the community catalog into the SignalIndex.
+
+        Discovery's job is to suggest what driver to install, so the
+        catalog (un-installed drivers) must contribute rules just like
+        the installed registry does. Installed wins on collisions.
+
+        Called at scan start so a freshly-fetched catalog takes effect
+        without a server restart.
+        """
         try:
-            self.signal_index = build_signal_index(hints)
+            community = await self.community_index.get_drivers()
+        except Exception:
+            log.warning("Could not fetch community catalog for SignalIndex; using installed only", exc_info=True)
+            community = []
+        self._rebuild_signal_index(community_drivers=community)
+
+    def _rebuild_signal_index(
+        self, community_drivers: list[dict[str, Any]],
+    ) -> None:
+        """Rebuild the SignalIndex from installed registry + community catalog.
+
+        Installed drivers register first; their rules win on (kind, source_id,
+        txt_match) collisions. Community drivers fill in coverage for devices
+        not yet installed — that's how discovery surfaces "Install & Add"
+        candidates for unfamiliar gear.
+        """
+        installed_ids: set[str] = {
+            str(d.get("id") or "") for d in self._installed_registry
+        }
+
+        installed_hints = load_discovery_hints(self._installed_registry)
+
+        # Skip catalog drivers already represented by an installed driver —
+        # the installed copy is authoritative (may be a newer version with
+        # corrected hints).
+        catalog_only = [
+            d for d in community_drivers
+            if str(d.get("id") or "") not in installed_ids
+        ]
+        community_hints = load_discovery_hints(catalog_only)
+
+        all_hints = installed_hints + community_hints
+        self.discovery_hints = all_hints
+
+        try:
+            self.signal_index = build_signal_index(all_hints)
         except ValueError as exc:
-            # Strong-signal collisions abort the build, but the engine
-            # must keep running on the previous (possibly empty) index
-            # so a single bad driver does not break discovery.
-            log.error("Discovery signal index rejected: %s", exc)
-            self.signal_index = SignalIndex()
+            # Strong-signal collisions abort the build. Fall back to an
+            # installed-only index so an inconsistent catalog can't break
+            # discovery on the device.
+            log.error("Discovery signal index rejected with catalog: %s; falling back to installed-only", exc)
+            try:
+                self.signal_index = build_signal_index(installed_hints)
+            except ValueError as exc2:
+                log.error("Installed-only signal index also rejected: %s", exc2)
+                self.signal_index = SignalIndex()
         self.tier_matcher = TierMatcher(self.signal_index)
 
         added = 0
-        for hint in hints:
+        for hint in all_hints:
             for prefix in hint.oui_prefixes:
                 before = len(self.oui_db._table)
                 self.oui_db.add_prefix(prefix, hint.manufacturer, hint.category)
@@ -207,8 +258,10 @@ class DiscoveryEngine:
                     added += 1
 
         log.info(
-            "Discovery loaded %d driver hint(s); signal index covers %d driver(s); %d new OUI prefixes",
-            len(hints), self.signal_index.driver_count(), added,
+            "Discovery loaded %d hint(s) (%d installed + %d catalog); "
+            "signal index covers %d driver(s); %d new OUI prefixes",
+            len(all_hints), len(installed_hints), len(community_hints),
+            self.signal_index.driver_count(), added,
         )
 
     def get_results(self) -> list[dict[str, Any]]:
@@ -364,6 +417,13 @@ class DiscoveryEngine:
             })
 
     async def _scan_pipeline(self, subnets: list[str]) -> None:
+        # Refresh the SignalIndex with the latest community catalog so
+        # un-installed drivers contribute deterministic rules — that's
+        # how discovery proposes what to install.
+        await self.refresh_signal_index_with_catalog()
+        return await self._scan_pipeline_inner(subnets)
+
+    async def _scan_pipeline_inner(self, subnets: list[str]) -> None:
         """The core scan phases (Phase 6 four-tier orchestrator).
 
         Phase layout:
