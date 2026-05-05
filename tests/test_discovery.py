@@ -272,19 +272,24 @@ class TestDiscoveryEngine:
         d2 = self.engine._get_or_create("192.168.1.1")
         assert d is d2
 
-    def test_results_sorted_by_confidence(self):
-        self.engine.results["192.168.1.1"] = DiscoveredDevice(
-            ip="192.168.1.1", confidence=0.3
-        )
+    def test_results_sorted_identified_first(self):
+        from server.discovery.result import IdentificationMatch
+
+        self.engine.results["192.168.1.1"] = DiscoveredDevice(ip="192.168.1.1")
         self.engine.results["192.168.1.2"] = DiscoveredDevice(
-            ip="192.168.1.2", confidence=0.8
+            ip="192.168.1.2",
+            identification=IdentificationMatch.identified(
+                driver_id="x", source="probe:x",
+            ),
         )
         self.engine.results["192.168.1.3"] = DiscoveredDevice(
-            ip="192.168.1.3", confidence=0.5
+            ip="192.168.1.3",
+            identification=IdentificationMatch.possible(
+                candidates=["y"], source="oui:00:11:22",
+            ),
         )
-        results = self.engine.get_results()
-        confidences = [r["confidence"] for r in results]
-        assert confidences == [0.8, 0.5, 0.3]
+        ips = [r["ip"] for r in self.engine.get_results()]
+        assert ips == ["192.168.1.2", "192.168.1.3", "192.168.1.1"]
 
     @pytest.mark.asyncio
     async def test_start_scan_no_subnets_raises(self):
@@ -347,10 +352,14 @@ class TestDiscoveryEngine:
                     with patch("server.discovery.engine.grab_banners", new_callable=AsyncMock) as mock_banners:
                         mock_banners.return_value = {}
 
-                        # Mock passive scanners (Chunk 4) and SNMP (Chunk 5)
+                        # Mock Tier 1 listeners + Tier 2 broadcasts + SNMP
                         with patch("server.discovery.engine.MDNSScanner") as mock_mdns_cls, \
                              patch("server.discovery.engine.SSDPScanner") as mock_ssdp_cls, \
+                             patch("server.discovery.engine.AMXDDPScanner") as mock_amx_cls, \
                              patch("server.discovery.engine.SNMPScanner") as mock_snmp_cls, \
+                             patch("server.discovery.engine.probe_pjlink_class2", new_callable=AsyncMock, return_value={}), \
+                             patch("server.discovery.engine.probe_crestron_cip", new_callable=AsyncMock, return_value={}), \
+                             patch("server.discovery.engine.probe_onvif", new_callable=AsyncMock, return_value={}), \
                              patch("server.discovery.engine._resolve_hostnames", new_callable=AsyncMock, return_value={}):
                             mock_mdns = MagicMock()
                             mock_mdns.start = AsyncMock(return_value={})
@@ -358,13 +367,13 @@ class TestDiscoveryEngine:
                             mock_ssdp = MagicMock()
                             mock_ssdp.scan = AsyncMock(return_value={})
                             mock_ssdp_cls.return_value = mock_ssdp
+                            mock_amx = MagicMock()
+                            mock_amx.start = AsyncMock(return_value={})
+                            mock_amx.stop = AsyncMock()
+                            mock_amx_cls.return_value = mock_amx
                             mock_snmp = MagicMock()
                             mock_snmp.scan_devices = AsyncMock(return_value={})
                             mock_snmp_cls.return_value = mock_snmp
-
-                            updates = []
-                            async def capture_update(msg):
-                                updates.append(msg)
 
                             await self.engine._scan_pipeline(["192.168.1.0/24"])
 
@@ -378,7 +387,9 @@ class TestDiscoveryEngine:
         assert extron.manufacturer == "Extron"
         assert extron.category == "switcher"
         assert 23 in extron.open_ports
-        assert extron.confidence > 0
+        # TierMatcher ran with empty signal index → unknown state.
+        assert extron.identification is not None
+        assert extron.identification.state.value == "unknown"
 
         # Check NEC device
         nec = self.engine.results.get("192.168.1.72")

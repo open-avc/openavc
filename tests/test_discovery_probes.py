@@ -445,7 +445,7 @@ class TestEngineWithProbes:
         )
         return mock_mdns_cls, mock_ssdp_cls, mock_snmp_cls, mock_hostnames
 
-    def _configure_passive_mocks(self, mdns_cls, ssdp_cls, snmp_cls):
+    def _configure_passive_mocks(self, mdns_cls, ssdp_cls, snmp_cls, amx_cls=None):
         mock_mdns = MagicMock()
         mock_mdns.start = AsyncMock(return_value={})
         mdns_cls.return_value = mock_mdns
@@ -455,6 +455,11 @@ class TestEngineWithProbes:
         mock_snmp = MagicMock()
         mock_snmp.scan_devices = AsyncMock(return_value={})
         snmp_cls.return_value = mock_snmp
+        if amx_cls is not None:
+            mock_amx = MagicMock()
+            mock_amx.start = AsyncMock(return_value={})
+            mock_amx.stop = AsyncMock()
+            amx_cls.return_value = mock_amx
 
     @pytest.mark.asyncio
     async def test_pipeline_runs_protocol_probes(self):
@@ -470,10 +475,14 @@ class TestEngineWithProbes:
              patch("server.discovery.engine.run_protocol_probes", new_callable=AsyncMock) as mock_probes, \
              patch("server.discovery.engine.MDNSScanner") as mdns_cls, \
              patch("server.discovery.engine.SSDPScanner") as ssdp_cls, \
+             patch("server.discovery.engine.AMXDDPScanner") as amx_cls, \
              patch("server.discovery.engine.SNMPScanner") as snmp_cls, \
+             patch("server.discovery.engine.probe_pjlink_class2", new_callable=AsyncMock, return_value={}), \
+             patch("server.discovery.engine.probe_crestron_cip", new_callable=AsyncMock, return_value={}), \
+             patch("server.discovery.engine.probe_onvif", new_callable=AsyncMock, return_value={}), \
              patch("server.discovery.engine._resolve_hostnames", new_callable=AsyncMock, return_value={}):
 
-            self._configure_passive_mocks(mdns_cls, ssdp_cls, snmp_cls)
+            self._configure_passive_mocks(mdns_cls, ssdp_cls, snmp_cls, amx_cls)
             mock_ping.return_value = ["192.168.1.72"]
             mock_arp.return_value = {"192.168.1.72": "04:fe:31:aa:bb:cc"}
             mock_ports.return_value = [4352, 80]
@@ -496,9 +505,7 @@ class TestEngineWithProbes:
         assert device.model == "PA1004UL"
         assert device.device_name == "Room101 Projector"
         assert "pjlink" in device.protocols
-        assert "probe_confirmed" in device.sources
-        assert "model_known" in device.sources
-        assert device.confidence > 0.3
+        assert any(e.source == "probe:pjlink_class1" for e in device.evidence_log)
 
     @pytest.mark.asyncio
     async def test_pipeline_banner_enriches_device(self):
@@ -514,10 +521,14 @@ class TestEngineWithProbes:
              patch("server.discovery.engine.run_protocol_probes", wraps=run_protocol_probes), \
              patch("server.discovery.engine.MDNSScanner") as mdns_cls, \
              patch("server.discovery.engine.SSDPScanner") as ssdp_cls, \
+             patch("server.discovery.engine.AMXDDPScanner") as amx_cls, \
              patch("server.discovery.engine.SNMPScanner") as snmp_cls, \
+             patch("server.discovery.engine.probe_pjlink_class2", new_callable=AsyncMock, return_value={}), \
+             patch("server.discovery.engine.probe_crestron_cip", new_callable=AsyncMock, return_value={}), \
+             patch("server.discovery.engine.probe_onvif", new_callable=AsyncMock, return_value={}), \
              patch("server.discovery.engine._resolve_hostnames", new_callable=AsyncMock, return_value={}):
 
-            self._configure_passive_mocks(mdns_cls, ssdp_cls, snmp_cls)
+            self._configure_passive_mocks(mdns_cls, ssdp_cls, snmp_cls, amx_cls)
             mock_ping.return_value = ["192.168.1.50"]
             mock_arp.return_value = {"192.168.1.50": "00:05:a6:12:34:56"}
             mock_ports.return_value = [23]

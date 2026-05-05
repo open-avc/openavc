@@ -65,7 +65,8 @@ class TestDiscoveryEngineBasic:
     def test_initial_state(self):
         assert self.engine.get_results() == []
         assert self.engine.scan_status.status == "idle"
-        assert self.engine.driver_matcher is None
+        assert self.engine.signal_index.driver_count() == 0
+        assert self.engine.discovery_hints == []
 
     def test_get_or_create_new(self):
         device = self.engine._get_or_create("192.168.1.1")
@@ -90,13 +91,25 @@ class TestDiscoveryEngineBasic:
         assert len(self.engine.results) == 0
         assert self.engine.scan_status.status == "idle"
 
-    def test_results_sorted_by_confidence_descending(self):
-        self.engine.results["a"] = DiscoveredDevice(ip="10.0.0.1", confidence=0.2)
-        self.engine.results["b"] = DiscoveredDevice(ip="10.0.0.2", confidence=0.9)
-        self.engine.results["c"] = DiscoveredDevice(ip="10.0.0.3", confidence=0.5)
-        results = self.engine.get_results()
-        confidences = [r["confidence"] for r in results]
-        assert confidences == [0.9, 0.5, 0.2]
+    def test_results_sorted_identified_first(self):
+        from server.discovery.result import IdentificationMatch
+
+        self.engine.results["a"] = DiscoveredDevice(ip="10.0.0.1")
+        self.engine.results["b"] = DiscoveredDevice(
+            ip="10.0.0.2",
+            identification=IdentificationMatch.identified(
+                driver_id="x", source="probe:x",
+            ),
+        )
+        self.engine.results["c"] = DiscoveredDevice(
+            ip="10.0.0.3",
+            identification=IdentificationMatch.possible(
+                candidates=["y"], source="oui:00:11:22",
+            ),
+        )
+        ips = [r["ip"] for r in self.engine.get_results()]
+        # Identified first, then possible, then unknown.
+        assert ips == ["10.0.0.2", "10.0.0.3", "10.0.0.1"]
 
     def test_get_status_reflects_state(self):
         self.engine.scan_status.status = "running"
@@ -455,8 +468,8 @@ class TestDriverMatching:
     def setup_method(self):
         self.engine = DiscoveryEngine()
 
-    def test_load_driver_hints_creates_matcher(self):
-        """Loading driver hints from registry creates a DriverMatcher."""
+    def test_load_driver_hints_builds_signal_index(self):
+        """Loading driver hints from registry populates the SignalIndex."""
         registry = [
             {
                 "id": "pjlink_class1",
@@ -464,10 +477,14 @@ class TestDriverMatching:
                 "category": "projector",
                 "manufacturer": "Generic",
                 "transport": "tcp",
+                "discovery": {
+                    "active_probes": ["pjlink_class1"],
+                    "pjlink_class2": True,
+                },
             }
         ]
         self.engine.load_driver_hints_from_registry(registry)
-        assert self.engine.driver_matcher is not None
+        assert self.engine.signal_index.driver_count() == 1
 
     async def test_refresh_device_matches_nonexistent(self):
         """Refreshing matches for a device not in results returns None."""
@@ -475,22 +492,16 @@ class TestDriverMatching:
         assert result is None
 
     async def test_refresh_device_matches_existing(self):
-        """Refreshing matches for an existing device works."""
+        """Refreshing matches re-runs TierMatcher.match on the device."""
         self.engine.results["10.0.0.1"] = DiscoveredDevice(
             ip="10.0.0.1",
             open_ports=[4352],
-            sources=["alive", "av_port_open"],
         )
-
-        # Mock community index to return empty
-        with patch.object(
-            self.engine.community_index, "get_drivers",
-            new_callable=AsyncMock, return_value=[]
-        ):
-            result = await self.engine.refresh_device_matches("10.0.0.1")
-
+        result = await self.engine.refresh_device_matches("10.0.0.1")
         assert result is not None
         assert result["ip"] == "10.0.0.1"
+        # No driver hints loaded → unknown state.
+        assert result["identification"]["state"] == "unknown"
 
 
 # --- collect passive results tests ---
@@ -515,8 +526,8 @@ class TestCollectPassiveResults:
         except asyncio.CancelledError:
             pass
 
-        # Should not raise
-        await self.engine._collect_passive_results(mdns_task, ssdp_task)
+        amx_task = asyncio.create_task(asyncio.sleep(0))
+        await self.engine._collect_passive_results(mdns_task, ssdp_task, amx_task)
 
     async def test_handles_failed_tasks(self):
         """Failed mDNS/SSDP tasks don't crash the collector."""
@@ -527,8 +538,8 @@ class TestCollectPassiveResults:
         ssdp_task = asyncio.create_task(failing())
         await asyncio.sleep(0.05)  # let tasks fail
 
-        # Should not raise
-        await self.engine._collect_passive_results(mdns_task, ssdp_task)
+        amx_task = asyncio.create_task(asyncio.sleep(0))
+        await self.engine._collect_passive_results(mdns_task, ssdp_task, amx_task)
 
 
 class TestCollectSnmpResults:

@@ -634,7 +634,6 @@ class TestEngineSNMPIntegration:
 
         assert "192.168.1.72" in self.engine.results
         device = self.engine.results["192.168.1.72"]
-        assert "snmp_identified" in device.sources
         assert device.device_name == "Projector-Room101"
         assert device.manufacturer == "NEC"
         assert device.snmp_info is not None
@@ -664,7 +663,6 @@ class TestEngineSNMPIntegration:
             ip="192.168.1.50",
             mac="00:05:a6:12:34:56",
             manufacturer="Extron",
-            sources=["alive", "mac_known", "oui_av_mfg"],
         )
 
         snmp_results = {
@@ -684,7 +682,6 @@ class TestEngineSNMPIntegration:
         assert device.device_name == "Main-Switcher"
         assert "CrossPoint" in device.model
         assert "V1.07" in device.firmware
-        assert "snmp_identified" in device.sources
 
 
 # ============================================================

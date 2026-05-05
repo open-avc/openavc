@@ -997,9 +997,14 @@ class TestEnginePassiveIntegration:
         status = self.engine.get_status()
         assert status["total_phases"] == 8
 
+    def _amx_future(self, result=None):
+        f = asyncio.get_event_loop().create_future()
+        f.set_result(result or {})
+        return f
+
     @pytest.mark.asyncio
     async def test_collect_passive_results_mdns(self):
-        """Test that mDNS results are merged into engine results."""
+        """mDNS results merge into engine results + emit Tier 1 evidence."""
         mdns_results = {
             "192.168.1.72": MDNSResult(
                 ip="192.168.1.72",
@@ -1010,26 +1015,26 @@ class TestEnginePassiveIntegration:
                 txt_records={"manufacturer": "NEC", "model": "PA1004UL"},
             ),
         }
-        ssdp_results = {}
 
         mdns_future = asyncio.get_event_loop().create_future()
         mdns_future.set_result(mdns_results)
         ssdp_future = asyncio.get_event_loop().create_future()
-        ssdp_future.set_result(ssdp_results)
+        ssdp_future.set_result({})
 
-        await self.engine._collect_passive_results(mdns_future, ssdp_future)
+        await self.engine._collect_passive_results(
+            mdns_future, ssdp_future, self._amx_future(),
+        )
 
         assert "192.168.1.72" in self.engine.results
         device = self.engine.results["192.168.1.72"]
         assert device.alive is True
-        assert "mdns_advertised" in device.sources
-        assert "NEC PA1004UL" == device.device_name
+        assert any(e.source == "mdns:_pjlink._tcp.local." for e in device.evidence_log)
+        assert device.device_name == "NEC PA1004UL"
         assert "_pjlink._tcp.local." in device.mdns_services
 
     @pytest.mark.asyncio
     async def test_collect_passive_results_ssdp(self):
-        """Test that SSDP results are merged into engine results."""
-        mdns_results = {}
+        """SSDP results merge into engine results + emit Tier 1 evidence."""
         ssdp_results = {
             "192.168.1.50": SSDPResult(
                 ip="192.168.1.50",
@@ -1043,28 +1048,31 @@ class TestEnginePassiveIntegration:
         }
 
         mdns_future = asyncio.get_event_loop().create_future()
-        mdns_future.set_result(mdns_results)
+        mdns_future.set_result({})
         ssdp_future = asyncio.get_event_loop().create_future()
         ssdp_future.set_result(ssdp_results)
 
-        await self.engine._collect_passive_results(mdns_future, ssdp_future)
+        await self.engine._collect_passive_results(
+            mdns_future, ssdp_future, self._amx_future(),
+        )
 
         assert "192.168.1.50" in self.engine.results
         device = self.engine.results["192.168.1.50"]
         assert device.alive is True
-        assert "ssdp_identified" in device.sources
+        assert any(
+            e.data.get("source_id") == "urn:schemas-upnp-org:device:MediaRenderer:1"
+            for e in device.evidence_log
+        )
         assert device.device_name == "Living Room TV"
         assert device.manufacturer == "Samsung"
 
     @pytest.mark.asyncio
     async def test_collect_passive_results_merge_with_active(self):
-        """Passive results should merge with existing active scan results."""
-        # Pre-populate from active scan
+        """Passive results merge with existing active-scan device records."""
         self.engine.results["192.168.1.50"] = DiscoveredDevice(
             ip="192.168.1.50",
             mac="8c:71:f8:11:22:33",
             manufacturer="Samsung",
-            sources=["alive", "mac_known", "oui_av_mfg"],
         )
 
         ssdp_results = {
@@ -1081,32 +1089,32 @@ class TestEnginePassiveIntegration:
         ssdp_future = asyncio.get_event_loop().create_future()
         ssdp_future.set_result(ssdp_results)
 
-        await self.engine._collect_passive_results(mdns_future, ssdp_future)
+        await self.engine._collect_passive_results(
+            mdns_future, ssdp_future, self._amx_future(),
+        )
 
         device = self.engine.results["192.168.1.50"]
-        assert device.mac == "8c:71:f8:11:22:33"  # Preserved from active
-        assert device.device_name == "Conference Room Display"  # From SSDP
-        assert device.model == "QM55R"  # From SSDP
-        # Longer manufacturer wins (merge_device_info behavior)
+        assert device.mac == "8c:71:f8:11:22:33"
+        assert device.device_name == "Conference Room Display"
+        assert device.model == "QM55R"
         assert device.manufacturer == "Samsung Electronics"
-        assert "ssdp_identified" in device.sources
-        assert "alive" in device.sources  # Preserved
 
     @pytest.mark.asyncio
     async def test_collect_passive_handles_failed_tasks(self):
-        """Should handle tasks that raised exceptions."""
+        """Failed mDNS/SSDP/AMX-DDP tasks don't crash the collector."""
         mdns_future = asyncio.get_event_loop().create_future()
         mdns_future.set_exception(OSError("Socket error"))
         ssdp_future = asyncio.get_event_loop().create_future()
         ssdp_future.set_result({})
 
-        # Should not raise
-        await self.engine._collect_passive_results(mdns_future, ssdp_future)
+        await self.engine._collect_passive_results(
+            mdns_future, ssdp_future, self._amx_future(),
+        )
         assert len(self.engine.results) == 0
 
     @pytest.mark.asyncio
     async def test_collect_passive_both_contribute(self):
-        """Both mDNS and SSDP can contribute info about the same device."""
+        """mDNS + SSDP can both contribute info about the same device."""
         mdns_results = {
             "192.168.1.50": MDNSResult(
                 ip="192.168.1.50",
@@ -1129,15 +1137,16 @@ class TestEnginePassiveIntegration:
         ssdp_future = asyncio.get_event_loop().create_future()
         ssdp_future.set_result(ssdp_results)
 
-        await self.engine._collect_passive_results(mdns_future, ssdp_future)
+        await self.engine._collect_passive_results(
+            mdns_future, ssdp_future, self._amx_future(),
+        )
 
         device = self.engine.results["192.168.1.50"]
-        assert device.hostname == "tv-livingroom"  # From mDNS
-        assert device.manufacturer == "Samsung"  # From SSDP
-        assert device.model == "QM55R"  # From SSDP
-        assert device.serial_number == "SER999"  # From SSDP
-        assert "mdns_advertised" in device.sources
-        assert "ssdp_identified" in device.sources
+        assert device.hostname == "tv-livingroom"
+        assert device.manufacturer == "Samsung"
+        assert device.model == "QM55R"
+        assert device.serial_number == "SER999"
+        assert any(e.source.startswith("mdns:") for e in device.evidence_log)
 
 
 # ============================================================

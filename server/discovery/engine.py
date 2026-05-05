@@ -11,18 +11,35 @@ from typing import Any, Callable, Awaitable
 
 from server.discovery.network_scanner import get_local_subnets, ping_sweep, harvest_arp_table, netbios_sweep
 from server.discovery.port_scanner import scan_host_ports, grab_banners, AV_PORTS
-from server.discovery.protocol_prober import probe_device as run_protocol_probes
+from server.discovery.protocol_prober import (
+    probe_device as run_protocol_probes,
+    probe_result_to_evidence,
+)
 from server.discovery.oui_database import OUIDatabase
-from server.discovery.driver_matcher import DriverMatcher, CommunityDriverMatcher
-from server.discovery.hints import load_driver_hints
+from server.discovery.hints import (
+    DiscoveryHint,
+    build_signal_index,
+    load_discovery_hints,
+)
 from server.discovery.community_index import CommunityDevicesCache, CommunityIndexCache
 from server.discovery.mdns_scanner import MDNSScanner
 from server.discovery.ssdp_scanner import SSDPScanner
 from server.discovery.snmp_scanner import SNMPScanner
+from server.discovery.amx_ddp_scanner import AMXDDPScanner
+from server.discovery.broadcast_probes import (
+    probe_crestron_cip,
+    probe_pjlink_class2,
+)
+from server.discovery.onvif_scanner import probe_onvif
+from server.discovery.tier_matcher import (
+    SignalIndex,
+    TierMatcher,
+    evidence_hostname,
+    evidence_oui,
+)
 from server.discovery.result import (
     DiscoveredDevice,
     merge_device_info,
-    compute_confidence,
 )
 
 log = logging.getLogger("discovery")
@@ -137,7 +154,9 @@ class DiscoveryEngine:
 
     def __init__(self) -> None:
         self.oui_db = OUIDatabase()
-        self.driver_matcher: DriverMatcher | None = None
+        self.discovery_hints: list[DiscoveryHint] = []
+        self.signal_index: SignalIndex = SignalIndex()
+        self.tier_matcher: TierMatcher = TierMatcher(self.signal_index)
         self.community_index = CommunityIndexCache()
         self.community_devices = CommunityDevicesCache()
         self.results: dict[str, DiscoveredDevice] = {}
@@ -161,36 +180,52 @@ class DiscoveryEngine:
         return get_system_config().get("network", "control_interface") or ""
 
     def load_driver_hints_from_registry(self, registry: list[dict[str, Any]]) -> None:
-        """Load driver hints from the driver registry for matching.
+        """Parse new-schema discovery hints + build the SignalIndex.
 
-        Also merges MAC prefixes from driver hints into the OUI database
-        so they're available during the ARP/OUI scan phase — not just
-        during driver matching.
+        Also enriches the OUI database with each driver's oui_prefixes
+        so the ARP/OUI scan phase can attach a friendly vendor name
+        before the matcher runs.
         """
-        hints = load_driver_hints(registry)
-        self.driver_matcher = DriverMatcher(hints)
+        hints = load_discovery_hints(registry)
+        self.discovery_hints = hints
+        try:
+            self.signal_index = build_signal_index(hints)
+        except ValueError as exc:
+            # Strong-signal collisions abort the build, but the engine
+            # must keep running on the previous (possibly empty) index
+            # so a single bad driver does not break discovery.
+            log.error("Discovery signal index rejected: %s", exc)
+            self.signal_index = SignalIndex()
+        self.tier_matcher = TierMatcher(self.signal_index)
 
-        # Enrich OUI database with MAC prefixes from installed drivers
         added = 0
         for hint in hints:
-            for prefix in hint.mac_prefixes:
+            for prefix in hint.oui_prefixes:
                 before = len(self.oui_db._table)
                 self.oui_db.add_prefix(prefix, hint.manufacturer, hint.category)
                 if len(self.oui_db._table) > before:
                     added += 1
 
         log.info(
-            "Driver matcher loaded with %d driver hints (%d new OUI prefixes)",
-            len(hints), added,
+            "Discovery loaded %d driver hint(s); signal index covers %d driver(s); %d new OUI prefixes",
+            len(hints), self.signal_index.driver_count(), added,
         )
 
     def get_results(self) -> list[dict[str, Any]]:
-        """Return current discovery results sorted by confidence (highest first)."""
-        devices = sorted(
-            self.results.values(),
-            key=lambda d: d.confidence,
-            reverse=True,
-        )
+        """Return current discovery results sorted identified > possible > unknown."""
+        # State-then-IP ordering: identified first, then possible, then
+        # unknown. Within each bucket, sort by IP for stable display.
+        state_rank = {"identified": 0, "possible": 1, "unknown": 2}
+
+        def sort_key(d: DiscoveredDevice) -> tuple:
+            state = d.identification.state.value if d.identification else "unknown"
+            try:
+                ip_tuple = tuple(int(p) for p in d.ip.split("."))
+            except ValueError:
+                ip_tuple = (999, 999, 999, 999)
+            return (state_rank.get(state, 9), ip_tuple)
+
+        devices = sorted(self.results.values(), key=sort_key)
         return [d.to_dict() for d in devices]
 
     def get_status(self) -> dict[str, Any]:
@@ -207,43 +242,18 @@ class DiscoveryEngine:
         self.scan_status = ScanStatus()
 
     async def refresh_device_matches(self, ip: str) -> dict[str, Any] | None:
-        """Re-run both installed + community matching for a single device.
+        """Re-run TierMatcher.match() for a single device.
 
         Used after installing a community driver so the device card
-        updates without a full rescan.
+        updates without a full rescan. The evidence_log is preserved
+        from the original scan; only the identification result changes
+        when a new driver hint claims one of the existing signals.
         """
         device = self.results.get(ip)
         if not device:
             return None
 
-        device.matched_drivers.clear()
-
-        # Installed driver matching
-        installed_ids: set[str] = set()
-        if self.driver_matcher:
-            installed_ids = {h.driver_id for h in self.driver_matcher.hints}
-            matches = self.driver_matcher.match_device(device)
-            device.matched_drivers.extend(matches)
-
-        # Community driver matching
-        community_drivers = await self.community_index.get_drivers()
-        if community_drivers:
-            devices_lookup = await self.community_devices.get_lookup()
-            community_matcher = CommunityDriverMatcher(
-                community_drivers, installed_ids, devices_lookup=devices_lookup,
-            )
-            community_matches = community_matcher.match_device(device)
-            device.matched_drivers.extend(community_matches)
-
-        # Sort: installed first, then by confidence descending
-        device.matched_drivers.sort(
-            key=lambda m: (0 if m.source == "installed" else 1, -m.confidence),
-        )
-
-        if device.matched_drivers and "driver_matched" not in device.sources:
-            device.sources.append("driver_matched")
-            device.confidence = compute_confidence(device.sources)
-
+        device.identification = self.tier_matcher.match(device.evidence_log)
         return device.to_dict()
 
     async def start_scan(
@@ -354,17 +364,22 @@ class DiscoveryEngine:
             })
 
     async def _scan_pipeline(self, subnets: list[str]) -> None:
-        """The core scan phases.
+        """The core scan phases (Phase 6 four-tier orchestrator).
 
         Phase layout:
           1: Subnet detection (already done)
-          2: Start passive listeners (mDNS + SSDP, run in background)
+          2: Start Tier 1 passive listeners (mDNS + SSDP + AMX DDP)
           3: Ping sweep
-          4: ARP harvest + OUI lookup + hostname resolution
+          4: ARP harvest + OUI lookup + hostname resolution (Tier 4 enrichment)
           5: Port scan + banner grab
-          6: Protocol probes + SNMP (SNMP runs concurrently as background task)
-          7: Collect passive + SNMP results
-          8: Driver matching + finalize
+          6: Tier 2 broadcast probes + Tier 3 active probes + SNMP (concurrent)
+          7: Collect Tier 1 + SNMP results
+          8: Run TierMatcher.match() per device + finalize
+
+        Every signal-producing phase appends ``Evidence`` records to the
+        device's ``evidence_log``. The deterministic ``TierMatcher`` runs
+        once at finalize and produces an ``IdentificationMatch`` —
+        identified, possible, or unknown — based purely on those records.
         """
         gentle = self.config.get("gentle_mode", False)
         depth = self.config.get("scan_depth", "standard")
@@ -376,11 +391,12 @@ class DiscoveryEngine:
         # --- Phase 1: Subnet Detection (already done) ---
         await self._set_phase(1, "subnet_detection", "Detecting network interfaces...")
 
-        # --- Phase 2: Start Passive Listeners (background) ---
-        await self._set_phase(2, "passive_listen", "Starting mDNS and SSDP listeners...")
+        # --- Phase 2: Start Tier 1 Passive Listeners (background) ---
+        await self._set_phase(2, "passive_listen", "Starting mDNS, SSDP, and AMX DDP listeners...")
 
         mdns_scanner = MDNSScanner()
         ssdp_scanner = SSDPScanner()
+        amx_ddp_scanner = AMXDDPScanner(control_ip=control_ip)
 
         # Passive listeners run throughout all active scan phases and are
         # stopped explicitly in phase 7 when we're ready to collect.
@@ -389,6 +405,7 @@ class DiscoveryEngine:
         ssdp_task = asyncio.create_task(ssdp_scanner.scan(
             timeout=600.0, fetch_descriptions=True,
         ))
+        amx_ddp_task = asyncio.create_task(amx_ddp_scanner.start(duration=600.0))
 
         snmp_task: asyncio.Task | None = None
 
@@ -399,9 +416,6 @@ class DiscoveryEngine:
             async def on_ping_found(ip: str) -> None:
                 device = self._get_or_create(ip)
                 device.alive = True
-                if "alive" not in device.sources:
-                    device.sources.append("alive")
-                    device.confidence = compute_confidence(device.sources)
                 await self._emit_device_update(device, "ping_sweep")
 
             # Track per-host ping progress for smooth progress bar
@@ -457,39 +471,38 @@ class DiscoveryEngine:
                     device = self._get_or_create(ip)
                     info: dict[str, Any] = {}
 
-                    # Hostname from reverse DNS
+                    # Hostname from reverse DNS / NetBIOS — both feed the
+                    # Tier 4 hostname soft-signal evidence record.
                     hostname = hostnames.get(ip)
                     if hostname:
                         info["hostname"] = hostname
 
-                    # NetBIOS hostname (may override or supplement DNS)
                     nbt = netbios_results.get(ip)
                     if nbt:
                         nbt_name = nbt.get("hostname")
                         if nbt_name:
-                            # Use NetBIOS name as device_name
                             info["device_name"] = nbt_name
-                            # Use as hostname if reverse DNS failed
                             if not hostname:
                                 info["hostname"] = nbt_name
-                            if "netbios_resolved" not in device.sources:
-                                device.sources.append("netbios_resolved")
+                                hostname = nbt_name
 
-                    # MAC + OUI
+                    if hostname:
+                        device.evidence_log.append(evidence_hostname(hostname))
+
+                    # MAC + OUI: legacy lookup keeps the friendly vendor
+                    # name visible in the UI; the deterministic matcher
+                    # consumes the Tier 4 OUI evidence record instead.
                     mac = arp_table.get(ip)
                     if mac:
                         info["mac"] = mac
-                        if "mac_known" not in device.sources:
-                            device.sources.append("mac_known")
-
                         oui_result = self.oui_db.lookup(mac)
+                        oui_vendor = None
                         if oui_result:
                             manufacturer, category = oui_result
                             info["manufacturer"] = manufacturer
                             info["category"] = category
-                            if self.oui_db.is_av_manufacturer(mac):
-                                if "oui_av_mfg" not in device.sources:
-                                    device.sources.append("oui_av_mfg")
+                            oui_vendor = manufacturer
+                        device.evidence_log.append(evidence_oui(mac, vendor=oui_vendor))
 
                     if info:
                         merge_device_info(device, info, "arp")
@@ -498,11 +511,11 @@ class DiscoveryEngine:
             # --- Phase 5: Port Scan ---
             await self._set_phase(5, "port_scan", "Probing AV ports...")
 
-            # Build port list unconditionally — also used for passive follow-up
+            # Build port list unconditionally — also used for passive follow-up.
+            # AV_PORTS already covers every Tier 3 active probe port. Community
+            # driver ports are merged so manual_only drivers still surface in
+            # the open-ports list for the UI.
             port_set = set(AV_PORTS.keys())
-            if self.driver_matcher:
-                for hint in self.driver_matcher.hints:
-                    port_set.update(hint.ports)
             community_drivers = await self.community_index.get_drivers()
             for drv in community_drivers:
                 for p in drv.get("ports", []):
@@ -531,14 +544,9 @@ class DiscoveryEngine:
                     open_ports = await scan_host_ports(ip, port_list, timeout=1.0)
 
                     if open_ports:
-                        has_av_port = any(p in AV_PORTS for p in open_ports)
-                        info = {"open_ports": open_ports}
-                        if has_av_port and "av_port_open" not in device.sources:
-                            device.sources.append("av_port_open")
+                        merge_device_info(device, {"open_ports": open_ports}, "port_scan")
 
-                        merge_device_info(device, info, "port_scan")
-
-                        # Grab banners from banner-friendly ports
+                        # Grab banners from banner-friendly ports.
                         banners = await grab_banners(ip, open_ports, timeout=2.0)
                         if banners:
                             merge_device_info(device, {"banners": banners}, "banner")
@@ -552,10 +560,10 @@ class DiscoveryEngine:
                     if gentle and i < total - 1:
                         await asyncio.sleep(0.1)
 
-            # --- Phase 6: Protocol Probes + SNMP (concurrent) ---
+            # --- Phase 6: Tier 2 Broadcast Probes + Tier 3 Active Probes + SNMP ---
             await self._set_phase(6, "protocol_probe", "Identifying device protocols...")
 
-            # Start SNMP as a concurrent background task if enabled
+            # Start SNMP as a concurrent background task if enabled.
             if snmp_enabled and alive_ips:
                 snmp_scanner = SNMPScanner()
                 snmp_concurrency = 10 if gentle else 20
@@ -570,7 +578,12 @@ class DiscoveryEngine:
                     )
                 )
 
-            # Only probe devices that have open ports
+            # Tier 2 broadcasts — fire one per probe family, listen for
+            # responses, append Tier 2 Evidence per responder. Each socket
+            # binds to control_ip when set (network-safety guarantee).
+            await self._run_tier2_broadcasts(subnets, control_ip, alive_ips)
+
+            # Tier 3 active probes — only on devices with open ports.
             probe_targets = [
                 (ip, dev) for ip, dev in self.results.items()
                 if dev.open_ports
@@ -594,15 +607,7 @@ class DiscoveryEngine:
                     if pr.category:
                         info["category"] = pr.category
 
-                    if "probe_confirmed" not in device.sources:
-                        device.sources.append("probe_confirmed")
-                    if pr.model and "model_known" not in device.sources:
-                        device.sources.append("model_known")
-
-                    # Check banners for banner_matched source
-                    if device.banners and "banner_matched" not in device.sources:
-                        device.sources.append("banner_matched")
-
+                    device.evidence_log.append(probe_result_to_evidence(pr))
                     merge_device_info(device, info, "probe")
                     await self._emit_device_update(device, "protocol_probe")
 
@@ -613,7 +618,7 @@ class DiscoveryEngine:
                 if gentle and i < total_probes - 1:
                     await asyncio.sleep(0.05)
 
-            # --- Phase 7: Collect Passive + SNMP Results ---
+            # --- Phase 7: Collect Tier 1 Passive + SNMP Results ---
             await self._set_phase(7, "passive_collect", "Collecting passive and SNMP results...")
 
             # Signal passive listeners to stop. They exit their receive
@@ -621,8 +626,9 @@ class DiscoveryEngine:
             # for everything it found before the task completes.
             mdns_scanner._running = False
             ssdp_scanner._running = False
+            await amx_ddp_scanner.stop()
 
-            await self._collect_passive_results(mdns_task, ssdp_task)
+            await self._collect_passive_results(mdns_task, ssdp_task, amx_ddp_task)
             await self._collect_snmp_results(snmp_task)
 
             # Follow-up: port scan + probe devices found only by passive
@@ -641,9 +647,6 @@ class DiscoveryEngine:
                     device = self._get_or_create(ip)
                     open_ports = await scan_host_ports(ip, port_list, timeout=1.0)
                     if open_ports:
-                        has_av_port = any(p in AV_PORTS for p in open_ports)
-                        if has_av_port and "av_port_open" not in device.sources:
-                            device.sources.append("av_port_open")
                         merge_device_info(device, {"open_ports": open_ports}, "port_scan")
                         banners = await grab_banners(ip, open_ports, timeout=2.0)
                         if banners:
@@ -663,52 +666,19 @@ class DiscoveryEngine:
                                 pinfo["firmware"] = pr.firmware
                             if pr.category:
                                 pinfo["category"] = pr.category
-                            if "probe_confirmed" not in device.sources:
-                                device.sources.append("probe_confirmed")
-                            if pr.model and "model_known" not in device.sources:
-                                device.sources.append("model_known")
+                            device.evidence_log.append(probe_result_to_evidence(pr))
                             merge_device_info(device, pinfo, "probe")
                     await self._emit_device_update(device, "passive_followup")
 
-            # --- Phase 8: Driver Matching + Finalize ---
+            # --- Phase 8: Run TierMatcher.match() per device + Finalize ---
             await self._set_phase(8, "finalize", "Matching drivers...")
 
-            # Collect installed driver IDs for community matcher filtering
-            installed_ids: set[str] = set()
-            if self.driver_matcher:
-                installed_ids = {h.driver_id for h in self.driver_matcher.hints}
-
-            # Run installed driver matching
             finalize_total = len(self.results)
-            if self.driver_matcher:
-                for i, device in enumerate(self.results.values()):
-                    matches = self.driver_matcher.match_device(device)
-                    if matches:
-                        device.matched_drivers = matches
-                        if "driver_matched" not in device.sources:
-                            device.sources.append("driver_matched")
-                        await self._emit_device_update(device, "driver_match")
-                    if finalize_total > 0:
-                        await self._update_intra_progress((i + 1) / finalize_total * 0.5)
-
-            # Run community driver matching
-            community_drivers = await self.community_index.get_drivers()
-            if community_drivers:
-                devices_lookup = await self.community_devices.get_lookup()
-                community_matcher = CommunityDriverMatcher(
-                    community_drivers, installed_ids, devices_lookup=devices_lookup,
-                )
-                for i, device in enumerate(self.results.values()):
-                    community_matches = community_matcher.match_device(device)
-                    if community_matches:
-                        device.matched_drivers.extend(community_matches)
-                        # Sort: installed first, then by confidence descending
-                        device.matched_drivers.sort(
-                            key=lambda m: (0 if m.source == "installed" else 1, -m.confidence),
-                        )
-                        await self._emit_device_update(device, "community_match")
-                    if finalize_total > 0:
-                        await self._update_intra_progress(0.5 + (i + 1) / finalize_total * 0.5)
+            for i, device in enumerate(self.results.values()):
+                device.identification = self.tier_matcher.match(device.evidence_log)
+                await self._emit_device_update(device, "driver_match")
+                if finalize_total > 0:
+                    await self._update_intra_progress((i + 1) / finalize_total)
 
             # Remove devices that were not re-discovered in this scan
             stale_ips = [ip for ip, dev in self.results.items() if not dev.alive]
@@ -719,17 +689,14 @@ class DiscoveryEngine:
                     "Removed %d stale devices not found in this scan", len(stale_ips)
                 )
 
-            # Recalculate all confidence scores
-            for device in self.results.values():
-                device.confidence = compute_confidence(device.sources)
-
             self.scan_status.devices_found = len(self.results)
 
         except asyncio.CancelledError:
             # Clean up background tasks on cancellation
             mdns_task.cancel()
             ssdp_task.cancel()
-            tasks_to_cancel = [mdns_task, ssdp_task]
+            amx_ddp_task.cancel()
+            tasks_to_cancel = [mdns_task, ssdp_task, amx_ddp_task]
             if snmp_task:
                 snmp_task.cancel()
                 tasks_to_cancel.append(snmp_task)
@@ -740,22 +707,21 @@ class DiscoveryEngine:
         self,
         mdns_task: asyncio.Task,
         ssdp_task: asyncio.Task,
+        amx_ddp_task: asyncio.Task,
     ) -> None:
-        """Wait for passive listeners and merge their results into the main results.
+        """Wait for Tier 1 listeners and append their evidence to each device.
 
         Uses a 1-second heartbeat loop so the progress bar moves steadily
         instead of appearing stuck while waiting for SSDP XML fetches.
         """
         depth = self.config.get("scan_depth", "standard")
         total_wait = {"quick": 5.0, "thorough": 30.0}.get(depth, 15.0)
-        remaining_tasks = {mdns_task, ssdp_task}
+        remaining_tasks = {mdns_task, ssdp_task, amx_ddp_task}
         elapsed = 0.0
         tick = 1.0
 
         while elapsed < total_wait and remaining_tasks:
-            done, pending = await asyncio.wait(
-                remaining_tasks, timeout=tick,
-            )
+            _, pending = await asyncio.wait(remaining_tasks, timeout=tick)
             remaining_tasks = pending
             elapsed += tick
             fraction = min(elapsed / total_wait, 1.0)
@@ -766,7 +732,6 @@ class DiscoveryEngine:
                 f"Collecting passive results... ({secs_left}s remaining)",
             )
 
-        # Cancel any still-running tasks
         for task in remaining_tasks:
             task.cancel()
             try:
@@ -774,43 +739,42 @@ class DiscoveryEngine:
             except (asyncio.CancelledError, Exception):
                 pass
 
-        # Merge mDNS results
-        mdns_results = {}
-        if mdns_task.done() and not mdns_task.cancelled():
-            try:
-                mdns_results = mdns_task.result()
-            except Exception:  # Catch-all: task.result() re-raises whatever the task raised
-                log.debug("mDNS task failed", exc_info=True)
-
+        mdns_results = self._task_result(mdns_task, "mDNS")
         for ip, mdns_result in mdns_results.items():
             device = self._get_or_create(ip)
             device.alive = True
-            info = mdns_result.to_device_info()
-
-            if "mdns_advertised" not in device.sources:
-                device.sources.append("mdns_advertised")
-
-            merge_device_info(device, info, "mdns")
+            ev = mdns_result.to_evidence()
+            if ev is not None:
+                device.evidence_log.append(ev)
+            merge_device_info(device, mdns_result.to_device_info(), "mdns")
             await self._emit_device_update(device, "mdns")
 
-        # Merge SSDP results
-        ssdp_results = {}
-        if ssdp_task.done() and not ssdp_task.cancelled():
-            try:
-                ssdp_results = ssdp_task.result()
-            except Exception:  # Catch-all: task.result() re-raises whatever the task raised
-                log.debug("SSDP task failed", exc_info=True)
-
+        ssdp_results = self._task_result(ssdp_task, "SSDP")
         for ip, ssdp_result in ssdp_results.items():
             device = self._get_or_create(ip)
             device.alive = True
-            info = ssdp_result.to_device_info()
-
-            if "ssdp_identified" not in device.sources:
-                device.sources.append("ssdp_identified")
-
-            merge_device_info(device, info, "ssdp")
+            ev = ssdp_result.to_evidence()
+            if ev is not None:
+                device.evidence_log.append(ev)
+            merge_device_info(device, ssdp_result.to_device_info(), "ssdp")
             await self._emit_device_update(device, "ssdp")
+
+        amx_results = self._task_result(amx_ddp_task, "AMX DDP")
+        for ip, beacon in amx_results.items():
+            device = self._get_or_create(ip)
+            device.alive = True
+            device.evidence_log.append(beacon.to_evidence())
+            merge_device_info(device, beacon.to_device_info(), "amx_ddp")
+            await self._emit_device_update(device, "amx_ddp")
+
+    def _task_result(self, task: asyncio.Task, label: str) -> dict:
+        if not task.done() or task.cancelled():
+            return {}
+        try:
+            return task.result() or {}
+        except Exception:  # Catch-all: task.result() re-raises whatever the task raised
+            log.debug("%s task failed", label, exc_info=True)
+            return {}
 
     async def _collect_snmp_results(self, snmp_task: asyncio.Task | None) -> None:
         """Wait for SNMP scan and merge results."""
@@ -838,18 +802,72 @@ class DiscoveryEngine:
         for ip, snmp_info in snmp_results.items():
             device = self._get_or_create(ip)
             device.alive = True
-            info = snmp_info.to_device_info()
-
-            if "snmp_identified" not in device.sources:
-                device.sources.append("snmp_identified")
-            if snmp_info.entity_model and "entity_mib_found" not in device.sources:
-                device.sources.append("entity_mib_found")
-
-            merge_device_info(device, info, "snmp")
+            ev = snmp_info.to_evidence()
+            if ev is not None:
+                device.evidence_log.append(ev)
+            merge_device_info(device, snmp_info.to_device_info(), "snmp")
             await self._emit_device_update(device, "snmp")
 
         if snmp_results:
             log.info("SNMP enriched %d devices", len(snmp_results))
+
+    async def _run_tier2_broadcasts(
+        self,
+        subnets: list[str],
+        control_ip: str,
+        alive_ips: list[str],
+    ) -> None:
+        """Send Tier 2 broadcast probes (PJLink Class 2, Crestron CIP, ONVIF).
+
+        Each probe family is opt-in per driver; we send the probe only if
+        at least one driver claims the corresponding ``broadcast_probes``
+        signal in its discovery hints. Runs all three concurrently with a
+        short ceiling to fit inside the active-probe phase.
+
+        Network-safety: every socket binds to ``control_ip`` when set so
+        the OS doesn't pick a Docker / VPN source IP that would be dropped
+        by ``rp_filter`` on multi-homed hosts. See network-safety preserve
+        list in the redesign plan.
+        """
+        wanted: set[str] = set()
+        for hint in self.discovery_hints:
+            wanted.update(hint.broadcast_probes)
+        if not wanted:
+            return
+
+        tasks: list[asyncio.Task] = []
+        if "pjlink_class2" in wanted:
+            tasks.append(asyncio.create_task(probe_pjlink_class2(
+                subnets, duration=5.0, control_ip=control_ip,
+            )))
+        if "crestron_cip" in wanted and alive_ips:
+            tasks.append(asyncio.create_task(probe_crestron_cip(
+                list(alive_ips), duration=3.0, control_ip=control_ip,
+            )))
+        if "onvif" in wanted:
+            tasks.append(asyncio.create_task(probe_onvif(
+                duration=4.0, control_ip=control_ip,
+            )))
+
+        if not tasks:
+            return
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for result in results:
+            if isinstance(result, BaseException):
+                log.debug("Tier 2 broadcast failed", exc_info=result)
+                continue
+            if not isinstance(result, dict):
+                continue
+            for ip, reply in result.items():
+                device = self._get_or_create(ip)
+                device.alive = True
+                ev = reply.to_evidence()
+                if ev is not None:
+                    device.evidence_log.append(ev)
+                if hasattr(reply, "to_device_info"):
+                    merge_device_info(device, reply.to_device_info(), "broadcast")
+                await self._emit_device_update(device, "broadcast_probe")
 
     def _get_or_create(self, ip: str) -> DiscoveredDevice:
         """Get existing device record or create a new one."""

@@ -347,7 +347,7 @@ class TestEngineDriverMatching:
 
         engine = DiscoveryEngine()
 
-        # Load hints
+        # Load discovery hints (Phase 6 schema)
         registry = [
             {
                 "id": "extron_sis",
@@ -355,17 +355,15 @@ class TestEngineDriverMatching:
                 "manufacturer": "Extron",
                 "category": "switcher",
                 "transport": "tcp",
-                "default_config": {"port": 23},
-                "config_schema": {},
+                "discovery": {"active_probes": ["extron_sis"]},
             },
             {
-                "id": "pjlink",
+                "id": "pjlink_class1",
                 "name": "PJLink Projector",
                 "manufacturer": "Generic",
                 "category": "projector",
                 "transport": "tcp",
-                "default_config": {"port": 4352},
-                "config_schema": {},
+                "discovery": {"active_probes": ["pjlink_class1"]},
             },
         ]
         engine.load_driver_hints_from_registry(registry)
@@ -377,16 +375,23 @@ class TestEngineDriverMatching:
              patch("server.discovery.engine.run_protocol_probes", new_callable=AsyncMock) as mock_probes, \
              patch("server.discovery.engine.MDNSScanner") as mdns_cls, \
              patch("server.discovery.engine.SSDPScanner") as ssdp_cls, \
+             patch("server.discovery.engine.AMXDDPScanner") as amx_cls, \
              patch("server.discovery.engine.SNMPScanner") as snmp_cls, \
+             patch("server.discovery.engine.probe_pjlink_class2", new_callable=AsyncMock, return_value={}), \
+             patch("server.discovery.engine.probe_crestron_cip", new_callable=AsyncMock, return_value={}), \
+             patch("server.discovery.engine.probe_onvif", new_callable=AsyncMock, return_value={}), \
              patch("server.discovery.engine._resolve_hostnames", new_callable=AsyncMock, return_value={}):
 
-            # Configure passive scanner mocks to return immediately
             mock_mdns = MagicMock()
             mock_mdns.start = AsyncMock(return_value={})
             mdns_cls.return_value = mock_mdns
             mock_ssdp = MagicMock()
             mock_ssdp.scan = AsyncMock(return_value={})
             ssdp_cls.return_value = mock_ssdp
+            mock_amx = MagicMock()
+            mock_amx.start = AsyncMock(return_value={})
+            mock_amx.stop = AsyncMock()
+            amx_cls.return_value = mock_amx
             mock_snmp = MagicMock()
             mock_snmp.scan_devices = AsyncMock(return_value={})
             snmp_cls.return_value = mock_snmp
@@ -413,15 +418,12 @@ class TestEngineDriverMatching:
 
             await engine._scan_pipeline(["192.168.1.0/24"])
 
-        # Check Extron device has matched driver
         extron = engine.results["192.168.1.50"]
-        assert len(extron.matched_drivers) >= 1
-        assert extron.matched_drivers[0].driver_id == "extron_sis"
-        assert extron.matched_drivers[0].suggested_config["host"] == "192.168.1.50"
-        assert "driver_matched" in extron.sources
+        assert extron.identification is not None
+        assert extron.identification.state.value == "identified"
+        assert extron.identification.driver_id == "extron_sis"
 
-        # Check NEC/PJLink device has matched driver
         nec = engine.results["192.168.1.72"]
-        assert len(nec.matched_drivers) >= 1
-        assert nec.matched_drivers[0].driver_id == "pjlink"
-        assert nec.matched_drivers[0].suggested_config["port"] == 4352
+        assert nec.identification is not None
+        assert nec.identification.state.value == "identified"
+        assert nec.identification.driver_id == "pjlink_class1"
