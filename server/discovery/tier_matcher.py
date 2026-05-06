@@ -484,11 +484,7 @@ class TierMatcher:
                 continue
             rule = self._lookup_strong(ev)
             if rule:
-                return IdentificationMatch.identified(
-                    driver_id=rule.driver_id,
-                    source=f"{rule.kind}:{rule.source_id}",
-                    evidence=[ev],
-                )
+                return self._finalize_strong_match(rule, ev, evidence_log)
 
         # Tier 2: broadcast probes
         for ev in evidence_log:
@@ -496,11 +492,7 @@ class TierMatcher:
                 continue
             rule = self._lookup_strong(ev)
             if rule:
-                return IdentificationMatch.identified(
-                    driver_id=rule.driver_id,
-                    source=f"{rule.kind}:{rule.source_id}",
-                    evidence=[ev],
-                )
+                return self._finalize_strong_match(rule, ev, evidence_log)
 
         # Tier 3: active probes
         for ev in evidence_log:
@@ -508,11 +500,7 @@ class TierMatcher:
                 continue
             rule = self._lookup_strong(ev)
             if rule:
-                return IdentificationMatch.identified(
-                    driver_id=rule.driver_id,
-                    source=f"{rule.kind}:{rule.source_id}",
-                    evidence=[ev],
-                )
+                return self._finalize_strong_match(rule, ev, evidence_log)
 
         # Tier 4: soft signals -> possible state if any narrows the candidate set
         candidates, source = self._gather_soft_candidates(evidence_log)
@@ -530,6 +518,51 @@ class TierMatcher:
         return IdentificationMatch.unknown(
             reason="no_signal_matched",
             evidence=list(evidence_log),
+        )
+
+    def _finalize_strong_match(
+        self,
+        rule: SignalRule,
+        ev: Evidence,
+        evidence_log: list[Evidence],
+    ) -> IdentificationMatch:
+        """Build the IdentificationMatch for a winning strong-tier rule.
+
+        Vendor-specific rules stand alone — soft signals are ignored.
+        Generic rules (PJLink, unfiltered ONVIF) are protocol-class
+        winners; if a Tier 4 soft signal also produced a vendor-specific
+        candidate, that vendor driver becomes the primary "best fit"
+        and the generic driver demotes to the trailing alternative.
+        """
+        if not rule.generic:
+            return IdentificationMatch.identified(
+                driver_id=rule.driver_id,
+                source=f"{rule.kind}:{rule.source_id}",
+                evidence=[ev],
+            )
+
+        soft_candidates, soft_source = self._gather_soft_candidates(evidence_log)
+        vendor_alternatives = [c for c in soft_candidates if c != rule.driver_id]
+        if not vendor_alternatives:
+            # Generic match with no vendor-specific soft candidate — fall
+            # back to the same shape as a vendor-specific identify. This
+            # is the regression-guard case (PJLink alone, no OUI hit).
+            return IdentificationMatch.identified(
+                driver_id=rule.driver_id,
+                source=f"{rule.kind}:{rule.source_id}",
+                evidence=[ev],
+            )
+
+        primary = vendor_alternatives[0]
+        alternatives = vendor_alternatives[1:] + [rule.driver_id]
+        soft_evidence = [
+            e for e in evidence_log if e.tier == SignalTier.ENRICHMENT
+        ]
+        return IdentificationMatch.identified(
+            driver_id=primary,
+            source=soft_source or f"{rule.kind}:{rule.source_id}",
+            alternatives=alternatives,
+            evidence=[ev, *soft_evidence],
         )
 
     def _lookup_strong(self, ev: Evidence) -> SignalRule | None:
