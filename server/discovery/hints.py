@@ -406,6 +406,8 @@ def build_signal_index(hints: list[DiscoveryHint]) -> SignalIndex:
             index.add_rule(SignalRule.for_hostname(hint.driver_id, pattern))
         for port in hint.open_ports:
             index.add_rule(SignalRule.for_open_port(hint.driver_id, port))
+        for alias in hint.vendor_aliases:
+            index.add_rule(SignalRule.for_vendor_string(hint.driver_id, alias))
 
     log.info(
         "Built signal index covering %d driver(s)",

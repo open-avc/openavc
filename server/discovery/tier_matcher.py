@@ -68,16 +68,19 @@ KIND_AMX_DDP = "amx_ddp"
 KIND_BROADCAST = "broadcast"     # PJLink Class 2 SRCH, Crestron CIP, ONVIF, HiQnet, Symetrix
 KIND_ACTIVE_PROBE = "probe"      # PJLink Class 1, Extron SIS, Samsung MDC, etc.
 
-KIND_OUI = "oui"                 # Tier 4 soft
-KIND_SNMP_PEN = "snmp_pen"       # Tier 4 soft
-KIND_HOSTNAME = "hostname"       # Tier 4 soft
-KIND_OPEN_PORT = "open_port"     # Tier 4 soft — AV-specific port observed open
+KIND_OUI = "oui"                       # Tier 4 soft
+KIND_SNMP_PEN = "snmp_pen"             # Tier 4 soft
+KIND_HOSTNAME = "hostname"             # Tier 4 soft
+KIND_OPEN_PORT = "open_port"           # Tier 4 soft — AV-specific port observed open
+KIND_VENDOR_STRING = "vendor_string"   # Tier 4 soft — manufacturer string from a probe response
 
 
 _STRONG_KINDS = {
     KIND_MDNS, KIND_SSDP, KIND_AMX_DDP, KIND_BROADCAST, KIND_ACTIVE_PROBE,
 }
-_SOFT_KINDS = {KIND_OUI, KIND_SNMP_PEN, KIND_HOSTNAME, KIND_OPEN_PORT}
+_SOFT_KINDS = {
+    KIND_OUI, KIND_SNMP_PEN, KIND_HOSTNAME, KIND_OPEN_PORT, KIND_VENDOR_STRING,
+}
 
 
 # Strong-tier probe IDs that are definitionally cross-vendor. A driver
@@ -118,6 +121,7 @@ class SignalRule:
             - ``KIND_OUI``: 6-char OUI prefix, lowercase, e.g. ``"00:0c:4d"``
             - ``KIND_SNMP_PEN``: integer Private Enterprise Number as string
             - ``KIND_HOSTNAME``: regex source string (compiled lazily by the index)
+            - ``KIND_VENDOR_STRING``: lowercased manufacturer alias, e.g. ``"nec"``
         txt_match: Optional TXT-record filter. The signal matches only
             when every key in this dict is present in the observed TXT
             and matches the value (case-insensitive). Used to disambiguate
@@ -257,6 +261,23 @@ class SignalRule:
             tier=SignalTier.ENRICHMENT,
             kind=KIND_OPEN_PORT,
             source_id=str(port),
+        )
+
+    @classmethod
+    def for_vendor_string(cls, driver_id: str, alias: str) -> "SignalRule":
+        """Build a Tier 4 manufacturer-alias rule.
+
+        ``alias`` is normalized to ``alias.strip().lower()`` so the
+        index lookup is a plain dict hit. Multiple drivers may declare
+        the same alias — vendor strings are soft signals like OUI and
+        produce a multi-candidate ``possible`` result when no other
+        narrowing signal is present.
+        """
+        return cls(
+            driver_id=driver_id,
+            tier=SignalTier.ENRICHMENT,
+            kind=KIND_VENDOR_STRING,
+            source_id=alias.strip().lower(),
         )
 
 
@@ -410,6 +431,20 @@ class SignalIndex:
         if port is None:
             return []
         rules = self._rules.get((KIND_OPEN_PORT, str(port)), [])
+        return [r.driver_id for r in rules]
+
+    def find_soft_vendor_string(self, value: str | None) -> list[str]:
+        """Return driver_ids whose ``vendor_aliases`` include this string.
+
+        Match is case-insensitive exact (after ``.strip().lower()``).
+        Empty / None input returns ``[]``.
+        """
+        if not value:
+            return []
+        normalized = value.strip().lower()
+        if not normalized:
+            return []
+        rules = self._rules.get((KIND_VENDOR_STRING, normalized), [])
         return [r.driver_id for r in rules]
 
     def find_soft_hostname(self, hostname: str | None) -> list[str]:
@@ -743,6 +778,29 @@ def evidence_hostname(hostname: str) -> Evidence:
         data={
             "kind": KIND_HOSTNAME,
             "value": hostname,
+        },
+    )
+
+
+def evidence_vendor_string(value: str, source_probe_id: str) -> Evidence:
+    """Build an Evidence record for a manufacturer string lifted from a
+    Tier 2/3 probe response.
+
+    ``value`` is normalized to ``.strip().lower()``; the original raw
+    string is preserved in ``data["raw"]`` for the "Why?" UI reveal.
+    ``source_probe_id`` records which strong-tier probe produced the
+    string (``"pjlink_class1"``, ``"onvif"``, ...) — also surfaced in
+    the audit trail.
+    """
+    normalized = value.strip().lower()
+    return Evidence(
+        tier=SignalTier.ENRICHMENT,
+        source=f"vendor_string:{normalized}",
+        data={
+            "kind": KIND_VENDOR_STRING,
+            "value": normalized,
+            "raw": value,
+            "source_probe_id": source_probe_id,
         },
     )
 

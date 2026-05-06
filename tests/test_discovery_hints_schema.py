@@ -349,6 +349,7 @@ class TestSignalIndexBuilder:
                 oui_prefixes=["00:05:a6"],
                 hostname_patterns=["^kitchen-"],
                 open_ports=[1710],
+                vendor_aliases=["Polycom", "Plantronics"],
             ),
         ]
         idx = build_signal_index(load_discovery_hints(registry))
@@ -360,6 +361,8 @@ class TestSignalIndexBuilder:
         assert idx.find_soft_oui("00:05:a6:aa:bb:cc") == ["kitchen_sink"]
         assert idx.find_soft_hostname("kitchen-pjlink-1") == ["kitchen_sink"]
         assert idx.find_soft_open_port(1710) == ["kitchen_sink"]
+        assert idx.find_soft_vendor_string("Polycom") == ["kitchen_sink"]
+        assert idx.find_soft_vendor_string("plantronics") == ["kitchen_sink"]
 
     def test_open_port_collision_allowed(self):
         # Soft signals — multiple drivers can claim the same port. Two

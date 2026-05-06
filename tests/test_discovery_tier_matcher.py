@@ -16,6 +16,7 @@ from server.discovery.tier_matcher import (
     KIND_BROADCAST,
     KIND_MDNS,
     KIND_OPEN_PORT,
+    KIND_VENDOR_STRING,
     SignalIndex,
     SignalRule,
     TierMatcher,
@@ -27,6 +28,7 @@ from server.discovery.tier_matcher import (
     evidence_open_port,
     evidence_oui,
     evidence_snmp_pen,
+    evidence_vendor_string,
 )
 
 
@@ -234,6 +236,49 @@ class TestSoftSignals:
         assert ev.data["kind"] == KIND_OPEN_PORT
         assert ev.data["value"] == 1710
         assert ev.source == "open_port:1710"
+
+    def test_vendor_string_factory_normalizes(self):
+        r = SignalRule.for_vendor_string("sharp_nec_projector", "  Sharp NEC  ")
+        assert r.kind == KIND_VENDOR_STRING
+        assert r.source_id == "sharp nec"
+        assert r.tier == SignalTier.ENRICHMENT
+
+    def test_vendor_string_lookup_case_insensitive(self):
+        idx = SignalIndex()
+        idx.add_rule(SignalRule.for_vendor_string("sharp_nec_projector", "NEC"))
+        idx.add_rule(SignalRule.for_vendor_string("nec_display", "NEC"))
+        # Probe response carried "NEC" verbatim — matches both drivers.
+        assert set(idx.find_soft_vendor_string("NEC")) == {
+            "sharp_nec_projector", "nec_display",
+        }
+        # Lowercase + extra whitespace from upstream parsing also match.
+        assert set(idx.find_soft_vendor_string("  nec ")) == {
+            "sharp_nec_projector", "nec_display",
+        }
+
+    def test_vendor_string_no_match(self):
+        idx = SignalIndex()
+        idx.add_rule(SignalRule.for_vendor_string("sharp_nec_projector", "NEC"))
+        assert idx.find_soft_vendor_string("Sony") == []
+        assert idx.find_soft_vendor_string("") == []
+        assert idx.find_soft_vendor_string(None) == []
+        assert idx.find_soft_vendor_string("   ") == []
+
+    def test_vendor_string_collision_allowed(self):
+        # Two drivers can claim the same alias — soft signals don't collide.
+        idx = SignalIndex()
+        idx.add_rule(SignalRule.for_vendor_string("a", "Sony"))
+        idx.add_rule(SignalRule.for_vendor_string("b", "Sony"))
+        assert set(idx.find_soft_vendor_string("Sony")) == {"a", "b"}
+
+    def test_evidence_vendor_string_shape(self):
+        ev = evidence_vendor_string("NEC", source_probe_id="pjlink_class1")
+        assert ev.tier == SignalTier.ENRICHMENT
+        assert ev.data["kind"] == KIND_VENDOR_STRING
+        assert ev.data["value"] == "nec"
+        assert ev.data["raw"] == "NEC"
+        assert ev.data["source_probe_id"] == "pjlink_class1"
+        assert ev.source == "vendor_string:nec"
 
 
 # ===== TierMatcher =====
