@@ -80,6 +80,23 @@ _STRONG_KINDS = {
 _SOFT_KINDS = {KIND_OUI, KIND_SNMP_PEN, KIND_HOSTNAME, KIND_OPEN_PORT}
 
 
+# Strong-tier probe IDs that are definitionally cross-vendor. A driver
+# opting into one of these is claiming "this device speaks $protocol",
+# not "I am the best-fit driver for it" — so when one wins, the matcher
+# should still consult Tier 4 soft signals for a vendor-specific
+# alternative and return the vendor-specific driver as primary.
+#
+# Add new entries here when a generic catch-all probe lands in the
+# catalog (e.g. a generic SNMP sysObjectID matcher). When Phase 9 ships
+# driver-declarative probes, those will need a parallel ``generic:``
+# declaration in their schema.
+_GENERIC_STRONG_PROBE_IDS: frozenset[str] = frozenset({
+    "pjlink_class1",   # Tier 3 active probe (TCP 4352)
+    "pjlink_class2",   # Tier 2 broadcast probe (UDP 4352)
+    "onvif",           # Tier 2 broadcast — generic only when unfiltered
+})
+
+
 @dataclass(frozen=True)
 class SignalRule:
     """A deterministic rule that maps a signal to a driver_id.
@@ -109,6 +126,12 @@ class SignalRule:
         evidence_data: Optional static data merged into the evidence
             record when this rule matches. Used to pre-fill manufacturer
             / model when the signal alone implies them.
+        generic: True when this rule matches a definitionally cross-
+            vendor strong-tier probe (PJLink, unfiltered ONVIF, etc.).
+            Set by the factory methods based on
+            ``_GENERIC_STRONG_PROBE_IDS`` — never by drivers. When a
+            generic rule wins, ``TierMatcher.match()`` consults Tier 4
+            soft signals for a vendor-specific alternative.
     """
 
     driver_id: str
@@ -117,6 +140,7 @@ class SignalRule:
     source_id: str
     txt_match: tuple[tuple[str, str], ...] = ()
     evidence_data: tuple[tuple[str, str], ...] = ()
+    generic: bool = False
 
     @classmethod
     def for_mdns(
@@ -173,13 +197,20 @@ class SignalRule:
         like ``onvif`` or ``hiqnet`` by attaching a manufacturer/model
         filter — the responder's parsed identification fields are matched
         against the filter at lookup time.
+
+        ``generic`` is set when ``probe_id`` is in
+        ``_GENERIC_STRONG_PROBE_IDS`` *and* no ``txt_match`` filter is
+        applied. A filtered ONVIF rule is vendor-specific by
+        construction; an unfiltered one is the generic catch-all.
         """
+        frozen_txt = _freeze_dict(txt_match)
         return cls(
             driver_id=driver_id,
             tier=SignalTier.BROADCAST_PROBE,
             kind=KIND_BROADCAST,
             source_id=probe_id,
-            txt_match=_freeze_dict(txt_match),
+            txt_match=frozen_txt,
+            generic=(probe_id in _GENERIC_STRONG_PROBE_IDS and not frozen_txt),
         )
 
     @classmethod
@@ -189,6 +220,7 @@ class SignalRule:
             tier=SignalTier.ACTIVE_PROBE,
             kind=KIND_ACTIVE_PROBE,
             source_id=probe_id,
+            generic=probe_id in _GENERIC_STRONG_PROBE_IDS,
         )
 
     @classmethod
