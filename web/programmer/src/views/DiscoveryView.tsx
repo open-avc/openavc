@@ -241,13 +241,13 @@ export function DiscoveryPanel() {
   }, [setDevices, setStatus, setPortLabels]);
 
   const driverNameLookup = useMemo(() => {
-    const map = new Map<string, { name: string; source: "installed" | "community"; community?: CommunityDriver }>();
+    const map = new Map<string, { name: string; manufacturer: string; source: "installed" | "community"; community?: CommunityDriver }>();
     for (const d of installedDrivers) {
-      map.set(d.id, { name: d.name, source: "installed" });
+      map.set(d.id, { name: d.name, manufacturer: d.manufacturer, source: "installed" });
     }
     for (const c of communityDrivers) {
       if (!map.has(c.id)) {
-        map.set(c.id, { name: c.name, source: "community", community: c });
+        map.set(c.id, { name: c.name, manufacturer: c.manufacturer, source: "community", community: c });
       }
     }
     return map;
@@ -709,7 +709,7 @@ export function DiscoveryPanel() {
 
 // --- Device Card ---
 
-type DriverEntry = { name: string; source: "installed" | "community"; community?: CommunityDriver };
+type DriverEntry = { name: string; manufacturer: string; source: "installed" | "community"; community?: CommunityDriver };
 
 function DeviceCard({
   device,
@@ -888,6 +888,7 @@ function DeviceCard({
               driverNameLookup={driverNameLookup}
               onDeviceAdded={setAddedDevice}
               onDeviceUpdated={onDeviceUpdated}
+              onHide={onHide}
             />
           )}
 
@@ -975,12 +976,14 @@ function IdentificationSection({
   driverNameLookup,
   onDeviceAdded,
   onDeviceUpdated,
+  onHide,
 }: {
   device: api.DiscoveredDevice;
   installedDrivers: DriverInfo[];
   driverNameLookup: Map<string, DriverEntry>;
   onDeviceAdded: (info: { name: string; deviceId?: string }) => void;
   onDeviceUpdated: (device: api.DiscoveredDevice) => void;
+  onHide: () => void;
 }) {
   const ident = device.identification;
   const state: DeviceState = ident?.state ?? "unknown";
@@ -1009,6 +1012,7 @@ function IdentificationSection({
         driverNameLookup={driverNameLookup}
         onDeviceAdded={onDeviceAdded}
         onDeviceUpdated={onDeviceUpdated}
+        onHide={onHide}
       />
     );
   }
@@ -1035,6 +1039,7 @@ function DriverAddRow({
   sourceLabel,
   onDeviceAdded,
   onDeviceUpdated,
+  selectorNode,
 }: {
   device: api.DiscoveredDevice;
   driverId: string;
@@ -1043,6 +1048,7 @@ function DriverAddRow({
   sourceLabel: string;
   onDeviceAdded: (info: { name: string; deviceId?: string }) => void;
   onDeviceUpdated: (device: api.DiscoveredDevice) => void;
+  selectorNode?: React.ReactNode;
 }) {
   const entry = driverNameLookup.get(driverId);
   const driverName = entry?.name ?? driverId;
@@ -1128,7 +1134,7 @@ function DriverAddRow({
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", flexWrap: "wrap" }}>
-        <span style={{ fontWeight: 500 }}>{driverName}</span>
+        {selectorNode ?? <span style={{ fontWeight: 500 }}>{driverName}</span>}
         {isCommunity && (
           <span style={{
             fontSize: "var(--font-size-xs)", padding: "1px 6px", borderRadius: 3,
@@ -1205,6 +1211,7 @@ function PossibleCandidates({
   driverNameLookup,
   onDeviceAdded,
   onDeviceUpdated,
+  onHide,
 }: {
   device: api.DiscoveredDevice;
   candidates: string[];
@@ -1213,25 +1220,145 @@ function PossibleCandidates({
   driverNameLookup: Map<string, DriverEntry>;
   onDeviceAdded: (info: { name: string; deviceId?: string }) => void;
   onDeviceUpdated: (device: api.DiscoveredDevice) => void;
+  onHide: () => void;
 }) {
-  return (
-    <div>
-      <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginBottom: 4 }}>
-        Possible match from {sourceLabel}. Pick the right driver:
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
-        {candidates.map((id) => (
+  // Candidates arrive narrowest-match first (per backend _gather_soft_candidates).
+  const [selected, setSelected] = useState(candidates[0]);
+  const [overrideOpen, setOverrideOpen] = useState(false);
+  const [overrideId, setOverrideId] = useState("");
+
+  // If the device's identification re-matches and produces a different
+  // candidate set, snap the selection back to the new top candidate.
+  useEffect(() => {
+    if (!candidates.includes(selected)) setSelected(candidates[0]);
+  }, [candidates, selected]);
+
+  // Likely-vendor consensus: if every candidate driver shares one
+  // manufacturer, name it. Otherwise fall back to the OUI vendor that
+  // populated device.manufacturer (or omit the line entirely if neither
+  // signal is available).
+  const candidateMfrs = useMemo(() => {
+    const set = new Set<string>();
+    for (const id of candidates) {
+      const mfr = driverNameLookup.get(id)?.manufacturer;
+      if (mfr) set.add(mfr);
+    }
+    return set;
+  }, [candidates, driverNameLookup]);
+  const likelyVendor =
+    candidateMfrs.size === 1 ? [...candidateMfrs][0] : device.manufacturer;
+
+  const sortedInstalled = useMemo(
+    () => [...installedDrivers].sort((a, b) => a.name.localeCompare(b.name)),
+    [installedDrivers],
+  );
+
+  if (overrideOpen) {
+    return (
+      <div style={{
+        padding: "var(--space-sm)", background: "var(--bg-input)",
+        borderRadius: "var(--radius)", display: "flex", flexDirection: "column",
+        gap: "var(--space-sm)",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", flexWrap: "wrap" }}>
+          <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
+            Pick a different driver:
+          </span>
+          <select
+            value={overrideId}
+            onChange={(e) => setOverrideId(e.target.value)}
+            style={{ flex: 1, minWidth: 240 }}
+          >
+            <option value="">Select an installed driver...</option>
+            {sortedInstalled.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name} {d.manufacturer ? `(${d.manufacturer})` : ""}
+              </option>
+            ))}
+          </select>
+          <button
+            className="btn btn-sm"
+            onClick={() => { setOverrideOpen(false); setOverrideId(""); }}
+          >
+            Back to suggestions
+          </button>
+        </div>
+        {overrideId && (
           <DriverAddRow
-            key={id}
+            key={overrideId}
             device={device}
-            driverId={id}
+            driverId={overrideId}
             installedDrivers={installedDrivers}
             driverNameLookup={driverNameLookup}
-            sourceLabel={sourceLabel}
+            sourceLabel="manual selection"
             onDeviceAdded={onDeviceAdded}
             onDeviceUpdated={onDeviceUpdated}
           />
-        ))}
+        )}
+      </div>
+    );
+  }
+
+  const selectorNode = candidates.length > 1 ? (
+    <select
+      value={selected}
+      onChange={(e) => setSelected(e.target.value)}
+      onClick={(e) => e.stopPropagation()}
+      style={{ minWidth: 220, fontWeight: 500 }}
+    >
+      {candidates.map((id) => {
+        const entry = driverNameLookup.get(id);
+        return (
+          <option key={id} value={id}>
+            {entry?.name ?? id}
+          </option>
+        );
+      })}
+    </select>
+  ) : undefined;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      {likelyVendor && (
+        <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
+          Likely <strong style={{ color: "var(--text)" }}>{likelyVendor}</strong> &mdash; {sourceLabel}
+        </div>
+      )}
+      <DriverAddRow
+        key={selected}
+        device={device}
+        driverId={selected}
+        installedDrivers={installedDrivers}
+        driverNameLookup={driverNameLookup}
+        sourceLabel={sourceLabel}
+        onDeviceAdded={onDeviceAdded}
+        onDeviceUpdated={onDeviceUpdated}
+        selectorNode={selectorNode}
+      />
+      <div style={{
+        display: "flex", gap: "var(--space-md)",
+        fontSize: "var(--font-size-xs)",
+      }}>
+        <button
+          type="button"
+          onClick={() => setOverrideOpen(true)}
+          style={{
+            background: "none", border: "none", padding: 0, cursor: "pointer",
+            color: "var(--accent)", textDecoration: "underline",
+          }}
+        >
+          Choose different driver
+        </button>
+        <button
+          type="button"
+          onClick={onHide}
+          style={{
+            background: "none", border: "none", padding: 0, cursor: "pointer",
+            color: "var(--text-muted)", textDecoration: "underline",
+          }}
+        >
+          Hide this device
+        </button>
       </div>
     </div>
   );
