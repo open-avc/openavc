@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import type {
   DriverDefinition,
+  DriverDiscoveryCustomProbe,
+  DriverDiscoveryExtractRule,
   DriverDiscoveryHints,
   DriverDiscoveryMdnsEntry,
 } from "../../api/types";
@@ -10,6 +12,15 @@ import type {
 // Surfaced in the UI so driver authors see the rule at the point of
 // authoring rather than discovering it via a load-time error.
 const DISALLOWED_OPEN_PORTS: ReadonlySet<number> = new Set([22, 80, 443]);
+
+// Mirrors of DISALLOWED_UDP_BROADCAST_PROBE_PORTS and
+// DISALLOWED_TCP_ACTIVE_PROBE_PORTS in server/discovery/hints.py.
+const DISALLOWED_UDP_PROBE_PORTS: ReadonlySet<number> = new Set([
+  1900, 3702, 4352, 5353, 9131, 41794,
+]);
+const DISALLOWED_TCP_PROBE_PORTS: ReadonlySet<number> = new Set([
+  23, 1515, 1688, 1710, 4352, 10500, 49280,
+]);
 
 const ALLOWED_ACTIVE_PROBES = [
   "pjlink_class1",
@@ -240,6 +251,42 @@ export function DiscoveryHintsEditor({ draft, onUpdate }: DiscoveryHintsEditorPr
             onChange={(e) => update({ symetrix: e.target.checked || undefined })}
           />
           <label htmlFor="discovery-symetrix">Symetrix ControlNet (UDP 49216)</label>
+        </div>
+      </div>
+
+      {/* Phase 9: driver-declared custom probes */}
+      <div style={sectionStyle}>
+        <label style={labelStyle}>Tier 2/3 — custom probes (driver-declared)</label>
+        <div style={{ ...helpStyle, marginBottom: "var(--space-sm)" }}>
+          When a vendor's discovery wire format isn't covered by a built-in
+          opt-in above, declare it here. The runtime sends your{" "}
+          <code>send</code> bytes, listens for <code>response_match</code>,
+          and emits Tier 2 (UDP) or Tier 3 (TCP) evidence with whatever
+          your <code>extract</code> rules pull out. <strong>Reserved
+          extract keys:</strong> <code>manufacturer</code> and <code>make</code>{" "}
+          feed the Phase 8.6 vendor_string soft-signal path automatically —
+          set them when the response carries a manufacturer string and a
+          peer driver might want to claim it via <code>vendor_aliases</code>.
+        </div>
+
+        <CustomProbeEditor
+          kind="udp"
+          probe={hints.udp_broadcast_probe}
+          disallowedPorts={DISALLOWED_UDP_PROBE_PORTS}
+          onChange={(p) => update({ udp_broadcast_probe: p })}
+        />
+        <CustomProbeEditor
+          kind="tcp"
+          probe={hints.tcp_active_probe}
+          disallowedPorts={DISALLOWED_TCP_PROBE_PORTS}
+          onChange={(p) => update({ tcp_active_probe: p })}
+        />
+
+        <div style={{ ...helpStyle, marginTop: "var(--space-sm)" }}>
+          For protocols that need multi-step handshakes, encrypted
+          payloads, or framing too dynamic for these blocks, ship a
+          sibling <code>{"<driver_id>_discovery.py"}</code> module
+          alongside the driver file (Phase 9 Python companion).
         </div>
       </div>
 
@@ -668,6 +715,380 @@ function ListEditor({
       >
         <Plus size={12} /> Add
       </button>
+    </div>
+  );
+}
+
+
+function CustomProbeEditor({
+  kind,
+  probe,
+  disallowedPorts,
+  onChange,
+}: {
+  kind: "udp" | "tcp";
+  probe?: DriverDiscoveryCustomProbe;
+  disallowedPorts: ReadonlySet<number>;
+  onChange: (probe: DriverDiscoveryCustomProbe | undefined) => void;
+}) {
+  const enabled = probe !== undefined;
+  const label =
+    kind === "udp" ? "UDP broadcast probe" : "TCP active probe";
+  const idPrefix = `discovery-custom-${kind}`;
+  const portInvalid =
+    enabled && (probe!.port == null || disallowedPorts.has(probe!.port));
+
+  const update = (partial: Partial<DriverDiscoveryCustomProbe>) => {
+    onChange({ ...(probe ?? { port: 0, send: {}, response_match: {} }), ...partial });
+  };
+
+  const updateSend = (next: { hex?: string; ascii?: string }) => {
+    onChange({
+      ...(probe ?? { port: 0, send: {}, response_match: {} }),
+      send: next,
+    });
+  };
+
+  const updateMatch = (
+    next: Partial<NonNullable<DriverDiscoveryCustomProbe["response_match"]>>,
+  ) => {
+    onChange({
+      ...(probe ?? { port: 0, send: {}, response_match: {} }),
+      response_match: { ...(probe?.response_match ?? {}), ...next },
+    });
+  };
+
+  if (!enabled) {
+    return (
+      <div style={{ marginBottom: "var(--space-sm)" }}>
+        <button
+          type="button"
+          onClick={() =>
+            onChange({
+              port: kind === "udp" ? 6000 : 6107,
+              send: { ascii: "" },
+              response_match: { contains: "" },
+            })
+          }
+          style={{
+            fontSize: "var(--font-size-sm)",
+            color: "var(--accent)",
+            padding: "var(--space-xs) 0",
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--space-xs)",
+          }}
+        >
+          <Plus size={12} /> Declare {label}
+        </button>
+      </div>
+    );
+  }
+
+  const sendIsHex = probe!.send?.hex !== undefined;
+
+  return (
+    <div
+      style={{
+        marginBottom: "var(--space-md)",
+        padding: "var(--space-sm)",
+        border: "1px solid var(--border-color)",
+        borderRadius: "var(--radius)",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: "var(--space-sm)",
+        }}
+      >
+        <strong style={{ fontSize: "var(--font-size-sm)" }}>{label}</strong>
+        <button
+          type="button"
+          onClick={() => onChange(undefined)}
+          style={{ padding: "2px", color: "var(--text-muted)" }}
+          title="Remove this probe"
+        >
+          <Trash2 size={14} />
+        </button>
+      </div>
+
+      <div
+        style={{ display: "grid", gridTemplateColumns: "100px 1fr", gap: "var(--space-sm)" }}
+      >
+        <label htmlFor={`${idPrefix}-port`} style={{ alignSelf: "center", fontSize: "var(--font-size-sm)" }}>
+          Port
+        </label>
+        <div>
+          <input
+            id={`${idPrefix}-port`}
+            type="number"
+            min={1}
+            max={65535}
+            value={probe!.port || ""}
+            onChange={(e) => update({ port: parseInt(e.target.value) || 0 })}
+            style={{
+              width: 120,
+              borderColor: portInvalid ? "var(--error)" : undefined,
+            }}
+          />
+          {portInvalid && (
+            <div style={{ fontSize: 11, color: "var(--error)", marginTop: 2 }}>
+              Port reserved for a built-in handler. Use the named opt-in
+              instead. Disallowed: {[...disallowedPorts].join(", ")}.
+            </div>
+          )}
+        </div>
+
+        <label style={{ alignSelf: "center", fontSize: "var(--font-size-sm)" }}>Send</label>
+        <div style={{ display: "flex", gap: "var(--space-xs)", alignItems: "center" }}>
+          <select
+            value={sendIsHex ? "hex" : "ascii"}
+            onChange={(e) =>
+              updateSend(
+                e.target.value === "hex"
+                  ? { hex: probe!.send?.hex ?? "" }
+                  : { ascii: probe!.send?.ascii ?? "" },
+              )
+            }
+          >
+            <option value="ascii">ascii</option>
+            <option value="hex">hex</option>
+          </select>
+          <input
+            type="text"
+            placeholder={sendIsHex ? "00010203" : "WHOIS\\r\\n"}
+            value={sendIsHex ? probe!.send?.hex ?? "" : probe!.send?.ascii ?? ""}
+            onChange={(e) =>
+              updateSend(sendIsHex ? { hex: e.target.value } : { ascii: e.target.value })
+            }
+            style={{ flex: 1, fontFamily: "var(--font-mono)" }}
+          />
+        </div>
+
+        <label style={{ alignSelf: "start", fontSize: "var(--font-size-sm)", paddingTop: 4 }}>
+          Response match
+        </label>
+        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
+          <input
+            type="text"
+            placeholder="starts_with_hex (e.g. AA55)"
+            value={probe!.response_match?.starts_with_hex ?? ""}
+            onChange={(e) =>
+              updateMatch({ starts_with_hex: e.target.value || undefined })
+            }
+            style={{ fontFamily: "var(--font-mono)", fontSize: "var(--font-size-sm)" }}
+          />
+          <input
+            type="text"
+            placeholder="contains (substring, e.g. NovaStar)"
+            value={probe!.response_match?.contains ?? ""}
+            onChange={(e) =>
+              updateMatch({ contains: e.target.value || undefined })
+            }
+            style={{ fontFamily: "var(--font-mono)", fontSize: "var(--font-size-sm)" }}
+          />
+          <input
+            type="text"
+            placeholder="regex (latin-1, e.g. ^NS-([A-Z0-9]+))"
+            value={probe!.response_match?.regex ?? ""}
+            onChange={(e) =>
+              updateMatch({ regex: e.target.value || undefined })
+            }
+            style={{ fontFamily: "var(--font-mono)", fontSize: "var(--font-size-sm)" }}
+          />
+          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+            All matchers AND together. At least one must be present for the
+            probe to identify a device.
+          </div>
+        </div>
+
+        <label htmlFor={`${idPrefix}-timeout`} style={{ alignSelf: "center", fontSize: "var(--font-size-sm)" }}>
+          Timeout (ms)
+        </label>
+        <input
+          id={`${idPrefix}-timeout`}
+          type="number"
+          min={1}
+          max={10000}
+          placeholder={kind === "udp" ? "2000" : "3000"}
+          value={probe!.timeout_ms ?? ""}
+          onChange={(e) => {
+            const n = parseInt(e.target.value);
+            update({ timeout_ms: !isNaN(n) && n > 0 ? n : undefined });
+          }}
+          style={{ width: 120 }}
+        />
+
+        <label style={{ alignSelf: "center", fontSize: "var(--font-size-sm)" }}>Generic</label>
+        <div>
+          <label style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
+            <input
+              type="checkbox"
+              checked={probe!.generic ?? false}
+              onChange={(e) => update({ generic: e.target.checked || undefined })}
+            />
+            <span style={{ fontSize: "var(--font-size-sm)" }}>
+              Cross-vendor probe (matches every device speaking a standard)
+            </span>
+          </label>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+            Set this when the probe identifies devices from multiple vendors.
+            The matcher will demote this driver to an alternative when a
+            vendor-specific driver claims the response via{" "}
+            <code>vendor_aliases</code>.
+          </div>
+        </div>
+
+        <label style={{ alignSelf: "start", fontSize: "var(--font-size-sm)", paddingTop: 4 }}>
+          Extract
+        </label>
+        <ExtractEditor
+          rules={probe!.extract ?? {}}
+          onChange={(rules) =>
+            update({
+              extract:
+                Object.keys(rules).length > 0 ? rules : undefined,
+            })
+          }
+        />
+      </div>
+    </div>
+  );
+}
+
+
+function ExtractEditor({
+  rules,
+  onChange,
+}: {
+  rules: Record<string, DriverDiscoveryExtractRule>;
+  onChange: (rules: Record<string, DriverDiscoveryExtractRule>) => void;
+}) {
+  const entries = Object.entries(rules);
+
+  const setKey = (oldKey: string, newKey: string) => {
+    const out: Record<string, DriverDiscoveryExtractRule> = {};
+    for (const [k, v] of entries) {
+      out[k === oldKey ? newKey : k] = v;
+    }
+    onChange(out);
+  };
+
+  const setValue = (key: string, rule: DriverDiscoveryExtractRule) => {
+    onChange({ ...rules, [key]: rule });
+  };
+
+  const remove = (key: string) => {
+    const out = { ...rules };
+    delete out[key];
+    onChange(out);
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
+      {entries.map(([key, rule]) => {
+        const isRegex = typeof rule === "object" && rule !== null;
+        const reserved = key === "manufacturer" || key === "make";
+        return (
+          <div
+            key={key}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "150px 80px 1fr 60px auto",
+              gap: "var(--space-xs)",
+              alignItems: "center",
+            }}
+          >
+            <input
+              type="text"
+              value={key}
+              placeholder="field name"
+              onChange={(e) => setKey(key, e.target.value)}
+              style={{
+                fontSize: "var(--font-size-sm)",
+                fontFamily: "var(--font-mono)",
+                color: reserved ? "var(--accent)" : undefined,
+              }}
+              title={reserved ? "Reserved key — feeds Tier 4 vendor_string" : undefined}
+            />
+            <select
+              value={isRegex ? "regex" : "literal"}
+              onChange={(e) =>
+                setValue(
+                  key,
+                  e.target.value === "regex"
+                    ? { regex: typeof rule === "string" ? rule : rule.regex, group: 1 }
+                    : typeof rule === "object" ? rule.regex : rule,
+                )
+              }
+            >
+              <option value="literal">literal</option>
+              <option value="regex">regex</option>
+            </select>
+            <input
+              type="text"
+              value={isRegex ? rule.regex : (rule as string)}
+              placeholder={isRegex ? "model=([^,]+)" : "static value"}
+              onChange={(e) =>
+                setValue(
+                  key,
+                  isRegex
+                    ? { regex: e.target.value, group: rule.group ?? 1 }
+                    : e.target.value,
+                )
+              }
+              style={{ fontFamily: "var(--font-mono)", fontSize: "var(--font-size-sm)" }}
+            />
+            {isRegex ? (
+              <input
+                type="number"
+                min={0}
+                value={rule.group ?? 1}
+                onChange={(e) =>
+                  setValue(key, { regex: rule.regex, group: parseInt(e.target.value) || 0 })
+                }
+                title="Capture group"
+              />
+            ) : (
+              <span />
+            )}
+            <button
+              type="button"
+              onClick={() => remove(key)}
+              style={{ padding: "2px", color: "var(--text-muted)" }}
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+        );
+      })}
+      <button
+        type="button"
+        onClick={() => {
+          let candidate = "field";
+          let i = 1;
+          while (candidate in rules) candidate = `field${++i}`;
+          onChange({ ...rules, [candidate]: "" });
+        }}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "var(--space-xs)",
+          fontSize: "var(--font-size-sm)",
+          color: "var(--accent)",
+          padding: "var(--space-xs) 0",
+        }}
+      >
+        <Plus size={12} /> Add extract field
+      </button>
+      <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+        Reserved keys <code>manufacturer</code> and <code>make</code> feed
+        the Tier 4 vendor_string soft-signal path; other fields are
+        recorded as evidence metadata for the matcher's "Why?" panel.
+      </div>
     </div>
   );
 }

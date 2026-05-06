@@ -485,6 +485,23 @@ export interface DriverDiscoveryMdnsEntry {
   txt_match?: Record<string, string>;
 }
 
+export type DriverDiscoveryExtractRule =
+  | string                                        // static literal
+  | { regex: string; group?: number };           // dynamic capture
+
+export interface DriverDiscoveryCustomProbe {
+  port: number;
+  send: { hex?: string; ascii?: string };
+  response_match: {
+    starts_with_hex?: string;
+    contains?: string;
+    regex?: string;
+  };
+  timeout_ms?: number;
+  generic?: boolean;
+  extract?: Record<string, DriverDiscoveryExtractRule>;
+}
+
 export interface DriverDiscoveryHints {
   // Tier 1
   mdns_services?: Array<string | DriverDiscoveryMdnsEntry>;
@@ -501,6 +518,12 @@ export interface DriverDiscoveryHints {
   // Tier 3
   active_probes?: string[];
 
+  // Phase 9 driver-declared probes. Vendor-specific wire formats that
+  // don't fit a built-in opt-in. Each gets a custom_<driver_id>_(udp|tcp)
+  // probe ID and runs alongside the named built-in probes.
+  udp_broadcast_probe?: DriverDiscoveryCustomProbe;
+  tcp_active_probe?: DriverDiscoveryCustomProbe;
+
   // Tier 4 enrichment (soft signals)
   snmp_pen?: number;
   oui_prefixes?: string[];
@@ -509,6 +532,10 @@ export interface DriverDiscoveryHints {
   // are rejected by the runtime validator because they would match every
   // web/SSH host on the LAN.
   open_ports?: number[];
+  // Phase 8.6: manufacturer / make strings the driver claims when a
+  // strong-tier probe response carries that field. Used by the
+  // best-driver-first matcher to disambiguate generic probes.
+  vendor_aliases?: string[];
 
   // Opt out of automatic discovery.
   manual_only?: boolean;
