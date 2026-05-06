@@ -77,10 +77,13 @@ export function DiscoveryHintsEditor({ draft, onUpdate }: DiscoveryHintsEditorPr
   return (
     <div>
       <p style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", marginBottom: "var(--space-md)" }}>
-        Discovery hints map this driver to deterministic Tier 1 / 2 / 3
-        signals on the network. Declare at least one strong signal below
-        — or check <strong>Manual only</strong> if the device has no
-        verifiable announcement.
+        Discovery hints map this driver to network signals. Strong
+        signals (Tier 1 / 2 / 3) produce an <strong>identified</strong>
+        match; soft signals (Tier 4 — OUI, hostname, open port, SNMP
+        PEN) surface the device as <strong>possible</strong> with a
+        candidate driver list. Any combination is valid. Check
+        <strong> Manual only</strong> only if the device expects manual
+        IP entry and has no network announcement at all.
       </p>
 
       {/* Manual only */}
@@ -97,9 +100,10 @@ export function DiscoveryHintsEditor({ draft, onUpdate }: DiscoveryHintsEditorPr
           </label>
         </div>
         <div style={helpStyle}>
-          Skip the discovery match entirely. Use for OSC consoles, proprietary
-          UDP discovery formats, and anything else that doesn't have a
-          deterministic Tier 1 / 2 / 3 fingerprint in core.
+          Documentation hint that this device expects manual IP entry — it
+          has no network announcement and no useful soft signal. Does not
+          affect matcher behavior; any signals declared elsewhere on this
+          driver still register normally.
         </div>
       </div>
 

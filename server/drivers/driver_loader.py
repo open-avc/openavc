@@ -108,10 +108,10 @@ def validate_driver_definition(driver_def: dict[str, Any]) -> list[str]:
             )
 
     # Validate the Phase 6 ``discovery:`` block. Templates (generic_*)
-    # are exempt — they don't participate in discovery. Every other
-    # driver must declare at least one strong signal or set
-    # ``discovery.manual_only: true``; signal collisions are caught
-    # later when the SignalIndex is built.
+    # are exempt — they don't participate in discovery. Phase 8 dropped
+    # the strong-signal-required rule: a driver may declare any
+    # combination of strong + soft signals, or none (load-time warning).
+    # Signal collisions are caught later when the SignalIndex is built.
     driver_id = driver_def.get("id", "") or ""
     is_template = any(driver_id.startswith(p) for p in ("generic_",))
     if not is_template:

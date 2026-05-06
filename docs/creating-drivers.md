@@ -616,7 +616,7 @@ Types: `length_prefix` (reads a length header then N bytes), `fixed_length` (mes
 
 ### Discovery Hints
 
-The `discovery` section is **required**. It tells the discovery engine which deterministic signal (Tier 1, 2, or 3) identifies your device on the network. Every driver must declare at least one strong signal — or set `manual_only: true` if the device has no verifiable announcement and must be added by hand.
+The `discovery` section tells the matcher which network signals identify your device. Strong signals (Tier 1 / 2 / 3) produce an *identified* match; soft signals (Tier 4 — OUI prefix, hostname pattern, open port, SNMP PEN) surface the device as *possible* with a candidate driver list. Any combination is valid; declaring no signals at all logs a load-time warning (the matcher silently ignores the driver). `manual_only: true` is a documentation hint that the device expects manual IP entry and no longer affects matcher behavior.
 
 The matcher is deterministic. There is no scoring. A signal either fires (the device is identified) or it does not. Soft hints like OUI and SNMP PEN only contribute to the "possible" state, never to "identified."
 
@@ -678,7 +678,7 @@ discovery:
 
 These are enforced at driver-load time:
 
-1. Every driver declares at least one strong signal **or** sets `manual_only: true`. Soft signals alone (`snmp_pen`, `oui_prefixes`, `hostname_patterns`, `open_ports`) only produce the *possible* state, never *identified*.
+1. Any combination of strong + soft signals is valid. Soft signals alone (`snmp_pen`, `oui_prefixes`, `hostname_patterns`, `open_ports`) only produce the *possible* state, never *identified*. Declaring no signals at all logs a warning at load time but doesn't reject the driver.
 2. Two drivers cannot claim the same Tier 1/2/3 signal without distinct TXT-record filters. Drivers fail to load on collision.
 3. `active_probes` and broadcast probe IDs must come from the platform allow-list above.
 

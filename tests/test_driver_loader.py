@@ -49,15 +49,19 @@ def test_validate_missing_required():
     assert any("transport" in e for e in errors)
 
 
-def test_validate_rejects_missing_discovery_block():
-    """Phase 6: every non-template driver must declare discovery hints."""
+def test_validate_accepts_missing_discovery_block_with_warning():
+    """Phase 8 Task 8.3: a driver with no signals at all loads (the
+    matcher silently ignores it) but the loader logs a warning. We no
+    longer reject the driver — community contributors can ship a
+    placeholder driver and add discovery hints in a follow-up.
+    """
     errors = validate_driver_definition({
         "id": "no_discovery",
         "name": "No Discovery",
         "transport": "tcp",
         "commands": {"power_on": {"string": "X\r"}},
     })
-    assert any("discovery" in e and "no strong signal" in e for e in errors), errors
+    assert errors == []
 
 
 def test_validate_accepts_manual_only_discovery():

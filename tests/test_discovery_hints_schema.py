@@ -32,20 +32,42 @@ def _drv(driver_id: str, **discovery) -> dict:
     }
 
 
-class TestStrongSignalRequirement:
-    def test_no_signal_no_manual_only_raises(self):
-        with pytest.raises(DiscoveryHintError, match="no strong signal"):
-            parse_driver_discovery({
-                "id": "lonely_driver",
-                "name": "Lonely",
-                "discovery": {"oui_prefixes": ["00:11:22"]},
-            })
+class TestSignalRequirements:
+    def test_soft_only_loads_without_error(self):
+        # Phase 8 Task 8.3: a driver with only soft signals (and no
+        # manual_only flag) used to raise. The new rule: any signal —
+        # strong or soft — is enough for the driver to participate in
+        # matching, so soft-only drivers load fine.
+        h = parse_driver_discovery({
+            "id": "lonely_driver",
+            "name": "Lonely",
+            "discovery": {"oui_prefixes": ["00:11:22"]},
+        })
+        assert h is not None
+        assert h.oui_prefixes == ["00:11:22"]
+        assert h.manual_only is False
 
-    def test_manual_only_without_signal_is_ok(self):
-        h = parse_driver_discovery(_drv("manual_widget", manual_only=True))
+    def test_no_signals_at_all_warns(self, caplog):
+        # A driver with no signals AND no manual_only flag is almost
+        # certainly a mistake — log a warning, but don't reject.
+        import logging
+        with caplog.at_level(logging.WARNING, logger="discovery.hints"):
+            h = parse_driver_discovery({
+                "id": "ghost_driver",
+                "name": "Ghost",
+                "discovery": {},
+            })
+        assert h is not None
+        assert "ghost_driver" in caplog.text
+        assert "never participate in matching" in caplog.text
+
+    def test_no_signals_with_manual_only_is_silent(self, caplog):
+        import logging
+        with caplog.at_level(logging.WARNING, logger="discovery.hints"):
+            h = parse_driver_discovery(_drv("manual_widget", manual_only=True))
         assert h is not None
         assert h.manual_only is True
-        assert h.mdns_services == []
+        assert "never participate in matching" not in caplog.text
 
     def test_one_strong_signal_satisfies(self):
         h = parse_driver_discovery(_drv(

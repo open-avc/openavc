@@ -283,23 +283,28 @@ def parse_driver_discovery(driver_info: dict[str, Any]) -> DiscoveryHint | None:
             )
         hint.open_ports.append(port)
 
-    if hint.manual_only:
-        return hint
-
-    has_strong = (
+    has_any_signal = (
         bool(hint.mdns_services)
         or bool(hint.ssdp_device_types)
         or hint.amx_ddp is not None
         or bool(hint.broadcast_probes)
         or bool(hint.active_probes)
+        or hint.snmp_pen is not None
+        or bool(hint.oui_prefixes)
+        or bool(hint.hostname_patterns)
+        or bool(hint.open_ports)
     )
-    if not has_strong:
-        raise DiscoveryHintError(
-            f"{driver_id}: discovery block declares no strong signal "
-            "(mdns_services, ssdp_device_types, amx_ddp, pjlink_class2, "
-            "crestron_cip, onvif, hiqnet, symetrix, active_probes) and "
-            "is not marked manual_only: true. Discovery would never "
-            "match this driver."
+    if not has_any_signal and not hint.manual_only:
+        # A driver with no signals at all and no manual_only flag can never
+        # match anything — almost certainly a mistake. Warn so the author
+        # notices, but don't reject: the matcher silently ignores it, and
+        # `manual_only: true` is no longer required for this case.
+        log.warning(
+            "%s: discovery block declares no signals (strong or soft); "
+            "this driver will never participate in matching. Add "
+            "oui_prefixes, hostname_patterns, open_ports, or a Tier 1/2/3 "
+            "signal — or set manual_only: true to silence this warning.",
+            driver_id,
         )
 
     return hint
