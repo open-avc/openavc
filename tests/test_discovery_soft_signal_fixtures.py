@@ -16,6 +16,7 @@ test time rather than during a live scan.
 
 from __future__ import annotations
 
+import importlib.util
 from pathlib import Path
 
 import pytest
@@ -28,6 +29,7 @@ from server.discovery.hints import (
 from server.discovery.result import DeviceState
 from server.discovery.tier_matcher import (
     TierMatcher,
+    evidence_active_probe,
     evidence_hostname,
     evidence_open_port,
     evidence_oui,
@@ -134,6 +136,69 @@ def test_catalog_soft_signals_produce_possible(
             f"(got {result.state}, candidates={result.candidates})"
         )
         assert driver_id in result.candidates
+
+
+def _load_python_driver_info(rel_path: str) -> dict:
+    """Import a community Python driver and return its ``DRIVER_INFO``.
+
+    Mirrors what ``server.drivers.driver_loader`` does at runtime: load the
+    module via ``importlib`` and pull the first ``BaseDriver`` subclass that
+    declares ``DRIVER_INFO``. Used for Phase 8.5 fixtures that need the
+    real Python-driver discovery hints (catalog stores PJLink and Sharp NEC
+    as ``.py`` drivers, not YAML).
+    """
+    path = DRIVERS_ROOT / rel_path
+    spec = importlib.util.spec_from_file_location(f"_drv_{path.stem}", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    for attr_name in dir(module):
+        obj = getattr(module, attr_name)
+        if isinstance(obj, type) and hasattr(obj, "DRIVER_INFO"):
+            info = getattr(obj, "DRIVER_INFO", None)
+            if isinstance(info, dict) and info.get("id"):
+                return info
+    raise AssertionError(f"No DRIVER_INFO class found in {rel_path}")
+
+
+def test_nec_projector_pjlink_plus_oui_picks_sharp_nec() -> None:
+    """Real-catalog regression for Phase 8.5.
+
+    ``pjlink_class1.py`` declares the generic PJLink Class 1 active probe;
+    ``sharp_nec_projector.py`` declares NEC OUI prefixes. With both signals
+    present (a Sharp/NEC projector responding to PJLink probe on its NEC-
+    OUI MAC), the matcher must prefer the brand-specific driver and
+    expose PJLink as an alternative.
+    """
+    pjlink_info = _load_python_driver_info("projectors/pjlink_class1.py")
+    sharp_nec_info = _load_python_driver_info("projectors/sharp_nec_projector.py")
+    assert pjlink_info["id"] == "pjlink_class1"
+    assert sharp_nec_info["id"] == "sharp_nec_projector"
+
+    pjlink_hint = parse_driver_discovery(pjlink_info)
+    sharp_nec_hint = parse_driver_discovery(sharp_nec_info)
+    assert pjlink_hint is not None
+    assert sharp_nec_hint is not None
+    assert "pjlink_class1" in pjlink_hint.active_probes
+    assert "00:30:13" in sharp_nec_hint.oui_prefixes
+
+    idx = build_signal_index([pjlink_hint, sharp_nec_hint])
+    matcher = TierMatcher(idx)
+
+    result = matcher.match([
+        evidence_active_probe(
+            "pjlink_class1",
+            {"manufacturer": "NEC", "model": "PA1004UL"},
+        ),
+        evidence_oui("00:30:13:11:22:33"),
+    ])
+
+    assert result.state == DeviceState.IDENTIFIED, (
+        f"expected IDENTIFIED, got {result.state} (driver={result.driver_id}, "
+        f"alternatives={result.alternatives})"
+    )
+    assert result.driver_id == "sharp_nec_projector"
+    assert "pjlink_class1" in result.alternatives
 
 
 def test_open_port_soft_signal_pinned_via_synthetic_driver() -> None:
