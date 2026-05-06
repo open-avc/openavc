@@ -85,6 +85,11 @@ class DiscoveryHint:
     oui_prefixes: list[str] = field(default_factory=list)
     hostname_patterns: list[str] = field(default_factory=list)
     open_ports: list[int] = field(default_factory=list)
+    # Manufacturer/make strings the driver claims when a strong-tier
+    # probe response carries that field (PJLink ``%1MNFR?``, ONVIF
+    # ``Manufacturer``, etc.). Stored lowercased + stripped; case-
+    # insensitive exact-match at lookup time.
+    vendor_aliases: list[str] = field(default_factory=list)
 
 
 class DiscoveryHintError(ValueError):
@@ -259,6 +264,27 @@ def parse_driver_discovery(driver_info: dict[str, Any]) -> DiscoveryHint | None:
             )
         hint.hostname_patterns.append(pat)
 
+    raw_aliases = discovery.get("vendor_aliases") or []
+    if not isinstance(raw_aliases, list):
+        raise DiscoveryHintError(
+            f"{driver_id}: discovery.vendor_aliases must be a list"
+        )
+    seen_aliases: set[str] = set()
+    for alias in raw_aliases:
+        if not isinstance(alias, str):
+            raise DiscoveryHintError(
+                f"{driver_id}: vendor_aliases entries must be strings, got {alias!r}"
+            )
+        normalized = alias.strip().lower()
+        if not normalized:
+            raise DiscoveryHintError(
+                f"{driver_id}: vendor_aliases entries must be non-empty strings"
+            )
+        if normalized in seen_aliases:
+            continue
+        seen_aliases.add(normalized)
+        hint.vendor_aliases.append(normalized)
+
     raw_ports = discovery.get("open_ports") or []
     if not isinstance(raw_ports, list):
         raise DiscoveryHintError(
@@ -293,6 +319,7 @@ def parse_driver_discovery(driver_info: dict[str, Any]) -> DiscoveryHint | None:
         or bool(hint.oui_prefixes)
         or bool(hint.hostname_patterns)
         or bool(hint.open_ports)
+        or bool(hint.vendor_aliases)
     )
     if not has_any_signal and not hint.manual_only:
         # A driver with no signals at all and no manual_only flag can never
@@ -302,8 +329,9 @@ def parse_driver_discovery(driver_info: dict[str, Any]) -> DiscoveryHint | None:
         log.warning(
             "%s: discovery block declares no signals (strong or soft); "
             "this driver will never participate in matching. Add "
-            "oui_prefixes, hostname_patterns, open_ports, or a Tier 1/2/3 "
-            "signal — or set manual_only: true to silence this warning.",
+            "oui_prefixes, hostname_patterns, open_ports, vendor_aliases, "
+            "or a Tier 1/2/3 signal — or set manual_only: true to silence "
+            "this warning.",
             driver_id,
         )
 

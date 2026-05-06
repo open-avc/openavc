@@ -174,6 +174,75 @@ class TestSchemaParsing:
                 "bad", active_probes=["qrc"], open_ports=[port],
             ))
 
+    def test_vendor_aliases_accepted(self):
+        h = parse_driver_discovery(_drv(
+            "sharp_nec_projector",
+            active_probes=["pjlink_class1"],
+            vendor_aliases=["NEC", "Sharp NEC", "Sharp"],
+        ))
+        assert h is not None
+        # Aliases are normalized to lowercase + stripped at parse time so
+        # the matcher's case-insensitive lookup is a plain dict hit.
+        assert h.vendor_aliases == ["nec", "sharp nec", "sharp"]
+
+    def test_vendor_aliases_strips_whitespace(self):
+        h = parse_driver_discovery(_drv(
+            "vendor_widget",
+            active_probes=["pjlink_class1"],
+            vendor_aliases=["  Sony  "],
+        ))
+        assert h is not None
+        assert h.vendor_aliases == ["sony"]
+
+    def test_vendor_aliases_dedup_case_insensitive(self):
+        h = parse_driver_discovery(_drv(
+            "vendor_widget",
+            active_probes=["pjlink_class1"],
+            vendor_aliases=["NEC", "nec", " NEC "],
+        ))
+        assert h is not None
+        assert h.vendor_aliases == ["nec"]
+
+    def test_vendor_aliases_must_be_list(self):
+        with pytest.raises(DiscoveryHintError, match="vendor_aliases must be a list"):
+            parse_driver_discovery(_drv(
+                "bad", active_probes=["pjlink_class1"], vendor_aliases="NEC",
+            ))
+
+    def test_vendor_aliases_rejects_non_string(self):
+        with pytest.raises(DiscoveryHintError, match="must be strings"):
+            parse_driver_discovery(_drv(
+                "bad", active_probes=["pjlink_class1"], vendor_aliases=[123],
+            ))
+
+    def test_vendor_aliases_rejects_empty_string(self):
+        with pytest.raises(DiscoveryHintError, match="non-empty"):
+            parse_driver_discovery(_drv(
+                "bad", active_probes=["pjlink_class1"], vendor_aliases=[""],
+            ))
+
+    def test_vendor_aliases_rejects_whitespace_only(self):
+        with pytest.raises(DiscoveryHintError, match="non-empty"):
+            parse_driver_discovery(_drv(
+                "bad", active_probes=["pjlink_class1"], vendor_aliases=["   "],
+            ))
+
+    def test_vendor_aliases_alone_satisfies_signal_requirement(self, caplog):
+        # A driver with only vendor_aliases (no strong signal, no other
+        # soft signal) must load without warning — vendor_aliases is a
+        # legitimate Tier 4 soft signal once Phase 8.6 wires the matcher
+        # branch. Pins the has_any_signal contract added in Task 8.6.1.
+        import logging
+        with caplog.at_level(logging.WARNING, logger="discovery.hints"):
+            h = parse_driver_discovery({
+                "id": "alias_only_driver",
+                "name": "Alias Only",
+                "discovery": {"vendor_aliases": ["AcmeCorp"]},
+            })
+        assert h is not None
+        assert h.vendor_aliases == ["acmecorp"]
+        assert "never participate in matching" not in caplog.text
+
 
 class TestSignalIndexBuilder:
     def test_strong_collision_raises(self):
