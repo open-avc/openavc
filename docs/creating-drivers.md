@@ -161,9 +161,17 @@ The **set:** shorthand is also supported (`set: {mute: "$1"}` for capture-group 
 
 #### 5. Discovery tab (optional)
 
-Hints the discovery engine uses to match found devices to this driver: ports, MAC OUI prefixes, protocol identifiers, mDNS service names, hostname patterns, SSDP/UPnP device-type URN substrings.
+Hints the discovery engine uses to match found devices to this driver: ports, MAC OUI prefixes, protocol identifiers, mDNS service names, hostname patterns, SSDP/UPnP device-type URN substrings, manufacturer aliases.
 
-Skip this if the device isn't auto-discoverable.
+When the device announces itself with a vendor-specific wire format that isn't covered by a built-in opt-in (PJLink Class 2, Crestron CIP, ONVIF, etc.), declare a custom probe directly in the Driver Builder:
+
+- **UDP broadcast probe**: a one-shot UDP packet sent to the network broadcast address. Set the port, the `send` payload (hex or ASCII), and one or more `response_match` matchers (`starts_with_hex`, `contains`, or `regex`). Optional `extract` rules pull manufacturer / model / version out of the response — keys named `manufacturer` or `make` are reserved and feed the Tier 4 vendor_string path so peer drivers can claim the device via `vendor_aliases`.
+- **TCP active probe**: same shape, but runs against every host whose port scan results include the declared port. Useful for devices that answer on a custom TCP port but don't broadcast.
+- **Generic flag**: tick this when the probe matches every device speaking some standard. The matcher will demote the driver to an alternative when a vendor-specific peer claims the response.
+
+When the device's wire format involves multi-step handshakes, encrypted payloads, or framing too dynamic for the declarative block, ship a sibling `<driver_id>_discovery.py` Python module next to the `.avcdriver` file. It exposes `async def probe(ctx)` and emits evidence via `ctx.emit_broadcast` / `emit_active` / `emit_oui`. Bind every socket to `ctx.source_ip`; the platform enforces a hard timeout (default 10s, capped at 30s).
+
+Skip the Discovery tab entirely if the device has no network announcement — it can still be added manually from the Programmer IDE.
 
 #### 6. Simulation tab (optional)
 
