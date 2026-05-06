@@ -76,9 +76,13 @@ class TestUnknownServiceTypeTracking:
         assert "_unknown._tcp.local." in types
 
     def test_track_filters_out_known_types(self):
-        scanner = MDNSScanner()
-        # These are in AV_SERVICE_TYPES — we already query them, so
-        # observing them in the enumeration is not "unknown".
+        scanner = MDNSScanner(service_types=[
+            "_pjlink._tcp.local.",
+            "_netaudio-cmc._udp.local.",
+        ])
+        # Phase 9.6: types the scanner is configured to query are
+        # "known"; observing them in the DNS-SD enumeration is not
+        # "unknown".
         scanner._track_unknown_service_type("_pjlink._tcp.local.")
         scanner._track_unknown_service_type("_netaudio-cmc._udp.local.")
         assert scanner.unknown_service_types == set()
@@ -132,43 +136,54 @@ class TestSSDPResultEvidence:
         assert r.to_evidence() is None
 
 
-class TestNewServiceTypesInQueryList:
-    """Verify the corrected service-type list lands in AV_SERVICE_TYPES."""
+class TestPhase9DriverDeclaredServiceTypes:
+    """Phase 9.6: service types come from driver catalog declarations.
 
-    def test_dante_complete(self):
-        from server.discovery.mdns_scanner import AV_SERVICE_TYPES
-        for required in (
+    The hard-coded AV_SERVICE_TYPES list is gone. The MDNSScanner
+    accepts a ``service_types`` constructor argument and queries
+    whatever the engine populates from loaded drivers' mdns_services:
+    blocks. The DNS-SD meta-query is always included so unknown
+    service types surface for catalog growth.
+    """
+
+    def test_scanner_queries_declared_types(self):
+        from server.discovery.mdns_scanner import MDNSScanner
+
+        declared = [
             "_netaudio-cmc._udp.local.",
-            "_netaudio-arc._udp.local.",
-            "_netaudio-chan._udp.local.",
-            "_netaudio-dbc._udp.local.",
-            "_workgroup._udp.local.",
-        ):
-            assert required in AV_SERVICE_TYPES
-
-    def test_nmos_complete(self):
-        from server.discovery.mdns_scanner import AV_SERVICE_TYPES
-        for required in (
             "_nmos-node._tcp.local.",
-            "_nmos-register._tcp.local.",
-            "_nmos-query._tcp.local.",
-            "_nmos-registration._tcp.local.",
-        ):
-            assert required in AV_SERVICE_TYPES
+            "_ndi._tcp.local.",
+            "_leap._tcp.local.",
+            "_ssc._udp.local.",
+        ]
+        scanner = MDNSScanner(service_types=declared)
+        for st in declared:
+            assert st in scanner._service_types
 
-    def test_ndi_present(self):
-        from server.discovery.mdns_scanner import AV_SERVICE_TYPES
-        assert "_ndi._tcp.local." in AV_SERVICE_TYPES
+    def test_dns_sd_meta_query_included_even_when_caller_omits_it(self):
+        from server.discovery.mdns_scanner import MDNSScanner, DNS_SD_META_QUERY
 
-    def test_lutron_leap_present(self):
-        from server.discovery.mdns_scanner import AV_SERVICE_TYPES
-        assert "_leap._tcp.local." in AV_SERVICE_TYPES
+        scanner = MDNSScanner(service_types=["_ndi._tcp.local."])
+        assert DNS_SD_META_QUERY in scanner._service_types
 
-    def test_sennheiser_ssc_present(self):
-        from server.discovery.mdns_scanner import AV_SERVICE_TYPES
-        assert "_ssc._udp.local." in AV_SERVICE_TYPES
-        assert "_ssc._tcp.local." in AV_SERVICE_TYPES
+    def test_normalization_adds_trailing_dot_and_dedupes(self):
+        from server.discovery.mdns_scanner import MDNSScanner
 
-    def test_roku_present(self):
-        from server.discovery.mdns_scanner import AV_SERVICE_TYPES
-        assert "_roku._tcp.local." in AV_SERVICE_TYPES
+        scanner = MDNSScanner(service_types=[
+            "_FOO._tcp.local",     # missing trailing dot, mixed case
+            "_foo._tcp.local.",    # duplicate after normalization
+            "_bar._udp.local.",
+        ])
+        assert scanner._service_types.count("_FOO._tcp.local.") == 1
+        assert "_bar._udp.local." in scanner._service_types
+
+    def test_unknown_service_filter_uses_configured_list(self):
+        from server.discovery.mdns_scanner import MDNSScanner
+
+        scanner = MDNSScanner(service_types=["_known._tcp.local."])
+        # A type configured for the scanner is "known" — never logged.
+        scanner._track_unknown_service_type("_known._tcp.local.")
+        assert "_known._tcp.local." not in scanner.unknown_service_types
+        # An unfamiliar type from DNS-SD enumeration surfaces.
+        scanner._track_unknown_service_type("_someweirdservice._tcp.local.")
+        assert "_someweirdservice._tcp.local." in scanner.unknown_service_types

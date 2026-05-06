@@ -49,47 +49,23 @@ DNS_CLASS_IN = 1
 # service that contains "qsc"/"shure"/"tesira" or carries a matching
 # manufacturer TXT record, the new TierMatcher will identify it via
 # the catch-all enumeration plus a TXT filter declared by the driver.
-AV_SERVICE_TYPES = [
-    # ---- Generic web UIs (used to enrich already-identified devices,
-    # NOT a primary identification signal on their own) ----
+# DNS-SD meta-query that enumerates every service type advertised on
+# the network. Always included regardless of which drivers are loaded
+# so unknown service types surface to the user for catalog growth.
+DNS_SD_META_QUERY = "_services._dns-sd._udp.local."
+
+# Generic web UIs and consumer endpoints that have no specific driver
+# but enrich already-identified devices. The engine includes these in
+# the browse list as a baseline alongside whatever the loaded drivers
+# declare in their ``mdns_services:`` blocks.
+BASELINE_SERVICE_TYPES = (
     "_http._tcp.local.",
     "_https._tcp.local.",
-
-    # ---- Standardized AV protocols with vendor-specific service types ----
-    "_pjlink._tcp.local.",        # PJLink projectors (when advertised)
-    "_ndi._tcp.local.",           # NDI sources (NewTek / Vizrt)
-    "_leap._tcp.local.",          # Lutron HomeWorks QSX / RA3 / Caseta
-
-    # ---- Dante (Audinate) ----
-    # The single largest AV protocol population on most modern AV LANs.
-    "_netaudio-cmc._udp.local.",  # Conmon control - primary device announcement
-    "_netaudio-arc._udp.local.",  # Audio Routing Control
-    "_netaudio-chan._udp.local.", # Per-channel descriptions
-    "_netaudio-dbc._udp.local.",  # Device-by-channel
-    "_workgroup._udp.local.",     # Older Brooklyn-II firmware
-
-    # ---- NMOS / IPMX (open AV-over-IP) ----
-    "_nmos-node._tcp.local.",         # Node API
-    "_nmos-register._tcp.local.",     # Registration API (current)
-    "_nmos-query._tcp.local.",        # Query API
-    "_nmos-registration._tcp.local.", # Legacy alias for v1.2 and below
-
-    # ---- Sennheiser SSC (TeamConnect Ceiling, MobileConnect, EW-DX) ----
-    "_ssc._udp.local.",
-    "_ssc._tcp.local.",
-
-    # ---- Consumer / streaming endpoints often present in AV spaces ----
-    "_airplay._tcp.local.",       # Apple TV, AirMedia, AirPlay-capable displays/AVRs
-    "_googlecast._tcp.local.",    # Chromecast, Nest Hub
-    "_raop._tcp.local.",          # AirPlay audio
-    "_roku._tcp.local.",          # Roku ECP
-
-    # ---- Catch-all enumeration ----
-    # DNS-SD meta-query that enumerates every other service type the
-    # network advertises. Lets us surface unknown service types to the
-    # user for catalog growth without hard-coding every vendor.
-    "_services._dns-sd._udp.local.",
-]
+    "_airplay._tcp.local.",
+    "_googlecast._tcp.local.",
+    "_raop._tcp.local.",
+    "_roku._tcp.local.",
+)
 
 
 # --- DNS Wire Format ---
@@ -448,11 +424,22 @@ class MDNSScanner:
     for AV-relevant service types. Uses only stdlib (socket, struct, asyncio).
     """
 
-    def __init__(self, control_ip: str = "") -> None:
+    def __init__(
+        self,
+        control_ip: str = "",
+        service_types: list[str] | None = None,
+    ) -> None:
         """``control_ip``: bind multicast group join to this interface IP.
         Empty string means INADDR_ANY (default route, all interfaces).
         Required for the multi-NIC AV scenario where the control VLAN
         is not the default route.
+
+        ``service_types``: the list of mDNS service types to PTR-query.
+        The engine populates this from the union of every loaded
+        driver's ``mdns_services:`` block plus a small baseline of
+        consumer-AV types. ``None`` falls back to baseline + DNS-SD
+        meta-query, matching the pre-Phase-9 behavior for callers
+        that haven't been threaded through.
         """
         self._sock: socket.socket | None = None
         self._running = False
@@ -462,10 +449,33 @@ class MDNSScanner:
         # Instance -> partial data (before we have IP)
         self._pending: dict[str, dict[str, Any]] = {}
         # Service types observed via _services._dns-sd._udp.local.
-        # enumeration that we don't have a hard-coded mapping for. Surfaced
-        # for catalog-growth telemetry and the unknown-state UI.
+        # enumeration that no loaded driver claims. Surfaced for
+        # catalog-growth telemetry and the unknown-state UI.
         self._unknown_service_types: set[str] = set()
         self._control_ip = control_ip
+        if service_types is None:
+            self._service_types: list[str] = list(BASELINE_SERVICE_TYPES) + [DNS_SD_META_QUERY]
+        else:
+            # Always include the DNS-SD meta-query so unknown types
+            # surface for catalog growth even when drivers aren't yet
+            # declaring much.
+            seen: set[str] = set()
+            ordered: list[str] = []
+            for st in list(service_types) + [DNS_SD_META_QUERY]:
+                norm = st.strip()
+                if not norm:
+                    continue
+                if not norm.endswith("."):
+                    norm = norm + "."
+                key = norm.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                ordered.append(norm)
+            self._service_types = ordered
+        self._known_service_types_lower: frozenset[str] = frozenset(
+            s.lower() for s in self._service_types
+        )
 
     @property
     def results(self) -> dict[str, MDNSResult]:
@@ -519,12 +529,12 @@ class MDNSScanner:
         self._close_socket()
 
     async def _send_queries(self) -> None:
-        """Send PTR queries for all AV service types."""
+        """Send PTR queries for every configured service type."""
         if not self._sock:
             return
 
         loop = asyncio.get_event_loop()
-        for service_type in AV_SERVICE_TYPES:
+        for service_type in self._service_types:
             try:
                 packet = build_dns_query(service_type, DNS_TYPE_PTR)
                 await loop.run_in_executor(
@@ -724,7 +734,7 @@ class MDNSScanner:
         adding to the driver catalog.
         """
         normalized = service_type.lower().rstrip(".") + "."
-        if normalized in {s.lower() for s in AV_SERVICE_TYPES}:
+        if normalized in self._known_service_types_lower:
             return
         if normalized in self._unknown_service_types:
             return

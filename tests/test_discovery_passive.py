@@ -17,7 +17,8 @@ from server.discovery.mdns_scanner import (
     DNS_TYPE_PTR,
     DNS_TYPE_SRV,
     DNS_TYPE_TXT,
-    AV_SERVICE_TYPES,
+    BASELINE_SERVICE_TYPES,
+    DNS_SD_META_QUERY,
     _parse_txt_rdata,
     _extract_instance_name,
     _service_type_to_protocol,
@@ -362,33 +363,42 @@ class TestServiceTypeMapping:
     def test_pjlink_protocol(self):
         assert _service_type_to_protocol("_pjlink._tcp.local.") == "pjlink"
 
-    def test_av_service_types_no_known_bogus(self):
-        """The hardcoded query list must not include service types that
-        do not exist in the wild. AMX uses DDP multicast (not mDNS);
-        Crestron uses CIP UDP/41794 (not mDNS); Lutron uses _leap not _lutron.
+    def test_baseline_service_types_no_bogus_av_protocols(self):
+        """Phase 9.6: the hard-coded baseline carries only protocols
+        that actually advertise via mDNS. AMX uses DDP multicast (not
+        mDNS); Crestron uses CIP UDP/41794 (not mDNS); Lutron uses
+        _leap, declared by the lutron driver, not a hard-coded
+        _lutron. The baseline contains no bogus AV protocols.
         """
-        from server.discovery.mdns_scanner import AV_SERVICE_TYPES
         bogus = {
             "_amx-beacon._udp.local.",
             "_crestron._tcp.local.",
             "_lutron._tcp.local.",
         }
-        for s in AV_SERVICE_TYPES:
-            assert s not in bogus, f"{s} is bogus and should not be queried"
+        for s in BASELINE_SERVICE_TYPES:
+            assert s not in bogus, f"{s} is bogus and should not be in baseline"
 
-    def test_av_service_types_includes_dante(self):
-        """Dante is the largest single AV protocol population on most
-        modern AV LANs. The query list must include the core
-        _netaudio-* services."""
-        from server.discovery.mdns_scanner import AV_SERVICE_TYPES
-        assert "_netaudio-cmc._udp.local." in AV_SERVICE_TYPES
-        assert "_netaudio-arc._udp.local." in AV_SERVICE_TYPES
+    def test_dante_queryable_via_driver_declaration(self):
+        """Phase 9.6: Dante service types are declared by the
+        dante_ddm/Audinate drivers in openavc-drivers, not hard-coded
+        in core. The MDNSScanner queries any service type passed in.
+        """
+        scanner = MDNSScanner(service_types=[
+            "_netaudio-cmc._udp.local.",
+            "_netaudio-arc._udp.local.",
+        ])
+        assert "_netaudio-cmc._udp.local." in scanner._service_types
+        assert "_netaudio-arc._udp.local." in scanner._service_types
 
-    def test_av_service_types_includes_enumeration(self):
-        """The DNS-SD meta-query must be present so we can capture
-        unknown service types for catalog growth."""
-        from server.discovery.mdns_scanner import AV_SERVICE_TYPES
-        assert "_services._dns-sd._udp.local." in AV_SERVICE_TYPES
+    def test_dns_sd_meta_query_always_included(self):
+        """The DNS-SD meta-query is always added so unknown service
+        types surface for catalog growth, regardless of what drivers
+        declare.
+        """
+        scanner = MDNSScanner(service_types=[])
+        assert DNS_SD_META_QUERY in scanner._service_types
+        scanner2 = MDNSScanner(service_types=["_foo._tcp.local."])
+        assert DNS_SD_META_QUERY in scanner2._service_types
 
     def test_pjlink_protocol_no_trailing_dot(self):
         """DNS-decoded names don't have trailing dots."""
@@ -502,12 +512,12 @@ class TestMDNSScanner:
         assert scanner._running is False
         assert scanner._results == {}
 
-    def test_av_service_types_defined(self):
-        """Verify we have AV-relevant service types."""
-        assert len(AV_SERVICE_TYPES) > 5
-        assert "_pjlink._tcp.local." in AV_SERVICE_TYPES
-        assert "_airplay._tcp.local." in AV_SERVICE_TYPES
-        assert "_http._tcp.local." in AV_SERVICE_TYPES
+    def test_baseline_service_types_defined(self):
+        """The baseline still carries the consumer / generic protocols
+        the engine includes alongside driver-declared types."""
+        assert len(BASELINE_SERVICE_TYPES) >= 4
+        assert "_airplay._tcp.local." in BASELINE_SERVICE_TYPES
+        assert "_http._tcp.local." in BASELINE_SERVICE_TYPES
 
     @pytest.mark.asyncio
     async def test_start_handles_socket_error(self):

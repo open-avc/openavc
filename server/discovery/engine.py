@@ -22,7 +22,10 @@ from server.discovery.hints import (
     load_discovery_hints,
 )
 from server.discovery.community_index import CommunityDevicesCache, CommunityIndexCache
-from server.discovery.mdns_scanner import MDNSScanner
+from server.discovery.mdns_scanner import (
+    BASELINE_SERVICE_TYPES,
+    MDNSScanner,
+)
 from server.discovery.ssdp_scanner import SSDPScanner
 from server.discovery.snmp_scanner import SNMPScanner
 from server.discovery.amx_ddp_scanner import AMXDDPScanner
@@ -480,7 +483,19 @@ class DiscoveryEngine:
         # --- Phase 2: Start Tier 1 Passive Listeners (background) ---
         await self._set_phase(2, "passive_listen", "Starting mDNS, SSDP, and AMX DDP listeners...")
 
-        mdns_scanner = MDNSScanner()
+        # Phase 9.6: mDNS service types come from loaded drivers'
+        # mdns_services: declarations plus a small consumer baseline.
+        # The DNS-SD meta-query is always added by the scanner so
+        # unknown types surface for catalog growth.
+        driver_service_types: list[str] = []
+        for hint in self.discovery_hints:
+            for entry in hint.mdns_services:
+                service = entry.get("service")
+                if isinstance(service, str) and service:
+                    driver_service_types.append(service)
+        mdns_service_types = list(BASELINE_SERVICE_TYPES) + driver_service_types
+
+        mdns_scanner = MDNSScanner(service_types=mdns_service_types)
         ssdp_scanner = SSDPScanner()
         amx_ddp_scanner = AMXDDPScanner(control_ip=control_ip)
 
