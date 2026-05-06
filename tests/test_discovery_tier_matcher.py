@@ -15,6 +15,7 @@ from server.discovery.tier_matcher import (
     KIND_AMX_DDP,
     KIND_BROADCAST,
     KIND_MDNS,
+    KIND_OPEN_PORT,
     SignalIndex,
     SignalRule,
     TierMatcher,
@@ -23,6 +24,7 @@ from server.discovery.tier_matcher import (
     evidence_broadcast,
     evidence_hostname,
     evidence_mdns,
+    evidence_open_port,
     evidence_oui,
     evidence_snmp_pen,
 )
@@ -208,6 +210,31 @@ class TestSoftSignals:
         with pytest.raises(ValueError, match="Invalid hostname pattern"):
             idx.add_rule(SignalRule.for_hostname("bad", "[unclosed"))
 
+    def test_open_port_lookup_returns_all(self):
+        idx = SignalIndex()
+        idx.add_rule(SignalRule.for_open_port("qsc_qrc", 1710))
+        idx.add_rule(SignalRule.for_open_port("qsc_qsys_external", 1710))
+        assert set(idx.find_soft_open_port(1710)) == {"qsc_qrc", "qsc_qsys_external"}
+
+    def test_open_port_no_match(self):
+        idx = SignalIndex()
+        idx.add_rule(SignalRule.for_open_port("qsc_qrc", 1710))
+        assert idx.find_soft_open_port(9999) == []
+        assert idx.find_soft_open_port(None) == []
+
+    def test_open_port_factory(self):
+        r = SignalRule.for_open_port("pjlink_class1", 4352)
+        assert r.kind == KIND_OPEN_PORT
+        assert r.source_id == "4352"
+        assert r.tier == SignalTier.ENRICHMENT
+
+    def test_evidence_open_port_shape(self):
+        ev = evidence_open_port(1710)
+        assert ev.tier == SignalTier.ENRICHMENT
+        assert ev.data["kind"] == KIND_OPEN_PORT
+        assert ev.data["value"] == 1710
+        assert ev.source == "open_port:1710"
+
 
 # ===== TierMatcher =====
 
@@ -337,6 +364,16 @@ class TestTierMatcherPossible:
         result = m.match([evidence_hostname("QSYS-Core110f")])
         assert result.state == DeviceState.POSSIBLE
         assert result.candidates == ["qsc_core"]
+
+    def test_open_port_yields_possible(self):
+        idx = SignalIndex()
+        idx.add_rule(SignalRule.for_open_port("qsc_qrc", 1710))
+        m = TierMatcher(idx)
+
+        result = m.match([evidence_open_port(1710)])
+        assert result.state == DeviceState.POSSIBLE
+        assert result.candidates == ["qsc_qrc"]
+        assert result.source == "open_port:1710"
 
     def test_narrowest_signal_first(self):
         # Two soft hits: OUI matches 5 drivers, PEN matches 1.

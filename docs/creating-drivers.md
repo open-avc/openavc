@@ -652,6 +652,7 @@ discovery:
   oui_prefixes: ["00:05:a6"]       # used for vendor display + possible-state candidates
   hostname_patterns:
     - "^(QSC|qsys)-"
+  open_ports: [1710, 4352]         # AV-specific ports; 22 / 80 / 443 disallowed
 
   # Opt out of automatic discovery
   manual_only: false
@@ -670,13 +671,14 @@ discovery:
 | `snmp_pen` | 4 | IANA Private Enterprise Number. Soft signal — produces "possible" not "identified". |
 | `oui_prefixes` | 4 | OUI prefixes (`"00:05:a6"`). Soft signal — also drives the "Unknown device, vendor: Extron" display. |
 | `hostname_patterns` | 4 | Regex patterns. Soft signal. |
+| `open_ports` | 4 | AV-specific ports the device leaves open (e.g. `[1710, 4352]`). Soft signal — produces "possible" when matched. Ports 22, 80, 443 are disallowed (too generic). |
 | `manual_only` | — | `true` to opt out of automatic discovery. The driver is still installable manually. Use when the device has no verifiable Tier 1/2/3 fingerprint. |
 
 #### Validation rules
 
 These are enforced at driver-load time:
 
-1. Every driver declares at least one strong signal **or** sets `manual_only: true`. Soft signals alone (`snmp_pen`, `oui_prefixes`, `hostname_patterns`) are not sufficient.
+1. Every driver declares at least one strong signal **or** sets `manual_only: true`. Soft signals alone (`snmp_pen`, `oui_prefixes`, `hostname_patterns`, `open_ports`) only produce the *possible* state, never *identified*.
 2. Two drivers cannot claim the same Tier 1/2/3 signal without distinct TXT-record filters. Drivers fail to load on collision.
 3. `active_probes` and broadcast probe IDs must come from the platform allow-list above.
 

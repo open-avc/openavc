@@ -107,6 +107,51 @@ class TestSchemaParsing:
         h = parse_driver_discovery({"id": "generic_tcp", "discovery": {}})
         assert h is None
 
+    def test_open_ports_accepted(self):
+        h = parse_driver_discovery(_drv(
+            "qsc_qrc",
+            active_probes=["qrc"],
+            open_ports=[1710, 4352],
+        ))
+        assert h is not None
+        assert h.open_ports == [1710, 4352]
+
+    def test_open_ports_must_be_list(self):
+        with pytest.raises(DiscoveryHintError, match="open_ports must be a list"):
+            parse_driver_discovery(_drv(
+                "bad", active_probes=["qrc"], open_ports="1710",
+            ))
+
+    def test_open_ports_rejects_non_int(self):
+        with pytest.raises(DiscoveryHintError, match="must be integers"):
+            parse_driver_discovery(_drv(
+                "bad", active_probes=["qrc"], open_ports=["1710"],
+            ))
+
+    def test_open_ports_rejects_bool(self):
+        # Bool is an int subclass — explicitly rejected.
+        with pytest.raises(DiscoveryHintError, match="must be integers"):
+            parse_driver_discovery(_drv(
+                "bad", active_probes=["qrc"], open_ports=[True],
+            ))
+
+    def test_open_ports_rejects_out_of_range(self):
+        with pytest.raises(DiscoveryHintError, match="out of range"):
+            parse_driver_discovery(_drv(
+                "bad", active_probes=["qrc"], open_ports=[0],
+            ))
+        with pytest.raises(DiscoveryHintError, match="out of range"):
+            parse_driver_discovery(_drv(
+                "bad", active_probes=["qrc"], open_ports=[70000],
+            ))
+
+    @pytest.mark.parametrize("port", [22, 80, 443])
+    def test_open_ports_rejects_disallowed(self, port):
+        with pytest.raises(DiscoveryHintError, match="disallowed"):
+            parse_driver_discovery(_drv(
+                "bad", active_probes=["qrc"], open_ports=[port],
+            ))
+
 
 class TestSignalIndexBuilder:
     def test_strong_collision_raises(self):
@@ -212,6 +257,7 @@ class TestSignalIndexBuilder:
                 snmp_pen=17049,
                 oui_prefixes=["00:05:a6"],
                 hostname_patterns=["^kitchen-"],
+                open_ports=[1710],
             ),
         ]
         idx = build_signal_index(load_discovery_hints(registry))
@@ -222,3 +268,17 @@ class TestSignalIndexBuilder:
         assert idx.find_soft_pen(17049) == ["kitchen_sink"]
         assert idx.find_soft_oui("00:05:a6:aa:bb:cc") == ["kitchen_sink"]
         assert idx.find_soft_hostname("kitchen-pjlink-1") == ["kitchen_sink"]
+        assert idx.find_soft_open_port(1710) == ["kitchen_sink"]
+
+    def test_open_port_collision_allowed(self):
+        # Soft signals — multiple drivers can claim the same port. Two
+        # drivers both watching for open 1710 produce a `possible` state
+        # with both as candidates.
+        registry = [
+            _drv("qsc_qrc", active_probes=["qrc"], open_ports=[1710]),
+            _drv("qsc_qsys_external", manual_only=True, open_ports=[1710]),
+        ]
+        idx = build_signal_index(load_discovery_hints(registry))
+        assert sorted(idx.find_soft_open_port(1710)) == [
+            "qsc_qrc", "qsc_qsys_external",
+        ]

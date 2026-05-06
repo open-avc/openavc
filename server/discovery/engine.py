@@ -35,6 +35,7 @@ from server.discovery.tier_matcher import (
     SignalIndex,
     TierMatcher,
     evidence_hostname,
+    evidence_open_port,
     evidence_oui,
 )
 from server.discovery.result import (
@@ -735,6 +736,14 @@ class DiscoveryEngine:
 
             finalize_total = len(self.results)
             for i, device in enumerate(self.results.values()):
+                # Emit Tier 4 open-port evidence for any port that's both
+                # observed open AND referenced by at least one driver's
+                # `open_ports:` list. We don't emit for every open port —
+                # bare openness on a generic port is too weak a signal.
+                for port in device.open_ports:
+                    if self.signal_index.find_soft_open_port(port):
+                        device.evidence_log.append(evidence_open_port(port))
+
                 device.identification = self.tier_matcher.match(device.evidence_log)
                 await self._emit_device_update(device, "driver_match")
                 if finalize_total > 0:

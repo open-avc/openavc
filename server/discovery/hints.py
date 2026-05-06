@@ -51,6 +51,11 @@ ALLOWED_ACTIVE_PROBES: frozenset[str] = frozenset({
 # devices. They opt out of the discovery match entirely.
 _TEMPLATE_PREFIXES: tuple[str, ...] = ("generic_",)
 
+# Ports too generic to use as a soft enrichment signal — every web /
+# admin / SSH device on the network would match. AV-specific ports
+# (1710, 4352, 23 for telnet-on-AV-gear, etc.) are fine.
+DISALLOWED_OPEN_PORTS: frozenset[int] = frozenset({22, 80, 443})
+
 
 @dataclass
 class DiscoveryHint:
@@ -79,6 +84,7 @@ class DiscoveryHint:
     snmp_pen: int | None = None
     oui_prefixes: list[str] = field(default_factory=list)
     hostname_patterns: list[str] = field(default_factory=list)
+    open_ports: list[int] = field(default_factory=list)
 
 
 class DiscoveryHintError(ValueError):
@@ -253,6 +259,30 @@ def parse_driver_discovery(driver_info: dict[str, Any]) -> DiscoveryHint | None:
             )
         hint.hostname_patterns.append(pat)
 
+    raw_ports = discovery.get("open_ports") or []
+    if not isinstance(raw_ports, list):
+        raise DiscoveryHintError(
+            f"{driver_id}: discovery.open_ports must be a list"
+        )
+    for port in raw_ports:
+        # Reject bools (which are int subclasses in Python), strings, and
+        # anything else non-integer.
+        if not isinstance(port, int) or isinstance(port, bool):
+            raise DiscoveryHintError(
+                f"{driver_id}: open_ports entries must be integers, got {port!r}"
+            )
+        if port < 1 or port > 65535:
+            raise DiscoveryHintError(
+                f"{driver_id}: open_ports entry {port} out of range [1, 65535]"
+            )
+        if port in DISALLOWED_OPEN_PORTS:
+            raise DiscoveryHintError(
+                f"{driver_id}: open_ports entry {port} is disallowed "
+                f"(too generic — would match every web/SSH device). "
+                f"Disallowed: {sorted(DISALLOWED_OPEN_PORTS)}"
+            )
+        hint.open_ports.append(port)
+
     if hint.manual_only:
         return hint
 
@@ -341,6 +371,8 @@ def build_signal_index(hints: list[DiscoveryHint]) -> SignalIndex:
             index.add_rule(SignalRule.for_oui(hint.driver_id, prefix))
         for pattern in hint.hostname_patterns:
             index.add_rule(SignalRule.for_hostname(hint.driver_id, pattern))
+        for port in hint.open_ports:
+            index.add_rule(SignalRule.for_open_port(hint.driver_id, port))
 
     log.info(
         "Built signal index covering %d driver(s)",

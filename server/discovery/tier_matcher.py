@@ -71,12 +71,13 @@ KIND_ACTIVE_PROBE = "probe"      # PJLink Class 1, Extron SIS, Samsung MDC, etc.
 KIND_OUI = "oui"                 # Tier 4 soft
 KIND_SNMP_PEN = "snmp_pen"       # Tier 4 soft
 KIND_HOSTNAME = "hostname"       # Tier 4 soft
+KIND_OPEN_PORT = "open_port"     # Tier 4 soft — AV-specific port observed open
 
 
 _STRONG_KINDS = {
     KIND_MDNS, KIND_SSDP, KIND_AMX_DDP, KIND_BROADCAST, KIND_ACTIVE_PROBE,
 }
-_SOFT_KINDS = {KIND_OUI, KIND_SNMP_PEN, KIND_HOSTNAME}
+_SOFT_KINDS = {KIND_OUI, KIND_SNMP_PEN, KIND_HOSTNAME, KIND_OPEN_PORT}
 
 
 @dataclass(frozen=True)
@@ -215,6 +216,15 @@ class SignalRule:
             tier=SignalTier.ENRICHMENT,
             kind=KIND_HOSTNAME,
             source_id=pattern,
+        )
+
+    @classmethod
+    def for_open_port(cls, driver_id: str, port: int) -> "SignalRule":
+        return cls(
+            driver_id=driver_id,
+            tier=SignalTier.ENRICHMENT,
+            kind=KIND_OPEN_PORT,
+            source_id=str(port),
         )
 
 
@@ -357,6 +367,17 @@ class SignalIndex:
         if pen is None:
             return []
         rules = self._rules.get((KIND_SNMP_PEN, str(pen)), [])
+        return [r.driver_id for r in rules]
+
+    def find_soft_open_port(self, port: int | None) -> list[str]:
+        """Return driver_ids whose open_ports declaration includes this port.
+
+        May be empty. Soft signal — multiple drivers can reference the
+        same port, producing a `possible` candidate list.
+        """
+        if port is None:
+            return []
+        rules = self._rules.get((KIND_OPEN_PORT, str(port)), [])
         return [r.driver_id for r in rules]
 
     def find_soft_hostname(self, hostname: str | None) -> list[str]:
@@ -515,6 +536,10 @@ class TierMatcher:
                 hits = self.index.find_soft_hostname(value)
                 if hits:
                     results.append((f"{KIND_HOSTNAME}:{value}", hits))
+            elif kind == KIND_OPEN_PORT and isinstance(value, int):
+                hits = self.index.find_soft_open_port(value)
+                if hits:
+                    results.append((f"{KIND_OPEN_PORT}:{value}", hits))
 
         if not results:
             return [], ""
@@ -653,5 +678,23 @@ def evidence_hostname(hostname: str) -> Evidence:
         data={
             "kind": KIND_HOSTNAME,
             "value": hostname,
+        },
+    )
+
+
+def evidence_open_port(port: int) -> Evidence:
+    """Build an Evidence record for an observed open port.
+
+    The engine emits one of these per device for every port that
+    appears in both the device's port-scan results and at least one
+    driver's ``open_ports:`` declaration. Bare port openness is too
+    weak a signal to emit unconditionally.
+    """
+    return Evidence(
+        tier=SignalTier.ENRICHMENT,
+        source=f"open_port:{port}",
+        data={
+            "kind": KIND_OPEN_PORT,
+            "value": port,
         },
     )
