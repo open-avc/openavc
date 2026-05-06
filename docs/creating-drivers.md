@@ -683,7 +683,9 @@ discovery:
 | `crestron_cip` | 2 | `true` if the device answers the Crestron CIP UDP/41794 probe. |
 | `onvif` | 2 | `true` (any ONVIF responder) or `{manufacturer: "Axis"}` to disambiguate when multiple ONVIF camera drivers coexist. |
 | `hiqnet` / `symetrix` | 2 | HARMAN HiQnet / Symetrix ControlNet broadcast probe opt-ins. |
-| `active_probes` | 3 | Targeted TCP probes from the platform allow-list: `pjlink_class1`, `extron_sis`, `tesira_ttp`, `qrc`, `kramer_p3000`, `shure_dcs`, `samsung_mdc`, `visca`, `crestron_cip_tcp`, `yamaha_rcp`. Adding a new probe ID requires landing it in `protocol_prober.py` first. |
+| `active_probes` | 3 | Targeted TCP probes by name. Built-in handlers: `pjlink_class1`, `extron_sis`, `tesira_ttp`, `qrc`, `kramer_p3000`, `shure_dcs`, `samsung_mdc`, `visca`, `crestron_cip_tcp`, `yamaha_rcp`. Unknown IDs are accepted at parse time but no probe fires for them — for vendor-specific wire formats use `tcp_active_probe` below. |
+| `udp_broadcast_probe` | 2 | Driver-declared UDP broadcast probe (Phase 9). Sub-fields: `port`, `send: {hex|ascii}`, `response_match: {starts_with_hex, contains, regex}`, optional `timeout_ms` (≤10000), `generic` flag, `extract` rules. Reserved extract keys `manufacturer` / `make` feed the Tier 4 vendor_string path. Built-in handler ports (mDNS/SSDP/ONVIF/AMX DDP/PJLink/Crestron CIP) are reserved. |
+| `tcp_active_probe` | 3 | Driver-declared TCP active probe (Phase 9). Same shape as `udp_broadcast_probe`. Runs against every host whose port scan hit `port`. Built-in active-probe handler ports (23, 1515, 1688, 1710, 4352, 10500, 49280) are reserved. |
 | `snmp_pen` | 4 | IANA Private Enterprise Number. Soft signal — produces "possible" not "identified". |
 | `oui_prefixes` | 4 | OUI prefixes (`"00:05:a6"`). Soft signal — also drives the "Unknown device, vendor: Extron" display. |
 | `hostname_patterns` | 4 | Regex patterns. Soft signal. |
@@ -697,7 +699,9 @@ These are enforced at driver-load time:
 
 1. Any combination of strong + soft signals is valid. Soft signals alone (`snmp_pen`, `oui_prefixes`, `hostname_patterns`, `open_ports`, `vendor_aliases`) only produce the *possible* state, never *identified*. Declaring no signals at all logs a warning at load time but doesn't reject the driver.
 2. Two drivers cannot claim the same Tier 1/2/3 signal without distinct TXT-record filters. Drivers fail to load on collision.
-3. `active_probes` and broadcast probe IDs must come from the platform allow-list above.
+3. `udp_broadcast_probe` / `tcp_active_probe` blocks must declare exactly one of `send.hex` / `send.ascii`, at least one of `response_match.{starts_with_hex, contains, regex}`, a `port` outside the built-in handler reserved set, and `timeout_ms ≤ 10000`. Regex patterns are compiled at load time — invalid patterns fail validation.
+4. The `extract` block's `manufacturer` and `make` keys are reserved: their values are lifted to the top of the evidence record so a peer driver can claim the device via `vendor_aliases`. Other extract keys are recorded as evidence metadata.
+5. When a driver's wire format requires multi-step handshakes or framing too dynamic for `udp_broadcast_probe` / `tcp_active_probe`, ship a sibling `<driver_id>_discovery.py` Python module next to the `.avcdriver`. It exposes `async def probe(ctx)`; the platform binds sockets to the configured source IP and enforces a hard wall-clock timeout (default 10 s, capped at 30 s).
 
 CI in the community-driver repo (`openavc-drivers/scripts/build_index.py`) enforces the same rules across the whole catalog.
 

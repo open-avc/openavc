@@ -127,8 +127,11 @@ During a discovery scan, OpenAVC will:
 4. **mDNS query** on multicast group 224.0.0.251:5353
 5. **SSDP M-SEARCH** on multicast group 239.255.255.250:1900
 6. **Protocol probes** on open ports (PJLink status query, Extron identification, etc.)
+7. **Driver-declared probes**, if any installed driver carries a `udp_broadcast_probe` or `tcp_active_probe` block in its definition. These send a single one-shot UDP broadcast or TCP connect-and-query on a vendor-specific port (one packet per scan, no retry). The exact ports depend on which drivers are installed; the Programmer IDE's Driver Builder shows them per driver.
 
 All discovery traffic is confined to the local subnet(s) detected on the host's network interfaces. It does not scan remote subnets, public IP ranges, or addresses outside the host's directly-connected networks. Virtual and VPN adapters are excluded automatically.
+
+Driver-declared probes are subject to a global rate limit of 10 probes per second across the whole scan and bind to the configured control adapter, the same network-safety envelope that applies to built-in probes.
 
 ### Internet access (optional)
 
