@@ -70,6 +70,40 @@ function categoryLabel(cat: string | null): string {
   return cat.charAt(0).toUpperCase() + cat.slice(1);
 }
 
+/**
+ * Whether a device's evidence_log carries any AV-specific signal. Used by the
+ * "AV only" toggle to discriminate between unknown devices that look AV-like
+ * (an open AV port, a curated OUI hit, an SNMP PEN match, an mDNS/SSDP
+ * announcement, etc.) and unknown devices that are just LAN noise.
+ *
+ * The discovery engine only emits open-port evidence when the port matches
+ * at least one driver's `open_ports:` hint, so any `open_port:*` record
+ * counts. OUI evidence is emitted for every MAC, so we additionally require
+ * `data.vendor` to be populated (i.e. the OUI was in the curated AV DB).
+ * Hostname evidence is emitted for every alive host and is not on its own
+ * AV-specific.
+ */
+function hasAvSignal(device: api.DiscoveredDevice): boolean {
+  for (const ev of device.evidence_log) {
+    const scheme = ev.source.split(":")[0];
+    switch (scheme) {
+      case "open_port":
+      case "snmp_pen":
+      case "snmp":
+      case "mdns":
+      case "ssdp":
+      case "amx_ddp":
+      case "broadcast":
+      case "probe":
+        return true;
+      case "oui":
+        if (ev.data && ev.data.vendor) return true;
+        break;
+    }
+  }
+  return false;
+}
+
 function stateTone(state: DeviceState): { bg: string; fg: string; label: string } {
   switch (state) {
     case "identified":
@@ -148,7 +182,7 @@ export function DiscoveryPanel() {
 
   const [sortBy, setSortBy] = useState<SortKey>("state");
   const [filterCat, setFilterCat] = useState<FilterCategory>("all");
-  const [hideUnknown, setHideUnknown] = useState(true);
+  const [avOnly, setAvOnly] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
   const [hiddenIps, setHiddenIps] = useState<Set<string>>(() => loadHiddenIps());
   const [expandedIp, setExpandedIp] = useState<string | null>(null);
@@ -298,11 +332,15 @@ export function DiscoveryPanel() {
       list = list.filter((d) => !hiddenIps.has(d.ip));
     }
 
-    // Hide-unknown filter (was: "AV only")
-    if (hideUnknown) {
+    // "AV only" filter — hides unknowns that carry no AV-specific signal.
+    // Identified and possible devices always pass; unknowns survive if their
+    // evidence still suggests an AV device (open AV port, curated OUI, SNMP
+    // PEN, mDNS/SSDP/active probe response).
+    if (avOnly) {
       list = list.filter((d) => {
         const state = d.identification?.state ?? "unknown";
-        return state !== "unknown";
+        if (state !== "unknown") return true;
+        return hasAvSignal(d);
       });
     }
 
@@ -336,7 +374,7 @@ export function DiscoveryPanel() {
     });
 
     return list;
-  }, [devices, sortBy, filterCat, hideUnknown, showHidden, hiddenIps]);
+  }, [devices, sortBy, filterCat, avOnly, showHidden, hiddenIps]);
 
   const isRunning = status === "running";
   const [scanCompletedAt, setScanCompletedAt] = useState<Date | null>(null);
@@ -590,9 +628,9 @@ export function DiscoveryPanel() {
             <option value="category">Category</option>
           </select>
         </label>
-        <label style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }} title="Hide devices that didn't match any driver">
-          <input type="checkbox" checked={hideUnknown} onChange={(e) => setHideUnknown(e.target.checked)} />
-          Hide unknown
+        <label style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }} title="Hide unknown devices unless they show an AV-specific signal (open AV port, curated OUI, SNMP PEN, or mDNS/SSDP announcement)">
+          <input type="checkbox" checked={avOnly} onChange={(e) => setAvOnly(e.target.checked)} />
+          AV only
         </label>
         {hiddenCount > 0 && (
           <label style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
@@ -608,7 +646,7 @@ export function DiscoveryPanel() {
                   {deviceList.length} of {totalDeviceCount} devices{" "}
                   <span
                     style={{ cursor: "pointer", textDecoration: "underline" }}
-                    onClick={() => { setHideUnknown(false); setFilterCat("all"); setShowHidden(true); }}
+                    onClick={() => { setAvOnly(false); setFilterCat("all"); setShowHidden(true); }}
                     title="Show all devices"
                   >
                     ({totalDeviceCount - deviceList.length} filtered)
