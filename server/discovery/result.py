@@ -96,10 +96,17 @@ class IdentificationMatch:
     There is exactly one IdentificationMatch per device.
 
     Fields by state:
-    - ``identified``: ``driver_id`` is set; ``candidates`` is empty;
+    - ``identified``: ``driver_id`` is set; ``candidates`` is empty.
       ``source`` references the deterministic signal that matched.
+      ``alternatives`` may list additional driver_ids the user can
+      switch to — populated when a generic strong probe (PJLink,
+      unfiltered ONVIF) won the strong-tier race but a vendor-specific
+      driver also matched on a Tier 4 soft signal. Empty in the common
+      vendor-specific case.
     - ``possible``: ``driver_id`` is None; ``candidates`` has 1+ ids;
       ``source`` references the soft signal (OUI, generic UPnP, etc).
+      ``alternatives`` is unused — the dropdown reads from
+      ``candidates``.
     - ``unknown``: ``driver_id`` is None; ``candidates`` is empty;
       ``reason`` explains why nothing matched.
 
@@ -111,6 +118,7 @@ class IdentificationMatch:
     state: DeviceState
     driver_id: str | None = None
     candidates: list[str] = field(default_factory=list)
+    alternatives: list[str] = field(default_factory=list)
     source: str = ""
     reason: str = ""
     evidence: list[Evidence] = field(default_factory=list)
@@ -121,11 +129,13 @@ class IdentificationMatch:
         driver_id: str,
         source: str,
         evidence: list[Evidence] | None = None,
+        alternatives: list[str] | None = None,
     ) -> "IdentificationMatch":
         return cls(
             state=DeviceState.IDENTIFIED,
             driver_id=driver_id,
             source=source,
+            alternatives=list(alternatives or []),
             evidence=list(evidence or []),
         )
 
@@ -160,6 +170,7 @@ class IdentificationMatch:
             "state": self.state.value,
             "driver_id": self.driver_id,
             "candidates": list(self.candidates),
+            "alternatives": list(self.alternatives),
             "source": self.source,
             "reason": self.reason,
             "evidence": [e.to_dict() for e in self.evidence],
