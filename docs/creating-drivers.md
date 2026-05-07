@@ -624,7 +624,9 @@ Types: `length_prefix` (reads a length header then N bytes), `fixed_length` (mes
 
 ### Discovery Hints
 
-The `discovery` section tells the matcher which network signals identify your device. Strong signals (Tier 1 / 2 / 3) produce an *identified* match; soft signals (Tier 4 — OUI prefix, hostname pattern, open port, SNMP PEN, vendor alias) surface the device as *possible* with a candidate driver list. Any combination is valid; declaring no signals at all logs a load-time warning (the matcher silently ignores the driver). `manual_only: true` is a documentation hint that the device expects manual IP entry and no longer affects matcher behavior.
+The `discovery` section tells the matcher which network signals identify your device. Strong signals (Tier 1 / 2 / 3) produce an *identified* match; soft signals (Tier 4 — OUI prefix, hostname pattern, open port, SNMP PEN, vendor alias) surface the device as *possible* with a candidate driver list. `manual_only: true` is a documentation hint that the device expects manual IP entry and no longer affects matcher behavior.
+
+**Always declare soft signals alongside any strong signal you have.** A strong-only driver is fragile: the same Sonos speaker can show up via SSDP NOTIFY, mDNS `_spotify-connect._tcp.local`, mDNS `_sonos._tcp.local`, banner-grab on TCP 1400, or just an ARP-table sweep that captures the OUI — five different scanner paths. A driver that declares only the SSDP URN matches one of those five and silently misses the rest, even when the discovery scan already has the device's manufacturer string and hostname in evidence. Adding soft signals (`oui_prefixes`, `vendor_aliases`, `hostname_patterns`, `open_ports`) costs nothing and lets the driver claim the device regardless of which scanner found it.
 
 The matcher is deterministic. There is no scoring. A signal either fires (the device is identified) or it does not. Soft hints like OUI and SNMP PEN only contribute to the "possible" state, never to "identified."
 
@@ -697,7 +699,7 @@ discovery:
 
 These are enforced at driver-load time:
 
-1. Any combination of strong + soft signals is valid. Soft signals alone (`snmp_pen`, `oui_prefixes`, `hostname_patterns`, `open_ports`, `vendor_aliases`) only produce the *possible* state, never *identified*. Declaring no signals at all logs a warning at load time but doesn't reject the driver.
+1. **Always declare soft signals alongside strong signals.** The loader accepts strong-only, soft-only, both, or none — declaring none logs a warning at load time but doesn't reject the driver. Soft signals alone (`snmp_pen`, `oui_prefixes`, `hostname_patterns`, `open_ports`, `vendor_aliases`) only produce the *possible* state, never *identified*. Strong-only is the trap: a driver with only an SSDP URN, only an mDNS service type, or only an ONVIF claim will silently miss devices that surface through any other scanner path. Always include `oui_prefixes`, `vendor_aliases`, `hostname_patterns`, and (for TCP) `open_ports` so the driver claims the device regardless of how it was found.
 2. Two drivers cannot claim the same Tier 1/2/3 signal without distinct TXT-record filters. Drivers fail to load on collision.
 3. `udp_broadcast_probe` / `tcp_active_probe` blocks must declare exactly one of `send.hex` / `send.ascii`, at least one of `response_match.{starts_with_hex, contains, regex}`, a `port` outside the built-in handler reserved set, and `timeout_ms ≤ 10000`. Regex patterns are compiled at load time — invalid patterns fail validation.
 4. The `extract` block's `manufacturer` and `make` keys are reserved: their values are lifted to the top of the evidence record so a peer driver can claim the device via `vendor_aliases`. Other extract keys are recorded as evidence metadata.
