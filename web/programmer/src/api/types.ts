@@ -471,16 +471,74 @@ export interface DriverResponseDef {
   set?: Record<string, unknown>;
 }
 
+// Phase 6 deterministic ``discovery:`` schema. After Phase 8 a driver
+// can declare any combination of strong (Tier 1/2/3) and soft (Tier 4)
+// signals — strong signals produce an ``identified`` match, soft signals
+// alone surface the device as ``possible`` with a candidate driver
+// list. ``manual_only`` is now purely a documentation hint that the
+// device expects manual IP entry. CI rejects collisions across drivers
+// (see openavc-drivers/scripts/build_index.py). Allowed Tier 2 / Tier 3
+// IDs match the platform's ALLOWED_BROADCAST_PROBES /
+// ALLOWED_ACTIVE_PROBES allow-lists.
+export interface DriverDiscoveryMdnsEntry {
+  service: string;
+  txt_match?: Record<string, string>;
+}
+
+export type DriverDiscoveryExtractRule =
+  | string                                        // static literal
+  | { regex: string; group?: number };           // dynamic capture
+
+export interface DriverDiscoveryCustomProbe {
+  port: number;
+  send: { hex?: string; ascii?: string };
+  response_match: {
+    starts_with_hex?: string;
+    contains?: string;
+    regex?: string;
+  };
+  timeout_ms?: number;
+  generic?: boolean;
+  extract?: Record<string, DriverDiscoveryExtractRule>;
+}
+
 export interface DriverDiscoveryHints {
-  ports?: number[];
-  mac_prefixes?: string[];
-  protocols?: string[];
-  mdns_services?: string[];
+  // Tier 1
+  mdns_services?: Array<string | DriverDiscoveryMdnsEntry>;
+  ssdp_device_types?: string[];
+  amx_ddp?: { make: string; model_pattern?: string };
+
+  // Tier 2 — opt-ins
+  pjlink_class2?: boolean;
+  crestron_cip?: boolean;
+  onvif?: boolean | { manufacturer?: string };
+  hiqnet?: boolean;
+  symetrix?: boolean;
+
+  // Tier 3
+  active_probes?: string[];
+
+  // Phase 9 driver-declared probes. Vendor-specific wire formats that
+  // don't fit a built-in opt-in. Each gets a custom_<driver_id>_(udp|tcp)
+  // probe ID and runs alongside the named built-in probes.
+  udp_broadcast_probe?: DriverDiscoveryCustomProbe;
+  tcp_active_probe?: DriverDiscoveryCustomProbe;
+
+  // Tier 4 enrichment (soft signals)
+  snmp_pen?: number;
+  oui_prefixes?: string[];
   hostname_patterns?: string[];
-  // SSDP / UPnP device-type URN substrings. The discovery engine matches
-  // these against the SSDP NOTIFY / M-SEARCH `ST` and `NT` headers (e.g.
-  // "urn:schemas-upnp-org:device:MediaRenderer:1") to identify devices.
-  upnp_types?: string[];
+  // Open AV ports advertised by this device. Common ports (22, 80, 443)
+  // are rejected by the runtime validator because they would match every
+  // web/SSH host on the LAN.
+  open_ports?: number[];
+  // Phase 8.6: manufacturer / make strings the driver claims when a
+  // strong-tier probe response carries that field. Used by the
+  // best-driver-first matcher to disambiguate generic probes.
+  vendor_aliases?: string[];
+
+  // Opt out of automatic discovery.
+  manual_only?: boolean;
 }
 
 export interface DriverDeviceSettingDef {

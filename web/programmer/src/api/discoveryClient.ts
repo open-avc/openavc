@@ -2,14 +2,25 @@ import { BASE, request } from "./base";
 
 // --- Discovery ---
 
-export interface DiscoveryDriverMatch {
-  driver_id: string;
-  driver_name: string;
-  confidence: number;
-  match_reasons: string[];
-  suggested_config: Record<string, unknown>;
-  source: "installed" | "community";
-  description: string;
+export type DeviceState = "identified" | "possible" | "unknown";
+
+export type SignalTier = "tier1" | "tier2" | "tier3" | "tier4";
+
+export interface DiscoveryEvidence {
+  tier: SignalTier;
+  source: string;
+  data: Record<string, unknown>;
+  at: number;
+}
+
+export interface IdentificationMatch {
+  state: DeviceState;
+  driver_id: string | null;
+  candidates: string[];
+  alternatives?: string[];
+  source: string;
+  reason: string;
+  evidence: DiscoveryEvidence[];
 }
 
 export interface DiscoveredDevice {
@@ -23,12 +34,11 @@ export interface DiscoveredDevice {
   serial_number: string | null;
   open_ports: number[];
   banners: Record<number, string>;
-  sources: string[];
   protocols: string[];
-  confidence: number;
   category: string | null;
   alive: boolean;
-  matched_drivers: DiscoveryDriverMatch[];
+  identification: IdentificationMatch | null;
+  evidence_log: DiscoveryEvidence[];
   mdns_services: string[];
   ssdp_info: Record<string, unknown> | null;
   snmp_info: Record<string, unknown> | null;
@@ -91,12 +101,12 @@ export async function discoveryGetStatus(): Promise<DiscoveryScanStatus> {
 }
 
 export async function discoveryGetResults(params?: {
-  min_confidence?: number;
+  state?: DeviceState;
   category?: string;
   sort?: string;
 }): Promise<DiscoveryScanResult> {
   const qs = new URLSearchParams();
-  if (params?.min_confidence) qs.set("min_confidence", String(params.min_confidence));
+  if (params?.state) qs.set("state", params.state);
   if (params?.category) qs.set("category", params.category);
   if (params?.sort) qs.set("sort", params.sort);
   const q = qs.toString();

@@ -61,6 +61,9 @@ async def refresh_all_device_matches() -> None:
     from server.core.device_manager import get_driver_registry
 
     _engine.load_driver_hints_from_registry(get_driver_registry())
+    # Re-fold the community catalog so un-installed drivers stay matchable
+    # — discovery's whole job is suggesting what to install next.
+    await _engine.refresh_signal_index_with_catalog()
 
     for ip in list(_engine.results.keys()):
         updated = await _engine.refresh_device_matches(ip)
@@ -206,23 +209,31 @@ async def get_scan_status() -> dict[str, Any]:
 
 @router.get("/results")
 async def get_results(
-    min_confidence: float = 0.0,
+    state: str | None = None,
     category: str | None = None,
-    sort: str = "confidence",
+    sort: str = "state",
 ) -> dict[str, Any]:
-    """Get discovered devices."""
+    """Get discovered devices.
+
+    The Phase 6 result shape is:
+      ``state`` -> identification.state (identified | possible | unknown)
+      ``driver_id`` -> set when identified
+      ``candidates`` -> populated when possible
+      ``source`` -> the signal that produced the match
+      ``evidence_log`` -> full audit trail for the "Why?" UI reveal
+    """
     engine = _get_engine()
     devices = engine.get_results()
 
-    # Filter by min confidence
-    if min_confidence > 0:
-        devices = [d for d in devices if d["confidence"] >= min_confidence]
+    if state:
+        devices = [
+            d for d in devices
+            if (d.get("identification") or {}).get("state") == state
+        ]
 
-    # Filter by category
     if category:
         devices = [d for d in devices if d.get("category") == category]
 
-    # Sort
     if sort == "ip":
         def _ip_sort_key(d):
             try:
@@ -234,9 +245,8 @@ async def get_results(
         devices.sort(key=lambda d: (d.get("manufacturer") or "zzz").lower())
     elif sort == "category":
         devices.sort(key=lambda d: (d.get("category") or "zzz").lower())
-    # Default: already sorted by confidence (descending) from engine
+    # Default: identified > possible > unknown (engine handles ordering)
 
-    # Build dynamic port labels from AV_PORTS + community driver data
     port_labels = await _build_port_labels(engine)
 
     status = engine.get_status()
@@ -324,13 +334,10 @@ async def add_device(req: AddDeviceRequest) -> dict[str, Any]:
     name = re.sub(r"<[^>]+>", "", name)
     name = " ".join(name.split())[:128]
 
-    # Merge suggested config with any overrides from the request
+    # Merge suggested config with any overrides from the request.
+    # The deterministic matcher does not produce per-driver suggested
+    # configs; defaults come from the driver's own default_config.
     config = {"host": req.ip}
-    if discovered and discovered.matched_drivers:
-        for m in discovered.matched_drivers:
-            if m.driver_id == req.driver_id:
-                config.update(m.suggested_config)
-                break
     config.update(req.config)
 
     # Split config into connection fields and protocol fields
@@ -449,12 +456,13 @@ async def export_results() -> str:
     lines.append("")
 
     for d in devices:
-        confidence = f"{d['confidence'] * 100:.0f}%"
+        ident = d.get("identification") or {}
+        state = ident.get("state", "unknown")
         name = d.get("model") or d.get("device_name") or "Unknown"
         mfg = d.get("manufacturer") or ""
         cat = d.get("category") or ""
 
-        lines.append(f"  {d['ip']:<16} {confidence:>4}  {mfg + ' ' if mfg else ''}{name}")
+        lines.append(f"  {d['ip']:<16} {state:>10}  {mfg + ' ' if mfg else ''}{name}")
 
         details: list[str] = []
         if d.get("mac"):
@@ -471,13 +479,10 @@ async def export_results() -> str:
             details.append(f"Protocols: {', '.join(d['protocols'])}")
         if d.get("open_ports"):
             details.append(f"Ports: {', '.join(str(p) for p in d['open_ports'])}")
-        if d.get("matched_drivers"):
-            driver_strs = []
-            for m in d["matched_drivers"]:
-                src = m.get("source", "installed")
-                conf = f"{m['confidence'] * 100:.0f}%"
-                driver_strs.append(f"{m['driver_name']} ({src}, {conf})")
-            details.append(f"Drivers: {', '.join(driver_strs)}")
+        if ident.get("driver_id"):
+            details.append(f"Driver: {ident['driver_id']} (via {ident.get('source', '?')})")
+        elif ident.get("candidates"):
+            details.append(f"Possible: {', '.join(ident['candidates'])}")
 
         # SNMP info
         snmp = d.get("snmp_info")

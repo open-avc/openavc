@@ -482,6 +482,41 @@ class SNMPInfo:
             d["entPhysicalSerialNum"] = self.entity_serial
         return d
 
+    @property
+    def pen(self) -> int | None:
+        """Return the IANA Private Enterprise Number from sysObjectID, if any.
+
+        sysObjectID format: ``1.3.6.1.4.1.<PEN>.<rest>``. Returns the
+        PEN as an int when present; None otherwise. Used as a Tier 4
+        soft signal for the deterministic matcher (multiple AV drivers
+        may share a vendor PEN, so this produces ``possible`` state with
+        a candidate list rather than a deterministic match).
+        """
+        prefix = "1.3.6.1.4.1."
+        if not self.sys_object_id.startswith(prefix):
+            return None
+        rest = self.sys_object_id[len(prefix):]
+        pen_str = rest.split(".")[0] if rest else ""
+        try:
+            return int(pen_str)
+        except ValueError:
+            return None
+
+    def to_evidence(self):
+        """Emit a Tier 4 ENRICHMENT Evidence record, or None if no PEN.
+
+        Only the SNMP PEN match feeds the deterministic matcher's soft-
+        signal path. sysDescr text parsing remains a legacy enrichment
+        path because string regexes are inherently fuzzy and would
+        contaminate the deterministic guarantee. The TierMatcher
+        consults driver hints to map PEN -> candidate driver_ids.
+        """
+        if self.pen is None:
+            return None
+        from server.discovery.tier_matcher import evidence_snmp_pen
+
+        return evidence_snmp_pen(self.pen, sysdescr=self.sys_descr or None)
+
     def to_device_info(self) -> dict[str, Any]:
         """Convert to a dict suitable for merge_device_info()."""
         info: dict[str, Any] = {}

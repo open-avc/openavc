@@ -87,6 +87,16 @@ async def _initialize_engine(app: FastAPI) -> None:
         from server.core.device_manager import get_driver_registry
         discovery_engine.load_driver_hints_from_registry(get_driver_registry())
 
+        # Phase 9.7: load any sibling _discovery.py companions that ship
+        # alongside built-in or community drivers.
+        from server.system_config import (
+            DRIVER_DEFINITIONS_DIR,
+            DRIVER_REPO_DIR,
+        )
+        discovery_engine.load_discovery_companions_from_dirs(
+            [DRIVER_DEFINITIONS_DIR, DRIVER_REPO_DIR],
+        )
+
         app.state.engine_ready = True
         log.info("=" * 60)
         log.info(f"  Panel UI:    http://localhost:{config.HTTP_PORT}/panel")

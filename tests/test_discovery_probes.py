@@ -1,675 +1,210 @@
-"""Tests for protocol probes (Chunk 2)."""
+"""Generic fixture-driven test for driver-declared discovery probes.
+
+Phase 9 lets a driver declare a UDP broadcast probe or a TCP active
+probe directly in its ``.avcdriver`` file. Phase 10 catalog work adds
+those declarations to community drivers in ``openavc-drivers/``. This
+test loops over every loaded driver, looks for a captured-response
+fixture in ``tests/fixtures/discovery/<driver_id>.bin`` (or ``.txt``),
+and replays it through ``probe_runner._matches`` and
+``_apply_extract`` to confirm:
+
+1. The declared ``response_match`` matches the captured payload.
+2. Each ``extract`` rule with a static value or matching regex
+   produces a non-empty value.
+3. Reserved extract keys (``manufacturer`` / ``make``) — the keys the
+   Phase 8.6 ``extract_vendor_strings`` path lifts to drive
+   peer-driver vendor_aliases narrowing — appear when declared.
+
+Adding a new probe-supporting driver is a two-step PR (declare in
+openavc-drivers, drop a fixture here); no per-driver test code.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
 
 import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
+import yaml
 
-from server.discovery.protocol_prober import (
-    probe_banner,
-    probe_pjlink,
-    probe_samsung_mdc,
-    probe_visca,
-    probe_http,
-    probe_crestron_cip,
-    probe_device,
-    probe_device as run_protocol_probes,
-    _probe_banner_extron,
-    _probe_banner_biamp,
-    _probe_banner_qsc,
-    _probe_banner_kramer,
-    _probe_banner_shure,
-    ProbeResult,
+from server.discovery.hints import (
+    CustomProbeSpec,
+    parse_driver_discovery,
 )
-
-
-# ===== Banner Probe Tests =====
-
-
-class TestExtronBannerProbe:
-    def test_matches_standard_banner(self):
-        banner = "(c) 2020 Extron Electronics DTP CrossPoint 84 4K IPCP SA V1.02.0000"
-        result = _probe_banner_extron(banner)
-        assert result is not None
-        assert result.protocol == "extron_sis"
-        assert result.manufacturer == "Extron"
-        assert result.category == "switcher"
-
-    def test_extracts_model(self):
-        banner = "(c) 2020 Extron Electronics DTP CrossPoint 84 4K IPCP SA V1.02.0000"
-        result = _probe_banner_extron(banner)
-        assert result is not None
-        assert result.model is not None
-        assert "DTP" in result.model
-
-    def test_extracts_firmware(self):
-        banner = "(c) 2020 Extron Electronics DTP CrossPoint 84 V1.02.0000"
-        result = _probe_banner_extron(banner)
-        assert result is not None
-        assert result.firmware is not None
-        assert "1.02" in result.firmware
-
-    def test_matches_copyright_symbol(self):
-        banner = "\u00a9 2019 Extron Electronics IN1608"
-        result = _probe_banner_extron(banner)
-        assert result is not None
-        assert result.manufacturer == "Extron"
-
-    def test_no_match_on_other_banner(self):
-        banner = "Welcome to Biamp Tesira"
-        result = _probe_banner_extron(banner)
-        assert result is None
-
-
-class TestBiampBannerProbe:
-    def test_matches_tesira_welcome(self):
-        result = _probe_banner_biamp("Welcome to the Tesira Text Protocol 1.20")
-        assert result is not None
-        assert result.protocol == "biamp_tesira"
-        assert result.manufacturer == "Biamp"
-        assert result.category == "audio"
-
-    def test_matches_tesira_hash(self):
-        result = _probe_banner_biamp("#Tesira Text Protocol 1.20")
-        assert result is not None
-        assert result.manufacturer == "Biamp"
-
-    def test_extracts_version(self):
-        result = _probe_banner_biamp("Welcome to the Tesira Text Protocol 1.20")
-        assert result is not None
-        assert result.firmware == "1.20"
-
-    def test_no_match(self):
-        assert _probe_banner_biamp("Some other banner") is None
-
-
-class TestQSCBannerProbe:
-    def test_matches_qsc(self):
-        result = _probe_banner_qsc("QSC Q-SYS Core 110f")
-        assert result is not None
-        assert result.manufacturer == "QSC"
-        assert result.category == "audio"
-
-    def test_extracts_model(self):
-        result = _probe_banner_qsc("QSC Q-SYS Core 110f version 9.5")
-        assert result is not None
-        assert result.model is not None
-        assert "Core 110f" in result.model
-
-    def test_no_match(self):
-        assert _probe_banner_qsc("Extron Electronics") is None
-
-
-class TestKramerBannerProbe:
-    def test_matches_welcome(self):
-        result = _probe_banner_kramer("Welcome to Kramer P3K-1234")
-        assert result is not None
-        assert result.manufacturer == "Kramer"
-        assert result.protocol == "kramer_p3000"
-
-    def test_no_match(self):
-        assert _probe_banner_kramer("Extron") is None
-
-
-class TestShureBannerProbe:
-    def test_matches_rep(self):
-        result = _probe_banner_shure("< REP DEVICE_NAME MyMicrophone >")
-        assert result is not None
-        assert result.manufacturer == "Shure"
-        assert result.category == "audio"
-
-    def test_no_match(self):
-        assert _probe_banner_shure("Biamp") is None
-
-
-class TestProbeBannerDispatcher:
-    def test_dispatches_extron(self):
-        results = probe_banner("(c) 2020 Extron Electronics DTP CrossPoint 84 V1.02")
-        assert len(results) >= 1
-        assert results[0].manufacturer == "Extron"
-
-    def test_dispatches_biamp(self):
-        results = probe_banner("#Tesira Text Protocol 1.20")
-        assert len(results) >= 1
-        assert results[0].manufacturer == "Biamp"
-
-    def test_returns_empty_for_unknown(self):
-        assert probe_banner("Unknown device banner text") == []
-
-    def test_returns_all_matches(self):
-        # Extron should match
-        results = probe_banner("(c) 2020 Extron Electronics IN1608 V1.00")
-        assert len(results) >= 1
-        assert results[0].manufacturer == "Extron"
-
-
-# ===== PJLink Probe Tests =====
-
-
-class TestPJLinkProbe:
-    @pytest.mark.asyncio
-    async def test_successful_probe(self):
-        """Test PJLink probe with mocked TCP responses."""
-        responses = [
-            b"PJLINK 0\r",         # Greeting
-            b"%1CLSS=1\r",         # Class 1
-            b"%1INF1=NEC\r",       # Manufacturer
-            b"%1INF2=PA1004UL\r",  # Product
-            b"%1NAME=Room101\r",   # Name
-            b"%1LAMP=12345 1\r",   # Lamp hours
-        ]
-        with patch(
-            "server.discovery.protocol_prober._tcp_multi_exchange",
-            new_callable=AsyncMock,
-            return_value=responses,
-        ):
-            result = await probe_pjlink("192.168.1.72")
-
-        assert result is not None
-        assert result.protocol == "pjlink"
-        assert result.manufacturer == "NEC"
-        assert result.model == "PA1004UL"
-        assert result.device_name == "Room101"
-        assert result.category == "projector"
-        assert result.extra.get("pjlink_class") == "1"
-        assert result.extra.get("lamp_hours") == 12345
-
-    @pytest.mark.asyncio
-    async def test_auth_required_still_identifies(self):
-        """PJLink with auth still gets identified as PJLink."""
-        responses = [
-            b"PJLINK 1 abcdef\r",  # Auth required
-            b"%1CLSS=ERRA\r",      # Error (no auth)
-            b"%1INF1=ERRA\r",
-            b"%1INF2=ERRA\r",
-            b"%1NAME=ERRA\r",
-            b"%1LAMP=ERRA\r",
-        ]
-        with patch(
-            "server.discovery.protocol_prober._tcp_multi_exchange",
-            new_callable=AsyncMock,
-            return_value=responses,
-        ):
-            result = await probe_pjlink("192.168.1.72")
-
-        assert result is not None
-        assert result.protocol == "pjlink"
-        assert result.category == "projector"
-        # Fields may be None since auth was required
-        assert result.manufacturer is None  # ERRA is filtered
-
-    @pytest.mark.asyncio
-    async def test_no_response(self):
-        with patch(
-            "server.discovery.protocol_prober._tcp_multi_exchange",
-            new_callable=AsyncMock,
-            return_value=[],
-        ):
-            result = await probe_pjlink("192.168.1.72")
-        assert result is None
-
-    @pytest.mark.asyncio
-    async def test_non_pjlink_response(self):
-        with patch(
-            "server.discovery.protocol_prober._tcp_multi_exchange",
-            new_callable=AsyncMock,
-            return_value=[b"Something else\r"],
-        ):
-            result = await probe_pjlink("192.168.1.72")
-        assert result is None
-
-
-# ===== Samsung MDC Probe Tests =====
-
-
-class TestSamsungMDCProbe:
-    @pytest.mark.asyncio
-    async def test_successful_probe(self):
-        """Samsung MDC ACK response identifies the device."""
-        # Simulated ACK response: AA FF <id> <len> <ack> <cmd>
-        response = bytes([0xAA, 0xFF, 0x01, 0x03, 0x41, 0x0B, 0x50])
-        with patch(
-            "server.discovery.protocol_prober._tcp_exchange",
-            new_callable=AsyncMock,
-            return_value=response,
-        ):
-            result = await probe_samsung_mdc("192.168.1.80")
-
-        assert result is not None
-        assert result.protocol == "samsung_mdc"
-        assert result.manufacturer == "Samsung"
-        assert result.category == "display"
-
-    @pytest.mark.asyncio
-    async def test_no_response(self):
-        with patch(
-            "server.discovery.protocol_prober._tcp_exchange",
-            new_callable=AsyncMock,
-            return_value=None,
-        ):
-            result = await probe_samsung_mdc("192.168.1.80")
-        assert result is None
-
-    @pytest.mark.asyncio
-    async def test_wrong_header(self):
-        with patch(
-            "server.discovery.protocol_prober._tcp_exchange",
-            new_callable=AsyncMock,
-            return_value=b"\x00\x00\x00\x00",
-        ):
-            result = await probe_samsung_mdc("192.168.1.80")
-        assert result is None
-
-
-# ===== VISCA Probe Tests =====
-
-
-class TestVISCAProbe:
-    @pytest.mark.asyncio
-    async def test_sony_camera(self):
-        """VISCA version response with Sony vendor code."""
-        # Response: 90 50 00 20 01 23 FF (vendor=0x0020=Sony, model=0x0123)
-        response = bytes([0x90, 0x50, 0x00, 0x20, 0x01, 0x23, 0xFF])
-        with patch(
-            "server.discovery.protocol_prober._tcp_exchange",
-            new_callable=AsyncMock,
-            return_value=response,
-        ):
-            result = await probe_visca("192.168.1.90")
-
-        assert result is not None
-        assert result.protocol == "visca"
-        assert result.manufacturer == "Sony"
-        assert result.category == "camera"
-
-    @pytest.mark.asyncio
-    async def test_no_response(self):
-        with patch(
-            "server.discovery.protocol_prober._tcp_exchange",
-            new_callable=AsyncMock,
-            return_value=None,
-        ):
-            result = await probe_visca("192.168.1.90")
-        assert result is None
-
-    @pytest.mark.asyncio
-    async def test_wrong_header(self):
-        with patch(
-            "server.discovery.protocol_prober._tcp_exchange",
-            new_callable=AsyncMock,
-            return_value=b"\x90\x60\x00\x00",
-        ):
-            result = await probe_visca("192.168.1.90")
-        assert result is None
-
-
-# ===== HTTP Probe Tests =====
-
-
-class TestHTTPProbe:
-    @pytest.mark.asyncio
-    async def test_crestron_server_header(self):
-        response = (
-            b"HTTP/1.1 200 OK\r\n"
-            b"Server: Crestron/2.0\r\n"
-            b"Content-Type: text/html\r\n\r\n"
-            b"<html><title>Crestron</title></html>"
-        )
-        with patch(
-            "server.discovery.protocol_prober._tcp_exchange",
-            new_callable=AsyncMock,
-            return_value=response,
-        ):
-            result = await probe_http("192.168.1.60", 80)
-
-        assert result is not None
-        assert result.manufacturer == "Crestron"
-        assert result.category == "control"
-
-    @pytest.mark.asyncio
-    async def test_panasonic_ptz_path(self):
-        response = (
-            b"HTTP/1.1 200 OK\r\n\r\n"
-            b"<html><body>/cgi-bin/aw_ptz supported</body></html>"
-        )
-        with patch(
-            "server.discovery.protocol_prober._tcp_exchange",
-            new_callable=AsyncMock,
-            return_value=response,
-        ):
-            result = await probe_http("192.168.1.70", 80)
-
-        assert result is not None
-        assert result.manufacturer == "Panasonic"
-        assert result.category == "camera"
-
-    @pytest.mark.asyncio
-    async def test_nec_projector_title(self):
-        response = (
-            b"HTTP/1.1 200 OK\r\n\r\n"
-            b"<html><title>NEC PA1004UL Projector</title></html>"
-        )
-        with patch(
-            "server.discovery.protocol_prober._tcp_exchange",
-            new_callable=AsyncMock,
-            return_value=response,
-        ):
-            result = await probe_http("192.168.1.72", 80)
-
-        assert result is not None
-        assert result.manufacturer == "NEC"
-        assert result.category == "projector"
-
-    @pytest.mark.asyncio
-    async def test_samsung_title(self):
-        response = (
-            b"HTTP/1.1 200 OK\r\n\r\n"
-            b"<html><title>Samsung QM85R Display</title></html>"
-        )
-        with patch(
-            "server.discovery.protocol_prober._tcp_exchange",
-            new_callable=AsyncMock,
-            return_value=response,
-        ):
-            result = await probe_http("192.168.1.80", 80)
-
-        assert result is not None
-        assert result.manufacturer == "Samsung"
-        assert result.category == "display"
-
-    @pytest.mark.asyncio
-    async def test_extracts_title_as_model(self):
-        response = (
-            b"HTTP/1.1 200 OK\r\n\r\n"
-            b"<html><title>Barco ClickShare CSE-200</title></html>"
-        )
-        with patch(
-            "server.discovery.protocol_prober._tcp_exchange",
-            new_callable=AsyncMock,
-            return_value=response,
-        ):
-            result = await probe_http("192.168.1.85", 80)
-
-        assert result is not None
-        assert result.manufacturer == "Barco"
-        assert result.extra.get("http_title") == "Barco ClickShare CSE-200"
-
-    @pytest.mark.asyncio
-    async def test_no_response(self):
-        with patch(
-            "server.discovery.protocol_prober._tcp_exchange",
-            new_callable=AsyncMock,
-            return_value=None,
-        ):
-            result = await probe_http("192.168.1.1", 80)
-        assert result is None
-
-    @pytest.mark.asyncio
-    async def test_non_http_response(self):
-        with patch(
-            "server.discovery.protocol_prober._tcp_exchange",
-            new_callable=AsyncMock,
-            return_value=b"Not an HTTP response",
-        ):
-            result = await probe_http("192.168.1.1", 80)
-        assert result is None
-
-    @pytest.mark.asyncio
-    async def test_generic_web_page_no_match(self):
-        response = (
-            b"HTTP/1.1 200 OK\r\n"
-            b"Server: nginx\r\n\r\n"
-            b"<html><title>My Router Config</title></html>"
-        )
-        with patch(
-            "server.discovery.protocol_prober._tcp_exchange",
-            new_callable=AsyncMock,
-            return_value=response,
-        ):
-            result = await probe_http("192.168.1.1", 80)
-        assert result is None
-
-
-# ===== Crestron CIP Probe Tests =====
-
-
-class TestCrestronCIPProbe:
-    @pytest.mark.asyncio
-    async def test_responds(self):
-        with patch(
-            "server.discovery.protocol_prober._tcp_exchange",
-            new_callable=AsyncMock,
-            return_value=b"\x01\x00\x00\x00",
-        ):
-            result = await probe_crestron_cip("192.168.1.60")
-
-        assert result is not None
-        assert result.manufacturer == "Crestron"
-        assert result.protocol == "crestron_cip"
-
-    @pytest.mark.asyncio
-    async def test_no_response(self):
-        with patch(
-            "server.discovery.protocol_prober._tcp_exchange",
-            new_callable=AsyncMock,
-            return_value=None,
-        ):
-            result = await probe_crestron_cip("192.168.1.60")
-        assert result is None
-
-
-# ===== Device Probe Dispatcher Tests =====
-
-
-class TestProbeDevice:
-    @pytest.mark.asyncio
-    async def test_banner_only(self):
-        """Probe with only banners, no open probe ports."""
-        results = await probe_device(
-            "192.168.1.50",
-            open_ports=[23],
-            banners={23: "(c) 2020 Extron Electronics DTP CrossPoint 84 V1.02"},
-        )
-        assert len(results) >= 1
-        extron = next((r for r in results if r.manufacturer == "Extron"), None)
-        assert extron is not None
-        assert extron.protocol == "extron_sis"
-
-    @pytest.mark.asyncio
-    async def test_pjlink_port_triggers_probe(self):
-        """Port 4352 should trigger a PJLink probe."""
-        import server.discovery.protocol_prober as prober_mod
-        mock_fn = AsyncMock(return_value=ProbeResult(
-            protocol="pjlink", manufacturer="NEC", model="PA1004UL", category="projector",
-        ))
-        orig = prober_mod._PORT_PROBES[4352]
-        prober_mod._PORT_PROBES[4352] = [mock_fn]
+from server.discovery.probe_runner import _apply_extract, _matches
+
+# Repo paths.
+TESTS_DIR = Path(__file__).resolve().parent
+FIXTURE_DIR = TESTS_DIR / "fixtures" / "discovery"
+OPENAVC_ROOT = TESTS_DIR.parent
+WORKSPACE_ROOT = OPENAVC_ROOT.parent
+BUILTIN_DEFINITIONS_DIR = OPENAVC_ROOT / "server" / "drivers" / "definitions"
+COMMUNITY_DRIVERS_DIR = WORKSPACE_ROOT / "openavc-drivers"
+COMMUNITY_INDEX = COMMUNITY_DRIVERS_DIR / "index.json"
+
+
+def _load_driver_files(directories: list[Path]) -> list[dict[str, Any]]:
+    """Recursively load every ``*.avcdriver`` from the given directories,
+    plus parse ``openavc-drivers/index.json`` for Python drivers.
+
+    Python drivers carry ``DRIVER_INFO`` in code, so they don't show up
+    in a YAML scan. ``build_index.py`` already extracts the discovery
+    block from each Python driver into ``index.json``, so reading the
+    catalog index gives us all drivers regardless of format.
+    """
+    driver_defs: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    for directory in directories:
+        if not directory.exists():
+            continue
+        for filepath in sorted(directory.rglob("*.avcdriver")):
+            try:
+                data = yaml.safe_load(filepath.read_text(encoding="utf-8"))
+            except yaml.YAMLError:
+                continue
+            if not isinstance(data, dict):
+                continue
+            driver_id = data.get("id")
+            if not isinstance(driver_id, str) or not driver_id:
+                continue
+            if driver_id in seen_ids:
+                continue
+            seen_ids.add(driver_id)
+            driver_defs.append(data)
+
+    if COMMUNITY_INDEX.exists():
         try:
-            results = await probe_device("192.168.1.72", open_ports=[4352])
-        finally:
-            prober_mod._PORT_PROBES[4352] = orig
+            catalog = json.loads(COMMUNITY_INDEX.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            catalog = {}
+        for entry in catalog.get("drivers") or []:
+            if not isinstance(entry, dict):
+                continue
+            driver_id = entry.get("id")
+            if not isinstance(driver_id, str) or not driver_id:
+                continue
+            if driver_id in seen_ids:
+                continue
+            seen_ids.add(driver_id)
+            driver_defs.append(entry)
+    return driver_defs
 
-        assert len(results) == 1
-        assert results[0].protocol == "pjlink"
-        assert results[0].manufacturer == "NEC"
 
-    @pytest.mark.asyncio
-    async def test_samsung_port_triggers_probe(self):
-        """Port 1515 should trigger a Samsung MDC probe."""
-        import server.discovery.protocol_prober as prober_mod
-        mock_fn = AsyncMock(return_value=ProbeResult(
-            protocol="samsung_mdc", manufacturer="Samsung", category="display",
-        ))
-        orig = prober_mod._PORT_PROBES[1515]
-        prober_mod._PORT_PROBES[1515] = [mock_fn]
+def _collect_probe_specs() -> list[tuple[str, str, CustomProbeSpec, list[str]]]:
+    """Collect (driver_id, kind, spec, vendor_aliases) for every declared probe.
+
+    ``kind`` is ``"udp_broadcast_probe"`` or ``"tcp_active_probe"`` so
+    test ids in pytest output stay readable.
+    """
+    out: list[tuple[str, str, CustomProbeSpec, list[str]]] = []
+    drivers = _load_driver_files([BUILTIN_DEFINITIONS_DIR, COMMUNITY_DRIVERS_DIR])
+    for driver_def in drivers:
         try:
-            results = await probe_device("192.168.1.80", open_ports=[1515])
-        finally:
-            prober_mod._PORT_PROBES[1515] = orig
-
-        assert len(results) == 1
-        assert results[0].protocol == "samsung_mdc"
-
-    @pytest.mark.asyncio
-    async def test_http_port_triggers_probe(self):
-        """Port 80 should trigger an HTTP probe."""
-        import server.discovery.protocol_prober as prober_mod
-        mock_fn = AsyncMock(return_value=ProbeResult(
-            protocol="nec_http", manufacturer="NEC", category="projector",
-        ))
-        orig = prober_mod._PORT_PROBES[80]
-        prober_mod._PORT_PROBES[80] = [mock_fn]
-        try:
-            results = await probe_device("192.168.1.72", open_ports=[80])
-        finally:
-            prober_mod._PORT_PROBES[80] = orig
-
-        assert len(results) == 1
-        assert results[0].manufacturer == "NEC"
-
-    @pytest.mark.asyncio
-    async def test_multiple_ports_multiple_results(self):
-        """Device with both PJLink and HTTP ports gets both probed."""
-        import server.discovery.protocol_prober as prober_mod
-        mock_pjlink = AsyncMock(return_value=ProbeResult(
-            protocol="pjlink", manufacturer="NEC", category="projector",
-        ))
-        mock_http = AsyncMock(return_value=ProbeResult(
-            protocol="nec_http", manufacturer="NEC", category="projector",
-        ))
-        orig_4352 = prober_mod._PORT_PROBES[4352]
-        orig_80 = prober_mod._PORT_PROBES[80]
-        prober_mod._PORT_PROBES[4352] = [mock_pjlink]
-        prober_mod._PORT_PROBES[80] = [mock_http]
-        try:
-            results = await probe_device("192.168.1.72", open_ports=[4352, 80])
-        finally:
-            prober_mod._PORT_PROBES[4352] = orig_4352
-            prober_mod._PORT_PROBES[80] = orig_80
-
-        assert len(results) == 2
-        protocols = {r.protocol for r in results}
-        assert "pjlink" in protocols
-        assert "nec_http" in protocols
-
-    @pytest.mark.asyncio
-    async def test_no_ports_no_banners(self):
-        results = await probe_device("192.168.1.1", open_ports=[], banners=None)
-        assert results == []
-
-    @pytest.mark.asyncio
-    async def test_probe_failure_is_handled(self):
-        """Probe that throws an exception should not crash the dispatcher."""
-        import server.discovery.protocol_prober as prober_mod
-        mock_fn = AsyncMock(side_effect=ConnectionRefusedError("refused"))
-        orig = prober_mod._PORT_PROBES[4352]
-        prober_mod._PORT_PROBES[4352] = [mock_fn]
-        try:
-            results = await probe_device("192.168.1.72", open_ports=[4352])
-        finally:
-            prober_mod._PORT_PROBES[4352] = orig
-        # Should not crash, just return empty or skip the failed probe
-        assert isinstance(results, list)
+            hint = parse_driver_discovery(driver_def)
+        except Exception:
+            # parse failures are covered by test_discovery_hints_schema.
+            continue
+        if hint is None:
+            continue
+        aliases = list(hint.vendor_aliases)
+        if hint.udp_broadcast_probe is not None:
+            out.append((
+                hint.driver_id, "udp_broadcast_probe",
+                hint.udp_broadcast_probe, aliases,
+            ))
+        if hint.tcp_active_probe is not None:
+            out.append((
+                hint.driver_id, "tcp_active_probe",
+                hint.tcp_active_probe, aliases,
+            ))
+    return out
 
 
-# ===== Integration Test: Engine with Protocol Probes =====
+def _fixture_for(driver_id: str) -> Path | None:
+    for ext in (".bin", ".txt"):
+        candidate = FIXTURE_DIR / f"{driver_id}{ext}"
+        if candidate.exists():
+            return candidate
+    return None
 
 
-class TestEngineWithProbes:
-    """Pipeline tests that mock passive scanners to avoid 10s listener timeouts."""
+_PROBE_SPECS = _collect_probe_specs()
 
-    def _mock_passive_scanners(self):
-        """Context managers for mDNS, SSDP, SNMP, and hostname resolution."""
-        mock_mdns_cls = patch("server.discovery.engine.MDNSScanner")
-        mock_ssdp_cls = patch("server.discovery.engine.SSDPScanner")
-        mock_snmp_cls = patch("server.discovery.engine.SNMPScanner")
-        mock_hostnames = patch(
-            "server.discovery.engine._resolve_hostnames",
-            new_callable=AsyncMock, return_value={},
+
+@pytest.mark.skipif(
+    not _PROBE_SPECS,
+    reason="No drivers declare udp_broadcast_probe or tcp_active_probe yet",
+)
+def test_every_declared_probe_has_a_fixture():
+    """Every declared probe needs a captured-response fixture.
+
+    Lands as a single failing test as soon as a Phase 10 PR adds a
+    probe declaration without committing the corresponding fixture —
+    that's the contract that makes the rest of this file a meaningful
+    regression test instead of a silent no-op.
+    """
+    missing = [
+        f"{driver_id} ({kind})"
+        for driver_id, kind, _spec, _aliases in _PROBE_SPECS
+        if _fixture_for(driver_id) is None
+    ]
+    assert not missing, (
+        "Drivers declaring a probe must ship a captured response at "
+        f"tests/fixtures/discovery/<driver_id>.bin (or .txt). Missing: {missing}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("driver_id", "kind", "spec", "vendor_aliases"),
+    [
+        pytest.param(driver_id, kind, spec, aliases, id=f"{driver_id}-{kind}")
+        for driver_id, kind, spec, aliases in _PROBE_SPECS
+        if _fixture_for(driver_id) is not None
+    ],
+)
+def test_fixture_replays_through_probe_runner(
+    driver_id: str,
+    kind: str,
+    spec: CustomProbeSpec,
+    vendor_aliases: list[str],
+):
+    """Captured response must satisfy response_match + every extract rule.
+
+    Uses the same ``_matches`` and ``_apply_extract`` helpers the live
+    runner calls per packet; if those return mismatched / missing
+    values the deterministic matcher will too.
+    """
+    fixture = _fixture_for(driver_id)
+    assert fixture is not None  # gated by the skipif filter above
+    payload = fixture.read_bytes()
+
+    assert _matches(payload, spec.response_match), (
+        f"{driver_id}: response_match did not match captured fixture "
+        f"{fixture.name!r}. Verify the declared starts_with_hex / "
+        "contains / regex against the captured bytes."
+    )
+
+    reserved, extracted = _apply_extract(payload, spec.extract)
+    expected_fields = {rule.field_name for rule in spec.extract}
+    actual_fields = set(reserved) | set(extracted)
+    missing_fields = expected_fields - actual_fields
+    assert not missing_fields, (
+        f"{driver_id}: declared extract field(s) produced no value "
+        f"against captured fixture: {sorted(missing_fields)}"
+    )
+
+    # Vendor narrowing contract: if the driver claims peers via
+    # vendor_aliases, the manufacturer/make extract result has to
+    # match one of those aliases (case-insensitive). Otherwise
+    # extract_vendor_strings won't fire and Phase 8.6 best-driver-
+    # first picking degrades.
+    vendor_value = reserved.get("manufacturer") or reserved.get("make")
+    if vendor_aliases and vendor_value:
+        normalized = vendor_value.strip().lower()
+        normalized_aliases = {a.strip().lower() for a in vendor_aliases}
+        assert normalized in normalized_aliases, (
+            f"{driver_id}: extracted vendor {vendor_value!r} does not "
+            f"appear in vendor_aliases {vendor_aliases}; peer-driver "
+            "narrowing won't fire for this device."
         )
-        return mock_mdns_cls, mock_ssdp_cls, mock_snmp_cls, mock_hostnames
-
-    def _configure_passive_mocks(self, mdns_cls, ssdp_cls, snmp_cls):
-        mock_mdns = MagicMock()
-        mock_mdns.start = AsyncMock(return_value={})
-        mdns_cls.return_value = mock_mdns
-        mock_ssdp = MagicMock()
-        mock_ssdp.scan = AsyncMock(return_value={})
-        ssdp_cls.return_value = mock_ssdp
-        mock_snmp = MagicMock()
-        mock_snmp.scan_devices = AsyncMock(return_value={})
-        snmp_cls.return_value = mock_snmp
-
-    @pytest.mark.asyncio
-    async def test_pipeline_runs_protocol_probes(self):
-        """Full pipeline test verifying protocol probes are executed."""
-        from server.discovery.engine import DiscoveryEngine
-
-        engine = DiscoveryEngine()
-
-        with patch("server.discovery.engine.ping_sweep", new_callable=AsyncMock) as mock_ping, \
-             patch("server.discovery.engine.harvest_arp_table", new_callable=AsyncMock) as mock_arp, \
-             patch("server.discovery.engine.scan_host_ports", new_callable=AsyncMock) as mock_ports, \
-             patch("server.discovery.engine.grab_banners", new_callable=AsyncMock) as mock_banners, \
-             patch("server.discovery.engine.run_protocol_probes", new_callable=AsyncMock) as mock_probes, \
-             patch("server.discovery.engine.MDNSScanner") as mdns_cls, \
-             patch("server.discovery.engine.SSDPScanner") as ssdp_cls, \
-             patch("server.discovery.engine.SNMPScanner") as snmp_cls, \
-             patch("server.discovery.engine._resolve_hostnames", new_callable=AsyncMock, return_value={}):
-
-            self._configure_passive_mocks(mdns_cls, ssdp_cls, snmp_cls)
-            mock_ping.return_value = ["192.168.1.72"]
-            mock_arp.return_value = {"192.168.1.72": "04:fe:31:aa:bb:cc"}
-            mock_ports.return_value = [4352, 80]
-            mock_banners.return_value = {}
-            mock_probes.return_value = [
-                ProbeResult(
-                    protocol="pjlink",
-                    manufacturer="NEC",
-                    model="PA1004UL",
-                    device_name="Room101 Projector",
-                    category="projector",
-                ),
-            ]
-
-            await engine._scan_pipeline(["192.168.1.0/24"])
-
-        device = engine.results.get("192.168.1.72")
-        assert device is not None
-        assert device.manufacturer == "NEC"
-        assert device.model == "PA1004UL"
-        assert device.device_name == "Room101 Projector"
-        assert "pjlink" in device.protocols
-        assert "probe_confirmed" in device.sources
-        assert "model_known" in device.sources
-        assert device.confidence > 0.3
-
-    @pytest.mark.asyncio
-    async def test_pipeline_banner_enriches_device(self):
-        """Banners from port scan are passed to protocol probes."""
-        from server.discovery.engine import DiscoveryEngine
-
-        engine = DiscoveryEngine()
-
-        with patch("server.discovery.engine.ping_sweep", new_callable=AsyncMock) as mock_ping, \
-             patch("server.discovery.engine.harvest_arp_table", new_callable=AsyncMock) as mock_arp, \
-             patch("server.discovery.engine.scan_host_ports", new_callable=AsyncMock) as mock_ports, \
-             patch("server.discovery.engine.grab_banners", new_callable=AsyncMock) as mock_banners, \
-             patch("server.discovery.engine.run_protocol_probes", wraps=run_protocol_probes), \
-             patch("server.discovery.engine.MDNSScanner") as mdns_cls, \
-             patch("server.discovery.engine.SSDPScanner") as ssdp_cls, \
-             patch("server.discovery.engine.SNMPScanner") as snmp_cls, \
-             patch("server.discovery.engine._resolve_hostnames", new_callable=AsyncMock, return_value={}):
-
-            self._configure_passive_mocks(mdns_cls, ssdp_cls, snmp_cls)
-            mock_ping.return_value = ["192.168.1.50"]
-            mock_arp.return_value = {"192.168.1.50": "00:05:a6:12:34:56"}
-            mock_ports.return_value = [23]
-            mock_banners.return_value = {
-                23: "(c) 2020 Extron Electronics DTP CrossPoint 84 V1.02"
-            }
-
-            await engine._scan_pipeline(["192.168.1.0/24"])
-
-        device = engine.results.get("192.168.1.50")
-        assert device is not None
-        assert device.manufacturer == "Extron"
-        assert "extron_sis" in device.protocols

@@ -158,18 +158,15 @@ The scan runs through several phases: ping sweep, port scanning, protocol probes
 
 ### Working with Results
 
-Each discovered device shows:
+Each discovered device lands in one of three states:
 
-- **IP address and hostname** (if resolved)
-- **Manufacturer** (from MAC address OUI lookup)
-- **Open ports** and detected protocols
-- **Suggested driver** with a confidence score
-- **Device details** from protocol responses (model, firmware, etc.)
+- **Identified** — a deterministic protocol signal matched a driver. The device card shows the driver and a one-line evidence string ("multicast announce from QSC at 224.0.23.175"). Click **Add to Project** to add it with a pre-filled config.
+- **Possible** — an ambiguous signal (OUI prefix, generic UPnP type, etc.) narrowed the device to a small candidate list. Confirm the right driver and add.
+- **Unknown** — the device is on the network but no driver matched. The card shows what we know (IP, MAC, OUI vendor, open ports). Pick a driver manually or hide the device.
 
-Click a device card to see full details. If a matching driver is found:
+Each card also shows IP / hostname, manufacturer, open ports, model and firmware (when the device reports them), and an optional **Why?** reveal that lists every signal observed during the scan (mDNS announcements, broadcast probe responses, SNMP PEN, OUI hits) — useful for debugging.
 
-- Click **Add to Project** to add the device with pre-filled driver and config
-- If the driver is a community driver you haven't installed, click **Install & Add** to install the driver and add the device in one step
+If the suggested driver is a community driver you haven't installed yet, click **Install & Add** to install it and add the device in one step.
 
 ### Scan Options
 

@@ -15,8 +15,10 @@ AV_PORTS: dict[int, str] = {
     445: "SMB (Windows devices, NAS)",
     80: "HTTP (web management, Panasonic PTZ, REST APIs)",
     443: "HTTPS (secure web management)",
+    1400: "Sonos UPnP",
     1515: "Samsung MDC",
     1688: "Crestron CIP",
+    1710: "Q-SYS QRC (JSON-RPC over TCP)",
     3088: "Crestron XIO",
     4352: "PJLink",
     5000: "Kramer P3000 alt / Q-SYS QRC alt",
@@ -27,9 +29,9 @@ AV_PORTS: dict[int, str] = {
     10500: "VISCA over IP (Sony cameras)",
     41794: "Crestron CTP",
     49152: "Biamp Tesira alt",
+    49280: "Yamaha RCP (CL/QL/TF/Rivage/DM3)",
     52000: "QSC Q-SYS",
     61000: "Shure DCS alt",
-    1400: "Sonos UPnP",
 }
 
 # Ports where devices typically send a banner immediately on connect

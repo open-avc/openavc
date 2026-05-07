@@ -8,8 +8,6 @@ from server.discovery.oui_database import OUIDatabase
 from server.discovery.oui_data import AV_OUI_TABLE
 from server.discovery.result import (
     DiscoveredDevice,
-    DriverMatch,
-    compute_confidence,
     merge_device_info,
 )
 from server.discovery.network_scanner import get_local_subnets, _parse_cidr
@@ -91,7 +89,7 @@ class TestDiscoveredDevice:
         d = DiscoveredDevice(ip="192.168.1.1")
         assert d.ip == "192.168.1.1"
         assert d.mac is None
-        assert d.confidence == 0.0
+        assert d.identification is None
         assert d.alive is True
 
     def test_to_dict(self):
@@ -101,8 +99,6 @@ class TestDiscoveredDevice:
             manufacturer="Extron",
             category="switcher",
             open_ports=[23],
-            sources=["alive", "oui_av_mfg"],
-            confidence=0.2,
         )
         result = d.to_dict()
         assert result["ip"] == "192.168.1.50"
@@ -110,46 +106,8 @@ class TestDiscoveredDevice:
         assert result["manufacturer"] == "Extron"
         assert result["category"] == "switcher"
         assert 23 in result["open_ports"]
-        assert result["confidence"] == 0.2
-
-    def test_driver_match_in_dict(self):
-        d = DiscoveredDevice(ip="192.168.1.1")
-        d.matched_drivers.append(
-            DriverMatch(
-                driver_id="extron_sis",
-                driver_name="Extron SIS",
-                confidence=0.8,
-                match_reasons=["Port match"],
-                suggested_config={"host": "192.168.1.1", "port": 23},
-            )
-        )
-        result = d.to_dict()
-        assert len(result["matched_drivers"]) == 1
-        assert result["matched_drivers"][0]["driver_id"] == "extron_sis"
-
-
-class TestConfidenceScoring:
-    def test_empty_sources(self):
-        assert compute_confidence([]) == 0.0
-
-    def test_alive_only(self):
-        assert compute_confidence(["alive"]) == 0.05
-
-    def test_full_identification(self):
-        sources = ["alive", "mac_known", "oui_av_mfg", "av_port_open",
-                    "banner_matched", "probe_confirmed"]
-        score = compute_confidence(sources)
-        assert score == pytest.approx(0.70)
-
-    def test_capped_at_one(self):
-        all_sources = list(
-            __import__("server.discovery.result", fromlist=["CONFIDENCE_WEIGHTS"]).CONFIDENCE_WEIGHTS.keys()
-        )
-        score = compute_confidence(all_sources)
-        assert score == 1.0
-
-    def test_unknown_source_ignored(self):
-        assert compute_confidence(["alive", "unknown_source"]) == 0.05
+        assert result["identification"] is None
+        assert result["evidence_log"] == []
 
 
 class TestMergeDeviceInfo:
@@ -157,7 +115,6 @@ class TestMergeDeviceInfo:
         device = DiscoveredDevice(ip="192.168.1.1")
         merge_device_info(device, {"manufacturer": "Extron"}, "oui")
         assert device.manufacturer == "Extron"
-        assert "oui" in device.sources
 
     def test_does_not_overwrite_with_none(self):
         device = DiscoveredDevice(ip="192.168.1.1", manufacturer="Extron")
@@ -183,12 +140,6 @@ class TestMergeDeviceInfo:
         device = DiscoveredDevice(ip="192.168.1.1")
         merge_device_info(device, {"banners": {23: "Extron Banner"}}, "banner")
         assert device.banners[23] == "Extron Banner"
-
-    def test_source_not_duplicated(self):
-        device = DiscoveredDevice(ip="192.168.1.1")
-        merge_device_info(device, {"manufacturer": "Extron"}, "oui")
-        merge_device_info(device, {"model": "DTP"}, "oui")
-        assert device.sources.count("oui") == 1
 
 
 # ===== Network Scanner Tests =====
@@ -272,19 +223,24 @@ class TestDiscoveryEngine:
         d2 = self.engine._get_or_create("192.168.1.1")
         assert d is d2
 
-    def test_results_sorted_by_confidence(self):
-        self.engine.results["192.168.1.1"] = DiscoveredDevice(
-            ip="192.168.1.1", confidence=0.3
-        )
+    def test_results_sorted_identified_first(self):
+        from server.discovery.result import IdentificationMatch
+
+        self.engine.results["192.168.1.1"] = DiscoveredDevice(ip="192.168.1.1")
         self.engine.results["192.168.1.2"] = DiscoveredDevice(
-            ip="192.168.1.2", confidence=0.8
+            ip="192.168.1.2",
+            identification=IdentificationMatch.identified(
+                driver_id="x", source="probe:x",
+            ),
         )
         self.engine.results["192.168.1.3"] = DiscoveredDevice(
-            ip="192.168.1.3", confidence=0.5
+            ip="192.168.1.3",
+            identification=IdentificationMatch.possible(
+                candidates=["y"], source="oui:00:11:22",
+            ),
         )
-        results = self.engine.get_results()
-        confidences = [r["confidence"] for r in results]
-        assert confidences == [0.8, 0.5, 0.3]
+        ips = [r["ip"] for r in self.engine.get_results()]
+        assert ips == ["192.168.1.2", "192.168.1.3", "192.168.1.1"]
 
     @pytest.mark.asyncio
     async def test_start_scan_no_subnets_raises(self):
@@ -347,10 +303,19 @@ class TestDiscoveryEngine:
                     with patch("server.discovery.engine.grab_banners", new_callable=AsyncMock) as mock_banners:
                         mock_banners.return_value = {}
 
-                        # Mock passive scanners (Chunk 4) and SNMP (Chunk 5)
+                        # Mock Tier 1 listeners + Tier 2 broadcasts + SNMP.
+                        # Also mock the community catalog fetch so the signal
+                        # index is deterministically empty — otherwise the live
+                        # GitHub fetch leaks 50+ drivers into the index and
+                        # makes Extron's OUI match as `possible`.
                         with patch("server.discovery.engine.MDNSScanner") as mock_mdns_cls, \
                              patch("server.discovery.engine.SSDPScanner") as mock_ssdp_cls, \
+                             patch("server.discovery.engine.AMXDDPScanner") as mock_amx_cls, \
                              patch("server.discovery.engine.SNMPScanner") as mock_snmp_cls, \
+                             patch.object(self.engine.community_index, "get_drivers", new_callable=AsyncMock, return_value=[]), \
+                             patch("server.discovery.engine.probe_pjlink_class2", new_callable=AsyncMock, return_value={}), \
+                             patch("server.discovery.engine.probe_crestron_cip", new_callable=AsyncMock, return_value={}), \
+                             patch("server.discovery.engine.probe_onvif", new_callable=AsyncMock, return_value={}), \
                              patch("server.discovery.engine._resolve_hostnames", new_callable=AsyncMock, return_value={}):
                             mock_mdns = MagicMock()
                             mock_mdns.start = AsyncMock(return_value={})
@@ -358,13 +323,13 @@ class TestDiscoveryEngine:
                             mock_ssdp = MagicMock()
                             mock_ssdp.scan = AsyncMock(return_value={})
                             mock_ssdp_cls.return_value = mock_ssdp
+                            mock_amx = MagicMock()
+                            mock_amx.start = AsyncMock(return_value={})
+                            mock_amx.stop = AsyncMock()
+                            mock_amx_cls.return_value = mock_amx
                             mock_snmp = MagicMock()
                             mock_snmp.scan_devices = AsyncMock(return_value={})
                             mock_snmp_cls.return_value = mock_snmp
-
-                            updates = []
-                            async def capture_update(msg):
-                                updates.append(msg)
 
                             await self.engine._scan_pipeline(["192.168.1.0/24"])
 
@@ -378,7 +343,9 @@ class TestDiscoveryEngine:
         assert extron.manufacturer == "Extron"
         assert extron.category == "switcher"
         assert 23 in extron.open_ports
-        assert extron.confidence > 0
+        # TierMatcher ran with empty signal index → unknown state.
+        assert extron.identification is not None
+        assert extron.identification.state.value == "unknown"
 
         # Check NEC device
         nec = self.engine.results.get("192.168.1.72")

@@ -4,15 +4,20 @@ Each probe connects to an open port, sends a query (or examines the banner),
 and parses the response to identify the device type, manufacturer, model,
 and firmware.  All probes are read-only — they never send commands that could
 change device state.
+
+Probes here are deterministic identifications: a positive response uniquely
+identifies the vendor/protocol. Non-deterministic heuristics (HTTP banner
+fingerprinting, TLS cert CN parsing, SSH banner matching, SMB negotiate,
+favicon hashing) are intentionally NOT in this module — they produced
+false positives on every web-enabled device and were removed in the
+discovery redesign. See discovery-redesign-plan.md.
 """
 
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import logging
 import re
-import ssl
 import struct
 from dataclasses import dataclass, field
 from typing import Any
@@ -444,275 +449,6 @@ async def probe_visca(ip: str, port: int = 10500) -> ProbeResult | None:
 
 
 # ---------------------------------------------------------------------------
-# HTTP Fingerprinting (ports 80, 443, 8080)
-# ---------------------------------------------------------------------------
-
-_HTTP_FINGERPRINTS: list[tuple[re.Pattern, str, str, str | None]] = [
-    # (pattern on response text, manufacturer, category, protocol)
-    (re.compile(r"Server:\s*Crestron", re.IGNORECASE), "Crestron", "control", "crestron_http"),
-    (re.compile(r"Server:\s*AMX", re.IGNORECASE), "AMX", "control", "amx_http"),
-    (re.compile(r"Server:\s*Extron", re.IGNORECASE), "Extron", "switcher", "extron_http"),
-    (re.compile(r"Server:\s*Panasonic", re.IGNORECASE), "Panasonic", "camera", "panasonic_http"),
-    (re.compile(r"/cgi-bin/aw_ptz", re.IGNORECASE), "Panasonic", "camera", "panasonic_ptz"),
-    (re.compile(r"<title>[^<]*NEC[^<]*Projector", re.IGNORECASE), "NEC", "projector", "nec_http"),
-    (re.compile(r"<title>[^<]*Epson[^<]*", re.IGNORECASE), "Epson", "projector", "epson_http"),
-    (re.compile(r"<title>[^<]*Samsung", re.IGNORECASE), "Samsung", "display", "samsung_http"),
-    (re.compile(r"<title>[^<]*LG\s", re.IGNORECASE), "LG", "display", "lg_http"),
-    (re.compile(r"<title>[^<]*Sony", re.IGNORECASE), "Sony", "display", "sony_http"),
-    (re.compile(r"<title>[^<]*Biamp", re.IGNORECASE), "Biamp", "audio", "biamp_http"),
-    (re.compile(r"<title>[^<]*Q-SYS|<title>[^<]*QSC", re.IGNORECASE), "QSC", "audio", "qsc_http"),
-    (re.compile(r"<title>[^<]*Shure", re.IGNORECASE), "Shure", "audio", "shure_http"),
-    (re.compile(r"Server:\s*Zoom", re.IGNORECASE), "Zoom", "other", "zoom_rooms"),
-    (re.compile(r"<title>[^<]*Barco", re.IGNORECASE), "Barco", "projector", "barco_http"),
-    (re.compile(r"<title>[^<]*Christie", re.IGNORECASE), "Christie", "projector", "christie_http"),
-    (re.compile(r"Server:\s*Dante|<title>[^<]*Dante", re.IGNORECASE), "Audinate/Dante", "audio", "dante_http"),
-]
-
-
-async def probe_http(ip: str, port: int = 80) -> ProbeResult | None:
-    """Fingerprint an HTTP service by examining the response.
-
-    Sends a simple GET / request and examines:
-      - Server header
-      - HTML <title> tag
-      - Response body for known manufacturer strings
-    """
-    request_line = (
-        f"GET / HTTP/1.0\r\n"
-        f"Host: {ip}\r\n"
-        f"Connection: close\r\n"
-        f"\r\n"
-    )
-
-    data = await _tcp_exchange(ip, port, send=request_line.encode(), timeout=3.0)
-    if not data:
-        return None
-
-    text = data.decode("utf-8", errors="replace")
-
-    # Must look like an HTTP response
-    if not text.startswith("HTTP/"):
-        return None
-
-    for pattern, manufacturer, category, protocol in _HTTP_FINGERPRINTS:
-        if pattern.search(text):
-            result = ProbeResult(
-                protocol=protocol or "http",
-                manufacturer=manufacturer,
-                category=category,
-            )
-            # Try to extract model from title
-            title_match = re.search(r"<title>([^<]{1,100})</title>", text, re.IGNORECASE)
-            if title_match:
-                title = title_match.group(1).strip()
-                result.extra["http_title"] = title
-                # If title contains model-like info, use it
-                if manufacturer.lower() not in title.lower():
-                    result.model = title
-                else:
-                    # Remove manufacturer name to get model portion
-                    cleaned = re.sub(re.escape(manufacturer), "", title, flags=re.IGNORECASE).strip(" -–—:")
-                    if cleaned:
-                        result.model = cleaned
-
-            # Extract Server header
-            server_match = re.search(r"Server:\s*(.+?)(?:\r?\n|$)", text, re.IGNORECASE)
-            if server_match:
-                result.extra["http_server"] = server_match.group(1).strip()
-
-            return result
-
-    # No fingerprint match — try WWW-Authenticate realm as fallback
-    realm_match = re.search(r'WWW-Authenticate:.*?realm="([^"]+)"', text, re.IGNORECASE)
-    if realm_match:
-        realm = realm_match.group(1).strip()
-        result = ProbeResult(protocol="http", extra={"www_auth_realm": realm})
-        # Many AV devices put their model name in the realm
-        for mfg_name in ("Extron", "Crestron", "AMX", "Biamp", "QSC", "Shure",
-                         "Samsung", "LG", "Sony", "NEC", "Epson", "Panasonic",
-                         "Barco", "Christie"):
-            if mfg_name.lower() in realm.lower():
-                result.manufacturer = mfg_name
-                cleaned = re.sub(re.escape(mfg_name), "", realm, flags=re.IGNORECASE).strip(" -–—:")
-                if cleaned:
-                    result.model = cleaned
-                break
-        if not result.manufacturer and realm:
-            # Use the realm as device name if no manufacturer matched
-            result.device_name = realm
-        return result
-
-    return None
-
-
-# ---------------------------------------------------------------------------
-# TLS Certificate Probe (port 443 / any HTTPS port)
-# ---------------------------------------------------------------------------
-
-async def probe_tls_cert(ip: str, port: int = 443) -> ProbeResult | None:
-    """Identify a device from its TLS certificate Subject fields.
-
-    Self-signed certs on AV equipment often contain the manufacturer name
-    in Subject O (Organization) and the model in Subject CN (Common Name).
-    No credentials needed — the cert is sent during the TLS handshake.
-    """
-    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
-
-    try:
-        reader, writer = await asyncio.wait_for(
-            asyncio.open_connection(ip, port, ssl=ctx), timeout=3.0,
-        )
-    except (asyncio.TimeoutError, ConnectionRefusedError, OSError, ssl.SSLError):
-        return None
-
-    try:
-        ssl_obj = writer.get_extra_info("ssl_object")
-        if not ssl_obj:
-            return None
-        cert = ssl_obj.getpeercert(binary_form=False)
-        if not cert:
-            # Try binary DER form and decode Subject manually
-            der = ssl_obj.getpeercert(binary_form=True)
-            if not der:
-                return None
-            return _parse_tls_der_subject(der)
-
-        return _parse_tls_cert_dict(cert)
-    except Exception:
-        return None
-    finally:
-        writer.close()
-        try:
-            await writer.wait_closed()
-        except (OSError, ConnectionResetError):
-            pass
-
-
-# Known AV manufacturer strings to look for in TLS certificate fields
-_TLS_MANUFACTURERS = [
-    "Extron", "Crestron", "AMX", "Biamp", "QSC", "Shure",
-    "Samsung", "LG", "Sony", "NEC", "Epson", "Panasonic",
-    "Barco", "Christie", "Harman", "BSS", "Crown", "Poly",
-    "Cisco", "Zoom",
-]
-
-
-def _parse_tls_cert_dict(cert: dict) -> ProbeResult | None:
-    """Parse a peercert() dict for manufacturer/model info."""
-    subject = cert.get("subject", ())
-    org = ""
-    cn = ""
-    for rdn in subject:
-        for attr_type, attr_value in rdn:
-            if attr_type == "organizationName":
-                org = attr_value
-            elif attr_type == "commonName":
-                cn = attr_value
-
-    if not org and not cn:
-        return None
-
-    result = ProbeResult(protocol="https", extra={})
-    if org:
-        result.extra["tls_org"] = org
-    if cn:
-        result.extra["tls_cn"] = cn
-
-    # Match manufacturer from org or cn
-    combined = f"{org} {cn}"
-    for mfg in _TLS_MANUFACTURERS:
-        if mfg.lower() in combined.lower():
-            result.manufacturer = mfg
-            # Use CN as model if it's not just an IP or the org name
-            if cn and cn != ip_like(cn) and cn.lower() != mfg.lower():
-                result.model = cn
-            break
-
-    if result.manufacturer:
-        return result
-    return None
-
-
-def ip_like(s: str) -> str:
-    """Return s if it looks like an IP address, else empty string."""
-    return s if re.match(r"^\d{1,3}(\.\d{1,3}){3}$", s) else ""
-
-
-def _parse_tls_der_subject(der: bytes) -> ProbeResult | None:
-    """Fallback: scan raw DER bytes for known manufacturer strings."""
-    text = der.decode("ascii", errors="replace")
-    for mfg in _TLS_MANUFACTURERS:
-        if mfg.lower() in text.lower():
-            return ProbeResult(
-                protocol="https",
-                manufacturer=mfg,
-                extra={"tls_der_match": mfg},
-            )
-    return None
-
-
-# ---------------------------------------------------------------------------
-# SSH Banner Probe (port 22)
-# ---------------------------------------------------------------------------
-
-# Known SSH banners for AV/embedded devices
-_SSH_DEVICE_PATTERNS: list[tuple[re.Pattern, str, str | None]] = [
-    (re.compile(r"dropbear", re.I), "embedded", None),
-    (re.compile(r"Crestron", re.I), "Crestron", "control"),
-    (re.compile(r"Biamp", re.I), "Biamp", "audio"),
-    (re.compile(r"QSC", re.I), "QSC", "audio"),
-    (re.compile(r"Extron", re.I), "Extron", "switcher"),
-]
-
-
-async def probe_ssh_banner(ip: str, port: int = 22) -> ProbeResult | None:
-    """Read the SSH banner to identify the device OS or manufacturer.
-
-    SSH servers send an identification string before authentication:
-    e.g. "SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.6" or "SSH-2.0-dropbear_2020.81"
-    """
-    try:
-        reader, writer = await asyncio.wait_for(
-            asyncio.open_connection(ip, port), timeout=3.0,
-        )
-    except (asyncio.TimeoutError, ConnectionRefusedError, OSError):
-        return None
-
-    try:
-        data = await asyncio.wait_for(reader.read(256), timeout=2.0)
-        if not data:
-            return None
-        banner = data.decode("utf-8", errors="replace").strip()
-        if not banner.startswith("SSH-"):
-            return None
-
-        result = ProbeResult(
-            protocol="ssh",
-            extra={"ssh_banner": banner},
-        )
-
-        for pattern, mfg_or_type, category in _SSH_DEVICE_PATTERNS:
-            if pattern.search(banner):
-                if mfg_or_type != "embedded":
-                    result.manufacturer = mfg_or_type
-                if category:
-                    result.category = category
-                break
-
-        return result
-    except (asyncio.TimeoutError, OSError):
-        return None
-    finally:
-        writer.close()
-        try:
-            await writer.wait_closed()
-        except (OSError, ConnectionResetError):
-            pass
-
-
-# ---------------------------------------------------------------------------
 # Crestron CIP Probe (port 1688)
 # ---------------------------------------------------------------------------
 
@@ -776,186 +512,247 @@ async def probe_shure_active(ip: str, port: int = 23) -> ProbeResult | None:
 
 
 # ---------------------------------------------------------------------------
-# SMB Negotiate Probe (port 445) — Standard depth
+# Q-SYS QRC connect probe (TCP 1710)
 # ---------------------------------------------------------------------------
 
-async def probe_smb(ip: str, port: int = 445) -> ProbeResult | None:
-    """Identify a Windows device via SMB negotiate handshake.
+# Q-SYS Cores answer JSON-RPC over TCP/1710 with a NUL-terminated framing.
+# EngineStatus is a documented, side-effect-free method.
+_QSYS_QRC_REQUEST = b'{"jsonrpc":"2.0","id":1,"method":"EngineStatus"}\x00'
 
-    The SMB negotiate response contains the hostname and OS version
-    without requiring credentials. Works on Windows PCs, servers, NAS.
+
+async def probe_qsys_qrc(ip: str, port: int = 1710) -> ProbeResult | None:
+    """Identify a Q-SYS Core via QRC (JSON-RPC over TCP/1710).
+
+    Sends an EngineStatus request and parses the JSON-RPC reply. The
+    reply carries Platform (e.g. "Core 110f"), DesignName, State, and
+    IsRedundant - any valid JSON-RPC envelope identifies a Q-SYS Core
+    deterministically.
     """
-    # SMB1 negotiate request — minimal packet
-    # NetBIOS session header (4 bytes) + SMB header + negotiate request
-    smb_header = (
-        b"\x00\x00\x00\x54"    # NetBIOS: session message, length 84
-        b"\xffSMB"              # SMB1 signature
-        b"\x72"                 # Command: negotiate
-        b"\x00\x00\x00\x00"    # Status: OK
-        b"\x18"                 # Flags: case insensitive + canonicalized paths
-        b"\x01\x28"             # Flags2: long names + extended security
-        b"\x00\x00"             # PID high
-        b"\x00\x00\x00\x00\x00\x00\x00\x00"  # Signature
-        b"\x00\x00"             # Reserved
-        b"\x00\x00"             # TID
-        b"\x00\x00"             # PID
-        b"\x00\x00"             # UID
-        b"\x00\x00"             # MID
+    import json
+
+    data = await _tcp_exchange(
+        ip, port, send=_QSYS_QRC_REQUEST, timeout=3.0,
     )
-    # Negotiate request body — request NT LM 0.12 dialect
-    negotiate_body = (
-        b"\x00"                           # Word count: 0
-        b"\x11\x00"                       # Byte count: 17
-        b"\x02NT LM 0.12\x00"           # Dialect: NT LM 0.12
-    )
-
-    packet = smb_header + negotiate_body
-
-    try:
-        reader, writer = await asyncio.wait_for(
-            asyncio.open_connection(ip, port), timeout=3.0,
-        )
-    except (asyncio.TimeoutError, ConnectionRefusedError, OSError):
-        return None
-
-    try:
-        writer.write(packet)
-        await writer.drain()
-        data = await asyncio.wait_for(reader.read(4096), timeout=3.0)
-        if not data or len(data) < 39:
-            return None
-
-        # Verify SMB response signature
-        if data[4:8] != b"\xffSMB":
-            return None
-
-        result = ProbeResult(protocol="smb", extra={})
-
-        # Try to extract server name from the negotiate response
-        # The NTLMSSP blob in extended security contains the hostname
-        # Look for NTLMSSP signature in the response
-        ntlmssp_offset = data.find(b"NTLMSSP\x00")
-        if ntlmssp_offset >= 0 and ntlmssp_offset + 56 < len(data):
-            blob = data[ntlmssp_offset:]
-            if len(blob) > 56:
-                # Type 2 NTLMSSP message — extract target name
-                try:
-                    target_len = struct.unpack_from("<H", blob, 12)[0]
-                    target_offset = struct.unpack_from("<I", blob, 16)[0]
-                    if target_offset + target_len <= len(blob):
-                        target_name = blob[target_offset:target_offset + target_len]
-                        name = target_name.decode("utf-16-le", errors="replace").strip("\x00")
-                        if name:
-                            result.device_name = name
-                            result.extra["smb_hostname"] = name
-                except (struct.error, UnicodeDecodeError):
-                    pass
-
-        # Extract OS version from the negotiate response SecurityBlob
-        # Look for version info in the NTLMSSP blob
-        if ntlmssp_offset >= 0 and len(data[ntlmssp_offset:]) > 48:
-            blob = data[ntlmssp_offset:]
-            try:
-                # Version is at offset 48 in the NTLMSSP type 2 message (8 bytes)
-                major = blob[48]
-                minor = blob[49]
-                build = struct.unpack_from("<H", blob, 50)[0]
-                if major > 0:
-                    result.extra["os_version"] = f"{major}.{minor}.{build}"
-            except (IndexError, struct.error):
-                pass
-
-        if result.device_name or result.extra:
-            return result
-        return None
-    except (asyncio.TimeoutError, ConnectionResetError, BrokenPipeError, OSError):
-        return None
-    finally:
-        writer.close()
-        try:
-            await writer.wait_closed()
-        except (OSError, ConnectionResetError):
-            pass
-
-
-# ---------------------------------------------------------------------------
-# Favicon Hash Probe — Standard depth
-# ---------------------------------------------------------------------------
-
-# Known favicon hashes (MD5 of favicon.ico content) → manufacturer
-# Populated with common AV device web interface favicons
-_FAVICON_HASHES: dict[str, str] = {
-    # These would be populated by fingerprinting real AV devices.
-    # Format: md5_hex -> manufacturer name
-}
-
-
-async def probe_favicon(ip: str, port: int = 80) -> ProbeResult | None:
-    """Fetch /favicon.ico and hash it to identify the manufacturer.
-
-    Many AV devices have unique favicons that identify the manufacturer
-    even when the HTML title is generic or the page requires auth.
-    """
-    request_line = (
-        f"GET /favicon.ico HTTP/1.0\r\n"
-        f"Host: {ip}\r\n"
-        f"Connection: close\r\n"
-        f"\r\n"
-    )
-
-    data = await _tcp_exchange(ip, port, send=request_line.encode(), timeout=3.0)
     if not data:
         return None
 
-    # Check for HTTP 200 response
-    text_start = data[:100].decode("utf-8", errors="replace")
-    if "200" not in text_start.split("\r\n")[0]:
+    # QRC framing is NUL-terminated; the response may have one or more
+    # NUL-delimited messages. Take the first complete JSON object.
+    payload = data.split(b"\x00", 1)[0].strip()
+    if not payload:
         return None
 
-    # Find body after headers
-    body_start = data.find(b"\r\n\r\n")
-    if body_start < 0 or body_start + 4 >= len(data):
-        return None
-    body = data[body_start + 4:]
-    if len(body) < 10:
+    try:
+        msg = json.loads(payload.decode("utf-8", errors="replace"))
+    except (ValueError, json.JSONDecodeError):
         return None
 
-    # Hash the favicon content
-    favicon_hash = hashlib.md5(body).hexdigest()
+    if not isinstance(msg, dict):
+        return None
 
-    manufacturer = _FAVICON_HASHES.get(favicon_hash)
-    if manufacturer:
-        return ProbeResult(
-            protocol="http",
-            manufacturer=manufacturer,
-            extra={"favicon_hash": favicon_hash},
-        )
+    # JSON-RPC reply must reference our id and have a result object.
+    result_obj = msg.get("result")
+    if not isinstance(result_obj, dict):
+        return None
 
-    # Even without a hash match, store the hash for future analysis
-    return ProbeResult(
-        protocol="http",
-        extra={"favicon_hash": favicon_hash},
+    pr = ProbeResult(
+        protocol="qsc_qrc",
+        manufacturer="QSC",
+        category="audio",
     )
+
+    platform = result_obj.get("Platform")
+    if isinstance(platform, str) and platform:
+        pr.model = platform
+
+    design_name = result_obj.get("DesignName")
+    if isinstance(design_name, str) and design_name:
+        pr.device_name = design_name
+
+    state = result_obj.get("State")
+    if isinstance(state, str):
+        pr.extra["qrc_state"] = state
+
+    is_redundant = result_obj.get("IsRedundant")
+    if isinstance(is_redundant, bool):
+        pr.extra["qrc_redundant"] = is_redundant
+
+    return pr
+
+
+# ---------------------------------------------------------------------------
+# Biamp Tesira TTP active probe (TCP 23)
+# ---------------------------------------------------------------------------
+
+# Tesira Text Protocol greeting on connect:
+#   "Welcome to the Tesira Text Protocol Server..."
+# Followed by a `\r\n`-terminated `+OK\r\n` ready prompt. We then send a
+# safe read-only query for the device serial number which echoes a line
+# with `+OK "value:<serial>"` on success.
+_TESIRA_TTP_QUERY = b"DEVICE get serialNumber\r\n"
+_TESIRA_TTP_RESPONSE_RE = re.compile(
+    r'\+OK\s*"?value\s*:\s*(?P<serial>[A-Za-z0-9\-]+)"?',
+    re.IGNORECASE,
+)
+
+
+async def probe_tesira_ttp(ip: str, port: int = 23) -> ProbeResult | None:
+    """Identify a Biamp Tesira processor via Tesira Text Protocol.
+
+    The TTP server greets with a distinctive welcome banner. Sending
+    ``DEVICE get serialNumber`` returns a structured ``+OK "value:..."``
+    response - any such response confirms a Tesira device.
+    """
+    responses = await _tcp_multi_exchange(
+        ip, port,
+        commands=[_TESIRA_TTP_QUERY],
+        timeout=3.0,
+        read_first=True,
+        delay=0.2,
+    )
+    if not responses:
+        return None
+
+    banner_raw = responses[0]
+    if not banner_raw:
+        return None
+    banner = banner_raw.decode("utf-8", errors="replace")
+    if not _BIAMP_BANNER_RE.search(banner):
+        return None
+
+    pr = ProbeResult(
+        protocol="biamp_tesira",
+        manufacturer="Biamp",
+        category="audio",
+    )
+
+    # The reply to our query (if any) carries the serial number.
+    if len(responses) > 1 and responses[1]:
+        reply_text = responses[1].decode("utf-8", errors="replace")
+        match = _TESIRA_TTP_RESPONSE_RE.search(reply_text)
+        if match:
+            pr.serial_number = match.group("serial")
+
+    # Firmware string sometimes appears in the welcome banner.
+    fw_match = re.search(r"version\s+(\d+\.\d+[\.\d]*)", banner, re.IGNORECASE)
+    if fw_match:
+        pr.firmware = fw_match.group(1)
+
+    return pr
+
+
+# ---------------------------------------------------------------------------
+# Yamaha RCP active probe (TCP 49280)
+# ---------------------------------------------------------------------------
+
+# Yamaha RCP (Remote Control Protocol) used by CL/QL/TF/Rivage/DM3 mixers.
+# `devstatus runmode` is a documented read-only query that returns the
+# console run mode and identifies the device class.
+_YAMAHA_RCP_QUERY = b"devstatus runmode\r\n"
+_YAMAHA_RCP_RESPONSE_RE = re.compile(
+    r"OK\s+devstatus\s+runmode\s+(?P<value>\S+)",
+    re.IGNORECASE,
+)
+
+
+async def probe_yamaha_rcp(ip: str, port: int = 49280) -> ProbeResult | None:
+    """Identify a Yamaha RCP-speaking mixer (CL, QL, TF, Rivage, DM3).
+
+    Yamaha consoles typically do not advertise on mDNS (DM3 is the
+    exception). A TCP connect on 49280 + ``devstatus runmode\\r\\n``
+    confirms RCP and returns the run mode.
+    """
+    data = await _tcp_exchange(
+        ip, port, send=_YAMAHA_RCP_QUERY, timeout=3.0,
+    )
+    if not data:
+        return None
+
+    text = data.decode("utf-8", errors="replace")
+    match = _YAMAHA_RCP_RESPONSE_RE.search(text)
+    if not match:
+        return None
+
+    pr = ProbeResult(
+        protocol="yamaha_rcp",
+        manufacturer="Yamaha",
+        category="audio",
+    )
+    pr.extra["rcp_runmode"] = match.group("value")
+    return pr
+
+
+# ---------------------------------------------------------------------------
+# ProbeResult -> Evidence bridge
+# ---------------------------------------------------------------------------
+
+# Map probe protocol -> stable probe_id used as Evidence source_id.
+# Drivers reference these IDs in their discovery hints (Phase 6).
+_PROBE_ID_FOR_PROTOCOL: dict[str, str] = {
+    "pjlink": "pjlink_class1",
+    "extron_sis": "extron_sis",
+    "biamp_tesira": "tesira_ttp",
+    "qsc_qrc": "qrc",
+    "kramer_p3000": "kramer_p3000",
+    "shure_dcs": "shure_dcs",
+    "samsung_mdc": "samsung_mdc",
+    "visca": "visca",
+    "crestron_cip": "crestron_cip_tcp",
+    "yamaha_rcp": "yamaha_rcp",
+}
+
+
+def probe_result_to_evidence(pr: ProbeResult):
+    """Convert a legacy ProbeResult into a Tier 3 Evidence record.
+
+    Bridge between the existing probe API (returns ProbeResult) and the
+    new deterministic matcher (consumes Evidence). Used by the Phase 6
+    orchestrator swap; safe to call from anywhere meanwhile.
+
+    Returns a Tier 3 Evidence record. The probe_id used as source_id
+    is the same one drivers reference in their ``active_probes`` hint
+    declarations.
+    """
+    from server.discovery.tier_matcher import evidence_active_probe
+
+    probe_id = _PROBE_ID_FOR_PROTOCOL.get(pr.protocol, pr.protocol)
+
+    response: dict[str, Any] = {}
+    if pr.manufacturer:
+        response["manufacturer"] = pr.manufacturer
+    if pr.model:
+        response["model"] = pr.model
+    if pr.device_name:
+        response["device_name"] = pr.device_name
+    if pr.firmware:
+        response["firmware"] = pr.firmware
+    if pr.serial_number:
+        response["serial_number"] = pr.serial_number
+    if pr.category:
+        response["category"] = pr.category
+    if pr.extra:
+        response["extra"] = dict(pr.extra)
+
+    return evidence_active_probe(probe_id, response=response)
 
 
 # ---------------------------------------------------------------------------
 # Main probe dispatcher (at end of file so all probe functions are available)
 # ---------------------------------------------------------------------------
 
-# Map of port -> active probe functions
+# Map of port -> active probe functions.
+# Only deterministic probes are listed here — non-deterministic heuristics
+# (HTTP banner fingerprinting, TLS cert CN, SSH banner matching, SMB negotiate,
+# favicon hashing) were removed in the discovery redesign because they
+# produced false positives on every web-enabled device.
 _PORT_PROBES: dict[int, list] = {
-    22: [probe_ssh_banner, probe_shure_active],
-    23: [probe_shure_active],
-    445: [probe_smb],
-    4352: [probe_pjlink],
+    23: [probe_shure_active, probe_tesira_ttp],
     1515: [probe_samsung_mdc],
-    10500: [probe_visca],
     1688: [probe_crestron_cip],
-    80: [probe_http, probe_favicon],
-    443: [probe_tls_cert, probe_http],
-    8080: [probe_http, probe_favicon],
-    8443: [probe_tls_cert],
-    9090: [probe_http],
+    1710: [probe_qsys_qrc],
+    4352: [probe_pjlink],
+    10500: [probe_visca],
+    49280: [probe_yamaha_rcp],
 }
 
 

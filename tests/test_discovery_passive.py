@@ -17,7 +17,8 @@ from server.discovery.mdns_scanner import (
     DNS_TYPE_PTR,
     DNS_TYPE_SRV,
     DNS_TYPE_TXT,
-    AV_SERVICE_TYPES,
+    BASELINE_SERVICE_TYPES,
+    DNS_SD_META_QUERY,
     _parse_txt_rdata,
     _extract_instance_name,
     _service_type_to_protocol,
@@ -36,7 +37,6 @@ from server.discovery.ssdp_scanner import (
 from server.discovery.result import (
     DiscoveredDevice,
     merge_device_info,
-    compute_confidence,
 )
 from server.discovery.engine import DiscoveryEngine
 
@@ -363,15 +363,81 @@ class TestServiceTypeMapping:
     def test_pjlink_protocol(self):
         assert _service_type_to_protocol("_pjlink._tcp.local.") == "pjlink"
 
+    def test_baseline_service_types_no_bogus_av_protocols(self):
+        """Phase 9.6: the hard-coded baseline carries only protocols
+        that actually advertise via mDNS. AMX uses DDP multicast (not
+        mDNS); Crestron uses CIP UDP/41794 (not mDNS); Lutron uses
+        _leap, declared by the lutron driver, not a hard-coded
+        _lutron. The baseline contains no bogus AV protocols.
+        """
+        bogus = {
+            "_amx-beacon._udp.local.",
+            "_crestron._tcp.local.",
+            "_lutron._tcp.local.",
+        }
+        for s in BASELINE_SERVICE_TYPES:
+            assert s not in bogus, f"{s} is bogus and should not be in baseline"
+
+    def test_dante_queryable_via_driver_declaration(self):
+        """Phase 9.6: Dante service types are declared by the
+        dante_ddm/Audinate drivers in openavc-drivers, not hard-coded
+        in core. The MDNSScanner queries any service type passed in.
+        """
+        scanner = MDNSScanner(service_types=[
+            "_netaudio-cmc._udp.local.",
+            "_netaudio-arc._udp.local.",
+        ])
+        assert "_netaudio-cmc._udp.local." in scanner._service_types
+        assert "_netaudio-arc._udp.local." in scanner._service_types
+
+    def test_dns_sd_meta_query_always_included(self):
+        """The DNS-SD meta-query is always added so unknown service
+        types surface for catalog growth, regardless of what drivers
+        declare.
+        """
+        scanner = MDNSScanner(service_types=[])
+        assert DNS_SD_META_QUERY in scanner._service_types
+        scanner2 = MDNSScanner(service_types=["_foo._tcp.local."])
+        assert DNS_SD_META_QUERY in scanner2._service_types
+
     def test_pjlink_protocol_no_trailing_dot(self):
         """DNS-decoded names don't have trailing dots."""
         assert _service_type_to_protocol("_pjlink._tcp.local") == "pjlink"
 
-    def test_qsc_protocol(self):
-        assert _service_type_to_protocol("_qsc._tcp.local.") == "qsc"
+    def test_dante_protocol(self):
+        # All Audinate _netaudio-* services indicate Dante.
+        assert _service_type_to_protocol("_netaudio-cmc._udp.local.") == "dante"
+        assert _service_type_to_protocol("_netaudio-arc._udp.local.") == "dante"
+        assert _service_type_to_protocol("_netaudio-chan._udp.local.") == "dante"
+        assert _service_type_to_protocol("_netaudio-dbc._udp.local.") == "dante"
 
-    def test_shure_protocol(self):
-        assert _service_type_to_protocol("_shure._tcp.local.") == "shure_dcs"
+    def test_ndi_protocol(self):
+        assert _service_type_to_protocol("_ndi._tcp.local.") == "ndi"
+
+    def test_lutron_leap_protocol(self):
+        assert _service_type_to_protocol("_leap._tcp.local.") == "lutron_leap"
+
+    def test_nmos_protocol(self):
+        assert _service_type_to_protocol("_nmos-node._tcp.local.") == "nmos"
+        assert _service_type_to_protocol("_nmos-register._tcp.local.") == "nmos"
+
+    def test_sennheiser_ssc_protocol(self):
+        assert _service_type_to_protocol("_ssc._udp.local.") == "sennheiser_ssc"
+        assert _service_type_to_protocol("_ssc._tcp.local.") == "sennheiser_ssc"
+
+    def test_unverified_qsc_returns_none(self):
+        # Unverified service types (no public docs confirming them) are
+        # intentionally NOT mapped. Driver matching via TXT records or
+        # the catch-all enumeration handles those.
+        assert _service_type_to_protocol("_qsc._tcp.local.") is None
+
+    def test_removed_amx_beacon_returns_none(self):
+        # AMX uses DDP multicast (239.255.250.250:9131), not mDNS.
+        assert _service_type_to_protocol("_amx-beacon._udp.local.") is None
+
+    def test_removed_crestron_returns_none(self):
+        # Crestron primary discovery is the CIP UDP/41794 probe.
+        assert _service_type_to_protocol("_crestron._tcp.local.") is None
 
     def test_http_no_protocol(self):
         assert _service_type_to_protocol("_http._tcp.local.") is None
@@ -388,8 +454,18 @@ class TestServiceTypeMapping:
     def test_airplay_category(self):
         assert _service_type_to_category("_airplay._tcp.local.") == "display"
 
-    def test_qsc_category(self):
-        assert _service_type_to_category("_qsc._tcp.local.") == "audio"
+    def test_dante_category(self):
+        assert _service_type_to_category("_netaudio-cmc._udp.local.") == "audio"
+        assert _service_type_to_category("_netaudio-arc._udp.local.") == "audio"
+
+    def test_ndi_category(self):
+        assert _service_type_to_category("_ndi._tcp.local.") == "video"
+
+    def test_lutron_category(self):
+        assert _service_type_to_category("_leap._tcp.local.") == "control"
+
+    def test_unverified_qsc_category_none(self):
+        assert _service_type_to_category("_qsc._tcp.local.") is None
 
     def test_unknown_category(self):
         assert _service_type_to_category("_http._tcp.local.") is None
@@ -436,12 +512,12 @@ class TestMDNSScanner:
         assert scanner._running is False
         assert scanner._results == {}
 
-    def test_av_service_types_defined(self):
-        """Verify we have AV-relevant service types."""
-        assert len(AV_SERVICE_TYPES) > 5
-        assert "_pjlink._tcp.local." in AV_SERVICE_TYPES
-        assert "_airplay._tcp.local." in AV_SERVICE_TYPES
-        assert "_http._tcp.local." in AV_SERVICE_TYPES
+    def test_baseline_service_types_defined(self):
+        """The baseline still carries the consumer / generic protocols
+        the engine includes alongside driver-declared types."""
+        assert len(BASELINE_SERVICE_TYPES) >= 4
+        assert "_airplay._tcp.local." in BASELINE_SERVICE_TYPES
+        assert "_http._tcp.local." in BASELINE_SERVICE_TYPES
 
     @pytest.mark.asyncio
     async def test_start_handles_socket_error(self):
@@ -930,9 +1006,14 @@ class TestEnginePassiveIntegration:
         status = self.engine.get_status()
         assert status["total_phases"] == 8
 
+    def _amx_future(self, result=None):
+        f = asyncio.get_event_loop().create_future()
+        f.set_result(result or {})
+        return f
+
     @pytest.mark.asyncio
     async def test_collect_passive_results_mdns(self):
-        """Test that mDNS results are merged into engine results."""
+        """mDNS results merge into engine results + emit Tier 1 evidence."""
         mdns_results = {
             "192.168.1.72": MDNSResult(
                 ip="192.168.1.72",
@@ -943,26 +1024,26 @@ class TestEnginePassiveIntegration:
                 txt_records={"manufacturer": "NEC", "model": "PA1004UL"},
             ),
         }
-        ssdp_results = {}
 
         mdns_future = asyncio.get_event_loop().create_future()
         mdns_future.set_result(mdns_results)
         ssdp_future = asyncio.get_event_loop().create_future()
-        ssdp_future.set_result(ssdp_results)
+        ssdp_future.set_result({})
 
-        await self.engine._collect_passive_results(mdns_future, ssdp_future)
+        await self.engine._collect_passive_results(
+            mdns_future, ssdp_future, self._amx_future(),
+        )
 
         assert "192.168.1.72" in self.engine.results
         device = self.engine.results["192.168.1.72"]
         assert device.alive is True
-        assert "mdns_advertised" in device.sources
-        assert "NEC PA1004UL" == device.device_name
+        assert any(e.source == "mdns:_pjlink._tcp.local." for e in device.evidence_log)
+        assert device.device_name == "NEC PA1004UL"
         assert "_pjlink._tcp.local." in device.mdns_services
 
     @pytest.mark.asyncio
     async def test_collect_passive_results_ssdp(self):
-        """Test that SSDP results are merged into engine results."""
-        mdns_results = {}
+        """SSDP results merge into engine results + emit Tier 1 evidence."""
         ssdp_results = {
             "192.168.1.50": SSDPResult(
                 ip="192.168.1.50",
@@ -976,28 +1057,31 @@ class TestEnginePassiveIntegration:
         }
 
         mdns_future = asyncio.get_event_loop().create_future()
-        mdns_future.set_result(mdns_results)
+        mdns_future.set_result({})
         ssdp_future = asyncio.get_event_loop().create_future()
         ssdp_future.set_result(ssdp_results)
 
-        await self.engine._collect_passive_results(mdns_future, ssdp_future)
+        await self.engine._collect_passive_results(
+            mdns_future, ssdp_future, self._amx_future(),
+        )
 
         assert "192.168.1.50" in self.engine.results
         device = self.engine.results["192.168.1.50"]
         assert device.alive is True
-        assert "ssdp_identified" in device.sources
+        assert any(
+            e.data.get("source_id") == "urn:schemas-upnp-org:device:MediaRenderer:1"
+            for e in device.evidence_log
+        )
         assert device.device_name == "Living Room TV"
         assert device.manufacturer == "Samsung"
 
     @pytest.mark.asyncio
     async def test_collect_passive_results_merge_with_active(self):
-        """Passive results should merge with existing active scan results."""
-        # Pre-populate from active scan
+        """Passive results merge with existing active-scan device records."""
         self.engine.results["192.168.1.50"] = DiscoveredDevice(
             ip="192.168.1.50",
             mac="8c:71:f8:11:22:33",
             manufacturer="Samsung",
-            sources=["alive", "mac_known", "oui_av_mfg"],
         )
 
         ssdp_results = {
@@ -1014,32 +1098,32 @@ class TestEnginePassiveIntegration:
         ssdp_future = asyncio.get_event_loop().create_future()
         ssdp_future.set_result(ssdp_results)
 
-        await self.engine._collect_passive_results(mdns_future, ssdp_future)
+        await self.engine._collect_passive_results(
+            mdns_future, ssdp_future, self._amx_future(),
+        )
 
         device = self.engine.results["192.168.1.50"]
-        assert device.mac == "8c:71:f8:11:22:33"  # Preserved from active
-        assert device.device_name == "Conference Room Display"  # From SSDP
-        assert device.model == "QM55R"  # From SSDP
-        # Longer manufacturer wins (merge_device_info behavior)
+        assert device.mac == "8c:71:f8:11:22:33"
+        assert device.device_name == "Conference Room Display"
+        assert device.model == "QM55R"
         assert device.manufacturer == "Samsung Electronics"
-        assert "ssdp_identified" in device.sources
-        assert "alive" in device.sources  # Preserved
 
     @pytest.mark.asyncio
     async def test_collect_passive_handles_failed_tasks(self):
-        """Should handle tasks that raised exceptions."""
+        """Failed mDNS/SSDP/AMX-DDP tasks don't crash the collector."""
         mdns_future = asyncio.get_event_loop().create_future()
         mdns_future.set_exception(OSError("Socket error"))
         ssdp_future = asyncio.get_event_loop().create_future()
         ssdp_future.set_result({})
 
-        # Should not raise
-        await self.engine._collect_passive_results(mdns_future, ssdp_future)
+        await self.engine._collect_passive_results(
+            mdns_future, ssdp_future, self._amx_future(),
+        )
         assert len(self.engine.results) == 0
 
     @pytest.mark.asyncio
     async def test_collect_passive_both_contribute(self):
-        """Both mDNS and SSDP can contribute info about the same device."""
+        """mDNS + SSDP can both contribute info about the same device."""
         mdns_results = {
             "192.168.1.50": MDNSResult(
                 ip="192.168.1.50",
@@ -1062,55 +1146,16 @@ class TestEnginePassiveIntegration:
         ssdp_future = asyncio.get_event_loop().create_future()
         ssdp_future.set_result(ssdp_results)
 
-        await self.engine._collect_passive_results(mdns_future, ssdp_future)
+        await self.engine._collect_passive_results(
+            mdns_future, ssdp_future, self._amx_future(),
+        )
 
         device = self.engine.results["192.168.1.50"]
-        assert device.hostname == "tv-livingroom"  # From mDNS
-        assert device.manufacturer == "Samsung"  # From SSDP
-        assert device.model == "QM55R"  # From SSDP
-        assert device.serial_number == "SER999"  # From SSDP
-        assert "mdns_advertised" in device.sources
-        assert "ssdp_identified" in device.sources
-
-
-# ============================================================
-# Confidence Scoring Tests (passive sources)
-# ============================================================
-
-
-class TestPassiveConfidenceScoring:
-    def test_mdns_advertised_weight(self):
-        score = compute_confidence(["alive", "mdns_advertised"])
-        assert score == pytest.approx(0.15, abs=0.01)
-
-    def test_ssdp_identified_weight(self):
-        score = compute_confidence(["alive", "ssdp_identified"])
-        assert score == pytest.approx(0.15, abs=0.01)
-
-    def test_combined_passive_and_active(self):
-        """Active + passive sources should combine."""
-        score = compute_confidence([
-            "alive", "mac_known", "oui_av_mfg",
-            "av_port_open", "mdns_advertised", "ssdp_identified",
-        ])
-        expected = 0.05 + 0.05 + 0.15 + 0.10 + 0.10 + 0.10
-        assert score == pytest.approx(expected, abs=0.01)
-
-    def test_passive_only_device(self):
-        """A device found only via passive means should have a score."""
-        score = compute_confidence(["mdns_advertised"])
-        assert score == 0.10
-
-    def test_passive_capped_at_one(self):
-        """Score should never exceed 1.0."""
-        # Just use all known sources
-        score = compute_confidence([
-            "alive", "mac_known", "oui_av_mfg", "av_port_open",
-            "banner_matched", "probe_confirmed", "snmp_identified",
-            "mdns_advertised", "ssdp_identified", "model_known",
-            "driver_matched", "hint_matched",
-        ])
-        assert score <= 1.0
+        assert device.hostname == "tv-livingroom"
+        assert device.manufacturer == "Samsung"
+        assert device.model == "QM55R"
+        assert device.serial_number == "SER999"
+        assert any(e.source.startswith("mdns:") for e in device.evidence_log)
 
 
 # ============================================================
@@ -1163,7 +1208,6 @@ class TestPassiveMerge:
             mac="8c:71:f8:11:22:33",
             manufacturer="Samsung",
             open_ports=[80, 1515],
-            sources=["alive", "mac_known", "oui_av_mfg", "av_port_open"],
         )
         # mDNS gives us the hostname
         merge_device_info(device, {

@@ -109,6 +109,36 @@ class SSDPResult:
 
         return info
 
+    def to_evidence(self):
+        """Emit a Tier 1 Evidence record for the deterministic matcher.
+
+        Returns ``None`` if no UPnP device-type ST was observed (e.g.
+        the response was an ssdp:all hit with only USN/Location).
+        """
+        if not self.st:
+            return None
+        from server.discovery.result import Evidence, SignalTier
+        from server.discovery.tier_matcher import KIND_SSDP
+
+        data = {
+            "kind": KIND_SSDP,
+            "source_id": self.st,
+        }
+        if self.manufacturer:
+            data["manufacturer"] = self.manufacturer
+        if self.model_name:
+            data["model"] = self.model_name
+        if self.friendly_name:
+            data["friendly_name"] = self.friendly_name
+        if self.server:
+            data["server"] = self.server
+
+        return Evidence(
+            tier=SignalTier.PASSIVE_LISTENER,
+            source=f"ssdp:{self.st}",
+            data=data,
+        )
+
 
 def _st_to_category(st: str | None) -> str | None:
     """Map SSDP search target to device category.
@@ -130,10 +160,15 @@ class SSDPScanner:
     Uses only stdlib (socket, asyncio, xml).
     """
 
-    def __init__(self) -> None:
+    def __init__(self, control_ip: str = "") -> None:
+        """``control_ip``: bind outbound multicast to this interface IP.
+        Empty = OS default route. Required for the multi-NIC AV scenario
+        where the control VLAN is not the default route.
+        """
         self._sock: socket.socket | None = None
         self._running = False
         self._results: dict[str, SSDPResult] = {}  # keyed by IP
+        self._control_ip = control_ip
 
     @property
     def results(self) -> dict[str, SSDPResult]:
@@ -157,7 +192,7 @@ class SSDPScanner:
         self._running = True
 
         try:
-            self._sock = _create_ssdp_socket()
+            self._sock = _create_ssdp_socket(control_ip=self._control_ip)
         except OSError as e:
             log.warning("Could not create SSDP socket: %s", e)
             return {}
@@ -473,18 +508,31 @@ async def _http_get(url: str, timeout: float = 3.0) -> str | None:
 # --- Socket Creation ---
 
 
-def _create_ssdp_socket() -> socket.socket:
+def _create_ssdp_socket(control_ip: str = "") -> socket.socket:
     """Create a UDP socket for SSDP M-SEARCH.
 
-    Cross-platform: works on both Windows and Linux.
+    Cross-platform: works on both Windows and Linux. When ``control_ip``
+    is set, outbound multicast is pinned to that interface so M-SEARCH
+    requests leave through the chosen adapter.
     """
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
 
     # Allow address reuse
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
-    # Bind to any address — we send to the multicast group
-    sock.bind(("", 0))
+    # Bind to specific source IP if requested, otherwise INADDR_ANY.
+    # Binding to control_ip:0 also pins the source address on outbound
+    # packets so responses come back to the right interface on
+    # multi-homed hosts.
+    sock.bind((control_ip or "", 0))
+
+    # Pin outbound multicast interface when a control IP is selected.
+    if control_ip:
+        sock.setsockopt(
+            socket.IPPROTO_IP,
+            socket.IP_MULTICAST_IF,
+            socket.inet_aton(control_ip),
+        )
 
     # Set TTL for multicast
     sock.setsockopt(

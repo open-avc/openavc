@@ -19,6 +19,7 @@ VALID_DEFINITION = {
     "id": "test_loader_driver",
     "name": "Loader Test Driver",
     "transport": "tcp",
+    "discovery": {"manual_only": True},
     "commands": {
         "power_on": {"label": "Power On", "string": "PON\r", "params": {}},
     },
@@ -46,6 +47,64 @@ def test_validate_missing_required():
     errors = validate_driver_definition({"name": "X"})
     assert any("id" in e for e in errors)
     assert any("transport" in e for e in errors)
+
+
+def test_validate_accepts_missing_discovery_block_with_warning():
+    """Phase 8 Task 8.3: a driver with no signals at all loads (the
+    matcher silently ignores it) but the loader logs a warning. We no
+    longer reject the driver — community contributors can ship a
+    placeholder driver and add discovery hints in a follow-up.
+    """
+    errors = validate_driver_definition({
+        "id": "no_discovery",
+        "name": "No Discovery",
+        "transport": "tcp",
+        "commands": {"power_on": {"string": "X\r"}},
+    })
+    assert errors == []
+
+
+def test_validate_accepts_manual_only_discovery():
+    errors = validate_driver_definition({
+        "id": "manual_widget",
+        "name": "Manual Widget",
+        "transport": "tcp",
+        "discovery": {"manual_only": True},
+        "commands": {"power_on": {"string": "X\r"}},
+    })
+    assert errors == []
+
+
+def test_validate_accepts_strong_signal_discovery():
+    errors = validate_driver_definition({
+        "id": "strong_signal",
+        "name": "Strong",
+        "transport": "tcp",
+        "discovery": {"active_probes": ["pjlink_class1"]},
+        "commands": {"power_on": {"string": "X\r"}},
+    })
+    assert errors == []
+
+
+def test_validate_rejects_unknown_active_probe():
+    errors = validate_driver_definition({
+        "id": "bogus_probe",
+        "name": "Bogus",
+        "transport": "tcp",
+        "discovery": {"active_probes": ["http_banner"]},
+    })
+    assert any("active probe" in e for e in errors), errors
+
+
+def test_validate_skips_generic_templates():
+    """generic_* templates are exempt from the discovery requirement."""
+    errors = validate_driver_definition({
+        "id": "generic_anything",
+        "name": "Generic",
+        "transport": "tcp",
+    })
+    # No discovery-block error.
+    assert not any("discovery:" in e for e in errors)
 
 
 def test_validate_bad_transport():
