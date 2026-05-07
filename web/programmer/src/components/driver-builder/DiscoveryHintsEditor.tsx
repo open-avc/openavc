@@ -234,24 +234,6 @@ export function DiscoveryHintsEditor({ draft, onUpdate }: DiscoveryHintsEditorPr
           </div>
         </div>
 
-        <div style={{ ...checkboxRow, marginTop: "var(--space-sm)" }}>
-          <input
-            id="discovery-hiqnet"
-            type="checkbox"
-            checked={!!hints.hiqnet}
-            onChange={(e) => update({ hiqnet: e.target.checked || undefined })}
-          />
-          <label htmlFor="discovery-hiqnet">HARMAN HiQnet (UDP 3804)</label>
-        </div>
-        <div style={checkboxRow}>
-          <input
-            id="discovery-symetrix"
-            type="checkbox"
-            checked={!!hints.symetrix}
-            onChange={(e) => update({ symetrix: e.target.checked || undefined })}
-          />
-          <label htmlFor="discovery-symetrix">Symetrix ControlNet (UDP 49216)</label>
-        </div>
       </div>
 
       {/* Phase 9: driver-declared custom probes */}

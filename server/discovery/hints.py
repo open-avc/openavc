@@ -505,11 +505,6 @@ def parse_driver_discovery(driver_info: dict[str, Any]) -> DiscoveryHint | None:
             raise DiscoveryHintError(
                 f"{driver_id}: discovery.onvif must be a bool or {{manufacturer: ...}} mapping"
             )
-    if discovery.get("hiqnet"):
-        hint.broadcast_probes.append("hiqnet")
-    if discovery.get("symetrix"):
-        hint.broadcast_probes.append("symetrix")
-
     raw_probes = discovery.get("active_probes") or []
     if not isinstance(raw_probes, list):
         raise DiscoveryHintError(

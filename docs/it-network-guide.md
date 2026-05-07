@@ -96,38 +96,50 @@ The table below lists common AV control ports. This is not exhaustive. AV manufa
 
 | Port | Protocol | Device type | Example |
 |------|----------|-------------|---------|
-| 23 | TCP (Telnet) | Switchers, DSPs, amplifiers | Extron, Biamp, QSC, Kramer, Shure |
+| 22 | TCP (SSH) | Embedded devices, AV processors | SSH-managed gear |
+| 23 | TCP (Telnet) | Switchers, DSPs, amplifiers | Extron, Biamp, QSC, Kramer, Shure, LG |
 | 80 | TCP (HTTP) | Devices with web APIs | Panasonic cameras, REST-based devices |
 | 443 | TCP (HTTPS) | Devices with secure web APIs | Newer AV-over-IP devices |
+| 445 | TCP (SMB) | Windows-based AV servers, NAS | File access |
+| 1400 | TCP | Audio | Sonos UPnP |
 | 1515 | TCP | Samsung commercial displays | Samsung MDC protocol |
 | 1688 | TCP | Crestron-compatible devices | Crestron CIP |
+| 1710 | TCP | Audio DSPs | Q-SYS QRC (JSON-RPC) |
+| 3088 | TCP | Crestron-compatible devices | Crestron XIO |
 | 4352 | TCP | Projectors | PJLink standard |
-| 5000 | TCP | Switchers, DSPs | Kramer Protocol 3000 |
+| 5000 | TCP | Switchers, DSPs | Kramer Protocol 3000 / Q-SYS QRC alt |
 | 5900 | TCP | Remote desktop/preview | VNC |
 | 7142 | TCP | AMX-compatible devices | AMX ICSP |
+| 8080 | TCP | Devices with web APIs | Alternate HTTP management |
 | 9090 | TCP | Devices with web APIs | Alternate HTTP management |
 | 10500 | TCP | PTZ cameras | Sony VISCA over IP |
+| 41794 | TCP | Crestron-compatible devices | Crestron CTP |
 | 49152 | TCP | Audio DSPs | Biamp Tesira |
+| 49280 | TCP | Audio mixers | Yamaha RCP (CL/QL/TF/Rivage/DM3) |
 | 52000 | TCP | Audio DSPs | QSC Q-SYS |
 | 61000 | TCP | Wireless microphones | Shure DCS |
 | 161 | UDP | SNMP-managed devices | Read-only status query (discovery only) |
-| 1400 | TCP | Audio | Sonos UPnP |
 
 An OpenAVC instance controlling only PJLink projectors and a Biamp DSP, for example, will only generate traffic on ports 4352 and 49152. If your network policy requires explicit allow-listing, the exact ports in use for a given deployment can be determined from the project's device configuration.
 
 ### Device discovery (on-demand only)
 
-OpenAVC includes a network discovery feature to help AV integrators find devices during initial setup. Discovery is never automatic. It runs only when an integrator explicitly starts a scan from the Programmer interface, and it stops when the scan completes (typically under 60 seconds).
+OpenAVC includes a network discovery feature to help AV integrators find devices during initial setup. Discovery is never automatic. It runs only when an integrator explicitly starts a scan from the Programmer interface. Default scan budgets are 60 s (Quick), 120 s (Standard), and 180 s (Thorough).
 
 During a discovery scan, OpenAVC will:
 
 1. **Ping sweep** the local subnet(s) using ICMP echo requests
 2. **TCP port scan** responding hosts on the AV ports listed above
 3. **SNMP query** (v2c, community string `public`, read-only) on port 161
-4. **mDNS query** on multicast group 224.0.0.251:5353
+4. **mDNS / DNS-SD query** on multicast group 224.0.0.251:5353
 5. **SSDP M-SEARCH** on multicast group 239.255.255.250:1900
-6. **Protocol probes** on open ports (PJLink status query, Extron identification, etc.)
-7. **Driver-declared probes**, if any installed driver carries a `udp_broadcast_probe` or `tcp_active_probe` block in its definition. These send a single one-shot UDP broadcast or TCP connect-and-query on a vendor-specific port (one packet per scan, no retry). The exact ports depend on which drivers are installed; the Programmer IDE's Driver Builder shows them per driver.
+6. **AMX DDP listen** on multicast group 239.255.250.250:9131 (passive — receive only)
+7. **PJLink Class 2 SRCH broadcast** on UDP 4352, if any installed driver opts in
+8. **Crestron CIP probe** on UDP 41794 to live hosts, if any installed driver opts in
+9. **ONVIF WS-Discovery** on multicast group 239.255.255.250:3702, if any installed driver opts in
+10. **NetBIOS name query** on UDP 137 to live hosts (Standard / Thorough scan only)
+11. **Protocol probes** on open AV ports (PJLink status query, Extron identification, Tesira device serial, Q-SYS QRC, Samsung MDC, VISCA, Yamaha RCP, etc.)
+12. **Driver-declared probes**, if any installed driver carries a `udp_broadcast_probe` or `tcp_active_probe` block in its definition. These send a single one-shot UDP broadcast or TCP connect-and-query on a vendor-specific port (one packet per scan, no retry). The exact ports depend on which drivers are installed; the Programmer IDE's Driver Builder shows them per driver.
 
 All discovery traffic is confined to the local subnet(s) detected on the host's network interfaces. It does not scan remote subnets, public IP ranges, or addresses outside the host's directly-connected networks. Virtual and VPN adapters are excluded automatically.
 
@@ -330,9 +342,16 @@ Add to the minimum rules:
 | Rule | Direction | Source | Destination | Port | Protocol |
 |------|-----------|--------|-------------|------|----------|
 | ICMP (discovery) | Outbound | OpenAVC host | Local subnet | ICMP | Echo request |
+| NetBIOS (discovery) | Outbound | OpenAVC host | Local subnet | 137/udp | NetBIOS name query (Standard / Thorough only) |
 | SNMP (discovery) | Outbound | OpenAVC host | Local subnet | 161/udp | SNMP v2c |
-| mDNS (discovery) | Outbound | OpenAVC host | 224.0.0.251 | 5353/udp | mDNS |
-| SSDP (discovery) | Outbound | OpenAVC host | 239.255.255.250 | 1900/udp | SSDP |
+| mDNS (discovery) | Outbound + Inbound | OpenAVC host | 224.0.0.251 | 5353/udp | mDNS |
+| SSDP (discovery) | Outbound + Inbound | OpenAVC host | 239.255.255.250 | 1900/udp | SSDP |
+| AMX DDP (discovery) | Inbound | 239.255.250.250 | OpenAVC host | 9131/udp | Passive listen |
+| ONVIF WS-Discovery | Outbound + Inbound | OpenAVC host | 239.255.255.250 | 3702/udp | If any ONVIF-using driver installed |
+| PJLink Class 2 SRCH | Outbound + Inbound | OpenAVC host | Subnet broadcast | 4352/udp | If any PJLink Class 2 driver installed |
+| Crestron CIP probe | Outbound + Inbound | OpenAVC host | Live hosts | 41794/udp | If any Crestron CIP driver installed |
+| Driver-declared UDP probes | Outbound + Inbound | OpenAVC host | Subnet broadcast | Vendor-specific | If installed drivers declare `udp_broadcast_probe` |
+| Driver-declared TCP probes | Outbound | OpenAVC host | Live hosts with port open | Vendor-specific | If installed drivers declare `tcp_active_probe` |
 | Update checks | Outbound | OpenAVC host | api.github.com | 443/tcp | HTTPS |
 
 ### With cloud platform

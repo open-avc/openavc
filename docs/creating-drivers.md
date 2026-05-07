@@ -652,8 +652,10 @@ discovery:
   crestron_cip: true               # responds to UDP 41794 probe
   onvif:                           # ONVIF cameras; manufacturer disambiguates
     manufacturer: "Axis"
-  hiqnet: true                     # HARMAN HiQnet on UDP 3804
-  symetrix: true                   # ControlNet on UDP 49216
+  # Vendor-specific broadcast probes (HiQnet, Symetrix, NovaStar, etc.)
+  # ship in their respective drivers via udp_broadcast_probe or a
+  # sibling _discovery.py companion. Platform opt-ins above are reserved
+  # for cross-vendor open standards.
 
   # Tier 3: targeted active probes (only on hosts with the open port)
   active_probes:
@@ -684,7 +686,6 @@ discovery:
 | `pjlink_class2` | 2 | `true` if the device answers PJLink Class 2 SRCH broadcast. The generic `pjlink_class1` driver claims this; brand-specific projector drivers stay `manual_only`. |
 | `crestron_cip` | 2 | `true` if the device answers the Crestron CIP UDP/41794 probe. |
 | `onvif` | 2 | `true` (any ONVIF responder) or `{manufacturer: "Axis"}` to disambiguate when multiple ONVIF camera drivers coexist. |
-| `hiqnet` / `symetrix` | 2 | HARMAN HiQnet / Symetrix ControlNet broadcast probe opt-ins. |
 | `active_probes` | 3 | Targeted TCP probes by name. Built-in handlers: `pjlink_class1`, `extron_sis`, `tesira_ttp`, `qrc`, `kramer_p3000`, `shure_dcs`, `samsung_mdc`, `visca`, `crestron_cip_tcp`, `yamaha_rcp`. Unknown IDs are accepted at parse time but no probe fires for them — for vendor-specific wire formats use `tcp_active_probe` below. |
 | `udp_broadcast_probe` | 2 | Driver-declared UDP broadcast probe (Phase 9). Sub-fields: `port`, `send: {hex|ascii}`, `response_match: {starts_with_hex, contains, regex}`, optional `timeout_ms` (≤10000), `generic` flag, `extract` rules. Reserved extract keys `manufacturer` / `make` feed the Tier 4 vendor_string path. Built-in handler ports (mDNS/SSDP/ONVIF/AMX DDP/PJLink/Crestron CIP) are reserved. |
 | `tcp_active_probe` | 3 | Driver-declared TCP active probe (Phase 9). Same shape as `udp_broadcast_probe`. Runs against every host whose port scan hit `port`. Built-in active-probe handler ports (23, 1515, 1688, 1710, 4352, 10500, 49280) are reserved. |

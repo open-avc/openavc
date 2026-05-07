@@ -115,7 +115,7 @@ class SignalRule:
             - ``KIND_SSDP``: UPnP device type URN
             - ``KIND_AMX_DDP``: ``"<Make>/<ModelGlob>"``, e.g. ``"Polycom/SoundStructure*"``
             - ``KIND_BROADCAST``: probe id, e.g. ``"pjlink_class2"``, ``"crestron_cip"``,
-              ``"onvif"``, ``"hiqnet"``, ``"symetrix"``
+              ``"onvif"``, or a Phase 9 driver-declared ``"custom_<driver_id>_udp"``
             - ``KIND_ACTIVE_PROBE``: probe id, e.g. ``"pjlink_class1"``, ``"extron_sis"``,
               ``"samsung_mdc"``, ``"visca"``, ``"qrc"``
             - ``KIND_OUI``: 6-char OUI prefix, lowercase, e.g. ``"00:0c:4d"``
@@ -200,9 +200,9 @@ class SignalRule:
         """Build a Tier 2 broadcast rule.
 
         ``txt_match`` lets multiple drivers safely claim a generic probe
-        like ``onvif`` or ``hiqnet`` by attaching a manufacturer/model
-        filter — the responder's parsed identification fields are matched
-        against the filter at lookup time.
+        like ``onvif`` by attaching a manufacturer/model filter — the
+        responder's parsed identification fields are matched against the
+        filter at lookup time.
 
         ``generic`` defaults to True when ``probe_id`` is in
         ``_GENERIC_STRONG_PROBE_IDS`` *and* no ``txt_match`` filter is

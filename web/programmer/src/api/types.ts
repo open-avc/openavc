@@ -508,12 +508,12 @@ export interface DriverDiscoveryHints {
   ssdp_device_types?: string[];
   amx_ddp?: { make: string; model_pattern?: string };
 
-  // Tier 2 — opt-ins
+  // Tier 2 — opt-ins (cross-vendor open standards). Vendor-specific
+  // wire formats use the udp_broadcast_probe block below or a sibling
+  // *_discovery.py companion.
   pjlink_class2?: boolean;
   crestron_cip?: boolean;
   onvif?: boolean | { manufacturer?: string };
-  hiqnet?: boolean;
-  symetrix?: boolean;
 
   // Tier 3
   active_probes?: string[];

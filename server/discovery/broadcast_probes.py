@@ -12,9 +12,11 @@ This module currently ships:
   - PJLink Class 2 SRCH (UDP 4352)
   - Crestron CIP discovery (UDP 41794)
 
-The plan calls for additional Tier 2 probes (ONVIF WS-Discovery,
-HiQnet, Symetrix) which will land in follow-up commits as their wire
-formats are verified against Wireshark captures.
+ONVIF WS-Discovery lives in ``onvif_scanner.py``. Vendor-specific
+broadcast probes outside these standards (HiQnet, Symetrix, etc.)
+ship in their respective drivers via Phase 9
+``udp_broadcast_probe:`` blocks or ``_discovery.py`` companions —
+they no longer require a core handler.
 
 Network safety
 --------------
