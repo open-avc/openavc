@@ -582,7 +582,7 @@ def test_driver_loader_accepts_http():
         "id": "test_http",
         "name": "Test HTTP",
         "transport": "http",
-        "discovery": {"manual_only": True},
+        "discovery": {"oui": ["aa:bb:cc"]},
     })
     assert len(errors) == 0
 

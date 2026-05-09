@@ -1,22 +1,26 @@
-"""Discovery soft-signal coverage for representative real drivers.
+"""Discovery hint coverage for representative real drivers.
 
-Phase 8 (Tasks 8.1, 8.3, 8.4, 8.5) widened the matcher so any soft
-signal — OUI, hostname pattern, open AV port, or SNMP PEN — is enough
-to surface a device as ``possible``. The synthetic-driver tests in
+Verifies that any hint — OUI, hostname pattern, observed open port,
+manufacturer alias, SNMP PEN — is enough to surface a device as
+``possible``. The synthetic-driver tests in
 ``test_discovery_tier_matcher.py`` and ``test_discovery_hints_schema.py``
-exercise the matcher contract using ``_drv()``-built drivers; this
-file pins a small set of *real* community drivers so that the
-catalog we ship actually participates in matching as expected.
+exercise the matcher contract; this file pins a handful of *real*
+community drivers so the catalog we ship participates in matching as
+expected.
 
 If a driver here ever stops surfacing as ``possible`` for its declared
-soft signal, the regression is in either the catalog file (signal
-removed/changed) or the matcher path — both are worth catching at
-test time rather than during a live scan.
+hint, the regression is in either the catalog file (signal removed or
+changed) or the matcher path — both worth catching at test time
+rather than during a live scan.
+
+NOTE: Most catalog drivers still carry the pre-rewrite schema. As
+they migrate in lockstep with the rewrite, they get added here. For
+now the suite covers ``shure_network`` (the Step 1 migrated sample)
+plus a synthetic driver that exercises the open-port hint path.
 """
 
 from __future__ import annotations
 
-import importlib.util
 from pathlib import Path
 
 import pytest
@@ -29,11 +33,9 @@ from server.discovery.hints import (
 from server.discovery.result import DeviceState
 from server.discovery.tier_matcher import (
     TierMatcher,
-    evidence_active_probe,
     evidence_hostname,
     evidence_open_port,
     evidence_oui,
-    extract_vendor_strings,
 )
 
 # openavc-drivers/ is a sibling of openavc/ in the workspace.
@@ -46,52 +48,14 @@ pytestmark = pytest.mark.skipif(
 
 
 # (relative path, driver_id, OUI MACs that should match, hostnames that should match)
-# Picked to cover the three currently-populated soft-signal kinds (OUI single,
-# OUI multi, hostname pattern) across audio, lighting, switching, camera, and
-# streaming categories.
+# Picked to cover the OUI + hostname hint paths against a real driver
+# that has been migrated to the new discovery schema.
 _FIXTURES: list[tuple[str, str, list[str], list[str]]] = [
     (
         "audio/shure_network.avcdriver",
         "shure_network",
-        ["00:0e:dd:11:22:33"],
-        [],
-    ),
-    (
-        "audio/yamaha_mtx_mrx.avcdriver",
-        "yamaha_mtx_mrx",
-        ["00:a0:de:11:22:33"],
-        [],
-    ),
-    (
-        "lighting/etc_eos.avcdriver",
-        "etc_eos",
-        ["00:c0:16:aa:bb:cc"],
-        [],
-    ),
-    (
-        "lighting/philips_hue.avcdriver",
-        "philips_hue",
-        # Two OUI prefixes; both should resolve.
-        ["00:17:88:11:22:33", "ec:b5:fa:11:22:33"],
-        [],
-    ),
-    (
-        "switchers/atlona_ome_ps62.avcdriver",
-        "atlona_ome_ps62",
-        ["b8:98:b0:01:23:45"],
-        [],
-    ),
-    (
-        "cameras/panasonic_awhe.avcdriver",
-        "panasonic_awhe",
-        ["00:80:45:11:22:33", "70:1d:7c:11:22:33"],
-        [],
-    ),
-    (
-        "streaming/barco_clickshare_cx.avcdriver",
-        "barco_clickshare_cx",
-        ["00:04:a5:de:ad:be"],
-        ["clickshare-meeting-1"],
+        ["00:0e:dd:11:22:33", "d8:34:ee:11:22:33"],
+        ["MXA920-AABBCC", "ANI4IN-1"],
     ),
 ]
 
@@ -106,14 +70,14 @@ def _load_driver(rel_path: str) -> dict:
     _FIXTURES,
     ids=[f[1] for f in _FIXTURES],
 )
-def test_catalog_soft_signals_produce_possible(
+def test_catalog_hints_produce_possible(
     rel_path: str,
     driver_id: str,
     oui_macs: list[str],
     hostnames: list[str],
 ) -> None:
-    """A real catalog driver's declared soft signals produce ``possible``
-    for a synthetic device that carries the matching evidence."""
+    """A real catalog driver's declared hints produce ``possible`` for
+    a synthetic device that carries the matching evidence."""
     raw = _load_driver(rel_path)
     hint = parse_driver_discovery(raw)
     assert hint is not None, f"{driver_id} should produce a hint"
@@ -139,130 +103,15 @@ def test_catalog_soft_signals_produce_possible(
         assert driver_id in result.candidates
 
 
-def _load_python_driver_info(rel_path: str) -> dict:
-    """Import a community Python driver and return its ``DRIVER_INFO``.
-
-    Mirrors what ``server.drivers.driver_loader`` does at runtime: load the
-    module via ``importlib`` and pull the first ``BaseDriver`` subclass that
-    declares ``DRIVER_INFO``. Used for Phase 8.5 fixtures that need the
-    real Python-driver discovery hints (catalog stores PJLink and Sharp NEC
-    as ``.py`` drivers, not YAML).
-    """
-    path = DRIVERS_ROOT / rel_path
-    spec = importlib.util.spec_from_file_location(f"_drv_{path.stem}", path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    for attr_name in dir(module):
-        obj = getattr(module, attr_name)
-        if isinstance(obj, type) and hasattr(obj, "DRIVER_INFO"):
-            info = getattr(obj, "DRIVER_INFO", None)
-            if isinstance(info, dict) and info.get("id"):
-                return info
-    raise AssertionError(f"No DRIVER_INFO class found in {rel_path}")
-
-
-def test_nec_projector_pjlink_plus_oui_picks_sharp_nec() -> None:
-    """Real-catalog regression for Phase 8.5 / 9.7.
-
-    ``pjlink_class1.py`` declares the PJLink Class 1 + Class 2 discovery
-    via a sibling _discovery.py companion (``companion: {generic: true}``);
-    ``sharp_nec_projector.py`` declares NEC OUI prefixes. With both signals
-    present (a Sharp/NEC projector identified by the companion's TCP probe
-    on its NEC-OUI MAC), the matcher must prefer the brand-specific driver
-    and expose PJLink as an alternative.
-    """
-    pjlink_info = _load_python_driver_info("projectors/pjlink_class1.py")
-    sharp_nec_info = _load_python_driver_info("projectors/sharp_nec_projector.py")
-    assert pjlink_info["id"] == "pjlink_class1"
-    assert sharp_nec_info["id"] == "sharp_nec_projector"
-
-    pjlink_hint = parse_driver_discovery(pjlink_info)
-    sharp_nec_hint = parse_driver_discovery(sharp_nec_info)
-    assert pjlink_hint is not None
-    assert sharp_nec_hint is not None
-    assert pjlink_hint.companion is not None
-    assert pjlink_hint.companion.generic is True
-    assert "00:30:13" in sharp_nec_hint.oui_prefixes
-
-    idx = build_signal_index([pjlink_hint, sharp_nec_hint])
-    matcher = TierMatcher(idx)
-
-    # Companion emits Tier 3 evidence under its canonical synthetic ID.
-    result = matcher.match([
-        evidence_active_probe(
-            pjlink_hint.companion.active_probe_id,
-            {"manufacturer": "NEC", "model": "PA1004UL"},
-        ),
-        evidence_oui("00:30:13:11:22:33"),
-    ])
-
-    assert result.state == DeviceState.IDENTIFIED, (
-        f"expected IDENTIFIED, got {result.state} (driver={result.driver_id}, "
-        f"alternatives={result.alternatives})"
-    )
-    assert result.driver_id == "sharp_nec_projector"
-    assert "pjlink_class1" in result.alternatives
-
-
-def test_nec_pe456_via_pjlink_vendor_string_picks_sharp_nec() -> None:
-    """Phase 8.6 / 9.7 catalog regression — Aaron's exact PE456 case.
-
-    An NEC projector that responds to PJLink Class 1 ``%1MNFR? -> NEC``
-    must surface ``sharp_nec_projector`` even when the device's OUI is
-    *not* in the driver's ``oui_prefixes`` list. The catalog's declared
-    ``vendor_aliases`` is the load-bearing soft signal — no OUI evidence
-    emitted. After Phase 9.7 the PJLink probe runs as a sibling
-    ``_discovery.py`` companion; the matcher consumes evidence under the
-    companion's canonical synthetic Tier 3 ID.
-    """
-    pjlink_info = _load_python_driver_info("projectors/pjlink_class1.py")
-    sharp_nec_info = _load_python_driver_info("projectors/sharp_nec_projector.py")
-    pjlink_hint = parse_driver_discovery(pjlink_info)
-    sharp_nec_hint = parse_driver_discovery(sharp_nec_info)
-    assert pjlink_hint is not None
-    assert sharp_nec_hint is not None
-    assert pjlink_hint.companion is not None
-    # Sanity: the catalog actually declares the alias the engine will
-    # extract. If this fails, sharp_nec_projector regressed.
-    assert "nec" in sharp_nec_hint.vendor_aliases
-
-    idx = build_signal_index([pjlink_hint, sharp_nec_hint])
-    matcher = TierMatcher(idx)
-
-    # Build the same evidence shape the engine produces in production:
-    # the companion's TCP probe lands a Tier 3 active_probe record
-    # carrying manufacturer in its response, then the engine appends
-    # Tier 4 vendor_string evidence via extract_vendor_strings.
-    log: list = [
-        evidence_active_probe(
-            pjlink_hint.companion.active_probe_id,
-            {"manufacturer": "NEC", "model": "PE456_Series"},
-        ),
-    ]
-    log.extend(extract_vendor_strings(log))
-
-    result = matcher.match(log)
-    assert result.state == DeviceState.IDENTIFIED, (
-        f"expected IDENTIFIED, got {result.state} (driver={result.driver_id}, "
-        f"alternatives={result.alternatives})"
-    )
-    assert result.driver_id == "sharp_nec_projector"
-    assert "pjlink_class1" in result.alternatives
-
-
-def test_open_port_soft_signal_pinned_via_synthetic_driver() -> None:
-    """No catalog driver currently declares ``open_ports:`` — Phase 8 added
-    the schema field but no community driver has backfilled it yet.
-
-    Until catalog adoption catches up, pin the open-port soft-signal path
-    with a synthetic driver so the wiring stays covered.
+def test_open_port_hint_pinned_via_synthetic_driver() -> None:
+    """Pin the open-port hint path with a synthetic driver so the
+    wiring stays covered while catalog adoption catches up.
     """
     synthetic = {
         "id": "synthetic_avport_widget",
         "name": "Synthetic AV Port Widget",
         "discovery": {
-            "open_ports": [9876],
+            "port_open": [9876],
         },
     }
     hint = parse_driver_discovery(synthetic)

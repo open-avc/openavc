@@ -491,11 +491,14 @@ class TestDriverMatching:
                 "manufacturer": "Generic",
                 "transport": "tcp",
                 "discovery": {
-                    # Phase 9.7: PJLink discovery is hosted by the
-                    # sibling _discovery.py companion. The companion
-                    # block auto-registers two synthetic SignalRules.
-                    "companion": {"generic": True},
-                    "open_ports": [4352],
+                    # Discovery is hosted by a sibling _discovery.py
+                    # companion. The python: block auto-registers two
+                    # synthetic SignalRules.
+                    "python": {
+                        "file": "./pjlink_class1_discovery.py",
+                        "cross_vendor": True,
+                    },
+                    "port_open": [4352],
                 },
             }
         ]

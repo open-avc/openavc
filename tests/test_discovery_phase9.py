@@ -1,18 +1,20 @@
-"""Phase 9 tests — driver-declared probes, companions, end-to-end.
+"""Driver-declared probe tests — schema parsing, runner unit tests, end-to-end.
 
-Covers the acceptance criteria from discovery-redesign-plan.md §Phase 9
-Task 9.8:
+Covers:
 
-- Unit tests for probe_runner: response matching, extract rules, source
-  IP binding, rate limiter pacing, schema-validation parser.
-- _discovery.py companion loader + ProbeContext + hard timeout.
+- Schema parser: well-formed ``tcp_probe`` / ``udp_probe`` / ``python``
+  blocks land on ``DiscoveryHint`` correctly; cross_vendor flag flows
+  through to ``SignalRule.generic`` at index-build time.
+- ``probe_runner``: response matching, extract rules, rate limiter
+  pacing, source-IP binding.
+- ``_discovery.py`` companion loader + ``ProbeContext`` + hard timeout.
 - End-to-end integration: a synthetic UDP responder identifies via a
-  declared udp_broadcast_probe; same for TCP.
-- Generic-flag integration: a generic tcp_active_probe + vendor-
-  specific driver with vendor_aliases produces the Phase 8.5 best-
-  driver-first result.
-- Vendor-string integration: a probe whose extract: populates
-  manufacturer correctly emits Tier 4 vendor_string evidence.
+  declared ``udp_probe``; same for TCP.
+- Cross-vendor demotion integration: a cross_vendor ``tcp_probe`` +
+  vendor-specific peer with ``manufacturer_alias`` produces the
+  best-driver-first result.
+- Vendor-string integration: a probe whose ``extract:`` populates
+  manufacturer correctly emits ``vendor_string`` evidence.
 - Network-safety regression: probe sockets bind to source_ip.
 """
 
@@ -126,133 +128,109 @@ def _next_port() -> int:
 
 
 # ---------------------------------------------------------------------------
-# Schema parser — Phase 9 additions
+# Schema parser — sanity checks for the probe blocks
 # ---------------------------------------------------------------------------
 
 
-class TestPhase9SchemaParsing:
+class TestProbeSchemaParsing:
     def test_full_udp_block_parses(self):
-        h = _make_hint("novastar_h_series", udp_broadcast_probe={
+        h = _make_hint("novastar_h_series", udp_probe={
             "port": 6000,
-            "send": {"hex": "00010203"},
-            "response_match": {
-                "starts_with_hex": "AA55",
-                "contains": "NovaStar",
-                "regex": r"^NS-([A-Z0-9]+)",
-            },
+            "send_hex": "00010203",
+            "expect_hex": "AA55",
+            "expect": "NovaStar",
+            "expect_regex": r"^NS-([A-Z0-9]+)",
             "timeout_ms": 2000,
-            "generic": False,
+            "cross_vendor": False,
             "extract": {
                 "manufacturer": "NovaStar",
                 "model": {"regex": "model=([^,]+)", "group": 1},
             },
         })
-        spec = h.udp_broadcast_probe
+        spec = h.udp_probe
         assert spec is not None
         assert spec.port == 6000
         assert spec.send == bytes.fromhex("00010203")
         assert spec.probe_id == "custom_novastar_h_series_udp"
         assert spec.response_match.starts_with == bytes.fromhex("AA55")
         assert spec.response_match.regex.pattern == r"^NS-([A-Z0-9]+)"
-        assert spec.generic is False
+        assert spec.cross_vendor is False
         by_name = {r.field_name: r for r in spec.extract}
         assert by_name["manufacturer"].value == "NovaStar"
         assert by_name["model"].regex.pattern == "model=([^,]+)"
 
     def test_full_tcp_block_parses(self):
-        h = _make_hint("lightware_lw3", tcp_active_probe={
+        h = _make_hint("lightware_lw3", tcp_probe={
             "port": 6107,
-            "send": {"ascii": "GET /sys/version\r\n"},
-            "response_match": {"contains": "Lightware"},
-            "generic": True,
-            "extract": {"manufacturer": "Lightware"},
+            "send_ascii": "GET /sys/version\r\n",
+            "expect": "Lightware",
+            "cross_vendor": True,
+            "extract_manufacturer": "Lightware",
         })
-        spec = h.tcp_active_probe
+        spec = h.tcp_probe
         assert spec is not None
         assert spec.send == b"GET /sys/version\r\n"
         assert spec.probe_id == "custom_lightware_lw3_tcp"
-        assert spec.generic is True
+        assert spec.cross_vendor is True
 
-    @pytest.mark.parametrize("port", [1900, 3702, 4352, 5353, 9131, 41794])
-    def test_udp_disallowed_ports_rejected(self, port):
-        with pytest.raises(DiscoveryHintError, match="reserved for a built-in"):
-            _make_hint("bad_port", udp_broadcast_probe={
-                "port": port, "send": {"ascii": "x"},
-                "response_match": {"contains": "y"},
+    def test_send_hex_and_ascii_both_rejected(self):
+        with pytest.raises(DiscoveryHintError, match="send_hex and send_ascii"):
+            _make_hint("bad", udp_probe={
+                "port": 6000, "send_hex": "aa", "send_ascii": "x",
+                "expect": "y",
             })
 
-    @pytest.mark.parametrize("port", [23, 1515, 1688, 1710, 4352, 10500, 49280])
-    def test_tcp_disallowed_ports_rejected(self, port):
-        with pytest.raises(DiscoveryHintError, match="reserved for a built-in"):
-            _make_hint("bad_port", tcp_active_probe={
-                "port": port, "send": {"ascii": "x"},
-                "response_match": {"contains": "y"},
+    def test_udp_requires_send_and_match(self):
+        with pytest.raises(DiscoveryHintError, match="must declare send_ascii or send_hex"):
+            _make_hint("bad", udp_probe={
+                "port": 6000, "expect": "y",
             })
-
-    def test_send_requires_exactly_one_of_hex_ascii(self):
-        with pytest.raises(DiscoveryHintError, match="exactly one"):
-            _make_hint("bad", udp_broadcast_probe={
-                "port": 6000, "send": {"hex": "aa", "ascii": "x"},
-                "response_match": {"contains": "y"},
-            })
-        with pytest.raises(DiscoveryHintError, match="must declare one of"):
-            _make_hint("bad", udp_broadcast_probe={
-                "port": 6000, "send": {},
-                "response_match": {"contains": "y"},
-            })
-
-    def test_response_match_requires_at_least_one_matcher(self):
-        with pytest.raises(DiscoveryHintError, match="at least one"):
-            _make_hint("bad", udp_broadcast_probe={
-                "port": 6000, "send": {"ascii": "x"},
-                "response_match": {},
+        with pytest.raises(DiscoveryHintError, match="needs at least one"):
+            _make_hint("bad", udp_probe={
+                "port": 6000, "send_ascii": "x",
             })
 
     def test_invalid_regex_rejected(self):
         with pytest.raises(DiscoveryHintError, match="failed to compile"):
-            _make_hint("bad", udp_broadcast_probe={
-                "port": 6000, "send": {"ascii": "x"},
-                "response_match": {"regex": "["},
+            _make_hint("bad", udp_probe={
+                "port": 6000, "send_ascii": "x", "expect_regex": "[",
             })
 
     def test_timeout_capped(self):
-        with pytest.raises(DiscoveryHintError, match="exceeds the max"):
-            _make_hint("bad", udp_broadcast_probe={
-                "port": 6000, "send": {"ascii": "x"},
-                "response_match": {"contains": "y"},
+        with pytest.raises(DiscoveryHintError, match="timeout_ms"):
+            _make_hint("bad", udp_probe={
+                "port": 6000, "send_ascii": "x", "expect": "y",
                 "timeout_ms": 99999,
             })
 
-    def test_generic_must_be_bool(self):
-        with pytest.raises(DiscoveryHintError, match="generic must be a bool"):
-            _make_hint("bad", udp_broadcast_probe={
-                "port": 6000, "send": {"ascii": "x"},
-                "response_match": {"contains": "y"},
-                "generic": "yes",
+    def test_cross_vendor_must_be_bool(self):
+        with pytest.raises(DiscoveryHintError, match="cross_vendor"):
+            _make_hint("bad", udp_probe={
+                "port": 6000, "send_ascii": "x", "expect": "y",
+                "cross_vendor": "yes",
             })
         # Bools are accepted on both ends.
-        h_true = _make_hint("g_true", udp_broadcast_probe={
-            "port": 6000, "send": {"ascii": "x"},
-            "response_match": {"contains": "y"}, "generic": True,
+        h_true = _make_hint("g_true", udp_probe={
+            "port": 6000, "send_ascii": "x", "expect": "y",
+            "cross_vendor": True,
         })
-        h_false = _make_hint("g_false", udp_broadcast_probe={
-            "port": 6001, "send": {"ascii": "x"},
-            "response_match": {"contains": "y"}, "generic": False,
+        h_false = _make_hint("g_false", udp_probe={
+            "port": 6001, "send_ascii": "x", "expect": "y",
+            "cross_vendor": False,
         })
-        assert h_true.udp_broadcast_probe.generic is True
-        assert h_false.udp_broadcast_probe.generic is False
+        assert h_true.udp_probe.cross_vendor is True
+        assert h_false.udp_probe.cross_vendor is False
 
     def test_signal_index_registers_custom_probes(self):
-        h = _make_hint("foo", udp_broadcast_probe={
-            "port": 6000, "send": {"ascii": "x"},
-            "response_match": {"contains": "y"}, "generic": True,
-        }, tcp_active_probe={
-            "port": 6107, "send": {"ascii": "x"},
-            "response_match": {"contains": "y"},
+        h = _make_hint("foo", udp_probe={
+            "port": 6000, "send_ascii": "x", "expect": "y",
+            "cross_vendor": True,
+        }, tcp_probe={
+            "port": 6107, "send_ascii": "x", "expect": "y",
         })
         idx = build_signal_index([h])
         # Each declared probe registers exactly one rule. The schema's
-        # generic flag flows through to SignalRule.generic.
+        # cross_vendor flag flows through to SignalRule.generic.
         assert idx.driver_count() == 1
 
 
@@ -263,11 +241,18 @@ class TestPhase9SchemaParsing:
 
 class TestResponseMatching:
     def _spec_with_match(self, **match_fields):
-        h = _make_hint("test", udp_broadcast_probe={
-            "port": 6000, "send": {"ascii": "x"},
-            "response_match": match_fields,
+        # Map from the test's old key names to the new schema field names.
+        translated: dict = {}
+        if "starts_with_hex" in match_fields:
+            translated["expect_hex"] = match_fields["starts_with_hex"]
+        if "contains" in match_fields:
+            translated["expect"] = match_fields["contains"]
+        if "regex" in match_fields:
+            translated["expect_regex"] = match_fields["regex"]
+        h = _make_hint("test", udp_probe={
+            "port": 6000, "send_ascii": "x", **translated,
         })
-        return h.udp_broadcast_probe
+        return h.udp_probe
 
     def test_starts_with_hex(self):
         spec = self._spec_with_match(starts_with_hex="AA55")
@@ -296,34 +281,31 @@ class TestResponseMatching:
 
 class TestExtractRules:
     def test_static_value_for_reserved_key(self):
-        h = _make_hint("t", udp_broadcast_probe={
-            "port": 6000, "send": {"ascii": "x"},
-            "response_match": {"contains": "y"},
+        h = _make_hint("t", udp_probe={
+            "port": 6000, "send_ascii": "x", "expect": "y",
             "extract": {"manufacturer": "NovaStar"},
         })
-        reserved, extracted = _apply_extract(b"any payload", h.udp_broadcast_probe.extract)
+        reserved, extracted = _apply_extract(b"any payload", h.udp_probe.extract)
         assert reserved == {"manufacturer": "NovaStar"}
         assert extracted == {}
 
     def test_regex_capture_group(self):
-        h = _make_hint("t", udp_broadcast_probe={
-            "port": 6000, "send": {"ascii": "x"},
-            "response_match": {"contains": "y"},
+        h = _make_hint("t", udp_probe={
+            "port": 6000, "send_ascii": "x", "expect": "y",
             "extract": {"model": {"regex": r"model=(\S+)", "group": 1}},
         })
         reserved, extracted = _apply_extract(
-            b"abc model=MMX-FR-9R8 fw=2.5", h.udp_broadcast_probe.extract,
+            b"abc model=MMX-FR-9R8 fw=2.5", h.udp_probe.extract,
         )
         assert reserved == {}
         assert extracted == {"model": "MMX-FR-9R8"}
 
     def test_no_match_skipped(self):
-        h = _make_hint("t", udp_broadcast_probe={
-            "port": 6000, "send": {"ascii": "x"},
-            "response_match": {"contains": "y"},
+        h = _make_hint("t", udp_probe={
+            "port": 6000, "send_ascii": "x", "expect": "y",
             "extract": {"model": {"regex": r"model=(\S+)", "group": 1}},
         })
-        reserved, extracted = _apply_extract(b"no model field", h.udp_broadcast_probe.extract)
+        reserved, extracted = _apply_extract(b"no model field", h.udp_probe.extract)
         assert extracted == {}
 
 
@@ -375,9 +357,9 @@ class TestProbeRunnerIntegration:
     async def test_udp_probe_emits_evidence_with_extracted_fields(self):
         port = _next_port()
         _udp_responder(port, b"WHOIS", b"FAKE-VENDOR ack model=ABC123 fw=2.5\n")
-        h = _make_hint("fake_vendor", udp_broadcast_probe={
-            "port": port, "send": {"ascii": "WHOIS\n"},
-            "response_match": {"contains": "FAKE-VENDOR"},
+        h = _make_hint("fake_vendor", udp_probe={
+            "port": port, "send_ascii": "WHOIS\n",
+            "expect": "FAKE-VENDOR",
             "timeout_ms": 1500,
             "extract": {
                 "manufacturer": "FakeVendor",
@@ -386,7 +368,7 @@ class TestProbeRunnerIntegration:
         })
         rl = RateLimiter(rate_per_sec=20)
         results = await run_udp_broadcast_probe(
-            h.udp_broadcast_probe,
+            h.udp_probe,
             targets=["127.0.0.1"],
             source_ip="127.0.0.1",
             rate_limiter=rl,
@@ -400,14 +382,14 @@ class TestProbeRunnerIntegration:
     @pytest.mark.asyncio
     async def test_udp_probe_silent_on_no_responder(self):
         port = _next_port()
-        h = _make_hint("noone_home", udp_broadcast_probe={
-            "port": port, "send": {"ascii": "ping"},
-            "response_match": {"contains": "pong"},
+        h = _make_hint("noone_home", udp_probe={
+            "port": port, "send_ascii": "ping",
+            "expect": "pong",
             "timeout_ms": 300,
         })
         rl = RateLimiter(rate_per_sec=20)
         results = await run_udp_broadcast_probe(
-            h.udp_broadcast_probe,
+            h.udp_probe,
             targets=["127.0.0.1"],
             source_ip="127.0.0.1",
             rate_limiter=rl,
@@ -418,9 +400,9 @@ class TestProbeRunnerIntegration:
     async def test_tcp_probe_emits_evidence_and_lifts_manufacturer(self):
         port = _next_port()
         _tcp_responder(port, b"pr Lightware FrameServer 2.7.3\n")
-        h = _make_hint("lightware_lw3", tcp_active_probe={
-            "port": port, "send": {"ascii": "GET /sys/version\r\n"},
-            "response_match": {"contains": "Lightware"},
+        h = _make_hint("lightware_lw3", tcp_probe={
+            "port": port, "send_ascii": "GET /sys/version\r\n",
+            "expect": "Lightware",
             "timeout_ms": 2000,
             "extract": {
                 "manufacturer": "Lightware",
@@ -428,7 +410,7 @@ class TestProbeRunnerIntegration:
             },
         })
         ev = await run_tcp_active_probe(
-            h.tcp_active_probe, target="127.0.0.1",
+            h.tcp_probe, target="127.0.0.1",
             source_ip="127.0.0.1", stagger_ms=0,
         )
         assert ev is not None
@@ -442,13 +424,13 @@ class TestProbeRunnerIntegration:
     async def test_tcp_probe_no_match_returns_none(self):
         port = _next_port()
         _tcp_responder(port, b"unrelated banner")
-        h = _make_hint("strict", tcp_active_probe={
-            "port": port, "send": {"ascii": "x"},
-            "response_match": {"contains": "Lightware"},
+        h = _make_hint("strict", tcp_probe={
+            "port": port, "send_ascii": "x",
+            "expect": "Lightware",
             "timeout_ms": 1000,
         })
         ev = await run_tcp_active_probe(
-            h.tcp_active_probe, target="127.0.0.1",
+            h.tcp_probe, target="127.0.0.1",
             source_ip="127.0.0.1", stagger_ms=0,
         )
         assert ev is None
@@ -464,19 +446,19 @@ class TestVendorStringIntegration:
     async def test_udp_extract_manufacturer_emits_vendor_string_evidence(self):
         port = _next_port()
         _udp_responder(port, b"WHOIS", b"FAKE-VENDOR\n")
-        h = _make_hint("vendor_test", udp_broadcast_probe={
-            "port": port, "send": {"ascii": "WHOIS"},
-            "response_match": {"contains": "FAKE-VENDOR"},
+        h = _make_hint("vendor_test", udp_probe={
+            "port": port, "send_ascii": "WHOIS",
+            "expect": "FAKE-VENDOR",
             "timeout_ms": 1500,
             "extract": {"manufacturer": "FakeVendor"},
         })
         rl = RateLimiter(rate_per_sec=20)
         results = await run_udp_broadcast_probe(
-            h.udp_broadcast_probe, targets=["127.0.0.1"],
+            h.udp_probe, targets=["127.0.0.1"],
             source_ip="127.0.0.1", rate_limiter=rl,
         )
         ev = results["127.0.0.1"]
-        # Phase 8.6 finalize step lifts manufacturer to vendor_string.
+        # The finalize step lifts manufacturer to vendor_string evidence.
         derived = extract_vendor_strings([ev])
         assert any(
             d.data.get("kind") == "vendor_string"
@@ -486,41 +468,41 @@ class TestVendorStringIntegration:
 
 
 class TestBestDriverFirstIntegration:
-    """Plan §9.4: a generic tcp_active_probe + vendor-specific driver
-    with vendor_aliases produces the Phase 8.5 best-driver-first
-    result (vendor primary, generic alternative).
+    """A cross_vendor ``tcp_probe`` plus a vendor-specific peer driver
+    with ``manufacturer_alias`` produces the best-driver-first result
+    (vendor primary, cross-vendor alternative).
     """
 
     @pytest.mark.asyncio
-    async def test_generic_probe_yields_to_vendor_specific(self):
+    async def test_cross_vendor_probe_yields_to_vendor_specific(self):
         port = _next_port()
         _tcp_responder(port, b"banner Vendor=NovaStar\n")
-        # Generic driver: declares the TCP probe with generic=true.
-        generic = _make_hint("unbranded_lw3", tcp_active_probe={
-            "port": port, "send": {"ascii": "x"},
-            "response_match": {"contains": "Vendor="},
-            "generic": True,
+        # Cross-vendor driver: declares the TCP probe with cross_vendor: true.
+        cross = _make_hint("unbranded_lw3", tcp_probe={
+            "port": port, "send_ascii": "x",
+            "expect": "Vendor=",
+            "cross_vendor": True,
             "extract": {
                 "manufacturer": {"regex": r"Vendor=(\S+)", "group": 1},
             },
         })
         # Vendor-specific driver: claims the manufacturer string via
-        # vendor_aliases. No probe of its own — it relies on Tier 4
-        # vendor_string evidence lifted from the generic probe.
-        vendor = _make_hint("novastar_specific", vendor_aliases=["NovaStar"])
-        idx = build_signal_index([generic, vendor])
+        # manufacturer_alias. No probe of its own — it relies on
+        # vendor_string evidence lifted from the cross-vendor probe.
+        vendor = _make_hint("novastar_specific", manufacturer_alias=["NovaStar"])
+        idx = build_signal_index([cross, vendor])
         matcher = TierMatcher(idx)
 
         ev = await run_tcp_active_probe(
-            generic.tcp_active_probe, target="127.0.0.1",
+            cross.tcp_probe, target="127.0.0.1",
             source_ip="127.0.0.1", stagger_ms=0,
         )
         assert ev is not None
         log = [ev]
         log.extend(extract_vendor_strings(log))
         match = matcher.match(log)
-        # Vendor-specific driver wins as primary; generic relegated to
-        # alternative per Phase 8.5 best-driver-first logic.
+        # Vendor-specific driver wins as primary; cross-vendor relegated
+        # to alternative per the best-driver-first logic.
         assert match.driver_id == "novastar_specific"
         assert match.state == DeviceState.IDENTIFIED
         alt_ids = [a if isinstance(a, str) else a.driver_id for a in match.alternatives]
@@ -639,9 +621,7 @@ class TestCompanionLoader:
 
 
 class TestNetworkSafety:
-    """Plan §9.8: every probe in a test scan binds to the configured
-    source_ip. Failing this test blocks the phase.
-    """
+    """Every probe in a test scan binds to the configured source_ip."""
 
     @pytest.mark.asyncio
     async def test_udp_probe_socket_binds_to_source_ip(self):
@@ -652,8 +632,8 @@ class TestNetworkSafety:
         try:
             bound_ip, _bound_port = sock.getsockname()
             assert bound_ip == "127.0.0.1", (
-                "Phase 9 network-safety contract: UDP probes must bind "
-                "to the configured source_ip"
+                "Network-safety contract: UDP probes must bind to the "
+                "configured source_ip"
             )
         finally:
             sock.close()
@@ -676,18 +656,18 @@ class TestNetworkSafety:
 
         monkeypatch.setattr(asyncio, "open_connection", spy_open_connection)
 
-        h = _make_hint("net_safety_tcp", tcp_active_probe={
-            "port": 5555, "send": {"ascii": "x"},
-            "response_match": {"contains": "y"},
+        h = _make_hint("net_safety_tcp", tcp_probe={
+            "port": 5555, "send_ascii": "x",
+            "expect": "y",
             "timeout_ms": 500,
         })
         ev = await run_tcp_active_probe(
-            h.tcp_active_probe, target="10.0.0.1",
+            h.tcp_probe, target="10.0.0.1",
             source_ip="192.0.2.5", stagger_ms=0,
         )
         assert ev is None
         assert captured["local_addr"] == ("192.0.2.5", 0), (
-            "Phase 9 network-safety contract: TCP probes must pass "
+            "Network-safety contract: TCP probes must pass "
             "local_addr=(source_ip, 0) to asyncio.open_connection"
         )
         # Restore (monkeypatch undoes this automatically; explicit for clarity).

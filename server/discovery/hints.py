@@ -1,10 +1,25 @@
-"""Phase 6 ``discovery:`` schema parser + ``SignalIndex`` builder.
+"""Driver discovery declaration parser.
 
-The new schema is opinionated: every driver declares at least one
-strong (Tier 1/2/3) signal or sets ``manual_only: true``. Validation
-happens at driver-load time; collisions raise from
-``SignalIndex.add_rule``. The matcher is deterministic — there is no
-score.
+Reads each driver's ``discovery:`` block (YAML drivers) or
+``DRIVER_INFO['discovery']`` (Python drivers) into a deterministic
+``DiscoveryHint`` that the engine and matcher consume.
+
+Two kinds of declarations:
+
+- **Fingerprints** identify the driver alone. mDNS service, SSDP
+  device type, AMX DDP beacon, TCP/UDP probe response, or a Python
+  escape-hatch (``python: ./foo_discovery.py``). One fingerprint match
+  is enough to identify the device.
+- **Hints** narrow candidates. OUI, hostname pattern, observed open
+  port, manufacturer alias, SNMP enterprise number. Multiple hints
+  combined produce a ``possible`` candidate list.
+
+Each fingerprint may carry a ``cross_vendor: true`` flag. When such a
+fingerprint matches, the matcher consults peer drivers' hints; if a
+vendor-specific peer matches, it wins and the cross-vendor driver
+demotes to alternative.
+
+Schema reference: ``discovery-rewrite-plan.md`` (workspace root).
 """
 
 from __future__ import annotations
@@ -22,64 +37,62 @@ from server.discovery.tier_matcher import (
 log = logging.getLogger("discovery.hints")
 
 
-# Phase 9.7: ONVIF is the only remaining built-in Tier 2 named opt-in.
-# PJLink Class 1 + Class 2 and Crestron CIP discovery now ship as
-# ``_discovery.py`` companions in their respective drivers (see the
-# discovery anchor driver pattern in OpenAVC-Discovery-Spec.md §11).
-# A driver that declares an unknown ``active_probes:`` ID is a silent
-# no-op rather than a hard error — driver-declared probes
-# (``udp_broadcast_probe:`` / ``tcp_active_probe:`` / ``companion:``)
-# carry the wire format directly and don't need a registry.
-
 # Drivers whose IDs start with these prefixes are templates, not real
 # devices. They opt out of the discovery match entirely.
 _TEMPLATE_PREFIXES: tuple[str, ...] = ("generic_",)
 
-# Ports too generic to use as a soft enrichment signal — every web /
-# admin / SSH device on the network would match. AV-specific ports
-# (1710, 4352, 23 for telnet-on-AV-gear, etc.) are fine.
+# Ports too generic to use as a hint — every web / admin / SSH device
+# on the network would match. AV-specific ports (1710, 4352, etc.) are
+# fine. Generic safety rule, not vendor-specific.
 DISALLOWED_OPEN_PORTS: frozenset[int] = frozenset({22, 80, 443})
 
-# Phase 9: ports owned by built-in handlers — drivers declaring a
-# ``udp_broadcast_probe`` or ``tcp_active_probe`` cannot collide on
-# them. Drivers that need PJLink (UDP 4352) or Crestron CIP (UDP 41794)
-# discovery use the ``companion:`` block + a ``_discovery.py`` sibling
-# instead — see the discovery anchor driver pattern.
-DISALLOWED_UDP_BROADCAST_PROBE_PORTS: frozenset[int] = frozenset({
-    1900,   # SSDP
-    3702,   # ONVIF WS-Discovery (named opt-in)
-    4352,   # PJLink Class 2 broadcast (companion-owned)
-    5353,   # mDNS
-    9131,   # AMX DDP
-    41794,  # Crestron CIP broadcast (companion-owned)
-})
-DISALLOWED_TCP_ACTIVE_PROBE_PORTS: frozenset[int] = frozenset({
-    23,     # Telnet (Extron SIS, Tesira TTP, Shure DCS)
-    1515,   # Samsung MDC
-    1688,   # Crestron CIP TCP
-    1710,   # Q-SYS QRC
-    4352,   # PJLink Class 1 (companion-owned)
-    10500,  # VISCA-IP
-    49280,  # Yamaha RCP
-})
-
-# Phase 9: cap on how long a driver-declared probe is allowed to wait
-# for a reply. Anything longer than this would stretch the scan budget
-# unreasonably; community drivers don't get to opt out.
+# Cap on how long a probe is allowed to wait for a reply. Anything
+# longer would stretch the scan budget unreasonably.
 MAX_PROBE_TIMEOUT_MS: int = 10000
 
-# Reserved ``extract:`` keys whose values feed the Phase 8.6 vendor_string
-# tier 4 path. The probe runner lifts these into the top-level evidence
+# Reserved ``extract:`` keys whose values feed the manufacturer-alias
+# hint path. The probe runner lifts these into the top-level evidence
 # response/txt dict so ``extract_vendor_strings`` finds them.
 RESERVED_EXTRACT_KEYS: frozenset[str] = frozenset({"manufacturer", "make"})
 
 
+# ---------------------------------------------------------------------------
+# Compiled fingerprint and hint shapes
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class MdnsFingerprint:
+    """One mDNS service-type declaration."""
+
+    service: str  # normalized lowercase, trailing dot
+    txt: tuple[tuple[str, str], ...] = ()  # required TXT k/v pairs (lowercased keys)
+    cross_vendor: bool = False
+
+
+@dataclass(frozen=True)
+class SsdpFingerprint:
+    """One SSDP/UPnP device-type declaration."""
+
+    device_type: str
+    cross_vendor: bool = False
+
+
+@dataclass(frozen=True)
+class AmxDdpFingerprint:
+    """One AMX-DDP beacon declaration."""
+
+    make: str
+    model_pattern: str = "*"
+    cross_vendor: bool = False
+
+
 @dataclass(frozen=True)
 class ResponseMatch:
-    """Compiled matchers for one response-match block.
+    """Compiled matchers for a probe response.
 
-    All matchers AND together; at least one must be present at parse
-    time.
+    All declared matchers AND together; at least one must be present
+    at parse time.
     """
 
     starts_with: bytes | None = None
@@ -101,20 +114,26 @@ class ExtractRule:
 
 @dataclass(frozen=True)
 class CustomProbeSpec:
-    """Driver-declared UDP broadcast or TCP active probe.
+    """A driver-declared TCP or UDP probe.
 
-    The probe ID at runtime is ``custom_<driver_id>_<kind>``; the
-    matcher's existing ``KIND_BROADCAST`` / ``KIND_ACTIVE_PROBE``
-    lookups accept it as-is — no allow-list needed.
+    ``kind`` is ``"udp"`` or ``"tcp"``. The synthetic probe ID at
+    runtime is ``custom_<driver_id>_<kind>``; the matcher's
+    ``KIND_BROADCAST`` / ``KIND_ACTIVE_PROBE`` lookups accept it
+    as-is — no allow-list needed.
+
+    ``cross_vendor`` mirrors the YAML schema field. It flows to
+    ``SignalRule.generic`` at index-build time so the matcher's
+    cross-vendor demotion logic activates when this probe wins a
+    match but a vendor-specific peer driver matches via hints.
     """
 
     driver_id: str
     kind: str           # "udp" | "tcp"
     port: int
-    send: bytes
+    send: bytes         # may be empty for connect-only TCP probes
     response_match: ResponseMatch
     timeout_ms: int
-    generic: bool
+    cross_vendor: bool
     extract: tuple[ExtractRule, ...]
 
     @property
@@ -123,29 +142,31 @@ class CustomProbeSpec:
 
 
 @dataclass(frozen=True)
-class CompanionSpec:
-    """Driver-declared sibling ``_discovery.py`` companion.
+class PythonProbe:
+    """A driver-declared Python escape-hatch.
 
-    The companion file does the actual probing (multi-step handshakes,
-    binary parsers, pre-broadcast-then-per-host TCP follow-ups — wire
-    formats too dynamic for the declarative ``udp_broadcast_probe`` /
-    ``tcp_active_probe`` blocks). Declaring ``discovery.companion`` on
-    the driver auto-registers two ``SignalRule`` records — one for
-    Tier 2 broadcast evidence, one for Tier 3 active evidence — under
-    canonical synthetic IDs the companion emits with:
+    The companion file does the actual probing — multi-step
+    handshakes, encrypted payloads, big-endian bitfield framing, or
+    any wire format too dynamic for the declarative ``tcp_probe:`` /
+    ``udp_probe:`` blocks. The companion's path is relative to the
+    driver file. The runtime loads the file and invokes its
+    ``async def probe(ctx) -> None`` function.
 
-      ``custom_<driver_id>_companion_udp``  → Tier 2 (broadcast)
-      ``custom_<driver_id>_companion_tcp``  → Tier 3 (active)
+    The parser auto-registers two ``SignalRule`` records — one
+    broadcast, one active — under canonical synthetic IDs:
 
-    This is the "discovery anchor driver" pattern documented in the
-    Discovery Spec §11. Set ``generic: true`` for cross-vendor probes
-    (PJLink, Crestron CIP family) so the matcher demotes the anchor
-    driver to an alternative when a vendor-specific peer driver
-    matches via soft signals.
+      ``custom_<driver_id>_companion_udp``  (broadcast)
+      ``custom_<driver_id>_companion_tcp``  (active)
+
+    The companion emits evidence under those IDs by default. The
+    ``_companion_*`` suffix is preserved as the wire-level synthetic
+    ID so existing ``ProbeContext.companion_*_probe_id`` defaults in
+    ``_discovery.py`` files keep working unchanged.
     """
 
     driver_id: str
-    generic: bool
+    file_path: str
+    cross_vendor: bool
 
     @property
     def broadcast_probe_id(self) -> str:
@@ -158,165 +179,248 @@ class CompanionSpec:
 
 @dataclass
 class DiscoveryHint:
-    """The Phase 6 deterministic discovery hints for a single driver."""
+    """Parsed discovery declaration for one driver."""
 
     driver_id: str
     driver_name: str = ""
     manufacturer: str = ""
     category: str = ""
     transport: str = "tcp"
-    manual_only: bool = False
 
-    # Strong (Tier 1) signals.
-    mdns_services: list[dict[str, Any]] = field(default_factory=list)
-    ssdp_device_types: list[str] = field(default_factory=list)
-    amx_ddp: dict[str, str] | None = None  # {"make": ..., "model_pattern": ...}
+    # Fingerprints — one alone identifies this driver.
+    mdns: list[MdnsFingerprint] = field(default_factory=list)
+    ssdp: list[SsdpFingerprint] = field(default_factory=list)
+    amx_ddp: list[AmxDdpFingerprint] = field(default_factory=list)
+    tcp_probe: CustomProbeSpec | None = None
+    udp_probe: CustomProbeSpec | None = None
+    python_probe: PythonProbe | None = None
 
-    # Strong (Tier 2) deterministic broadcast probe opt-ins.
-    broadcast_probes: list[str] = field(default_factory=list)
-    onvif_manufacturer: str | None = None  # extra disambiguation when ``onvif`` is on
-
-    # Strong (Tier 3) active probes.
-    active_probes: list[str] = field(default_factory=list)
-
-    # Phase 9: driver-declared UDP broadcast / TCP active probes.
-    # These produce ``custom_<driver_id>_udp`` / ``custom_<driver_id>_tcp``
-    # signal IDs and replace the need for vendor-specific Python probes
-    # in core for simple "send these bytes, look for this in the
-    # response" cases.
-    udp_broadcast_probe: CustomProbeSpec | None = None
-    tcp_active_probe: CustomProbeSpec | None = None
-
-    # Phase 9.7: sibling ``_discovery.py`` companion declaration.
-    # When set, the loader auto-registers SignalRules for the canonical
-    # synthetic IDs ``custom_<driver_id>_companion_udp`` (Tier 2) and
-    # ``custom_<driver_id>_companion_tcp`` (Tier 3). The companion emits
-    # evidence with those IDs via ``ctx.emit_broadcast`` /
-    # ``ctx.emit_active``. ``generic`` flows through to the SignalRule
-    # so the matcher's best-driver-first logic can demote a cross-vendor
-    # anchor driver to an alternative when a peer driver matches via
-    # soft signals (PJLink + Crestron-CIP family use this).
-    companion: CompanionSpec | None = None
-
-    # Soft (Tier 4) enrichment hints.
+    # Hints — combine to narrow candidates.
+    oui: list[str] = field(default_factory=list)
+    hostname: list[str] = field(default_factory=list)
+    port_open: list[int] = field(default_factory=list)
+    manufacturer_alias: list[str] = field(default_factory=list)
     snmp_pen: int | None = None
-    oui_prefixes: list[str] = field(default_factory=list)
-    hostname_patterns: list[str] = field(default_factory=list)
-    open_ports: list[int] = field(default_factory=list)
-    # Manufacturer/make strings the driver claims when a strong-tier
-    # probe response carries that field (PJLink ``%1MNFR?``, ONVIF
-    # ``Manufacturer``, etc.). Stored lowercased + stripped; case-
-    # insensitive exact-match at lookup time.
-    vendor_aliases: list[str] = field(default_factory=list)
 
 
 class DiscoveryHintError(ValueError):
     """Raised when a driver's ``discovery:`` block is structurally invalid."""
 
 
-def _parse_send(driver_id: str, kind: str, raw: Any) -> bytes:
-    """Parse a probe ``send:`` block into raw bytes.
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
-    Exactly one of ``hex`` or ``ascii`` must be present.
-    """
+
+def _as_list(value: Any) -> list[Any]:
+    """Normalize a single-or-list input to a list. ``None`` → ``[]``."""
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    return [value]
+
+
+def _ensure_dict(driver_id: str, where: str, raw: Any) -> dict[str, Any]:
     if not isinstance(raw, dict):
         raise DiscoveryHintError(
-            f"{driver_id}: discovery.{kind}.send must be a mapping with "
-            "exactly one of 'hex' or 'ascii'"
+            f"{driver_id}: discovery.{where} must be a mapping, got {type(raw).__name__}"
         )
-    has_hex = "hex" in raw and raw["hex"] is not None
-    has_ascii = "ascii" in raw and raw["ascii"] is not None
+    return raw
+
+
+def _ensure_str(driver_id: str, where: str, raw: Any) -> str:
+    if not isinstance(raw, str) or not raw:
+        raise DiscoveryHintError(
+            f"{driver_id}: discovery.{where} must be a non-empty string"
+        )
+    return raw
+
+
+def _ensure_bool(driver_id: str, where: str, raw: Any, *, default: bool = False) -> bool:
+    if raw is None:
+        return default
+    if not isinstance(raw, bool):
+        raise DiscoveryHintError(
+            f"{driver_id}: discovery.{where} must be a bool"
+        )
+    return raw
+
+
+def _ensure_int(
+    driver_id: str,
+    where: str,
+    raw: Any,
+    *,
+    minimum: int | None = None,
+    maximum: int | None = None,
+) -> int:
+    if not isinstance(raw, int) or isinstance(raw, bool):
+        raise DiscoveryHintError(
+            f"{driver_id}: discovery.{where} must be an integer"
+        )
+    if minimum is not None and raw < minimum:
+        raise DiscoveryHintError(
+            f"{driver_id}: discovery.{where} must be >= {minimum} (got {raw})"
+        )
+    if maximum is not None and raw > maximum:
+        raise DiscoveryHintError(
+            f"{driver_id}: discovery.{where} must be <= {maximum} (got {raw})"
+        )
+    return raw
+
+
+def _normalize_service_type(service: str) -> str:
+    s = service.strip()
+    if not s.endswith("."):
+        s = s + "."
+    return s.lower()
+
+
+def _hex_to_bytes(driver_id: str, where: str, raw: str) -> bytes:
+    cleaned = raw.replace(" ", "").replace(":", "")
+    try:
+        return bytes.fromhex(cleaned)
+    except ValueError as exc:
+        raise DiscoveryHintError(
+            f"{driver_id}: discovery.{where} is not valid hex: {exc}"
+        ) from exc
+
+
+# ---------------------------------------------------------------------------
+# Fingerprint parsers
+# ---------------------------------------------------------------------------
+
+
+def _parse_mdns_entry(driver_id: str, raw: Any) -> MdnsFingerprint:
+    """Accept a bare service-type string or a ``{service, txt, cross_vendor}`` mapping."""
+    if isinstance(raw, str):
+        return MdnsFingerprint(
+            service=_normalize_service_type(raw), txt=(), cross_vendor=False,
+        )
+    mapping = _ensure_dict(driver_id, "mdns entry", raw)
+    service = _ensure_str(driver_id, "mdns.service", mapping.get("service"))
+    txt_raw = mapping.get("txt") or {}
+    if not isinstance(txt_raw, dict):
+        raise DiscoveryHintError(
+            f"{driver_id}: discovery.mdns.txt must be a mapping"
+        )
+    txt = tuple(sorted(
+        (str(k).lower(), str(v)) for k, v in txt_raw.items()
+    ))
+    cross_vendor = _ensure_bool(driver_id, "mdns.cross_vendor", mapping.get("cross_vendor"))
+    return MdnsFingerprint(
+        service=_normalize_service_type(service),
+        txt=txt,
+        cross_vendor=cross_vendor,
+    )
+
+
+def _parse_ssdp_entry(driver_id: str, raw: Any) -> SsdpFingerprint:
+    """Accept a bare device-type string or a ``{device_type, cross_vendor}`` mapping."""
+    if isinstance(raw, str):
+        return SsdpFingerprint(device_type=raw, cross_vendor=False)
+    mapping = _ensure_dict(driver_id, "ssdp entry", raw)
+    device_type = _ensure_str(driver_id, "ssdp.device_type", mapping.get("device_type"))
+    cross_vendor = _ensure_bool(driver_id, "ssdp.cross_vendor", mapping.get("cross_vendor"))
+    return SsdpFingerprint(device_type=device_type, cross_vendor=cross_vendor)
+
+
+def _parse_amx_ddp_entry(driver_id: str, raw: Any) -> AmxDdpFingerprint:
+    """Accept a ``{make, model_pattern, cross_vendor}`` mapping."""
+    mapping = _ensure_dict(driver_id, "amx_ddp entry", raw)
+    make = _ensure_str(driver_id, "amx_ddp.make", mapping.get("make"))
+    model_pattern = mapping.get("model_pattern", "*")
+    if not isinstance(model_pattern, str):
+        raise DiscoveryHintError(
+            f"{driver_id}: discovery.amx_ddp.model_pattern must be a string"
+        )
+    cross_vendor = _ensure_bool(driver_id, "amx_ddp.cross_vendor", mapping.get("cross_vendor"))
+    return AmxDdpFingerprint(
+        make=make, model_pattern=str(model_pattern), cross_vendor=cross_vendor,
+    )
+
+
+def _parse_send(driver_id: str, where: str, raw: dict[str, Any]) -> bytes:
+    """Pull ``send_hex:`` or ``send_ascii:`` out of a probe block.
+
+    Returns empty bytes if neither is present (connect-only TCP probe).
+    Raises if both are present.
+    """
+    has_hex = "send_hex" in raw and raw["send_hex"] is not None
+    has_ascii = "send_ascii" in raw and raw["send_ascii"] is not None
     if has_hex and has_ascii:
         raise DiscoveryHintError(
-            f"{driver_id}: discovery.{kind}.send must declare exactly one "
-            "of 'hex' or 'ascii', not both"
-        )
-    if not has_hex and not has_ascii:
-        raise DiscoveryHintError(
-            f"{driver_id}: discovery.{kind}.send must declare one of "
-            "'hex' or 'ascii'"
+            f"{driver_id}: discovery.{where} declares both send_hex and "
+            "send_ascii — pick one"
         )
     if has_hex:
-        hex_str = raw["hex"]
-        if not isinstance(hex_str, str):
+        if not isinstance(raw["send_hex"], str):
             raise DiscoveryHintError(
-                f"{driver_id}: discovery.{kind}.send.hex must be a string"
+                f"{driver_id}: discovery.{where}.send_hex must be a string"
             )
-        cleaned = hex_str.replace(" ", "").replace(":", "")
-        try:
-            return bytes.fromhex(cleaned)
-        except ValueError as exc:
+        return _hex_to_bytes(driver_id, f"{where}.send_hex", raw["send_hex"])
+    if has_ascii:
+        if not isinstance(raw["send_ascii"], str):
             raise DiscoveryHintError(
-                f"{driver_id}: discovery.{kind}.send.hex is not valid hex: {exc}"
-            ) from exc
-    ascii_str = raw["ascii"]
-    if not isinstance(ascii_str, str):
-        raise DiscoveryHintError(
-            f"{driver_id}: discovery.{kind}.send.ascii must be a string"
-        )
-    return ascii_str.encode("utf-8")
+                f"{driver_id}: discovery.{where}.send_ascii must be a string"
+            )
+        return raw["send_ascii"].encode("utf-8")
+    return b""
 
 
-def _parse_response_match(driver_id: str, kind: str, raw: Any) -> ResponseMatch:
-    """Parse a ``response_match:`` block into a compiled ResponseMatch.
+def _parse_response_match(
+    driver_id: str,
+    where: str,
+    raw: dict[str, Any],
+    *,
+    require_match: bool,
+) -> ResponseMatch:
+    """Pull ``expect:``, ``expect_regex:``, and ``expect_hex:`` out of a probe block.
 
-    At least one of {starts_with_hex, contains, regex} must be present.
+    All declared matchers AND together. If ``require_match`` is True, at
+    least one must be present — UDP probes need a matcher to filter
+    junk, but a connect-only TCP probe can succeed on connect alone.
     """
-    if not isinstance(raw, dict):
-        raise DiscoveryHintError(
-            f"{driver_id}: discovery.{kind}.response_match must be a "
-            "mapping (at least one of starts_with_hex, contains, regex)"
-        )
-
     starts_with: bytes | None = None
-    if "starts_with_hex" in raw and raw["starts_with_hex"] is not None:
-        s = raw["starts_with_hex"]
+    contains: str | None = None
+    regex: re.Pattern | None = None
+    regex_source = ""
+
+    if "expect_hex" in raw and raw["expect_hex"] is not None:
+        s = raw["expect_hex"]
         if not isinstance(s, str):
             raise DiscoveryHintError(
-                f"{driver_id}: discovery.{kind}.response_match.starts_with_hex "
-                "must be a string"
+                f"{driver_id}: discovery.{where}.expect_hex must be a string"
             )
-        cleaned = s.replace(" ", "").replace(":", "")
-        try:
-            starts_with = bytes.fromhex(cleaned)
-        except ValueError as exc:
-            raise DiscoveryHintError(
-                f"{driver_id}: discovery.{kind}.response_match.starts_with_hex "
-                f"is not valid hex: {exc}"
-            ) from exc
+        starts_with = _hex_to_bytes(driver_id, f"{where}.expect_hex", s)
 
-    contains: str | None = None
-    if "contains" in raw and raw["contains"] is not None:
-        c = raw["contains"]
+    if "expect" in raw and raw["expect"] is not None:
+        c = raw["expect"]
         if not isinstance(c, str) or not c:
             raise DiscoveryHintError(
-                f"{driver_id}: discovery.{kind}.response_match.contains "
-                "must be a non-empty string"
+                f"{driver_id}: discovery.{where}.expect must be a non-empty string"
             )
         contains = c
 
-    regex: re.Pattern | None = None
-    regex_source = ""
-    if "regex" in raw and raw["regex"] is not None:
-        r = raw["regex"]
+    if "expect_regex" in raw and raw["expect_regex"] is not None:
+        r = raw["expect_regex"]
         if not isinstance(r, str) or not r:
             raise DiscoveryHintError(
-                f"{driver_id}: discovery.{kind}.response_match.regex "
-                "must be a non-empty string"
+                f"{driver_id}: discovery.{where}.expect_regex must be a non-empty string"
             )
         try:
             regex = re.compile(r)
         except re.error as exc:
             raise DiscoveryHintError(
-                f"{driver_id}: discovery.{kind}.response_match.regex "
-                f"failed to compile: {exc}"
+                f"{driver_id}: discovery.{where}.expect_regex failed to compile: {exc}"
             ) from exc
         regex_source = r
 
-    if starts_with is None and contains is None and regex is None:
+    if require_match and starts_with is None and contains is None and regex is None:
         raise DiscoveryHintError(
-            f"{driver_id}: discovery.{kind}.response_match needs at least "
-            "one of starts_with_hex, contains, regex"
+            f"{driver_id}: discovery.{where} needs at least one of "
+            "expect, expect_regex, expect_hex"
         )
 
     return ResponseMatch(
@@ -327,27 +431,28 @@ def _parse_response_match(driver_id: str, kind: str, raw: Any) -> ResponseMatch:
     )
 
 
-def _parse_extract(driver_id: str, kind: str, raw: Any) -> tuple[ExtractRule, ...]:
-    """Parse an ``extract:`` block into ExtractRule tuples.
+def _parse_extract(
+    driver_id: str,
+    where: str,
+    raw: Any,
+) -> list[ExtractRule]:
+    """Parse an ``extract:`` block into ExtractRule entries.
 
     Each entry is either a literal string (static value) or a mapping
-    ``{regex: ..., group: N}`` (dynamic capture). Reserved keys
-    (``manufacturer``, ``make``) get lifted by the runner into the
-    top-level response/txt dict for vendor_string evidence.
+    ``{regex, group}`` (dynamic capture).
     """
     if raw is None:
-        return ()
+        return []
     if not isinstance(raw, dict):
         raise DiscoveryHintError(
-            f"{driver_id}: discovery.{kind}.extract must be a mapping of "
-            "field name to literal string or {regex, group} mapping"
+            f"{driver_id}: discovery.{where}.extract must be a mapping"
         )
     rules: list[ExtractRule] = []
     for field_name, spec in raw.items():
         if not isinstance(field_name, str) or not field_name:
             raise DiscoveryHintError(
-                f"{driver_id}: discovery.{kind}.extract field names must "
-                "be non-empty strings"
+                f"{driver_id}: discovery.{where}.extract field names must be "
+                "non-empty strings"
             )
         if isinstance(spec, str):
             rules.append(ExtractRule(field_name=field_name, value=spec))
@@ -356,20 +461,20 @@ def _parse_extract(driver_id: str, kind: str, raw: Any) -> tuple[ExtractRule, ..
             pattern_str = spec.get("regex")
             if not isinstance(pattern_str, str) or not pattern_str:
                 raise DiscoveryHintError(
-                    f"{driver_id}: discovery.{kind}.extract.{field_name} "
+                    f"{driver_id}: discovery.{where}.extract.{field_name} "
                     "mapping requires a non-empty 'regex' string"
                 )
             try:
                 pattern = re.compile(pattern_str)
             except re.error as exc:
                 raise DiscoveryHintError(
-                    f"{driver_id}: discovery.{kind}.extract.{field_name}.regex "
+                    f"{driver_id}: discovery.{where}.extract.{field_name}.regex "
                     f"failed to compile: {exc}"
                 ) from exc
             group = spec.get("group", 1)
             if not isinstance(group, int) or isinstance(group, bool) or group < 0:
                 raise DiscoveryHintError(
-                    f"{driver_id}: discovery.{kind}.extract.{field_name}.group "
+                    f"{driver_id}: discovery.{where}.extract.{field_name}.group "
                     "must be a non-negative integer"
                 )
             rules.append(ExtractRule(
@@ -380,66 +485,104 @@ def _parse_extract(driver_id: str, kind: str, raw: Any) -> tuple[ExtractRule, ..
             ))
             continue
         raise DiscoveryHintError(
-            f"{driver_id}: discovery.{kind}.extract.{field_name} must be a "
+            f"{driver_id}: discovery.{where}.extract.{field_name} must be a "
             "literal string or a {regex, group} mapping"
         )
-    return tuple(rules)
+    return rules
 
 
-def _parse_custom_probe(
+def _parse_probe(
     driver_id: str,
     kind: str,                       # "udp" | "tcp"
     raw: Any,
-    *,
-    default_timeout_ms: int,
-    disallowed_ports: frozenset[int],
 ) -> CustomProbeSpec:
-    """Parse one ``udp_broadcast_probe:`` / ``tcp_active_probe:`` block."""
-    if not isinstance(raw, dict):
-        block_name = "udp_broadcast_probe" if kind == "udp" else "tcp_active_probe"
-        raise DiscoveryHintError(
-            f"{driver_id}: discovery.{block_name} must be a mapping"
-        )
+    """Parse one ``udp_probe:`` / ``tcp_probe:`` block.
 
-    block_name = "udp_broadcast_probe" if kind == "udp" else "tcp_active_probe"
+    Schema:
 
-    port = raw.get("port")
-    if not isinstance(port, int) or isinstance(port, bool) or port < 1 or port > 65535:
-        raise DiscoveryHintError(
-            f"{driver_id}: discovery.{block_name}.port must be an integer "
-            "in [1, 65535]"
-        )
-    if port in disallowed_ports:
-        raise DiscoveryHintError(
-            f"{driver_id}: discovery.{block_name}.port {port} is reserved "
-            f"for a built-in handler. Use the named opt-in instead. "
-            f"Disallowed: {sorted(disallowed_ports)}"
-        )
+        tcp_probe:
+          port: 12345
+          send_ascii: "QUERY\\r"            # exactly one of send_ascii, send_hex
+          expect: "RESPONSE_PREFIX"         # one of expect, expect_regex, expect_hex
+          cross_vendor: false               # optional, default false
+          timeout_ms: 3000                  # optional
+          extract_manufacturer: "AcmeCorp"  # optional sugar for extract.manufacturer
+          extract:                          # optional metadata extraction
+            model: { regex: "model=(.+)", group: 1 }
 
-    send = _parse_send(driver_id, block_name, raw.get("send"))
-    response_match = _parse_response_match(
-        driver_id, block_name, raw.get("response_match"),
+    Connect-only TCP probes may omit ``send_*`` and ``expect*`` entirely;
+    UDP probes must declare both (no responder filter would match every
+    UDP-noisy host).
+    """
+    where = f"{kind}_probe"
+    block = _ensure_dict(driver_id, where, raw)
+
+    port = _ensure_int(driver_id, f"{where}.port", block.get("port"), minimum=1, maximum=65535)
+    send = _parse_send(driver_id, where, block)
+
+    has_match = any(
+        block.get(k) is not None
+        for k in ("expect", "expect_regex", "expect_hex")
     )
 
-    timeout_ms = raw.get("timeout_ms", default_timeout_ms)
-    if not isinstance(timeout_ms, int) or isinstance(timeout_ms, bool) or timeout_ms < 1:
+    require_match = kind == "udp"
+    if kind == "tcp" and send and not has_match:
+        # A TCP probe that sends bytes but doesn't declare a matcher
+        # would emit evidence for any responding host, which is too
+        # noisy to be useful.
         raise DiscoveryHintError(
-            f"{driver_id}: discovery.{block_name}.timeout_ms must be a "
-            "positive integer"
+            f"{driver_id}: discovery.{where} sends bytes but declares no "
+            "matcher — add expect, expect_regex, or expect_hex"
         )
-    if timeout_ms > MAX_PROBE_TIMEOUT_MS:
+    if kind == "udp" and not send:
         raise DiscoveryHintError(
-            f"{driver_id}: discovery.{block_name}.timeout_ms exceeds the "
-            f"max of {MAX_PROBE_TIMEOUT_MS} ms"
-        )
-
-    generic_raw = raw.get("generic", False)
-    if not isinstance(generic_raw, bool):
-        raise DiscoveryHintError(
-            f"{driver_id}: discovery.{block_name}.generic must be a bool"
+            f"{driver_id}: discovery.{where} must declare send_ascii or send_hex "
+            "(UDP probes need a query payload)"
         )
 
-    extract = _parse_extract(driver_id, block_name, raw.get("extract"))
+    response_match = _parse_response_match(
+        driver_id, where, block, require_match=require_match,
+    )
+
+    timeout_default = 3000 if kind == "tcp" else 2000
+    timeout_ms = block.get("timeout_ms", timeout_default)
+    timeout_ms = _ensure_int(
+        driver_id, f"{where}.timeout_ms", timeout_ms,
+        minimum=1, maximum=MAX_PROBE_TIMEOUT_MS,
+    )
+
+    cross_vendor = _ensure_bool(driver_id, f"{where}.cross_vendor", block.get("cross_vendor"))
+
+    extract = _parse_extract(driver_id, where, block.get("extract"))
+
+    # Sugar: extract_manufacturer: "AcmeCorp" produces an ExtractRule
+    # for the reserved ``manufacturer`` key.
+    if "extract_manufacturer" in block and block["extract_manufacturer"] is not None:
+        mfg = block["extract_manufacturer"]
+        if not isinstance(mfg, str) or not mfg:
+            raise DiscoveryHintError(
+                f"{driver_id}: discovery.{where}.extract_manufacturer must be "
+                "a non-empty string"
+            )
+        if any(r.field_name == "manufacturer" for r in extract):
+            raise DiscoveryHintError(
+                f"{driver_id}: discovery.{where}.extract_manufacturer collides "
+                "with extract.manufacturer — pick one"
+            )
+        extract.append(ExtractRule(field_name="manufacturer", value=mfg))
+
+    # Reject keys the parser doesn't understand, so typos surface.
+    known = {
+        "port", "send_hex", "send_ascii",
+        "expect", "expect_regex", "expect_hex",
+        "cross_vendor", "timeout_ms",
+        "extract", "extract_manufacturer",
+    }
+    unknown = set(block.keys()) - known
+    if unknown:
+        raise DiscoveryHintError(
+            f"{driver_id}: discovery.{where} has unknown keys: {sorted(unknown)}"
+        )
 
     return CustomProbeSpec(
         driver_id=driver_id,
@@ -448,18 +591,63 @@ def _parse_custom_probe(
         send=send,
         response_match=response_match,
         timeout_ms=timeout_ms,
-        generic=generic_raw,
-        extract=extract,
+        cross_vendor=cross_vendor,
+        extract=tuple(extract),
     )
+
+
+def _parse_python_probe(driver_id: str, raw: Any) -> PythonProbe:
+    """Parse the ``python:`` field.
+
+    Accepts either a bare path string or a mapping
+    ``{file: ..., cross_vendor: bool}``. The path is preserved verbatim;
+    the runtime resolves it relative to the driver file at load time.
+    """
+    if isinstance(raw, str):
+        if not raw:
+            raise DiscoveryHintError(
+                f"{driver_id}: discovery.python path must be a non-empty string"
+            )
+        return PythonProbe(driver_id=driver_id, file_path=raw, cross_vendor=False)
+
+    block = _ensure_dict(driver_id, "python", raw)
+    file_path = _ensure_str(driver_id, "python.file", block.get("file"))
+    cross_vendor = _ensure_bool(driver_id, "python.cross_vendor", block.get("cross_vendor"))
+
+    unknown = set(block.keys()) - {"file", "cross_vendor"}
+    if unknown:
+        raise DiscoveryHintError(
+            f"{driver_id}: discovery.python has unknown keys: {sorted(unknown)}"
+        )
+
+    return PythonProbe(
+        driver_id=driver_id, file_path=file_path, cross_vendor=cross_vendor,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Top-level parser
+# ---------------------------------------------------------------------------
+
+
+# Fields the parser recognizes at the top of the ``discovery:`` block.
+_KNOWN_DISCOVERY_KEYS: frozenset[str] = frozenset({
+    "mdns", "ssdp", "amx_ddp",
+    "tcp_probe", "udp_probe", "python",
+    "oui", "hostname", "port_open", "manufacturer_alias", "snmp_pen",
+})
 
 
 def parse_driver_discovery(driver_info: dict[str, Any]) -> DiscoveryHint | None:
     """Parse one driver-registry entry into a ``DiscoveryHint``.
 
     Returns ``None`` for template drivers (``generic_*``); otherwise a
-    populated ``DiscoveryHint``. Raises ``DiscoveryHintError`` if the
-    ``discovery:`` block is malformed or declares no strong signal and
-    no ``manual_only`` flag.
+    populated ``DiscoveryHint``. Raises ``DiscoveryHintError`` on
+    structural problems.
+
+    A driver with no fingerprints and no hints can still parse — it
+    simply never participates in matching, which is logged as a
+    warning.
     """
     driver_id = str(driver_info.get("id") or "").strip()
     if not driver_id:
@@ -474,6 +662,13 @@ def parse_driver_discovery(driver_info: dict[str, Any]) -> DiscoveryHint | None:
             f"{driver_id}: 'discovery' must be a mapping, got {type(discovery).__name__}"
         )
 
+    unknown = set(discovery.keys()) - _KNOWN_DISCOVERY_KEYS
+    if unknown:
+        raise DiscoveryHintError(
+            f"{driver_id}: discovery has unknown keys: {sorted(unknown)}. "
+            f"Known keys: {sorted(_KNOWN_DISCOVERY_KEYS)}"
+        )
+
     hint = DiscoveryHint(
         driver_id=driver_id,
         driver_name=str(driver_info.get("name") or driver_id),
@@ -482,244 +677,120 @@ def parse_driver_discovery(driver_info: dict[str, Any]) -> DiscoveryHint | None:
         transport=str(driver_info.get("transport") or "tcp"),
     )
 
-    hint.manual_only = bool(discovery.get("manual_only", False))
+    # --- Fingerprints -----------------------------------------------------
 
-    # mdns_services: list of either bare strings (treated as a service
-    # type with no TXT filter) or dicts {service: ..., txt_match: {...}}.
-    raw_mdns = discovery.get("mdns_services") or []
-    if not isinstance(raw_mdns, list):
-        raise DiscoveryHintError(
-            f"{driver_id}: discovery.mdns_services must be a list"
-        )
-    for entry in raw_mdns:
-        if isinstance(entry, str):
-            hint.mdns_services.append({"service": entry, "txt_match": {}})
-        elif isinstance(entry, dict):
-            service = entry.get("service")
-            if not isinstance(service, str) or not service:
-                raise DiscoveryHintError(
-                    f"{driver_id}: mdns_services entry missing 'service' string"
-                )
-            txt_match = entry.get("txt_match") or {}
-            if not isinstance(txt_match, dict):
-                raise DiscoveryHintError(
-                    f"{driver_id}: mdns_services entry 'txt_match' must be a mapping"
-                )
-            hint.mdns_services.append({
-                "service": service,
-                "txt_match": {str(k): str(v) for k, v in txt_match.items()},
-            })
-        else:
-            raise DiscoveryHintError(
-                f"{driver_id}: mdns_services entries must be strings or "
-                f"{{service, txt_match}} mappings"
-            )
+    if "mdns" in discovery:
+        for entry in _as_list(discovery["mdns"]):
+            hint.mdns.append(_parse_mdns_entry(driver_id, entry))
 
-    raw_ssdp = discovery.get("ssdp_device_types") or []
-    if not isinstance(raw_ssdp, list) or not all(isinstance(s, str) for s in raw_ssdp):
-        raise DiscoveryHintError(
-            f"{driver_id}: discovery.ssdp_device_types must be a list of strings"
-        )
-    hint.ssdp_device_types = list(raw_ssdp)
+    if "ssdp" in discovery:
+        for entry in _as_list(discovery["ssdp"]):
+            hint.ssdp.append(_parse_ssdp_entry(driver_id, entry))
 
     if "amx_ddp" in discovery:
-        amx = discovery["amx_ddp"]
-        if not isinstance(amx, dict):
-            raise DiscoveryHintError(f"{driver_id}: discovery.amx_ddp must be a mapping")
-        make = amx.get("make")
-        model_pattern = amx.get("model_pattern", "*")
-        if not isinstance(make, str) or not make:
-            raise DiscoveryHintError(
-                f"{driver_id}: discovery.amx_ddp.make is required"
-            )
-        hint.amx_ddp = {"make": make, "model_pattern": str(model_pattern)}
+        for entry in _as_list(discovery["amx_ddp"]):
+            hint.amx_ddp.append(_parse_amx_ddp_entry(driver_id, entry))
 
-    # Tier 2 probe opt-ins. ONVIF is the only remaining built-in
-    # named opt-in; PJLink Class 2 and Crestron CIP discovery now
-    # ship as ``_discovery.py`` companions on their respective
-    # drivers (see the ``companion:`` block below).
-    if "onvif" in discovery:
-        onvif_block = discovery["onvif"]
-        if onvif_block is True:
-            hint.broadcast_probes.append("onvif")
-        elif isinstance(onvif_block, dict):
-            hint.broadcast_probes.append("onvif")
-            mfg = onvif_block.get("manufacturer")
-            if mfg:
-                hint.onvif_manufacturer = str(mfg)
-        elif onvif_block is not False and onvif_block is not None:
-            raise DiscoveryHintError(
-                f"{driver_id}: discovery.onvif must be a bool or {{manufacturer: ...}} mapping"
-            )
-    raw_probes = discovery.get("active_probes") or []
-    if not isinstance(raw_probes, list):
-        raise DiscoveryHintError(
-            f"{driver_id}: discovery.active_probes must be a list"
-        )
-    for entry in raw_probes:
-        if isinstance(entry, str):
-            probe_id = entry
-        elif isinstance(entry, dict):
-            probe_id = entry.get("probe")
-            if not isinstance(probe_id, str) or not probe_id:
-                raise DiscoveryHintError(
-                    f"{driver_id}: active_probes entry missing 'probe' string"
-                )
-        else:
-            raise DiscoveryHintError(
-                f"{driver_id}: active_probes entries must be strings or "
-                f"{{probe, port}} mappings"
-            )
-        hint.active_probes.append(probe_id)
+    if "tcp_probe" in discovery:
+        hint.tcp_probe = _parse_probe(driver_id, "tcp", discovery["tcp_probe"])
 
-    # Phase 9: driver-declared probes. Both blocks are optional; either,
-    # neither, or both may be present.
-    if "udp_broadcast_probe" in discovery:
-        hint.udp_broadcast_probe = _parse_custom_probe(
-            driver_id,
-            "udp",
-            discovery["udp_broadcast_probe"],
-            default_timeout_ms=2000,
-            disallowed_ports=DISALLOWED_UDP_BROADCAST_PROBE_PORTS,
-        )
-    if "tcp_active_probe" in discovery:
-        hint.tcp_active_probe = _parse_custom_probe(
-            driver_id,
-            "tcp",
-            discovery["tcp_active_probe"],
-            default_timeout_ms=3000,
-            disallowed_ports=DISALLOWED_TCP_ACTIVE_PROBE_PORTS,
-        )
+    if "udp_probe" in discovery:
+        hint.udp_probe = _parse_probe(driver_id, "udp", discovery["udp_probe"])
 
-    # Phase 9.7: companion declaration. Drivers shipping a sibling
-    # ``_discovery.py`` opt in here so the loader registers
-    # ``SignalRule`` records for the canonical synthetic probe IDs
-    # the companion emits with.
-    if "companion" in discovery:
-        comp_block = discovery["companion"]
-        if not isinstance(comp_block, dict):
-            raise DiscoveryHintError(
-                f"{driver_id}: discovery.companion must be a mapping "
-                "(use ``companion: {generic: bool}``)"
-            )
-        generic_raw = comp_block.get("generic", False)
-        if not isinstance(generic_raw, bool):
-            raise DiscoveryHintError(
-                f"{driver_id}: discovery.companion.generic must be a bool"
-            )
-        unknown = set(comp_block.keys()) - {"generic"}
-        if unknown:
-            raise DiscoveryHintError(
-                f"{driver_id}: discovery.companion has unknown keys: "
-                f"{sorted(unknown)}. Only ``generic`` is supported."
-            )
-        hint.companion = CompanionSpec(
-            driver_id=driver_id, generic=generic_raw,
-        )
+    if "python" in discovery:
+        hint.python_probe = _parse_python_probe(driver_id, discovery["python"])
+
+    # --- Hints ------------------------------------------------------------
 
     if "snmp_pen" in discovery:
-        pen = discovery["snmp_pen"]
-        if not isinstance(pen, int) or isinstance(pen, bool) or pen < 1:
-            raise DiscoveryHintError(
-                f"{driver_id}: discovery.snmp_pen must be a positive integer"
-            )
-        hint.snmp_pen = pen
-
-    raw_oui = discovery.get("oui_prefixes") or []
-    if not isinstance(raw_oui, list):
-        raise DiscoveryHintError(
-            f"{driver_id}: discovery.oui_prefixes must be a list"
+        hint.snmp_pen = _ensure_int(
+            driver_id, "snmp_pen", discovery["snmp_pen"], minimum=1,
         )
+
+    raw_oui = discovery.get("oui") or []
+    if not isinstance(raw_oui, list):
+        raise DiscoveryHintError(f"{driver_id}: discovery.oui must be a list")
     for prefix in raw_oui:
         if not isinstance(prefix, str) or not prefix:
             raise DiscoveryHintError(
-                f"{driver_id}: oui_prefixes entries must be non-empty strings"
+                f"{driver_id}: discovery.oui entries must be non-empty strings"
             )
-        hint.oui_prefixes.append(prefix)
+        hint.oui.append(prefix)
 
-    raw_host = discovery.get("hostname_patterns") or []
+    raw_host = discovery.get("hostname") or []
     if not isinstance(raw_host, list):
         raise DiscoveryHintError(
-            f"{driver_id}: discovery.hostname_patterns must be a list"
+            f"{driver_id}: discovery.hostname must be a list"
         )
     for pat in raw_host:
         if not isinstance(pat, str) or not pat:
             raise DiscoveryHintError(
-                f"{driver_id}: hostname_patterns entries must be non-empty strings"
+                f"{driver_id}: discovery.hostname entries must be non-empty strings"
             )
-        hint.hostname_patterns.append(pat)
+        hint.hostname.append(pat)
 
-    raw_aliases = discovery.get("vendor_aliases") or []
+    raw_ports = discovery.get("port_open") or []
+    if not isinstance(raw_ports, list):
+        raise DiscoveryHintError(
+            f"{driver_id}: discovery.port_open must be a list"
+        )
+    for port in raw_ports:
+        if not isinstance(port, int) or isinstance(port, bool):
+            raise DiscoveryHintError(
+                f"{driver_id}: discovery.port_open entries must be integers, got {port!r}"
+            )
+        if port < 1 or port > 65535:
+            raise DiscoveryHintError(
+                f"{driver_id}: discovery.port_open entry {port} out of range [1, 65535]"
+            )
+        if port in DISALLOWED_OPEN_PORTS:
+            raise DiscoveryHintError(
+                f"{driver_id}: discovery.port_open entry {port} is too generic — "
+                f"would match every web/SSH device. Disallowed: {sorted(DISALLOWED_OPEN_PORTS)}"
+            )
+        hint.port_open.append(port)
+
+    raw_aliases = discovery.get("manufacturer_alias") or []
     if not isinstance(raw_aliases, list):
         raise DiscoveryHintError(
-            f"{driver_id}: discovery.vendor_aliases must be a list"
+            f"{driver_id}: discovery.manufacturer_alias must be a list"
         )
     seen_aliases: set[str] = set()
     for alias in raw_aliases:
         if not isinstance(alias, str):
             raise DiscoveryHintError(
-                f"{driver_id}: vendor_aliases entries must be strings, got {alias!r}"
+                f"{driver_id}: discovery.manufacturer_alias entries must be strings, got {alias!r}"
             )
         normalized = alias.strip().lower()
         if not normalized:
             raise DiscoveryHintError(
-                f"{driver_id}: vendor_aliases entries must be non-empty strings"
+                f"{driver_id}: discovery.manufacturer_alias entries must be non-empty"
             )
         if normalized in seen_aliases:
             continue
         seen_aliases.add(normalized)
-        hint.vendor_aliases.append(normalized)
+        hint.manufacturer_alias.append(normalized)
 
-    raw_ports = discovery.get("open_ports") or []
-    if not isinstance(raw_ports, list):
-        raise DiscoveryHintError(
-            f"{driver_id}: discovery.open_ports must be a list"
-        )
-    for port in raw_ports:
-        # Reject bools (which are int subclasses in Python), strings, and
-        # anything else non-integer.
-        if not isinstance(port, int) or isinstance(port, bool):
-            raise DiscoveryHintError(
-                f"{driver_id}: open_ports entries must be integers, got {port!r}"
-            )
-        if port < 1 or port > 65535:
-            raise DiscoveryHintError(
-                f"{driver_id}: open_ports entry {port} out of range [1, 65535]"
-            )
-        if port in DISALLOWED_OPEN_PORTS:
-            raise DiscoveryHintError(
-                f"{driver_id}: open_ports entry {port} is disallowed "
-                f"(too generic — would match every web/SSH device). "
-                f"Disallowed: {sorted(DISALLOWED_OPEN_PORTS)}"
-            )
-        hint.open_ports.append(port)
-
+    # Warn — don't reject — when a driver declares nothing. It is
+    # almost certainly a mistake (the driver will never match), but
+    # not structurally invalid.
     has_any_signal = (
-        bool(hint.mdns_services)
-        or bool(hint.ssdp_device_types)
-        or hint.amx_ddp is not None
-        or bool(hint.broadcast_probes)
-        or bool(hint.active_probes)
-        or hint.udp_broadcast_probe is not None
-        or hint.tcp_active_probe is not None
-        or hint.companion is not None
+        bool(hint.mdns)
+        or bool(hint.ssdp)
+        or bool(hint.amx_ddp)
+        or hint.tcp_probe is not None
+        or hint.udp_probe is not None
+        or hint.python_probe is not None
         or hint.snmp_pen is not None
-        or bool(hint.oui_prefixes)
-        or bool(hint.hostname_patterns)
-        or bool(hint.open_ports)
-        or bool(hint.vendor_aliases)
+        or bool(hint.oui)
+        or bool(hint.hostname)
+        or bool(hint.port_open)
+        or bool(hint.manufacturer_alias)
     )
-    if not has_any_signal and not hint.manual_only:
-        # A driver with no signals at all and no manual_only flag can never
-        # match anything — almost certainly a mistake. Warn so the author
-        # notices, but don't reject: the matcher silently ignores it, and
-        # `manual_only: true` is no longer required for this case.
+    if not has_any_signal:
         log.warning(
-            "%s: discovery block declares no signals (strong or soft); "
-            "this driver will never participate in matching. Add "
-            "oui_prefixes, hostname_patterns, open_ports, vendor_aliases, "
-            "or a Tier 1/2/3 signal — or set manual_only: true to silence "
-            "this warning.",
+            "%s: discovery block declares no fingerprints or hints; "
+            "this driver will never participate in matching.",
             driver_id,
         )
 
@@ -727,11 +798,12 @@ def parse_driver_discovery(driver_info: dict[str, Any]) -> DiscoveryHint | None:
 
 
 def load_discovery_hints(registry: list[dict[str, Any]]) -> list[DiscoveryHint]:
-    """Parse the new-schema ``discovery:`` block from every registered driver.
+    """Parse the ``discovery:`` block from every registered driver.
 
     Drivers with malformed blocks are logged and skipped — the loader
     does not raise. Strict validation happens earlier in
-    ``driver_loader.validate_driver_definition``.
+    ``driver_loader.validate_driver_definition`` (and in CI via
+    ``build_index.py``).
     """
     hints: list[DiscoveryHint] = []
     for driver_info in registry:
@@ -744,92 +816,69 @@ def load_discovery_hints(registry: list[dict[str, Any]]) -> list[DiscoveryHint]:
             continue
         hints.append(hint)
 
-    log.info("Loaded discovery hints for %d drivers (Phase 6 schema)", len(hints))
+    log.info("Loaded discovery hints for %d drivers", len(hints))
     return hints
 
 
-def build_signal_index(hints: list[DiscoveryHint]) -> SignalIndex:
-    """Register every strong + soft signal into a ``SignalIndex``.
+# ---------------------------------------------------------------------------
+# Signal-index builder
+# ---------------------------------------------------------------------------
 
-    Raises ``ValueError`` (from ``SignalIndex.add_rule``) if two drivers
-    declare a colliding strong signal.
+
+def build_signal_index(hints: list[DiscoveryHint]) -> SignalIndex:
+    """Register every fingerprint and hint into a ``SignalIndex``.
+
+    Raises ``ValueError`` (from ``SignalIndex.add_rule``) if two
+    drivers declare a colliding fingerprint without distinguishing
+    filters.
     """
     index = SignalIndex()
     for hint in hints:
-        # Manual-only no longer means "invisible to matcher" — it's a
-        # documentation hint that the driver expects manual IP entry. Soft
-        # signals (OUI / SNMP PEN / hostname) on a manual_only driver still
-        # register so the device surfaces as `possible` with a candidate
-        # list. A driver author who really wants the device invisible to
-        # discovery declares no signals at all.
-        for entry in hint.mdns_services:
+        for fp in hint.mdns:
             index.add_rule(SignalRule.for_mdns(
                 hint.driver_id,
-                entry["service"],
-                txt_match=entry["txt_match"] or None,
+                fp.service,
+                txt_match={k: v for k, v in fp.txt} or None,
+                generic=fp.cross_vendor,
             ))
-        for st in hint.ssdp_device_types:
-            index.add_rule(SignalRule.for_ssdp(hint.driver_id, st))
-        if hint.amx_ddp:
+        for fp in hint.ssdp:
+            index.add_rule(SignalRule.for_ssdp(
+                hint.driver_id, fp.device_type, generic=fp.cross_vendor,
+            ))
+        for fp in hint.amx_ddp:
             index.add_rule(SignalRule.for_amx_ddp(
-                hint.driver_id,
-                hint.amx_ddp["make"],
-                hint.amx_ddp["model_pattern"],
-            ))
-        for probe_id in hint.broadcast_probes:
-            txt_filter: dict[str, str] | None = None
-            if probe_id == "onvif" and hint.onvif_manufacturer:
-                txt_filter = {"manufacturer": hint.onvif_manufacturer}
-            index.add_rule(SignalRule.for_broadcast(
-                hint.driver_id, probe_id, txt_match=txt_filter,
-            ))
-        for probe_id in hint.active_probes:
-            index.add_rule(SignalRule.for_active_probe(hint.driver_id, probe_id))
-
-        # Phase 9: register driver-declared probe IDs against the same
-        # KIND_BROADCAST / KIND_ACTIVE_PROBE namespaces. The schema's
-        # ``generic: bool`` flag flows through directly — these IDs are
-        # not in ``_GENERIC_STRONG_PROBE_IDS`` so the factory's default
-        # of ``False`` would be wrong for a driver that opts in.
-        if hint.udp_broadcast_probe is not None:
-            spec = hint.udp_broadcast_probe
-            index.add_rule(SignalRule.for_broadcast(
-                hint.driver_id,
-                spec.probe_id,
-                generic=spec.generic,
-            ))
-        if hint.tcp_active_probe is not None:
-            spec = hint.tcp_active_probe
-            index.add_rule(SignalRule.for_active_probe(
-                hint.driver_id,
-                spec.probe_id,
-                generic=spec.generic,
+                hint.driver_id, fp.make, fp.model_pattern,
+                generic=fp.cross_vendor,
             ))
 
-        # Phase 9.7: companion declaration auto-registers two synthetic
-        # probe IDs the companion emits with.
-        if hint.companion is not None:
-            comp = hint.companion
+        if hint.tcp_probe is not None:
+            spec = hint.tcp_probe
+            index.add_rule(SignalRule.for_active_probe(
+                hint.driver_id, spec.probe_id, generic=spec.cross_vendor,
+            ))
+        if hint.udp_probe is not None:
+            spec = hint.udp_probe
             index.add_rule(SignalRule.for_broadcast(
-                hint.driver_id,
-                comp.broadcast_probe_id,
-                generic=comp.generic,
+                hint.driver_id, spec.probe_id, generic=spec.cross_vendor,
+            ))
+        if hint.python_probe is not None:
+            py = hint.python_probe
+            index.add_rule(SignalRule.for_broadcast(
+                hint.driver_id, py.broadcast_probe_id, generic=py.cross_vendor,
             ))
             index.add_rule(SignalRule.for_active_probe(
-                hint.driver_id,
-                comp.active_probe_id,
-                generic=comp.generic,
+                hint.driver_id, py.active_probe_id, generic=py.cross_vendor,
             ))
 
         if hint.snmp_pen is not None:
             index.add_rule(SignalRule.for_snmp_pen(hint.driver_id, hint.snmp_pen))
-        for prefix in hint.oui_prefixes:
+        for prefix in hint.oui:
             index.add_rule(SignalRule.for_oui(hint.driver_id, prefix))
-        for pattern in hint.hostname_patterns:
+        for pattern in hint.hostname:
             index.add_rule(SignalRule.for_hostname(hint.driver_id, pattern))
-        for port in hint.open_ports:
+        for port in hint.port_open:
             index.add_rule(SignalRule.for_open_port(hint.driver_id, port))
-        for alias in hint.vendor_aliases:
+        for alias in hint.manufacturer_alias:
             index.add_rule(SignalRule.for_vendor_string(hint.driver_id, alias))
 
     log.info(

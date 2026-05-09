@@ -42,7 +42,7 @@ from server.discovery.companion import (
     load_discovery_companions,
     run_companion,
 )
-from server.discovery.onvif_scanner import probe_onvif
+from server.discovery.onvif_scanner import probe_onvif  # noqa: F401 — Step 3 deletes
 from server.discovery.tier_matcher import (
     SignalIndex,
     TierMatcher,
@@ -302,7 +302,7 @@ class DiscoveryEngine:
 
         added = 0
         for hint in all_hints:
-            for prefix in hint.oui_prefixes:
+            for prefix in hint.oui:
                 before = len(self.oui_db._table)
                 self.oui_db.add_prefix(prefix, hint.manufacturer, hint.category)
                 if len(self.oui_db._table) > before:
@@ -505,16 +505,15 @@ class DiscoveryEngine:
         # --- Phase 2: Start Tier 1 Passive Listeners (background) ---
         await self._set_phase(2, "passive_listen", "Starting mDNS, SSDP, and AMX DDP listeners...")
 
-        # Phase 9.6: mDNS service types come from loaded drivers'
-        # mdns_services: declarations plus a small consumer baseline.
-        # The DNS-SD meta-query is always added by the scanner so
-        # unknown types surface for catalog growth.
+        # mDNS service types come from loaded drivers' mdns: declarations
+        # plus a small consumer baseline. The DNS-SD meta-query is
+        # always added by the scanner so unknown types surface for
+        # catalog growth.
         driver_service_types: list[str] = []
         for hint in self.discovery_hints:
-            for entry in hint.mdns_services:
-                service = entry.get("service")
-                if isinstance(service, str) and service:
-                    driver_service_types.append(service)
+            for fp in hint.mdns:
+                if fp.service:
+                    driver_service_types.append(fp.service)
         mdns_service_types = list(BASELINE_SERVICE_TYPES) + driver_service_types
 
         mdns_scanner = MDNSScanner(service_types=mdns_service_types)
@@ -975,66 +974,42 @@ class DiscoveryEngine:
         the OS doesn't pick a Docker / VPN source IP that would be
         dropped by ``rp_filter`` on multi-homed hosts.
         """
-        del alive_ips  # ONVIF is multicast — no per-host targeting.
-        wanted: set[str] = set()
-        for hint in self.discovery_hints:
-            wanted.update(hint.broadcast_probes)
-        if "onvif" not in wanted:
-            return
-
-        tasks: list[asyncio.Task] = [
-            asyncio.create_task(probe_onvif(
-                duration=4.0, control_ip=control_ip,
-            )),
-        ]
-
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        for result in results:
-            if isinstance(result, BaseException):
-                log.debug("Tier 2 broadcast failed", exc_info=result)
-                continue
-            if not isinstance(result, dict):
-                continue
-            for ip, reply in result.items():
-                device = self._get_or_create(ip)
-                device.alive = True
-                ev = reply.to_evidence()
-                if ev is not None:
-                    device.evidence_log.append(ev)
-                if hasattr(reply, "to_device_info"):
-                    merge_device_info(device, reply.to_device_info(), "broadcast")
-                await self._emit_device_update(device, "broadcast_probe")
+        del subnets, control_ip, alive_ips  # nothing to dispatch yet
+        # The named ONVIF opt-in was removed in the discovery rewrite;
+        # ONVIF will return as a ``udp_probe:`` declaration on a
+        # generic community camera driver in Step 3 of the rewrite.
+        # Until then this method is a no-op and the dedicated
+        # ``probe_onvif`` helper has no caller.
+        return
 
     async def _run_custom_probes(
         self,
         subnets: list[str],
         control_ip: str,
     ) -> None:
-        """Phase 9: dispatch driver-declared UDP / TCP probes.
+        """Dispatch driver-declared UDP / TCP probes.
 
         Walks ``self.discovery_hints`` for any declared
-        ``udp_broadcast_probe`` / ``tcp_active_probe`` specs:
+        ``udp_probe`` / ``tcp_probe`` specs:
 
         - **UDP broadcasts** fire once per scan against every subnet's
           directed broadcast address, sharing a single 10/sec
-          ``RateLimiter`` (matches the Crestron-CIP envelope used by
-          built-in probes).
+          ``RateLimiter`` shared across all UDP probes.
         - **TCP probes** run against every host whose port-scan
           results include the spec's port, with a 20 ms stagger
           (port_scanner pattern) so the SYN burst is spread.
 
         Resulting Evidence is appended to the per-device
         ``evidence_log`` so the deterministic matcher picks it up via
-        the same ``KIND_BROADCAST`` / ``KIND_ACTIVE_PROBE`` paths as
-        built-in probes.
+        the same ``KIND_BROADCAST`` / ``KIND_ACTIVE_PROBE`` paths.
         """
         udp_specs = [
-            h.udp_broadcast_probe for h in self.discovery_hints
-            if h.udp_broadcast_probe is not None
+            h.udp_probe for h in self.discovery_hints
+            if h.udp_probe is not None
         ]
         tcp_specs = [
-            h.tcp_active_probe for h in self.discovery_hints
-            if h.tcp_active_probe is not None
+            h.tcp_probe for h in self.discovery_hints
+            if h.tcp_probe is not None
         ]
         if (
             not udp_specs

@@ -155,6 +155,8 @@ class SignalRule:
         driver_id: str,
         service_type: str,
         txt_match: dict[str, str] | None = None,
+        *,
+        generic: bool = False,
     ) -> "SignalRule":
         return cls(
             driver_id=driver_id,
@@ -162,6 +164,7 @@ class SignalRule:
             kind=KIND_MDNS,
             source_id=_normalize_service_type(service_type),
             txt_match=_freeze_dict(txt_match),
+            generic=generic,
         )
 
     @classmethod
@@ -169,12 +172,15 @@ class SignalRule:
         cls,
         driver_id: str,
         device_type: str,
+        *,
+        generic: bool = False,
     ) -> "SignalRule":
         return cls(
             driver_id=driver_id,
             tier=SignalTier.PASSIVE_LISTENER,
             kind=KIND_SSDP,
             source_id=device_type,
+            generic=generic,
         )
 
     @classmethod
@@ -183,12 +189,15 @@ class SignalRule:
         driver_id: str,
         make: str,
         model_pattern: str,
+        *,
+        generic: bool = False,
     ) -> "SignalRule":
         return cls(
             driver_id=driver_id,
             tier=SignalTier.PASSIVE_LISTENER,
             kind=KIND_AMX_DDP,
             source_id=f"{make}/{model_pattern}",
+            generic=generic,
         )
 
     @classmethod

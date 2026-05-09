@@ -19,7 +19,7 @@ VALID_DEFINITION = {
     "id": "test_loader_driver",
     "name": "Loader Test Driver",
     "transport": "tcp",
-    "discovery": {"manual_only": True},
+    "discovery": {"oui": ["aa:bb:cc"]},
     "commands": {
         "power_on": {"label": "Power On", "string": "PON\r", "params": {}},
     },
@@ -50,10 +50,10 @@ def test_validate_missing_required():
 
 
 def test_validate_accepts_missing_discovery_block_with_warning():
-    """Phase 8 Task 8.3: a driver with no signals at all loads (the
-    matcher silently ignores it) but the loader logs a warning. We no
-    longer reject the driver — community contributors can ship a
-    placeholder driver and add discovery hints in a follow-up.
+    """A driver with no signals at all loads (the matcher silently
+    ignores it) but the loader logs a warning. We don't reject the
+    driver — community contributors can ship a placeholder and add
+    discovery hints in a follow-up.
     """
     errors = validate_driver_definition({
         "id": "no_discovery",
@@ -64,38 +64,27 @@ def test_validate_accepts_missing_discovery_block_with_warning():
     assert errors == []
 
 
-def test_validate_accepts_manual_only_discovery():
+def test_validate_accepts_hint_only_discovery():
     errors = validate_driver_definition({
-        "id": "manual_widget",
-        "name": "Manual Widget",
+        "id": "hint_only_widget",
+        "name": "Hint Only Widget",
         "transport": "tcp",
-        "discovery": {"manual_only": True},
+        "discovery": {"oui": ["aa:bb:cc"]},
         "commands": {"power_on": {"string": "X\r"}},
     })
     assert errors == []
 
 
-def test_validate_accepts_strong_signal_discovery():
+def test_validate_accepts_fingerprint_discovery():
     errors = validate_driver_definition({
-        "id": "strong_signal",
-        "name": "Strong",
+        "id": "fingerprint_driver",
+        "name": "Fingerprint",
         "transport": "tcp",
-        "discovery": {"active_probes": ["extron_sis"]},
-        "commands": {"power_on": {"string": "X\r"}},
-    })
-    assert errors == []
-
-
-def test_validate_accepts_unknown_active_probe_as_silent_noop():
-    # Phase 9.5: the named-probe allow-list was dropped. Unknown probe
-    # IDs in ``active_probes:`` parse fine and simply never fire at
-    # runtime — vendor-specific wire formats use ``tcp_active_probe``
-    # or a ``_discovery.py`` companion instead.
-    errors = validate_driver_definition({
-        "id": "unknown_probe_driver",
-        "name": "Unknown probe",
-        "transport": "tcp",
-        "discovery": {"active_probes": ["something_unregistered"]},
+        "discovery": {
+            "tcp_probe": {
+                "port": 4321, "send_ascii": "Q\r", "expect": "RESP",
+            },
+        },
         "commands": {"power_on": {"string": "X\r"}},
     })
     assert errors == []
