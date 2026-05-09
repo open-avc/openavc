@@ -1,6 +1,6 @@
 """Discovery result models.
 
-Phase 6 deterministic types only. Every device carries:
+Every device carries:
 
 - An ``identification`` (``IdentificationMatch``) — the deterministic
   state (``identified`` / ``possible`` / ``unknown``) produced by
@@ -8,10 +8,6 @@ Phase 6 deterministic types only. Every device carries:
 - An ``evidence_log`` of ``Evidence`` records, one per signal observed
   during the scan. This is the audit trail behind the UI's "Why?"
   reveal and the data plumbing for future catalog-growth telemetry.
-
-The legacy heuristic types (``DriverMatch``, ``compute_confidence``,
-``CONFIDENCE_WEIGHTS``, ``DiscoveredDevice.matched_drivers/sources/
-confidence``) were removed in the Phase 6 engine swap.
 """
 
 from __future__ import annotations
@@ -27,9 +23,10 @@ class DeviceState(str, Enum):
 
     The state itself is the confidence — there is no separate score.
 
-    - ``identified``: a Tier 1, 2, or 3 probe matched a driver
-      deterministically. ``IdentificationMatch.driver_id`` is set and the
-      UI offers one-click Add.
+    - ``identified``: a fingerprint match (mDNS / SSDP / AMX DDP /
+      TCP probe / UDP probe / Python companion) identified a driver
+      deterministically. ``IdentificationMatch.driver_id`` is set and
+      the UI offers one-click Add.
     - ``possible``: one ambiguous strong signal (an OUI-only match, a
       generic UPnP MediaRenderer, etc). May offer 1+ candidate drivers,
       but requires user confirmation before adding.
@@ -44,16 +41,29 @@ class DeviceState(str, Enum):
 
 
 class SignalTier(str, Enum):
-    """Which discovery tier produced a signal.
+    """Kind of discovery signal that produced a piece of evidence.
 
-    Used in ``Evidence.tier`` so the UI's "Why?" reveal can show
-    the user *how* a device was identified.
+    The serialized values are the user-facing labels — they appear in
+    the API response (``Evidence.to_dict()['tier']``) and feed the
+    "Why?" reveal in the discovery UI.
+
+    - ``passive_listener``: announcements the device emits on its own
+      that we listen for (mDNS service advertisements, SSDP NOTIFY,
+      AMX DDP beacons).
+    - ``broadcast_probe``: a query we broadcast on the network that
+      the device chose to answer.
+    - ``active_probe``: a query we sent directly to the device
+      (TCP connect-and-read, TCP send/expect, Python companion
+      per-host exchange).
+    - ``enrichment``: secondary signals that narrow candidates but
+      can't identify on their own (OUI, hostname, SNMP enterprise
+      number, reverse DNS).
     """
 
-    PASSIVE_LISTENER = "tier1"     # mDNS, SSDP, AMX DDP
-    BROADCAST_PROBE = "tier2"      # PJLink Class 2, Crestron CIP, ONVIF, etc.
-    ACTIVE_PROBE = "tier3"         # PJLink Class 1, Extron SIS, Samsung MDC, etc.
-    ENRICHMENT = "tier4"           # SNMP, OUI, NetBIOS, reverse DNS
+    PASSIVE_LISTENER = "passive_listener"
+    BROADCAST_PROBE = "broadcast_probe"
+    ACTIVE_PROBE = "active_probe"
+    ENRICHMENT = "enrichment"
 
 
 @dataclass
@@ -66,10 +76,10 @@ class Evidence:
     behind the "Why?" UI link and the data plumbing for future
     catalog-growth telemetry.
 
-    ``tier`` is the discovery tier (see ``SignalTier``).
+    ``tier`` carries the kind of signal observed (see ``SignalTier``).
     ``source`` is a stable, human-readable identifier for the signal
-    (e.g. ``"mdns:_netaudio-cmc._udp"``, ``"broadcast:crestron_cip"``,
-    ``"probe:pjlink_class1"``, ``"snmp:pen:21317"``).
+    (e.g. ``"mdns:_netaudio-cmc._udp"``, ``"broadcast:custom_<id>_udp"``,
+    ``"probe:custom_<id>_tcp"``, ``"snmp:pen:17049"``).
     ``data`` is whatever raw evidence the signal produced (TXT records,
     response bytes, parsed sysObjectID, etc).
     ``at`` is a unix timestamp for ordering and audit.
@@ -91,21 +101,21 @@ class Evidence:
 
 @dataclass
 class IdentificationMatch:
-    """The tier-based identification result for a single device.
+    """The deterministic identification result for a single device.
 
     There is exactly one IdentificationMatch per device.
 
     Fields by state:
     - ``identified``: ``driver_id`` is set; ``candidates`` is empty.
-      ``source`` references the deterministic signal that matched.
+      ``source`` references the fingerprint signal that matched.
       ``alternatives`` may list additional driver_ids the user can
-      switch to — populated when a generic strong probe (PJLink,
-      unfiltered ONVIF) won the strong-tier race but a vendor-specific
-      driver also matched on a Tier 4 soft signal. Empty in the common
-      vendor-specific case.
+      switch to — populated when a fingerprint marked
+      ``cross_vendor: true`` won the fingerprint race but a
+      vendor-specific peer driver also matched on an enrichment
+      signal. Empty in the common vendor-specific case.
     - ``possible``: ``driver_id`` is None; ``candidates`` has 1+ ids;
-      ``source`` references the soft signal (OUI, generic UPnP, etc).
-      ``alternatives`` is unused — the dropdown reads from
+      ``source`` references the enrichment signal (OUI, generic UPnP,
+      etc). ``alternatives`` is unused — the dropdown reads from
       ``candidates``.
     - ``unknown``: ``driver_id`` is None; ``candidates`` is empty;
       ``reason`` explains why nothing matched.
@@ -213,7 +223,7 @@ class DiscoveredDevice:
     # Responding status
     alive: bool = True
 
-    # Phase 6 deterministic identification.
+    # Deterministic identification result + per-device evidence log.
     identification: IdentificationMatch | None = None
     evidence_log: list[Evidence] = field(default_factory=list)
 

@@ -4,7 +4,11 @@ import { BASE, request } from "./base";
 
 export type DeviceState = "identified" | "possible" | "unknown";
 
-export type SignalTier = "tier1" | "tier2" | "tier3" | "tier4";
+export type SignalTier =
+  | "passive_listener"
+  | "broadcast_probe"
+  | "active_probe"
+  | "enrichment";
 
 export interface DiscoveryEvidence {
   tier: SignalTier;

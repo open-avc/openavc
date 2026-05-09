@@ -28,16 +28,16 @@ class TestDeviceStateEnum:
 
 
 class TestSignalTier:
-    def test_four_tiers(self):
+    def test_four_kinds(self):
         assert {t.value for t in SignalTier} == {
-            "tier1", "tier2", "tier3", "tier4",
+            "passive_listener", "broadcast_probe", "active_probe", "enrichment",
         }
 
     def test_named_constants(self):
-        assert SignalTier.PASSIVE_LISTENER.value == "tier1"
-        assert SignalTier.BROADCAST_PROBE.value == "tier2"
-        assert SignalTier.ACTIVE_PROBE.value == "tier3"
-        assert SignalTier.ENRICHMENT.value == "tier4"
+        assert SignalTier.PASSIVE_LISTENER.value == "passive_listener"
+        assert SignalTier.BROADCAST_PROBE.value == "broadcast_probe"
+        assert SignalTier.ACTIVE_PROBE.value == "active_probe"
+        assert SignalTier.ENRICHMENT.value == "enrichment"
 
 
 class TestEvidence:
@@ -59,14 +59,14 @@ class TestEvidence:
     def test_to_dict(self):
         ev = Evidence(
             SignalTier.BROADCAST_PROBE,
-            "broadcast:crestron_cip",
-            {"hostname": "DIN-AP-7F74F65F"},
+            "broadcast:custom_widget_udp",
+            {"hostname": "WIDGET-7F74F65F"},
             at=12345.0,
         )
         assert ev.to_dict() == {
-            "tier": "tier2",
-            "source": "broadcast:crestron_cip",
-            "data": {"hostname": "DIN-AP-7F74F65F"},
+            "tier": "broadcast_probe",
+            "source": "broadcast:custom_widget_udp",
+            "data": {"hostname": "WIDGET-7F74F65F"},
             "at": 12345.0,
         }
 
