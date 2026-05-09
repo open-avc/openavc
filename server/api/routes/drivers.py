@@ -54,11 +54,131 @@ async def get_driver_help(driver_id: str) -> dict[str, Any]:
 # Base URL for the community driver repo on GitHub
 COMMUNITY_REPO_URL = "https://raw.githubusercontent.com/open-avc/openavc-drivers/main"
 
+# Hosts the install / update endpoints are allowed to fetch from. Used
+# by both the YAML download and the sibling companion download so the
+# allowlist stays consistent.
+_GITHUB_HOSTS: frozenset[str] = frozenset({
+    "raw.githubusercontent.com",
+    "github.com",
+    "api.github.com",
+})
+
 
 def _get_driver_repo_dir() -> Path:
     """Get the driver_repo/ directory path."""
     from server.system_config import DRIVER_REPO_DIR
     return DRIVER_REPO_DIR
+
+
+def _companion_relpath_from_yaml(yaml_text: str) -> str | None:
+    """Return the raw ``discovery.python.file`` string if declared.
+
+    Used by install / update / uninstall to locate the sibling Python
+    companion that goes with a YAML driver. Drivers like ``crestron_cip``
+    and ``onvif_camera`` declare e.g. ``python: ./crestron_cip_discovery.py``
+    in their ``discovery:`` block; the runtime can't function without
+    that file present in ``driver_repo/`` next to the YAML.
+
+    Returns ``None`` if the YAML can't be parsed or has no companion;
+    the caller decides what that means in context.
+    """
+    import yaml as _yaml
+    try:
+        parsed = _yaml.safe_load(yaml_text)
+    except _yaml.YAMLError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    discovery = parsed.get("discovery") or {}
+    if not isinstance(discovery, dict):
+        return None
+    block = discovery.get("python")
+    if isinstance(block, str):
+        return block or None
+    if isinstance(block, dict):
+        path = block.get("file")
+        if isinstance(path, str) and path:
+            return path
+    return None
+
+
+async def _download_companion(
+    *,
+    yaml_url: str,
+    companion_relpath: str,
+    driver_repo: Path,
+    driver_id: str,
+) -> Path:
+    """Download a YAML driver's sibling Python companion.
+
+    Resolves ``companion_relpath`` against the YAML's URL via
+    ``urljoin``, validates the resulting host stays on the GitHub
+    allowlist (so a hostile YAML can't redirect the fetch to an
+    arbitrary URL), sanitizes the filename the same way the upload
+    endpoint does, and writes the file to ``driver_repo``. Returns
+    the local path.
+
+    Raises ``HTTPException`` with a descriptive 422 / 502 on any
+    failure so callers can roll back partial state.
+    """
+    import re
+    import httpx
+    from pathlib import PurePosixPath
+    from urllib.parse import urljoin, urlparse
+
+    companion_url = urljoin(yaml_url, companion_relpath)
+    parsed = urlparse(companion_url)
+    if not parsed.hostname or parsed.hostname not in _GITHUB_HOSTS:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Driver '{driver_id}' references companion at "
+                f"{companion_url!r}, which is not on an allowed host "
+                f"({', '.join(sorted(_GITHUB_HOSTS))})."
+            ),
+        )
+
+    companion_filename = PurePosixPath(companion_relpath).name
+    # Require the documented ``_discovery.py`` suffix. Anything else is
+    # either a typo or an attempt to use the companion path to land an
+    # arbitrary .py file in driver_repo. The uninstall path uses the
+    # same suffix check before removing companion files, so this keeps
+    # the install / uninstall contract symmetric.
+    if not re.match(r'^[a-zA-Z0-9_\-]+_discovery\.py$', companion_filename):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Driver '{driver_id}' declares companion "
+                f"{companion_relpath!r} with an invalid filename — must "
+                "end in '_discovery.py' and use only letters, numbers, "
+                "hyphens, and underscores."
+            ),
+        )
+
+    companion_filepath = driver_repo / companion_filename
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(companion_url)
+            resp.raise_for_status()
+            companion_filepath.write_text(resp.text, encoding="utf-8")
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                f"Driver '{driver_id}' references companion "
+                f"{companion_filename!r}, but GitHub returned "
+                f"{e.response.status_code} for it. Install aborted."
+            ),
+        )
+    except httpx.RequestError as e:
+        raise _api_error(
+            502,
+            f"Driver '{driver_id}' references companion "
+            f"{companion_filename!r} but the download failed",
+            e,
+        )
+
+    return companion_filepath
 
 
 @router.get("/drivers/community")
@@ -114,11 +234,10 @@ async def install_community_driver(body: CommunityDriverInstallRequest) -> dict[
     url = body.file_url
     from urllib.parse import urlparse
     parsed_url = urlparse(url)
-    allowed_hosts = {"raw.githubusercontent.com", "github.com", "api.github.com"}
-    if not parsed_url.hostname or parsed_url.hostname not in allowed_hosts:
+    if not parsed_url.hostname or parsed_url.hostname not in _GITHUB_HOSTS:
         raise HTTPException(
             status_code=422,
-            detail=f"Driver URL must be from GitHub ({', '.join(sorted(allowed_hosts))})",
+            detail=f"Driver URL must be from GitHub ({', '.join(sorted(_GITHUB_HOSTS))})",
         )
 
     # Determine file type from URL
@@ -139,11 +258,31 @@ async def install_community_driver(body: CommunityDriverInstallRequest) -> dict[
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.get(url)
             resp.raise_for_status()
-            filepath.write_text(resp.text, encoding="utf-8")
+            yaml_text = resp.text
+            filepath.write_text(yaml_text, encoding="utf-8")
     except httpx.HTTPStatusError as e:
         raise HTTPException(status_code=502, detail=f"GitHub returned {e.response.status_code}")
     except httpx.RequestError as e:
         raise _api_error(502, f"Failed to download driver '{body.driver_id}'", e)
+
+    # If this is a YAML driver with a sibling Python companion (e.g.
+    # crestron_cip → crestron_cip_discovery.py), fetch the companion
+    # alongside. Roll back the YAML on any companion-fetch failure so
+    # the install is atomic.
+    companion_filepath: Path | None = None
+    if ext == ".avcdriver":
+        relpath = _companion_relpath_from_yaml(yaml_text)
+        if relpath:
+            try:
+                companion_filepath = await _download_companion(
+                    yaml_url=url,
+                    companion_relpath=relpath,
+                    driver_repo=driver_repo,
+                    driver_id=body.driver_id,
+                )
+            except HTTPException:
+                filepath.unlink(missing_ok=True)
+                raise
 
     # Register the driver
     try:
@@ -151,6 +290,8 @@ async def install_community_driver(body: CommunityDriverInstallRequest) -> dict[
             driver_def = load_driver_file(filepath)
             if driver_def is None:
                 filepath.unlink(missing_ok=True)
+                if companion_filepath:
+                    companion_filepath.unlink(missing_ok=True)
                 raise HTTPException(status_code=422, detail="Invalid driver definition file")
             driver_class = create_configurable_driver_class(driver_def)
             register_driver(driver_class)
@@ -164,6 +305,8 @@ async def install_community_driver(body: CommunityDriverInstallRequest) -> dict[
         raise
     except Exception as e:
         filepath.unlink(missing_ok=True)
+        if companion_filepath:
+            companion_filepath.unlink(missing_ok=True)
         raise _api_error(500, f"Failed to load driver '{body.driver_id}'", e)
 
     # Refresh discovery engine with new driver hints
@@ -344,7 +487,36 @@ async def uninstall_driver(driver_id: str) -> dict[str, Any]:
     if not deleted_file:
         raise HTTPException(status_code=404, detail=f"Driver '{driver_id}' not found in driver_repo")
 
+    # If the YAML declared a Python companion, delete it too — the
+    # install endpoint fetches the pair as one unit, and leaving the
+    # companion behind would clutter the Code tab and the Installed
+    # Drivers panel with an orphaned probe file.
+    companion_to_delete: Path | None = None
+    if deleted_file.suffix == ".avcdriver":
+        try:
+            yaml_text = deleted_file.read_text(encoding="utf-8")
+        except OSError:
+            yaml_text = ""
+        if yaml_text:
+            relpath = _companion_relpath_from_yaml(yaml_text)
+            if relpath:
+                from pathlib import PurePosixPath
+                companion_filename = PurePosixPath(relpath).name
+                candidate = driver_repo / companion_filename
+                # Only remove if it actually lives in driver_repo (so a
+                # stray "../foo.py" path can't escape) and the companion
+                # follows the documented `_discovery.py` suffix — anything
+                # else is the user's own .py and shouldn't be touched.
+                try:
+                    candidate.resolve().relative_to(driver_repo.resolve())
+                except ValueError:
+                    candidate = None
+                if candidate and candidate.exists() and candidate.name.endswith("_discovery.py"):
+                    companion_to_delete = candidate
+
     deleted_file.unlink(missing_ok=True)
+    if companion_to_delete is not None:
+        companion_to_delete.unlink(missing_ok=True)
     unregister_driver(driver_id)
 
     # Refresh discovery engine so stale matches are cleared
@@ -419,6 +591,17 @@ async def update_driver(driver_id: str, request: Request) -> dict[str, Any]:
     if not old_file:
         raise HTTPException(status_code=404, detail=f"Driver '{driver_id}' not found in driver_repo")
 
+    # Validate the new URL the same way install does — the find-old-file
+    # block above was happy to accept any file_url, but the install
+    # endpoint requires a GitHub host.
+    from urllib.parse import urlparse as _urlparse
+    parsed_new_url = _urlparse(file_url)
+    if not parsed_new_url.hostname or parsed_new_url.hostname not in _GITHUB_HOSTS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Driver URL must be from GitHub ({', '.join(sorted(_GITHUB_HOSTS))})",
+        )
+
     # Determine file type from URL
     if file_url.endswith(".avcdriver"):
         ext = ".avcdriver"
@@ -426,6 +609,31 @@ async def update_driver(driver_id: str, request: Request) -> dict[str, Any]:
         ext = ".py"
     else:
         raise HTTPException(status_code=422, detail="URL must point to a .avcdriver or .py file")
+
+    # Resolve the existing companion (if any) before we touch anything,
+    # so we know what to clean up after the new install lands.
+    old_companion: Path | None = None
+    if old_file.suffix == ".avcdriver":
+        try:
+            old_yaml_text = old_file.read_text(encoding="utf-8")
+        except OSError:
+            old_yaml_text = ""
+        if old_yaml_text:
+            old_relpath = _companion_relpath_from_yaml(old_yaml_text)
+            if old_relpath:
+                from pathlib import PurePosixPath
+                old_companion_name = PurePosixPath(old_relpath).name
+                candidate = driver_repo / old_companion_name
+                try:
+                    candidate.resolve().relative_to(driver_repo.resolve())
+                except ValueError:
+                    candidate = None
+                if (
+                    candidate
+                    and candidate.exists()
+                    and candidate.name.endswith("_discovery.py")
+                ):
+                    old_companion = candidate
 
     # Download new version
     safe_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in driver_id)
@@ -447,6 +655,36 @@ async def update_driver(driver_id: str, request: Request) -> dict[str, Any]:
     if old_file != new_filepath:
         old_file.unlink(missing_ok=True)
     new_filepath.write_text(new_content, encoding="utf-8")
+
+    # Fetch the new YAML's sibling companion (if any). If that fails,
+    # roll back the new YAML and remove the old companion — the user
+    # is left with neither old nor new but a clear error, which is the
+    # same atomicity the install endpoint provides.
+    new_companion: Path | None = None
+    if ext == ".avcdriver":
+        relpath = _companion_relpath_from_yaml(new_content)
+        if relpath:
+            try:
+                new_companion = await _download_companion(
+                    yaml_url=file_url,
+                    companion_relpath=relpath,
+                    driver_repo=driver_repo,
+                    driver_id=driver_id,
+                )
+            except HTTPException:
+                new_filepath.unlink(missing_ok=True)
+                if old_companion is not None and old_companion.exists():
+                    old_companion.unlink(missing_ok=True)
+                raise
+
+    # The new YAML may declare a different companion filename than the
+    # old one — drop the orphaned old companion in that case.
+    if (
+        old_companion is not None
+        and old_companion.exists()
+        and (new_companion is None or old_companion != new_companion)
+    ):
+        old_companion.unlink(missing_ok=True)
 
     # Load and register new version
     try:
