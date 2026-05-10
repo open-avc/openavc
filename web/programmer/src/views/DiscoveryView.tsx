@@ -139,34 +139,43 @@ function genericProbeHint(alternatives: string[] | undefined): string | null {
   return null;
 }
 
-function summarizeSource(source: string): string {
+// Generic fallbacks keyed by the kind prefix of an `ident.source`. Used
+// only when the device's evidence_log doesn't carry a record matching
+// the identification source — which shouldn't happen post-rewrite, but
+// we never want to leak the synthetic `custom_<driver_id>_*` source IDs
+// to the user (spec §10 final paragraph).
+const SOURCE_KIND_FALLBACKS: Record<string, string> = {
+  mdns: "mDNS announcement",
+  ssdp: "SSDP NOTIFY",
+  amx_ddp: "AMX DDP beacon",
+  broadcast: "UDP probe response",
+  probe: "TCP probe response",
+  oui: "OUI lookup",
+  snmp_pen: "SNMP enterprise number",
+  hostname: "Hostname pattern",
+  vendor_string: "Manufacturer alias",
+  open_port: "Observed open port",
+};
+
+/**
+ * One-line description of the signal that produced an identification.
+ *
+ * Renders the same §10 phrasing the "Why?" reveal uses, by finding the
+ * evidence record whose namespaced `source` matches `ident.source` and
+ * running it through {@link describeEvidence}. Falls back to a generic
+ * kind-only label when no matching evidence is found, so synthetic
+ * source IDs (`custom_<driver_id>_tcp` etc.) never reach the user.
+ */
+function describeIdentificationSource(
+  source: string,
+  evidenceLog: api.DiscoveryEvidence[],
+): string {
   if (!source) return "no signal";
-  const [scheme, ...rest] = source.split(":");
-  const tail = rest.join(":");
-  switch (scheme) {
-    case "mdns":
-      return `mDNS announcement on ${tail}`;
-    case "ssdp":
-      return `SSDP NOTIFY${tail ? ` for ${tail}` : ""}`;
-    case "amx_ddp":
-      return `AMX DDP beacon${tail ? ` (${tail})` : ""}`;
-    case "broadcast":
-      return `UDP probe ${tail}`;
-    case "probe":
-      return `TCP probe ${tail}`;
-    case "oui":
-      return `OUI lookup matched ${tail}`;
-    case "snmp_pen":
-      return `SNMP enterprise number ${tail}`;
-    case "hostname":
-      return `Hostname ${tail} matched a driver pattern`;
-    case "vendor_string":
-      return `Manufacturer alias matched ${tail}`;
-    case "open_port":
-      return `Port ${tail} observed open`;
-    default:
-      return source;
-  }
+  const ev = evidenceLog.find((e) => e.source === source);
+  if (ev) return describeEvidence(ev).headline;
+  const colon = source.indexOf(":");
+  const kind = colon >= 0 ? source.slice(0, colon) : source;
+  return SOURCE_KIND_FALLBACKS[kind] ?? "discovery signal";
 }
 
 type SortKey = "state" | "ip" | "manufacturer" | "category";
@@ -1024,7 +1033,7 @@ function IdentificationSection({
         <DriverChoiceCard
           device={device}
           candidates={[ident.driver_id, ...alts]}
-          sourceLabel={summarizeSource(ident.source)}
+          sourceLabel={describeIdentificationSource(ident.source, device.evidence_log)}
           extraNote={genericProbeHint(alts)}
           installedDrivers={installedDrivers}
           driverNameLookup={driverNameLookup}
@@ -1040,7 +1049,7 @@ function IdentificationSection({
         driverId={ident.driver_id}
         installedDrivers={installedDrivers}
         driverNameLookup={driverNameLookup}
-        sourceLabel={summarizeSource(ident.source)}
+        sourceLabel={describeIdentificationSource(ident.source, device.evidence_log)}
         onDeviceAdded={onDeviceAdded}
         onDeviceUpdated={onDeviceUpdated}
       />
@@ -1052,7 +1061,7 @@ function IdentificationSection({
       <DriverChoiceCard
         device={device}
         candidates={ident.candidates}
-        sourceLabel={summarizeSource(ident.source)}
+        sourceLabel={describeIdentificationSource(ident.source, device.evidence_log)}
         installedDrivers={installedDrivers}
         driverNameLookup={driverNameLookup}
         onDeviceAdded={onDeviceAdded}
