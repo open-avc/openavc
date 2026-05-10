@@ -17,7 +17,7 @@ interface DiscoveryState {
   message: string;
   /** Scan ID */
   scanId: string;
-  /** Dynamic port labels from AV_PORTS + community drivers */
+  /** Dynamic port labels from baseline + driver hints + community catalog */
   portLabels: Record<string, string>;
 
   /** Update or add a device from a WS event */

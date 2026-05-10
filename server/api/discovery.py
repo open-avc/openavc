@@ -80,26 +80,48 @@ async def refresh_all_device_matches() -> None:
 
 
 async def _build_port_labels(engine: DiscoveryEngine) -> dict[str, str]:
-    """Build port label map from hardcoded AV_PORTS + community driver data.
+    """Build port label map from baseline + driver hints + community catalog.
 
-    The frontend uses this to display port descriptions and filter AV devices.
-    Community driver ports fill in gaps not covered by the base AV_PORTS table.
+    The frontend uses this to display port descriptions next to open ports.
+    Vendor-specific labels come from drivers (which declare ports via
+    ``tcp_probe.port`` and ``port_open``) and from the community catalog
+    for un-installed drivers. The baseline labels the universal generic
+    ports (SSH, Telnet, HTTP, HTTPS, HTTP-alt) — these stay generic so
+    they don't get stomped by a driver that happens to probe HTTP.
     """
-    from server.discovery.port_scanner import AV_PORTS
+    from server.discovery.port_scanner import BASELINE_PORTS
+
+    # Generic descriptions for the universal baseline. Not AV-specific
+    # — any device on the LAN may listen here.
+    baseline_labels: dict[int, str] = {
+        22: "SSH",
+        23: "Telnet",
+        80: "HTTP",
+        443: "HTTPS",
+        8080: "HTTP alt",
+    }
 
     labels: dict[str, str] = {}
+    for port in BASELINE_PORTS:
+        labels[str(port)] = baseline_labels.get(port, f"Port {port}")
 
-    # Base: hardcoded AV ports (shortened for display)
-    for port, desc in AV_PORTS.items():
-        short = desc.split("(")[0].strip() if "(" in desc else desc
-        labels[str(port)] = short
+    # Loaded drivers: contribute their declared probe / open-port ports
+    # with the driver's display name. ``setdefault`` keeps the generic
+    # baseline label for shared ports (HTTP/HTTPS/etc.).
+    for hint in engine.discovery_hints:
+        name = hint.driver_name or hint.driver_id
+        if hint.tcp_probe is not None:
+            labels.setdefault(str(hint.tcp_probe.port), name)
+        for p in hint.port_open:
+            labels.setdefault(str(p), name)
 
-    # Community drivers: add ports not already covered
+    # Community catalog: fill in ports for drivers the user hasn't
+    # installed yet so the device card still labels them.
     community_drivers = await engine.community_index.get_drivers()
     for drv in community_drivers:
         for p in drv.get("ports", []):
-            if isinstance(p, int) and str(p) not in labels:
-                labels[str(p)] = drv.get("name", f"Port {p}")
+            if isinstance(p, int):
+                labels.setdefault(str(p), drv.get("name", f"Port {p}"))
 
     return labels
 
