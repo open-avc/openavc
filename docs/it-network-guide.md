@@ -134,14 +134,13 @@ During a discovery scan, OpenAVC will:
 4. **mDNS / DNS-SD query** on multicast group 224.0.0.251:5353
 5. **SSDP M-SEARCH** on multicast group 239.255.255.250:1900
 6. **AMX DDP listen** on multicast group 239.255.250.250:9131 (passive — receive only)
-7. **ONVIF WS-Discovery** on multicast group 239.255.255.250:3702, if any installed driver opts in (the only built-in named broadcast probe)
-8. **NetBIOS name query** on UDP 137 to live hosts (Standard / Thorough scan only)
-9. **Protocol probes** on open AV ports (Extron identification, Tesira device serial, Q-SYS QRC, Samsung MDC, VISCA, Yamaha RCP, etc.)
-10. **Driver-declared probes** and **`_discovery.py` companions**, if any installed driver declares a `udp_broadcast_probe` / `tcp_active_probe` block or a sibling `_discovery.py` companion. PJLink Class 1 + Class 2 (UDP 4352 + per-responder TCP 4352) ships as a companion on the `pjlink_class1` driver; Crestron CIP (UDP 41794) ships as a companion on `utility/crestron_cip`. These send one-shot probes on vendor-specific ports per scan with no retries. The exact ports depend on which drivers are installed; the Programmer IDE's Driver Builder shows them per driver.
+7. **NetBIOS name query** on UDP 137 to live hosts (Standard / Thorough scan only)
+8. **Driver-declared TCP probes** on open AV ports. Each installed driver may declare its own probe; common probes for AV equipment include identification queries against switchers, DSPs, displays, mixers, and cameras (Extron, Biamp Tesira, QSC Q-SYS, Samsung MDC, Yamaha RCP, Sony VISCA, etc.). The exact wire format and port depend on which drivers are installed; the Programmer IDE's Driver Builder shows them per driver.
+9. **Driver-declared UDP probes** if any installed driver declares one. Common examples include PJLink Class 2 SRCH (UDP 4352, broadcast) when the `pjlink_class1` driver is installed, Crestron CIP discovery (UDP 41794, broadcast) when the `utility/crestron_cip` driver is installed, ONVIF WS-Discovery (UDP 3702, multicast 239.255.255.250) when the `onvif_camera` driver is installed, and other vendor-specific broadcasts shipped by individual drivers.
 
 All discovery traffic is confined to the local subnet(s) detected on the host's network interfaces. It does not scan remote subnets, public IP ranges, or addresses outside the host's directly-connected networks. Virtual and VPN adapters are excluded automatically.
 
-Driver-declared probes are subject to a global rate limit of 10 probes per second across the whole scan and bind to the configured control adapter, the same network-safety envelope that applies to built-in probes.
+Driver-declared probes are subject to a global rate limit of 10 probes per second across the whole scan and bind to the configured control adapter. Probes are one-shot per scan with no retries.
 
 ### Internet access (optional)
 
@@ -345,12 +344,12 @@ Add to the minimum rules:
 | mDNS (discovery) | Outbound + Inbound | OpenAVC host | 224.0.0.251 | 5353/udp | mDNS |
 | SSDP (discovery) | Outbound + Inbound | OpenAVC host | 239.255.255.250 | 1900/udp | SSDP |
 | AMX DDP (discovery) | Inbound | 239.255.250.250 | OpenAVC host | 9131/udp | Passive listen |
-| ONVIF WS-Discovery | Outbound + Inbound | OpenAVC host | 239.255.255.250 | 3702/udp | If any ONVIF-using driver installed |
-| PJLink Class 2 SRCH | Outbound + Inbound | OpenAVC host | Subnet broadcast | 4352/udp | Companion-driven; opens when `pjlink_class1` is installed |
-| PJLink Class 1 INFO | Outbound | OpenAVC host | Class 2 responders | 4352/tcp | Per-responder follow-up from the PJLink companion |
-| Crestron CIP probe | Outbound + Inbound | OpenAVC host | Subnet broadcast | 41794/udp | Companion-driven; opens when `utility/crestron_cip` is installed |
-| Driver-declared UDP probes | Outbound + Inbound | OpenAVC host | Subnet broadcast | Vendor-specific | If installed drivers declare `udp_broadcast_probe` or a `_discovery.py` companion |
-| Driver-declared TCP probes | Outbound | OpenAVC host | Live hosts with port open | Vendor-specific | If installed drivers declare `tcp_active_probe` |
+| ONVIF WS-Discovery | Outbound + Inbound | OpenAVC host | 239.255.255.250 | 3702/udp | Opens when the `onvif_camera` driver is installed |
+| PJLink Class 2 SRCH | Outbound + Inbound | OpenAVC host | Subnet broadcast | 4352/udp | Opens when the `pjlink_class1` driver is installed |
+| PJLink Class 1 INFO | Outbound | OpenAVC host | Class 2 responders | 4352/tcp | Per-responder follow-up from the PJLink driver |
+| Crestron CIP probe | Outbound + Inbound | OpenAVC host | Subnet broadcast | 41794/udp | Opens when the `utility/crestron_cip` driver is installed |
+| Driver-declared UDP probes | Outbound + Inbound | OpenAVC host | Subnet broadcast | Vendor-specific | If installed drivers declare a `udp_probe:` or sibling `_discovery.py` Python companion |
+| Driver-declared TCP probes | Outbound | OpenAVC host | Live hosts with port open | Vendor-specific | If installed drivers declare a `tcp_probe:` |
 | Update checks | Outbound | OpenAVC host | api.github.com | 443/tcp | HTTPS |
 
 ### With cloud platform

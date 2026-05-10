@@ -44,7 +44,7 @@ The editor has six tabs across the top, each grouping a single concern:
 | **General** | Identity (id, name, manufacturer, category, version, author, description), Help & Setup text, Publishing metadata (min platform version, protocols, tags, source URL) |
 | **Connection** | Transport (TCP/serial/UDP/OSC/HTTP), Authentication, Connect Sequence (`on_connect`), Frame Parser, Configuration Fields (`config_schema`) |
 | **Behavior** | State Variables, Commands, Responses, Polling, Device Settings |
-| **Discovery** | Discovery hints (mDNS, SSDP, OUI, ports, protocols) |
+| **Discovery** | Discovery fingerprints (mDNS, SSDP, AMX DDP beacon, TCP/UDP probes, Python file) and hints (OUI, hostname, open port, manufacturer alias, SNMP PEN) |
 | **Simulation** | Simulator definition (initial state, controls, command handlers, error modes) |
 | **Test** | Live tester — runs commands through the real driver runtime against a device |
 
@@ -161,17 +161,32 @@ The **set:** shorthand is also supported (`set: {mute: "$1"}` for capture-group 
 
 #### 5. Discovery tab (optional)
 
-Hints the discovery engine uses to match found devices to this driver: ports, MAC OUI prefixes, protocol identifiers, mDNS service names, hostname patterns, SSDP/UPnP device-type URN substrings, manufacturer aliases.
+Declarations the discovery engine uses to match found devices to this driver. The Discovery tab has four sections: **Fingerprints**, **Hints**, **Advanced**, and **Help**.
 
-When the device announces itself with a vendor-specific wire format that isn't covered by a built-in opt-in (PJLink Class 2, Crestron CIP, ONVIF, etc.), declare a custom probe directly in the Driver Builder:
+**Fingerprints** identify the driver alone — one match is enough. Each "Add" button appends an editable row:
 
-- **UDP broadcast probe**: a one-shot UDP packet sent to the network broadcast address. Set the port, the `send` payload (hex or ASCII), and one or more `response_match` matchers (`starts_with_hex`, `contains`, or `regex`). Optional `extract` rules pull manufacturer / model / version out of the response — keys named `manufacturer` or `make` are reserved and feed the Tier 4 vendor_string path so peer drivers can claim the device via `vendor_aliases`.
-- **TCP active probe**: same shape, but runs against every host whose port scan results include the declared port. Useful for devices that answer on a custom TCP port but don't broadcast.
-- **Generic flag**: tick this when the probe matches every device speaking some standard. The matcher will demote the driver to an alternative when a vendor-specific peer claims the response.
+- **mDNS service** — the service type the device announces (e.g. `_pjlink._tcp.local.`). Optional TXT-record filter when the service type is generic.
+- **SSDP device-type** — the UPnP device-type URN (e.g. `urn:schemas-upnp-org:device:MediaRenderer:1`).
+- **AMX DDP beacon** — `make` (required) and optional `model_pattern` glob.
+- **TCP probe** — connect to a port, optionally send bytes, match the response. Set the port, choose `send_ascii` or `send_hex` (or omit for connect-only banner reads), and pick exactly one of `expect` (substring), `expect_regex`, or `expect_hex`. Optional `extract_manufacturer` lifts a manufacturer string into the matcher's enrichment path so peer drivers can claim the device via `manufacturer_alias`. Free-form `extract` rules pull other metadata (model, version) out of the response.
+- **UDP probe** — same shape as TCP probe, but broadcasts on the chosen port.
+- **Python file** — sibling `<driver_id>_discovery.py` that implements multi-step handshakes, binary parsers, broadcast-then-per-host TCP follow-ups, or any wire format too dynamic for the declarative blocks. The escape-hatch when the other fingerprint types don't fit. The companion exposes `async def probe(ctx)` and emits evidence via `ctx.emit_broadcast` / `emit_active` / `emit_oui`. Bind every socket to `ctx.source_ip`; consult the engine's existing port-scan results via `ctx.hosts_by_open_port` instead of re-iterating subnets. The platform enforces a hard timeout (default 10 s, capped at 30 s).
 
-When the device's wire format involves multi-step handshakes, encrypted payloads, or framing too dynamic for the declarative block, ship a sibling `<driver_id>_discovery.py` Python module next to the `.avcdriver` file. It exposes `async def probe(ctx)` and emits evidence via `ctx.emit_broadcast` / `emit_active` / `emit_oui`. Bind every socket to `ctx.source_ip`; the platform enforces a hard timeout (default 10s, capped at 30s).
+Each fingerprint has a per-row **Cross-vendor** toggle. Tick it when the same wire signal is emitted by more than one vendor's devices. The matcher will demote your driver to an alternative when a vendor-specific peer driver matches via hints.
 
-Skip the Discovery tab entirely if the device has no network announcement — it can still be added manually from the Programmer IDE.
+**Hints** narrow candidates without identifying alone — combine to surface the device as *possible* with a candidate list:
+
+- **OUI** — MAC vendor block (e.g. `00:0e:dd`).
+- **Hostname pattern** — regex against reverse-DNS / NetBIOS name.
+- **Open port** — vendor-specific TCP port the device leaves open. Ports 22, 80, and 443 are rejected as too generic.
+- **Manufacturer alias** — case-insensitive exact match against any manufacturer string the scan captured (probe response, AMX DDP `make`, etc.).
+- **SNMP enterprise number** — the device's IANA Private Enterprise Number.
+
+**Advanced** holds help text on the cross-vendor toggle and the convention for manual-only devices (leave Fingerprints and Hints empty — the driver is still installable manually from the Add Device dialog).
+
+**Help** shows a one-screen example of a typical fingerprint + hint declaration and a link to the full schema reference (later in this guide).
+
+Skip the Discovery tab entirely if the device has no network announcement and no useful hints — the driver is still installable manually.
 
 #### 6. Simulation tab (optional)
 
@@ -396,7 +411,7 @@ Notice how much cleaner this is compared to JSON: comments explain the protocol,
 | `polling` | No | Periodic status query configuration. |
 | `frame_parser` | No | Advanced: custom framing (see below). |
 | `protocols` | No | Protocol names this driver speaks (e.g., `["pjlink"]`, `["extron_sis"]`). Helps discovery match devices to drivers. |
-| `discovery` | No | Discovery hints for network scanning. See Discovery Hints below. |
+| `discovery` | No | Discovery declarations — fingerprints and hints. See Discovery below. |
 
 #### `config_schema` entry
 
@@ -622,97 +637,107 @@ For protocols that don't use a simple delimiter, you can specify a frame parser:
 
 Types: `length_prefix` (reads a length header then N bytes), `fixed_length` (messages are always N bytes). For anything more complex, use a Python driver.
 
-### Discovery Hints
+### Discovery
 
-The `discovery` section tells the matcher which network signals identify your device. Strong signals (Tier 1 / 2 / 3) produce an *identified* match; soft signals (Tier 4 — OUI prefix, hostname pattern, open port, SNMP PEN, vendor alias) surface the device as *possible* with a candidate driver list. `manual_only: true` is a documentation hint that the device expects manual IP entry and no longer affects matcher behavior.
+The `discovery:` block tells the matcher which network signals identify your device. Two kinds of declarations:
 
-**Always declare soft signals alongside any strong signal you have.** A strong-only driver is fragile: the same Sonos speaker can show up via SSDP NOTIFY, mDNS `_spotify-connect._tcp.local`, mDNS `_sonos._tcp.local`, banner-grab on TCP 1400, or just an ARP-table sweep that captures the OUI — five different scanner paths. A driver that declares only the SSDP URN matches one of those five and silently misses the rest, even when the discovery scan already has the device's manufacturer string and hostname in evidence. Adding soft signals (`oui_prefixes`, `vendor_aliases`, `hostname_patterns`, `open_ports`) costs nothing and lets the driver claim the device regardless of which scanner found it.
+- **Fingerprints** identify the driver alone. One match is enough. Result state: *identified*.
+- **Hints** narrow candidates. Several hints together produce a *possible* match with a candidate driver list. Result state: *possible*.
 
-The matcher is deterministic. There is no scoring. A signal either fires (the device is identified) or it does not. Soft hints like OUI and SNMP PEN only contribute to the "possible" state, never to "identified."
+A driver with no `discovery:` block at all is invisible to the matcher (still installable manually). The loader logs a warning so you notice.
 
-**Best-driver-first matching.** Some strong probes (PJLink Class 1/2, unfiltered ONVIF) are *generic* — every projector / camera that speaks the standard responds, regardless of brand. When a generic probe wins the strong tier and a Tier 4 soft signal also points at a vendor-specific driver, that vendor driver becomes the primary identification and the generic driver demotes to an alternative the user can switch to via the dropdown on the Discovery card. So if your driver targets a device that also responds to PJLink/ONVIF/etc., declare every soft signal you can — `oui_prefixes`, `vendor_aliases` from probe responses, `hostname_patterns` — and your driver wins the "best fit" pick automatically.
+The matcher is deterministic — there is no scoring. A signal either fires or it does not. Fingerprints always beat hint accumulation when both fire.
+
+**Always declare hints alongside any fingerprint.** A fingerprint-only driver is fragile: the same device shows up via several scanner paths — an SSDP NOTIFY, an mDNS announcement, a banner-grab on the control port, or just an ARP-table sweep that captures the OUI. A driver claiming only one path silently misses the rest, even when the discovery scan already has the device's manufacturer string and hostname in evidence. Hints (`oui`, `hostname`, `port_open`, `manufacturer_alias`) cost nothing to declare and let the driver claim the device regardless of how it was found. Hints never produce *identified* on their own, but they turn an *unknown* into a *possible (candidate: <your driver>)* — strictly better, since the user gets a one-click choice.
+
+**Cross-vendor demotion.** Some fingerprints identify a *protocol class*, not a specific vendor (a multi-vendor projector control protocol, a multi-vendor camera discovery beacon, a control-system family beacon). Drivers hosting those signals declare `cross_vendor: true` on the relevant fingerprint. When a cross-vendor fingerprint matches, the matcher consults peer drivers' hints; a vendor-specific peer matching via `oui`, `hostname`, `manufacturer_alias`, or `port_open` becomes the primary identification and the cross-vendor anchor moves to `alternatives[0]`. The user can switch back via the dropdown on the Discovery card.
+
+If your driver targets a device that also responds to a generic cross-vendor probe, declare every brand string the firmware emits in `manufacturer_alias`. The exact string varies by vendor and model — list every variant you've seen (e.g. `["NEC", "Sharp NEC", "Sharp"]`, `["EPSON", "Seiko Epson"]`). You don't opt into the cross-vendor probe yourself — the anchor driver hosts it. Your `manufacturer_alias` is what makes your driver win the "best fit" pick.
 
 ```yaml
 discovery:
-  # Tier 1: passive listeners (zero packets sent)
-  mdns_services:
-    - "_pjlink._tcp.local."
-    # TXT-record filter disambiguates generic service types so two
-    # drivers don't collide on `_http._tcp`:
-    - service: "_http._tcp.local."
-      txt_match: { manufacturer: "Shure" }
-  ssdp_device_types:
-    - "urn:schemas-upnp-org:device:MediaRenderer:1"
+  # ─── Fingerprints — any one alone identifies this driver ──────────
+
+  mdns: "_pjlink._tcp.local."
+  # OR list:
+  #   mdns:
+  #     - "_pjlink._tcp.local."
+  #     - service: "_http._tcp.local."
+  #       txt: { manufacturer: "Shure" }   # TXT-record filter
+
+  ssdp: "urn:schemas-upnp-org:device:MediaRenderer:1"
+
   amx_ddp:
     make: "Polycom"
-    model_pattern: "SoundStructure*"   # optional, defaults to "*"
+    model_pattern: "SoundStructure*"   # optional, default "*"
 
-  # Tier 2: vendor broadcast probes (opt-in, one packet per scan)
-  onvif:                           # ONVIF cameras; manufacturer disambiguates
-    manufacturer: "Axis"
-  # ONVIF is the only built-in named opt-in. PJLink Class 2 SRCH and
-  # Crestron CIP discovery now ship as `_discovery.py` companions on
-  # their respective drivers (see Companion section below). Other
-  # vendor-specific broadcast probes go in udp_broadcast_probe or a
-  # companion.
+  tcp_probe:
+    port: 4352
+    send_ascii: "%1POWR ?\r"           # exactly one of: send_ascii, send_hex,
+                                        # (omit for connect-only banner read)
+    expect: "%1POWR=[01]"               # exactly one of: expect (substring),
+                                        # expect_regex, expect_hex
+    cross_vendor: false                 # default false
+    extract_manufacturer: "PJLink"      # optional — feeds manufacturer_alias path
+    extract:                             # optional — free-form metadata
+      model:
+        regex: "model=(.+)"
+        group: 1
+    timeout_ms: 3000                    # optional, default 3000, max 10000
 
-  # Tier 3: targeted active probes (only on hosts with the open port)
-  active_probes:
-    - extron_sis
+  udp_probe:
+    port: 6454
+    send_hex: "417274..."
+    expect_regex: "NovaStar"
+    cross_vendor: false
+    extract_manufacturer: "NovaStar"
 
-  # Phase 9.7: sibling _discovery.py companion declaration.
-  # Set when the driver ships a `<driver_id>_discovery.py` next to
-  # the YAML / Python file. The platform auto-registers two synthetic
-  # probe IDs (Tier 2 broadcast + Tier 3 active) the companion emits
-  # with via ctx.emit_broadcast / ctx.emit_active.
-  companion:
-    generic: true                  # cross-vendor anchor (PJLink, Crestron CIP, ...)
+  python:
+    file: ./pjlink_class1_discovery.py
+    cross_vendor: true
+  # Path is relative to the driver YAML. The module must export
+  # `async def probe(ctx) -> None`. See OpenAVC-Discovery-Spec.md
+  # § Python escape-hatch for the companion API.
 
-  # Tier 4: enrichment hints (soft signals — never produce identified alone)
-  snmp_pen: 17049                  # IANA Private Enterprise Number
-  oui_prefixes: ["00:05:a6"]       # used for vendor display + possible-state candidates
-  hostname_patterns:
-    - "^(QSC|qsys)-"
-  open_ports: [1710, 4352]         # AV-specific ports; 22 / 80 / 443 disallowed
-  vendor_aliases: ["NEC", "Sharp NEC", "Sharp"]
-                                   # manufacturer strings the device returns in
-                                   # generic-probe responses (PJLink %1MNFR?,
-                                   # ONVIF Manufacturer, etc.). Case-insensitive
-                                   # exact match. List every variant the firmware
-                                   # actually emits.
+  # ─── Hints — combine to narrow candidates ─────────────────────────
 
-  # Opt out of automatic discovery
-  manual_only: false
+  oui: ["00:0e:dd", "d8:34:ee"]              # MAC vendor blocks
+  hostname: ["^MXA", "^ANI"]                  # regex patterns
+  port_open: [2202]                           # vendor-specific TCP ports
+  manufacturer_alias: ["NEC", "Sharp NEC"]   # case-insensitive exact match
+  snmp_pen: 17049                             # IANA Private Enterprise Number
 ```
 
-| Field | Tier | Description |
+| Field | Kind | Description |
 |-------|------|-------------|
-| `mdns_services` | 1 | mDNS service types this device advertises. Each entry is either a bare string or `{service, txt_match}` for service-type disambiguation. |
-| `ssdp_device_types` | 1 | Full UPnP device-type URNs this device announces in SSDP `ST` / `NT` headers. |
-| `amx_ddp` | 1 | AMX Device Discovery Protocol beacon match. Provide `make` (required) and optional `model_pattern` glob. |
-| `onvif` | 2 | `true` (any ONVIF responder) or `{manufacturer: "Axis"}` to disambiguate when multiple ONVIF camera drivers coexist. The only remaining built-in named opt-in. |
-| `active_probes` | 3 | Targeted TCP probes by name. Built-in handlers: `extron_sis`, `tesira_ttp`, `qrc`, `kramer_p3000`, `shure_dcs`, `samsung_mdc`, `visca`, `crestron_cip_tcp`, `yamaha_rcp`. PJLink Class 1 ships as a `_discovery.py` companion now (see `companion` below) — not a built-in active probe. Unknown IDs are accepted at parse time but no probe fires for them — for vendor-specific wire formats use `tcp_active_probe` below. |
-| `udp_broadcast_probe` | 2 | Driver-declared UDP broadcast probe (Phase 9). Sub-fields: `port`, `send: {hex|ascii}`, `response_match: {starts_with_hex, contains, regex}`, optional `timeout_ms` (≤10000), `generic` flag, `extract` rules. Reserved extract keys `manufacturer` / `make` feed the Tier 4 vendor_string path. Built-in handler ports (mDNS/SSDP/ONVIF/AMX DDP/PJLink/Crestron CIP) are reserved. |
-| `tcp_active_probe` | 3 | Driver-declared TCP active probe (Phase 9). Same shape as `udp_broadcast_probe`. Runs against every host whose port scan hit `port`. Built-in active-probe handler ports (23, 1515, 1688, 1710, 4352, 10500, 49280) are reserved. |
-| `companion` | 2+3 | Sibling `_discovery.py` companion declaration (Phase 9.7). Sub-fields: `generic: bool` (default `false`). Auto-registers two synthetic probe IDs `custom_<driver_id>_companion_(udp\|tcp)` so the matcher binds companion-emitted evidence back to your driver. Use when the wire format needs Python (multi-step handshakes, binary parsers, broadcast-then-per-host TCP follow-ups). Set `generic: true` for cross-vendor anchors so the matcher demotes this driver to an alternative when a vendor-specific peer matches via `vendor_aliases` / OUI / hostname soft signals. |
-| `snmp_pen` | 4 | IANA Private Enterprise Number. Soft signal — produces "possible" not "identified". |
-| `oui_prefixes` | 4 | OUI prefixes (`"00:05:a6"`). Soft signal — also drives the "Unknown device, vendor: Extron" display. |
-| `hostname_patterns` | 4 | Regex patterns. Soft signal. |
-| `open_ports` | 4 | AV-specific ports the device leaves open (e.g. `[1710, 4352]`). Soft signal — produces "possible" when matched. Ports 22, 80, 443 are disallowed (too generic). |
-| `vendor_aliases` | 4 | Manufacturer / make strings the device returns when responding to a generic strong probe (PJLink `%1MNFR?`, ONVIF `Manufacturer`, AMX DDP `make`). Case-insensitive exact match after whitespace strip. List every variant — `["EPSON", "Seiko Epson"]`, `["NEC", "Sharp NEC", "Sharp"]`. Multiple drivers may share an alias. |
-| `manual_only` | — | `true` to opt out of automatic discovery. The driver is still installable manually. Use when the device has no verifiable Tier 1/2/3 fingerprint. |
+| `mdns` | Fingerprint | mDNS service type the device announces. Bare string or list; list entries can be `{service, txt}` for TXT-record disambiguation when the service type is generic. |
+| `ssdp` | Fingerprint | UPnP device-type URN announced in SSDP `ST` / `NT` headers. Bare string or list. |
+| `amx_ddp` | Fingerprint | AMX Device Discovery Protocol beacon match. Provide `make` (required) and optional `model_pattern` glob. |
+| `tcp_probe` | Fingerprint | Connect to `port`, optionally send `send_ascii` / `send_hex`, match exactly one of `expect` / `expect_regex` / `expect_hex`. Optional `cross_vendor`, `extract_manufacturer`, `extract` rules, `timeout_ms` (≤ 10000). |
+| `udp_probe` | Fingerprint | Broadcast on `port`, match the response. Same sub-fields as `tcp_probe`. |
+| `python` | Fingerprint | Sibling `<driver_id>_discovery.py` with `async def probe(ctx) -> None`. Use when the wire format needs Python (multi-step handshakes, binary parsers, broadcast-then-per-host TCP follow-ups). Sub-fields: `file` (path relative to the driver) and optional `cross_vendor`. |
+| `oui` | Hint | MAC OUI prefixes (e.g. `["00:05:a6"]`). Drives the *possible* state and the "Unknown device, vendor: …" display. |
+| `hostname` | Hint | Regex patterns matched against reverse-DNS / NetBIOS name. |
+| `port_open` | Hint | TCP ports the device leaves open (e.g. `[1710, 4352]`). Ports 22, 80, 443 are disallowed (too generic). |
+| `manufacturer_alias` | Hint | Manufacturer / make strings the device returns when a scan captures one (probe response, AMX DDP `make`, ONVIF Manufacturer field, etc.). Case-insensitive exact match after whitespace strip. List every variant. Multiple drivers may share an alias. |
+| `snmp_pen` | Hint | IANA Private Enterprise Number. |
 
 #### Validation rules
 
-These are enforced at driver-load time:
+Enforced at driver-load time and mirrored at catalog-build time by `openavc-drivers/scripts/build_index.py`:
 
-1. **Always declare soft signals alongside strong signals.** The loader accepts strong-only, soft-only, both, or none — declaring none logs a warning at load time but doesn't reject the driver. Soft signals alone (`snmp_pen`, `oui_prefixes`, `hostname_patterns`, `open_ports`, `vendor_aliases`) only produce the *possible* state, never *identified*. Strong-only is the trap: a driver with only an SSDP URN, only an mDNS service type, or only an ONVIF claim will silently miss devices that surface through any other scanner path. Always include `oui_prefixes`, `vendor_aliases`, `hostname_patterns`, and (for TCP) `open_ports` so the driver claims the device regardless of how it was found.
-2. Two drivers cannot claim the same Tier 1/2/3 signal without distinct TXT-record filters. Drivers fail to load on collision.
-3. `udp_broadcast_probe` / `tcp_active_probe` blocks must declare exactly one of `send.hex` / `send.ascii`, at least one of `response_match.{starts_with_hex, contains, regex}`, a `port` outside the built-in handler reserved set, and `timeout_ms ≤ 10000`. Regex patterns are compiled at load time — invalid patterns fail validation.
-4. The `extract` block's `manufacturer` and `make` keys are reserved: their values are lifted to the top of the evidence record so a peer driver can claim the device via `vendor_aliases`. Other extract keys are recorded as evidence metadata.
-5. When a driver's wire format requires multi-step handshakes, binary parsers, or per-host TCP follow-ups too dynamic for `udp_broadcast_probe` / `tcp_active_probe`, ship a sibling `<driver_id>_discovery.py` Python module next to the `.avcdriver` and declare `discovery.companion: {generic: bool}` in the driver. The companion exposes `async def probe(ctx)`; the platform binds sockets to the configured source IP, enforces a hard wall-clock timeout (default 10 s, capped at 30 s), and auto-registers two synthetic probe IDs `custom_<driver_id>_companion_(udp|tcp)` so the matcher binds the emitted evidence back to your driver. **The schema declaration is required** — without it the evidence won't drive identification. See PJLink (`projectors/pjlink_class1_discovery.py`) and Crestron CIP (`utility/crestron_cip_discovery.py`) for canonical examples of the discovery anchor driver pattern.
+1. **`port_open` rejects `{22, 80, 443}`** — too generic. Other ports are accepted.
+2. **`tcp_probe` and `udp_probe` accept exactly one of `send_ascii` / `send_hex`.** Both is an error; omitting both is allowed for TCP connect-only banner reads.
+3. **Probes declare exactly one of `expect` / `expect_regex` / `expect_hex`.** Required for both `tcp_probe` and `udp_probe`. Regex patterns are compiled at load time — invalid patterns fail validation.
+4. **`timeout_ms` ≤ 10 000.** Hard cap.
+5. **`extract_manufacturer:` is sugar for the manufacturer-alias enrichment path.** The probe runner lifts the value into the evidence response so the matcher can pick a vendor-specific peer when this driver carries `cross_vendor: true`.
+6. **`manufacturer_alias` is case-insensitive and de-duplicated** at parse time. Multiple drivers may declare the same alias.
+7. **Fingerprint collisions raise.** Two drivers cannot claim the same fingerprint (same kind, same source ID, same TXT filter) without explicit cross-vendor framing. The signal index raises at build time.
+8. **Template drivers exempt.** Drivers whose ID starts with `generic_` skip discovery validation entirely — they are project starting points, not discoverable devices.
 
-CI in the community-driver repo (`openavc-drivers/scripts/build_index.py`) enforces the same rules across the whole catalog.
+When you bump a driver to use a new schema field your platform target may lack, set `min_platform_version` in `index.json` so older OpenAVC instances grey out the driver instead of trying to parse fields they don't understand.
+
+CI in the community-driver repo enforces the same rules across the whole catalog before any driver enters the index.
 
 #### Protocol Declaration
 
@@ -1485,10 +1510,15 @@ DRIVER_INFO = {
     # --- Protocol declarations (catalog metadata) ---
     "protocols": ["extron_sis"],
 
-    # --- Discovery hints (REQUIRED — declare a strong signal or set manual_only) ---
+    # --- Discovery declarations (optional — fingerprints + hints) ---
     "discovery": {
-        "active_probes": ["extron_sis"],
-        "oui_prefixes": ["00:05:a6"],   # soft signal for the "possible" state
+        "tcp_probe": {
+            "port": 23,
+            "send_ascii": "\x1b3CV\r\n",
+            "expect": "Vrbn",
+            "extract_manufacturer": "Extron",
+        },
+        "oui": ["00:05:a6"],            # hint; produces "possible" state
     },
 }
 ```
