@@ -419,16 +419,25 @@ export function DiscoveryPanel() {
     return () => clearInterval(interval);
   }, [progress, isRunning, status]);
 
-  const phaseLabel = phase === "ping_sweep" ? "Scanning network..."
-    : phase === "port_scan" ? "Probing ports..."
-    : phase === "protocol_probe" ? "Identifying devices..."
-    : phase === "passive_collect" ? (message || "Collecting passive results...")
-    : phase === "finalize" ? "Matching drivers..."
-    : phase === "driver_match" ? "Matching drivers..."
-    : phase === "snmp_scan" ? "Querying SNMP..."
-    : phase === "mdns_scan" ? "Listening for mDNS..."
-    : phase === "ssdp_scan" ? "Listening for SSDP..."
-    : message || phase || "Scanning...";
+  // Static labels for each engine-emitted phase. The eight scan phases
+  // come from server/discovery/engine.py:_scan_pipeline_inner; "refresh"
+  // is set by the /api/discovery/refresh endpoint. Engine-supplied
+  // ``message`` wins when present so the UI surfaces sub-step detail
+  // (e.g. "Port scanning N passive-only devices"); unmapped phases
+  // fall back to a generic "Scanning..." rather than leaking the raw
+  // phase identifier.
+  const PHASE_LABELS: Record<string, string> = {
+    subnet_detection: "Detecting network...",
+    passive_listen: "Starting passive listeners...",
+    ping_sweep: "Scanning network...",
+    arp_harvest: "Reading MAC addresses...",
+    port_scan: "Probing ports...",
+    protocol_probe: "Identifying devices...",
+    passive_collect: "Collecting passive results...",
+    finalize: "Matching drivers...",
+    refresh: "Refreshing matches...",
+  };
+  const phaseLabel = message || PHASE_LABELS[phase] || "Scanning...";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", gap: "var(--space-md)" }}>
