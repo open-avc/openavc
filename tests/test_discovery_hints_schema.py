@@ -308,9 +308,18 @@ class TestUdpProbe:
     def test_udp_requires_matcher(self):
         # UDP without an expect would emit evidence for any reply at all,
         # which is too noisy.
-        with pytest.raises(DiscoveryHintError, match="needs at least one"):
+        with pytest.raises(DiscoveryHintError, match="needs exactly one"):
             parse_driver_discovery(_drv("bad", udp_probe={
                 "port": 6454, "send_ascii": "x",
+            }))
+
+    def test_udp_rejects_multiple_matchers(self):
+        # B9: declaring more than one expect_* silently AND-matches at
+        # runtime; reject at parse time so the author has to pick.
+        with pytest.raises(DiscoveryHintError, match="declares multiple matchers"):
+            parse_driver_discovery(_drv("bad", udp_probe={
+                "port": 6454, "send_ascii": "x",
+                "expect_hex": "AB CD", "expect_regex": "Sony",
             }))
 
     def test_cross_vendor_flag_default_false(self):

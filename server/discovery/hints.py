@@ -403,12 +403,26 @@ def _parse_response_match(
     *,
     require_match: bool,
 ) -> ResponseMatch:
-    """Pull ``expect:``, ``expect_regex:``, and ``expect_hex:`` out of a probe block.
+    """Pull ``expect:``, ``expect_regex:``, or ``expect_hex:`` out of a probe block.
 
-    All declared matchers AND together. If ``require_match`` is True, at
-    least one must be present — UDP probes need a matcher to filter
-    junk, but a connect-only TCP probe can succeed on connect alone.
+    Spec §2 rule 3: exactly one matcher per probe. Mixing them silently
+    AND-matches both, which produces "matched hex:abcd, regex:Sony"
+    output that's almost never the author's intent. If ``require_match``
+    is True, exactly one must be present — UDP probes need a matcher to
+    filter junk, but a connect-only TCP probe can succeed on connect
+    alone (and so may declare zero matchers).
     """
+    declared = [
+        k for k in ("expect", "expect_regex", "expect_hex")
+        if k in raw and raw[k] is not None
+    ]
+    if len(declared) > 1:
+        raise DiscoveryHintError(
+            f"{driver_id}: discovery.{where} declares multiple matchers "
+            f"({', '.join(declared)}) — pick exactly one of expect, "
+            "expect_regex, or expect_hex"
+        )
+
     starts_with: bytes | None = None
     contains: str | None = None
     regex: re.Pattern | None = None
@@ -446,7 +460,7 @@ def _parse_response_match(
 
     if require_match and starts_with is None and contains is None and regex is None:
         raise DiscoveryHintError(
-            f"{driver_id}: discovery.{where} needs at least one of "
+            f"{driver_id}: discovery.{where} needs exactly one of "
             "expect, expect_regex, expect_hex"
         )
 
