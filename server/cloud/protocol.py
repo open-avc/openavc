@@ -21,8 +21,17 @@ from server.cloud.crypto import sign_message, verify_message_signature
 
 
 # --- Protocol Version ---
+#
+# v1 — initial cloud agent protocol.
+# v2 — discovery rewrite: AI tool result for `get_discovery_results`
+#      replaces top-level confidence/model/category/matched_drivers
+#      with `identification: {state, driver_id, candidates, ...}` +
+#      `evidence_log: [{tier, source, data, at}, ...]`. The `start_
+#      discovery_scan` tool drops `min_confidence`. Pre-rewrite agents
+#      send a shape the cloud's tool description no longer matches,
+#      so the WS handshake refuses mismatched versions outright.
 
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 2
 
 
 # --- Message Type Constants ---
