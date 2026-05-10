@@ -89,8 +89,14 @@ class SystemToolsMixin:
 
         wait = input.get("wait", False)
         wait_timeout = input.get("timeout", 120)
-        min_confidence = input.get("min_confidence", 0.0)
         category = input.get("category")
+
+        # ``min_confidence`` from the cloud-side tool description is
+        # silently ignored — the deterministic matcher has no numeric
+        # confidence anymore (devices are ``identified`` / ``possible`` /
+        # ``unknown``). The cloud-side description is being dropped in
+        # B3 / B4; until then we accept and ignore the field rather
+        # than KeyError on the absent ``confidence`` column.
 
         # If wait=True, poll until scan completes (or timeout)
         if wait:
@@ -105,8 +111,6 @@ class SystemToolsMixin:
                 elapsed += poll_interval
 
         devices = discovery_engine.get_results()
-        if min_confidence > 0:
-            devices = [d for d in devices if d["confidence"] >= min_confidence]
         if category:
             devices = [d for d in devices if d.get("category") == category]
 
