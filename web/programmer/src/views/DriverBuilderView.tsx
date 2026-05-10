@@ -180,6 +180,11 @@ export function DriverPanel() {
               setInstalledDriverId(id);
               setViewTab("installed");
             }}
+            unsavedDraftName={
+              isNew
+                ? draft.name?.trim() || draft.id?.trim() || "New driver"
+                : null
+            }
           />
 
           <div style={{ flex: 1, overflow: "hidden" }}>

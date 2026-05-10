@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Save, Download, FileCode, Copy, Check, ExternalLink, Lock } from "lucide-react";
 import yaml from "js-yaml";
 import type { DriverDefinition } from "../../api/types";
@@ -65,13 +65,37 @@ export function DriverEditor({
   const [activeTab, setActiveTab] = useState<TabId>("general");
   const [yamlPaneOpen, setYamlPaneOpen] = useState(false);
   const [yamlCopied, setYamlCopied] = useState(false);
+  // Gate validation surfacing on freshly-created drafts. A user who just
+  // clicked "Create New Driver" hasn't authored anything yet — showing
+  // red/orange warnings before they've typed a character is jarring and
+  // out of step with the rest of the app. We hold validation back until
+  // the first Save attempt; for existing drivers (where the user has
+  // chosen what to edit), validation is live as before.
+  const [attemptedSave, setAttemptedSave] = useState(false);
   const project = useProjectStore((s) => s.project);
   const allDefinitions = useDriverBuilderStore((s) => s.definitions);
+
+  // When the loaded driver changes (or a new draft starts), reset the
+  // save-attempted flag so a previous editor's state doesn't bleed in.
+  useEffect(() => {
+    setAttemptedSave(false);
+  }, [originalId, isNew]);
 
   const issues = useMemo(
     () => validateDriver(draft, allDefinitions, originalId),
     [draft, allDefinitions, originalId],
   );
+
+  // For brand-new drafts we suppress issues until the user attempts to
+  // save. Existing drivers always show their issues so problems with
+  // already-authored content are visible as soon as the editor opens.
+  const showValidation = !isNew || attemptedSave;
+  const effectiveIssues = showValidation ? issues : [];
+
+  const handleSave = () => {
+    setAttemptedSave(true);
+    onSave();
+  };
 
   const yamlPreview = useMemo(() => {
     try {
@@ -226,7 +250,7 @@ export function DriverEditor({
 
         {!readOnly && (
           <button
-            onClick={onSave}
+            onClick={handleSave}
             disabled={!dirty || saving}
             style={{
               display: "flex",
@@ -294,7 +318,7 @@ export function DriverEditor({
         }}
       >
         {tabs.map((tab) => {
-          const tabIssues = issuesFor(issues, tab.id);
+          const tabIssues = issuesFor(effectiveIssues, tab.id);
           const errorCount = tabIssues.filter((i) => i.severity === "error").length;
           const warningCount = tabIssues.filter((i) => i.severity === "warning").length;
           const badgeColor =
@@ -377,7 +401,24 @@ export function DriverEditor({
         {activeTab === "general" && (
           <div>
             <LearnMore href={DOCS.general} label="Driver definition reference" />
-            <IssueList issues={issuesFor(issues, "general")} />
+            <IssueList issues={issuesFor(effectiveIssues, "general")} />
+            {/* Friendly coach mark on a brand-new draft before the user
+                tries to save — replaces the validation-error wall they
+                used to see on a freshly-created driver. */}
+            {isNew && !attemptedSave && (
+              <div
+                style={{
+                  padding: "var(--space-sm) var(--space-md)",
+                  marginBottom: "var(--space-md)",
+                  borderRadius: "var(--border-radius)",
+                  background: "var(--bg-hover)",
+                  fontSize: "var(--font-size-sm)",
+                  color: "var(--text-secondary)",
+                }}
+              >
+                Enter a Driver ID and Name to save your driver.
+              </div>
+            )}
             <div style={rowStyle}>
               <label style={labelStyle}>Driver ID</label>
               <input
@@ -537,7 +578,7 @@ export function DriverEditor({
 
         {activeTab === "connection" && (
           <>
-            <IssueList issues={issuesFor(issues, "connection")} />
+            <IssueList issues={issuesFor(effectiveIssues, "connection")} />
             <CollapsibleSection
               title="Transport"
               subtitle="How the driver talks to the device — TCP, serial, UDP, OSC, HTTP."
@@ -591,7 +632,7 @@ export function DriverEditor({
 
         {activeTab === "behavior" && (
           <>
-            <IssueList issues={issuesFor(issues, "behavior")} />
+            <IssueList issues={issuesFor(effectiveIssues, "behavior")} />
             <CollapsibleSection
               title="State Variables"
               subtitle="Read-only values the driver reports — power, input, mute, volume. Use these in command parameters and panel bindings."
@@ -644,7 +685,7 @@ export function DriverEditor({
         {activeTab === "discovery" && (
           <>
             <LearnMore href={DOCS.discovery} label="Discovery hints reference" />
-            <IssueList issues={issuesFor(issues, "discovery")} />
+            <IssueList issues={issuesFor(effectiveIssues, "discovery")} />
             <DiscoveryHintsEditor draft={draft} onUpdate={onUpdate} />
           </>
         )}
@@ -652,7 +693,7 @@ export function DriverEditor({
         {activeTab === "simulation" && (
           <>
             <LearnMore href={DOCS.simulation} label="Writing simulators guide" />
-            <IssueList issues={issuesFor(issues, "simulation")} />
+            <IssueList issues={issuesFor(effectiveIssues, "simulation")} />
             <SimulatorEditor draft={draft} onUpdate={onUpdate} />
           </>
         )}

@@ -1,4 +1,4 @@
-import { Plus, Upload, Download, Trash2, Copy, Lock, ExternalLink } from "lucide-react";
+import { Plus, Upload, Download, Trash2, Copy, Lock, ExternalLink, FileEdit } from "lucide-react";
 import type { DriverDefinition } from "../../api/types";
 
 interface DriverListProps {
@@ -11,6 +11,10 @@ interface DriverListProps {
   onDuplicate: (id: string) => void;
   onDelete: (id: string) => void;
   onViewAsInstalled?: (id: string) => void;
+  /** Label for the unsaved-draft sentinel row, shown above the list when
+   *  the user has clicked Create New Driver but hasn't saved yet. null
+   *  hides the sentinel. */
+  unsavedDraftName?: string | null;
 }
 
 export function DriverList({
@@ -23,6 +27,7 @@ export function DriverList({
   onDuplicate,
   onDelete,
   onViewAsInstalled,
+  unsavedDraftName,
 }: DriverListProps) {
   return (
     <div
@@ -80,7 +85,52 @@ export function DriverList({
       </div>
 
       <div style={{ flex: 1, overflow: "auto", padding: "var(--space-sm)" }}>
-        {definitions.length === 0 ? (
+        {/* Sentinel row for an in-progress, never-saved draft so the
+            user has a visual anchor for "this is what I'm currently
+            editing." It mirrors the selected styling of regular rows;
+            no per-row buttons because the draft has no id yet. */}
+        {unsavedDraftName !== null && unsavedDraftName !== undefined && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              width: "100%",
+              padding: "var(--space-sm) var(--space-md)",
+              borderRadius: "var(--border-radius)",
+              background: "var(--accent-dim)",
+              textAlign: "left",
+              marginBottom: "var(--space-xs)",
+              gap: "var(--space-sm)",
+            }}
+          >
+            <FileEdit
+              size={11}
+              style={{
+                color: "var(--text-muted)",
+                flexShrink: 0,
+              }}
+            />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div
+                style={{
+                  fontWeight: 500,
+                  fontSize: "var(--font-size-sm)",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  fontStyle: "italic",
+                  color: "var(--text-secondary)",
+                }}
+              >
+                {unsavedDraftName}
+              </div>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                unsaved draft
+              </div>
+            </div>
+          </div>
+        )}
+        {definitions.length === 0 && !unsavedDraftName ? (
           <p
             style={{
               color: "var(--text-muted)",
