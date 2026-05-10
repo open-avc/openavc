@@ -97,15 +97,13 @@ export function DriverList({
           definitions.map((def) => {
             const isBuiltin = def.source === "builtin";
             // Built-in drivers ship with the platform and can't be edited
-            // in place — clicking the row offers a copy instead, so users
-            // can't accidentally damage a stock driver. The Lock icon and
-            // muted styling cue that.
+            // in place. Clicking the row opens a read-only view of the
+            // built-in's contents; the editor's banner provides a
+            // "Customize a copy" button when the user wants to fork it.
+            // The per-row Copy icon-button (below) is the explicit
+            // shortcut. The Lock icon and muted styling cue read-only.
             const handleRowClick = () => {
-              if (isBuiltin) {
-                onDuplicate(def.id);
-              } else {
-                onSelect(def.id);
-              }
+              onSelect(def.id);
             };
             return (
               <button
@@ -113,7 +111,7 @@ export function DriverList({
                 onClick={handleRowClick}
                 title={
                   isBuiltin
-                    ? "Built-in driver — click to create an editable copy."
+                    ? "Built-in driver — click to view (read-only). Use the Copy button to make an editable version."
                     : def.name
                 }
                 style={{

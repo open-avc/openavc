@@ -103,6 +103,10 @@ export function DriverPanel() {
 
   const isNew = selectedId === null && dirty;
   const showEditor = selectedId !== null || isNew;
+  const selectedDef = selectedId
+    ? definitions.find((d) => d.id === selectedId) ?? null
+    : null;
+  const readOnly = selectedDef?.source === "builtin";
 
   return (
     <div
@@ -186,10 +190,12 @@ export function DriverPanel() {
                 saving={saving}
                 error={error}
                 isNew={isNew}
+                readOnly={readOnly}
                 originalId={selectedId}
                 onUpdate={updateDraft}
                 onSave={save}
                 onExport={() => selectedId && handleExport(selectedId)}
+                onDuplicate={() => selectedId && duplicateDriver(selectedId)}
               />
             ) : (
               <EmptyState />

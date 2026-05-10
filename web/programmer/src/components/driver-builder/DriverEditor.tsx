@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Save, Download, FileCode, Copy, Check, ExternalLink } from "lucide-react";
+import { Save, Download, FileCode, Copy, Check, ExternalLink, Lock } from "lucide-react";
 import yaml from "js-yaml";
 import type { DriverDefinition } from "../../api/types";
 import { useProjectStore } from "../../store/projectStore";
@@ -36,11 +36,17 @@ interface DriverEditorProps {
   saving: boolean;
   error: string | null;
   isNew: boolean;
+  /** True when the loaded driver is built-in. Inputs disabled, Save hidden,
+   *  banner offers "Customize a copy" to fork into an editable version. */
+  readOnly: boolean;
   /** The id this driver was loaded under. null for a brand-new draft. */
   originalId: string | null;
   onUpdate: (partial: Partial<DriverDefinition>) => void;
   onSave: () => void;
   onExport: () => void;
+  /** Fork the built-in into an editable copy and switch to it. Used by the
+   *  read-only banner's "Customize a copy" button. */
+  onDuplicate: () => void;
 }
 
 export function DriverEditor({
@@ -49,10 +55,12 @@ export function DriverEditor({
   saving,
   error,
   isNew,
+  readOnly,
   originalId,
   onUpdate,
   onSave,
   onExport,
+  onDuplicate,
 }: DriverEditorProps) {
   const [activeTab, setActiveTab] = useState<TabId>("general");
   const [yamlPaneOpen, setYamlPaneOpen] = useState(false);
@@ -216,23 +224,65 @@ export function DriverEditor({
           </button>
         )}
 
-        <button
-          onClick={onSave}
-          disabled={!dirty || saving}
+        {!readOnly && (
+          <button
+            onClick={onSave}
+            disabled={!dirty || saving}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--space-xs)",
+              padding: "var(--space-sm) var(--space-lg)",
+              borderRadius: "var(--border-radius)",
+              background: dirty ? "var(--accent-bg)" : "var(--bg-hover)",
+              color: dirty ? "var(--text-on-accent)" : "var(--text-muted)",
+              opacity: saving ? 0.6 : 1,
+            }}
+          >
+            <Save size={14} /> {saving ? "Saving..." : "Save"}
+          </button>
+        )}
+      </div>
+
+      {/* Read-only banner — built-in drivers ship with the platform and
+          can't be edited in place. The "Customize a copy" button forks
+          the driver into an editable version (see store.duplicateDriver,
+          which auto-selects the new copy). */}
+      {readOnly && (
+        <div
           style={{
             display: "flex",
             alignItems: "center",
-            gap: "var(--space-xs)",
+            gap: "var(--space-md)",
             padding: "var(--space-sm) var(--space-lg)",
-            borderRadius: "var(--border-radius)",
-            background: dirty ? "var(--accent-bg)" : "var(--bg-hover)",
-            color: dirty ? "var(--text-on-accent)" : "var(--text-muted)",
-            opacity: saving ? 0.6 : 1,
+            background: "var(--bg-hover)",
+            borderBottom: "1px solid var(--border-color)",
+            flexShrink: 0,
           }}
         >
-          <Save size={14} /> {saving ? "Saving..." : "Save"}
-        </button>
-      </div>
+          <Lock size={14} style={{ color: "var(--text-muted)" }} />
+          <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)", flex: 1 }}>
+            Built-in driver — read only. Customize a copy to edit.
+          </span>
+          <button
+            onClick={onDuplicate}
+            disabled={saving}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--space-xs)",
+              padding: "var(--space-xs) var(--space-md)",
+              borderRadius: "var(--border-radius)",
+              background: "var(--accent-bg)",
+              color: "var(--text-on-accent)",
+              fontSize: "var(--font-size-sm)",
+              opacity: saving ? 0.6 : 1,
+            }}
+          >
+            <Copy size={14} /> {saving ? "Copying..." : "Customize a copy"}
+          </button>
+        </div>
+      )}
 
       {/* Tabs */}
       <div
@@ -314,6 +364,15 @@ export function DriverEditor({
             padding: "var(--space-lg)",
             minWidth: 0,
           }}
+        >
+        {/* fieldset[disabled] cascades to every native input/select/textarea/
+            button inside the tab content — gives us a single read-only switch
+            for built-in drivers without plumbing readOnly into a dozen
+            sub-editors. The default fieldset border/padding are stripped so
+            layout is unchanged. */}
+        <fieldset
+          disabled={readOnly}
+          style={{ border: "none", margin: 0, padding: 0, minWidth: 0 }}
         >
         {activeTab === "general" && (
           <div>
@@ -599,6 +658,7 @@ export function DriverEditor({
         )}
 
         {activeTab === "test" && <LiveTestPanel draft={draft} />}
+        </fieldset>
         </div>
 
         {yamlPaneOpen && (
