@@ -470,6 +470,24 @@ class SignalIndex:
             if pat.search(hostname)
         ]
 
+    def matched_hostname_patterns(self, hostname: str | None) -> list[str]:
+        """Return the regex source strings whose pattern matches ``hostname``.
+
+        Used by the scan engine at hostname-resolution time so each
+        evidence record can carry the specific pattern that fired (for
+        the scan-results "Why?" reveal). De-duplicated, order preserved
+        from the underlying rule registration order.
+        """
+        if not hostname:
+            return []
+        seen: set[str] = set()
+        out: list[str] = []
+        for pat, rule in self._hostname_rules:
+            if pat.search(hostname) and rule.source_id not in seen:
+                seen.add(rule.source_id)
+                out.append(rule.source_id)
+        return out
+
     def _normalize_source_for_kind(self, kind: str, source_id: str) -> str:
         if kind == KIND_MDNS:
             return _normalize_service_type(source_id)
@@ -725,14 +743,23 @@ def evidence_broadcast(
     probe_id: str,
     response: dict | None = None,
     txt: dict[str, str] | None = None,
+    *,
+    port: int | None = None,
+    matched_pattern: str | None = None,
 ) -> Evidence:
     """Build an Evidence record for a broadcast probe response.
 
     ``txt`` carries identification fields parsed from the responder
     (manufacturer, model, hardware id) so the matcher can distinguish
-    drivers that share a generic probe — e.g. several drivers claim a
-    common discovery beacon, each adding a different manufacturer
-    filter to their fingerprint.
+    drivers that share a generic fingerprint — e.g. several drivers
+    claim a common discovery beacon, each adding a different
+    manufacturer filter.
+
+    ``port`` is the UDP port the probe targeted (from
+    ``udp_probe.port``) and ``matched_pattern`` is a human-readable
+    description of the regex / hex / substring matcher that the
+    response satisfied (e.g. ``"regex:NovaStar"``,
+    ``"hex:417274..."``). Both feed the scan-results "Why?" reveal.
     """
     data: dict[str, Any] = {
         "kind": KIND_BROADCAST,
@@ -741,6 +768,10 @@ def evidence_broadcast(
     }
     if txt:
         data["txt"] = dict(txt)
+    if port is not None:
+        data["port"] = port
+    if matched_pattern is not None:
+        data["matched_pattern"] = matched_pattern
     return Evidence(
         tier=SignalTier.BROADCAST_PROBE,
         source=f"broadcast:{probe_id}",
@@ -748,16 +779,29 @@ def evidence_broadcast(
     )
 
 
-def evidence_active_probe(probe_id: str, response: dict | None = None) -> Evidence:
-    """Build an Evidence record for a Tier 3 active probe response."""
+def evidence_active_probe(
+    probe_id: str,
+    response: dict | None = None,
+    *,
+    port: int | None = None,
+) -> Evidence:
+    """Build an Evidence record for an active-probe response.
+
+    ``port`` is the TCP port the probe targeted (from
+    ``tcp_probe.port``); the scan-results "Why?" reveal renders it as
+    "TCP probe on port <port> returned <excerpt>".
+    """
+    data: dict[str, Any] = {
+        "kind": KIND_ACTIVE_PROBE,
+        "source_id": probe_id,
+        "response": response or {},
+    }
+    if port is not None:
+        data["port"] = port
     return Evidence(
         tier=SignalTier.ACTIVE_PROBE,
         source=f"probe:{probe_id}",
-        data={
-            "kind": KIND_ACTIVE_PROBE,
-            "source_id": probe_id,
-            "response": response or {},
-        },
+        data=data,
     )
 
 
@@ -789,15 +833,29 @@ def evidence_snmp_pen(pen: int, sysdescr: str | None = None) -> Evidence:
     )
 
 
-def evidence_hostname(hostname: str) -> Evidence:
-    """Build an Evidence record for an observed hostname."""
+def evidence_hostname(
+    hostname: str,
+    *,
+    matched_pattern: str | None = None,
+) -> Evidence:
+    """Build an Evidence record for an observed hostname.
+
+    ``matched_pattern`` is the regex source string from the driver
+    rule whose pattern matched ``hostname``. The engine emits one
+    record per matching pattern at scan time; if no driver pattern
+    matches the hostname, a single record with ``matched_pattern=None``
+    is emitted as a generic audit-trail entry.
+    """
+    data: dict[str, Any] = {
+        "kind": KIND_HOSTNAME,
+        "value": hostname,
+    }
+    if matched_pattern is not None:
+        data["matched_pattern"] = matched_pattern
     return Evidence(
         tier=SignalTier.ENRICHMENT,
         source=f"hostname:{hostname}",
-        data={
-            "kind": KIND_HOSTNAME,
-            "value": hostname,
-        },
+        data=data,
     )
 
 

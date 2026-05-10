@@ -1566,30 +1566,43 @@ function describeEvidence(ev: DiscoveryEvidence): { headline: string; detail: st
     }
     case "broadcast": {
       const probeId = sourceId ?? "(unknown probe)";
+      const port = typeof data.port === "number" ? (data.port as number) : null;
+      const matchedPattern = typeof data.matched_pattern === "string"
+        ? (data.matched_pattern as string) : null;
       const response = data.response && typeof data.response === "object"
         ? (data.response as Record<string, unknown>) : {};
       const ip = typeof response.ip === "string" ? (response.ip as string) : null;
       const txt = data.txt && typeof data.txt === "object" ? (data.txt as Record<string, unknown>) : null;
-      const parts: string[] = [];
+      const parts: string[] = [`probe ${probeId}`];
       if (ip) parts.push(`response from ${ip}`);
       if (txt && Object.keys(txt).length > 0) parts.push(txtExcerpt(txt));
-      return {
-        headline: `UDP probe ${probeId} matched`,
-        detail: parts.length > 0 ? parts.join("; ") : null,
-      };
+      // Spec §10 row: "UDP probe on port <port> matched <regex/hex pattern>"
+      const headline = port !== null && matchedPattern
+        ? `UDP probe on port ${port} matched ${matchedPattern}`
+        : port !== null
+          ? `UDP probe on port ${port} matched`
+          : matchedPattern
+            ? `UDP probe matched ${matchedPattern}`
+            : "UDP probe matched";
+      return { headline, detail: parts.join("; ") };
     }
     case "probe": {
       const probeId = sourceId ?? "(unknown probe)";
+      const port = typeof data.port === "number" ? (data.port as number) : null;
       const response = data.response && typeof data.response === "object"
         ? (data.response as Record<string, unknown>) : {};
       const text = typeof response.text === "string" ? (response.text as string) : null;
       const excerpt = text ? text.replace(/[\r\n]+/g, " ").trim().slice(0, 80) : null;
-      return {
-        headline: excerpt
-          ? `TCP probe ${probeId} returned "${excerpt}"`
-          : `TCP probe ${probeId} responded`,
-        detail: null,
-      };
+      // Spec §10 row: "TCP probe on port <port> returned <response excerpt>"
+      const portLabel = port !== null ? `on port ${port}` : null;
+      const head = excerpt
+        ? portLabel
+          ? `TCP probe ${portLabel} returned "${excerpt}"`
+          : `TCP probe returned "${excerpt}"`
+        : portLabel
+          ? `TCP probe ${portLabel} responded`
+          : "TCP probe responded";
+      return { headline: head, detail: `probe ${probeId}` };
     }
     case "oui": {
       const prefix = typeof data.value === "string" ? (data.value as string) : "(unknown prefix)";
@@ -1603,7 +1616,13 @@ function describeEvidence(ev: DiscoveryEvidence): { headline: string; detail: st
     }
     case "hostname": {
       const hostname = typeof data.value === "string" ? (data.value as string) : "(unknown hostname)";
-      return { headline: `Hostname ${hostname} matched a driver pattern`, detail: null };
+      const matchedPattern = typeof data.matched_pattern === "string"
+        ? (data.matched_pattern as string) : null;
+      // Spec §10 row: "Hostname pattern <regex> matched <hostname>"
+      const headline = matchedPattern
+        ? `Hostname pattern ${matchedPattern} matched ${hostname}`
+        : `Hostname ${hostname} observed`;
+      return { headline, detail: null };
     }
     case "snmp_pen": {
       const pen = typeof data.value === "number" || typeof data.value === "string"

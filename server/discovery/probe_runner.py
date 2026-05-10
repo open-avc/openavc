@@ -33,6 +33,7 @@ from server.discovery.hints import (
     ExtractRule,
     RESERVED_EXTRACT_KEYS,
     ResponseMatch,
+    describe_response_match,
 )
 from server.discovery.result import Evidence
 from server.discovery.tier_matcher import (
@@ -249,6 +250,8 @@ async def run_udp_broadcast_probe(
                 probe_id=spec.probe_id,
                 response={"ip": sender_ip},
                 txt=txt or None,
+                port=spec.port,
+                matched_pattern=describe_response_match(spec.response_match) or None,
             )
             log.debug(
                 "probe_runner: %s match from %s reserved=%s extracted=%s",
@@ -355,4 +358,4 @@ async def run_tcp_active_probe(
         "probe_runner: %s match from %s reserved=%s extracted=%s",
         spec.probe_id, target, reserved, extracted,
     )
-    return evidence_active_probe(spec.probe_id, response=response)
+    return evidence_active_probe(spec.probe_id, response=response, port=spec.port)

@@ -118,6 +118,8 @@ class ProbeContext:
         probe_id: str | None = None,
         response: dict[str, Any] | None = None,
         txt: dict[str, str] | None = None,
+        port: int | None = None,
+        matched_pattern: str | None = None,
     ) -> None:
         """Emit a broadcast-probe fingerprint match from ``host``.
 
@@ -127,11 +129,19 @@ class ProbeContext:
         ``make``) inside ``txt`` are lifted to the manufacturer-alias
         enrichment path automatically by the engine's
         ``extract_vendor_strings`` finalize step.
+
+        ``port`` is the UDP port the companion broadcast to and
+        ``matched_pattern`` is a short ``kind:value`` description of the
+        matcher that fired (e.g. ``"hex:417274..."`` /
+        ``"regex:NovaStar"``). Both feed the scan-results "Why?" reveal
+        — pass them so the UI can render the full §10 phrasing.
         """
         ev = evidence_broadcast(
             probe_id or self.companion_broadcast_probe_id,
             response=response or {"ip": host},
             txt=txt,
+            port=port,
+            matched_pattern=matched_pattern,
         )
         await self._emit_for_host(host, ev)
 
@@ -141,14 +151,19 @@ class ProbeContext:
         response: dict[str, Any],
         *,
         probe_id: str | None = None,
+        port: int | None = None,
     ) -> None:
         """Emit an active-probe fingerprint match.
 
         Defaults ``probe_id`` to ``custom_<driver_id>_companion_tcp``.
+        ``port`` is the TCP port the companion connected to; pass it
+        so the scan-results "Why?" reveal can render
+        "TCP probe on port <port> returned <excerpt>".
         """
         ev = evidence_active_probe(
             probe_id or self.companion_active_probe_id,
             response=response,
+            port=port,
         )
         await self._emit_for_host(host, ev)
 

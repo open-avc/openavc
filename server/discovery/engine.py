@@ -606,7 +606,18 @@ class DiscoveryEngine:
                                 hostname = nbt_name
 
                     if hostname:
-                        device.evidence_log.append(evidence_hostname(hostname))
+                        # One evidence record per matching driver pattern
+                        # so the "Why?" reveal can render the specific
+                        # regex that fired. If no driver pattern matches,
+                        # emit a single bare record as audit trail.
+                        matched_patterns = self.signal_index.matched_hostname_patterns(hostname)
+                        if matched_patterns:
+                            for pat in matched_patterns:
+                                device.evidence_log.append(
+                                    evidence_hostname(hostname, matched_pattern=pat)
+                                )
+                        else:
+                            device.evidence_log.append(evidence_hostname(hostname))
 
                     # MAC + OUI: lookup keeps the friendly vendor name
                     # visible in the UI; the matcher consumes the OUI

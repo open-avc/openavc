@@ -106,6 +106,28 @@ class ResponseMatch:
     regex_source: str = ""
 
 
+def describe_response_match(match: ResponseMatch) -> str:
+    """Return a short ``kind:value`` description of the matcher.
+
+    Used by the probe runner to bake the matched pattern into evidence
+    records so the scan-results "Why?" reveal can render lines like
+    "UDP probe on port 6454 matched regex:NovaStar". Format is stable
+    enough for the React UI to split on the first colon and render
+    "kind = value" with appropriate styling.
+
+    Empty string when the matcher has no declared sub-matcher (a
+    connect-only TCP probe — banner-grab style).
+    """
+    parts: list[str] = []
+    if match.starts_with is not None:
+        parts.append(f"hex:{match.starts_with.hex()}")
+    if match.regex is not None and match.regex_source:
+        parts.append(f"regex:{match.regex_source}")
+    if match.contains is not None:
+        parts.append(f"contains:{match.contains}")
+    return ", ".join(parts)
+
+
 @dataclass(frozen=True)
 class ExtractRule:
     """One ``extract:`` field. Either a static value or a regex+group."""
