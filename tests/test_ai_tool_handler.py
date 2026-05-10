@@ -199,6 +199,70 @@ async def test_no_request_id_skips_result(handler, mock_agent):
     mock_agent.send_message.assert_not_called()
 
 
+# --- Discovery ---
+
+
+@pytest.mark.asyncio
+async def test_get_discovery_results_envelope_includes_identification_summary(handler, mock_agent):
+    """Envelope exposes a state-bucketed summary so Claude doesn't have
+    to walk every device's identification.state to count buckets."""
+    mock_engine = MagicMock()
+    mock_engine.get_results.return_value = [
+        {"ip": "10.0.0.1", "identification": {"state": "identified", "driver_id": "pjlink"}},
+        {"ip": "10.0.0.2", "identification": {"state": "identified", "driver_id": "extron_sis"}},
+        {"ip": "10.0.0.3", "identification": {"state": "possible", "candidates": ["a", "b"]}},
+        {"ip": "10.0.0.4", "identification": {"state": "unknown"}},
+        # No identification record — falls through to the "unknown" bucket.
+        {"ip": "10.0.0.5", "identification": None},
+    ]
+    mock_engine.get_status.return_value = {"status": "complete", "duration": 12.5}
+
+    with patch("server.api.discovery._engine", mock_engine):
+        msg = _make_tool_call_msg("get_discovery_results")
+        await _handle_and_wait(handler, msg)
+
+    payload = mock_agent.send_message.call_args[0][1]
+    assert payload["success"] is True
+    result = payload["result"]
+    assert result["total_devices"] == 5
+    assert result["scan_status"] == "complete"
+    assert result["scan_duration_seconds"] == 12.5
+    assert result["identification_summary"] == {
+        "identified": 2,
+        "possible": 1,
+        "unknown": 2,
+    }
+
+
+@pytest.mark.asyncio
+async def test_get_discovery_results_summary_respects_category_filter(handler, mock_agent):
+    """Summary reflects post-filter counts so a category slice carries
+    its own state breakdown."""
+    mock_engine = MagicMock()
+    mock_engine.get_results.return_value = [
+        {"ip": "10.0.0.1", "category": "projector",
+         "identification": {"state": "identified", "driver_id": "pjlink"}},
+        {"ip": "10.0.0.2", "category": "projector",
+         "identification": {"state": "possible", "candidates": ["a"]}},
+        {"ip": "10.0.0.3", "category": "switcher",
+         "identification": {"state": "identified", "driver_id": "extron_sis"}},
+    ]
+    mock_engine.get_status.return_value = {"status": "complete", "duration": 1.0}
+
+    with patch("server.api.discovery._engine", mock_engine):
+        msg = _make_tool_call_msg("get_discovery_results", {"category": "projector"})
+        await _handle_and_wait(handler, msg)
+
+    payload = mock_agent.send_message.call_args[0][1]
+    result = payload["result"]
+    assert result["total_devices"] == 2
+    assert result["identification_summary"] == {
+        "identified": 1,
+        "possible": 1,
+        "unknown": 0,
+    }
+
+
 # --- Protocol tests ---
 
 

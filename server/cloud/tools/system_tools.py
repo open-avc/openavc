@@ -114,10 +114,26 @@ class SystemToolsMixin:
         if category:
             devices = [d for d in devices if d.get("category") == category]
 
+        # Tally identification.state across the returned set so Claude
+        # gets a state-bucketed count without scanning every device's
+        # nested identification block. Devices without an identification
+        # record (older results, in-flight scans) fall through to
+        # ``unknown`` — the same bucket the UI uses for "no signal
+        # matched."
+        identification_summary = {"identified": 0, "possible": 0, "unknown": 0}
+        for d in devices:
+            ident = d.get("identification") or {}
+            state = ident.get("state")
+            if state in identification_summary:
+                identification_summary[state] += 1
+            else:
+                identification_summary["unknown"] += 1
+
         status = discovery_engine.get_status()
         return {
             "devices": devices,
             "total_devices": len(devices),
+            "identification_summary": identification_summary,
             "scan_status": status["status"],
             "scan_duration_seconds": status["duration"],
         }
