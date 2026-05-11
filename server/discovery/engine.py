@@ -514,8 +514,8 @@ class DiscoveryEngine:
                     driver_service_types.append(fp.service)
         mdns_service_types = list(BASELINE_SERVICE_TYPES) + driver_service_types
 
-        mdns_scanner = MDNSScanner(service_types=mdns_service_types)
-        ssdp_scanner = SSDPScanner()
+        mdns_scanner = MDNSScanner(service_types=mdns_service_types, control_ip=control_ip)
+        ssdp_scanner = SSDPScanner(control_ip=control_ip)
         amx_ddp_scanner = AMXDDPScanner(control_ip=control_ip)
 
         # Passive listeners run throughout all active scan phases and are

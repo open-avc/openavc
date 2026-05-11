@@ -469,6 +469,34 @@ class TestScanPipeline:
             with pytest.raises(asyncio.CancelledError):
                 await self.engine._scan_pipeline(["192.168.1.0/24"])
 
+    async def test_passive_scanners_bound_to_control_interface(self):
+        """All three passive scanners (mDNS, SSDP, AMX DDP) must be bound to
+        control_ip on multi-homed hosts.
+
+        Regression for A8: previously MDNSScanner and SSDPScanner were
+        constructed without control_ip while only AMXDDPScanner had it,
+        causing under-discovery / wrong-NIC delivery on hosts with multiple
+        interfaces (corporate + AV NICs, VPN, Docker bridges).
+        """
+        mock_mdns_cls, mock_ssdp_cls, mock_amx_cls, mock_snmp_cls = self._mock_passive_scanners()
+
+        with patch.object(self.engine, "_get_control_interface", return_value="10.20.30.40"), \
+             patch("server.discovery.engine.ping_sweep", new_callable=AsyncMock, return_value=[]), \
+             patch("server.discovery.engine.MDNSScanner", mock_mdns_cls), \
+             patch("server.discovery.engine.SSDPScanner", mock_ssdp_cls), \
+             patch("server.discovery.engine.AMXDDPScanner", mock_amx_cls), \
+             patch("server.discovery.engine.SNMPScanner", mock_snmp_cls), \
+             patch("server.discovery.engine._resolve_hostnames", new_callable=AsyncMock, return_value={}):
+            await self.engine._scan_pipeline(["192.168.1.0/30"])
+
+        # All three constructors should have received the control_ip.
+        mdns_kwargs = mock_mdns_cls.call_args.kwargs
+        ssdp_kwargs = mock_ssdp_cls.call_args.kwargs
+        amx_kwargs = mock_amx_cls.call_args.kwargs
+        assert mdns_kwargs.get("control_ip") == "10.20.30.40", mdns_kwargs
+        assert ssdp_kwargs.get("control_ip") == "10.20.30.40", ssdp_kwargs
+        assert amx_kwargs.get("control_ip") == "10.20.30.40", amx_kwargs
+
 
 # --- Driver matching tests ---
 
