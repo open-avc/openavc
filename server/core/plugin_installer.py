@@ -956,11 +956,19 @@ def _register_installed_plugin(plugin_id: str, plugin_dir: Path) -> bool:
             if filepath.name != "__init__.py":
                 continue
 
-        try:
-            dir_str = str(plugin_dir)
-            if dir_str not in sys.path:
-                sys.path.insert(0, dir_str)
+        # Keep sys.path on the plugin's dir scoped to the import attempt.
+        # On success (registered) we leave it so subsequent imports of the
+        # plugin's siblings work. On any other exit — exec_module raises,
+        # no PLUGIN_INFO class found, spec.loader missing — strip it back
+        # out so a failed install doesn't pollute the import path or let
+        # a later install accidentally pick up the failed plugin's files.
+        dir_str = str(plugin_dir)
+        added_to_path = dir_str not in sys.path
+        if added_to_path:
+            sys.path.insert(0, dir_str)
 
+        registered = False
+        try:
             spec = importlib.util.spec_from_file_location(
                 f"plugin_{plugin_id}", filepath
             )
@@ -977,13 +985,17 @@ def _register_installed_plugin(plugin_id: str, plugin_dir: Path) -> bool:
                         attr.PLUGIN_INFO.get("id") == plugin_id):
                     register_plugin_class(attr)
                     log.info(f"Registered plugin class '{plugin_id}' from {filepath.name}")
+                    registered = True
                     return True
-
-            if dir_str in sys.path:
-                sys.path.remove(dir_str)
 
         except Exception as e:  # Catch-all: exec_module runs arbitrary plugin code
             log.debug(f"Could not load {filepath.name}: {e}")
+        finally:
+            if not registered and added_to_path:
+                try:
+                    sys.path.remove(dir_str)
+                except ValueError:
+                    pass
 
     return False
 
