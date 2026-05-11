@@ -98,6 +98,90 @@ async def test_handle_tunnel_open_missing_fields(tunnel_handler, mock_agent):
     mock_agent.send_message.assert_not_called()
 
 
+# ===========================================================================
+# A20 — Agent must honor target_port from tunnel_open instead of hardcoding
+# its own HTTP_PORT. Spec §13.12 line 1859: target_port: 8080 in the payload.
+# Without this, plugin / alt-service tunneling is impossible.
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_handle_tunnel_open_honors_target_port(tunnel_handler, mock_agent):
+    """Agent should record the cloud-requested target_port on the TunnelConnection."""
+    mock_ws = AsyncMock()
+    mock_ws.recv = AsyncMock(side_effect=asyncio.CancelledError)
+    mock_ws.close = AsyncMock()
+
+    msg = {
+        "type": "tunnel_open",
+        "payload": {
+            "tunnel_id": "t-port",
+            "target_port": 9090,  # NOT the default HTTP_PORT
+            "tunnel_token": "tok",
+            "tunnel_data_url": "ws://localhost:9999/tunnel-data/t-port",
+        },
+    }
+    with patch("server.cloud.tunnel.websockets.connect", new_callable=AsyncMock, return_value=mock_ws):
+        await tunnel_handler.handle_tunnel_open(msg)
+
+    assert tunnel_handler._tunnels["t-port"].target_port == 9090
+    await tunnel_handler.stop()
+
+
+@pytest.mark.asyncio
+async def test_handle_tunnel_open_falls_back_to_http_port(tunnel_handler, mock_agent):
+    """target_port missing from payload should fall back to config.HTTP_PORT."""
+    from server import config
+
+    mock_ws = AsyncMock()
+    mock_ws.recv = AsyncMock(side_effect=asyncio.CancelledError)
+    mock_ws.close = AsyncMock()
+
+    msg = {
+        "type": "tunnel_open",
+        "payload": {
+            "tunnel_id": "t-default",
+            # target_port omitted on purpose
+            "tunnel_token": "tok",
+            "tunnel_data_url": "ws://localhost:9999/tunnel-data/t-default",
+        },
+    }
+    with patch("server.cloud.tunnel.websockets.connect", new_callable=AsyncMock, return_value=mock_ws):
+        await tunnel_handler.handle_tunnel_open(msg)
+
+    assert tunnel_handler._tunnels["t-default"].target_port == config.HTTP_PORT
+    await tunnel_handler.stop()
+
+
+@pytest.mark.asyncio
+async def test_handle_tunnel_open_invalid_port_falls_back(tunnel_handler, mock_agent):
+    """Invalid target_port (out of range or wrong type) should fall back."""
+    from server import config
+
+    mock_ws = AsyncMock()
+    mock_ws.recv = AsyncMock(side_effect=asyncio.CancelledError)
+    mock_ws.close = AsyncMock()
+
+    for bad_port in (0, -1, 70000, "8080", None):
+        tid = f"t-bad-{bad_port}"
+        msg = {
+            "type": "tunnel_open",
+            "payload": {
+                "tunnel_id": tid,
+                "target_port": bad_port,
+                "tunnel_token": "tok",
+                "tunnel_data_url": f"ws://localhost:9999/tunnel-data/{tid}",
+            },
+        }
+        with patch("server.cloud.tunnel.websockets.connect", new_callable=AsyncMock, return_value=mock_ws):
+            await tunnel_handler.handle_tunnel_open(msg)
+        assert tunnel_handler._tunnels[tid].target_port == config.HTTP_PORT, (
+            f"target_port={bad_port!r} should have fallen back to HTTP_PORT"
+        )
+
+    await tunnel_handler.stop()
+
+
 @pytest.mark.asyncio
 async def test_stop_closes_all_tunnels(tunnel_handler, mock_agent):
     """stop() should close all active tunnels."""

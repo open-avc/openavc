@@ -58,10 +58,20 @@ class TunnelHandler:
         tunnel_token = payload.get("tunnel_token", "")
         tunnel_data_url = payload.get("tunnel_data_url", "")
 
-        # Always proxy to the local server's actual port, not the cloud-provided
-        # default.  The user may have changed OPENAVC_PORT, and the agent is
-        # always proxying to itself.
-        target_port = config.HTTP_PORT
+        # Per spec §13.12, target_port is the local port to proxy to. Honor
+        # what the cloud requested so it can tunnel to plugin or alt-service
+        # ports, not just the main HTTP port. Fall back to HTTP_PORT when
+        # the field is missing (older cloud builds) or invalid.
+        requested_port = payload.get("target_port")
+        if isinstance(requested_port, int) and 1 <= requested_port <= 65535:
+            target_port = requested_port
+        else:
+            if requested_port is not None:
+                log.warning(
+                    f"Tunnel open: invalid target_port {requested_port!r}, "
+                    f"falling back to HTTP_PORT {config.HTTP_PORT}"
+                )
+            target_port = config.HTTP_PORT
 
         if not tunnel_id or not tunnel_data_url:
             log.error("Tunnel open: missing tunnel_id or tunnel_data_url")
