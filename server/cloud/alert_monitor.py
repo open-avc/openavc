@@ -209,71 +209,78 @@ class AlertMonitor:
         try:
             while self._running:
                 await asyncio.sleep(30)
-                now = time.time()
-
-                # Check pattern rule timers
-                for alert_key, start_time in list(self._pattern_timers.items()):
-                    if alert_key in self._active_alerts:
-                        continue  # Already fired
-
-                    rule = self._find_rule_from_key(alert_key)
-                    if not rule:
-                        self._pattern_timers.pop(alert_key, None)
-                        continue
-
-                    duration = rule.get("condition", {}).get("duration_seconds", 0)
-                    if now - start_time >= duration:
-                        alert_id = str(uuid.uuid4())
-                        self._active_alerts[alert_key] = alert_id
-                        device_id = _extract_device_id(alert_key.split(":", 2)[-1])
-                        await self._agent.send_message(ALERT, {
-                            "alert_id": alert_id,
-                            "severity": rule.get("severity", "warning"),
-                            "category": rule.get("category", "device"),
-                            "device_id": device_id,
-                            "message": f"{rule['name']}: condition held for {duration}s",
-                            "detail": {"rule_id": rule["id"], "duration_seconds": duration},
-                        })
-
-                # Prune stale device entries (devices not seen in 24 hours)
-                stale_cutoff = now - 86400
-                for dev_id in [k for k, t in self._last_state_times.items() if t < stale_cutoff]:
-                    self._last_state_times.pop(dev_id, None)
-
-                # Check absence rules
-                for rule in self._rules:
-                    if rule.get("rule_type") != "absence" or not rule.get("enabled", True):
-                        continue
-
-                    threshold_secs = rule.get("condition", {}).get("threshold_seconds", 120)
-                    key_prefix = rule.get("condition", {}).get("key_prefix", "device.")
-
-                    for device_id, last_time in list(self._last_state_times.items()):
-                        # Only check devices matching the key_prefix (glob-style)
-                        full_key = f"device.{device_id}"
-                        if not fnmatch(full_key, key_prefix):
-                            continue
-
-                        alert_key = f"rule:{rule['id']}:{device_id}"
-
-                        if now - last_time > threshold_secs and alert_key not in self._active_alerts:
-                            alert_id = str(uuid.uuid4())
-                            self._active_alerts[alert_key] = alert_id
-                            elapsed = int(now - last_time)
-                            await self._agent.send_message(ALERT, {
-                                "alert_id": alert_id,
-                                "severity": rule.get("severity", "warning"),
-                                "category": "device",
-                                "device_id": device_id,
-                                "message": f"{rule['name']}: {device_id} not reporting for {elapsed}s",
-                                "detail": {"rule_id": rule["id"], "threshold_seconds": threshold_secs},
-                            })
-                        elif now - last_time <= threshold_secs and alert_key in self._active_alerts:
-                            resolved_id = self._active_alerts.pop(alert_key)
-                            await self._agent.send_message(ALERT_RESOLVED, {"alert_id": resolved_id})
-
+                await self._run_periodic_checks(time.time())
         except asyncio.CancelledError:
             return
+
+    async def _run_periodic_checks(self, now: float) -> None:
+        """Run one iteration of the periodic checks.
+
+        Split out from `_periodic_check_loop` so tests can drive a single
+        evaluation without waiting on the 30-second sleep.
+        """
+        # Check pattern rule timers
+        for alert_key, start_time in list(self._pattern_timers.items()):
+            if alert_key in self._active_alerts:
+                continue  # Already fired
+
+            rule = self._find_rule_from_key(alert_key)
+            if not rule:
+                self._pattern_timers.pop(alert_key, None)
+                continue
+
+            duration = rule.get("condition", {}).get("duration_seconds", 0)
+            if now - start_time >= duration:
+                alert_id = str(uuid.uuid4())
+                self._active_alerts[alert_key] = alert_id
+                device_id = _extract_device_id(alert_key.split(":", 2)[-1])
+                await self._agent.send_message(ALERT, {
+                    "alert_id": alert_id,
+                    "rule_id": rule["id"],
+                    "severity": rule.get("severity", "warning"),
+                    "category": rule.get("category", "device"),
+                    "device_id": device_id,
+                    "message": f"{rule['name']}: condition held for {duration}s",
+                    "detail": {"rule_id": rule["id"], "duration_seconds": duration},
+                })
+
+        # Prune stale device entries (devices not seen in 24 hours)
+        stale_cutoff = now - 86400
+        for dev_id in [k for k, t in self._last_state_times.items() if t < stale_cutoff]:
+            self._last_state_times.pop(dev_id, None)
+
+        # Check absence rules
+        for rule in self._rules:
+            if rule.get("rule_type") != "absence" or not rule.get("enabled", True):
+                continue
+
+            threshold_secs = rule.get("condition", {}).get("threshold_seconds", 120)
+            key_prefix = rule.get("condition", {}).get("key_prefix", "device.")
+
+            for device_id, last_time in list(self._last_state_times.items()):
+                # Only check devices matching the key_prefix (glob-style)
+                full_key = f"device.{device_id}"
+                if not fnmatch(full_key, key_prefix):
+                    continue
+
+                alert_key = f"rule:{rule['id']}:{device_id}"
+
+                if now - last_time > threshold_secs and alert_key not in self._active_alerts:
+                    alert_id = str(uuid.uuid4())
+                    self._active_alerts[alert_key] = alert_id
+                    elapsed = int(now - last_time)
+                    await self._agent.send_message(ALERT, {
+                        "alert_id": alert_id,
+                        "rule_id": rule["id"],
+                        "severity": rule.get("severity", "warning"),
+                        "category": "device",
+                        "device_id": device_id,
+                        "message": f"{rule['name']}: {device_id} not reporting for {elapsed}s",
+                        "detail": {"rule_id": rule["id"], "threshold_seconds": threshold_secs},
+                    })
+                elif now - last_time <= threshold_secs and alert_key in self._active_alerts:
+                    resolved_id = self._active_alerts.pop(alert_key)
+                    await self._agent.send_message(ALERT_RESOLVED, {"alert_id": resolved_id})
 
     # --- Send Loop (processes queued sends from sync callback) ---
 

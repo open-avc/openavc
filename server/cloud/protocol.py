@@ -283,31 +283,6 @@ def build_state_batch(
     )
 
 
-def build_alert(
-    seq: int,
-    session_token: str,
-    signing_key: bytes,
-    alert_id: str,
-    severity: str,
-    category: str,
-    device_id: str | None,
-    message: str,
-    detail: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Build a signed alert message."""
-    payload: dict[str, Any] = {
-        "alert_id": alert_id,
-        "severity": severity,
-        "category": category,
-        "message": message,
-    }
-    if device_id is not None:
-        payload["device_id"] = device_id
-    if detail is not None:
-        payload["detail"] = detail
-    return build_signed_message(ALERT, payload, seq, session_token, signing_key)
-
-
 def build_alert_resolved(
     seq: int,
     session_token: str,

@@ -206,8 +206,107 @@ async def test_threshold_rule_fires_alert():
     assert msg_type == "alert"
     assert payload["severity"] == "warning"
     assert "projector1" in payload["message"]
+    # A22: rule_id must be a top-level field so the cloud's alert_ingester
+    # can link the alert back to its AlertRule.
+    assert payload["rule_id"] == rule_id
 
     await monitor.stop()
+
+
+@pytest.mark.asyncio
+async def test_pattern_alert_includes_rule_id():
+    """A22: Pattern-rule alerts fired from _periodic_check_loop must include rule_id.
+
+    Without it, the cloud's alert_ingester can't link the alert to its
+    AlertRule. _run_periodic_checks is the inner helper that the loop calls
+    on each tick — drive it directly so we don't have to wait 30s.
+    """
+    agent = MockAgent()
+    state = MockStateStore()
+    events = MockEventBus()
+    monitor = AlertMonitor(agent, state, events)
+    await monitor.start()
+
+    rule_id = str(uuid.uuid4())
+    monitor._on_rules_update_sync("cloud.alert_rules_update", {
+        "rules": [_make_rule(
+            rule_id=rule_id,
+            rule_type="pattern",
+            condition={
+                "key": "device.projector1.state",
+                "value": "warming",
+                "duration_seconds": 5,
+            },
+        )]
+    })
+
+    # Start the pattern timer
+    state.set("device.projector1.state", "warming")
+    # The sync path puts a start_time in _pattern_timers; the alert itself
+    # only fires from _run_periodic_checks once duration_seconds has elapsed.
+    assert monitor._pattern_timers, "Pattern rule should have armed a timer"
+
+    # Backdate the timer so the duration check passes when we tick
+    for key in list(monitor._pattern_timers):
+        monitor._pattern_timers[key] -= 10
+
+    import time as _t
+    await monitor._run_periodic_checks(now=_t.time())
+
+    assert len(agent.sent_messages) == 1
+    msg_type, payload = agent.sent_messages[0]
+    assert msg_type == "alert"
+    assert payload["rule_id"] == rule_id
+
+    await monitor.stop()
+
+
+@pytest.mark.asyncio
+async def test_absence_alert_includes_rule_id():
+    """A22: Absence-rule alerts fired from _periodic_check_loop must include rule_id."""
+    agent = MockAgent()
+    state = MockStateStore()
+    events = MockEventBus()
+    monitor = AlertMonitor(agent, state, events)
+    await monitor.start()
+
+    rule_id = str(uuid.uuid4())
+    monitor._on_rules_update_sync("cloud.alert_rules_update", {
+        "rules": [_make_rule(
+            rule_id=rule_id,
+            rule_type="absence",
+            condition={"key_prefix": "device.*", "threshold_seconds": 60},
+        )]
+    })
+
+    # Seed device activity, then pretend it stopped reporting past the
+    # absence threshold (60s) but not so far back that the 24-hour stale
+    # prune drops it before the absence check runs.
+    import time as _t
+    now = _t.time()
+    state.set("device.projector1.power", "on")
+    monitor._last_state_times["projector1"] = now - 120  # 2 minutes stale
+
+    await monitor._run_periodic_checks(now=now)
+
+    assert len(agent.sent_messages) == 1
+    msg_type, payload = agent.sent_messages[0]
+    assert msg_type == "alert"
+    assert payload["rule_id"] == rule_id
+    assert payload["device_id"] == "projector1"
+
+    await monitor.stop()
+
+
+def test_build_alert_removed_from_protocol():
+    """A22: The dead `build_alert` builder is gone so no caller can produce
+    an alert message without rule_id by accident.
+    """
+    from server.cloud import protocol
+    assert not hasattr(protocol, "build_alert"), (
+        "build_alert was removed in A22 — re-introducing it without rule_id "
+        "would silently break alert→rule linking on the cloud side."
+    )
 
 
 @pytest.mark.asyncio
