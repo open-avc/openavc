@@ -981,3 +981,108 @@ class TestAgentThrottle:
 
         # Entry should be removed
         assert "state_batch" not in agent._throttles
+
+
+# ===========================================================================
+# Capability Gating (A23) — Agent drops downstream messages whose required
+# capability wasn't negotiated in session_start.enabled_capabilities. Spec
+# §13.8: "If `tunnel` is not enabled, the agent does not listen for
+# `tunnel_open` messages." Same intent for `diagnostic`.
+# ===========================================================================
+
+
+class TestAgentCapabilityGating:
+    """Tests for CloudAgent._handle_message capability gating."""
+
+    def _make_agent(self, enabled_capabilities: list[str]):
+        """Build a minimal CloudAgent for dispatch testing."""
+        from server.cloud.agent import CloudAgent
+
+        agent = CloudAgent.__new__(CloudAgent)
+        agent._session = None  # Skip signature verification path
+        agent._enabled_capabilities = enabled_capabilities
+
+        # Spy handlers — record calls without actually doing anything
+        class Spy:
+            def __init__(self):
+                self.called = False
+
+            async def handle_tunnel_open(self, msg):
+                self.called = "tunnel_open"
+
+            async def handle_tunnel_close(self, msg):
+                self.called = "tunnel_close"
+
+            async def handle(self, msg):
+                # CommandHandler dispatch covers diagnostic alongside command/config_push
+                self.called = msg.get("type")
+
+        agent._tunnel_handler = Spy()
+        agent._command_handler = Spy()
+        agent._ai_tool_handler = None
+        return agent
+
+    @pytest.mark.asyncio
+    async def test_tunnel_open_dropped_when_capability_missing(self):
+        """tunnel_open is silently dropped if 'tunnel' isn't in enabled_capabilities."""
+        agent = self._make_agent(enabled_capabilities=["monitoring"])
+        await agent._handle_message({"type": "tunnel_open", "payload": {"tunnel_id": "t1"}})
+        assert agent._tunnel_handler.called is False
+
+    @pytest.mark.asyncio
+    async def test_tunnel_open_dispatched_when_capability_enabled(self):
+        """tunnel_open reaches the handler when 'tunnel' is enabled."""
+        agent = self._make_agent(enabled_capabilities=["monitoring", "tunnel"])
+        await agent._handle_message({"type": "tunnel_open", "payload": {"tunnel_id": "t1"}})
+        assert agent._tunnel_handler.called == "tunnel_open"
+
+    @pytest.mark.asyncio
+    async def test_tunnel_close_dropped_when_capability_missing(self):
+        """tunnel_close is dropped without 'tunnel'."""
+        agent = self._make_agent(enabled_capabilities=[])
+        await agent._handle_message({"type": "tunnel_close", "payload": {"tunnel_id": "t1"}})
+        assert agent._tunnel_handler.called is False
+
+    @pytest.mark.asyncio
+    async def test_diagnostic_dropped_when_capability_missing(self):
+        """diagnostic is dropped without 'diagnostics' even though it routes through command_handler."""
+        agent = self._make_agent(enabled_capabilities=["monitoring", "remote_access"])
+        await agent._handle_message({
+            "type": "diagnostic",
+            "payload": {"request_id": "r1", "action": "ping", "target": "1.2.3.4"},
+        })
+        assert agent._command_handler.called is False
+
+    @pytest.mark.asyncio
+    async def test_diagnostic_dispatched_when_capability_enabled(self):
+        """diagnostic reaches command_handler when 'diagnostics' is enabled."""
+        agent = self._make_agent(enabled_capabilities=["diagnostics"])
+        await agent._handle_message({
+            "type": "diagnostic",
+            "payload": {"request_id": "r1", "action": "ping", "target": "1.2.3.4"},
+        })
+        assert agent._command_handler.called == "diagnostic"
+
+    @pytest.mark.asyncio
+    async def test_command_not_gated(self):
+        """COMMAND is not in the gate map — it should dispatch regardless of capability list."""
+        agent = self._make_agent(enabled_capabilities=[])
+        await agent._handle_message({
+            "type": "command",
+            "payload": {"request_id": "r1", "device_id": "d1", "command": "noop"},
+        })
+        assert agent._command_handler.called == "command"
+
+    def test_capability_map_vocabulary_matches_default(self):
+        """The capability names in _CAPABILITY_GATED must come from DEFAULT_CAPABILITIES.
+
+        Regression for A44: cloud and agent must agree on the capability vocabulary,
+        otherwise capability gating silently blocks everything.
+        """
+        from server.cloud.agent import DEFAULT_CAPABILITIES, _CAPABILITY_GATED
+
+        for required in _CAPABILITY_GATED.values():
+            assert required in DEFAULT_CAPABILITIES, (
+                f"Gated capability '{required}' not in DEFAULT_CAPABILITIES "
+                f"({DEFAULT_CAPABILITIES}) — vocabulary drift"
+            )

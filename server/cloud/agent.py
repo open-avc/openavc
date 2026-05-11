@@ -56,6 +56,18 @@ DEFAULT_CAPABILITIES = [
     "tunnel",
 ]
 
+# Downstream messages that require a specific capability before the agent will
+# dispatch them. Per spec §13.8, the agent is a defense-in-depth gate: if the
+# cloud sends a tunnel_open while "tunnel" isn't in the negotiated
+# enabled_capabilities, the agent ignores the message instead of acting on it.
+# Keep this map in sync with the canonical capability vocabulary in
+# `DEFAULT_CAPABILITIES` above and in `openavc-cloud/api/ws/handler.py`.
+_CAPABILITY_GATED: dict[str, str] = {
+    "tunnel_open": "tunnel",
+    "tunnel_close": "tunnel",
+    "diagnostic": "diagnostics",
+}
+
 
 class CloudAgent:
     """
@@ -510,6 +522,17 @@ class CloudAgent:
         # Check for session rotation trigger
         if self._session and seq is not None:
             self._session.check_rotation(seq)
+
+        # Capability gating: silently drop messages the cloud sent for features
+        # this session didn't negotiate. Spec §13.8 line 1216: "If `tunnel` is
+        # not enabled, the agent does not listen for `tunnel_open` messages."
+        required = _CAPABILITY_GATED.get(msg_type)
+        if required and required not in self._enabled_capabilities:
+            log.warning(
+                f"Cloud agent: dropping {msg_type} — '{required}' capability "
+                f"not enabled for this session (enabled: {self._enabled_capabilities})"
+            )
+            return
 
         # Dispatch by type
         if msg_type == PING:
