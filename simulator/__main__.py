@@ -31,6 +31,15 @@ def main():
         default="127.0.0.1",
         help="Bind address (default: 127.0.0.1)",
     )
+    parser.add_argument(
+        "--no-auto-shutdown",
+        action="store_true",
+        help=(
+            "Don't stop the simulator process when the last UI WebSocket client "
+            "disconnects. Used when openavc launches the simulator as a subprocess "
+            "(drivers stay connected even with no browser open)."
+        ),
+    )
     args = parser.parse_args()
 
     # Load config from file if provided
@@ -44,6 +53,7 @@ def main():
         config["driver_paths"] = args.driver_paths
     if "ui_port" not in config:
         config["ui_port"] = args.port
+    config["auto_shutdown"] = not args.no_auto_shutdown
 
     # Store config for the FastAPI app to pick up
     from simulator import _runtime

@@ -61,12 +61,24 @@ class ErrorAction(BaseModel):
 _manager: SimulatorManager | None = None
 _ws_clients: list[WebSocket] = []
 _shutdown_task: asyncio.Task | None = None
+_auto_shutdown: bool = True  # Set to False when launched as openavc subprocess
 
 
 def set_manager(manager: SimulatorManager) -> None:
     global _manager
     _manager = manager
     manager.add_change_listener(_broadcast_change)
+
+
+def set_auto_shutdown(enabled: bool) -> None:
+    """Enable or disable auto-shutdown when the last UI WS client disconnects.
+
+    Enabled by default for standalone CLI use (close the tab → simulator stops).
+    Disabled when openavc launches the simulator as a subprocess, since drivers
+    rely on the simulator staying up regardless of whether a browser is open.
+    """
+    global _auto_shutdown
+    _auto_shutdown = enabled
 
 
 def _get_manager() -> SimulatorManager:
@@ -265,7 +277,7 @@ async def ws_endpoint(websocket: WebSocket):
         pass
     finally:
         _ws_clients.remove(websocket)
-        if not _ws_clients:
+        if not _ws_clients and _auto_shutdown:
             logger.info("Last UI client disconnected, shutting down in 5s")
             _shutdown_task = asyncio.create_task(_delayed_shutdown())
 

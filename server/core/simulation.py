@@ -167,10 +167,15 @@ class SimulationManager:
         # In frozen (PyInstaller) builds, sys.executable is the .exe itself,
         # so we use --simulator flag which server/main.py dispatches to the
         # simulator entry point. In normal Python, use -m simulator.
+        #
+        # --no-auto-shutdown: when launched standalone the simulator stops
+        # itself 5s after the last UI tab closes (nice CLI UX). When openavc
+        # is the launcher, drivers depend on the simulator staying up
+        # regardless of whether the Simulator UI tab is open.
         if getattr(sys, 'frozen', False):
-            cmd = [sys.executable, "--simulator", "--config", config_path]
+            cmd = [sys.executable, "--simulator", "--config", config_path, "--no-auto-shutdown"]
         else:
-            cmd = [sys.executable, "-m", "simulator", "--config", config_path]
+            cmd = [sys.executable, "-m", "simulator", "--config", config_path, "--no-auto-shutdown"]
 
         try:
             self._process = await asyncio.create_subprocess_exec(

@@ -19,7 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from simulator import _runtime
-from simulator.api import router as api_router, ws_endpoint, set_manager
+from simulator.api import router as api_router, ws_endpoint, set_auto_shutdown, set_manager
 from simulator.engine import SimulatorManager
 
 logger = logging.getLogger(__name__)
@@ -38,6 +38,7 @@ async def lifespan(app: FastAPI):
 
     # Register manager with the API
     set_manager(manager)
+    set_auto_shutdown(config.get("auto_shutdown", True))
 
     # Start requested devices (from config file)
     for device in config.get("devices", []):
