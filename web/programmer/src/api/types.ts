@@ -762,7 +762,6 @@ export interface InstalledDriver {
   name: string;
   format: string;
   filename: string;
-  source: string;  // 'builtin' | 'community' | 'user'
   version: string;
 }
 

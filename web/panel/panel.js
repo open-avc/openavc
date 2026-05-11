@@ -300,13 +300,6 @@ class PanelApp {
                 this.resetIdleTimer();
                 break;
 
-            case 'device.status':
-                if (msg.device_id) {
-                    this.state[`device.${msg.device_id}.connected`] = msg.connected;
-                    this.evaluateAllBindings();
-                }
-                break;
-
             case 'ui.navigate':
                 if (msg.page_id) {
                     this.navigateToPage(msg.page_id);
