@@ -474,6 +474,130 @@ async def test_reload_config(isc, state):
     await isc.stop()
 
 
+async def test_reload_drops_removed_manual_peers_pre_handshake(isc):
+    """A10: removing a manual peer that hasn't completed handshake yet should
+    cancel its connect attempt, close it, and remove it from _peers.
+    """
+    # Seed two manual peers as if start() had just been called and neither
+    # has completed handshake — their keys are still "manual:host:port".
+    isc._manual_peers = ["192.0.2.10:8080", "192.0.2.11:8080"]
+    isc._peers["manual:192.0.2.10:8080"] = PeerInfo(
+        instance_id="manual:192.0.2.10:8080", name="192.0.2.10:8080",
+        host="192.0.2.10", port=8080, source="manual",
+    )
+    isc._peers["manual:192.0.2.11:8080"] = PeerInfo(
+        instance_id="manual:192.0.2.11:8080", name="192.0.2.11:8080",
+        host="192.0.2.11", port=8080, source="manual",
+    )
+
+    # Reload with only one peer kept.
+    await isc.reload(
+        shared_state_patterns=["var.*"],
+        auth_key=isc._auth_key,
+        manual_peers=["192.0.2.10:8080"],
+    )
+
+    assert "manual:192.0.2.10:8080" in isc._peers
+    assert "manual:192.0.2.11:8080" not in isc._peers
+
+
+async def test_reload_drops_removed_manual_peers_after_handshake(isc):
+    """A10: a manual peer re-keyed to its real instance_id after handshake
+    is still considered manual; removing its address should drop it too.
+    """
+    # Simulate completed handshake — the manual peer was re-keyed to the
+    # real instance_id but kept source="manual" + host/port.
+    real_id = "zzzz-9999"
+    isc._manual_peers = ["192.0.2.20:8080"]
+    isc._peers[real_id] = PeerInfo(
+        instance_id=real_id, name="Remote", host="192.0.2.20", port=8080,
+        source="manual", connected=True,
+    )
+
+    class FakeConn:
+        async def close(self):
+            self.closed = True
+        closed = False
+
+    fake = FakeConn()
+    isc._connections[real_id] = fake
+
+    await isc.reload(
+        shared_state_patterns=["var.*"],
+        auth_key=isc._auth_key,
+        manual_peers=[],
+    )
+
+    assert real_id not in isc._peers, "removed manual peer must be dropped"
+    assert real_id not in isc._connections, "connection must be closed"
+    assert fake.closed, "_close_peer should have awaited conn.close()"
+
+
+async def test_reload_auth_key_change_disconnects_existing_peers(isc):
+    """A10: rotating auth_key must force-disconnect every active connection
+    so they re-handshake with the new key. Existing sockets still hold the
+    old key on both sides — leaving them up keeps using stale auth.
+    """
+    # Two connections: one manual (no entry in _manual_peers because it was
+    # discovered via mDNS), one discovered.
+    class FakeConn:
+        def __init__(self):
+            self.closed = False
+        async def close(self):
+            self.closed = True
+
+    conn_a = FakeConn()
+    conn_b = FakeConn()
+    isc._peers["peer-a"] = PeerInfo(
+        instance_id="peer-a", name="A", host="10.0.0.1", port=8080,
+        source="mdns", connected=True,
+    )
+    isc._peers["peer-b"] = PeerInfo(
+        instance_id="peer-b", name="B", host="10.0.0.2", port=8080,
+        source="manual", connected=True,
+    )
+    isc._manual_peers = ["10.0.0.2:8080"]
+    isc._connections["peer-a"] = conn_a
+    isc._connections["peer-b"] = conn_b
+
+    await isc.reload(
+        shared_state_patterns=["var.*"],
+        auth_key="rotated-key",
+        manual_peers=["10.0.0.2:8080"],
+    )
+
+    assert conn_a.closed
+    assert conn_b.closed
+    assert "peer-a" not in isc._connections
+    assert "peer-b" not in isc._connections
+    assert isc._auth_key == "rotated-key"
+
+
+async def test_reload_unchanged_auth_key_keeps_connections(isc):
+    """A10: when auth_key doesn't change, existing connections stay up."""
+    class FakeConn:
+        def __init__(self):
+            self.closed = False
+        async def close(self):
+            self.closed = True
+
+    conn = FakeConn()
+    isc._peers["peer-x"] = PeerInfo(
+        instance_id="peer-x", name="X", host="10.0.0.3", port=8080,
+        source="mdns", connected=True,
+    )
+    isc._connections["peer-x"] = conn
+
+    await isc.reload(
+        shared_state_patterns=["var.*"],
+        auth_key=isc._auth_key,  # same key
+        manual_peers=[],
+    )
+
+    assert not conn.closed
+    assert "peer-x" in isc._connections
+
+
 # ---------------------------------------------------------------------------
 # Duplicate connection tie-breaking
 # ---------------------------------------------------------------------------

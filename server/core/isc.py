@@ -352,6 +352,10 @@ class ISCManager:
     ) -> None:
         """Hot-reload ISC config without full restart."""
         self._shared_patterns = list(shared_state_patterns)
+
+        # Capture the old auth key before overwriting it so we can detect
+        # rotation and force-disconnect existing peers below.
+        old_auth_key = self._auth_key
         self._auth_key = auth_key
 
         # Re-subscribe state listeners
@@ -367,6 +371,37 @@ class ISCManager:
         old_set = set(self._manual_peers)
         self._manual_peers = list(manual_peers)
 
+        # If the auth key rotated, force-disconnect every active connection
+        # — both manual and discovered. Existing sockets still hold the old
+        # key on both sides; new handshakes will use the new key. Manual
+        # peers are re-scheduled below; discovered peers will be re-found
+        # via mDNS / UDP discovery.
+        auth_key_changed = old_auth_key != auth_key
+        if auth_key_changed:
+            for peer_id in list(self._connections.keys()):
+                await self._close_peer(peer_id, emit=True)
+
+        # Drop peers removed from the manual list. After handshake the peer
+        # may be re-keyed from "manual:host:port" to the real instance_id,
+        # so we match by (source="manual", host, port) — plus the legacy
+        # tmp_key in case handshake never completed.
+        for addr in old_set - new_set:
+            host, port = _parse_peer_address(addr)
+            tmp_key = f"manual:{host}:{port}"
+            to_remove = [
+                peer_id for peer_id, peer in self._peers.items()
+                if peer.source == "manual" and peer.host == host and peer.port == port
+            ]
+            if tmp_key in self._peers and tmp_key not in to_remove:
+                to_remove.append(tmp_key)
+            for peer_id in to_remove:
+                # Cancel any pending reconnect attempt before closing.
+                task = self._connect_tasks.pop(peer_id, None)
+                if task and not task.done():
+                    task.cancel()
+                await self._close_peer(peer_id, emit=True)
+                self._peers.pop(peer_id, None)
+
         for addr in new_set - old_set:
             host, port = _parse_peer_address(addr)
             tmp_key = f"manual:{host}:{port}"
@@ -375,6 +410,20 @@ class ISCManager:
                     instance_id=tmp_key, name=addr, host=host, port=port,
                     source="manual",
                 )
+                self._schedule_connect(tmp_key, host, port)
+
+        # If the auth key changed but the manual peer list didn't, the
+        # re-scheduling above won't fire for those peers — kick a reconnect
+        # for every manual peer so they re-handshake with the new key.
+        if auth_key_changed:
+            for addr in new_set & old_set:
+                host, port = _parse_peer_address(addr)
+                tmp_key = f"manual:{host}:{port}"
+                if tmp_key not in self._peers:
+                    self._peers[tmp_key] = PeerInfo(
+                        instance_id=tmp_key, name=addr, host=host, port=port,
+                        source="manual",
+                    )
                 self._schedule_connect(tmp_key, host, port)
 
         log.info(f"ISC reloaded ({len(self._shared_patterns)} patterns, {len(self._manual_peers)} manual peers)")
