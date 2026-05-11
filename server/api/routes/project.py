@@ -257,6 +257,8 @@ async def import_library_project(request: Request) -> dict[str, Any]:
         "id": result["id"],
         "installed_drivers": result.get("installed_drivers", []),
         "missing_drivers": result.get("missing_drivers", []),
+        "installed_plugins": result.get("installed_plugins", []),
+        "missing_plugins": result.get("missing_plugins", []),
         "warnings": result.get("warnings", []),
     }
 
