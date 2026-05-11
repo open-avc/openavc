@@ -29,6 +29,7 @@ Checks performed:
 from __future__ import annotations
 
 import argparse
+import ast
 import re
 import sys
 from pathlib import Path
@@ -735,6 +736,31 @@ def _extract_respond_calls(handler_code: str) -> list[str]:
 # ── Directory scanning ──
 
 
+def _is_python_driver(path: Path) -> bool:
+    """True only when the file has a top-level `DRIVER_INFO = {...}` assignment.
+
+    A plain substring match for "DRIVER_INFO" also catches build scripts,
+    docs, and helpers that mention the name in a comment or string literal
+    (e.g. `scripts/build_index.py`), then the validator reports them as
+    broken drivers. Parsing the AST keeps the check honest.
+    """
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except (SyntaxError, OSError, UnicodeDecodeError):
+        return False
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            if any(
+                isinstance(t, ast.Name) and t.id == "DRIVER_INFO"
+                for t in node.targets
+            ):
+                return True
+        elif isinstance(node, ast.AnnAssign):
+            if isinstance(node.target, ast.Name) and node.target.id == "DRIVER_INFO":
+                return True
+    return False
+
+
 def find_drivers(path: Path) -> list[tuple[Path, str]]:
     """Find all driver files in a directory.
 
@@ -746,9 +772,7 @@ def find_drivers(path: Path) -> list[tuple[Path, str]]:
         if path.suffix == ".avcdriver":
             drivers.append((path, "yaml"))
         elif path.suffix == ".py" and not path.stem.endswith("_sim"):
-            # Check if it has DRIVER_INFO
-            source = path.read_text(encoding="utf-8")
-            if "DRIVER_INFO" in source:
+            if _is_python_driver(path):
                 drivers.append((path, "python"))
         return drivers
 
@@ -759,8 +783,7 @@ def find_drivers(path: Path) -> list[tuple[Path, str]]:
     for f in sorted(path.rglob("*.py")):
         if f.stem.endswith("_sim"):
             continue
-        source = f.read_text(encoding="utf-8")
-        if "DRIVER_INFO" in source:
+        if _is_python_driver(f):
             drivers.append((f, "python"))
 
     return drivers
