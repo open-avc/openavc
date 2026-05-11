@@ -188,7 +188,9 @@ def generate_skeleton(info: dict, driver_stem: str) -> str:
         base_class = "HTTPSimulator"
         handler_method = _http_handler_template(commands, state_vars, command_doc_block, state_comment_block)
     elif transport == "osc":
-        base_import = "from simulator.osc_simulator import OSCSimulator"
+        # OSC handler uses `Any` in its signature (args: list[tuple[str, Any]]),
+        # which is evaluated at runtime under PEP 604/585 — must be imported.
+        base_import = "from typing import Any\n\nfrom simulator.osc_simulator import OSCSimulator"
         base_class = "OSCSimulator"
         handler_method = _osc_handler_template(commands, state_vars, command_doc_block, state_comment_block)
     else:
