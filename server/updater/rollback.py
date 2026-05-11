@@ -172,6 +172,18 @@ def check_rollback_needed(data_dir: Path) -> bool:
     return False
 
 
+def _installer_version(installer: Path) -> tuple[int, int, int, str]:
+    """Parse the semver tuple out of an `OpenAVC-Setup-<version>.exe` filename.
+
+    Compare using this instead of string-equal on filenames: a prerelease
+    suffix or a different but equivalent normalization (e.g. "0.10.3-rc.1"
+    vs "0.10.3-rc1") would otherwise leave rollback unable to find or
+    exclude the matching installer.
+    """
+    from server.updater.checker import parse_semver
+    return parse_semver(installer.stem.removeprefix("OpenAVC-Setup-"))
+
+
 def can_rollback(app_dir: Path) -> bool:
     """Check if a previous version is available for rollback."""
     if sys.platform == "win32":
@@ -179,12 +191,16 @@ def can_rollback(app_dir: Path) -> bool:
         # must exist. The fresh-install path caches the running version's own
         # installer, which is not a rollback target.
         from server.system_config import get_system_config
+        from server.updater.checker import parse_semver
         from server.version import __version__
         cache_dir = get_system_config().data_dir / "update-cache"
         if not cache_dir.exists():
             return False
-        current = f"OpenAVC-Setup-{__version__}.exe"
-        return any(inst.name != current for inst in cache_dir.glob("OpenAVC-Setup-*.exe"))
+        current_ver = parse_semver(__version__)
+        return any(
+            _installer_version(inst) != current_ver
+            for inst in cache_dir.glob("OpenAVC-Setup-*.exe")
+        )
     else:
         # Linux: check for /opt/openavc.previous/
         previous = app_dir.parent / f"{app_dir.name}.previous"
@@ -216,21 +232,25 @@ def _rollback_windows(data_dir: Path, from_version: str, to_version: str) -> boo
         log.error("Rollback failed: no update-cache directory")
         return False
 
-    # Find the cached installer matching the version we're rolling back to
+    # Find the cached installer matching the version we're rolling back to.
+    # Match semver-wise so a prerelease tag or renormalized suffix (e.g.
+    # "0.10.3-rc.1" vs "0.10.3-rc1") doesn't break filename equality.
+    from server.updater.checker import parse_semver
     installers = sorted(cache_dir.glob("OpenAVC-Setup-*.exe"))
     if not installers:
         log.error("Rollback failed: no cached installer found")
         return False
 
     # Prefer the exact from_version installer; fall back to any that isn't to_version
-    target_name = f"OpenAVC-Setup-{from_version}.exe"
+    target_ver = parse_semver(from_version)
+    to_ver = parse_semver(to_version)
     installer = None
     for inst in installers:
-        if inst.name == target_name:
+        if _installer_version(inst) == target_ver:
             installer = inst
             break
     if installer is None:
-        candidates = [i for i in installers if to_version not in i.name]
+        candidates = [i for i in installers if _installer_version(i) != to_ver]
         if not candidates:
             log.error("Rollback failed: no suitable installer (only v%s cached)", to_version)
             return False
