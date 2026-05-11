@@ -275,11 +275,16 @@ class MacroToolsMixin:
 
         Called by handlers that modify the project but don't trigger a full
         reload (e.g., add_device, variable tools). Handlers that DO reload
-        get this broadcast automatically via engine.reload_project().
+        get this broadcast automatically via engine.reload_project(). Mirrors
+        engine._reload_project_inner's broadcast shape so other tabs'
+        optimistic-concurrency check has a revision to compare against.
         """
         engine = self._get_engine()
         if engine and hasattr(engine, "broadcast_ws"):
-            await engine.broadcast_ws({"type": "project.reloaded"})
+            await engine.broadcast_ws({
+                "type": "project.reloaded",
+                "revision": getattr(engine, "_project_revision", 0),
+            })
 
     async def _check_references(self, input: dict) -> Any:
         ref_type = input.get("type", "")

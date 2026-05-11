@@ -402,10 +402,15 @@ async def add_device(req: AddDeviceRequest) -> dict[str, Any]:
         # Device was added to runtime but project save failed
         raise _api_error(500, f"Device '{device_id}' added but project save failed", e)
 
-    # Notify the IDE to refresh the project (so Devices tab updates immediately)
+    # Notify the IDE to refresh the project (so Devices tab updates immediately).
+    # Include the current revision so other tabs' optimistic-concurrency check
+    # has something to compare against; matches engine._reload_project_inner.
     if _broadcast_fn:
         try:
-            await _broadcast_fn({"type": "project.reloaded"})
+            await _broadcast_fn({
+                "type": "project.reloaded",
+                "revision": _app_engine._project_revision,
+            })
         except Exception:
             pass  # Non-critical — worst case user refreshes manually
 
