@@ -1336,6 +1336,8 @@ class WakeOnLANDriver(BaseDriver):
             udp.close()
 ```
 
+**Reachability for UDP drivers.** UDP is purely connectionless — there's no `verify()` probe and no socket-level disconnect signal. If your device is meant to be bidirectional (i.e., you poll status, not just fire-and-forget like Wake-on-LAN), declare a positive `poll_interval` in `default_config` and implement `poll()` to send a status query. A successful round-trip keeps `connected: True`; consecutive failures flip it to `False` and start auto-reconnect. Without polling, the platform has no way to know the device went away and `connected` stays `True` against a dead host. The Wake-on-LAN example above is the rare case where omitting polling is correct, because there's nothing to read back.
+
 ### BaseDriver Hooks Reference
 
 These methods can be overridden in your driver subclass:

@@ -230,8 +230,12 @@ class BaseDriver(ABC):
 
         # For connectionless transports (OSC, HTTP), verify the remote host
         # is actually reachable before reporting connected. TCP and serial
-        # validate during open/create. UDP is genuinely connectionless (no
-        # universal probe). Set verify_timeout: 0 in config to skip.
+        # validate during open/create. UDP is genuinely connectionless and
+        # has no transport-level probe — UDP drivers MUST declare a positive
+        # `poll_interval` so the periodic poll() round-trip is the reachability
+        # signal; without it, `connected` stays True against a dead host
+        # forever (A68). Set verify_timeout: 0 in config to skip the
+        # pre-connect probe on OSC/HTTP.
         verify_timeout = self.config.get("verify_timeout", 3.0)
         if verify_timeout > 0 and hasattr(self.transport, "verify"):
             if not await self.transport.verify(timeout=verify_timeout):
