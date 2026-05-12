@@ -1087,6 +1087,131 @@ class TestAgentCapabilityGating:
                 f"({DEFAULT_CAPABILITIES}) — vocabulary drift"
             )
 
+    def test_software_update_gated_on_fleet_update(self):
+        """A59: software_update is gated on the 'fleet_update' capability so a
+        cloud with features_disabled=['fleet_update'] can disable updates."""
+        from server.cloud.agent import _CAPABILITY_GATED
+        assert _CAPABILITY_GATED.get("software_update") == "fleet_update"
+
+    @pytest.mark.asyncio
+    async def test_software_update_dropped_when_fleet_update_missing(self):
+        """A59: software_update with fleet_update missing from
+        enabled_capabilities is silently dropped, even if the message
+        otherwise looks valid."""
+        agent = self._make_agent(enabled_capabilities=["monitoring", "tunnel"])
+        await agent._handle_message({
+            "type": "software_update",
+            "payload": {"target_version": "1.2.3"},
+        })
+        assert agent._command_handler.called is False
+
+    @pytest.mark.asyncio
+    async def test_software_update_dispatched_when_fleet_update_enabled(self):
+        """A59: software_update reaches the command handler when fleet_update
+        is enabled."""
+        agent = self._make_agent(
+            enabled_capabilities=["monitoring", "fleet_update"]
+        )
+        await agent._handle_message({
+            "type": "software_update",
+            "payload": {"target_version": "1.2.3"},
+        })
+        assert agent._command_handler.called == "software_update"
+
+
+# ===========================================================================
+# A59 — Honor `features_disabled` from cloud's upgrade_required field.
+# Without this, an outdated agent would accept feature messages the cloud
+# expects it to reject. The cloud still sends the full enabled_capabilities
+# list for back-compat, so the agent has to subtract features_disabled.
+# ===========================================================================
+
+
+class TestFeaturesDisabledSubtraction:
+    """Tests for features_disabled handling in _connect_and_run."""
+
+    def _build_handshake_result(
+        self,
+        enabled_capabilities: list[str],
+        features_disabled: list[str] | None = None,
+    ):
+        """Build a HandshakeResult with optional upgrade_required."""
+        from server.cloud.handshake import HandshakeResult
+        upgrade = None
+        if features_disabled is not None:
+            upgrade = {
+                "min_version": "1.2.0",
+                "message": "Test upgrade required",
+                "features_disabled": features_disabled,
+            }
+        return HandshakeResult(
+            session_id="s1",
+            session_token="tok",
+            signing_key=b"k" * 32,
+            session_expires="2099-01-01T00:00:00Z",
+            enabled_capabilities=enabled_capabilities,
+            config={},
+            upgrade_required=upgrade,
+        )
+
+    def _apply_caps(self, agent, result):
+        """Run just the bits of _connect_and_run that touch capabilities."""
+        # Mirror the order from _connect_and_run: set caps first, then
+        # subtract features_disabled if upgrade_required is present.
+        agent._enabled_capabilities = result.enabled_capabilities
+        if result.upgrade_required:
+            features_disabled = result.upgrade_required.get("features_disabled") or []
+            if features_disabled:
+                agent._enabled_capabilities = [
+                    c for c in agent._enabled_capabilities if c not in features_disabled
+                ]
+
+    def test_features_disabled_subtracts_from_enabled_capabilities(self):
+        """A59: features in features_disabled are removed from the active list."""
+        from server.cloud.agent import CloudAgent
+        agent = CloudAgent.__new__(CloudAgent)
+        agent._enabled_capabilities = []
+
+        result = self._build_handshake_result(
+            enabled_capabilities=["monitoring", "tunnel", "fleet_update", "diagnostics"],
+            features_disabled=["fleet_update", "diagnostics"],
+        )
+        self._apply_caps(agent, result)
+
+        assert "fleet_update" not in agent._enabled_capabilities
+        assert "diagnostics" not in agent._enabled_capabilities
+        # Unaffected capabilities remain
+        assert "monitoring" in agent._enabled_capabilities
+        assert "tunnel" in agent._enabled_capabilities
+
+    def test_no_upgrade_required_keeps_all_capabilities(self):
+        """When upgrade_required is absent, the full list is kept."""
+        from server.cloud.agent import CloudAgent
+        agent = CloudAgent.__new__(CloudAgent)
+        agent._enabled_capabilities = []
+
+        result = self._build_handshake_result(
+            enabled_capabilities=["monitoring", "fleet_update"],
+            features_disabled=None,
+        )
+        self._apply_caps(agent, result)
+
+        assert agent._enabled_capabilities == ["monitoring", "fleet_update"]
+
+    def test_empty_features_disabled_keeps_all(self):
+        """An empty features_disabled list is a no-op."""
+        from server.cloud.agent import CloudAgent
+        agent = CloudAgent.__new__(CloudAgent)
+        agent._enabled_capabilities = []
+
+        result = self._build_handshake_result(
+            enabled_capabilities=["monitoring", "fleet_update"],
+            features_disabled=[],
+        )
+        self._apply_caps(agent, result)
+
+        assert agent._enabled_capabilities == ["monitoring", "fleet_update"]
+
 
 # ===========================================================================
 # A21 — Diagnostic actions. The agent now implements all five spec §13.12

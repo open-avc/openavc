@@ -66,6 +66,12 @@ _CAPABILITY_GATED: dict[str, str] = {
     "tunnel_open": "tunnel",
     "tunnel_close": "tunnel",
     "diagnostic": "diagnostics",
+    # `software_update` is the fleet-update message type. Gating it here
+    # means an agent whose `fleet_update` capability was revoked by the
+    # cloud (via `features_disabled` in `upgrade_required`) silently
+    # ignores stray pushes instead of trying to apply an update it's not
+    # supposed to. See A59 in the pre-release audit.
+    "software_update": "fleet_update",
 }
 
 
@@ -320,6 +326,23 @@ class CloudAgent:
                     "Cloud requires core v%s or later: %s",
                     min_ver, result.upgrade_required.get("message", ""),
                 )
+                # Apply the per-feature gate from `features_disabled`. The
+                # cloud still sends the full `enabled_capabilities` list
+                # for back-compat, so we have to subtract the disabled
+                # features here. Without this, an outdated agent would
+                # accept feature messages the cloud expects it to reject
+                # (spec openavc-update-spec.md:326-335). See A59.
+                features_disabled = result.upgrade_required.get("features_disabled") or []
+                if features_disabled:
+                    removed = [c for c in self._enabled_capabilities if c in features_disabled]
+                    if removed:
+                        self._enabled_capabilities = [
+                            c for c in self._enabled_capabilities if c not in features_disabled
+                        ]
+                        log.warning(
+                            "Cloud agent: disabled capabilities due to outdated core: %s",
+                            removed,
+                        )
             else:
                 self.state.set("system.cloud_upgrade_required", False, source="cloud")
                 self.state.set("system.cloud_min_version", "", source="cloud")
