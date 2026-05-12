@@ -37,48 +37,94 @@ class MacroEngine:
         self.devices = devices
         self._macros: dict[str, dict[str, Any]] = {}  # id -> macro config
         self._groups: dict[str, list[str]] = {}  # group_id -> [device_ids]
-        self._running: dict[str, asyncio.Task] = {}  # id -> running task
+        # macro_id -> set of currently-running tasks. A set (not a single
+        # task) so that overlap: allow, REST/WS racing, and concurrent
+        # script/plugin/AI dispatch all leave every in-flight invocation
+        # individually trackable and cancellable (A51).
+        self._running: dict[str, set[asyncio.Task]] = {}
+        # Serializes the register-and-preempt critical section so two
+        # macros in the same cancel_group started within one event-loop
+        # tick can't both register before either fires preemption and
+        # then cancel each other (A49).
+        self._start_lock = asyncio.Lock()
         self._max_depth = 10  # maximum nested macro call depth
         self._max_conditional_depth = 5  # maximum nesting of conditional steps
         # Plugin-registered actions: action_type -> (handler, plugin_id, label)
         self._plugin_actions: dict[str, tuple[PluginActionHandler, str, str]] = {}
 
     def is_macro_running(self, macro_id: str) -> bool:
-        """Check if a macro is currently running."""
-        return macro_id in self._running
+        """Check if any invocation of the macro is currently running."""
+        return bool(self._running.get(macro_id))
 
     async def cancel(self, macro_id: str) -> bool:
-        """Cancel a running macro. Returns True if cancelled, False if not running."""
-        task = self._running.get(macro_id)
-        if task is None:
+        """Cancel every running invocation of a macro.
+
+        Returns True if at least one invocation was cancelled, False if
+        none were running.
+        """
+        tasks = list(self._running.get(macro_id, set()))
+        if not tasks:
             return False
-        task.cancel()
+        for task in tasks:
+            task.cancel()
         try:
-            await asyncio.wait_for(task, timeout=5.0)
-        except (asyncio.CancelledError, asyncio.TimeoutError):
+            await asyncio.wait(tasks, timeout=5.0)
+        except asyncio.CancelledError:
             pass
         return True
 
     async def cancel_all(self) -> None:
         """Cancel all running macros (for system shutdown)."""
-        for macro_id in list(self._running):
-            await self.cancel(macro_id)
-
-    async def _cancel_group(self, group: str, exclude_macro_id: str) -> None:
-        """Cancel all running macros in the same cancel_group, except the one starting."""
-        to_cancel = []
-        for mid, task in self._running.items():
-            if mid == exclude_macro_id:
-                continue
-            macro_config = self._macros.get(mid, {})
-            if macro_config.get("cancel_group") == group:
-                to_cancel.append((mid, task))
-        for mid, task in to_cancel:
-            log.info(f"Preempting macro '{mid}' (cancel_group '{group}')")
+        all_tasks = [t for tasks in self._running.values() for t in tasks]
+        if not all_tasks:
+            return
+        for task in all_tasks:
             task.cancel()
-        # Give cancelled tasks a chance to clean up
-        if to_cancel:
-            await asyncio.sleep(0)
+        try:
+            await asyncio.wait(all_tasks, timeout=5.0)
+        except asyncio.CancelledError:
+            pass
+
+    def _collect_group_targets(
+        self, group: str, exclude_task: asyncio.Task | None
+    ) -> list[tuple[str, asyncio.Task]]:
+        """Return (macro_id, task) pairs to preempt for ``group``.
+
+        Excludes ``exclude_task`` (the caller's own task) so a starting
+        macro doesn't cancel itself. Multiple concurrent invocations of
+        the same macro_id are all candidates — each task is treated
+        individually.
+        """
+        out: list[tuple[str, asyncio.Task]] = []
+        for mid, task_set in self._running.items():
+            macro_config = self._macros.get(mid, {})
+            if macro_config.get("cancel_group") != group:
+                continue
+            for task in task_set:
+                if task is exclude_task:
+                    continue
+                out.append((mid, task))
+        return out
+
+    async def _drain_cancelled(
+        self, cancelled: list[tuple[str, asyncio.Task]]
+    ) -> None:
+        """Wait for preempted tasks to fully unwind.
+
+        Replaces the old single-yield ``await asyncio.sleep(0)``, which
+        was not long enough for in-flight ``device.send_command`` awaits
+        to settle. Without this, the new macro could start sending bytes
+        on the wire while the preempted macro's tail bytes were still in
+        flight — "System Off" preempting "System On" could still leave a
+        partial ``power_on`` sequence on the device (A50).
+        """
+        if not cancelled:
+            return
+        tasks = [t for _, t in cancelled]
+        try:
+            await asyncio.wait(tasks, timeout=2.0)
+        except asyncio.CancelledError:
+            pass
 
     def load_macros(self, macros: list[dict[str, Any]]) -> None:
         """Register macro definitions from the project config."""
@@ -176,14 +222,37 @@ class MacroEngine:
         stop_on_error = macro.get("stop_on_error", False)
         cancel_group = macro.get("cancel_group")
 
-        # Register in _running BEFORE cancel group so concurrent macros in
-        # the same group can see each other and preempt correctly
         task = asyncio.current_task()
-        if task is not None:
-            self._running[macro_id] = task
 
-        if cancel_group:
-            await self._cancel_group(cancel_group, macro_id)
+        # Critical section: registering this task in _running and choosing
+        # which group members to preempt must happen atomically against
+        # other concurrent execute() callers. Otherwise two macros in the
+        # same cancel_group reaching this section within one event-loop
+        # tick can both register, then each cancels the other and neither
+        # runs (A49). The lock is released as soon as we've called
+        # ``task.cancel()`` on the targets; the drain await happens
+        # outside the lock so other unrelated macros can still start.
+        cancelled: list[tuple[str, asyncio.Task]] = []
+        if task is not None:
+            async with self._start_lock:
+                self._running.setdefault(macro_id, set()).add(task)
+                if cancel_group:
+                    cancelled = self._collect_group_targets(
+                        cancel_group, exclude_task=task
+                    )
+                    for mid, t in cancelled:
+                        log.info(f"Preempting macro '{mid}' (cancel_group '{cancel_group}')")
+                        t.cancel()
+        elif cancel_group:
+            # Synthetic execute() with no current task — preempt anyway.
+            cancelled = self._collect_group_targets(cancel_group, exclude_task=None)
+            for mid, t in cancelled:
+                log.info(f"Preempting macro '{mid}' (cancel_group '{cancel_group}')")
+                t.cancel()
+
+        # Wait for preempted tasks to fully unwind before we start sending
+        # commands — A50.
+        await self._drain_cancelled(cancelled)
 
         log.info(f"Executing macro '{name}' ({len(steps)} steps)")
         await self.events.emit(
@@ -211,7 +280,12 @@ class MacroEngine:
                 {"macro_id": macro_id, "name": name, "error": str(e)},
             )
         finally:
-            self._running.pop(macro_id, None)
+            if task is not None:
+                task_set = self._running.get(macro_id)
+                if task_set is not None:
+                    task_set.discard(task)
+                    if not task_set:
+                        self._running.pop(macro_id, None)
 
     async def execute_steps(
         self,

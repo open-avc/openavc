@@ -261,3 +261,149 @@ def test_macro_config_cancel_group_default():
     from server.core.project_loader import MacroConfig
     macro = MacroConfig(id="test", name="Test")
     assert macro.cancel_group is None
+
+
+# ===== A49 / A51 / A53 — concurrency =====
+
+
+@pytest.mark.asyncio
+async def test_true_concurrent_cancel_group_start(engine, state):
+    """A49 + A53: Two macros in the same cancel_group started in a single
+    event-loop tick (asyncio.gather) must NOT both cancel each other.
+    Exactly one wins and runs to completion.
+    """
+    engine.load_macros([
+        {
+            "id": "system_on",
+            "name": "System On",
+            "cancel_group": "system_power",
+            "steps": [
+                {"action": "delay", "seconds": 0.1},
+                {"action": "state.set", "key": "var.system_on_done", "value": True},
+            ],
+        },
+        {
+            "id": "system_off",
+            "name": "System Off",
+            "cancel_group": "system_power",
+            "steps": [
+                {"action": "delay", "seconds": 0.1},
+                {"action": "state.set", "key": "var.system_off_done", "value": True},
+            ],
+        },
+    ])
+
+    # True concurrent start — both coroutines enter execute() before either
+    # reaches its register-and-preempt section.
+    await asyncio.gather(
+        engine.execute("system_on"),
+        engine.execute("system_off"),
+        return_exceptions=True,
+    )
+
+    # Exactly one terminal state.set must have fired. Pre-fix, both
+    # macros could cancel each other and neither's state.set would run
+    # (assertion would fail on "no terminal step ran").
+    on_done = state.get("var.system_on_done")
+    off_done = state.get("var.system_off_done")
+    assert (on_done is True) ^ (off_done is True), (
+        f"Expected exactly one terminal state.set; got on={on_done}, off={off_done}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_repeated_concurrent_same_macro_id_all_tracked(engine, state):
+    """A51 + A53: The same macro fired N times concurrently leaves every
+    invocation individually trackable. cancel(macro_id) must stop all of
+    them; none can become an orphan that runs to completion past cancel.
+    """
+    engine.load_macros([{
+        "id": "spammed",
+        "name": "Spammed",
+        "steps": [
+            {"action": "delay", "seconds": 10},
+            {"action": "state.set", "key": "var.spammed_done", "value": True},
+        ],
+    }])
+
+    # Fire 10 concurrent invocations of the same macro_id.
+    tasks = [asyncio.create_task(engine.execute("spammed")) for _ in range(10)]
+    await asyncio.sleep(0.05)  # let them all register
+
+    assert engine.is_macro_running("spammed")
+    # All 10 must be tracked, not just the most recent (overwrite bug).
+    assert len(engine._running["spammed"]) == 10
+
+    # One cancel() call must stop every invocation.
+    result = await engine.cancel("spammed")
+    assert result is True
+    await asyncio.sleep(0.05)
+
+    assert not engine.is_macro_running("spammed")
+    for t in tasks:
+        assert t.done()
+    # Terminal state must NOT have run for any invocation.
+    assert state.get("var.spammed_done") is None
+
+
+@pytest.mark.asyncio
+async def test_cancel_group_drains_before_new_macro_proceeds(engine, state, devices):
+    """A50: preempted macros must finish unwinding their in-flight
+    transport awaits before the new macro starts sending bytes. The drain
+    is implemented via asyncio.wait, not a single sleep(0) yield.
+    """
+    send_log: list[str] = []
+
+    async def slow_send(device_id, command, params=None):
+        # Long, awaitable send: gives the cancel a real window to land
+        # mid-flight.
+        send_log.append(f"start:{command}")
+        try:
+            await asyncio.sleep(0.2)
+            send_log.append(f"end:{command}")
+        except asyncio.CancelledError:
+            send_log.append(f"cancelled:{command}")
+            raise
+
+    devices.send_command = slow_send
+
+    engine.load_macros([
+        {
+            "id": "system_on",
+            "name": "System On",
+            "cancel_group": "system_power",
+            "steps": [
+                {"action": "device.command", "device_id": "proj", "command": "power_on"},
+                {"action": "state.set", "key": "var.system_on_terminal", "value": True},
+            ],
+        },
+        {
+            "id": "system_off",
+            "name": "System Off",
+            "cancel_group": "system_power",
+            "steps": [
+                {"action": "device.command", "device_id": "proj", "command": "power_off"},
+                {"action": "state.set", "key": "var.system_off_terminal", "value": True},
+            ],
+        },
+    ])
+
+    asyncio.create_task(engine.execute("system_on"))
+    # Let system_on's slow_send start ('start:power_on' logged, mid-await).
+    await asyncio.sleep(0.05)
+    assert "start:power_on" in send_log
+    assert "end:power_on" not in send_log
+
+    # Now preempt with system_off. system_on's send must finish unwinding
+    # (cancelled:power_on logged) BEFORE system_off's send fires.
+    await engine.execute("system_off")
+    await asyncio.sleep(0.05)
+
+    # Find ordering of "cancelled:power_on" vs "start:power_off".
+    assert "cancelled:power_on" in send_log
+    assert "start:power_off" in send_log
+    cancel_idx = send_log.index("cancelled:power_on")
+    new_start_idx = send_log.index("start:power_off")
+    assert cancel_idx < new_start_idx, (
+        f"new send started before old send finished unwinding: {send_log}"
+    )
