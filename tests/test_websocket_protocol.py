@@ -424,6 +424,38 @@ async def test_ui_route_unmute_dispatches_to_mute_route():
     )
 
 
+@pytest.mark.asyncio
+async def test_ui_route_audio_and_mute_dispatches_to_audio_mute_route():
+    """ui.route with both audio=true and mute present dispatches to audio_mute_route."""
+    ws = FakeWS()
+    engine = _make_engine()
+    with patch("server.api.ws._engine", engine):
+        await _handle_message(
+            ws,
+            {"type": "ui.route", "element_id": "matrix1", "output": 2, "mute": True, "audio": True},
+            "panel",
+        )
+    engine.handle_ui_event.assert_awaited_once_with(
+        "audio_mute_route", "matrix1", {"output": 2, "mute": True}
+    )
+
+
+@pytest.mark.asyncio
+async def test_ui_route_audio_and_unmute_dispatches_to_audio_mute_route():
+    """ui.route with audio=true and mute=false still routes to audio_mute_route."""
+    ws = FakeWS()
+    engine = _make_engine()
+    with patch("server.api.ws._engine", engine):
+        await _handle_message(
+            ws,
+            {"type": "ui.route", "element_id": "matrix1", "output": 2, "mute": False, "audio": True},
+            "panel",
+        )
+    engine.handle_ui_event.assert_awaited_once_with(
+        "audio_mute_route", "matrix1", {"output": 2, "mute": False}
+    )
+
+
 # ── Panel allowed types completeness check ──
 
 

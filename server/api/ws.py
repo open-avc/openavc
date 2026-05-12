@@ -294,11 +294,15 @@ async def _handle_message(
         output_idx = msg.get("output")
         audio_flag = bool(msg.get("audio"))
         mute_val = msg.get("mute")
-        # Dispatch to one of three binding slots based on the message shape:
-        #   - mute present (bool)      -> mute_route binding ($output, $mute)
-        #   - audio=true               -> audio_route binding ($input, $output)
-        #   - otherwise                -> route binding ($input, $output)
-        if mute_val is not None:
+        # Dispatch to one of four binding slots based on the message shape:
+        #   - audio=true AND mute present -> audio_mute_route binding ($output, $mute)
+        #   - mute present (bool)         -> mute_route binding ($output, $mute)
+        #   - audio=true                  -> audio_route binding ($input, $output)
+        #   - otherwise                   -> route binding ($input, $output)
+        if mute_val is not None and audio_flag:
+            event_type = "audio_mute_route"
+            data = {"output": output_idx, "mute": bool(mute_val)}
+        elif mute_val is not None:
             event_type = "mute_route"
             data = {"output": output_idx, "mute": bool(mute_val)}
         elif audio_flag:

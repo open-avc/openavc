@@ -94,6 +94,11 @@ TEST_PROJECT = {
                                 "key": "var.mute_route_called",
                                 "value": "yes",
                             },
+                            "audio_mute_route": {
+                                "action": "state.set",
+                                "key": "var.audio_mute_route_called",
+                                "value": "yes",
+                            },
                         },
                     },
                     {
@@ -313,6 +318,35 @@ async def test_ws_route_with_mute_fires_mute_route_binding(engine_and_client):
 
     # mute_route binding fired (sets var.mute_route_called=yes)
     assert engine.state.get("var.mute_route_called") == "yes"
+
+
+async def test_ws_route_with_audio_and_mute_fires_audio_mute_route_binding(engine_and_client):
+    """ui.route with audio=true AND mute present triggers audio_mute_route binding,
+    not mute_route or audio_route. Panel sends this as a secondary message when
+    AFV is enabled and the user toggles a mute button."""
+    engine, client = engine_and_client
+    engine.state.set("var.audio_mute_route_called", "no", source="system")
+    engine.state.set("var.mute_route_called", "no", source="system")
+    engine.state.set("var.audio_route_called", "no", source="system")
+
+    with client.websocket_connect("/ws?client=panel") as websocket:
+        websocket.receive_json()
+        websocket.receive_json()
+
+        websocket.send_json({
+            "type": "ui.route",
+            "element_id": "matrix1",
+            "output": 2,
+            "mute": True,
+            "audio": True,
+        })
+
+        time.sleep(0.1)
+
+    # Only audio_mute_route binding fires; mute_route and audio_route stay untouched
+    assert engine.state.get("var.audio_mute_route_called") == "yes"
+    assert engine.state.get("var.mute_route_called") == "no"
+    assert engine.state.get("var.audio_route_called") == "no"
 
 
 # ---------------------------------------------------------------------------

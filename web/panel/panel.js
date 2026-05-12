@@ -1693,6 +1693,17 @@ class PanelApp {
                             output: outputIdx,
                             mute: !isMuted,
                         });
+                        // Audio follow video: also send audio-mute when AFV is on
+                        // and the element has an audio_mute_route binding.
+                        if (config.audio_follow_video && element.bindings?.audio_mute_route) {
+                            this.send({
+                                type: 'ui.route',
+                                element_id: element.id,
+                                output: outputIdx,
+                                mute: !isMuted,
+                                audio: true,
+                            });
+                        }
                         if (select) select.disabled = mutedOutputs.has(outputIdx);
                     });
                     row.appendChild(muteBtn);
@@ -1883,6 +1894,11 @@ class PanelApp {
                         if (isMuted) { mutedOutputs.delete(outputIdx); muteBtn.classList.remove('muted'); }
                         else { mutedOutputs.add(outputIdx); muteBtn.classList.add('muted'); }
                         this.send({ type: 'ui.route', element_id: element.id, output: outputIdx, mute: !isMuted });
+                        // Audio follow video: also send audio-mute when AFV is on
+                        // and the element has an audio_mute_route binding.
+                        if (config.audio_follow_video && element.bindings?.audio_mute_route) {
+                            this.send({ type: 'ui.route', element_id: element.id, output: outputIdx, mute: !isMuted, audio: true });
+                        }
                     });
                     muteCell.appendChild(muteBtn);
                     table.appendChild(muteCell);

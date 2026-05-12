@@ -5,7 +5,7 @@ device.command params before calling devices.send_command:
   $value  — slider/change/submit value (scaled to output range)
   $input  — matrix route input number
   $output — matrix route output number
-  $mute   — mute_route mute value (bool)
+  $mute   — mute_route / audio_mute_route mute value (bool)
 """
 
 from unittest.mock import AsyncMock

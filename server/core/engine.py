@@ -745,7 +745,7 @@ class Engine:
             # Replace placeholders with actual values from the UI event,
             # applying output range scaling if configured on the element.
             # $input / $output come from matrix route / audio_route bindings;
-            # $mute comes from mute_route bindings.
+            # $mute comes from mute_route / audio_mute_route bindings.
             for k, v in params.items():
                 if v == "$value":
                     params[k] = self._scale_value_forward(element, data.get("value"))

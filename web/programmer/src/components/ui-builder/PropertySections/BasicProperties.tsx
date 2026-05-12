@@ -873,6 +873,11 @@ export function BasicProperties({
               Add a Mute Route binding in the Bindings tab to wire the mute buttons to a command.
             </div>
           )}
+          {element.matrix_config?.show_mute !== false && element.matrix_config?.audio_follow_video && !(element.bindings as Record<string, unknown>)?.audio_mute_route && (
+            <div style={{ fontSize: 10, color: "var(--color-warning)", padding: "0 0 0 76px", fontStyle: "italic" }}>
+              Add an Audio Mute Route binding in the Bindings tab so the mute button also mutes audio.
+            </div>
+          )}
           <MatrixLabelEditor
             title="Input Labels"
             labels={element.matrix_config?.input_labels || []}

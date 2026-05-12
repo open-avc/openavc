@@ -89,7 +89,7 @@ export const BINDING_SLOTS: Record<string, string[]> = {
   group: [],
   clock: [],
   keypad: ["submit"],
-  matrix: ["route", "audio_route", "mute_route"],
+  matrix: ["route", "audio_route", "mute_route", "audio_mute_route"],
   list: ["items", "selected", "select"],
   plugin: [],
 };

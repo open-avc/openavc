@@ -115,6 +115,7 @@ export function BindingProperties({
       case "route":
       case "audio_route":
       case "mute_route":
+      case "audio_mute_route":
       case "select": {
         const arr = binding as Record<string, unknown>[];
         if (!Array.isArray(arr) || arr.length === 0) return "Not configured";
@@ -287,7 +288,8 @@ export function BindingProperties({
           </div>
         );
       }
-      case "mute_route": {
+      case "mute_route":
+      case "audio_mute_route": {
         const muteActions = (element.bindings[slot] as Record<string, unknown>[] | undefined) ?? [];
         return (
           <div>
@@ -361,6 +363,7 @@ export function BindingProperties({
   const slotLabel: Record<string, string> = {
     audio_route: "Audio Route",
     mute_route: "Mute Route",
+    audio_mute_route: "Audio Mute Route",
   };
 
   const slotHelp: Record<string, string> = {
@@ -377,6 +380,7 @@ export function BindingProperties({
     route: "Action to perform when a matrix crosspoint is selected (video / primary route).",
     audio_route: "Action to perform when audio-follow-video is enabled and a route is made. Use $input and $output.",
     mute_route: "Action to perform when an output's mute button is toggled. Use $output and $mute (bool).",
+    audio_mute_route: "Action to perform when audio-follow-video is enabled and an output's mute button is toggled. Use $output and $mute.",
     items: "Bind list items to a state key pattern for dynamic population.",
     select: "Action to perform when a list item is selected.",
     selected: "State key that tracks the currently selected item in the list.",
@@ -399,7 +403,7 @@ export function BindingProperties({
   const getSlotDangling = (slot: string): string | null => {
     const binding = element.bindings[slot];
     if (!binding) return null;
-    if (["press", "release", "hold", "change", "submit", "route", "audio_route", "mute_route", "select"].includes(slot)) {
+    if (["press", "release", "hold", "change", "submit", "route", "audio_route", "mute_route", "audio_mute_route", "select"].includes(slot)) {
       const actions = Array.isArray(binding) ? binding : [binding];
       for (const a of actions as Record<string, unknown>[]) {
         const d = getActionDangling(a);
@@ -426,7 +430,7 @@ export function BindingProperties({
 
   const isBindingIncomplete = (slot: string, binding: Record<string, unknown> | Record<string, unknown>[] | undefined): boolean => {
     if (!binding) return false;
-    if (slot === "press" || slot === "release" || slot === "hold" || slot === "change" || slot === "submit" || slot === "route" || slot === "audio_route" || slot === "mute_route" || slot === "select") {
+    if (slot === "press" || slot === "release" || slot === "hold" || slot === "change" || slot === "submit" || slot === "route" || slot === "audio_route" || slot === "mute_route" || slot === "audio_mute_route" || slot === "select") {
       const actions = Array.isArray(binding) ? binding : [binding];
       return actions.some(isActionIncomplete);
     }
@@ -506,7 +510,7 @@ export function BindingProperties({
         const isEditing = editingSlot === slot;
         const hasBinding = !!element.bindings[slot];
         const binding = element.bindings[slot] as Record<string, unknown> | undefined;
-        const isTestable = (slot === "press" || slot === "release" || slot === "hold" || slot === "change" || slot === "submit" || slot === "route" || slot === "audio_route" || slot === "mute_route" || slot === "select") && hasBinding;
+        const isTestable = (slot === "press" || slot === "release" || slot === "hold" || slot === "change" || slot === "submit" || slot === "route" || slot === "audio_route" || slot === "mute_route" || slot === "audio_mute_route" || slot === "select") && hasBinding;
         const incomplete = hasBinding && isBindingIncomplete(slot, binding);
         const dangling = hasBinding ? getSlotDangling(slot) : null;
 
