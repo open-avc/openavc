@@ -190,12 +190,16 @@ class BaseDriver(ABC):
             from server.transport.http_client import HTTPClientTransport
 
             host = self.config.get("host", "")
-            port = self.config.get("port", 80)
+            # Don't use .get("port", 80) — the sentinel-default makes an
+            # explicit `port: 80, ssl: true` indistinguishable from "not set",
+            # so the next branch silently rewrites it to 443 (A66). Read
+            # without a default and apply the scheme-appropriate fallback only
+            # when port is genuinely missing.
+            port = self.config.get("port")
             use_ssl = self.config.get("ssl", False)
             scheme = "https" if use_ssl else "http"
-            # Default port: 443 for HTTPS, 80 for HTTP
-            if use_ssl and port == 80:
-                port = 443
+            if port is None:
+                port = 443 if use_ssl else 80
             base_url = f"{scheme}://{host}:{port}"
 
             # Build credentials from config
