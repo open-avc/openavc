@@ -206,6 +206,15 @@ For each test:
 
 Each result shows what was sent, every received chunk (with `\r` and `\n` made visible), and any state variable changes the responses produced.
 
+**Production-device conflict warning.** When you type a host and port that's already used by a device in your project, the panel surfaces a warning above the Send button identifying the device. Many AV devices (Sony BVM, Christie projectors, Crestron 3-Series console) accept only one TCP control session at a time, so testing would kick the live device offline. You can:
+
+- **Pause device** — cleanly disconnect the production driver and suppress auto-reconnect for the duration of the test. The panel offers a **Resume** button to bring it back online. Closing the test tab automatically resumes any devices the panel paused.
+- **Connect anyway** — proceed without pausing. Use this when you know the device is already gone (e.g. it's been physically disconnected), or when the device tolerates multiple sessions.
+
+The check is TCP-only; UDP, HTTP, and OSC don't have the single-session problem.
+
+**Rate limit.** The Send button is throttled to one call per 2 seconds. When you press it too fast, a brief countdown appears on the button ("Rate limited (1.4s)") and the result row is tagged **Throttled** so you can tell it apart from a device protocol failure.
+
 #### Live YAML preview
 
 Click the **YAML** button in the editor header to open a side pane showing the serialized driver in real time. Read-only — it's exactly what gets saved as the `.avcdriver` file. Useful for double-checking that the form output matches what you'd write by hand.

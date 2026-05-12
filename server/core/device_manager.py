@@ -68,6 +68,7 @@ def get_driver_registry() -> list[dict[str, Any]]:
             "description": driver_class.DRIVER_INFO.get("description", ""),
             "version": driver_class.DRIVER_INFO.get("version", ""),
             "author": driver_class.DRIVER_INFO.get("author", ""),
+            "transport": driver_class.DRIVER_INFO.get("transport", "tcp"),
             "commands": driver_class.DRIVER_INFO.get("commands", {}),
             "config_schema": driver_class.DRIVER_INFO.get("config_schema", {}),
             "default_config": driver_class.DRIVER_INFO.get("default_config", {}),
@@ -658,3 +659,45 @@ class DeviceManager:
                 self._start_reconnect(device_id)
         finally:
             self._intentional_disconnect.discard(device_id)
+
+    async def pause_device(self, device_id: str) -> None:
+        """Cleanly disconnect a device and suppress auto-reconnect (A81).
+
+        Used by the driver test panel before it opens a competing TCP session
+        against the same host:port on single-session devices. The device stays
+        paused until ``resume_device`` is called; ``device.<id>.paused`` is
+        set so the UI can surface the state.
+        """
+        if device_id not in self._devices:
+            raise ValueError(f"Device '{device_id}' not found")
+        driver = self._devices[device_id]
+        await self._cancel_reconnect(device_id)
+        # Add to intentional_disconnect BEFORE disconnect so the disconnected
+        # event handler doesn't kick off a reconnect_loop.
+        self._intentional_disconnect.add(device_id)
+        try:
+            await driver.disconnect()
+        except Exception as e:
+            log.warning(f"pause_device: disconnect raised for {device_id}: {e}")
+        self.state.set(f"device.{device_id}.paused", True, source="device_manager")
+        self.state.set(f"device.{device_id}.connected", False, source="device_manager")
+        log.info(f"Paused device: {device_id}")
+
+    async def resume_device(self, device_id: str) -> None:
+        """Resume a paused device — clear the pause flag and reconnect.
+
+        Idempotent: resuming a device that isn't paused just runs reconnect.
+        On connect failure the normal auto-reconnect loop takes over.
+        """
+        if device_id not in self._devices:
+            raise ValueError(f"Device '{device_id}' not found")
+        driver = self._devices[device_id]
+        self._intentional_disconnect.discard(device_id)
+        self.state.set(f"device.{device_id}.paused", False, source="device_manager")
+        try:
+            await driver.connect()
+            log.info(f"Resumed device: {device_id}")
+        except Exception as e:
+            self.state.set(f"device.{device_id}.connected", False, source="device_manager")
+            log.warning(f"resume_device: connect failed for {device_id}: {e}")
+            self._start_reconnect(device_id)

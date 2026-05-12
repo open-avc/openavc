@@ -50,6 +50,18 @@ export async function reconnectDevice(
   return request(`/devices/${deviceId}/reconnect`, { method: "POST" });
 }
 
+export async function pauseDevice(
+  deviceId: string
+): Promise<{ status: string; device_id: string }> {
+  return request(`/devices/${deviceId}/pause`, { method: "POST" });
+}
+
+export async function resumeDevice(
+  deviceId: string
+): Promise<{ status: string; device_id: string }> {
+  return request(`/devices/${deviceId}/resume`, { method: "POST" });
+}
+
 // --- Device Settings ---
 
 export async function getDeviceSettings(

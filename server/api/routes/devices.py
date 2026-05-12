@@ -250,6 +250,41 @@ async def reconnect_device(device_id: str) -> dict[str, Any]:
     return {"status": "reconnecting", "device_id": device_id}
 
 
+@router.post("/devices/{device_id}/pause")
+async def pause_device(device_id: str) -> dict[str, Any]:
+    """Pause a production device — disconnect cleanly and suppress auto-reconnect.
+
+    Used by the driver test panel before opening a competing TCP session
+    against the same host:port on single-session devices (A81). The device
+    stays paused until ``/devices/{id}/resume`` is called.
+    """
+    engine = _get_engine()
+    if not engine.project:
+        raise HTTPException(status_code=503, detail="No project loaded")
+    if not any(d.id == device_id for d in engine.project.devices):
+        raise HTTPException(status_code=404, detail=f"Device '{device_id}' not found")
+    try:
+        await engine.devices.pause_device(device_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from None
+    return {"status": "paused", "device_id": device_id}
+
+
+@router.post("/devices/{device_id}/resume")
+async def resume_device(device_id: str) -> dict[str, Any]:
+    """Resume a paused device — clear the pause flag and reconnect."""
+    engine = _get_engine()
+    if not engine.project:
+        raise HTTPException(status_code=503, detail="No project loaded")
+    if not any(d.id == device_id for d in engine.project.devices):
+        raise HTTPException(status_code=404, detail=f"Device '{device_id}' not found")
+    try:
+        await engine.devices.resume_device(device_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from None
+    return {"status": "resuming", "device_id": device_id}
+
+
 @router.post("/devices/{device_id}/retry")
 async def retry_orphaned_device(device_id: str) -> dict[str, Any]:
     """Re-attempt adding an orphaned device after its driver has been installed."""

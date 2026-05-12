@@ -992,6 +992,65 @@ async def test_driver_command(driver_id: str, body: TestCommandRequest) -> dict:
     return await _test_raw(body)
 
 
+@router.get("/driver-test-conflicts")
+async def check_connection_conflict(
+    host: str,
+    port: str,
+    transport: str = "tcp",
+) -> dict:
+    """Find production devices using the same host:port as a planned test (A81).
+
+    Many AV devices allow only one TCP control session at a time. The test
+    panel calls this before opening a competing connection so the UI can
+    warn the user and offer to pause the production driver.
+
+    Returns ``{"conflicts": [...]}`` with one entry per matching device. An
+    empty list means it's safe to test. Matching is currently TCP-only —
+    the single-session problem is a TCP-specific failure mode.
+    """
+    if transport != "tcp":
+        return {"conflicts": []}
+    engine = _get_engine()
+    if not engine.project:
+        return {"conflicts": []}
+
+    try:
+        target_port = int(port)
+    except (TypeError, ValueError):
+        return {"conflicts": []}
+
+    from server.core.device_manager import get_driver_registry
+
+    registry = {d["id"]: d for d in get_driver_registry()}
+
+    conflicts: list[dict[str, Any]] = []
+    for device in engine.project.devices:
+        if not device.enabled:
+            continue
+        driver_info = registry.get(device.driver)
+        if not driver_info or driver_info.get("transport", "tcp") != "tcp":
+            continue
+        conn = engine.project.connections.get(device.id, {})
+        cfg = {**device.config, **conn}
+        device_host = str(cfg.get("host", ""))
+        try:
+            device_port = int(cfg.get("port", 0))
+        except (TypeError, ValueError):
+            continue
+        if device_host != host or device_port != target_port:
+            continue
+        connected = bool(engine.state.get(f"device.{device.id}.connected"))
+        paused = bool(engine.state.get(f"device.{device.id}.paused"))
+        conflicts.append({
+            "device_id": device.id,
+            "device_name": device.name,
+            "driver": device.driver,
+            "connected": connected,
+            "paused": paused,
+        })
+    return {"conflicts": conflicts}
+
+
 async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
     """Run a command through the live ConfigurableDriver code path.
 

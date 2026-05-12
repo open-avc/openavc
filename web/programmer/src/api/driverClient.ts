@@ -84,6 +84,35 @@ export async function testDriverCommand(
   });
 }
 
+export interface TestPanelConflict {
+  device_id: string;
+  device_name: string;
+  driver: string;
+  connected: boolean;
+  paused: boolean;
+}
+
+/**
+ * Pre-flight check: does any production device already own this host:port?
+ *
+ * The driver test panel calls this before opening a competing TCP session.
+ * Many AV devices accept only one TCP control connection at a time, so the
+ * test would kick the production device offline. Currently TCP-only — UDP
+ * and HTTP don't have the single-session problem.
+ */
+export async function checkConnectionConflict(
+  host: string,
+  port: number | string,
+  transport: string,
+): Promise<{ conflicts: TestPanelConflict[] }> {
+  const params = new URLSearchParams({
+    host,
+    port: String(port),
+    transport,
+  });
+  return request(`/driver-test-conflicts?${params.toString()}`);
+}
+
 // --- Python Drivers ---
 
 export async function getPythonDrivers(): Promise<{ drivers: PythonDriverInfo[] }> {

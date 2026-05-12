@@ -1,12 +1,22 @@
-import { useEffect, useMemo, useState } from "react";
-import { Send, AlertCircle, ChevronRight } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Send,
+  AlertCircle,
+  AlertTriangle,
+  ChevronRight,
+  Pause,
+  Play,
+} from "lucide-react";
 import type {
   DriverDefinition,
   DriverCommandDef,
   DriverParamDef,
 } from "../../api/types";
 import * as api from "../../api/restClient";
-import type { TestCommandResult } from "../../api/driverClient";
+import type {
+  TestCommandResult,
+  TestPanelConflict,
+} from "../../api/driverClient";
 
 interface LiveTestPanelProps {
   draft: DriverDefinition;
@@ -18,6 +28,8 @@ interface ResultEntry {
   received: string[];
   state_changes: Record<string, unknown>;
   error: string | null;
+  /** Set when the request hit the 2s rate limit (A82). */
+  throttled?: boolean;
   timestamp: number;
 }
 
@@ -67,6 +79,14 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
   const [rawString, setRawString] = useState("");
   const [results, setResults] = useState<ResultEntry[]>([]);
   const [sending, setSending] = useState(false);
+  // A81 — production-device conflict tracking.
+  const [conflicts, setConflicts] = useState<TestPanelConflict[]>([]);
+  const [pausedDeviceIds, setPausedDeviceIds] = useState<string[]>([]);
+  const [conflictAcknowledged, setConflictAcknowledged] = useState(false);
+  const [pausingId, setPausingId] = useState<string | null>(null);
+  // A82 — 2s rate-limit countdown shown on the Send button.
+  const [cooldownUntil, setCooldownUntil] = useState<number | null>(null);
+  const [cooldownRemainingMs, setCooldownRemainingMs] = useState(0);
 
   // Reset port + selection when the draft's transport switches under us.
   useEffect(() => {
@@ -93,6 +113,71 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
     }
     setParamValues(seeded);
   }, [selectedCommand, draft.commands]);
+
+  // A81 — pre-flight conflict check. Many AV devices accept only one TCP
+  // control session, so before the test panel opens its competing socket
+  // we look up which production device (if any) currently owns this
+  // host:port and surface a warning so the user can choose to pause it.
+  // Debounced to 300ms so rapid typing doesn't spam the endpoint.
+  useEffect(() => {
+    if (isSerial || transport !== "tcp" || !host.trim() || !port.trim()) {
+      setConflicts([]);
+      setConflictAcknowledged(false);
+      return;
+    }
+    const handle = setTimeout(async () => {
+      try {
+        const result = await api.checkConnectionConflict(
+          host.trim(),
+          port.trim(),
+          transport,
+        );
+        setConflicts(result.conflicts);
+        setConflictAcknowledged(false);
+      } catch {
+        // A failed check shouldn't block testing; just clear any stale
+        // conflicts and let the user proceed.
+        setConflicts([]);
+      }
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [host, port, transport, isSerial]);
+
+  // A82 — rate-limit cooldown ticker. When the server returns 429 we paint
+  // a countdown on Send so the user understands the brief disable isn't a
+  // device failure.
+  useEffect(() => {
+    if (cooldownUntil === null) {
+      setCooldownRemainingMs(0);
+      return;
+    }
+    const tick = () => {
+      const remaining = Math.max(0, cooldownUntil - Date.now());
+      setCooldownRemainingMs(remaining);
+      if (remaining === 0) {
+        setCooldownUntil(null);
+      }
+    };
+    tick();
+    const interval = setInterval(tick, 100);
+    return () => clearInterval(interval);
+  }, [cooldownUntil]);
+
+  // Resume any devices we paused when the panel unmounts. A useRef snapshot
+  // keeps the cleanup closure pointing at the current paused-id list instead
+  // of the stale value captured at mount time.
+  const pausedRef = useRef<string[]>([]);
+  useEffect(() => {
+    pausedRef.current = pausedDeviceIds;
+  }, [pausedDeviceIds]);
+  useEffect(
+    () => () => {
+      for (const id of pausedRef.current) {
+        api.resumeDevice(id).catch(() => {});
+      }
+    },
+    [],
+  );
 
   // Authoring-time config fields (anything declared in config_schema that
   // isn't a baseline transport key). Surface these so users can fill in
@@ -123,16 +208,62 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
   const command: DriverCommandDef | null =
     selectedCommand !== RAW_COMMAND ? draft.commands[selectedCommand] ?? null : null;
 
-  const canSend =
+  const baseCanSend =
     (isSerial ? !!port.trim() : !!host) &&
     (selectedCommand !== RAW_COMMAND
       ? command !== null
       : rawString.trim().length > 0);
 
+  // Unresolved conflict: at least one matching production device that the
+  // user hasn't paused or explicitly chosen to override.
+  const unpausedConflicts = conflicts.filter(
+    (c) => !pausedDeviceIds.includes(c.device_id),
+  );
+  const hasUnresolvedConflict =
+    unpausedConflicts.length > 0 && !conflictAcknowledged;
+
+  const isCooldown = cooldownRemainingMs > 0;
+  const canSend = baseCanSend && !hasUnresolvedConflict && !isCooldown;
+
   // Serial uses the port string as a device path; IP transports need an int.
   const resolvePortForSend = (): number | string => {
     if (isSerial) return port;
     return parseInt(port) || (typeof defaultPort === "number" ? defaultPort : 23);
+  };
+
+  const handlePause = async (deviceId: string) => {
+    setPausingId(deviceId);
+    try {
+      await api.pauseDevice(deviceId);
+      setPausedDeviceIds((prev) =>
+        prev.includes(deviceId) ? prev : [...prev, deviceId],
+      );
+    } catch {
+      // Surface as a result entry so the user sees what went wrong instead
+      // of getting silently blocked.
+      setResults((prev) => [
+        {
+          command: `Pause ${deviceId}`,
+          sent: null,
+          received: [],
+          state_changes: {},
+          error: "Could not pause production device — try Connect anyway.",
+          timestamp: Date.now(),
+        },
+        ...prev,
+      ]);
+    } finally {
+      setPausingId(null);
+    }
+  };
+
+  const handleResume = async (deviceId: string) => {
+    try {
+      await api.resumeDevice(deviceId);
+    } catch {
+      /* idempotent — drop errors */
+    }
+    setPausedDeviceIds((prev) => prev.filter((id) => id !== deviceId));
   };
 
   const handleSend = async () => {
@@ -186,6 +317,14 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
         ...prev,
       ]);
     } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      // A82 — distinguish "throttled by our own rate limiter" from
+      // protocol or transport errors. Start a visible countdown on Send and
+      // tag the result row so the user understands it isn't a device fail.
+      const throttled = message.includes("API 429");
+      if (throttled) {
+        setCooldownUntil(Date.now() + 2000);
+      }
       setResults((prev) => [
         {
           command:
@@ -195,7 +334,10 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
           sent: null,
           received: [],
           state_changes: {},
-          error: e instanceof Error ? e.message : String(e),
+          error: throttled
+            ? "Throttled by test rate limit (2s between sends)."
+            : message,
+          throttled,
           timestamp: Date.now(),
         },
         ...prev,
@@ -424,6 +566,22 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
         </div>
       )}
 
+      {/* A81 — production-conflict banner. Shows when host:port matches a
+          running device. The user can pause each conflicting device, or
+          override and connect anyway (e.g. when they know the production
+          device is already down). */}
+      {conflicts.length > 0 && (
+        <ConflictBanner
+          conflicts={conflicts}
+          pausedDeviceIds={pausedDeviceIds}
+          pausingId={pausingId}
+          acknowledged={conflictAcknowledged}
+          onPause={handlePause}
+          onResume={handleResume}
+          onAcknowledge={() => setConflictAcknowledged(true)}
+        />
+      )}
+
       {/* Status hint + send */}
       <div
         style={{
@@ -465,9 +623,15 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
             background: canSend ? "var(--accent-bg)" : "var(--bg-hover)",
             color: canSend ? "var(--text-on-accent)" : "var(--text-muted)",
             opacity: sending ? 0.6 : 1,
+            cursor: canSend ? "pointer" : "not-allowed",
           }}
         >
-          <Send size={14} /> {sending ? "Sending..." : "Send"}
+          <Send size={14} />{" "}
+          {sending
+            ? "Sending..."
+            : isCooldown
+              ? `Rate limited (${(cooldownRemainingMs / 1000).toFixed(1)}s)`
+              : "Send"}
         </button>
       </div>
 
@@ -526,6 +690,22 @@ function ResultRow({ entry, isLast }: { entry: ResultEntry; isLast: boolean }) {
         }}
       >
         <span style={{ flex: 1 }}>{entry.command}</span>
+        {entry.throttled && (
+          <span
+            style={{
+              fontSize: "10px",
+              padding: "1px 6px",
+              borderRadius: 8,
+              background: "var(--bg-warning, #4a3a1a)",
+              color: "var(--color-warning, #e8b250)",
+              border: "1px solid var(--color-warning, #e8b250)",
+              fontFamily: "var(--font-sans)",
+            }}
+            title="Blocked by the test panel's 2-second rate limit, not the device."
+          >
+            Throttled
+          </span>
+        )}
         <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>
           {new Date(entry.timestamp).toLocaleTimeString()}
         </span>
@@ -562,7 +742,9 @@ function ResultRow({ entry, isLast }: { entry: ResultEntry; isLast: boolean }) {
       {entry.error && (
         <div
           style={{
-            color: "var(--color-error)",
+            color: entry.throttled
+              ? "var(--color-warning, #e8b250)"
+              : "var(--color-error)",
             display: "flex",
             alignItems: "center",
             gap: 4,
@@ -575,6 +757,174 @@ function ResultRow({ entry, isLast }: { entry: ResultEntry; isLast: boolean }) {
     </div>
   );
 }
+
+/**
+ * A81 — warn the user that the host:port they're testing against is already
+ * owned by a production device. Many AV devices accept only one TCP control
+ * session, so the test would kick the live device offline. The banner offers
+ * to pause each conflicting device (cleanly disconnect, suppress auto-
+ * reconnect) and then resume them on demand. A "Connect anyway" override is
+ * provided for cases where the user knows the device is already gone.
+ */
+function ConflictBanner({
+  conflicts,
+  pausedDeviceIds,
+  pausingId,
+  acknowledged,
+  onPause,
+  onResume,
+  onAcknowledge,
+}: {
+  conflicts: TestPanelConflict[];
+  pausedDeviceIds: string[];
+  pausingId: string | null;
+  acknowledged: boolean;
+  onPause: (deviceId: string) => void;
+  onResume: (deviceId: string) => void;
+  onAcknowledge: () => void;
+}) {
+  const allPaused = conflicts.every((c) =>
+    pausedDeviceIds.includes(c.device_id),
+  );
+  const allResolved = allPaused || acknowledged;
+  const tone = allResolved
+    ? { bg: "var(--bg-info, #1a2a3a)", fg: "var(--color-info, #6aa3d6)" }
+    : { bg: "var(--bg-warning, #4a3a1a)", fg: "var(--color-warning, #e8b250)" };
+  return (
+    <div
+      style={{
+        marginBottom: "var(--space-md)",
+        padding: "var(--space-sm) var(--space-md)",
+        border: `1px solid ${tone.fg}`,
+        borderRadius: "var(--border-radius)",
+        background: tone.bg,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "var(--space-xs)",
+          color: tone.fg,
+          fontSize: "var(--font-size-sm)",
+          fontWeight: 600,
+          marginBottom: "var(--space-xs)",
+        }}
+      >
+        <AlertTriangle size={14} />
+        {allPaused
+          ? "Production device paused for testing"
+          : acknowledged
+            ? "Testing over a live production address"
+            : "Production device already uses this address"}
+      </div>
+      <div
+        style={{
+          fontSize: "11px",
+          color: "var(--text-secondary)",
+          marginBottom: "var(--space-sm)",
+        }}
+      >
+        {allPaused
+          ? "The conflicting device is offline while you test. Resume it when you're done."
+          : acknowledged
+            ? "You chose to connect anyway. The live device will likely drop while the test panel holds the connection."
+            : "Many AV devices accept only one TCP control session at a time. Testing will kick the production driver offline until it reconnects."}
+      </div>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "var(--space-xs)",
+        }}
+      >
+        {conflicts.map((c) => {
+          const isPaused = pausedDeviceIds.includes(c.device_id);
+          const isPausing = pausingId === c.device_id;
+          return (
+            <div
+              key={c.device_id}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "var(--space-sm)",
+              }}
+            >
+              <div style={{ flex: 1, fontSize: "var(--font-size-sm)" }}>
+                <span style={{ color: "var(--text-primary)" }}>
+                  {c.device_name}
+                </span>{" "}
+                <span style={{ color: "var(--text-muted)", fontSize: 11 }}>
+                  ({c.device_id}
+                  {c.connected
+                    ? ", connected"
+                    : isPaused
+                      ? ", paused"
+                      : ", offline"}
+                  )
+                </span>
+              </div>
+              {isPaused ? (
+                <button
+                  onClick={() => onResume(c.device_id)}
+                  style={pillButtonStyle}
+                  title="Reconnect this device now"
+                >
+                  <Play size={12} /> Resume
+                </button>
+              ) : (
+                <button
+                  onClick={() => onPause(c.device_id)}
+                  disabled={isPausing}
+                  style={pillButtonStyle}
+                  title="Cleanly disconnect this device so the test can run"
+                >
+                  <Pause size={12} />{" "}
+                  {isPausing ? "Pausing..." : "Pause device"}
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {!allPaused && !acknowledged && (
+        <div
+          style={{
+            marginTop: "var(--space-sm)",
+            display: "flex",
+            justifyContent: "flex-end",
+          }}
+        >
+          <button
+            onClick={onAcknowledge}
+            style={{
+              ...pillButtonStyle,
+              background: "transparent",
+              borderColor: "var(--text-muted)",
+              color: "var(--text-muted)",
+            }}
+            title="Skip the pause and connect anyway (e.g. if the device is already offline)"
+          >
+            Connect anyway
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const pillButtonStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 4,
+  padding: "2px 10px",
+  borderRadius: 12,
+  border: "1px solid var(--accent)",
+  background: "transparent",
+  color: "var(--accent)",
+  fontSize: 11,
+  cursor: "pointer",
+};
 
 /**
  * Render an editable preview of the selected command — params first, then
