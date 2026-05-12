@@ -27,11 +27,16 @@ export function StateTableRenderer({
 }) {
   const liveState = useConnectionStore((s) => s.liveState);
 
-  // Filter state keys matching the glob pattern (simple startsWith for now)
-  const prefix = statePattern.replace(/\*.*$/, "");
-  const entries = Object.entries(liveState).filter(([key]) =>
-    key.startsWith(prefix)
-  );
+  // Derive the prefix from the glob. Defense in depth: reject empty /
+  // whitespace-only patterns outright — an empty prefix would match
+  // every key in liveState and leak the entire state map into a plugin
+  // sidebar (A69). The caller must supply a non-empty pattern.
+  const trimmed = statePattern.trim();
+  const prefix = trimmed.replace(/\*.*$/, "");
+  const isValidPrefix = prefix.length > 0;
+  const entries = isValidPrefix
+    ? Object.entries(liveState).filter(([key]) => key.startsWith(prefix))
+    : [];
 
   return (
     <div>
@@ -439,7 +444,10 @@ export function PluginViewRenderer({ ext }: { ext: PluginExtension }) {
       return (
         <div style={{ padding: "var(--space-lg)" }}>
           <StateTableRenderer
-            statePattern={ext.state_pattern ?? `plugin.${ext.plugin_id}.*`}
+            // `||` not `??` — an empty-string state_pattern should fall
+            // through to the plugin's namespace prefix instead of
+            // bypassing the filter and leaking all state (A69).
+            statePattern={ext.state_pattern || `plugin.${ext.plugin_id}.*`}
             title={ext.label}
           />
         </div>
