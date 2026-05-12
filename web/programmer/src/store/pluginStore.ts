@@ -168,8 +168,15 @@ export const usePluginStore = create<PluginStore>((set, get) => ({
   installCommunityPlugin: async (pluginId, fileUrl) => {
     set((s) => ({ installingIds: new Set(s.installingIds).add(pluginId) }));
     try {
-      await api.installPlugin(pluginId, fileUrl);
+      const result = await api.installPlugin(pluginId, fileUrl);
+      // Refresh both lists so the load_failed badge appears (or doesn't)
       await Promise.all([get().load(), get().loadInstalled()]);
+      // The install endpoint returns load_failed when the files were
+      // written but the plugin class didn't register. Surface the
+      // diagnostic via the same channel as install errors (A60).
+      if (result.status === "load_failed") {
+        throw new Error(result.error || `Plugin '${pluginId}' installed but failed to load`);
+      }
     } finally {
       set((s) => {
         const next = new Set(s.installingIds);
@@ -191,8 +198,11 @@ export const usePluginStore = create<PluginStore>((set, get) => ({
   updateCommunityPlugin: async (pluginId, fileUrl) => {
     set((s) => ({ installingIds: new Set(s.installingIds).add(pluginId) }));
     try {
-      await api.updatePlugin(pluginId, fileUrl);
+      const result = await api.updatePlugin(pluginId, fileUrl);
       await Promise.all([get().load(), get().loadInstalled()]);
+      if (result.status === "load_failed") {
+        throw new Error(result.error || `Plugin '${pluginId}' updated but failed to load`);
+      }
     } finally {
       set((s) => {
         const next = new Set(s.installingIds);

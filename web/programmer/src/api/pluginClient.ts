@@ -165,6 +165,14 @@ export interface InstalledPlugin {
   name: string;
   version: string;
   source: string;
+  // "loaded" — plugin class registered, ready to enable.
+  // "load_failed" — files installed but importing/registering the
+  // plugin class failed (missing PLUGIN_INFO, ImportError, etc.).
+  // Older servers omit the field; treat absent as "loaded".
+  status?: "loaded" | "load_failed";
+  // Captured error message when status === "load_failed". Surface to the
+  // user as the diagnostic path for A60.
+  error?: string;
 }
 
 export async function browseCommunityPlugins(): Promise<{ plugins: CommunityPlugin[]; error: string | null }> {
@@ -175,14 +183,25 @@ export async function listInstalledPlugins(): Promise<{ plugins: InstalledPlugin
   return request("/plugins/installed");
 }
 
-export async function installPlugin(pluginId: string, fileUrl: string): Promise<{ status: string }> {
+export async function installPlugin(
+  pluginId: string,
+  fileUrl: string,
+): Promise<{ status: "installed" | "load_failed"; plugin_id?: string; error?: string }> {
   return request(`/plugins/${pluginId}/install`, {
     method: "POST",
     body: JSON.stringify({ file_url: fileUrl }),
   });
 }
 
-export async function updatePlugin(pluginId: string, fileUrl: string): Promise<{ status: string }> {
+export async function updatePlugin(
+  pluginId: string,
+  fileUrl: string,
+): Promise<{
+  status: "installed" | "load_failed";
+  plugin_id?: string;
+  restarted?: boolean;
+  error?: string;
+}> {
   return request(`/plugins/${pluginId}/update`, {
     method: "POST",
     body: JSON.stringify({ file_url: fileUrl }),

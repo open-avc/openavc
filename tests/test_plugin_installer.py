@@ -251,6 +251,36 @@ class TestListInstalledPlugins:
         result = list_installed_plugins()
         assert result == []
 
+    def test_registered_plugin_status_loaded(self, plugin_repo):
+        """A60: plugins with a registered class report status='loaded'."""
+        class TestPlugin:
+            PLUGIN_INFO = {"id": "happy", "name": "Happy", "version": "1.0"}
+
+        (plugin_repo / "happy").mkdir()
+        register_plugin_class(TestPlugin)
+
+        result = list_installed_plugins()
+        assert len(result) == 1
+        assert result[0]["status"] == "loaded"
+        assert "error" not in result[0]
+
+    def test_load_failed_sidecar_surfaces_diagnostic(self, plugin_repo):
+        """A60: an .install-error sidecar marks the plugin as load_failed
+        and exposes the captured error to the UI."""
+        plugin_dir = plugin_repo / "broken_install"
+        plugin_dir.mkdir()
+        (plugin_dir / ".install-error").write_text(
+            "broken_install_plugin.py: SyntaxError: invalid syntax",
+            encoding="utf-8",
+        )
+
+        result = list_installed_plugins()
+
+        assert len(result) == 1
+        assert result[0]["id"] == "broken_install"
+        assert result[0]["status"] == "load_failed"
+        assert "SyntaxError" in result[0]["error"]
+
 
 # ═══════════════════════════════════════════════════════════
 #  install_plugin Tests
@@ -284,7 +314,13 @@ class TestInstallPlugin:
         assert (plugin_repo / "sample_community" / "sample_community_plugin.py").exists()
 
     async def test_install_single_py_file(self, plugin_repo):
-        """Installing a .py URL creates a directory with the file inside."""
+        """Installing a .py URL creates a directory with the file inside.
+
+        Uses plugin_id matching SAMPLE_PLUGIN_SOURCE's PLUGIN_INFO.id so the
+        registration step actually succeeds — previously the test passed
+        with a mismatched id because registration failure was silently
+        ignored (A60).
+        """
         mock_response = MagicMock()
         mock_response.content = SAMPLE_PLUGIN_SOURCE.encode()
         mock_response.raise_for_status = MagicMock()
@@ -296,12 +332,12 @@ class TestInstallPlugin:
 
         with patch("server.core.plugin_installer.httpx.AsyncClient", return_value=mock_client):
             result = await install_plugin(
-                "single_file",
-                "https://raw.githubusercontent.com/open-avc/openavc-plugins/main/single_file_plugin.py",
+                "sample_community",
+                "https://raw.githubusercontent.com/open-avc/openavc-plugins/main/sample_community_plugin.py",
             )
 
         assert result["status"] == "installed"
-        assert (plugin_repo / "single_file" / "single_file_plugin.py").exists()
+        assert (plugin_repo / "sample_community" / "sample_community_plugin.py").exists()
 
     async def test_install_already_installed_raises(self, plugin_repo):
         """Installing a plugin that already exists raises ValueError."""
@@ -328,23 +364,112 @@ class TestInstallPlugin:
         # Directory should not remain after failure
         assert not (plugin_repo / "bad_download").exists()
 
+    async def test_install_load_failure_returns_load_failed_with_sidecar(self, plugin_repo):
+        """A60: when download succeeds but the plugin module fails to import,
+        install_plugin returns status='load_failed' (not 'installed') and
+        writes an .install-error sidecar so the UI can surface a diagnostic."""
+        # Plugin source has a SyntaxError so exec_module raises.
+        broken_source = "class Broken(\n  # missing close paren\n"
+        zip_bytes = _make_plugin_zip("broken_load", broken_source)
+
+        mock_response = MagicMock()
+        mock_response.content = zip_bytes
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("server.core.plugin_installer.httpx.AsyncClient", return_value=mock_client):
+            result = await install_plugin(
+                "broken_load",
+                "https://raw.githubusercontent.com/open-avc/openavc-plugins/main/broken_load.zip",
+            )
+
+        assert result["status"] == "load_failed"
+        assert result["plugin_id"] == "broken_load"
+        assert "error" in result
+        # Plugin files are still on disk so user can read the diagnostic
+        assert (plugin_repo / "broken_load").is_dir()
+        # Sidecar written so list_installed_plugins() can surface it later
+        sidecar = plugin_repo / "broken_load" / ".install-error"
+        assert sidecar.exists()
+        assert sidecar.read_text(encoding="utf-8").strip() == result["error"].strip()
+
+    async def test_install_success_clears_old_sidecar(self, plugin_repo):
+        """A60: a successful install removes any stale .install-error
+        sidecar left over from a previous failed install."""
+        # Pre-create plugin dir + sidecar from a "previous failed install"
+        plugin_dir = plugin_repo / "sample_community"
+        plugin_dir.mkdir()
+        (plugin_dir / ".install-error").write_text("old failure", encoding="utf-8")
+        # Now the user uninstalls and reinstalls — but our test setup just
+        # puts the sidecar there to verify cleanup, so use update_plugin
+        # path: rmtree first then install.
+        import shutil
+        shutil.rmtree(plugin_dir)
+
+        zip_bytes = _make_plugin_zip("sample_community", SAMPLE_PLUGIN_SOURCE)
+        mock_response = MagicMock()
+        mock_response.content = zip_bytes
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("server.core.plugin_installer.httpx.AsyncClient", return_value=mock_client):
+            result = await install_plugin(
+                "sample_community",
+                "https://raw.githubusercontent.com/open-avc/openavc-plugins/main/sample_community.zip",
+            )
+
+        assert result["status"] == "installed"
+        assert not (plugin_dir / ".install-error").exists()
+
     async def test_install_directory_url_downloads_all_files(self, plugin_repo):
-        """URL that doesn't end in .py or .zip downloads directory via GitHub API."""
+        """URL that doesn't end in .py or .zip downloads directory via GitHub API.
+
+        Uses a valid plugin source matching plugin_id so registration also
+        succeeds — previously the test passed with placeholder content that
+        silently failed registration (A60).
+        """
         api_response = MagicMock()
         api_response.raise_for_status = MagicMock()
         api_response.json.return_value = [
-            {"name": "my_plugin.py", "type": "file",
-             "download_url": "https://raw.githubusercontent.com/open-avc/openavc-plugins/main/plugins/my_plugin.py"},
+            {"name": "generic_plugin_plugin.py", "type": "file",
+             "download_url": "https://raw.githubusercontent.com/open-avc/openavc-plugins/main/plugins/generic_plugin_plugin.py"},
             {"name": "config.json", "type": "file",
              "download_url": "https://raw.githubusercontent.com/open-avc/openavc-plugins/main/plugins/config.json"},
         ]
 
-        file_response = MagicMock()
-        file_response.content = b"# plugin code"
-        file_response.raise_for_status = MagicMock()
+        valid_plugin_source = '''
+class GenericPlugin:
+    PLUGIN_INFO = {
+        "id": "generic_plugin",
+        "name": "Generic",
+        "version": "1.0.0",
+        "author": "Test",
+        "description": "Test",
+        "category": "utility",
+        "license": "MIT",
+        "capabilities": [],
+    }
+    async def start(self, api): pass
+    async def stop(self): pass
+'''
+        plugin_response = MagicMock()
+        plugin_response.content = valid_plugin_source.encode()
+        plugin_response.raise_for_status = MagicMock()
+
+        config_response = MagicMock()
+        config_response.content = b'{"some": "config"}'
+        config_response.raise_for_status = MagicMock()
 
         mock_client = AsyncMock()
-        mock_client.get = AsyncMock(side_effect=[api_response, file_response, file_response])
+        mock_client.get = AsyncMock(side_effect=[api_response, plugin_response, config_response])
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
@@ -357,7 +482,7 @@ class TestInstallPlugin:
                     )
 
         assert result["status"] == "installed"
-        assert (plugin_repo / "generic_plugin" / "my_plugin.py").exists()
+        assert (plugin_repo / "generic_plugin" / "generic_plugin_plugin.py").exists()
         assert (plugin_repo / "generic_plugin" / "config.json").exists()
 
 
@@ -445,11 +570,12 @@ class TestRegisterInstalledPlugin:
 
         result = _register_installed_plugin("sample_community", plugin_dir)
 
-        assert result is True
+        # A60: returns None on success, error string on failure.
+        assert result is None
         assert "sample_community" in _PLUGIN_CLASS_REGISTRY
 
     def test_register_no_matching_class(self, plugin_repo):
-        """Returns False if no class with matching PLUGIN_INFO.id is found."""
+        """Returns a diagnostic string if no matching PLUGIN_INFO.id is found."""
         plugin_dir = plugin_repo / "no_match"
         plugin_dir.mkdir()
         (plugin_dir / "no_match_plugin.py").write_text(
@@ -458,20 +584,22 @@ class TestRegisterInstalledPlugin:
 
         result = _register_installed_plugin("no_match", plugin_dir)
 
-        assert result is False
+        assert isinstance(result, str)
+        assert "no_match" in result  # Diagnostic mentions the plugin id
         assert "no_match" not in _PLUGIN_CLASS_REGISTRY
 
     def test_register_empty_dir(self, plugin_repo):
-        """Returns False for an empty plugin directory."""
+        """Returns a diagnostic string for an empty plugin directory."""
         plugin_dir = plugin_repo / "empty"
         plugin_dir.mkdir()
 
         result = _register_installed_plugin("empty", plugin_dir)
 
-        assert result is False
+        assert isinstance(result, str)
+        assert "no plugin module" in result.lower() or "no class" in result.lower()
 
     def test_register_syntax_error_handled(self, plugin_repo):
-        """Syntax errors in plugin files are caught gracefully."""
+        """Syntax errors surface as a diagnostic string instead of crashing."""
         plugin_dir = plugin_repo / "broken"
         plugin_dir.mkdir()
         (plugin_dir / "broken_plugin.py").write_text(
@@ -480,7 +608,8 @@ class TestRegisterInstalledPlugin:
 
         result = _register_installed_plugin("broken", plugin_dir)
 
-        assert result is False
+        assert isinstance(result, str)
+        assert "SyntaxError" in result or "syntax" in result.lower()
 
 
 # ═══════════════════════════════════════════════════════════

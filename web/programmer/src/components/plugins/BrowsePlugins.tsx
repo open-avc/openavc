@@ -47,6 +47,14 @@ export function BrowsePlugins() {
 
   const installedIds = new Set(installedPlugins.map((p) => p.id));
   const installedVersions = new Map(installedPlugins.map((p) => [p.id, p.version]));
+  // Plugins whose registration failed at install time. Files are on disk
+  // but no PLUGIN_INFO class was registered — UI must badge these instead
+  // of pretending the install succeeded (A60).
+  const loadFailures = new Map(
+    installedPlugins
+      .filter((p) => p.status === "load_failed")
+      .map((p) => [p.id, p.error ?? "Plugin failed to load"]),
+  );
 
   const filtered = communityPlugins.filter((p) => {
     if (category !== "All" && (categoryMap[p.category] ?? p.category) !== category) {
@@ -228,6 +236,8 @@ export function BrowsePlugins() {
               installed={installedIds.has(plugin.id)}
               installing={installingIds.has(plugin.id)}
               updateAvailable={hasUpdate(installedVersions.get(plugin.id) ?? "", plugin.version)}
+              loadFailed={loadFailures.has(plugin.id)}
+              loadError={loadFailures.get(plugin.id) ?? null}
               error={installError[plugin.id]}
               onInstall={() => handleInstall(plugin)}
               onUpdate={() => handleUpdate(plugin)}
@@ -259,6 +269,8 @@ function PluginCard({
   installed,
   installing,
   updateAvailable,
+  loadFailed,
+  loadError,
   error,
   onInstall,
   onUpdate,
@@ -268,6 +280,8 @@ function PluginCard({
   installed: boolean;
   installing: boolean;
   updateAvailable: boolean;
+  loadFailed: boolean;
+  loadError: string | null;
   error?: string;
   onInstall: () => void;
   onUpdate: () => void;
@@ -343,10 +357,19 @@ function PluginCard({
         {plugin.description}
       </div>
 
-      {/* Error */}
+      {/* Error (transient install error) */}
       {error && (
         <div style={{ fontSize: 11, color: "var(--color-error)", padding: "var(--space-xs)", background: "rgba(244, 67, 54, 0.1)", borderRadius: 4 }}>
           {error}
+        </div>
+      )}
+
+      {/* Persistent load-failed diagnostic (A60). Survives across refreshes
+          because it's read from the .install-error sidecar on the server. */}
+      {!error && loadFailed && loadError && (
+        <div style={{ fontSize: 11, color: "var(--color-error)", padding: "var(--space-xs)", background: "rgba(244, 67, 54, 0.1)", borderRadius: 4 }}>
+          <div style={{ fontWeight: 600, marginBottom: 2 }}>Plugin failed to load</div>
+          <div style={{ wordBreak: "break-word" }}>{loadError}</div>
         </div>
       )}
 
@@ -386,6 +409,20 @@ function PluginCard({
               >
                 <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />
                 Updating...
+              </span>
+            ) : loadFailed ? (
+              <span
+                title={loadError ?? "Plugin failed to load"}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "var(--space-xs)",
+                  fontSize: "var(--font-size-sm)",
+                  color: "var(--color-error)",
+                }}
+              >
+                <AlertTriangle size={14} />
+                Load failed
               </span>
             ) : (
               <span

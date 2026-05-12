@@ -198,8 +198,29 @@ async def install_plugin(plugin_id: str, file_url: str) -> dict[str, Any]:
         # Install native dependencies (e.g. hidapi.dll for Stream Deck)
         await _install_native_deps(plugin_id, plugin_dir)
 
-        # Try to register the plugin class immediately
-        _register_installed_plugin(plugin_id, plugin_dir)
+        # Try to register the plugin class immediately. On failure, write
+        # an .install-error sidecar so list_installed_plugins() can surface
+        # `status: "load_failed"` to the UI (A60). We don't raise here
+        # because the plugin's files ARE on disk — uninstall/update will
+        # still work, and the user can read the diagnostic.
+        register_error = _register_installed_plugin(plugin_id, plugin_dir)
+        sidecar = plugin_dir / ".install-error"
+        if register_error:
+            try:
+                sidecar.write_text(register_error, encoding="utf-8")
+            except OSError:
+                pass  # Sidecar is best-effort; log warning already emitted
+            return {
+                "status": "load_failed",
+                "plugin_id": plugin_id,
+                "error": register_error,
+            }
+        # Clean up any sidecar from a previous failed install
+        if sidecar.exists():
+            try:
+                sidecar.unlink()
+            except OSError:
+                pass
 
         return {"status": "installed", "plugin_id": plugin_id}
 
@@ -935,8 +956,14 @@ def _parse_native_deps(plugin_dir: Path) -> list[dict]:
     return []
 
 
-def _register_installed_plugin(plugin_id: str, plugin_dir: Path) -> bool:
-    """Try to import and register a newly installed plugin."""
+def _register_installed_plugin(plugin_id: str, plugin_dir: Path) -> str | None:
+    """Try to import and register a newly installed plugin.
+
+    Returns None on success, or an error message string on failure. The
+    caller (install_plugin) uses the message to surface diagnostics to
+    the UI — silently swallowing here would leave the user staring at a
+    green "Installed" check with nothing in the Installed tab (A60).
+    """
     import importlib.util
 
     # Add .deps to sys.path
@@ -951,10 +978,20 @@ def _register_installed_plugin(plugin_id: str, plugin_dir: Path) -> bool:
     ]
     candidates.extend(sorted(plugin_dir.glob("*.py")))
 
+    last_error: str | None = None
+    candidates_tried = 0
+
     for filepath in candidates:
-        if not filepath.exists() or filepath.name.startswith("_"):
-            if filepath.name != "__init__.py":
-                continue
+        # Skip files that don't exist on disk. The original code special-
+        # cased `__init__.py` to always proceed, which caused a phantom
+        # FileNotFoundError to be logged when the plugin shipped without
+        # one. Skip outright and let the next candidate try.
+        if not filepath.exists():
+            continue
+        # Skip "private" files (starting with "_") except __init__.py,
+        # which is the canonical Python package entry point.
+        if filepath.name.startswith("_") and filepath.name != "__init__.py":
+            continue
 
         # Keep sys.path on the plugin's dir scoped to the import attempt.
         # On success (registered) we leave it so subsequent imports of the
@@ -968,6 +1005,7 @@ def _register_installed_plugin(plugin_id: str, plugin_dir: Path) -> bool:
             sys.path.insert(0, dir_str)
 
         registered = False
+        candidates_tried += 1
         try:
             spec = importlib.util.spec_from_file_location(
                 f"plugin_{plugin_id}", filepath
@@ -986,10 +1024,16 @@ def _register_installed_plugin(plugin_id: str, plugin_dir: Path) -> bool:
                     register_plugin_class(attr)
                     log.info(f"Registered plugin class '{plugin_id}' from {filepath.name}")
                     registered = True
-                    return True
+                    return None
 
         except Exception as e:  # Catch-all: exec_module runs arbitrary plugin code
-            log.debug(f"Could not load {filepath.name}: {e}")
+            last_error = f"{filepath.name}: {type(e).__name__}: {e}"
+            # Bump from debug to warning so failed installs are visible in
+            # server logs without a debug flag (A60).
+            log.warning(
+                f"Plugin '{plugin_id}' failed to load from {filepath.name}: "
+                f"{type(e).__name__}: {e}"
+            )
         finally:
             if not registered and added_to_path:
                 try:
@@ -997,7 +1041,11 @@ def _register_installed_plugin(plugin_id: str, plugin_dir: Path) -> bool:
                 except ValueError:
                     pass
 
-    return False
+    if candidates_tried == 0:
+        return f"no plugin module found in {plugin_dir.name}/"
+    if last_error:
+        return last_error
+    return f"no class with PLUGIN_INFO.id == '{plugin_id}' in {plugin_dir.name}/"
 
 
 # ──── Uninstall ────
@@ -1060,7 +1108,13 @@ async def update_plugin(plugin_id: str, file_url: str) -> dict[str, Any]:
 
 
 def list_installed_plugins() -> list[dict[str, Any]]:
-    """List all plugins installed in plugin_repo/."""
+    """List all plugins installed in plugin_repo/.
+
+    Plugins whose registration failed at install time carry an
+    ``.install-error`` sidecar. We surface those as
+    ``status: "load_failed"`` with the captured error message so the UI
+    has a diagnostic path instead of showing a phantom green check (A60).
+    """
     if not PLUGIN_REPO_DIR.is_dir():
         return []
 
@@ -1069,21 +1123,38 @@ def list_installed_plugins() -> list[dict[str, Any]]:
         if not entry.is_dir() or entry.name.startswith((".", "_")):
             continue
 
+        # Detect load-failure sidecar
+        sidecar = entry / ".install-error"
+        load_error: str | None = None
+        if sidecar.exists():
+            try:
+                load_error = sidecar.read_text(encoding="utf-8").strip() or None
+            except OSError:
+                load_error = "registration failed"
+
         plugin_class = _PLUGIN_CLASS_REGISTRY.get(entry.name)
         if plugin_class:
             info = plugin_class.PLUGIN_INFO
-            installed.append({
+            item: dict[str, Any] = {
                 "id": entry.name,
                 "name": info.get("name", entry.name),
                 "version": info.get("version", ""),
                 "source": "community",
-            })
+            }
         else:
-            installed.append({
+            item = {
                 "id": entry.name,
                 "name": entry.name,
                 "version": "",
                 "source": "community",
-            })
+            }
+
+        if load_error:
+            item["status"] = "load_failed"
+            item["error"] = load_error
+        else:
+            item["status"] = "loaded"
+
+        installed.append(item)
 
     return installed
