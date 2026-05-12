@@ -32,6 +32,10 @@ class TunnelConnection:
     target_port: int
     data_ws: Any = None  # websockets.WebSocketClientProtocol
     local_ws_connections: dict[str, Any] = field(default_factory=dict)  # ws_id -> websockets conn
+    # ws_id -> list of queued ws_frame / ws_close messages received from the
+    # cloud while the local WS is still being opened.  Drained by
+    # _handle_ws_open after the local connection is established (A48).
+    pending_ws_opens: dict[str, list[dict]] = field(default_factory=dict)
     recv_task: asyncio.Task | None = None
     _forward_tasks: list[asyncio.Task] = field(default_factory=list)
 
@@ -194,14 +198,32 @@ class TunnelHandler:
                     conn._data_tasks.add(task)
                     task.add_done_callback(conn._data_tasks.discard)
                 elif msg_type == "ws_open":
+                    # A48: reserve the ws_id BEFORE awaiting anything. Frames
+                    # that race ahead of the local connect get queued behind
+                    # this entry rather than being dropped.
+                    ws_id = msg.get("id", "")
+                    if ws_id:
+                        conn.pending_ws_opens.setdefault(ws_id, [])
                     task = asyncio.create_task(self._handle_ws_open(conn, msg))
                     conn._data_tasks = getattr(conn, '_data_tasks', set())
                     conn._data_tasks.add(task)
                     task.add_done_callback(conn._data_tasks.discard)
                 elif msg_type == "ws_frame":
-                    await self._handle_ws_frame(conn, msg)
+                    ws_id = msg.get("id", "")
+                    if ws_id in conn.pending_ws_opens:
+                        # Local WS still opening — queue for drain (A48).
+                        conn.pending_ws_opens[ws_id].append(msg)
+                    else:
+                        await self._handle_ws_frame(conn, msg)
                 elif msg_type == "ws_close":
-                    await self._handle_ws_close(conn, msg)
+                    ws_id = msg.get("id", "")
+                    if ws_id in conn.pending_ws_opens:
+                        # Local WS still opening — queue the close behind any
+                        # pending frames so they drain in order, then the close
+                        # fires after.
+                        conn.pending_ws_opens[ws_id].append(msg)
+                    else:
+                        await self._handle_ws_close(conn, msg)
                 else:
                     log.warning(f"Tunnel {conn.tunnel_id}: unknown data msg type: {msg_type}")
 
@@ -317,12 +339,32 @@ class TunnelHandler:
             )
             conn.local_ws_connections[ws_id] = local_ws
 
+            # Drain any frames / close that arrived during the connect (A48).
+            # The receive loop keeps appending to this queue until we pop the
+            # ws_id from pending_ws_opens, so we loop until truly empty —
+            # late arrivals during draining are picked up here, preserving
+            # FIFO order.
+            queue = conn.pending_ws_opens.get(ws_id, [])
+            while queue:
+                queued_msg = queue.pop(0)
+                qtype = queued_msg.get("type")
+                if qtype == "ws_frame":
+                    await self._handle_ws_frame(conn, queued_msg)
+                elif qtype == "ws_close":
+                    await self._handle_ws_close(conn, queued_msg)
+                    # Close consumed; anything still queued behind it is stale.
+                    queue.clear()
+                    break
+            conn.pending_ws_opens.pop(ws_id, None)
+
             # Start forwarding local → cloud
             task = asyncio.create_task(self._forward_local_ws(conn, ws_id, local_ws))
             conn._forward_tasks.append(task)
 
         except (ConnectionClosed, OSError, InvalidURI, InvalidHandshake) as e:
             log.warning(f"Tunnel {conn.tunnel_id}: WS open to {url} failed: {e}")
+            # Drop any queued frames; the local socket never came up.
+            conn.pending_ws_opens.pop(ws_id, None)
             # Send ws_close back to cloud
             if conn.data_ws:
                 try:

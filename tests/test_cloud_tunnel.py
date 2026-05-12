@@ -391,3 +391,153 @@ async def test_ws_open_no_subprotocols_no_headers(tunnel_handler, mock_agent):
         assert call_kwargs["additional_headers"] is None
 
     await tunnel_handler.stop()
+
+
+# ===========================================================================
+# A48 — Frames received during the local-WS open are queued in
+# `pending_ws_opens` and drained after the connect completes, in FIFO order.
+# Previously the receive loop dropped them silently.
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_ws_frames_queued_during_open_are_drained_in_order(tunnel_handler, mock_agent):
+    """Frames seeded before _handle_ws_open runs must be delivered in FIFO order."""
+    from server.cloud.tunnel import TunnelConnection
+    from unittest.mock import patch, AsyncMock as _AsyncMock
+
+    conn = TunnelConnection(tunnel_id="t-race", target_port=8080, data_ws=AsyncMock())
+    tunnel_handler._tunnels["t-race"] = conn
+
+    # Simulate the receive loop having already reserved the slot and queued
+    # two frames before the open completes.
+    conn.pending_ws_opens["ws-1"] = [
+        {"type": "ws_frame", "id": "ws-1",
+         "data": base64.b64encode(b"first").decode(), "binary": False},
+        {"type": "ws_frame", "id": "ws-1",
+         "data": base64.b64encode(b"second").decode(), "binary": False},
+    ]
+
+    sent_to_local: list = []
+
+    class _StubLocal:
+        async def send(self, data):
+            sent_to_local.append(data)
+
+        async def close(self):
+            pass
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            raise StopAsyncIteration
+
+    with patch(
+        "server.cloud.tunnel.websockets.connect",
+        new=_AsyncMock(return_value=_StubLocal()),
+    ):
+        await tunnel_handler._handle_ws_open(conn, {
+            "type": "ws_open",
+            "id": "ws-1",
+            "path": "/ws",
+            "headers": {},
+        })
+        # Give the spawned forward task a turn so it exits cleanly
+        await asyncio.sleep(0)
+
+    assert sent_to_local == ["first", "second"]
+    assert "ws-1" not in conn.pending_ws_opens
+
+    await tunnel_handler.stop()
+
+
+@pytest.mark.asyncio
+async def test_ws_close_queued_during_open_consumed_after_drain(tunnel_handler, mock_agent):
+    """A ws_close queued behind frames closes the local WS and stops further drain."""
+    from server.cloud.tunnel import TunnelConnection
+    from unittest.mock import patch, AsyncMock as _AsyncMock
+
+    conn = TunnelConnection(tunnel_id="t-close", target_port=8080, data_ws=AsyncMock())
+    tunnel_handler._tunnels["t-close"] = conn
+
+    conn.pending_ws_opens["ws-c"] = [
+        {"type": "ws_frame", "id": "ws-c",
+         "data": base64.b64encode(b"hello").decode(), "binary": False},
+        {"type": "ws_close", "id": "ws-c"},
+        # Anything queued behind a close is stale — should be skipped.
+        {"type": "ws_frame", "id": "ws-c",
+         "data": base64.b64encode(b"stale").decode(), "binary": False},
+    ]
+
+    sent: list = []
+    closed = False
+
+    class _StubLocal:
+        async def send(self, data):
+            sent.append(data)
+
+        async def close(self):
+            nonlocal closed
+            closed = True
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            raise StopAsyncIteration
+
+    with patch(
+        "server.cloud.tunnel.websockets.connect",
+        new=_AsyncMock(return_value=_StubLocal()),
+    ):
+        await tunnel_handler._handle_ws_open(conn, {
+            "type": "ws_open",
+            "id": "ws-c",
+            "path": "/ws",
+            "headers": {},
+        })
+
+    # First frame delivered, close consumed, stale frame dropped.
+    assert sent == ["hello"]
+    assert closed is True
+    assert "ws-c" not in conn.pending_ws_opens
+
+    await tunnel_handler.stop()
+
+
+@pytest.mark.asyncio
+async def test_ws_open_failure_drops_queued_frames(tunnel_handler, mock_agent):
+    """If the local connect fails, queued frames are discarded and the cloud
+    is notified with ws_close."""
+    from server.cloud.tunnel import TunnelConnection
+    from unittest.mock import patch, AsyncMock as _AsyncMock
+
+    mock_data_ws = AsyncMock()
+    mock_data_ws.send = AsyncMock()
+    conn = TunnelConnection(tunnel_id="t-fail", target_port=8080, data_ws=mock_data_ws)
+    tunnel_handler._tunnels["t-fail"] = conn
+
+    conn.pending_ws_opens["ws-bad"] = [
+        {"type": "ws_frame", "id": "ws-bad",
+         "data": base64.b64encode(b"never").decode(), "binary": False},
+    ]
+
+    with patch(
+        "server.cloud.tunnel.websockets.connect",
+        new=_AsyncMock(side_effect=OSError("connection refused")),
+    ):
+        await tunnel_handler._handle_ws_open(conn, {
+            "type": "ws_open",
+            "id": "ws-bad",
+            "path": "/ws",
+            "headers": {},
+        })
+
+    assert "ws-bad" not in conn.pending_ws_opens
+    # Cloud was told the WS is closed
+    mock_data_ws.send.assert_called_once()
+    sent = json.loads(mock_data_ws.send.call_args[0][0])
+    assert sent == {"type": "ws_close", "id": "ws-bad"}
+
+    await tunnel_handler.stop()
