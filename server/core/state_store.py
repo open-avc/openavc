@@ -9,6 +9,7 @@ Keys follow a namespace convention:
     var.<variable_id>                — e.g., "var.room_active"
     ui.<element_id>.<property>       — e.g., "ui.vol_slider.value"
     system.<property>                — e.g., "system.uptime"
+    plugin.<plugin_id>.<property>    — e.g., "plugin.streamdeck.connected"
     isc.<instance_id>.<key>          — remote instance state
 
 All values are Python primitives: str, int, float, bool, None.
