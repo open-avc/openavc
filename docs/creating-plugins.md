@@ -86,7 +86,7 @@ EXTENSIONS = {
 | `renderer` | Yes | Always `"iframe"` |
 | `renderer_url` | Yes | Path to the HTML file (relative to the plugin's `panel/` directory) |
 | `default_size` | Yes | Default grid size when dragged onto the canvas: `{"col_span": N, "row_span": N}` |
-| `config_schema` | No | Array of configuration fields for the IDE Properties panel (same field types as plugin config: `string`, `integer`, `float`, `boolean`, `select`, `state_key`, `macro_ref`, `device_ref`) |
+| `config_schema` | No | Array of configuration fields for the IDE Properties panel (same field types as plugin config: `text`, `integer`, `float`, `boolean`, `select`, `state_key`, `macro_ref`, `device_ref`) |
 
 ### File Structure
 
@@ -116,10 +116,10 @@ The panel and the plugin iframe communicate through `window.postMessage`. All me
 
 | Message Type | When Sent | Payload |
 |-------------|-----------|---------|
-| `openavc:init` | Once, when the iframe loads | `{config, theme, elementId}`: the element's `plugin_config` values, the active theme's CSS variables, and this element's ID |
+| `openavc:init` | Once, when the iframe loads | `{config, theme, state, elementId}`: the element's `plugin_config` values, the active theme's CSS variables, a snapshot of state keys in the plugin's namespace (`plugin.<plugin_id>.*`), and this element's ID |
 | `openavc:state` | On every state change in the system | `{key, value}`: the state key that changed and its new value |
 
-The iframe receives the initial state by listening for `openavc:state` messages; current values are not bundled into the init payload.
+The init payload includes a snapshot of the plugin's own namespace (`plugin.<plugin_id>.*`) so the iframe can render its current state immediately. State outside that namespace is delivered only as `openavc:state` updates after the change occurs.
 
 **iframe to panel (outgoing messages):**
 

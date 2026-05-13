@@ -4,7 +4,7 @@ OpenAVC checks for updates automatically and can install them from the Programme
 
 ## How Updates Are Discovered
 
-OpenAVC checks for new releases every hour by querying GitHub Releases. No cloud connection is needed. If a newer version is found, you'll see:
+OpenAVC checks for new releases once a day by querying GitHub Releases. No cloud connection is needed. The interval is configurable in `system.json` under `updates.auto_check_interval_hours` if you want it more or less often. If a newer version is found, you'll see:
 
 - An **update indicator** in the Programmer IDE sidebar (an upward arrow icon above the connection dot)
 - An **update card** on the Dashboard: "OpenAVC vX.Y.Z available"
