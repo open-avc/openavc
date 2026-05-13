@@ -16,6 +16,11 @@ Environment=OPENAVC_DATA_DIR=/var/lib/openavc
 Environment=OPENAVC_LOG_DIR=/var/log/openavc
 Environment=OPENAVC_PROJECT=/var/lib/openavc/projects/default/project.avc
 Environment=OPENAVC_BIND=0.0.0.0
+# Tells main.py that systemd will relaunch us on exit (Restart=always),
+# so cloud-restart can just exit cleanly instead of also spawning its own
+# replacement. systemd already sets INVOCATION_ID, but the explicit flag
+# is the canonical contract.
+Environment=OPENAVC_SERVICE_MANAGED=1
 
 # Security hardening
 NoNewPrivileges=true

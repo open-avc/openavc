@@ -80,6 +80,10 @@ ENV OPENAVC_DATA_DIR=/data
 ENV OPENAVC_LOG_DIR=/data/logs
 ENV OPENAVC_BIND=0.0.0.0
 ENV OPENAVC_PROJECT=/data/projects/default/project.avc
+# Tells main.py that the container's restart policy will relaunch us, so
+# cloud-restart can just exit cleanly. PID-1 / /.dockerenv detection in
+# main.py also catches this; this env makes the contract explicit.
+ENV OPENAVC_SERVICE_MANAGED=1
 
 EXPOSE 8080
 

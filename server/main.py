@@ -100,16 +100,45 @@ async def _initialize_engine(app: FastAPI) -> None:
         # Wire cloud-driven restart: the cloud agent emits
         # system.restart_requested after rate-limiting and sending its
         # command_result. The on-host service manager (NSSM / systemd /
-        # Docker restart policy) brings the process back up.
+        # Docker restart policy) brings the process back up — except in
+        # dev (`python -m server.main`), where there's no service manager,
+        # so we spawn a replacement ourselves before exiting.
         async def _on_restart_requested(_event: str, data: dict) -> None:
             mode = (data or {}).get("mode", "graceful")
             log.warning("Cloud-driven restart requested (mode=%s); exiting in 2s", mode)
             # Brief delay so the command_result WS frame and log line flush
             # before the process exits.
             await asyncio.sleep(0 if mode == "hard" else 2)
+
+            # Hard watchdog: a daemon thread that calls os._exit(0)
+            # unconditionally after 7s. Required because EventBus.emit nests
+            # asyncio.gather() calls when handlers themselves emit events,
+            # and cancelling that chain at shutdown can recurse past Python's
+            # stack limit (RecursionError in _GatheringFuture.cancel). When
+            # that happens, the cancellation itself can't complete, so
+            # `await engine.stop()` hangs forever AND `asyncio.wait_for(...)`
+            # would also hang (timeout fires but the coroutine can't be
+            # cancelled). A separate thread doesn't need the event loop to
+            # be healthy — it just exits the process. Service managers
+            # (NSSM/systemd/Docker) then bring us back up.
+            import threading
+            threading.Timer(7.0, lambda: os._exit(0)).start()
+
+            # Spawn the replacement BEFORE attempting graceful shutdown so a
+            # dev session is guaranteed to come back up even if the watchdog
+            # fires. The child waits for our port to free (OPENAVC_RESTARTING).
+            # In service-managed deployments, the manager handles relaunch.
+            if not _is_service_managed():
+                _spawn_replacement()
+
+            # Best-effort graceful shutdown. The wait_for timeout protects
+            # against the common case (cancellable hangs); the threading
+            # watchdog above protects against the recursion-in-cancel case.
             try:
                 if app.state.engine_ready:
-                    await engine.stop()
+                    await asyncio.wait_for(engine.stop(), timeout=5.0)
+            except asyncio.TimeoutError:
+                log.warning("Graceful shutdown exceeded 5s — forcing exit")
             except Exception:
                 log.exception("Error during graceful shutdown before restart")
             os._exit(0)
@@ -350,6 +379,69 @@ if programmer_dir.exists():
     )
 
 
+def _is_service_managed() -> bool:
+    """True when a host service manager (NSSM / systemd / Docker) will relaunch us.
+
+    When True, a plain `os._exit(0)` is enough to "restart" — the manager
+    spawns a replacement. When False (typical dev session), we must spawn
+    a replacement ourselves before exiting or the user is left with a
+    dead server.
+
+    Detection signals:
+      OPENAVC_SERVICE_MANAGED=1  — set by the installer/service unit (canonical)
+      INVOCATION_ID env var      — set by systemd
+      PID 1 or /.dockerenv       — running inside a Docker container
+    """
+    if os.environ.get("OPENAVC_SERVICE_MANAGED") == "1":
+        return True
+    if os.environ.get("INVOCATION_ID"):
+        return True
+    try:
+        if os.getpid() == 1:
+            return True
+    except OSError:
+        pass
+    if os.path.exists("/.dockerenv"):
+        return True
+    return False
+
+
+def _spawn_replacement() -> None:
+    """Launch a fresh copy of this process, detached from the current one.
+
+    Used during cloud-driven restart in dev sessions where no service
+    manager will relaunch us. The child uses `sys.orig_argv` so the original
+    invocation is reproduced exactly (`python -m server.main`, the frozen
+    exe, with `--simulator`, etc.). OPENAVC_RESTARTING tells the child to
+    retry its port pre-flight briefly: the parent's `os._exit(0)` releases
+    the listening socket essentially immediately, but on Windows there's a
+    brief window where the new bind can race the old one.
+    """
+    import subprocess
+    try:
+        cmd = list(getattr(sys, "orig_argv", None) or ([sys.executable] + sys.argv))
+        env = {**os.environ, "OPENAVC_RESTARTING": "1"}
+        if sys.platform == "win32":
+            DETACHED_PROCESS = 0x00000008
+            CREATE_NEW_PROCESS_GROUP = 0x00000200
+            subprocess.Popen(
+                cmd,
+                env=env,
+                creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
+                close_fds=True,
+            )
+        else:
+            subprocess.Popen(
+                cmd,
+                env=env,
+                start_new_session=True,
+                close_fds=True,
+            )
+        log.info("Spawned replacement process for restart (no service manager detected)")
+    except Exception:
+        log.exception("Failed to spawn replacement process; exiting without restart")
+
+
 def _write_startup_error(error_type: str, message: str) -> None:
     """Write a startup error file so the tray app (or other monitors) can report it."""
     from server.system_config import get_data_dir
@@ -380,12 +472,30 @@ def _clear_startup_error() -> None:
 
 if __name__ == "__main__":
     import socket as _sock
-    _test = _sock.socket(_sock.AF_INET, _sock.SOCK_STREAM)
-    try:
-        _test.bind((config.BIND_ADDRESS, config.HTTP_PORT))
-        _test.close()
-    except OSError:
-        _test.close()
+    import time as _time
+
+    # During cloud restart, the dying parent's listening socket can take a
+    # moment to free after `os._exit(0)`. Retry for up to 10s so the new
+    # process doesn't lose the race even when the parent's hard-exit
+    # watchdog (7s) is what finally tears it down. For a normal startup
+    # (no restart marker) we check once, preserving the immediate
+    # "port in use" error.
+    _retries = 20 if os.environ.get("OPENAVC_RESTARTING") == "1" else 1
+    _bound = False
+    _last_err: OSError | None = None
+    for _attempt in range(_retries):
+        _test = _sock.socket(_sock.AF_INET, _sock.SOCK_STREAM)
+        try:
+            _test.bind((config.BIND_ADDRESS, config.HTTP_PORT))
+            _bound = True
+            _test.close()
+            break
+        except OSError as _err:
+            _last_err = _err
+            _test.close()
+            if _attempt < _retries - 1:
+                _time.sleep(0.5)
+    if not _bound:
         msg = (
             f"Port {config.HTTP_PORT} is already in use.\n"
             f"Another application (or another copy of OpenAVC) is using this port.\n\n"
@@ -395,6 +505,9 @@ if __name__ == "__main__":
         print(f"\n*** {msg} ***\n")
         _write_startup_error("port_in_use", msg)
         raise SystemExit(1)
+    # Clear the restart marker so a future startup error isn't masked by
+    # repeated retries.
+    os.environ.pop("OPENAVC_RESTARTING", None)
 
     _clear_startup_error()
 
