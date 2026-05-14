@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
-import { Save, AlertTriangle, Eye, EyeOff, RefreshCw } from "lucide-react";
+import { Save, AlertTriangle, Eye, EyeOff, RefreshCw, Download, Lock } from "lucide-react";
 import { ViewContainer } from "../components/layout/ViewContainer";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import { showError, showSuccess } from "../store/toastStore";
 import * as api from "../api/restClient";
-import type { SystemConfig, NetworkAdapter } from "../api/restClient";
+import type { SystemConfig, NetworkAdapter, TlsStatus } from "../api/restClient";
 
 const REDACTED = "***";
 
@@ -193,6 +193,43 @@ function PasswordField({
   );
 }
 
+function ExpiryBadge({ days }: { days: number }) {
+  let bg = "rgba(76, 175, 80, 0.15)";
+  let color = "rgb(76, 175, 80)";
+  let label = `${days} days`;
+  if (days < 0) {
+    bg = "rgba(244, 67, 54, 0.15)";
+    color = "rgb(244, 67, 54)";
+    label = "Expired";
+  } else if (days < 30) {
+    bg = "rgba(255, 152, 0, 0.15)";
+    color = "rgb(255, 152, 0)";
+    label = `${days} days left`;
+  }
+  return (
+    <span style={{
+      display: "inline-block",
+      padding: "2px 8px",
+      borderRadius: 4,
+      fontSize: 11,
+      fontWeight: 600,
+      background: bg,
+      color,
+    }}>
+      {label}
+    </span>
+  );
+}
+
+function warningLabel(w: string): string {
+  switch (w) {
+    case "expired": return "Certificate is expired — generate a new one";
+    case "expiring-soon": return "Certificate expires in under 30 days";
+    case "hostname-mismatch": return "Certificate does not cover this server's current hostname/IP — regenerate after IP change";
+    default: return w;
+  }
+}
+
 function getTheme(): "dark" | "light" {
   return (localStorage.getItem("openavc-theme") as "dark" | "light") || "dark";
 }
@@ -212,6 +249,7 @@ export function SystemSettingsView() {
   const [kioskAvailable, setKioskAvailable] = useState(false);
   const [adapters, setAdapters] = useState<NetworkAdapter[]>([]);
   const [adaptersLoading, setAdaptersLoading] = useState(false);
+  const [tlsStatus, setTlsStatus] = useState<TlsStatus | null>(null);
 
   const loadAdapters = useCallback(() => {
     setAdaptersLoading(true);
@@ -221,11 +259,16 @@ export function SystemSettingsView() {
       .finally(() => setAdaptersLoading(false));
   }, []);
 
+  const loadTlsStatus = useCallback(() => {
+    api.getTlsStatus().then(setTlsStatus).catch(() => setTlsStatus(null));
+  }, []);
+
   useEffect(() => {
     api.getSystemConfig().then(setConfig).catch((e) => showError("Failed to load config: " + e));
     api.getSystemVersion().then((v) => setKioskAvailable(v.kiosk_available)).catch(() => {});
     loadAdapters();
-  }, [loadAdapters]);
+    loadTlsStatus();
+  }, [loadAdapters, loadTlsStatus]);
 
   // Track which fields the user has changed
   const update = useCallback(
@@ -236,6 +279,8 @@ export function SystemSettingsView() {
       }));
       // Track restart-required changes (bind_address/port need restart, control_interface does not)
       if (section === "network" && (key === "bind_address" || key === "http_port")) setRestartNeeded(true);
+      // Any TLS change requires a restart — uvicorn only reads cert + ports at startup.
+      if (section === "tls") setRestartNeeded(true);
     },
     [],
   );
@@ -269,16 +314,34 @@ export function SystemSettingsView() {
     setSaving(true);
     try {
       await api.updateSystemConfig(payload as Partial<SystemConfig>);
-      showSuccess("Settings saved" + (restartNeeded ? ". Restart required for network changes." : "."));
-      // Reload config to get fresh state
+      showSuccess("Settings saved" + (restartNeeded ? ". Restart required for network/security changes." : "."));
+      // Reload config + tls status to get fresh state
       const fresh = await api.getSystemConfig();
       setConfig(fresh);
       setDirty({});
+      loadTlsStatus();
       if (hasKioskChanges && kioskAvailable) setShowRebootDialog(true);
     } catch (e) {
       showError("Failed to save: " + String(e));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDownloadCert = async () => {
+    try {
+      const blob = await api.downloadCertificate();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "openavc-ca.crt";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showSuccess("CA certificate downloaded. Install it on your panel devices to skip the security warning.");
+    } catch (e) {
+      showError("Could not download CA certificate: " + String(e));
     }
   };
 
@@ -288,10 +351,33 @@ export function SystemSettingsView() {
   const log = merged("logging");
   const upd = merged("updates");
   const kiosk = merged("kiosk");
+  const tls = merged("tls");
 
   // Warning: no auth + public bind
   const noAuth = !auth.programmer_password && auth.programmer_password !== REDACTED && !auth.api_key && auth.api_key !== REDACTED;
   const publicBind = net.bind_address === "0.0.0.0";
+
+  // Validation for TLS fields. The cert mode is driven by tls.auto_generate
+  // (true => auto self-sign, false => user-supplied paths), not by whether the
+  // path fields happen to be populated.
+  const tlsCertMode: "auto" | "provided" = tls?.auto_generate ? "auto" : "provided";
+  const tlsPortInvalid =
+    tls && (tls.port < 1 || tls.port > 65535 || tls.port === net.http_port);
+  const tlsPortError = tls && tls.port === net.http_port
+    ? "HTTPS port must differ from HTTP port"
+    : tls && (tls.port < 1 || tls.port > 65535)
+    ? "Port must be between 1 and 65535"
+    : null;
+  const tlsProvidedBlank =
+    tlsCertMode === "provided" &&
+    tls?.enabled &&
+    (!tls?.cert_file?.trim() || !tls?.key_file?.trim());
+  const saveBlocked = !!(tls?.enabled && (tlsPortInvalid || tlsProvidedBlank));
+
+  // Cross-protocol switch warning (page loaded over one scheme, switching to the other)
+  const pageIsHttps = typeof window !== "undefined" && window.location.protocol === "https:";
+  const switchingOff = pageIsHttps && tls && tls.enabled === false && config?.tls?.enabled === true;
+  const switchingOn = !pageIsHttps && tls && tls.enabled === true && config?.tls?.enabled === false;
 
   if (!config) {
     return (
@@ -307,9 +393,10 @@ export function SystemSettingsView() {
       title="System Settings"
       actions={
         <button
-          style={{ ...btnStyle, opacity: hasDirty && !saving ? 1 : 0.5 }}
+          style={{ ...btnStyle, opacity: hasDirty && !saving && !saveBlocked ? 1 : 0.5 }}
           onClick={handleSave}
-          disabled={!hasDirty || saving}
+          disabled={!hasDirty || saving || saveBlocked}
+          title={saveBlocked ? "Fix the validation errors below before saving" : undefined}
         >
           <Save size={14} />
           <span>{saving ? "Saving..." : "Save"}</span>
@@ -417,6 +504,238 @@ export function SystemSettingsView() {
               Which network adapter OpenAVC uses to communicate with AV devices and run discovery scans. Changes take effect on the next device connection or scan. Does not require a restart.
             </span>
           </div>
+        </div>
+
+        {/* Security (HTTPS / TLS) */}
+        <h3 style={sectionTitle}>Security</h3>
+        <div style={cardStyle}>
+          <div style={toggleRow}>
+            <div>
+              <div style={{ fontSize: "var(--font-size-sm)" }}>Enable HTTPS</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                Encrypt traffic between this server and panels / browsers. Off by default.
+              </div>
+            </div>
+            <Toggle
+              checked={!!tls?.enabled}
+              onChange={(v) => update("tls", "enabled", v)}
+            />
+          </div>
+
+          {/* URL preview always visible — shows the user where they'll reach the IDE */}
+          <div style={{ ...helpText, gridColumn: "1 / -1", marginTop: 0, marginBottom: "var(--space-md)" }}>
+            After restart, the Programmer IDE will be at{" "}
+            <code>
+              {tls?.enabled ? "https" : "http"}://&lt;server&gt;:
+              {tls?.enabled ? tls.port : net.http_port}/programmer
+            </code>
+          </div>
+
+          {switchingOff && (
+            <div style={warningBox}>
+              <AlertTriangle size={16} style={{ color: "rgb(255, 152, 0)", flexShrink: 0, marginTop: 2 }} />
+              <span>
+                You're disabling HTTPS while connected over <code>https://</code>. After restart, this page will be at{" "}
+                <code>http://&lt;server&gt;:{net.http_port}/programmer</code>. Update any bookmarks pointing to{" "}
+                <code>https://</code>.
+              </span>
+            </div>
+          )}
+          {switchingOn && (
+            <div style={warningBox}>
+              <AlertTriangle size={16} style={{ color: "rgb(255, 152, 0)", flexShrink: 0, marginTop: 2 }} />
+              <span>
+                You're enabling HTTPS while connected over <code>http://</code>. After restart, this page will be at{" "}
+                <code>https://&lt;server&gt;:{tls?.port ?? 8443}/programmer</code>. Your browser will show a warning
+                until you install the CA certificate (button appears below after restart).
+              </span>
+            </div>
+          )}
+
+          {tls?.enabled && (
+            <>
+              {/* Cert source */}
+              <div style={{ ...fieldRow, gridTemplateColumns: "200px 1fr" }}>
+                <label style={labelStyle}>Certificate source</label>
+                <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", cursor: "pointer" }}>
+                    <input
+                      type="radio"
+                      name="tls-cert-source"
+                      checked={tlsCertMode === "auto"}
+                      onChange={() => {
+                        update("tls", "auto_generate", true);
+                        update("tls", "cert_file", "");
+                        update("tls", "key_file", "");
+                      }}
+                    />
+                    <span>Auto-generate (recommended)</span>
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", cursor: "pointer" }}>
+                    <input
+                      type="radio"
+                      name="tls-cert-source"
+                      checked={tlsCertMode === "provided"}
+                      onChange={() => update("tls", "auto_generate", false)}
+                    />
+                    <span>Use my own certificate</span>
+                  </label>
+                </div>
+              </div>
+
+              {tlsCertMode === "auto" && (
+                <>
+                  <div style={fieldRow}>
+                    <label style={labelStyle}>Certificate</label>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
+                      {tlsStatus?.enabled && tlsStatus.cert ? (
+                        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", flexWrap: "wrap" }}>
+                          <span style={{ fontSize: "var(--font-size-sm)" }}>
+                            Valid until{" "}
+                            <strong>{new Date(tlsStatus.cert.expires_at).toLocaleDateString()}</strong>
+                          </span>
+                          <ExpiryBadge days={tlsStatus.cert.days_until_expiry} />
+                        </div>
+                      ) : (
+                        <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
+                          The self-signed certificate will be generated on the next restart.
+                        </span>
+                      )}
+                      {tlsStatus?.enabled && tlsStatus.mode === "auto" && (
+                        <button
+                          type="button"
+                          onClick={handleDownloadCert}
+                          style={{
+                            ...btnStyle,
+                            background: "var(--bg-elevated)",
+                            color: "var(--text-primary)",
+                            border: "1px solid var(--border-color)",
+                            alignSelf: "flex-start",
+                            marginTop: "var(--space-xs)",
+                          }}
+                        >
+                          <Download size={14} />
+                          <span>Download CA certificate</span>
+                        </button>
+                      )}
+                    </div>
+                    <span style={helpText}>
+                      Install the CA on your panel devices (iOS Settings &rarr; Profile, or Android Security &rarr; Install certificate)
+                      so they trust this server without a warning.
+                    </span>
+                  </div>
+                </>
+              )}
+
+              {tlsCertMode === "provided" && (
+                <>
+                  <div style={fieldRow}>
+                    <label style={labelStyle}>Certificate file</label>
+                    <input
+                      style={inputStyle}
+                      value={tls.cert_file}
+                      placeholder="/etc/openavc/tls/cert.pem"
+                      onChange={(e) => update("tls", "cert_file", e.target.value)}
+                    />
+                    <span style={helpText}>
+                      Absolute path on this server's filesystem. The server reads this file on each restart.
+                    </span>
+                  </div>
+                  <div style={fieldRow}>
+                    <label style={labelStyle}>Key file</label>
+                    <input
+                      style={inputStyle}
+                      value={tls.key_file}
+                      placeholder="/etc/openavc/tls/key.pem"
+                      onChange={(e) => update("tls", "key_file", e.target.value)}
+                    />
+                    <span style={helpText}>
+                      The private key matching the certificate above. Keep this file readable only by the OpenAVC service user.
+                    </span>
+                  </div>
+                  {tlsProvidedBlank && (
+                    <div style={{ ...helpText, color: "rgb(244, 67, 54)" }}>
+                      Both certificate and key paths are required.
+                    </div>
+                  )}
+                </>
+              )}
+
+              <div style={fieldRow}>
+                <label style={labelStyle} htmlFor="cfg-tls-port">HTTPS port</label>
+                <input
+                  id="cfg-tls-port"
+                  type="number"
+                  min={1}
+                  max={65535}
+                  style={{
+                    ...inputStyle,
+                    borderColor: tlsPortError ? "rgb(244, 67, 54)" : (inputStyle.borderColor as string),
+                  }}
+                  value={tls.port}
+                  onChange={(e) => update("tls", "port", parseInt(e.target.value) || 8443)}
+                />
+                {tlsPortError && (
+                  <span style={{ ...helpText, color: "rgb(244, 67, 54)" }}>
+                    {tlsPortError}
+                  </span>
+                )}
+              </div>
+
+              <div style={toggleRow}>
+                <div>
+                  <div style={{ fontSize: "var(--font-size-sm)" }}>Redirect HTTP to HTTPS</div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                    Old links to <code>http://&lt;server&gt;:{net.http_port}</code> redirect automatically. Turn off only
+                    if a reverse proxy in front of OpenAVC handles HTTP.
+                  </div>
+                </div>
+                <Toggle
+                  checked={!!tls.redirect_http}
+                  onChange={(v) => update("tls", "redirect_http", v)}
+                />
+              </div>
+
+              {/* Status block — read-only, populated after restart */}
+              {tlsStatus?.enabled && tlsStatus.cert && (
+                <div style={{
+                  marginTop: "var(--space-md)",
+                  padding: "var(--space-md)",
+                  background: "var(--bg-elevated)",
+                  borderRadius: "var(--border-radius)",
+                  fontSize: 12,
+                  lineHeight: 1.6,
+                }}>
+                  <div style={{ ...sectionTitle, marginBottom: "var(--space-sm)" }}>Current certificate</div>
+                  <div><strong>Subject:</strong> <code>{tlsStatus.cert.subject}</code></div>
+                  <div><strong>Issuer:</strong> <code>{tlsStatus.cert.issuer}</code></div>
+                  <div><strong>SHA-256 fingerprint:</strong>{" "}
+                    <code style={{ wordBreak: "break-all" }}>{tlsStatus.cert.fingerprint}</code>
+                  </div>
+                  <div><strong>Valid for:</strong> {tlsStatus.cert.sans.join(", ")}</div>
+                  {tlsStatus.cert.warnings.length > 0 && (
+                    <div style={{ marginTop: "var(--space-sm)", color: "rgb(255, 152, 0)" }}>
+                      <Lock size={12} style={{ verticalAlign: "middle", marginRight: 4 }} />
+                      {tlsStatus.cert.warnings.map((w) => warningLabel(w)).join("; ")}
+                    </div>
+                  )}
+                </div>
+              )}
+              {tlsStatus?.enabled && tlsStatus.error && (
+                <div style={{ ...helpText, color: "rgb(244, 67, 54)", marginTop: "var(--space-sm)" }}>
+                  <Lock size={12} style={{ verticalAlign: "middle", marginRight: 4 }} />
+                  {tlsStatus.error}
+                </div>
+              )}
+
+              {/* Panel-device install hint */}
+              <div style={{ ...helpText, gridColumn: "1 / -1", marginTop: "var(--space-md)" }}>
+                <strong>Panel apps:</strong> the OpenAVC Panel app detects HTTPS automatically via mDNS once both the
+                server and the app are updated to a release with HTTPS support. To suppress the browser warning on each
+                device, download the CA certificate (button above) and install it on the device.
+              </div>
+            </>
+          )}
         </div>
 
         {/* Access */}
