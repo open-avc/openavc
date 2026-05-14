@@ -323,6 +323,112 @@ async def update_system_config(request: Request) -> dict[str, Any]:
     return {"success": True, "updated_sections": updated_sections}
 
 
+# --- HTTPS / TLS ---
+
+
+@open_router.get("/certificate")
+async def download_ca_certificate():
+    """Serve the auto-generated CA cert so panel devices can trust it.
+
+    No auth — this is a public certificate (it's already presented during
+    every TLS handshake) and panels need to fetch it before they can speak
+    HTTPS without warnings.
+
+    404 when:
+      - TLS is off (no CA exists).
+      - TLS is on with a user-provided cert (caller brings their own CA).
+      - TLS is on with auto_generate but the CA file is missing.
+    """
+    from fastapi.responses import Response
+    from server import config
+
+    if not config.TLS_ENABLED or not config.TLS_AUTO_GENERATE:
+        raise HTTPException(status_code=404, detail="No CA certificate available")
+
+    from server.system_config import get_system_config
+    ca_path = get_system_config().data_dir / "tls" / "ca.crt"
+    if not ca_path.exists():
+        raise HTTPException(status_code=404, detail="CA certificate not found")
+
+    return Response(
+        content=ca_path.read_bytes(),
+        media_type="application/x-pem-file",
+        headers={"Content-Disposition": 'attachment; filename="openavc-ca.crt"'},
+    )
+
+
+@router.get("/system/tls-status")
+async def get_tls_status() -> dict[str, Any]:
+    """Surface current TLS state for the Programmer IDE's Security card.
+
+    Shape:
+      - TLS off: {"enabled": false}
+      - TLS on:  {enabled, port, redirect_http, mode, cert: {...}, [error]}
+
+    Cert dict contains: subject, issuer, expires_at (ISO 8601),
+    days_until_expiry, fingerprint (sha256 hex), sans (list), warnings (list).
+
+    Warnings may include: "expired", "expiring-soon", "hostname-mismatch".
+    On cert-read failure, "error" is set at the top level and "cert" is null.
+    """
+    from server import config
+
+    if not config.TLS_ENABLED:
+        return {"enabled": False}
+
+    mode = "provided" if (config.TLS_CERT_FILE and config.TLS_KEY_FILE) else "auto"
+
+    if mode == "provided":
+        from pathlib import Path
+        cert_path = Path(config.TLS_CERT_FILE)
+    else:
+        from server.system_config import get_system_config
+        cert_path = get_system_config().data_dir / "tls" / "server.crt"
+
+    status: dict[str, Any] = {
+        "enabled": True,
+        "port": config.TLS_PORT,
+        "redirect_http": config.TLS_REDIRECT_HTTP,
+        "mode": mode,
+        "cert": None,
+    }
+
+    if not cert_path.exists():
+        status["error"] = f"Certificate file not found: {cert_path}"
+        return status
+
+    try:
+        from server import tls as tls_module
+        info = tls_module.read_cert_info(cert_path)
+    except (ValueError, OSError) as exc:
+        status["error"] = f"Could not read certificate: {exc}"
+        return status
+
+    warnings = list(info.warnings)
+    # Hostname-mismatch: compare cert SANs against the host's current identifiers.
+    try:
+        hostnames, ips = tls_module.collect_local_identifiers(config.BIND_ADDRESS)
+        all_current = set(hostnames) | set(ips)
+        all_current.discard("127.0.0.1")
+        all_current.discard("localhost")
+        all_current.discard("::1")
+        if all_current and not all_current.intersection(info.sans):
+            warnings.append("hostname-mismatch")
+    except Exception:  # noqa: BLE001 — diagnostic-only, never block the endpoint
+        pass
+
+    status["cert"] = {
+        "subject": info.subject,
+        "issuer": info.issuer,
+        "expires_at": info.expires_at.isoformat(),
+        "days_until_expiry": info.days_until_expiry,
+        "fingerprint": info.fingerprint_sha256,
+        "sans": info.sans,
+        "warnings": warnings,
+    }
+    return status
+
+
 # --- Network Adapters ---
 
 

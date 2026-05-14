@@ -253,6 +253,42 @@ export async function rebootSystem(): Promise<{ status: string }> {
   return request("/system/reboot", { method: "POST" });
 }
 
+// --- HTTPS / TLS ---
+
+export interface TlsCertInfo {
+  subject: string;
+  issuer: string;
+  expires_at: string;
+  days_until_expiry: number;
+  fingerprint: string;
+  sans: string[];
+  warnings: string[];
+}
+
+export interface TlsStatus {
+  enabled: boolean;
+  port?: number;
+  redirect_http?: boolean;
+  mode?: "auto" | "provided";
+  cert?: TlsCertInfo | null;
+  error?: string;
+}
+
+export async function getTlsStatus(): Promise<TlsStatus> {
+  return request<TlsStatus>("/system/tls-status");
+}
+
+/** Fetch the auto-generated CA cert so it can be installed on panel devices.
+ *  Returns the PEM bytes (caller can `URL.createObjectURL(blob)` and trigger a download).
+ *  Throws on 404 (TLS off or no CA in provided mode). */
+export async function downloadCertificate(): Promise<Blob> {
+  const res = await fetch(`${BASE}/certificate`);
+  if (!res.ok) {
+    throw new Error(`No certificate available (HTTP ${res.status})`);
+  }
+  return res.blob();
+}
+
 // --- Network Adapters ---
 
 export interface NetworkAdapter {
