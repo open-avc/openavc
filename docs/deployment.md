@@ -117,6 +117,14 @@ System-level configuration controls the server itself: networking, authenticatio
         "enabled": false,
         "target_url": "http://localhost:8080/panel",
         "cursor_visible": false
+    },
+    "tls": {
+        "enabled": false,
+        "port": 8443,
+        "auto_generate": true,
+        "cert_file": "",
+        "key_file": "",
+        "redirect_http": true
     }
 }
 ```
@@ -138,6 +146,12 @@ System-level configuration controls the server itself: networking, authenticatio
 | `cloud.endpoint` | `OPENAVC_CLOUD_ENDPOINT` | `wss://cloud.openavc.com/agent/v1` |
 | `cloud.system_key` | `OPENAVC_CLOUD_SYSTEM_KEY` | `""` |
 | `cloud.system_id` | `OPENAVC_CLOUD_SYSTEM_ID` | `""` |
+| `tls.enabled` | `OPENAVC_TLS_ENABLED` | `false` |
+| `tls.port` | `OPENAVC_TLS_PORT` | `8443` |
+| `tls.auto_generate` | `OPENAVC_TLS_AUTO_GENERATE` | `true` |
+| `tls.cert_file` | `OPENAVC_TLS_CERT_FILE` | `""` |
+| `tls.key_file` | `OPENAVC_TLS_KEY_FILE` | `""` |
+| `tls.redirect_http` | `OPENAVC_TLS_REDIRECT_HTTP` | `true` |
 
 You can also read and modify system configuration through the REST API:
 
@@ -308,6 +322,69 @@ When at least one credential is configured:
 - Panel WebSocket connections remain open; programmer WebSocket connections require a `?token=` query param or `X-API-Key` header
 - The Panel UI at `/panel` is always accessible (it's a touch screen, not a config tool)
 
+## HTTPS
+
+HTTPS is off by default. OpenAVC typically runs on an isolated AV VLAN where plain HTTP is the convention (Crestron and Extron web UIs also default to HTTP). Turn HTTPS on when you need it: corporate or higher-ed networks that block HTTP, public Wi-Fi between the panel and the server, or browser features that require a secure context (clipboard, notifications).
+
+### Enabling from the Programmer IDE
+
+The supported path:
+
+1. Open the Programmer IDE and go to **Settings > Security**.
+2. Toggle **Enable HTTPS** on.
+3. Leave **Auto-generate (recommended)** selected unless your organization has its own CA.
+4. Click **Save**.
+5. Restart the server (the banner tells you a restart is required).
+6. Reopen the IDE at `https://<host>:8443/programmer`. The browser shows a one-time warning the first time it sees the self-signed cert; click through, or install the CA cert on each device that needs warning-free access (see "Installing the CA" below).
+
+The Security card shows live cert details (subject, issuer, fingerprint, SAN list, expiry, warnings) once the TLS listener is running.
+
+### Enabling without the IDE
+
+For headless deployments, set the environment variables before starting the server:
+
+```bash
+export OPENAVC_TLS_ENABLED=true
+export OPENAVC_TLS_PORT=8443                 # optional, defaults to 8443
+```
+
+Or edit `{data_dir}/system.json`:
+
+```json
+"tls": {
+    "enabled": true,
+    "port": 8443
+}
+```
+
+Then restart the server. On first start with TLS on, OpenAVC generates a self-signed CA and server cert under `{data_dir}/tls/`. The cert is valid for 10 years and covers `localhost`, `127.0.0.1`, the OS hostname, and every LAN IPv4 the host has at generation time. It is regenerated automatically if the primary local IP changes later.
+
+### Providing your own certificate
+
+If your organization has an internal CA and you'd rather use a cert signed by it, switch to **Use my own certificate** in the IDE (or set `tls.auto_generate` to false in `system.json`) and point `tls.cert_file` / `tls.key_file` at the PEM files. Both must be absolute paths on the server's filesystem. Wildcard certs work as long as the SAN matches the hostname clients use.
+
+If the cert is missing, unreadable, malformed, or expired, OpenAVC refuses to start the TLS listener and writes a precise error to the startup log. It does **not** silently fall back to HTTP. Fix the cert configuration and restart.
+
+### HTTP-to-HTTPS redirect
+
+When HTTPS is enabled, OpenAVC also runs a tiny HTTP listener on the original port (8080 by default) that 301/308-redirects every request to the HTTPS URL. This keeps old bookmarks, printed QR codes, and panel apps pointed at `http://` working without any user action. Disable it in Settings > Security if you want to take port 8080 down entirely.
+
+### Installing the CA on panel devices
+
+Auto-generated certs are signed by an internal CA that no client trusts out of the box. Until you install the CA, browsers and the panel apps show a warning. To install it warning-free:
+
+1. From any browser on the same network, visit `https://<server>:8443/api/certificate` (no auth required) — or click **Download CA certificate** in Settings > Security.
+2. Transfer the downloaded `openavc-ca.crt` to the panel device (email, AirDrop, USB).
+3. **iOS:** open the file, then **Settings > General > VPN & Device Management > Install Profile**. After install, also enable trust under **Settings > General > About > Certificate Trust Settings**.
+4. **Android:** open the file via **Settings > Security > Encryption & credentials > Install a certificate > CA certificate** (path varies by manufacturer).
+5. **Windows / macOS / Linux:** add the cert to the system trust store (or browser trust store, depending on the browser).
+
+Once the CA is trusted, future cert regenerations (e.g., the server gets a new LAN IP) keep working without re-installing trust.
+
+### Reverse-proxy deployments
+
+If you front OpenAVC with nginx, Caddy, or another reverse proxy that terminates TLS for you, leave OpenAVC's `tls.enabled` at false and let the proxy do the work. Set `tls.redirect_http` to false if you want OpenAVC to skip its own redirect listener (the proxy will handle that too).
+
 ## Health Check
 
 `GET /api/health` returns server health with no authentication required. Use this for monitoring tools, load balancers, and container orchestration health checks.
@@ -324,9 +401,9 @@ When at least one credential is configured:
 
 ## Security Notes
 
-- Communication is HTTP by default, suitable for isolated AV VLANs
-- HTTPS can be enabled with a reverse proxy (nginx, caddy) if needed
-- ISC (inter-system communication) uses a shared auth key for system-to-system traffic
+- Communication is HTTP by default, suitable for isolated AV VLANs.
+- HTTPS is available as a built-in opt-in (see the HTTPS section above). Auto-generated self-signed cert by default, or supply your own cert/key for environments with an internal CA. Reverse-proxy TLS is still supported for deployments that prefer it.
+- ISC (inter-system communication) uses a shared auth key for system-to-system traffic, and switches to `wss://` automatically when peers advertise HTTPS.
 - The default bind address is localhost only. Change to `0.0.0.0` in system.json when you need network access.
 
 ## See Also

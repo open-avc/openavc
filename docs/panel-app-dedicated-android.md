@@ -98,6 +98,22 @@ If you see `not allowed to set device owner: there are already some accounts`, s
 
 The panel locks immediately when you return to it. Home and recents are disabled. Reboot the tablet to confirm the app auto-launches back into the panel.
 
+### 7. (HTTPS-only servers) Install the OpenAVC CA Certificate
+
+Skip this step if the OpenAVC system is running plain HTTP. If HTTPS is enabled in the system's Settings > Security, the tablet needs to trust OpenAVC's self-signed CA before the panel app or any browser on the tablet will open the panel without a warning.
+
+```bash
+# From the same PC you used in Step 4, with the tablet still on USB:
+curl -k -o openavc-ca.crt https://<server-ip>:8443/api/certificate
+adb push openavc-ca.crt /sdcard/Download/openavc-ca.crt
+```
+
+Then on the tablet, open **Settings > Security > Encryption & credentials > Install a certificate > CA certificate**, browse to `Downloads`, and pick `openavc-ca.crt`. The exact path varies slightly by manufacturer (Samsung calls it "Biometrics and security > Other security settings > Install from device storage", for example). Confirm the warning that the device is adding a CA.
+
+If the panel app is already paired and showing a cert warning, force-stop it and reopen — Android picks up the new CA right away.
+
+You can skip the install if you're using a cert signed by your organization's CA that the tablet already trusts (corporate / school MDM-managed devices typically do).
+
 ## Method B: QR Enterprise Provisioning (Best for Fleets)
 
 If you're deploying more than a handful of tablets, QR provisioning is faster because there's no USB cable involved. Each tablet just needs to scan one QR code during its initial setup.

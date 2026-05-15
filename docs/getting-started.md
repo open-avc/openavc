@@ -120,6 +120,8 @@ Once OpenAVC is running, open a browser:
 
 > **First-time startup:** When the server first starts, it initializes in the background. You may briefly see a loading page while the engine starts up. This only takes a few seconds.
 
+> **HTTPS:** OpenAVC ships with HTTPS off — the URLs above use plain HTTP because most deployments run on an isolated AV VLAN. Once you have things running, you can opt in to HTTPS from **Settings > Security** in the Programmer IDE. After enabling, the IDE is reachable at `https://localhost:8443/programmer`, and `http://localhost:8080/...` automatically redirects to the HTTPS URL. See the [Deployment guide](deployment.md#https) for the full enable flow.
+
 ## First Steps: Explore the Demo
 
 When you start OpenAVC for the first time, a set of starter projects are available in the **Project Library**.

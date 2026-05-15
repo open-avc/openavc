@@ -45,10 +45,13 @@ OpenAVC runs on an existing server, VM, or Docker host. It controls AV equipment
 | Port | Protocol | Purpose | Required? |
 |------|----------|---------|-----------|
 | **8080** | TCP (HTTP) | Web interface and REST API | Yes |
+| **8443** | TCP (HTTPS) | Web interface and REST API over TLS | Only when HTTPS is enabled in Settings > Security |
 | **19500** | TCP (HTTP) | Device Simulator UI (development/testing only) | No |
 | **19872** | UDP | ISC auto-discovery (multi-instance setups only) | No |
 
-**Port 8080** is the only port that must be accessible for a standard single-room deployment. This is configurable via the `OPENAVC_PORT` environment variable or `system.json`.
+**Port 8080** is the only port that must be accessible for a standard single-room deployment when HTTPS is off (the default). This is configurable via the `OPENAVC_PORT` environment variable or `system.json`.
+
+**Port 8443** is opened when HTTPS is enabled. When both listeners are running, the HTTP listener on 8080 returns a 301/308 redirect to the HTTPS URL — so existing bookmarks and panel devices keep working without reconfiguration. If you disable the redirect listener (Settings > Security), only port 8443 is open. Port 8443 is configurable via `OPENAVC_TLS_PORT` or `tls.port` in `system.json`.
 
 **Port 19500** is used by the device simulator during development and testing. It is only active when the simulator is running. It does not need to be accessible from other machines.
 
@@ -201,7 +204,16 @@ When authentication is enabled:
 
 ### TLS/HTTPS
 
-OpenAVC serves HTTP only. It does not terminate TLS. For HTTPS, place a reverse proxy (nginx, Caddy, Apache, HAProxy) in front of the application. This allows you to use your own certificates and manage TLS independently of the application.
+OpenAVC defaults to plain HTTP because most deployments live on an isolated AV VLAN. HTTPS is available as a built-in opt-in via **Settings > Security** in the Programmer IDE, or by setting `OPENAVC_TLS_ENABLED=true` (or `tls.enabled: true` in `system.json`) and restarting the server.
+
+When enabled, the server runs the HTTPS listener on port 8443 (TLS 1.2 and 1.3, RSA-2048 server keys) and keeps a tiny HTTP listener on port 8080 that 301/308-redirects to the HTTPS URL so existing clients keep working.
+
+Two cert modes are supported:
+
+- **Auto-generated self-signed cert.** Built-in CA and server cert under `{data_dir}/tls/`, 10-year validity, SANs covering the OS hostname and every local IPv4. The CA is downloadable at `GET /api/certificate` for install on panel devices.
+- **User-provided cert.** Point `tls.cert_file` / `tls.key_file` at PEM files signed by your internal CA. No browser warnings if the CA is already trusted by your fleet.
+
+A reverse proxy in front of OpenAVC (nginx, Caddy, Apache, HAProxy) is still fully supported — leave OpenAVC's TLS off and let the proxy terminate.
 
 ### Rate limiting
 
@@ -330,6 +342,7 @@ Cloud is disabled by default. To confirm it is disabled, verify that `cloud.enab
 | Rule | Direction | Source | Destination | Port | Protocol |
 |------|-----------|--------|-------------|------|----------|
 | Web UI access | Inbound | Touch panels / browsers | OpenAVC host | 8080/tcp | HTTP |
+| Web UI access (TLS) | Inbound | Touch panels / browsers | OpenAVC host | 8443/tcp | HTTPS (only when enabled) |
 | AV device control | Outbound | OpenAVC host | AV device IPs | Per device (see table above) | TCP |
 
 ### Typical (with updates and discovery)
@@ -389,10 +402,10 @@ OpenAVC does not use UPnP port mapping, NAT traversal, or any technique that mod
 
 | Aspect | Default | Notes |
 |--------|---------|-------|
-| Inbound ports | 1 (HTTP 8080) | Configurable. Only port required for operation. |
+| Inbound ports | 1 (HTTP 8080) | Configurable. Adds 8443 when HTTPS is enabled. |
 | Bind address | Localhost only | Only the host PC can access the UI. Change via `OPENAVC_BIND` env var to allow tablets/other devices. |
 | Authentication | Off | Appropriate for isolated AV VLANs. Enable for broader networks. |
-| TLS | Not built-in | Use a reverse proxy for HTTPS if needed |
+| TLS | Off, opt-in built-in | Enable via Settings > Security. Auto-generated self-signed cert or supply your own. Reverse-proxy TLS also supported. |
 | Outbound internet | Not required | Only for optional updates and cloud |
 | Cloud connectivity | Disabled by default | Opt-in with explicit configuration |
 | Privileged access | None required | Runs as standard user, no root/admin |

@@ -2,7 +2,7 @@
 
 A tour of the OpenAVC Programmer IDE: what each section does and how to approach building a room control system.
 
-> The Programmer IDE is at http://localhost:8080/programmer. See [Getting Started](getting-started.md) if you haven't installed OpenAVC yet.
+> The Programmer IDE is at http://localhost:8080/programmer (or https://localhost:8443/programmer when HTTPS is enabled in Settings > Security). See [Getting Started](getting-started.md) if you haven't installed OpenAVC yet.
 
 ## Overview
 

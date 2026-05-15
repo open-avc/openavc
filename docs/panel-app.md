@@ -68,6 +68,14 @@ Both guides open with what you get for free before explaining what full lockdown
 
 > The Android platform's own developer documentation calls this "kiosk mode" or "Lock Task Mode." Same feature. We call it dedicated panel mode because that's what AV integrators call these tablets.
 
+## Using the App with HTTPS
+
+If HTTPS is turned on in **Settings > Security** on the OpenAVC system, the app picks it up automatically — the server advertises `https` in its mDNS record, and the app connects over TLS. No setting on the tablet to change.
+
+For warning-free operation, the auto-generated CA needs to be trusted by each tablet. The CA cert is downloadable at `https://<server>:8443/api/certificate`, or via the **Download CA certificate** button on the server's Settings > Security page. Once the CA is installed on the tablet, the app and any browser on the tablet open the panel without a security prompt.
+
+**Order of operations:** update the OpenAVC server first, then update the panel app. A new app build paired with an older server still works (the new app falls back to plain HTTP); an older app paired with an HTTPS-only server reaches the server through the automatic HTTP-to-HTTPS redirect listener, which is on by default.
+
 ## Troubleshooting
 
 **"Searching the network" never finds anything.**
@@ -81,6 +89,9 @@ The OpenAVC system became unreachable. Tap **Try again** once it's back up, or *
 
 **Panel shows "HTTP 401".**
 The OpenAVC system has authentication enabled. Log in from a browser first so the session is established, then relaunch the app.
+
+**Browser-style certificate warning before the panel loads.**
+HTTPS is enabled on the server but the tablet hasn't trusted the OpenAVC CA yet. Download the CA cert from `https://<server>:8443/api/certificate` and install it on the tablet, then relaunch the app.
 
 ## Related
 
