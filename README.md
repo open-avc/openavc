@@ -25,7 +25,16 @@ OpenAVC is a software-based AV control platform for professional audiovisual ins
 
 Program a conference room, lecture hall, worship space, or auditorium. Control projectors, displays, switchers, DSPs, cameras, and lighting from a web-based touch panel that runs on any tablet, phone, or wall-mounted display.
 
-![OpenAVC Programmer dashboard](https://raw.githubusercontent.com/open-avc/openavc/main/docs/images/programmer-dashboard.png)
+<p align="center">
+  <a href="https://raw.githubusercontent.com/open-avc/openavc/main/docs/images/programmer-dashboard.png">
+    <img src="https://raw.githubusercontent.com/open-avc/openavc/main/docs/images/programmer-dashboard.png" alt="OpenAVC Programmer dashboard" width="49%">
+  </a>
+  <a href="https://raw.githubusercontent.com/open-avc/openavc/main/docs/images/programmer-ui-builder.png">
+    <img src="https://raw.githubusercontent.com/open-avc/openavc/main/docs/images/programmer-ui-builder.png" alt="OpenAVC UI Builder" width="49%">
+  </a>
+</p>
+
+<p align="center"><sub><i>Programmer dashboard (left) and visual UI Builder (right). Click to view full size.</i></sub></p>
 
 ## Why OpenAVC?
 
