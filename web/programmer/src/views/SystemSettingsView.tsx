@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Save, AlertTriangle, Eye, EyeOff, RefreshCw, Download, Lock, Power, Upload, FileCheck2, ChevronDown, ChevronRight } from "lucide-react";
+import { Save, AlertTriangle, Eye, EyeOff, RefreshCw, Download, Lock, Power, Upload, FileCheck2, ChevronDown, ChevronRight, Copy, Smartphone } from "lucide-react";
 import { ViewContainer } from "../components/layout/ViewContainer";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import { RestartProgressDialog } from "../components/shared/RestartProgressDialog";
@@ -222,6 +222,81 @@ function ExpiryBadge({ days }: { days: number }) {
   );
 }
 
+// --- CA install instructions (per-OS) ---
+//
+// The text below is hand-written from current OS docs (Apple Platform Security
+// Guide, Microsoft "Manage trusted root certificates", Google Chrome Help, and
+// Mozilla support). Re-check it when shipping a new major OS version.
+
+type CaInstallOs =
+  | "windows"
+  | "macos"
+  | "ios"
+  | "android"
+  | "linux-chrome"
+  | "linux-firefox";
+
+const CA_INSTALL_OS_LABELS: Array<{ id: CaInstallOs; label: string }> = [
+  { id: "windows", label: "Windows" },
+  { id: "macos", label: "macOS" },
+  { id: "ios", label: "iOS (iPhone / iPad)" },
+  { id: "android", label: "Android" },
+  { id: "linux-chrome", label: "Linux (Chrome / Chromium / Edge)" },
+  { id: "linux-firefox", label: "Linux (Firefox)" },
+];
+
+const CA_INSTALL_STEPS: Record<CaInstallOs, string[]> = {
+  windows: [
+    "Double-click the downloaded openavc-ca.crt file.",
+    "Click \"Install Certificate…\" and choose \"Local Machine\" (or \"Current User\" if you can't elevate).",
+    "Select \"Place all certificates in the following store\", click \"Browse…\", and pick \"Trusted Root Certification Authorities\".",
+    "Finish the wizard. Restart any browsers that were already running.",
+  ],
+  macos: [
+    "Double-click the downloaded openavc-ca.crt file to open it in Keychain Access.",
+    "Pick the \"System\" keychain (or \"login\" if you only want to trust it for your own user) and add the certificate.",
+    "In Keychain Access, find \"OpenAVC Root CA\", double-click it, expand \"Trust\", and set \"When using this certificate\" to \"Always Trust\".",
+    "Close the window and authenticate. Restart Safari / Chrome to pick up the new trust setting.",
+  ],
+  ios: [
+    "Email or AirDrop the openavc-ca.crt file to the device, then open it.",
+    "iOS will say \"Profile Downloaded\". Open Settings → General → VPN & Device Management and tap the OpenAVC profile to install it.",
+    "Open Settings → General → About → Certificate Trust Settings and enable full trust for the OpenAVC root.",
+    "Reopen any browser tabs that were already showing a warning.",
+  ],
+  android: [
+    "Copy the openavc-ca.crt file to the device (USB, Drive, or email).",
+    "Open Settings → Security & privacy → More security settings → Encryption & credentials → Install a certificate → CA certificate.",
+    "Acknowledge the warning, tap \"Install anyway\", browse to the file, and confirm.",
+    "Some apps only trust user-installed CAs with explicit opt-in. Chrome works out of the box; the OpenAVC Panel app trusts the server automatically and does not need this step.",
+  ],
+  "linux-chrome": [
+    "Open Settings → Privacy and security → Security → Manage certificates → \"Authorities\" tab.",
+    "Click \"Import\", select openavc-ca.crt, and confirm.",
+    "In the trust dialog, tick \"Trust this certificate for identifying websites\" and click OK.",
+    "Restart Chrome / Chromium / Edge.",
+  ],
+  "linux-firefox": [
+    "Open Settings → Privacy & Security, scroll to \"Certificates\", and click \"View Certificates…\".",
+    "Switch to the \"Authorities\" tab and click \"Import…\".",
+    "Pick openavc-ca.crt and tick \"Trust this CA to identify websites\".",
+    "Close the dialog and reload any open OpenAVC tab.",
+  ],
+};
+
+function detectOs(): CaInstallOs {
+  if (typeof navigator === "undefined") return "windows";
+  const ua = navigator.userAgent;
+  if (/iPad|iPhone|iPod/i.test(ua)) return "ios";
+  if (/Android/i.test(ua)) return "android";
+  if (/Macintosh|Mac OS X/i.test(ua)) return "macos";
+  if (/Linux/i.test(ua)) {
+    if (/Firefox/i.test(ua)) return "linux-firefox";
+    return "linux-chrome";
+  }
+  return "windows";
+}
+
 function warningLabel(w: string): string {
   switch (w) {
     case "expired": return "Certificate is expired — generate a new one";
@@ -262,6 +337,9 @@ export function SystemSettingsView() {
   const [adapters, setAdapters] = useState<NetworkAdapter[]>([]);
   const [adaptersLoading, setAdaptersLoading] = useState(false);
   const [tlsStatus, setTlsStatus] = useState<TlsStatus | null>(null);
+  const [installOs, setInstallOs] = useState<CaInstallOs>(() => detectOs());
+  const [installStepsOpen, setInstallStepsOpen] = useState(false);
+  const [fingerprintCopied, setFingerprintCopied] = useState(false);
 
   const loadAdapters = useCallback(() => {
     setAdaptersLoading(true);
@@ -664,6 +742,83 @@ export function SystemSettingsView() {
 
               {tlsCertMode === "auto" && (
                 <>
+                  {/* Panel-app banner — only relevant when the server is actually
+                      running in auto-generate TLS mode. The browser-side card
+                      below is what desktop / iOS users need to install on their
+                      device. */}
+                  {tlsStatus?.enabled && tlsStatus.mode === "auto" && (
+                    <div style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: "var(--space-sm)",
+                      padding: "var(--space-md)",
+                      marginBottom: "var(--space-md)",
+                      background: "rgba(76, 175, 80, 0.08)",
+                      border: "1px solid rgba(76, 175, 80, 0.3)",
+                      borderRadius: "var(--border-radius)",
+                      fontSize: "var(--font-size-sm)",
+                      color: "var(--text-primary)",
+                    }}>
+                      <Smartphone size={16} style={{ color: "rgb(76, 175, 80)", flexShrink: 0, marginTop: 2 }} />
+                      <span>
+                        The OpenAVC Panel app (Android v0.1.0-rc6 or newer) trusts this server automatically — no
+                        certificate install needed. The instructions below are for web browsers and the iOS panel app.
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Fingerprint verification — lets a paranoid integrator confirm
+                      the CA being downloaded matches the one the server is actually
+                      serving, before they install it on devices. */}
+                  {tlsStatus?.enabled && tlsStatus.cert && (
+                    <div style={{
+                      padding: "var(--space-md)",
+                      marginBottom: "var(--space-md)",
+                      background: "var(--bg-elevated)",
+                      border: "1px solid var(--border-color)",
+                      borderRadius: "var(--border-radius)",
+                    }}>
+                      <div style={{ ...subCardTitle, marginBottom: "var(--space-xs)" }}>Verify fingerprint</div>
+                      <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "var(--space-sm)", lineHeight: 1.5 }}>
+                        When you install this certificate on a device, the device will show this same SHA-256
+                        fingerprint. They should match exactly.
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", flexWrap: "wrap" }}>
+                        <code style={{
+                          fontFamily: "var(--font-mono, monospace)",
+                          fontSize: 12,
+                          padding: "var(--space-xs) var(--space-sm)",
+                          background: "var(--bg-surface)",
+                          border: "1px solid var(--border-color)",
+                          borderRadius: 4,
+                          wordBreak: "break-all",
+                          flex: 1,
+                          minWidth: 240,
+                        }}>
+                          {tlsStatus.cert.fingerprint}
+                        </code>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(tlsStatus.cert!.fingerprint).then(() => {
+                              setFingerprintCopied(true);
+                              setTimeout(() => setFingerprintCopied(false), 1500);
+                            }).catch(() => showError("Couldn't copy to clipboard"));
+                          }}
+                          style={{
+                            ...btnStyle,
+                            background: "var(--bg-surface)",
+                            color: "var(--text-primary)",
+                            border: "1px solid var(--border-color)",
+                          }}
+                        >
+                          <Copy size={14} />
+                          <span>{fingerprintCopied ? "Copied" : "Copy"}</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   <div style={fieldRow}>
                     <label style={labelStyle}>Certificate</label>
                     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
@@ -698,11 +853,59 @@ export function SystemSettingsView() {
                         </button>
                       )}
                     </div>
-                    <span style={helpText}>
-                      Install the CA on your panel devices (iOS Settings &rarr; Profile, or Android Security &rarr; Install certificate)
-                      so they trust this server without a warning.
-                    </span>
                   </div>
+
+                  {/* OS picker + collapsible step-by-step. Lets browser / iOS users
+                      see the right install path for their device without us trying
+                      to pretend the whole flow is one-click. */}
+                  {tlsStatus?.enabled && tlsStatus.mode === "auto" && (
+                    <div style={fieldRow}>
+                      <label style={labelStyle} htmlFor="ca-install-os">Install on</label>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
+                        <select
+                          id="ca-install-os"
+                          value={installOs}
+                          onChange={(e) => setInstallOs(e.target.value as CaInstallOs)}
+                          style={selectStyle}
+                        >
+                          {CA_INSTALL_OS_LABELS.map((opt) => (
+                            <option key={opt.id} value={opt.id}>{opt.label}</option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => setInstallStepsOpen((v) => !v)}
+                          style={{
+                            ...btnStyle,
+                            background: "transparent",
+                            color: "var(--text-primary)",
+                            border: "1px solid var(--border-color)",
+                            justifyContent: "flex-start",
+                            marginTop: "var(--space-xs)",
+                          }}
+                        >
+                          {installStepsOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                          <span>How to install</span>
+                        </button>
+                        {installStepsOpen && (
+                          <ol style={{
+                            marginTop: "var(--space-sm)",
+                            padding: "var(--space-md) var(--space-md) var(--space-md) var(--space-xl)",
+                            background: "var(--bg-elevated)",
+                            border: "1px solid var(--border-color)",
+                            borderRadius: "var(--border-radius)",
+                            fontSize: "var(--font-size-sm)",
+                            lineHeight: 1.6,
+                            color: "var(--text-primary)",
+                          }}>
+                            {CA_INSTALL_STEPS[installOs].map((step, i) => (
+                              <li key={i} style={{ marginBottom: "var(--space-xs)" }}>{step}</li>
+                            ))}
+                          </ol>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
 
