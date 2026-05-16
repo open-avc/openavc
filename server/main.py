@@ -545,12 +545,18 @@ def _preflight_port(port: int, *, retries: int) -> "OSError | None":
 
 
 def _build_redirect_app(tls_port: int):
-    """Tiny Starlette app: catch-all that 301/308 redirects to https://...:tls_port.
+    """Tiny Starlette app: catch-all that 302/307 redirects to https://...:tls_port.
 
-    GET/HEAD use 301; other methods use 308 to preserve method semantics. The
-    Host header drives the redirect target hostname so external clients (phones,
-    other servers on the LAN) get redirected back to themselves, not to
-    "localhost". Pathological Host values fall back to the request URL hostname.
+    Uses temporary redirects (302/307) rather than 301/308 because TLS can be
+    toggled off at runtime — a permanent redirect cached by the browser would
+    keep forcing HTTPS even after HTTPS is disabled, leaving users locked out
+    until they manually clear the browser cache. Cache-Control: no-store
+    belt-and-suspenders prevents any caching at all.
+
+    The Host header drives the redirect target hostname so external clients
+    (phones, other servers on the LAN) get redirected back to themselves, not
+    to "localhost". Pathological Host values fall back to the request URL
+    hostname.
     """
     from starlette.applications import Starlette
     from starlette.responses import RedirectResponse
@@ -566,8 +572,12 @@ def _build_redirect_app(tls_port: int):
         target = f"https://{host}:{tls_port}{request.url.path}"
         if request.url.query:
             target += f"?{request.url.query}"
-        status = 301 if request.method in ("GET", "HEAD") else 308
-        return RedirectResponse(target, status_code=status)
+        status = 302 if request.method in ("GET", "HEAD") else 307
+        return RedirectResponse(
+            target,
+            status_code=status,
+            headers={"Cache-Control": "no-store"},
+        )
 
     return Starlette(routes=[
         Route(

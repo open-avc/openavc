@@ -156,8 +156,9 @@ async def test_http_redirect_to_https_get(cert_paths):
     async with _running_server(tls_server), _running_server(redirect_server):
         async with httpx.AsyncClient(verify=False, follow_redirects=False) as client:
             resp = await client.get(f"http://127.0.0.1:{redirect_port}/api/health")
-            assert resp.status_code == 301
+            assert resp.status_code == 302
             assert resp.headers["location"] == f"https://127.0.0.1:{tls_port}/api/health"
+            assert resp.headers.get("cache-control") == "no-store"
 
 
 @pytest.mark.asyncio
@@ -179,15 +180,15 @@ async def test_http_redirect_preserves_query_string(cert_paths):
             resp = await client.get(
                 f"http://127.0.0.1:{redirect_port}/api/devices?foo=bar&baz=1"
             )
-            assert resp.status_code == 301
+            assert resp.status_code == 302
             assert resp.headers["location"] == (
                 f"https://127.0.0.1:{tls_port}/api/devices?foo=bar&baz=1"
             )
 
 
 @pytest.mark.asyncio
-async def test_http_redirect_post_uses_308(cert_paths):
-    """POST gets 308 (not 301) so the method is preserved on redirect."""
+async def test_http_redirect_post_uses_307(cert_paths):
+    """POST gets 307 (not 302) so the method is preserved on redirect."""
     cert_path, key_path = cert_paths
     tls_port = _free_port()
     redirect_port = _free_port()
@@ -205,7 +206,7 @@ async def test_http_redirect_post_uses_308(cert_paths):
                 f"http://127.0.0.1:{redirect_port}/api/echo",
                 json={"action": "on"},
             )
-            assert resp.status_code == 308
+            assert resp.status_code == 307
             assert resp.headers["location"] == (
                 f"https://127.0.0.1:{tls_port}/api/echo"
             )
@@ -213,7 +214,7 @@ async def test_http_redirect_post_uses_308(cert_paths):
 
 @pytest.mark.asyncio
 async def test_redirect_follows_through_to_https(cert_paths):
-    """End-to-end: client following the 301 lands on the HTTPS server."""
+    """End-to-end: client following the 302 lands on the HTTPS server."""
     cert_path, key_path = cert_paths
     tls_port = _free_port()
     redirect_port = _free_port()
