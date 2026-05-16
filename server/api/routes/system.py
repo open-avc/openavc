@@ -370,7 +370,13 @@ async def restart_system(request: Request) -> dict[str, Any]:
         pass
 
     engine = _get_engine()
-    await engine.events.emit("system.restart_requested", {"mode": mode})
+    # Fire-and-forget: the registered handler sleeps a beat then exits the
+    # process, so awaiting emit() means the HTTP response never reaches the
+    # caller. Schedule the emit as a background task and respond immediately
+    # — the dialog uses this 200 as its cue to start polling for the new
+    # listener to come back up.
+    import asyncio
+    asyncio.create_task(engine.events.emit("system.restart_requested", {"mode": mode}))
 
     return {
         "status": "restarting",

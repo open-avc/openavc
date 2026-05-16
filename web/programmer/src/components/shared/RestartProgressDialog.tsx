@@ -41,14 +41,17 @@ export function RestartProgressDialog({
     cancelled.current = false;
 
     const run = async () => {
-      // Step 1: trigger the restart.
+      // Step 1: trigger the restart. A throw here is ambiguous — the server
+      // may have already started exiting and dropped the connection before
+      // sending a response. Either way, polling is the source of truth, so
+      // log and fall through rather than aborting on a transient fetch error.
       try {
         await api.restartSystem("graceful");
       } catch (e) {
         if (cancelled.current) return;
+        // Keep the detail around in case polling never succeeds — we'll
+        // surface it then. Don't switch phase yet.
         setErrorDetail(String(e));
-        setPhase("error");
-        return;
       }
       if (cancelled.current) return;
 

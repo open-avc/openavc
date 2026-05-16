@@ -427,28 +427,66 @@ def _spawn_replacement() -> None:
     retry its port pre-flight briefly: the parent's `os._exit(0)` releases
     the listening socket essentially immediately, but on Windows there's a
     brief window where the new bind can race the old one.
+
+    Child stdout/stderr are redirected to ``data_dir/logs/restart-child.log``
+    so a silent failure on Windows (DETACHED_PROCESS = no console) leaves a
+    trail. Path + parent PID are logged before spawning so the user can
+    correlate the breadcrumb with the actual relaunch.
     """
     import subprocess
+    from server.system_config import get_data_dir
     try:
         cmd = list(getattr(sys, "orig_argv", None) or ([sys.executable] + sys.argv))
         env = {**os.environ, "OPENAVC_RESTARTING": "1"}
+
+        # Capture child output so DETACHED_PROCESS on Windows doesn't swallow
+        # startup errors silently. Append (not truncate) — successive restarts
+        # in one dev session leave readable history.
+        try:
+            log_dir = get_data_dir() / "logs"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            child_log_path = log_dir / "restart-child.log"
+            child_log = open(child_log_path, "a", buffering=1, encoding="utf-8", errors="replace")
+            child_log.write(
+                f"\n--- spawning replacement (parent pid={os.getpid()}, "
+                f"argv={cmd}) at {__import__('datetime').datetime.now().isoformat()} ---\n"
+            )
+            child_log.flush()
+        except OSError as exc:
+            log.warning("Could not open restart-child log: %s; child output will be lost", exc)
+            child_log = subprocess.DEVNULL
+            child_log_path = None
+
         if sys.platform == "win32":
             DETACHED_PROCESS = 0x00000008
             CREATE_NEW_PROCESS_GROUP = 0x00000200
-            subprocess.Popen(
+            child = subprocess.Popen(
                 cmd,
                 env=env,
                 creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
                 close_fds=True,
+                stdin=subprocess.DEVNULL,
+                stdout=child_log,
+                stderr=subprocess.STDOUT,
             )
         else:
-            subprocess.Popen(
+            child = subprocess.Popen(
                 cmd,
                 env=env,
                 start_new_session=True,
                 close_fds=True,
+                stdin=subprocess.DEVNULL,
+                stdout=child_log,
+                stderr=subprocess.STDOUT,
             )
-        log.info("Spawned replacement process for restart (no service manager detected)")
+        if child_log_path is not None:
+            log.info(
+                "Spawned replacement process pid=%s; child output -> %s",
+                child.pid,
+                child_log_path,
+            )
+        else:
+            log.info("Spawned replacement process pid=%s", child.pid)
     except Exception:
         log.exception("Failed to spawn replacement process; exiting without restart")
 
