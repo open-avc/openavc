@@ -84,6 +84,13 @@ MOCK_CATALOG = [
 @pytest.fixture
 async def running_app():
     """Engine with two orphaned devices + one connected, plus catalog mocked."""
+    # The TestClient hits the API as IP 'testclient', not 127.0.0.1, so the
+    # middleware's localhost exemption doesn't apply. Earlier tests in the
+    # suite leave entries in the per-IP rate-limit buckets that can spill
+    # over and 429 our requests on CI. Clear before yielding.
+    from server.middleware.rate_limit import _ip_buckets
+    _ip_buckets.clear()
+
     project = json.loads(json.dumps(TEST_PROJECT))
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".json", delete=False
