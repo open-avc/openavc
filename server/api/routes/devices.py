@@ -8,13 +8,14 @@ from fastapi import APIRouter, HTTPException, Request
 from server.api._engine import _get_engine, _rate_limit_test
 from server.api.errors import api_error as _api_error
 from server.api.models import (
+    ChildEntityPatchRequest,
     CommandRequest,
     DeviceSettingRequest,
     DeviceUpdateRequest,
     InstallMissingDriversRequest,
     PendingSettingsRequest,
 )
-from server.core.project_loader import DeviceConfig, save_project
+from server.core.project_loader import ChildEntityConfig, DeviceConfig, save_project
 from server.core.project_migration import CONNECTION_FIELDS
 
 router = APIRouter()
@@ -484,6 +485,292 @@ async def store_pending_settings(
 
     save_project(engine.project_path, engine.project)
     return {"status": "pending", "device_id": device_id, "settings": body.settings}
+
+
+# --- Child Entities ---
+#
+# A "child entity" is a sub-unit owned by a device (an encoder/decoder on
+# an AV-over-IP controller, a zone on a DSP, a video wall slot on a
+# presentation switcher). Drivers declare types in
+# DRIVER_INFO["child_entity_types"] and register live instances via
+# BaseDriver.register_child(). The platform owns the state-key shape:
+#   device.<parent_id>.<child_type>.<local_id_padded>.<property>
+# These endpoints expose registered children + project-side label/config
+# to the IDE and integrators without the IDE needing to assemble the
+# state-key namespace itself. See openavc-device-children-plan.md §5.
+
+
+def _project_device_entry(engine: Any, device_id: str):
+    """Return the project-side DeviceConfig for ``device_id``, or None."""
+    if not getattr(engine, "project", None):
+        return None
+    for d in engine.project.devices:
+        if d.id == device_id:
+            return d
+    return None
+
+
+def _project_child_entry(
+    project_device: Any, child_type: str, padded_id: str,
+) -> dict[str, Any]:
+    """Return ``{"label", "config"}`` for one project-side child entry.
+
+    Falls back to defaults when the project doesn't have an entry, so
+    callers can always read ``label`` / ``config`` from the dict without
+    a None check.
+    """
+    if project_device is None:
+        return {"label": "", "config": {}}
+    type_map = project_device.child_entities.get(child_type, {})
+    entry = type_map.get(padded_id)
+    if entry is None:
+        return {"label": "", "config": {}}
+    return {
+        "label": entry.label,
+        "config": dict(entry.config),
+    }
+
+
+def _build_child_entry(
+    driver: Any, project_device: Any, child_type: str, local_id: int,
+) -> dict[str, Any]:
+    """Build the response shape for one registered child.
+
+    Combines the driver-padded id, the driver-owned live state, and the
+    project-owned label + config. ``label`` in the top-level response is
+    the project-canonical value; the same key inside ``state`` is the
+    runtime mirror (synced on register_child / PATCH).
+    """
+    padded = driver.format_child_id(child_type, local_id)
+    project_entry = _project_child_entry(project_device, child_type, padded)
+    return {
+        "local_id": local_id,
+        "local_id_padded": padded,
+        "label": project_entry["label"],
+        "config": project_entry["config"],
+        "registered": True,
+        "state": driver.get_child_state(child_type, local_id),
+    }
+
+
+def _ensure_driver_for_children(engine: Any, device_id: str):
+    """Return the live driver for child-entity routes, or raise 404 / 503.
+
+    GET endpoints tolerate orphan/disabled devices by returning empty
+    payloads; this helper is only used by routes that need to introspect
+    or mutate the driver's child registry.
+    """
+    project_device = _project_device_entry(engine, device_id)
+    if project_device is None:
+        raise HTTPException(
+            status_code=404, detail=f"Device '{device_id}' not found",
+        )
+    driver = engine.devices.get_driver(device_id)
+    if driver is None:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Device '{device_id}' has no live driver "
+                   f"(orphaned or disabled)",
+        )
+    return driver, project_device
+
+
+@router.get("/devices/{device_id}/children")
+async def list_child_entities(device_id: str) -> dict[str, Any]:
+    """List every child entity grouped by type, with the per-type schema
+    and current registered children.
+
+    Returns an empty payload (200, no children) when the device exists in
+    the project but has no live driver (orphan/disabled) or the driver
+    didn't declare ``child_entity_types``. Returns 404 only when
+    ``device_id`` itself isn't in the project.
+    """
+    engine = _get_engine()
+    project_device = _project_device_entry(engine, device_id)
+    if project_device is None:
+        raise HTTPException(
+            status_code=404, detail=f"Device '{device_id}' not found",
+        )
+
+    driver = engine.devices.get_driver(device_id)
+    if driver is None:
+        return {
+            "device_id": device_id,
+            "child_entity_types": {},
+            "children": {},
+        }
+
+    types = driver.get_child_entity_types()
+    children: dict[str, list[dict[str, Any]]] = {}
+    for ctype in types:
+        ids = driver.list_children(ctype)
+        children[ctype] = [
+            _build_child_entry(driver, project_device, ctype, lid)
+            for lid in ids
+        ]
+    return {
+        "device_id": device_id,
+        "child_entity_types": types,
+        "children": children,
+    }
+
+
+@router.get("/devices/{device_id}/children/{child_type}")
+async def list_child_entities_by_type(
+    device_id: str, child_type: str,
+) -> dict[str, Any]:
+    """List registered children of one type."""
+    driver, project_device = _ensure_driver_for_children(
+        _get_engine(), device_id,
+    )
+    types = driver.get_child_entity_types()
+    if child_type not in types:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Driver '{driver.DRIVER_INFO.get('id', '?')}' does not "
+                   f"declare child type '{child_type}'",
+        )
+    ids = driver.list_children(child_type)
+    entries = [
+        _build_child_entry(driver, project_device, child_type, lid)
+        for lid in ids
+    ]
+    return {
+        "device_id": device_id,
+        "child_type": child_type,
+        "schema": types[child_type],
+        "children": entries,
+    }
+
+
+@router.get("/devices/{device_id}/children/{child_type}/{local_id}")
+async def get_child_entity(
+    device_id: str, child_type: str, local_id: int,
+) -> dict[str, Any]:
+    """Return one registered child's full state + project metadata."""
+    driver, project_device = _ensure_driver_for_children(
+        _get_engine(), device_id,
+    )
+    types = driver.get_child_entity_types()
+    if child_type not in types:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Driver '{driver.DRIVER_INFO.get('id', '?')}' does not "
+                   f"declare child type '{child_type}'",
+        )
+    try:
+        # Validate range up-front so an out-of-range path component reads
+        # as 404 instead of falling through to "not registered".
+        driver.format_child_id(child_type, local_id)
+    except (ValueError, TypeError) as e:
+        raise HTTPException(status_code=404, detail=str(e)) from None
+    if not driver.is_child_registered(child_type, local_id):
+        raise HTTPException(
+            status_code=404,
+            detail=f"Child {child_type} {local_id} is not currently "
+                   f"registered on device '{device_id}'",
+        )
+    entry = _build_child_entry(driver, project_device, child_type, local_id)
+    return {"device_id": device_id, "child_type": child_type, **entry}
+
+
+@router.patch("/devices/{device_id}/children/{child_type}/{local_id}")
+async def update_child_entity(
+    device_id: str,
+    child_type: str,
+    local_id: int,
+    body: ChildEntityPatchRequest,
+) -> dict[str, Any]:
+    """Update a child's user label and/or freeform config.
+
+    Persists to the project file (so the label survives reload even if
+    the child isn't currently registered) and, when the child is live,
+    mirrors the label into its ``label`` state key so subscribers see
+    the change without waiting for the next reload.
+    """
+    if body.label is None and body.config is None:
+        raise HTTPException(
+            status_code=422,
+            detail="At least one of 'label' or 'config' must be provided",
+        )
+
+    engine = _get_engine()
+    driver, project_device = _ensure_driver_for_children(engine, device_id)
+
+    types = driver.get_child_entity_types()
+    if child_type not in types:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Driver '{driver.DRIVER_INFO.get('id', '?')}' does not "
+                   f"declare child type '{child_type}'",
+        )
+    try:
+        padded = driver.format_child_id(child_type, local_id)
+    except (ValueError, TypeError) as e:
+        raise HTTPException(status_code=422, detail=str(e)) from None
+
+    # Persist to project file. Merge — don't overwrite the whole entry —
+    # so a label-only PATCH doesn't wipe an existing config dict, and
+    # vice versa.
+    type_map = project_device.child_entities.setdefault(child_type, {})
+    existing = type_map.get(padded)
+    new_label = (
+        body.label if body.label is not None
+        else (existing.label if existing else "")
+    )
+    new_config = (
+        dict(body.config) if body.config is not None
+        else (dict(existing.config) if existing else {})
+    )
+    type_map[padded] = ChildEntityConfig(label=new_label, config=new_config)
+
+    save_project(engine.project_path, engine.project)
+
+    # Sync the new project metadata back into the driver so future
+    # register_child calls (re-registration after deregister, etc.) seed
+    # the latest label without a project reload.
+    driver.set_project_child_entities({
+        ctype: {pid: {"label": cfg.label, "config": dict(cfg.config)}
+                for pid, cfg in pid_map.items()}
+        for ctype, pid_map in project_device.child_entities.items()
+    })
+
+    # Live state mirror — only if the child is currently registered.
+    # An unregistered project entry still gets persisted above; the live
+    # state key is created on the next register_child.
+    if body.label is not None and driver.is_child_registered(child_type, local_id):
+        driver.set_child_state(child_type, local_id, "label", new_label)
+
+    entry = _build_child_entry(driver, project_device, child_type, local_id)
+    return {"device_id": device_id, "child_type": child_type, **entry}
+
+
+@router.post("/devices/{device_id}/children/refresh")
+async def refresh_child_entities(device_id: str) -> dict[str, Any]:
+    """Ask the driver to re-discover its child entities from the device.
+
+    Returns 501 if the driver doesn't implement ``refresh_children``,
+    503 if the device isn't currently connected, or 404 if the device
+    isn't in the project. Drivers that implement ``refresh_children``
+    are expected to reconcile their child set via ``register_child`` /
+    ``deregister_child`` so subscribers see the diff atomically.
+    """
+    engine = _get_engine()
+    driver, _ = _ensure_driver_for_children(engine, device_id)
+    if not driver.get_state("connected"):
+        raise HTTPException(
+            status_code=503,
+            detail=f"Device '{device_id}' is not connected",
+        )
+    try:
+        result = await driver.refresh_children()
+    except NotImplementedError as e:
+        raise HTTPException(status_code=501, detail=str(e)) from None
+    except Exception as e:
+        raise _api_error(
+            500, f"Failed to refresh children on device '{device_id}'", e,
+        )
+    return {"status": "refreshed", "device_id": device_id, "result": result}
 
 
 # --- Connections (Site Config) ---

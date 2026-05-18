@@ -448,6 +448,17 @@ class DeviceManager:
 
         return await driver.set_device_setting(key, value)
 
+    def get_driver(self, device_id: str) -> BaseDriver | None:
+        """Return the live driver instance for a device, or ``None`` if the
+        device is unknown, orphaned (driver not installed), or disabled.
+
+        Exposes the driver for callers that need to read driver-declared
+        schema (child_entity_types, commands) or invoke public driver
+        introspection helpers (``get_child_state``, ``format_child_id``,
+        ``refresh_children``). Callers must not mutate driver internals.
+        """
+        return self._devices.get(device_id)
+
     def get_device_settings(self, device_id: str) -> dict[str, Any]:
         """Return device settings metadata with current values from state."""
         driver = self._devices.get(device_id)

@@ -209,3 +209,16 @@ class PendingSettingsRequest(BaseModel):
 class CloudPairRequest(BaseModel):
     token: str
     cloud_api_url: str = "https://cloud.openavc.com"
+
+
+class ChildEntityPatchRequest(BaseModel):
+    """Patch body for ``PATCH /api/devices/{id}/children/{type}/{local_id}``.
+
+    Both fields are optional. ``label`` updates the user-set friendly name
+    (persisted to the project file and, when the child is registered,
+    mirrored into the live state key ``device.<id>.<type>.<padded>.label``).
+    ``config`` replaces the freeform per-child config dict.
+    """
+
+    label: str | None = None
+    config: dict[str, Any] | None = None

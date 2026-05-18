@@ -888,6 +888,64 @@ class BaseDriver(ABC):
         if namespaced:
             self.state.set_batch(namespaced, source=f"device.{self.device_id}")
 
+    def get_child_entity_types(self) -> dict[str, dict[str, Any]]:
+        """Return the driver's declared child entity types as
+        ``{type_name: definition}``, with each definition's
+        ``state_variables`` replaced by the *effective* schema (the
+        platform-managed ``online`` and ``label`` keys injected if the
+        driver didn't already declare them).
+
+        Returns ``{}`` if the driver doesn't declare ``child_entity_types``.
+        Used by the REST API and IDE to expose the per-type schema to
+        clients without leaking driver-private helpers.
+        """
+        raw = self.DRIVER_INFO.get("child_entity_types", {})
+        result: dict[str, dict[str, Any]] = {}
+        for ctype, definition in raw.items():
+            merged_def = dict(definition)
+            merged_def["state_variables"] = self._effective_child_schema(ctype)
+            result[ctype] = merged_def
+        return result
+
+    def format_child_id(self, child_type: str, local_id: int) -> str:
+        """Validate ``local_id`` against the declared id_format and return
+        its padded string form. Public wrapper around the internal helper.
+        """
+        return self._format_child_id(child_type, local_id)
+
+    def is_child_registered(self, child_type: str, local_id: int) -> bool:
+        """True if ``register_child(child_type, local_id)`` has been called
+        and ``deregister_child`` hasn't been called since.
+        """
+        return local_id in self._children.get(child_type, {})
+
+    def get_child_state(
+        self, child_type: str, local_id: int,
+    ) -> dict[str, Any]:
+        """Return the live state for one registered child as
+        ``{property: value}``. Returns an empty dict if the child isn't
+        currently registered.
+        """
+        if not self.is_child_registered(child_type, local_id):
+            return {}
+        return self.state.get_namespace(
+            self._child_state_prefix(child_type, local_id)
+        )
+
+    async def refresh_children(self) -> Any:
+        """Re-discover child entities from the device.
+
+        Default implementation raises ``NotImplementedError``. Drivers that
+        can re-poll their controller's child list override this to reconcile
+        ``register_child`` / ``deregister_child`` calls against the latest
+        device state. Called from the REST API
+        ``POST /api/devices/{id}/children/refresh`` endpoint.
+        """
+        raise NotImplementedError(
+            f"Driver {self.DRIVER_INFO.get('id', '?')} does not implement "
+            f"refresh_children"
+        )
+
     async def poll_children(
         self,
         child_type: str,
