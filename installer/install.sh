@@ -70,7 +70,11 @@ check_curl_or_wget() {
     elif command -v wget &>/dev/null; then
         DOWNLOADER="wget"
     else
-        fatal "curl or wget is required but neither was found."
+        error "curl or wget is required but neither was found."
+        error "On Debian/Ubuntu: sudo apt-get install -y curl ca-certificates"
+        error "On Fedora/RHEL:   sudo dnf install -y curl ca-certificates"
+        error "On Arch:          sudo pacman -S curl ca-certificates"
+        exit 1
     fi
 }
 
@@ -142,27 +146,29 @@ find_python() {
 }
 
 install_python() {
-    info "Installing Python ${MIN_PYTHON_MAJOR}.${MIN_PYTHON_MINOR}+..."
+    info "Installing Python ${MIN_PYTHON_MAJOR}.${MIN_PYTHON_MINOR}+ and system prerequisites..."
 
     case "$PKG_MANAGER" in
         apt)
-            # Try system Python first, then deadsnakes PPA for older Ubuntu
+            # Try system Python first, then deadsnakes PPA for older Ubuntu.
+            # ca-certificates + tar are pulled in defensively for minimal images
+            # (cloud Ubuntu, slim containers) that don't include them.
             apt-get update -qq
             if apt-cache show python3 2>/dev/null | grep -qE "Version: 3\.(1[1-9]|[2-9][0-9])"; then
-                apt-get install -y -qq python3 python3-venv python3-pip
+                apt-get install -y -qq python3 python3-venv python3-pip ca-certificates tar
             else
                 info "System Python is too old. Adding deadsnakes PPA..."
-                apt-get install -y -qq software-properties-common
+                apt-get install -y -qq software-properties-common ca-certificates tar
                 add-apt-repository -y ppa:deadsnakes/ppa
                 apt-get update -qq
                 apt-get install -y -qq python3.12 python3.12-venv
             fi
             ;;
         dnf)
-            dnf install -y -q python3 python3-pip
+            dnf install -y -q python3 python3-pip ca-certificates tar
             ;;
         pacman)
-            pacman -Sy --noconfirm --quiet python python-pip
+            pacman -Sy --noconfirm --quiet python python-pip ca-certificates tar
             ;;
     esac
 
@@ -176,6 +182,34 @@ ensure_python() {
         return 0
     fi
     install_python
+}
+
+# Ensure ca-certificates + tar are present even when Python is already
+# installed. Minimal cloud / container Ubuntu images sometimes ship Python
+# but no CA bundle, which causes confusing TLS errors on the GitHub
+# download below rather than a clean "missing dependency" message.
+ensure_system_prereqs() {
+    case "$PKG_MANAGER" in
+        apt)
+            if ! dpkg -s ca-certificates &>/dev/null || ! command -v tar &>/dev/null; then
+                info "Installing system prerequisites (ca-certificates, tar)..."
+                apt-get update -qq
+                apt-get install -y -qq ca-certificates tar
+            fi
+            ;;
+        dnf)
+            if ! rpm -q ca-certificates &>/dev/null || ! command -v tar &>/dev/null; then
+                info "Installing system prerequisites (ca-certificates, tar)..."
+                dnf install -y -q ca-certificates tar
+            fi
+            ;;
+        pacman)
+            if ! pacman -Qi ca-certificates &>/dev/null || ! command -v tar &>/dev/null; then
+                info "Installing system prerequisites (ca-certificates, tar)..."
+                pacman -Sy --noconfirm --quiet ca-certificates tar
+            fi
+            ;;
+    esac
 }
 
 # --- Download ---
@@ -418,6 +452,7 @@ main() {
 
     detect_arch
     detect_distro
+    ensure_system_prereqs
     ensure_python
 
     download_release

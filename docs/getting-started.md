@@ -59,6 +59,19 @@ curl -sSL https://get.openavc.com | sudo bash
 
 This installs OpenAVC to `/opt/openavc`, creates a systemd service, and starts the server. Data is stored in `/var/lib/openavc`. The service starts automatically on boot.
 
+The installer pulls in everything OpenAVC needs from your distro's package manager: Python 3.11+, `python3-venv`, `python3-pip`, `ca-certificates`, and `tar`. On a desktop or standard server image these are usually already present. On minimal cloud or container images you may need `curl` (or `wget`) installed before you can run the command above:
+
+```bash
+# Debian/Ubuntu
+sudo apt-get install -y curl ca-certificates
+
+# Fedora/RHEL/Rocky
+sudo dnf install -y curl ca-certificates
+
+# Arch
+sudo pacman -S curl ca-certificates
+```
+
 After installation:
 
 ```bash
@@ -90,17 +103,40 @@ When installing Python, check **"Add Python to PATH"** when prompted. For Node.j
 
 ### Download and Build
 
-Open a terminal (PowerShell on Windows, Terminal on Mac/Linux) and run:
+Open a terminal (PowerShell on Windows, Terminal on Mac/Linux).
+
+**Linux only.** The Python installers for Windows and Mac bundle everything you need. On Debian/Ubuntu, Python is split across several packages, and minimal images often omit `ca-certificates`. Install the prerequisites first:
+
+```bash
+# Debian/Ubuntu
+sudo apt-get install -y python3 python3-venv python3-pip git curl ca-certificates
+
+# Fedora/RHEL/Rocky
+sudo dnf install -y python3 python3-pip git curl ca-certificates
+
+# Arch
+sudo pacman -S python python-pip git curl ca-certificates
+```
+
+Node.js and npm are also required; install them from your distro or from [nodejs.org](https://nodejs.org/) if your distro packages are older than v18.
+
+Then clone and build:
 
 ```bash
 git clone https://github.com/open-avc/openavc.git
 cd openavc
+python3 -m venv venv
+source venv/bin/activate            # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 cd web/programmer && npm install && npm run build && cd ../..
 cd web/simulator && npm install && npm run build && cd ../..
 ```
 
+The virtual environment isolates OpenAVC's Python dependencies from your system Python. On current Debian/Ubuntu, installing into the system Python is blocked by default (PEP 668), so the venv step isn't optional.
+
 ### Start the Server
+
+With the venv still activated:
 
 ```bash
 python -m server.main
