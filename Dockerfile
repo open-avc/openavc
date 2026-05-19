@@ -64,11 +64,14 @@ COPY --from=frontend /build/simulator/dist/ ./web/simulator/dist/
 
 # Copy data files
 COPY themes/ ./themes/
-RUN mkdir -p driver_repo plugin_repo
 COPY installer/seed/default/ ./seed/default/
 COPY installer/openavc.service ./installer/openavc.service
 
-# Set up data directory structure
+# Set up data directory structure. plugin_repo and driver_repo are
+# created under /data at first start by the runtime — keeping them off
+# the container image guarantees user-installed content survives an image
+# pull (the old /app/{driver,plugin}_repo layout was wiped by every
+# `docker compose up -d` with a new image).
 RUN mkdir -p /data/projects/default /data/drivers /data/backups /data/logs \
     && cp seed/default/project.avc /data/projects/default/project.avc \
     && chown -R openavc:openavc /data /app
