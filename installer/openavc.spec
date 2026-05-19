@@ -28,8 +28,10 @@ datas = [
     (str(PROJECT_ROOT / 'simulator'), 'simulator'),
     # Driver definitions (built-in YAML drivers)
     (str(PROJECT_ROOT / 'server' / 'drivers' / 'definitions'), 'server/drivers/definitions'),
-    # Default drivers
-    (str(PROJECT_ROOT / 'driver_repo'), 'driver_repo'),
+    # Note: driver_repo and plugin_repo are no longer bundled into _internal/.
+    # Both live under the persistent data directory now (see system_config.py)
+    # so user-installed community drivers and plugins survive uninstalls and
+    # upgrades. The runtime creates them on first start.
     # Themes
     (str(PROJECT_ROOT / 'themes'), 'themes'),
     # Clean starter project (not the dev project which may have cloud pairing, assets, etc.)
