@@ -21,8 +21,12 @@ PYTHON="${PYTHON:-/usr/bin/python3}"
 
 # Directories inside $APP_DIR that hold runtime/user-installed content and
 # must survive every swap (the release tarball never ships these). venv is
-# a Python virtual environment built at install time; driver_repo and
-# plugin_repo are user-installed via the Programmer IDE.
+# a Python virtual environment built at install time. driver_repo and
+# plugin_repo are legacy locations from before user-installed content moved
+# to $DATA_DIR — we still preserve them across the swap so the runtime
+# migration in server/system_config.migrate_legacy_repos can drain them
+# into $DATA_DIR on the first start of the new release. The `[ -e ]`
+# guard below makes their absence a no-op for clean post-migration installs.
 PRESERVE_DIRS=(venv driver_repo plugin_repo)
 
 # Sanity-check that a candidate install directory has the minimum set of

@@ -191,7 +191,7 @@ jobs:
 
       - name: Create archive
         run: |
-          mkdir -p driver_repo plugin_repo projects/default
+          mkdir -p projects/default
           ARCHIVE="openavc-${VERSION}-linux-amd64.tar.gz"
           tar czf "$ARCHIVE" \
             --exclude='__pycache__' \
@@ -214,8 +214,6 @@ jobs:
             web/panel/ \
             web/programmer/dist/ \
             web/simulator/dist/ \
-            driver_repo/ \
-            plugin_repo/ \
             themes/ \
             installer/seed/ \
             installer/openavc.service \
@@ -262,7 +260,7 @@ jobs:
 
       - name: Create archive
         run: |
-          mkdir -p driver_repo plugin_repo projects/default
+          mkdir -p projects/default
           ARCHIVE="openavc-${VERSION}-linux-arm64.tar.gz"
           tar czf "$ARCHIVE" \
             --exclude='__pycache__' \
@@ -285,8 +283,6 @@ jobs:
             web/panel/ \
             web/programmer/dist/ \
             web/simulator/dist/ \
-            driver_repo/ \
-            plugin_repo/ \
             themes/ \
             installer/seed/ \
             installer/openavc.service \

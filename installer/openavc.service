@@ -25,7 +25,13 @@ Environment=OPENAVC_SERVICE_MANAGED=1
 # Security hardening
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/var/lib/openavc /var/log/openavc /opt/openavc/driver_repo /opt/openavc/plugin_repo
+# driver_repo and plugin_repo live under /var/lib/openavc now (covered by
+# the data-dir entry). The legacy /opt/openavc/{driver,plugin}_repo paths
+# are kept writable with the `-` prefix (tolerated when absent) so the
+# runtime migration in server/system_config.migrate_legacy_repos can drain
+# them on first start after upgrade from the pre-data_dir layout. Once
+# every install has migrated these can be dropped.
+ReadWritePaths=/var/lib/openavc /var/log/openavc -/opt/openavc/driver_repo -/opt/openavc/plugin_repo
 ProtectHome=true
 PrivateTmp=true
 
