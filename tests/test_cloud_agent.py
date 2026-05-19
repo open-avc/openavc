@@ -861,7 +861,7 @@ class TestStateRelay:
     """Tests for server.cloud.state_relay."""
 
     def test_on_state_change_batches(self):
-        """State changes are collected into a batch."""
+        """State changes are collected into the top-tier batch."""
         from server.core.state_store import StateStore
         from server.cloud.state_relay import StateRelay
 
@@ -872,11 +872,16 @@ class TestStateRelay:
         relay._on_state_change("device.proj.power", None, "on", "driver")
         relay._on_state_change("var.room_active", False, True, "ws")
 
-        assert len(relay._batch) == 2
-        assert relay._batch[0]["key"] == "device.proj.power"
-        assert relay._batch[0]["value"] == "on"
-        assert relay._batch[1]["key"] == "var.room_active"
-        assert relay._batch[1]["value"] is True
+        # Both keys are top-level (3-segment device key + var key) so they
+        # land in the fast tier — child/low buckets stay empty.
+        top = relay._batches["top"]
+        assert len(top) == 2
+        assert top[0]["key"] == "device.proj.power"
+        assert top[0]["value"] == "on"
+        assert top[1]["key"] == "var.room_active"
+        assert top[1]["value"] is True
+        assert relay._batches["child"] == []
+        assert relay._batches["low"] == []
 
     def test_skips_cloud_internal_state(self):
         """Cloud-internal state keys are not relayed."""
@@ -888,7 +893,7 @@ class TestStateRelay:
         relay = StateRelay(agent, state)
 
         relay._on_state_change("system.cloud.connected", None, True, "system")
-        assert len(relay._batch) == 0
+        assert all(len(b) == 0 for b in relay._batches.values())
 
     def test_skips_isc_state(self):
         """ISC remote state is not relayed (prevents echo loops)."""
@@ -900,7 +905,7 @@ class TestStateRelay:
         relay = StateRelay(agent, state)
 
         relay._on_state_change("isc.peer1.status", None, "online", "isc")
-        assert len(relay._batch) == 0
+        assert all(len(b) == 0 for b in relay._batches.values())
 
     def test_format_ts(self):
         """Timestamp formatting produces ISO 8601 with Z suffix."""
