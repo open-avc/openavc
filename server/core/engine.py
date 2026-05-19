@@ -126,9 +126,18 @@ class Engine:
         self._start_time = time.time()
 
         # Ensure system.json exists in data directory
-        from server.system_config import get_system_config
+        from server.system_config import get_system_config, migrate_legacy_repos
         sys_config = get_system_config()
         sys_config.ensure_file()
+
+        # One-shot migration of plugin_repo/driver_repo from the pre-data_dir
+        # layout (APP_DIR/{plugin,driver}_repo). Runs before driver and plugin
+        # loading so the moved content is picked up on the same startup. No-op
+        # when the new locations already have content.
+        try:
+            migrate_legacy_repos()
+        except Exception:  # never block startup on the migration
+            log.exception("migrate_legacy_repos failed")
 
         # Set system state keys
         from server.updater.platform import detect_deployment_type

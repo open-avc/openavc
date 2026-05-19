@@ -22,11 +22,17 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Path resolution — single source of truth for all deployment targets
 # ---------------------------------------------------------------------------
-# Two distinct concepts:
-#   APP_DIR     — bundle/resource root (web assets, themes, drivers, etc.)
+# Three distinct concepts:
+#   APP_DIR     — bundle/resource root (web assets, themes, built-in drivers).
 #                 Dev: openavc/ repo root.  Frozen: _internal/ (sys._MEIPASS).
+#                 NOT persistent on Docker (lives in the container image) and
+#                 wiped by every Windows installer upgrade (_internal/).
 #   INSTALL_DIR — installer artifact root (unins000.exe, nssm.exe)
 #                 Dev: same as APP_DIR.  Frozen: exe's parent directory.
+#   data_dir    — persistent user data root (projects, backups, plugin_repo,
+#                 driver_repo, state). Always on writable persistent storage:
+#                 a mounted volume on Docker, /var/lib/openavc on Linux,
+#                 C:\ProgramData\OpenAVC on Windows. See get_data_dir().
 # ---------------------------------------------------------------------------
 
 def _resolve_app_dir() -> Path:
@@ -48,9 +54,95 @@ def _resolve_install_dir() -> Path:
 APP_DIR = _resolve_app_dir()
 INSTALL_DIR = _resolve_install_dir()
 
-# Derived resource paths (all relative to APP_DIR)
-DRIVER_REPO_DIR = APP_DIR / "driver_repo"
-PLUGIN_REPO_DIR = APP_DIR / "plugin_repo"
+
+def _is_dev_environment() -> bool:
+    """Detect if running from a source/development checkout."""
+    if getattr(sys, "frozen", False):
+        return False
+    return (APP_DIR / "pyproject.toml").exists() and (APP_DIR / "server").is_dir()
+
+
+def _is_docker() -> bool:
+    """Detect if running inside a Docker container."""
+    if Path("/.dockerenv").exists():
+        return True
+    try:
+        cgroup = Path("/proc/1/cgroup")
+        if cgroup.exists():
+            text = cgroup.read_text(encoding="utf-8", errors="ignore")
+            if "docker" in text or "containerd" in text:
+                return True
+    except OSError:
+        pass
+    return False
+
+
+def get_data_dir() -> Path:
+    """Determine the data directory.
+
+    Priority:
+    1. OPENAVC_DATA_DIR environment variable (explicit override)
+    2. Docker: /data
+    3. Development: ./data relative to repo root
+    4. Platform default: Windows -> C:\\ProgramData\\OpenAVC, Linux -> /var/lib/openavc
+    """
+    env_dir = os.environ.get("OPENAVC_DATA_DIR")
+    if env_dir:
+        return Path(env_dir)
+
+    if _is_docker():
+        return Path("/data")
+
+    if _is_dev_environment():
+        return APP_DIR / "data"
+
+    if sys.platform == "win32":
+        return Path(os.environ.get("PROGRAMDATA", "C:\\ProgramData")) / "OpenAVC"
+
+    return Path("/var/lib/openavc")
+
+
+def get_log_dir() -> Path:
+    """Determine the log directory.
+
+    Priority:
+    1. OPENAVC_LOG_DIR environment variable
+    2. Docker: /data/logs
+    3. Development: ./data/logs
+    4. Platform default: Windows -> data_dir/logs, Linux -> /var/log/openavc
+    """
+    env_dir = os.environ.get("OPENAVC_LOG_DIR")
+    if env_dir:
+        return Path(env_dir)
+
+    if _is_docker():
+        return Path("/data/logs")
+
+    if _is_dev_environment():
+        return get_data_dir() / "logs"
+
+    if sys.platform == "win32":
+        return get_data_dir() / "logs"
+
+    return Path("/var/log/openavc")
+
+
+# User-installed driver and plugin repos. These hold content the user installs
+# via the Programmer IDE (community drivers/plugins) and must survive upgrades.
+# They live on persistent data storage, NOT in APP_DIR — APP_DIR is not
+# persistent on Docker (container layer) and is rewritten by Windows installer
+# upgrades. Releases may seed APP_DIR / "{driver,plugin}_repo" with built-in
+# content; the first-start migration in `migrate_legacy_repos()` moves that
+# seed (and any user content from an older install layout) into data_dir.
+DRIVER_REPO_DIR = get_data_dir() / "driver_repo"
+PLUGIN_REPO_DIR = get_data_dir() / "plugin_repo"
+
+# Legacy locations from before the data_dir move — referenced by the
+# migration shim only. Not used at runtime once migration has run.
+_LEGACY_DRIVER_REPO_DIR = APP_DIR / "driver_repo"
+_LEGACY_PLUGIN_REPO_DIR = APP_DIR / "plugin_repo"
+
+# Bundle-relative resources (read-only, stays in APP_DIR)
 THEMES_DIR = APP_DIR / "themes"
 DRIVER_DEFINITIONS_DIR = APP_DIR / "server" / "drivers" / "definitions"
 WEB_PANEL_DIR = APP_DIR / "web" / "panel"
@@ -141,78 +233,6 @@ ENV_OVERRIDES: dict[tuple[str, str], tuple[str, type]] = {
 }
 
 
-def _is_dev_environment() -> bool:
-    """Detect if running from a source/development checkout."""
-    if getattr(sys, "frozen", False):
-        return False
-    return (APP_DIR / "pyproject.toml").exists() and (APP_DIR / "server").is_dir()
-
-
-def _is_docker() -> bool:
-    """Detect if running inside a Docker container."""
-    if Path("/.dockerenv").exists():
-        return True
-    try:
-        cgroup = Path("/proc/1/cgroup")
-        if cgroup.exists():
-            text = cgroup.read_text(encoding="utf-8", errors="ignore")
-            if "docker" in text or "containerd" in text:
-                return True
-    except OSError:
-        pass
-    return False
-
-
-def get_data_dir() -> Path:
-    """Determine the data directory.
-
-    Priority:
-    1. OPENAVC_DATA_DIR environment variable (explicit override)
-    2. Docker: /data
-    3. Development: ./data relative to repo root
-    4. Platform default: Windows -> C:\\ProgramData\\OpenAVC, Linux -> /var/lib/openavc
-    """
-    env_dir = os.environ.get("OPENAVC_DATA_DIR")
-    if env_dir:
-        return Path(env_dir)
-
-    if _is_docker():
-        return Path("/data")
-
-    if _is_dev_environment():
-        return APP_DIR / "data"
-
-    if sys.platform == "win32":
-        return Path(os.environ.get("PROGRAMDATA", "C:\\ProgramData")) / "OpenAVC"
-
-    return Path("/var/lib/openavc")
-
-
-def get_log_dir() -> Path:
-    """Determine the log directory.
-
-    Priority:
-    1. OPENAVC_LOG_DIR environment variable
-    2. Docker: /data/logs
-    3. Development: ./data/logs
-    4. Platform default: Windows -> data_dir/logs, Linux -> /var/log/openavc
-    """
-    env_dir = os.environ.get("OPENAVC_LOG_DIR")
-    if env_dir:
-        return Path(env_dir)
-
-    if _is_docker():
-        return Path("/data/logs")
-
-    if _is_dev_environment():
-        return get_data_dir() / "logs"
-
-    if sys.platform == "win32":
-        return get_data_dir() / "logs"
-
-    return Path("/var/log/openavc")
-
-
 def _deep_merge(base: dict, override: dict) -> dict:
     """Merge override into base, recursively for nested dicts.
 
@@ -228,6 +248,101 @@ def _deep_merge(base: dict, override: dict) -> dict:
         else:
             result[key] = default_value
     return result
+
+
+def migrate_legacy_repos() -> None:
+    """Move legacy APP_DIR/{driver,plugin}_repo content into data_dir.
+
+    PLUGIN_REPO_DIR and DRIVER_REPO_DIR were anchored to APP_DIR for older
+    releases. APP_DIR is not persistent on Docker (lives inside the container
+    image) and is rebuilt by Windows-installer upgrades, so user-installed
+    plugins and drivers were silently wiped. The constants now live under
+    `get_data_dir()`; this function moves any content from the old location
+    on first start.
+
+    Idempotent: skips if destination already has content. Conservative: never
+    deletes the source unless every move succeeded. Also acts as a "seed"
+    step for fresh installs whose release bundle ships built-in content
+    under APP_DIR / "{driver,plugin}_repo".
+    """
+    import shutil
+
+    for legacy, target, label in (
+        (_LEGACY_PLUGIN_REPO_DIR, PLUGIN_REPO_DIR, "plugin_repo"),
+        (_LEGACY_DRIVER_REPO_DIR, DRIVER_REPO_DIR, "driver_repo"),
+    ):
+        try:
+            # Same path resolves on both sides (someone set OPENAVC_DATA_DIR
+            # to APP_DIR, or APP_DIR == data_dir for a non-standard layout).
+            # Nothing to migrate.
+            if legacy.resolve() == target.resolve():
+                continue
+        except OSError:
+            # resolve() can fail if a parent doesn't exist yet; safe to
+            # continue with the un-resolved comparison below.
+            if legacy == target:
+                continue
+
+        if not legacy.exists() or not legacy.is_dir():
+            continue
+
+        try:
+            legacy_entries = [p for p in legacy.iterdir() if not p.name.startswith(".")]
+            legacy_dot_entries = [p for p in legacy.iterdir() if p.name.startswith(".")]
+        except OSError as e:
+            log.warning("Cannot read legacy %s at %s: %s", label, legacy, e)
+            continue
+
+        if not legacy_entries and not legacy_dot_entries:
+            # Empty directory — nothing to migrate.
+            continue
+
+        # If the destination already has real content, do not overwrite.
+        if target.exists():
+            try:
+                target_entries = [p for p in target.iterdir() if not p.name.startswith(".")]
+            except OSError as e:
+                log.warning("Cannot read %s at %s: %s", label, target, e)
+                continue
+            if target_entries:
+                log.debug(
+                    "Skipping %s migration: %s already populated",
+                    label, target,
+                )
+                continue
+
+        log.info("Migrating %s from %s to %s", label, legacy, target)
+        try:
+            target.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            log.warning("Cannot create %s: %s", target, e)
+            continue
+
+        moved_all = True
+        moved: list[Path] = []
+        for entry in [*legacy_entries, *legacy_dot_entries]:
+            dest = target / entry.name
+            if dest.exists():
+                # Conservative: leave both in place. The user-visible target
+                # entry wins; the legacy entry remains for manual review.
+                log.debug("Skipping %s (destination exists at %s)", entry, dest)
+                moved_all = False
+                continue
+            try:
+                shutil.move(str(entry), str(dest))
+                moved.append(entry)
+            except (OSError, shutil.Error) as e:
+                log.warning("Failed to move %s -> %s: %s", entry, dest, e)
+                moved_all = False
+
+        if moved_all:
+            # Only remove the legacy directory itself if we fully drained it.
+            try:
+                legacy.rmdir()
+            except OSError:
+                # Non-empty (race) or permission denied — leave it; future
+                # runs will see the remaining entries and retry.
+                pass
 
 
 def _parse_env_value(raw: str, target_type: type) -> Any:

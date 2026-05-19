@@ -281,9 +281,17 @@ class TestPathResolution:
         assert INSTALL_DIR == APP_DIR
 
     def test_derived_paths_relative_to_app_dir(self):
-        """All derived path constants are under APP_DIR."""
-        assert DRIVER_REPO_DIR == APP_DIR / "driver_repo"
-        assert PLUGIN_REPO_DIR == APP_DIR / "plugin_repo"
+        """Bundle-relative paths are under APP_DIR; user-content repos live
+        under the data directory so they survive Docker image pulls and
+        Windows installer upgrades (which both rewrite APP_DIR)."""
+        # User-installed repos must NOT live under APP_DIR — that's the bug
+        # the data_dir move fixed. They live under the data directory, which
+        # is captured at import time.
+        assert DRIVER_REPO_DIR.name == "driver_repo"
+        assert PLUGIN_REPO_DIR.name == "plugin_repo"
+        assert DRIVER_REPO_DIR.parent == PLUGIN_REPO_DIR.parent
+        assert DRIVER_REPO_DIR.parent.name == "data" or DRIVER_REPO_DIR.parent.parent != APP_DIR
+        # Bundle resources still anchor to APP_DIR
         assert THEMES_DIR == APP_DIR / "themes"
         assert DRIVER_DEFINITIONS_DIR == APP_DIR / "server" / "drivers" / "definitions"
         assert PYPROJECT_PATH == APP_DIR / "pyproject.toml"
@@ -337,3 +345,115 @@ class TestDevEnvironmentDetection:
         """Frozen builds are never dev environments."""
         with patch.object(sys, "frozen", True, create=True):
             assert _is_dev_environment() is False
+
+
+class TestMigrateLegacyRepos:
+    """The migration shim moves APP_DIR/{driver,plugin}_repo into data_dir
+    on first start of a new release. It must be idempotent and conservative
+    (never overwrite populated destinations, never delete unless the move
+    fully succeeded)."""
+
+    def _run(self, tmp_path, *, legacy_plugin=None, legacy_driver=None,
+             dest_plugin_existing=None, dest_driver_existing=None):
+        legacy_root = tmp_path / "app"
+        data_root = tmp_path / "data"
+        (legacy_root).mkdir()
+        (data_root).mkdir()
+        if legacy_plugin:
+            (legacy_root / "plugin_repo").mkdir()
+            for name, content in legacy_plugin.items():
+                p = legacy_root / "plugin_repo" / name
+                p.parent.mkdir(parents=True, exist_ok=True)
+                if isinstance(content, dict):
+                    p.mkdir()
+                    for sub, body in content.items():
+                        (p / sub).write_text(body)
+                else:
+                    p.write_text(content)
+        if legacy_driver:
+            (legacy_root / "driver_repo").mkdir()
+            for name, content in legacy_driver.items():
+                (legacy_root / "driver_repo" / name).write_text(content)
+        if dest_plugin_existing:
+            (data_root / "plugin_repo").mkdir()
+            for name, content in dest_plugin_existing.items():
+                (data_root / "plugin_repo" / name).write_text(content)
+        if dest_driver_existing:
+            (data_root / "driver_repo").mkdir()
+            for name, content in dest_driver_existing.items():
+                (data_root / "driver_repo" / name).write_text(content)
+
+        from server import system_config as sc
+        with patch.object(sc, "_LEGACY_PLUGIN_REPO_DIR", legacy_root / "plugin_repo"), \
+             patch.object(sc, "_LEGACY_DRIVER_REPO_DIR", legacy_root / "driver_repo"), \
+             patch.object(sc, "PLUGIN_REPO_DIR", data_root / "plugin_repo"), \
+             patch.object(sc, "DRIVER_REPO_DIR", data_root / "driver_repo"):
+            sc.migrate_legacy_repos()
+        return legacy_root, data_root
+
+    def test_noop_when_legacy_missing(self, tmp_path):
+        legacy_root, data_root = self._run(tmp_path)
+        assert not (legacy_root / "plugin_repo").exists()
+        assert not (data_root / "plugin_repo").exists()
+
+    def test_moves_plugin_directory(self, tmp_path):
+        legacy_root, data_root = self._run(
+            tmp_path,
+            legacy_plugin={"my_plugin": {"plugin.py": "x = 1\n"}},
+        )
+        assert (data_root / "plugin_repo" / "my_plugin" / "plugin.py").read_text() == "x = 1\n"
+        # Legacy directory drained and removed
+        assert not (legacy_root / "plugin_repo").exists()
+
+    def test_moves_deps_and_install_error_files(self, tmp_path):
+        legacy_root, data_root = self._run(
+            tmp_path,
+            legacy_plugin={
+                ".deps": {"site_packages_marker": ""},
+                "broken": ".install-error\n",
+            },
+        )
+        assert (data_root / "plugin_repo" / ".deps" / "site_packages_marker").exists()
+        assert (data_root / "plugin_repo" / "broken").read_text() == ".install-error\n"
+
+    def test_preserves_populated_destination(self, tmp_path):
+        legacy_root, data_root = self._run(
+            tmp_path,
+            legacy_plugin={"new": "from legacy"},
+            dest_plugin_existing={"existing": "from data_dir"},
+        )
+        # Destination user content untouched
+        assert (data_root / "plugin_repo" / "existing").read_text() == "from data_dir"
+        # Legacy NOT drained (conservative skip)
+        assert (legacy_root / "plugin_repo" / "new").read_text() == "from legacy"
+
+    def test_idempotent(self, tmp_path):
+        # First call moves content. Re-running with empty legacy should no-op.
+        from server import system_config as sc
+        legacy_dir = tmp_path / "app" / "plugin_repo"
+        data_dir = tmp_path / "data" / "plugin_repo"
+        legacy_dir.mkdir(parents=True)
+        (legacy_dir / "p").mkdir()
+        (legacy_dir / "p" / "x").write_text("hi")
+        with patch.object(sc, "_LEGACY_PLUGIN_REPO_DIR", legacy_dir), \
+             patch.object(sc, "_LEGACY_DRIVER_REPO_DIR", tmp_path / "missing"), \
+             patch.object(sc, "PLUGIN_REPO_DIR", data_dir), \
+             patch.object(sc, "DRIVER_REPO_DIR", tmp_path / "data" / "driver_repo"):
+            sc.migrate_legacy_repos()
+            # Second call: legacy gone, destination has content; must be no-op.
+            sc.migrate_legacy_repos()
+        assert (data_dir / "p" / "x").read_text() == "hi"
+
+    def test_same_path_short_circuits(self, tmp_path):
+        # When OPENAVC_DATA_DIR points at APP_DIR, legacy == target. Migration
+        # must not delete content or otherwise mangle the directory.
+        from server import system_config as sc
+        shared = tmp_path / "plugin_repo"
+        shared.mkdir()
+        (shared / "p.py").write_text("ok")
+        with patch.object(sc, "_LEGACY_PLUGIN_REPO_DIR", shared), \
+             patch.object(sc, "_LEGACY_DRIVER_REPO_DIR", tmp_path / "missing"), \
+             patch.object(sc, "PLUGIN_REPO_DIR", shared), \
+             patch.object(sc, "DRIVER_REPO_DIR", tmp_path / "data" / "driver_repo"):
+            sc.migrate_legacy_repos()
+        assert (shared / "p.py").read_text() == "ok"
