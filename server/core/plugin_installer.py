@@ -13,6 +13,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tarfile
 import time
 import zipfile
 from io import BytesIO
@@ -700,8 +701,8 @@ async def _install_native_deps(plugin_id: str, plugin_dir: Path) -> None:
         log.info(f"Installing native dep '{dep_name}' for plugin '{plugin_id}'")
 
         try:
-            if platform_info.get("type") == "zip":
-                await _install_native_dep_zip(dep_name, platform_info, deps_dir)
+            if platform_info.get("type") in _ARCHIVE_DEP_TYPES:
+                await _install_native_dep_archive(dep_name, platform_info, deps_dir)
             elif platform_info.get("install_cmd"):
                 _install_native_dep_command(dep_name, platform_info)
             else:
@@ -808,31 +809,105 @@ def _check_native_dep(dep: dict) -> bool:
     return False
 
 
-async def _install_native_dep_zip(
+# Native-dep platform entries with one of these `type` values are downloaded
+# and a single file extracted from them. The actual container format (zip vs.
+# gzip/xz tarball) is sniffed from the URL and magic bytes, not this field —
+# `"zip"` is the historical generic value and stays valid for any archive.
+_ARCHIVE_DEP_TYPES = frozenset({
+    "zip", "tar", "tar.gz", "tgz", "tar.xz", "txz", "archive",
+})
+
+
+def _detect_archive_format(url: str, data: bytes) -> str:
+    """Classify an archive payload as 'zip', 'tar.gz', or 'tar.xz'.
+
+    Prefers the URL extension (authoritative for GitHub release assets), then
+    falls back to magic bytes for URLs that hide the extension behind a
+    redirect or query string.
+    """
+    low = url.lower().split("?", 1)[0]
+    if low.endswith((".tar.gz", ".tgz")):
+        return "tar.gz"
+    if low.endswith((".tar.xz", ".txz")):
+        return "tar.xz"
+    if low.endswith(".zip"):
+        return "zip"
+    if data[:4] == b"PK\x03\x04":
+        return "zip"
+    if data[:2] == b"\x1f\x8b":
+        return "tar.gz"
+    if data[:6] == b"\xfd7zXZ\x00":
+        return "tar.xz"
+    # Default to the historical behavior so a misnamed zip still works.
+    return "zip"
+
+
+async def _install_native_dep_archive(
     dep_name: str, platform_info: dict, deps_dir: Path
 ) -> None:
-    """Download a zip and extract the specified file to .deps/."""
+    """Download an archive and extract one file from it into .deps/.
+
+    Handles .zip (zipfile) plus .tar.gz / .tar.xz (tarfile). MediaMTX ships
+    its Linux/ARM builds as .tar.gz and BtbN's ffmpeg builds as .tar.xz, so a
+    zip-only extractor can't install either on Linux. The `extract` field is
+    the path of the file *inside* the archive; the file lands in .deps/ under
+    its basename. Tar member mode bits (notably the executable bit) are
+    preserved; the zip format can't carry them, so callers that need +x on a
+    zip-sourced binary must chmod at use time.
+    """
     url = platform_info.get("url", "")
     extract_path = platform_info.get("extract", "")
     if not url or not extract_path:
         raise ValueError(f"Missing url or extract path for '{dep_name}'")
 
-    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+    async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
         resp = await client.get(url)
         resp.raise_for_status()
+    data = resp.content
 
-    with zipfile.ZipFile(BytesIO(resp.content)) as zf:
-        # Extract just the specified file
-        target_filename = Path(extract_path).name
+    target_filename = Path(extract_path).name
+    target = deps_dir / target_filename
+    fmt = _detect_archive_format(url, data)
+
+    if fmt == "zip":
+        with zipfile.ZipFile(BytesIO(data)) as zf:
+            try:
+                payload = zf.read(extract_path)
+            except KeyError:
+                raise ValueError(
+                    f"File '{extract_path}' not found in zip for '{dep_name}'"
+                )
+        target.write_bytes(payload)
+    else:
+        mode = "r:gz" if fmt == "tar.gz" else "r:xz"
         try:
-            data = zf.read(extract_path)
-            target = deps_dir / target_filename
-            target.write_bytes(data)
-            log.info(f"Extracted {target_filename} ({len(data)} bytes) to {deps_dir}")
-        except KeyError:
-            raise ValueError(
-                f"File '{extract_path}' not found in zip for '{dep_name}'"
-            )
+            with tarfile.open(fileobj=BytesIO(data), mode=mode) as tf:
+                try:
+                    member = tf.getmember(extract_path)
+                except KeyError:
+                    raise ValueError(
+                        f"File '{extract_path}' not found in archive for '{dep_name}'"
+                    )
+                src = tf.extractfile(member)
+                if src is None:
+                    raise ValueError(
+                        f"'{extract_path}' is not a regular file in archive "
+                        f"for '{dep_name}'"
+                    )
+                payload = src.read()
+        except tarfile.TarError as e:
+            raise ValueError(f"Could not read archive for '{dep_name}': {e}")
+        target.write_bytes(payload)
+        # Tar carries Unix mode bits; preserve them so an extracted binary
+        # stays executable without the consumer having to re-chmod.
+        mode_bits = member.mode & 0o777
+        if mode_bits:
+            try:
+                target.chmod(mode_bits)
+            except OSError:
+                pass
+
+    log.info(f"Extracted {target_filename} ({len(payload)} bytes) to {deps_dir}")
 
 
 def _install_native_dep_command(dep_name: str, platform_info: dict) -> None:

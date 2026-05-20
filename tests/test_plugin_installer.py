@@ -5,6 +5,8 @@ Covers: CommunityPluginCache, list_installed_plugins, install_plugin,
 uninstall_plugin, _register_installed_plugin, _install_pip_deps.
 """
 
+import os
+import tarfile
 import zipfile
 from io import BytesIO
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -14,7 +16,9 @@ import pytest
 
 from server.core.plugin_installer import (
     CommunityPluginCache,
+    _detect_archive_format,
     _install_deps_from_pypi,
+    _install_native_dep_archive,
     _install_pip_deps,
     _normalize_pkg_name,
     _parse_requirement,
@@ -973,3 +977,137 @@ class TestSanitizeFilename:
         from server.core.plugin_installer import _sanitize_filename
 
         assert _sanitize_filename("my_plugin-v2.py") == "my_plugin-v2.py"
+
+
+# ═══════════════════════════════════════════════════════════
+#  Native Dependency Archive Extraction Tests
+# ═══════════════════════════════════════════════════════════
+
+
+def _make_zip_archive(arcname: str, data: bytes) -> bytes:
+    buf = BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr(arcname, data)
+    return buf.getvalue()
+
+
+def _make_tar_archive(
+    arcname: str, data: bytes, *, compression: str, mode: int = 0o755
+) -> bytes:
+    buf = BytesIO()
+    with tarfile.open(fileobj=buf, mode=f"w:{compression}") as tf:
+        info = tarfile.TarInfo(name=arcname)
+        info.size = len(data)
+        info.mode = mode
+        tf.addfile(info, BytesIO(data))
+    return buf.getvalue()
+
+
+def _archive_mock_client(archive_bytes: bytes):
+    resp = MagicMock()
+    resp.content = archive_bytes
+    resp.raise_for_status = MagicMock()
+    client = AsyncMock()
+    client.get = AsyncMock(return_value=resp)
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+    return client
+
+
+class TestDetectArchiveFormat:
+
+    def test_url_extensions(self):
+        assert _detect_archive_format("https://x/mediamtx_linux_amd64.tar.gz", b"") == "tar.gz"
+        assert _detect_archive_format("https://x/foo.tgz", b"") == "tar.gz"
+        assert _detect_archive_format("https://x/ffmpeg-linux64-lgpl.tar.xz", b"") == "tar.xz"
+        assert _detect_archive_format("https://x/foo.txz", b"") == "tar.xz"
+        assert _detect_archive_format("https://x/mediamtx_windows_amd64.zip", b"") == "zip"
+
+    def test_query_string_stripped(self):
+        assert _detect_archive_format("https://x/a.tar.gz?token=abc", b"") == "tar.gz"
+
+    def test_magic_byte_fallback(self):
+        assert _detect_archive_format("https://x/opaque", b"PK\x03\x04rest") == "zip"
+        assert _detect_archive_format("https://x/opaque", b"\x1f\x8brest") == "tar.gz"
+        assert _detect_archive_format("https://x/opaque", b"\xfd7zXZ\x00rest") == "tar.xz"
+
+    def test_default_zip_when_unknown(self):
+        assert _detect_archive_format("https://x/opaque", b"unknown") == "zip"
+
+
+class TestInstallNativeDepArchive:
+
+    async def test_zip_extracts_named_file(self, plugin_repo):
+        """Regression: zip extraction still works; file lands as its basename."""
+        deps_dir = plugin_repo / ".deps"
+        deps_dir.mkdir()
+        archive = _make_zip_archive("mediamtx-dir/mediamtx.exe", b"BINARY")
+        client = _archive_mock_client(archive)
+        info = {
+            "type": "zip",
+            "url": "https://x/mediamtx_windows_amd64.zip",
+            "extract": "mediamtx-dir/mediamtx.exe",
+        }
+
+        with patch("server.core.plugin_installer.httpx.AsyncClient", return_value=client):
+            await _install_native_dep_archive("mediamtx", info, deps_dir)
+
+        assert (deps_dir / "mediamtx.exe").read_bytes() == b"BINARY"
+
+    async def test_targz_extracts_and_preserves_exec_bit(self, plugin_repo):
+        deps_dir = plugin_repo / ".deps"
+        deps_dir.mkdir()
+        archive = _make_tar_archive("mediamtx", b"ELF-LINUX", compression="gz", mode=0o755)
+        client = _archive_mock_client(archive)
+        info = {
+            "type": "tar.gz",
+            "url": "https://x/mediamtx_linux_amd64.tar.gz",
+            "extract": "mediamtx",
+        }
+
+        with patch("server.core.plugin_installer.httpx.AsyncClient", return_value=client):
+            await _install_native_dep_archive("mediamtx", info, deps_dir)
+
+        target = deps_dir / "mediamtx"
+        assert target.read_bytes() == b"ELF-LINUX"
+        # Exec-bit preservation is meaningful only on POSIX; Windows has no
+        # exec bit and chmod there only toggles the read-only flag.
+        if os.name == "posix":
+            assert target.stat().st_mode & 0o100
+
+    async def test_tarxz_extracts_subpath(self, plugin_repo):
+        deps_dir = plugin_repo / ".deps"
+        deps_dir.mkdir()
+        archive = _make_tar_archive(
+            "ffmpeg-lgpl/bin/ffmpeg", b"FFMPEG", compression="xz"
+        )
+        client = _archive_mock_client(archive)
+        info = {
+            "type": "tar.xz",
+            "url": "https://x/ffmpeg-linux64-lgpl.tar.xz",
+            "extract": "ffmpeg-lgpl/bin/ffmpeg",
+        }
+
+        with patch("server.core.plugin_installer.httpx.AsyncClient", return_value=client):
+            await _install_native_dep_archive("ffmpeg", info, deps_dir)
+
+        assert (deps_dir / "ffmpeg").read_bytes() == b"FFMPEG"
+
+    async def test_missing_member_raises_valueerror(self, plugin_repo):
+        deps_dir = plugin_repo / ".deps"
+        deps_dir.mkdir()
+        archive = _make_tar_archive("mediamtx", b"X", compression="gz")
+        client = _archive_mock_client(archive)
+        info = {"type": "tar.gz", "url": "https://x/a.tar.gz", "extract": "not_there"}
+
+        with patch("server.core.plugin_installer.httpx.AsyncClient", return_value=client):
+            with pytest.raises(ValueError, match="not found in archive"):
+                await _install_native_dep_archive("mediamtx", info, deps_dir)
+
+    async def test_missing_url_raises_valueerror(self, plugin_repo):
+        deps_dir = plugin_repo / ".deps"
+        deps_dir.mkdir()
+        with pytest.raises(ValueError, match="Missing url or extract"):
+            await _install_native_dep_archive(
+                "x", {"type": "tar.gz", "extract": "y"}, deps_dir
+            )
