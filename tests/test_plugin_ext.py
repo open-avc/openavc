@@ -19,7 +19,6 @@ from fastapi import APIRouter, FastAPI, Request
 from fastapi.testclient import TestClient
 
 import server.api.auth as auth_mod
-from server.api import plugin_ext
 from server.api.plugin_ext import (
     PLUGIN_TOKEN_HEADER,
     PLUGIN_TOKEN_QUERY,
