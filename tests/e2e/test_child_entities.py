@@ -87,7 +87,7 @@ def test_one_hundred_children_renders_and_filters(server_factory, page: Page):
     scroller.evaluate("(el) => { el.scrollTop = 0; }")
 
     # Filter by a specific id: only that row's child-row testid appears.
-    search = page.locator('[data-testid="child-search"]')
+    search = page.locator('[data-testid="device-filter"]')
     search.fill("042")
     expect(page.locator('[data-testid="child-row-042"]')).to_be_visible(
         timeout=EXPECT_TIMEOUT,
@@ -169,7 +169,7 @@ def test_fifteen_hundred_children_stays_responsive(server_factory, page: Page):
         scroller.evaluate(f"(el) => {{ el.scrollTop = {top}; }}")
         page.wait_for_timeout(120)
 
-    search = page.locator('[data-testid="child-search"]')
+    search = page.locator('[data-testid="device-filter"]')
     search.fill("Encoder 750")
     page.wait_for_timeout(200)
     expect(page.locator('[data-testid="child-row-750"]')).to_be_visible(
