@@ -10,6 +10,7 @@ import type { PluginInfo } from "../api/types";
 import type { PluginExtension, CommunityPlugin, InstalledPlugin } from "../api/restClient";
 import * as api from "../api/restClient";
 import { useProjectStore } from "./projectStore";
+import { showError } from "./toastStore";
 
 // Enabling/disabling a plugin or saving its config mutates the project
 // server-side (the plugins table), outside the project store's own save path.
@@ -106,6 +107,7 @@ export const usePluginStore = create<PluginStore>((set, get) => ({
       await syncProjectStore();
     } catch (e) {
       set({ error: String(e) });
+      showError(`Couldn't enable plugin "${pluginId}": ${String(e)}`);
     }
   },
 
@@ -116,6 +118,7 @@ export const usePluginStore = create<PluginStore>((set, get) => ({
       await syncProjectStore();
     } catch (e) {
       set({ error: String(e) });
+      showError(`Couldn't disable plugin "${pluginId}": ${String(e)}`);
     }
   },
 
@@ -126,6 +129,7 @@ export const usePluginStore = create<PluginStore>((set, get) => ({
       await syncProjectStore();
     } catch (e) {
       set({ error: String(e) });
+      showError(`Couldn't save settings for plugin "${pluginId}": ${String(e)}`);
     }
   },
 
@@ -135,6 +139,7 @@ export const usePluginStore = create<PluginStore>((set, get) => ({
       await get().load();
     } catch (e) {
       set({ error: String(e) });
+      showError(`Couldn't activate plugin "${pluginId}": ${String(e)}`);
     }
   },
 

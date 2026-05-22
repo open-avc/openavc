@@ -7,6 +7,7 @@ platform validation, REST endpoints, and integration lifecycle.
 """
 
 import asyncio
+import sys
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -888,6 +889,54 @@ class TestPluginLoader:
         valid, error = loader.validate_manifest(BadCatPlugin)
         assert not valid
         assert "Invalid category" in error
+
+    def test_validate_manifest_rejects_too_new_min_version(self, loader, monkeypatch):
+        monkeypatch.setattr("server.version.__version__", "0.5.0")
+
+        class FuturePlugin:
+            PLUGIN_INFO = {
+                "id": "future",
+                "name": "Future Plugin",
+                "version": "1.0.0",
+                "author": "Test",
+                "description": "Needs a newer platform.",
+                "category": "utility",
+                "license": "MIT",
+                "capabilities": [],
+                "min_openavc_version": "99.0.0",
+            }
+
+        valid, error = loader.validate_manifest(FuturePlugin)
+        assert not valid
+        assert "requires OpenAVC" in error
+
+    def test_validate_manifest_fails_open_without_packaging(self, loader, monkeypatch):
+        """If 'packaging' is missing from the venv, the min-version gate is
+        skipped rather than raising. Regression: a missing 'packaging' dep
+        turned plugin-enable into a 500 because validate_manifest imported it
+        unguarded, before start_plugin's try/except."""
+        monkeypatch.setattr("server.version.__version__", "0.5.0")
+        monkeypatch.setitem(sys.modules, "packaging", None)
+        monkeypatch.setitem(sys.modules, "packaging.version", None)
+
+        class FuturePlugin:
+            PLUGIN_INFO = {
+                "id": "future",
+                "name": "Future Plugin",
+                "version": "1.0.0",
+                "author": "Test",
+                "description": "Needs a newer platform.",
+                "category": "utility",
+                "license": "MIT",
+                "capabilities": [],
+                "min_openavc_version": "99.0.0",
+            }
+
+        # Without packaging the gate can't be evaluated, so it fails open
+        # (validates) instead of crashing.
+        valid, error = loader.validate_manifest(FuturePlugin)
+        assert valid
+        assert error == ""
 
     @pytest.mark.asyncio
     async def test_disabled_plugin_not_started(self, loader):

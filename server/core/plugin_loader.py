@@ -481,15 +481,22 @@ class PluginLoader:
         min_version = info.get("min_openavc_version")
         if min_version:
             from server.version import __version__
-            from packaging.version import Version, InvalidVersion
             try:
-                if Version(__version__) < Version(min_version):
-                    return False, (
-                        f"Plugin requires OpenAVC v{min_version} or later "
-                        f"(current: v{__version__})"
-                    )
-            except InvalidVersion:
-                pass
+                from packaging.version import Version, InvalidVersion
+            except ImportError:
+                # packaging should be installed (it's in requirements.txt), but
+                # if a deployment's venv is missing it, fail open rather than
+                # raise — a missing dep must never turn plugin-enable into a 500.
+                Version = None
+            if Version is not None:
+                try:
+                    if Version(__version__) < Version(min_version):
+                        return False, (
+                            f"Plugin requires OpenAVC v{min_version} or later "
+                            f"(current: v{__version__})"
+                        )
+                except InvalidVersion:
+                    pass
 
         # CONFIG_SCHEMA validation (basic)
         schema = getattr(plugin_class, "CONFIG_SCHEMA", None)
