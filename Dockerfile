@@ -39,19 +39,37 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && setcap cap_net_raw+ep /usr/bin/ping \
     && rm -rf /var/lib/apt/lists/*
 
+
+# Install UV from Astral's "distroless" image
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Enable UV's bytecode compilation for faster startup.
+ENV UV_COMPILE_BYTECODE=1
+
+# Disable UV's cache dir
+ENV UV_NO_CACHE=1
+
 # Create non-root user
 RUN groupadd -r openavc && useradd -r -g openavc -d /app -s /usr/sbin/nologin openavc
 
 WORKDIR /app
 
 # Install dependencies first (layer caching)
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY uv.lock .
+COPY pyproject.toml .
+
+# Install runtime dependencies only (no dev dependencies, no project sources)
+RUN uv sync --locked --no-install-project --no-dev
+
+ENV PATH="/app/.venv/bin:$PATH"
 
 # Copy server code and simulator package
 COPY server/ ./server/
 COPY simulator/ ./simulator/
-COPY pyproject.toml .
+
+# Install the project in editable mode
+RUN uv sync --locked --no-dev
+
 
 # Copy built frontend from stage 1
 COPY --from=frontend /build/programmer/dist/ ./web/programmer/dist/
