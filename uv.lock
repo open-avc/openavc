@@ -893,30 +893,30 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aiohttp", specifier = "==3.13.5" },
-    { name = "croniter", specifier = "==6.2.2" },
+    { name = "aiohttp", specifier = ">=3.13.5" },
+    { name = "croniter", specifier = ">=6.2.2" },
     { name = "cryptography", specifier = ">=44.0.0,<45" },
-    { name = "defusedxml", specifier = "==0.7.1" },
-    { name = "fastapi", specifier = "==0.135.3" },
+    { name = "defusedxml", specifier = ">=0.7.1" },
+    { name = "fastapi", specifier = ">=0.135.3" },
     { name = "gpiozero", marker = "extra == 'pi'", specifier = ">=2.0.0" },
-    { name = "httpx", specifier = "==0.28.1" },
-    { name = "ifaddr", specifier = "==0.2.0" },
-    { name = "psutil", specifier = "==7.2.2" },
-    { name = "pydantic", specifier = "==2.11.1" },
-    { name = "pyserial", specifier = "==3.5" },
-    { name = "pyserial-asyncio", specifier = "==0.6" },
-    { name = "python-multipart", specifier = "==0.0.24" },
-    { name = "pyyaml", specifier = "==6.0.3" },
-    { name = "uvicorn", extras = ["standard"], specifier = "==0.44.0" },
-    { name = "websockets", specifier = "==16.0" },
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "ifaddr", specifier = ">=0.2.0" },
+    { name = "psutil", specifier = ">=7.2.2" },
+    { name = "pydantic", specifier = ">=2.11.1" },
+    { name = "pyserial", specifier = ">=3.5" },
+    { name = "pyserial-asyncio", specifier = ">=0.6" },
+    { name = "python-multipart", specifier = ">=0.0.24" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.44.0" },
+    { name = "websockets", specifier = ">=16.0" },
 ]
 provides-extras = ["pi"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "pytest", specifier = "==8.3.5" },
-    { name = "pytest-asyncio", specifier = "==0.26.0" },
-    { name = "pytest-playwright", specifier = "==0.7.0" },
+    { name = "pytest", specifier = ">=8.3.5" },
+    { name = "pytest-asyncio", specifier = ">=0.26.0" },
+    { name = "pytest-playwright", specifier = ">=0.7.0" },
     { name = "ruff", specifier = ">=0.6.0" },
 ]
 

@@ -9,20 +9,20 @@ authors = [
 ]
 
 dependencies = [
-    "fastapi==0.135.3",          # MIT - Web framework + WebSocket support
-    "python-multipart==0.0.24",  # Apache-2.0 - Required by FastAPI for file uploads
-    "uvicorn[standard]==0.44.0", # BSD-3 - ASGI server
-    "websockets==16.0",          # BSD-3 - WebSocket library
-    "pyserial==3.5",             # BSD-3 - RS-232 serial communication
-    "pyserial-asyncio==0.6",     # BSD-3 - Async serial support
-    "pydantic==2.11.1",          # MIT - Data validation
-    "pyyaml==6.0.3",             # MIT - YAML parsing
-    "httpx==0.28.1",             # BSD-3 - Async HTTP client (for HTTP transport)
-    "croniter==6.2.2",           # MIT - Cron expression parser (pure Python)
-    "defusedxml==0.7.1",         # PSF - Safe XML parsing (prevents XXE/billion laughs)
-    "ifaddr==0.2.0",             # MIT - Network interface detection (discovery subnet auto-detect)
-    "psutil==7.2.2",             # BSD-3 - System metrics (cloud heartbeat: CPU, memory, disk, temperature)
-    "aiohttp==3.13.5",           # Apache-2.0 - Async HTTP server (simulator HTTP device servers)
+    "fastapi>=0.135.3",          # MIT - Web framework + WebSocket support
+    "python-multipart>=0.0.24",  # Apache-2.0 - Required by FastAPI for file uploads
+    "uvicorn[standard]>=0.44.0", # BSD-3 - ASGI server
+    "websockets>=16.0",          # BSD-3 - WebSocket library
+    "pyserial>=3.5",             # BSD-3 - RS-232 serial communication
+    "pyserial-asyncio>=0.6",     # BSD-3 - Async serial support
+    "pydantic>=2.11.1",          # MIT - Data validation
+    "pyyaml>=6.0.3",             # MIT - YAML parsing
+    "httpx>=0.28.1",             # BSD-3 - Async HTTP client (for HTTP transport)
+    "croniter>=6.2.2",           # MIT - Cron expression parser (pure Python)
+    "defusedxml>=0.7.1",         # PSF - Safe XML parsing (prevents XXE/billion laughs)
+    "ifaddr>=0.2.0",             # MIT - Network interface detection (discovery subnet auto-detect)
+    "psutil>=7.2.2",             # BSD-3 - System metrics (cloud heartbeat: CPU, memory, disk, temperature)
+    "aiohttp>=3.13.5",           # Apache-2.0 - Async HTTP server (simulator HTTP device servers)
     "cryptography>=44.0.0,<45",  # Apache-2.0/BSD-3 - X.509 cert generation for HTTPS
 ]
 
@@ -40,9 +40,9 @@ testpaths = ["tests"]
 
 [dependency-groups]
 dev = [
-    "pytest==8.3.5",             # MIT - Testing framework
-    "pytest-asyncio==0.26.0",    # Apache-2.0 - Async test support
-    "pytest-playwright==0.7.0",  # Apache-2.0 - Playwright pytest integration (E2E IDE tests). Bundles `playwright`; install browsers with `python -m playwright install chromium` after `pip install -e .[dev]`.
+    "pytest>=8.3.5",             # MIT - Testing framework
+    "pytest-asyncio>=0.26.0",    # Apache-2.0 - Async test support
+    "pytest-playwright>=0.7.0",  # Apache-2.0 - Playwright pytest integration (E2E IDE tests). Bundles `playwright`; install browsers with `python -m playwright install chromium` after `pip install -e .[dev]`.
     "ruff>=0.6.0",               # MIT - Fast Python linter/formatter (unpinned, linter updates are safe)
 ]
 
