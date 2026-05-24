@@ -15,7 +15,7 @@ SyncCallback = Callable[P, R]
 P is the parameter specification, R is the return type.
 """
 
-Callback = AsyncCallback[P, R] | SyncCallback[P, R]
+Callback = Callable[P, Coroutine[Any, Any, R]] | Callable[P, R]
 """Generic callback type that can be either async or sync.
 P is the parameter specification, R is the return type.
 """
