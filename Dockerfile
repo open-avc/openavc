@@ -43,6 +43,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install UV from Astral's "distroless" image
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
+# Use the system's Python (avoid downloading uv's Python binaries)
+ENV UV_PYTHON_DOWNLOADS=0
+
 # Enable UV's bytecode compilation for faster startup.
 ENV UV_COMPILE_BYTECODE=1
 
