@@ -21,6 +21,7 @@ export interface StreamInput {
   rtsp_url: string;
   username?: string;
   password?: string;
+  codec_hint?: string; // auto | h264 | h265 — set from the source probe
   transcode?: string;
   hardware_accel?: string;
 }

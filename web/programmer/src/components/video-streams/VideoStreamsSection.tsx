@@ -89,6 +89,17 @@ function slugify(name: string): string {
   return s || "stream";
 }
 
+// Map a probe's detected codec to a stored codec_hint. The server uses this to
+// decide whether "auto" transcoding kicks in (HEVC -> transcode). An unknown or
+// failed probe stays "auto" (treated as passthrough).
+function codecHintFromProbe(result: ProbeResult | null): string {
+  if (!result || !result.ok || !result.codec) return "auto";
+  const c = result.codec.toLowerCase();
+  if (c === "hevc" || c === "h265") return "h265";
+  if (c === "h264") return "h264";
+  return "auto";
+}
+
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div style={{ flex: 1, minWidth: 0 }}>
@@ -151,31 +162,47 @@ function StreamForm({
   const effectiveId = (streamIdTouched ? streamId : slugify(name)).trim();
   const valid = name.trim() && rtspUrl.includes("://") && effectiveId;
 
-  async function probe() {
+  async function probe(): Promise<ProbeResult> {
     setProbing(true);
     setProbeResult(null);
+    let result: ProbeResult;
     try {
-      setProbeResult(await streamsApi.probeStream({ rtsp_url: rtspUrl, username, password }));
+      result = await streamsApi.probeStream({ rtsp_url: rtspUrl, username, password });
     } catch (err) {
-      setProbeResult({ ok: false, message: streamsApi.errorMessage(err) });
-    } finally {
-      setProbing(false);
+      result = { ok: false, message: streamsApi.errorMessage(err) };
     }
+    setProbeResult(result);
+    setProbing(false);
+    return result;
+  }
+
+  // The server needs a codec_hint so "auto" transcoding can tell HEVC apart. An
+  // explicit Test this session wins; otherwise keep a previously detected codec;
+  // otherwise, for auto-transcode, probe now so HEVC sources just work without
+  // the user clicking Test. A best-effort probe of an unreachable source stays
+  // "auto" (passthrough), which it would be anyway.
+  async function resolveCodecHint(): Promise<string> {
+    const tested = codecHintFromProbe(probeResult);
+    if (tested !== "auto") return tested;
+    if (stream?.codec_hint && stream.codec_hint !== "auto") return stream.codec_hint;
+    if (transcode === "auto") return codecHintFromProbe(await probe());
+    return "auto";
   }
 
   async function save() {
     if (!valid) return;
     setSaving(true);
-    const payload = {
-      name: name.trim(),
-      stream_id: effectiveId,
-      rtsp_url: rtspUrl.trim(),
-      username,
-      password,
-      transcode,
-      hardware_accel: hwAccel,
-    };
     try {
+      const payload = {
+        name: name.trim(),
+        stream_id: effectiveId,
+        rtsp_url: rtspUrl.trim(),
+        username,
+        password,
+        codec_hint: await resolveCodecHint(),
+        transcode,
+        hardware_accel: hwAccel,
+      };
       if (stream) await streamsApi.updateStream(stream.stream_id, payload);
       else await streamsApi.createStream(payload);
       showSuccess(stream ? "Stream updated." : "Stream added.");
@@ -221,7 +248,7 @@ function StreamForm({
         </div>
 
         <div>
-          <button style={secondaryBtn} onClick={probe} disabled={probing || !rtspUrl.includes("://")}>
+          <button style={secondaryBtn} onClick={() => probe()} disabled={probing || !rtspUrl.includes("://")}>
             {probing ? "Testing..." : "Test"}
           </button>
           {probeResult && <ProbeReadout result={probeResult} />}

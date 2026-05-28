@@ -64,12 +64,29 @@ Each entry in the array represents one physical button:
       "style_inactive": { "bg_color": "#56aa02", "text_color": "#ffffff" },
       "label_active": "OFF",             // Condition matches (device IS on) — show what pressing WILL DO
       "label_inactive": "ON"            // Condition doesn't match (device is off) — show what pressing WILL DO
+    },
+    "visible_when": {     // Hide the button unless this state condition holds (optional)
+      "key": "device.projector_1.power",
+      "operator": "eq",   // eq, ne, gt, lt, gte, lte, truthy, falsy
+      "value": "on"       // omit value for truthy/falsy; use "any":[...] for OR logic
     }
   }
 }
 
 Color priority: feedback style > per-button defaults > global plugin config defaults.
+A hidden button (visible_when false) renders as a blank black key and ignores presses.
 Only include fields you need. Unassigned buttons can be omitted from the array.
+
+Automatic paging (optional): add a top-level "auto_page" array alongside "buttons" to
+switch pages automatically when state changes:
+
+"auto_page": [
+  { "page": 1, "when": { "key": "device.projector_1.power", "operator": "eq", "value": "on" } },
+  { "page": 0, "when": { "key": "device.projector_1.power", "operator": "ne", "value": "on" } }
+]
+
+Each "when" uses the same operator schema (and supports "any":[...] for OR). Rules are
+evaluated in order; the first match wins, so list more specific conditions first.
 """
 
 
@@ -261,19 +278,20 @@ def _validate_bindings(bindings: dict, project: Any = None) -> str | None:
     if isinstance(val_binding, dict) and not val_binding.get("key"):
         errors.append("value: missing 'key' (state key to display)")
 
-    # visible_when: single condition or any:[] for OR logic
+    # visible_when: single condition, or any:[] (OR) / all:[] (AND) groups
     vw = bindings.get("visible_when")
     if isinstance(vw, dict):
-        if "any" in vw:
-            conditions = vw["any"] if isinstance(vw["any"], list) else []
+        group_key = "any" if "any" in vw else ("all" if "all" in vw else None)
+        if group_key:
+            conditions = vw[group_key] if isinstance(vw[group_key], list) else []
             for i, cond in enumerate(conditions):
                 if isinstance(cond, dict):
                     if not cond.get("key"):
-                        errors.append(f"visible_when.any[{i}]: missing 'key'")
+                        errors.append(f"visible_when.{group_key}[{i}]: missing 'key'")
                     op = cond.get("operator")
                     if op and op not in _VALID_VISIBLE_WHEN_OPS:
                         errors.append(
-                            f"visible_when.any[{i}]: operator '{op}' is not valid. "
+                            f"visible_when.{group_key}[{i}]: operator '{op}' is not valid. "
                             f"Use: eq, ne, gt, lt, gte, lte, truthy, falsy"
                         )
         else:

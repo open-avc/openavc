@@ -382,3 +382,47 @@ class TestValidatorOperatorAliases:
         }
         errs = _validate_macro_step(step, "test")
         assert errs, "Garbage operator should still be rejected"
+
+
+class TestVisibleWhenBindingValidation:
+    """_validate_bindings accepts single, any:[] (OR) and all:[] (AND) visible_when."""
+
+    def test_single_condition_valid(self):
+        from server.cloud.ai_tool_handler import _validate_bindings
+        b = {"visible_when": {"key": "device.proj.power", "operator": "eq", "value": "on"}}
+        assert _validate_bindings(b) is None
+
+    def test_any_group_valid(self):
+        from server.cloud.ai_tool_handler import _validate_bindings
+        b = {"visible_when": {"any": [
+            {"key": "device.a.power", "operator": "eq", "value": "on"},
+            {"key": "device.b.power", "operator": "truthy"},
+        ]}}
+        assert _validate_bindings(b) is None
+
+    def test_all_group_valid(self):
+        # The fix: the AND form used to be rejected as "missing key".
+        from server.cloud.ai_tool_handler import _validate_bindings
+        b = {"visible_when": {"all": [
+            {"key": "device.a.power", "operator": "eq", "value": "on"},
+            {"key": "device.b.online", "operator": "truthy"},
+        ]}}
+        assert _validate_bindings(b) is None
+
+    def test_all_group_bad_operator_rejected(self):
+        from server.cloud.ai_tool_handler import _validate_bindings
+        b = {"visible_when": {"all": [{"key": "device.a.power", "operator": "snorgle"}]}}
+        err = _validate_bindings(b)
+        assert err and "all[0]" in err
+
+    def test_group_missing_key_rejected(self):
+        from server.cloud.ai_tool_handler import _validate_bindings
+        b = {"visible_when": {"any": [{"operator": "truthy"}]}}
+        err = _validate_bindings(b)
+        assert err and "any[0]" in err
+
+    def test_single_missing_key_rejected(self):
+        from server.cloud.ai_tool_handler import _validate_bindings
+        b = {"visible_when": {"operator": "eq", "value": "on"}}
+        err = _validate_bindings(b)
+        assert err and "visible_when" in err

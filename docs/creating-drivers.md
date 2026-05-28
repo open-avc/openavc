@@ -396,6 +396,20 @@ Notice how much cleaner this is compared to JSON: comments explain the protocol,
 
 ### Definition Reference
 
+A JSON Schema for the `.avcdriver` format is published with the community driver library:
+
+```
+https://raw.githubusercontent.com/open-avc/openavc-drivers/main/avcdriver.schema.json
+```
+
+Add this line to the top of any `.avcdriver` file and editors with YAML Language Server support (VS Code, Neovim, JetBrains, and others) will validate it live and autocomplete field names as you type:
+
+```yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/open-avc/openavc-drivers/main/avcdriver.schema.json
+```
+
+The tables below document each field in detail.
+
 #### Top-level fields
 
 | Field | Required | Description |
