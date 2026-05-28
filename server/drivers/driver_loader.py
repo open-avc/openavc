@@ -22,7 +22,7 @@ import re
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Sequence, Any
 
 import yaml
 
@@ -223,7 +223,7 @@ def load_driver_file(filepath: Path) -> dict[str, Any] | None:
     return driver_def
 
 
-def load_driver_files(directories: list[Path | str]) -> int:
+def load_driver_files(directories: Sequence[Path | str]) -> int:
     """
     Scan directories for .avcdriver files, validate them,
     create ConfigurableDriver subclasses, and register them.
@@ -306,7 +306,7 @@ def load_python_driver_file(filepath: Path) -> type | None:
     return driver_class
 
 
-def load_python_drivers(directories: list[Path | str]) -> int:
+def load_python_drivers(directories: Sequence[Path | str]) -> int:
     """
     Scan directories for .py driver files, load them, and register.
 
@@ -344,7 +344,7 @@ def load_python_drivers(directories: list[Path | str]) -> int:
     return count
 
 
-def load_all_drivers(directories: list[Path | str]) -> int:
+def load_all_drivers(directories: Sequence[Path | str]) -> int:
     """
     Load both .avcdriver YAML definitions and .py Python drivers from
     the given directories. This is the main entry point for loading all
@@ -400,7 +400,7 @@ def save_driver_definition(
 
 def delete_driver_definition(
     driver_id: str,
-    directories: list[Path | str],
+    directories: Sequence[Path | str],
 ) -> bool:
     """
     Delete a driver definition file by driver ID.
@@ -423,7 +423,7 @@ def delete_driver_definition(
     return False
 
 
-def list_driver_definitions(directories: list[Path | str]) -> list[dict[str, Any]]:
+def list_driver_definitions(directories: Sequence[Path | str]) -> list[dict[str, Any]]:
     """
     List all driver definitions from the given directories.
 
@@ -452,7 +452,7 @@ def list_driver_definitions(directories: list[Path | str]) -> list[dict[str, Any
     return definitions
 
 
-def list_python_drivers(directories: list[Path | str]) -> list[dict[str, Any]]:
+def list_python_drivers(directories: Sequence[Path | str]) -> list[dict[str, Any]]:
     """
     List all Python driver files (.py) from the given directories.
 
