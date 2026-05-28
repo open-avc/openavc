@@ -26,6 +26,9 @@ export interface ButtonBindings {
   release?: Record<string, unknown>[] | null;
   hold?: Record<string, unknown>[] | null;
   feedback?: Record<string, unknown> | null;
+  // Optional state-driven visibility (single condition or all/any group).
+  // Edited via VisibilityProperties; this editor preserves it untouched.
+  visible_when?: Record<string, unknown> | null;
 }
 
 interface ButtonBindingEditorProps {

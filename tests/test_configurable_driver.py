@@ -1,7 +1,5 @@
 """Tests for ConfigurableDriver — JSON-defined drivers."""
 
-import asyncio
-
 import pytest
 
 from server.core.event_bus import EventBus
@@ -156,7 +154,7 @@ async def test_on_data_empty(driver):
     await driver.on_data_received(b"   ")
 
 
-def test_response_with_value_map():
+async def test_response_with_value_map():
     """Value maps translate raw values to mapped values."""
     definition = {
         "id": "test_map",
@@ -186,7 +184,7 @@ def test_response_with_value_map():
     state.set_event_bus(events)
     drv = cls("test", {}, state, events)
 
-    asyncio.get_event_loop().run_until_complete(drv.on_data_received(b"POWR=1"))
+    await drv.on_data_received(b"POWR=1")
     assert drv.get_state("power") == "on"
 
 
