@@ -859,7 +859,7 @@ wheels = [
 [[package]]
 name = "openavc"
 version = "0.13.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
     { name = "croniter" },
@@ -910,7 +910,6 @@ requires-dist = [
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.44.0" },
     { name = "websockets", specifier = ">=16.0" },
 ]
-provides-extras = ["pi"]
 
 [package.metadata.requires-dev]
 dev = [

@@ -31,8 +31,26 @@ pi = [
     "gpiozero>=2.0.0",           # BSD-3 - GPIO access (Pi only)
 ]
 
-[tool.setuptools.packages.find]
-include = ["server*", "tests*"]
+[build-system]
+requires = ["uv_build>=0.11.16,<0.12"]
+build-backend = "uv_build"
+
+
+[tool.uv.build-backend]
+# Include the server and simulator packages and add the content of the web directory at the
+# root of the wheel (for static file serving in production).
+module-name = ["server", "simulator", "web"]
+module-root = ""
+namespace = true
+
+# Exclude node_modules directories from the wheel and source distributions
+source-exclude = [
+    "web/**/node_modules",
+]
+wheel-exclude = [
+    "web/**/node_modules",
+]
+
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
