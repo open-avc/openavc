@@ -34,7 +34,11 @@ def _categorize_source(name: str, message: str) -> str:
     """Derive a category from the logger name and message content."""
     if name.startswith("server.core.macro_engine"):
         return "macro"
-    if name.startswith("server.drivers") or name.startswith("server.core.device_manager"):
+    if (
+        name.startswith("server.drivers")
+        or name.startswith("server.core.device_manager")
+        or name.startswith("server.transport")
+    ):
         return "device"
     if name.startswith("openavc") or name.startswith("server.core.script"):
         return "script"

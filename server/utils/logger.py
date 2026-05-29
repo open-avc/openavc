@@ -60,6 +60,14 @@ def _configure_root():
     buffer_handler.setLevel(logging.DEBUG)
     root.addHandler(buffer_handler)
 
+    # Device protocol traffic (transport TX/RX) is logged at DEBUG. Pin the
+    # transport loggers to DEBUG so that traffic is always captured for the
+    # Programmer's per-device log, independent of the global log level (which
+    # the console and file handlers still respect). Without this, the default
+    # INFO level drops every TX/RX before it reaches the buffer and the device
+    # log stays empty.
+    logging.getLogger("server.transport").setLevel(logging.DEBUG)
+
 
 def get_logger(name: str) -> logging.Logger:
     """
