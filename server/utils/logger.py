@@ -31,9 +31,21 @@ def _configure_root():
 
     formatter = logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT)
 
-    # Console output
+    # Console output honors the configured level. This keeps external/terminal
+    # output from being flooded by the always-on device traffic captured for
+    # the in-app log (see the transport pin below) — that traffic goes to the
+    # in-memory buffer, not necessarily to stdout.
+    try:
+        from server.system_config import get_system_config
+        _console_level = getattr(
+            logging,
+            str(get_system_config().get("logging", "level", "info")).upper(),
+            logging.INFO,
+        )
+    except Exception:
+        _console_level = logging.INFO
     handler = logging.StreamHandler(sys.stdout)
-    handler.setLevel(logging.DEBUG)
+    handler.setLevel(_console_level)
     handler.setFormatter(formatter)
     root.addHandler(handler)
 
