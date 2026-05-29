@@ -43,10 +43,20 @@ class DeviceToolsMixin:
             name=input.get("name", existing.name),
             config=input.get("config", existing.config),
             enabled=existing.enabled,
+            # Preserve queued device settings and child-entity metadata
+            # (user labels / per-child config). Rebuilding from the tool
+            # input alone would drop them on every edit — both on disk and
+            # in the re-seeded live driver.
+            pending_settings=existing.pending_settings,
+            child_entities=existing.child_entities,
         )
         engine.project.devices[device_idx] = updated
         save_project(engine.project_path, engine.project)
-        await engine.devices.update_device(device_id, updated.model_dump())
+        # Merge the connection table (host/port live in project.connections,
+        # not device.config) before re-adding the runtime device — matching
+        # _add_device. Passing model_dump() alone re-adds the device with no
+        # host, silently breaking control.
+        await engine.devices.update_device(device_id, engine.resolved_device_config(updated))
         return {"status": "updated", "device_id": device_id}
 
     async def _delete_device(self, input: dict) -> Any:

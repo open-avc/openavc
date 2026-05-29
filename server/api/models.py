@@ -49,6 +49,12 @@ class DeviceUpdateRequest(BaseModel):
     driver: str | None = None
     config: dict[str, Any] | None = None
     enabled: bool | None = None
+    # Child-entity metadata (user labels / per-child config) keyed by
+    # child_type -> padded local_id -> {label, config}. Declared so an
+    # explicit edit round-trips instead of being dropped by extra='ignore'.
+    # Omitted/None means "leave the existing map untouched" — the common
+    # name/driver/config edit must not wipe it.
+    child_entities: dict[str, Any] | None = None
 
 
 class ScriptSourceRequest(BaseModel):

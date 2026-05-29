@@ -213,6 +213,14 @@ async def update_device(device_id: str, body: DeviceUpdateRequest) -> dict[str, 
         # _apply_pending_settings(). Constructing a fresh DeviceConfig from
         # the request body alone would silently drop them on every edit.
         pending_settings=existing.pending_settings,
+        # Same for child-entity metadata (user labels / per-child config):
+        # keep the existing map unless the request explicitly supplies a new
+        # one. A plain name/driver/config edit must not wipe it on disk or
+        # re-seed the live driver with an empty map.
+        child_entities=(
+            body.child_entities if body.child_entities is not None
+            else existing.child_entities
+        ),
     )
 
     # Update project config, save, and hot-swap device
