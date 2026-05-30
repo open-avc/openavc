@@ -25,6 +25,8 @@ From the Updates view, click **Install vX.Y.Z**. A progress dialog walks through
 4. **Applying** the update to your system
 5. **Restarting** the server
 
+Verification is mandatory. If a download cannot be checked against a published SHA256 checksum, the update is refused and nothing is applied, leaving your current version untouched.
+
 Do not close the browser or power off the system during this process. After the restart, the Programmer IDE reconnects automatically and shows a confirmation toast.
 
 ## What Gets Updated

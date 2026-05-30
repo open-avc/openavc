@@ -435,7 +435,15 @@ class TestUpdateManager:
         )
 
     async def test_apply_cloud_update_clears_marker_on_apply_failure(self, tmp_path):
-        """A58: same invariant for apply_cloud_update()."""
+        """A58: same invariant for apply_cloud_update().
+
+        Passes a valid checksum so execution reaches the apply step — the
+        fail-closed verification (C4) rejects a missing checksum earlier, which
+        would otherwise short-circuit this test before it exercises the marker
+        cleanup on apply failure.
+        """
+        import hashlib
+
         mock_state = MagicMock()
         mock_state.set = MagicMock()
         mgr = UpdateManager(state_store=mock_state, data_dir=tmp_path)
@@ -444,6 +452,7 @@ class TestUpdateManager:
 
         artifact = tmp_path / "openavc-9.9.9.tar.gz"
         artifact.write_bytes(b"fake")
+        good_checksum = hashlib.sha256(b"fake").hexdigest()
 
         with patch(
             "server.updater.backup.create_backup",
@@ -461,7 +470,7 @@ class TestUpdateManager:
             result = await mgr.apply_cloud_update(
                 target_version="9.9.9",
                 update_url="https://example.com/openavc-9.9.9.tar.gz",
-                checksum_sha256=None,
+                checksum_sha256=good_checksum,
             )
 
         assert result["success"] is False

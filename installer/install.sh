@@ -256,6 +256,7 @@ get_latest_release_url() {
     # Parse JSON without jq (grep + sed)
     RELEASE_VERSION=$(echo "$release_json" | grep -o '"tag_name":\s*"[^"]*"' | head -1 | sed 's/.*"tag_name":\s*"\([^"]*\)".*/\1/' | sed 's/^v//')
     RELEASE_URL=$(echo "$release_json" | grep -o '"browser_download_url":\s*"[^"]*linux-'"${ARCH}"'[^"]*\.tar\.gz"' | head -1 | sed 's/"browser_download_url":\s*"\([^"]*\)"/\1/')
+    CHECKSUMS_URL=$(echo "$release_json" | grep -o '"browser_download_url":\s*"[^"]*SHA256SUMS\.txt"' | head -1 | sed 's/"browser_download_url":\s*"\([^"]*\)"/\1/')
 
     if [ -n "$RELEASE_URL" ] && [ -n "$RELEASE_VERSION" ]; then
         ok "Latest release: v${RELEASE_VERSION}"
@@ -263,6 +264,47 @@ get_latest_release_url() {
     fi
 
     return 1
+}
+
+# Verify the downloaded archive against the release's SHA256SUMS.txt.
+# Fail-closed: refuse to install if the checksums file is missing, the
+# archive isn't listed, or the hash doesn't match — never install an
+# unverified artifact.
+verify_checksum() {
+    local archive="$1"
+
+    if [ -z "${CHECKSUMS_URL:-}" ]; then
+        fatal "No SHA256SUMS.txt in the release assets — refusing to install an unverified download."
+    fi
+    if ! command -v sha256sum &>/dev/null; then
+        fatal "sha256sum not found — cannot verify download integrity. Install coreutils and re-run."
+    fi
+
+    local sums_file="/tmp/openavc-SHA256SUMS.txt"
+    info "Verifying download integrity..."
+    if ! download "$CHECKSUMS_URL" "$sums_file"; then
+        fatal "Failed to download SHA256SUMS.txt — refusing to install unverified."
+    fi
+
+    local artifact_name expected actual
+    artifact_name=$(basename "$archive")
+    # Field 2 is the filename (strip the optional binary-mode '*'); print the
+    # matching hash from field 1. Mirrors the in-app verifier's parser.
+    expected=$(awk -v name="$artifact_name" '{ f=$2; sub(/^\*/, "", f); if (f == name) { print $1; exit } }' "$sums_file")
+    rm -f "$sums_file"
+
+    if [ -z "$expected" ]; then
+        rm -f "$archive"
+        fatal "Checksum for ${artifact_name} not found in SHA256SUMS.txt — refusing to install."
+    fi
+
+    actual=$(sha256sum "$archive" | awk '{print $1}')
+    if [ "$actual" != "$expected" ]; then
+        rm -f "$archive"
+        fatal "Checksum mismatch for ${artifact_name}: expected ${expected}, got ${actual}. Aborting install."
+    fi
+
+    ok "Checksum verified"
 }
 
 download_release() {
@@ -274,6 +316,8 @@ download_release() {
     info "Downloading v${RELEASE_VERSION} for linux-${ARCH}..."
     download "$RELEASE_URL" "$archive"
     ok "Downloaded: $(du -h "$archive" | cut -f1)"
+
+    verify_checksum "$archive"
 
     ARCHIVE_PATH="$archive"
 }

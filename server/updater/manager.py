@@ -155,17 +155,19 @@ class UpdateManager:
 
         artifact_path = await self._download_artifact(artifact_url, artifact_name)
 
-        # Verify checksum via SHA256SUMS.txt from release assets
+        # Verify checksum via SHA256SUMS.txt from release assets.
+        # Fail-closed: a release with no checksums file is refused rather than
+        # applied unverified — absence of a checksum must never downgrade to
+        # "apply anyway" (supply-chain protection).
         checksum_url = self._find_asset_url(release, "SHA256SUMS.txt")
-        if checksum_url:
-            await self._verify_checksum(checksum_url=checksum_url,
-                                        artifact_path=artifact_path, artifact_name=artifact_name)
-        else:
-            log.error(
-                "No SHA256SUMS.txt in release assets for v%s — update artifact "
-                "was NOT verified. This is expected for development releases.",
-                release.version,
+        if not checksum_url:
+            artifact_path.unlink(missing_ok=True)
+            raise RuntimeError(
+                f"No SHA256SUMS.txt in release assets for v{release.version} — "
+                "refusing to apply an unverified update artifact."
             )
+        await self._verify_checksum(checksum_url=checksum_url,
+                                    artifact_path=artifact_path, artifact_name=artifact_name)
 
         return artifact_path
 
@@ -444,10 +446,18 @@ class UpdateManager:
             artifact_path = await self._download_artifact(update_url, filename)
             self._set_state("system.update_progress", 100)
 
-            # Step 3: Verify checksum if provided
-            if checksum_sha256:
-                self._set_state("system.update_status", "verifying")
-                self._verify_hash(artifact_path, checksum_sha256)
+            # Step 3: Verify checksum — fail-closed.
+            # The cloud only omits the checksum for a release whose
+            # SHA256SUMS.txt was never registered; refuse rather than apply an
+            # artifact we cannot verify (supply-chain protection).
+            if not checksum_sha256:
+                artifact_path.unlink(missing_ok=True)
+                raise RuntimeError(
+                    "No checksum provided for the update artifact — refusing to "
+                    "apply an unverified update."
+                )
+            self._set_state("system.update_status", "verifying")
+            self._verify_hash(artifact_path, checksum_sha256)
 
             # Step 4: Write pending-update marker
             from server.updater.rollback import write_pending_marker

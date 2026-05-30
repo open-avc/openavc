@@ -183,8 +183,13 @@ async def test_apply_cloud_update_bad_checksum(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_apply_cloud_update_no_checksum(tmp_path):
-    """apply_cloud_update succeeds without checksum (skips verification)."""
+async def test_apply_cloud_update_no_checksum_refuses(tmp_path):
+    """C4: apply_cloud_update refuses (fail-closed) when no checksum is given.
+
+    An update artifact that can't be verified must never be applied. Prior to
+    the fix, a missing checksum silently skipped verification and applied
+    anyway.
+    """
     from server.updater.manager import UpdateManager
 
     data_dir = tmp_path / "data"
@@ -199,11 +204,14 @@ async def test_apply_cloud_update_no_checksum(tmp_path):
     mgr._history = []
     mgr._deployment_type = MagicMock()
 
+    downloaded: list = []
+
     async def fake_download(url, filename):
         download_dir = data_dir / "update-cache"
         download_dir.mkdir(parents=True, exist_ok=True)
         path = download_dir / filename
         path.write_bytes(b"content")
+        downloaded.append(path)
         return path
 
     mgr._download_artifact = fake_download
@@ -212,9 +220,10 @@ async def test_apply_cloud_update_no_checksum(tmp_path):
          patch("server.updater.manager.__version__", "0.2.0"), \
          patch("server.updater.backup.create_backup", return_value=tmp_path / "backup.zip"), \
          patch("server.updater.backup.cleanup_old_backups"), \
-         patch("server.updater.rollback.write_pending_marker"), \
-         patch.object(mgr, "_apply_windows"), \
-         patch.object(mgr, "_restart_process"), \
+         patch("server.updater.rollback.write_pending_marker") as write_marker, \
+         patch.object(mgr, "_apply_windows") as apply_win, \
+         patch.object(mgr, "_apply_linux") as apply_linux, \
+         patch.object(mgr, "_restart_process") as restart, \
          patch.object(mgr, "_save_history"):
 
         result = await mgr.apply_cloud_update(
@@ -223,7 +232,100 @@ async def test_apply_cloud_update_no_checksum(tmp_path):
             checksum_sha256=None,
         )
 
-    assert result["success"] is True
+    assert result["success"] is False
+    assert "unverified" in result["error"].lower()
+    # Nothing past verification may run, and the artifact must not linger.
+    write_marker.assert_not_called()
+    apply_win.assert_not_called()
+    apply_linux.assert_not_called()
+    restart.assert_not_called()
+    assert not downloaded[0].exists()
+    assert mgr._history[0]["status"] == "failed"
+
+
+# ===========================================================================
+# UpdateManager._download_update (GitHub path) fail-closed tests
+# ===========================================================================
+
+
+def _make_manager_for_download(tmp_path):
+    """Build a bare manager wired for _download_update testing (Windows)."""
+    from server.updater.manager import UpdateManager
+    from server.updater.platform import DeploymentType
+
+    mgr = UpdateManager.__new__(UpdateManager)
+    mgr._data_dir = tmp_path / "data"
+    mgr._data_dir.mkdir(exist_ok=True)
+    mgr._state = MagicMock()
+    mgr._deployment_type = DeploymentType.WINDOWS_INSTALLER
+    return mgr
+
+
+@pytest.mark.asyncio
+async def test_download_update_refuses_without_checksums(tmp_path):
+    """C4: _download_update refuses (and deletes the artifact) when the release
+    ships no SHA256SUMS.txt — an unverifiable artifact must never be applied."""
+    from server.updater.checker import ReleaseInfo
+
+    mgr = _make_manager_for_download(tmp_path)
+    artifact_name = "OpenAVC-Setup-1.0.0.exe"
+    release = ReleaseInfo(
+        version="1.0.0", tag="v1.0.0", prerelease=False, changelog="",
+        published_at="2026-06-01T00:00:00Z",
+        assets=[{"name": artifact_name, "url": "https://example.com/setup.exe"}],
+    )
+
+    downloaded: list = []
+
+    async def fake_download(url, filename):
+        path = mgr._data_dir / filename
+        path.write_bytes(b"unverifiable installer")
+        downloaded.append(path)
+        return path
+
+    mgr._download_artifact = fake_download
+
+    with pytest.raises(RuntimeError, match="unverified"):
+        await mgr._download_update(release)
+
+    # The downloaded-but-unverified artifact must not be left on disk.
+    assert not downloaded[0].exists()
+
+
+@pytest.mark.asyncio
+async def test_download_update_proceeds_with_checksums(tmp_path):
+    """The fail-closed gate only blocks the absent-checksum case: a release
+    that ships SHA256SUMS.txt still verifies and returns the artifact."""
+    from server.updater.checker import ReleaseInfo
+
+    mgr = _make_manager_for_download(tmp_path)
+    artifact_name = "OpenAVC-Setup-1.0.0.exe"
+    release = ReleaseInfo(
+        version="1.0.0", tag="v1.0.0", prerelease=False, changelog="",
+        published_at="2026-06-01T00:00:00Z",
+        assets=[
+            {"name": artifact_name, "url": "https://example.com/setup.exe"},
+            {"name": "SHA256SUMS.txt", "url": "https://example.com/SHA256SUMS.txt"},
+        ],
+    )
+
+    async def fake_download(url, filename):
+        path = mgr._data_dir / filename
+        path.write_bytes(b"installer")
+        return path
+
+    mgr._download_artifact = fake_download
+    verify_calls: list = []
+
+    async def fake_verify(*, checksum_url, artifact_path, artifact_name):
+        verify_calls.append((checksum_url, artifact_name))
+
+    mgr._verify_checksum = fake_verify
+
+    result = await mgr._download_update(release)
+
+    assert result.exists()
+    assert verify_calls == [("https://example.com/SHA256SUMS.txt", artifact_name)]
 
 
 @pytest.mark.asyncio
