@@ -175,6 +175,10 @@ DEFAULTS: dict[str, Any] = {
         "programmer_password": "",
         "api_key": "",
         "panel_lock_code": "",
+        # No-credential posture: "auto" = open only on a dev checkout, require
+        # setup on shipped deployments; "true"/"false" force it. See
+        # server/api/auth.py anonymous_access_allowed().
+        "allow_anonymous": "auto",
     },
     "isc": {
         "enabled": True,
@@ -228,6 +232,7 @@ ENV_OVERRIDES: dict[tuple[str, str], tuple[str, type]] = {
     ("auth", "programmer_password"): ("OPENAVC_PROGRAMMER_PASSWORD", str),
     ("auth", "api_key"): ("OPENAVC_API_KEY", str),
     ("auth", "panel_lock_code"): ("OPENAVC_PANEL_LOCK_CODE", str),
+    ("auth", "allow_anonymous"): ("OPENAVC_ALLOW_ANONYMOUS", str),
     ("logging", "level"): ("OPENAVC_LOG_LEVEL", str),
     ("updates", "check_enabled"): ("OPENAVC_UPDATE_CHECK", bool),
     ("updates", "channel"): ("OPENAVC_UPDATE_CHANNEL", str),

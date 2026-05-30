@@ -3,9 +3,10 @@
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from server.api._engine import _get_engine, _rate_limit_test
+from server.api.auth import require_claimed_auth
 from server.api.errors import api_error as _api_error
 from server.api.models import (
     CommunityDriverInstallRequest,
@@ -1630,7 +1631,7 @@ async def get_python_driver_source(driver_id: str) -> dict:
     return {"id": driver_id, "filename": filepath.name, "source": source}
 
 
-@router.put("/python-drivers/{driver_id}/source")
+@router.put("/python-drivers/{driver_id}/source", dependencies=[Depends(require_claimed_auth)])
 async def save_python_driver_source(driver_id: str, body: dict) -> dict:
     """Save the source code of a Python driver file."""
     filepath = _safe_driver_path(driver_id)
@@ -1649,7 +1650,7 @@ async def save_python_driver_source(driver_id: str, body: dict) -> dict:
     return {"status": "saved", "id": driver_id}
 
 
-@router.post("/python-drivers")
+@router.post("/python-drivers", dependencies=[Depends(require_claimed_auth)])
 async def create_python_driver(body: PythonDriverCreateRequest) -> dict:
     """Create a new Python driver file."""
     from server.system_config import DRIVER_REPO_DIR
@@ -1679,7 +1680,7 @@ async def create_python_driver(body: PythonDriverCreateRequest) -> dict:
     return {"status": "created", "id": body.id}
 
 
-@router.delete("/python-drivers/{driver_id}")
+@router.delete("/python-drivers/{driver_id}", dependencies=[Depends(require_claimed_auth)])
 async def delete_python_driver(driver_id: str) -> dict:
     """Delete a Python driver file."""
     filepath = _safe_driver_path(driver_id)
@@ -1712,7 +1713,7 @@ async def delete_python_driver(driver_id: str) -> dict:
     return {"status": "deleted", "id": driver_id}
 
 
-@router.post("/python-drivers/{driver_id}/reload")
+@router.post("/python-drivers/{driver_id}/reload", dependencies=[Depends(require_claimed_auth)])
 async def reload_python_driver_endpoint(driver_id: str) -> dict:
     """Hot-reload a Python driver and reconnect affected devices."""
     filepath = _safe_driver_path(driver_id)

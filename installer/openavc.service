@@ -16,6 +16,11 @@ Environment=OPENAVC_DATA_DIR=/var/lib/openavc
 Environment=OPENAVC_LOG_DIR=/var/log/openavc
 Environment=OPENAVC_PROJECT=/var/lib/openavc/projects/default/project.avc
 Environment=OPENAVC_BIND=0.0.0.0
+# Secure by default: bound to all interfaces so panels can reach it, but the
+# Programmer/admin surface requires a credential. A fresh install is
+# "unclaimed" — the first Programmer visit sets the admin password. The room
+# panel stays open. Set to "true" only if another auth layer fronts OpenAVC.
+Environment=OPENAVC_ALLOW_ANONYMOUS=false
 # Tells main.py that systemd will relaunch us on exit (Restart=always),
 # so cloud-restart can just exit cleanly instead of also spawning its own
 # replacement. systemd already sets INVOCATION_ID, but the explicit flag

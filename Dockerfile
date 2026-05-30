@@ -82,6 +82,10 @@ USER openavc
 ENV OPENAVC_DATA_DIR=/data
 ENV OPENAVC_LOG_DIR=/data/logs
 ENV OPENAVC_BIND=0.0.0.0
+# Secure by default: the admin surface requires a credential (first run sets
+# it via the Programmer); the room panel stays open. Override only behind your
+# own auth layer.
+ENV OPENAVC_ALLOW_ANONYMOUS=false
 ENV OPENAVC_PROJECT=/data/projects/default/project.avc
 # Tells main.py that the container's restart policy will relaunch us, so
 # cloud-restart can just exit cleanly. PID-1 / /.dockerenv detection in

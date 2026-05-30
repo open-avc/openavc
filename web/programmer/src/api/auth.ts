@@ -132,17 +132,21 @@ export function installFetchAuth(): void {
  * own (which it needs for the WebSocket handshake).
  *
  * Returns:
- *   - "ok"       — no password configured, skip login
- *   - "required" — show the login screen
+ *   - "ok"       — no credential configured and anonymous allowed; skip login
+ *   - "setup"    — unclaimed shipped instance; show the first-run setup screen
+ *   - "required" — a credential is set; show the login screen
  *   - "error"    — network error; show the login screen so the user can retry
  */
-export async function probeAuth(): Promise<"ok" | "required" | "error"> {
+export async function probeAuth(): Promise<"ok" | "setup" | "required" | "error"> {
   try {
     const prefix = window.location.pathname.split("/programmer")[0] || "";
     const res = await fetch(`${prefix}/api/auth/required`, { method: "GET" });
     if (!res.ok) return "ok"; // older servers without the endpoint — assume open
     const data = await res.json();
-    return data?.required ? "required" : "ok";
+    if (data?.state === "setup") return "setup";
+    // `state` is the modern signal; fall back to the boolean for older servers.
+    if (data?.state === "required" || data?.required) return "required";
+    return "ok";
   } catch {
     return "error";
   }

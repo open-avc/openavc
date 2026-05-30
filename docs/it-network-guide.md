@@ -64,31 +64,20 @@ The application does not listen on any other ports by default. There is no SSH s
 
 ### Who can access the web interface
 
-By default, OpenAVC only accepts connections from the machine it is running on (it binds to `127.0.0.1`, localhost). This means:
+OpenAVC separates two surfaces with different access rules:
 
-**If the touch panel runs on the same PC** (a browser open on the PC's own screen), no configuration change is needed. Open a browser to `http://localhost:8080/panel` and it works immediately. This is the simplest setup and is common for lectern PCs or kiosk displays where the control interface is on the same machine running OpenAVC.
+- **The room panel** (`/panel`) — the end-user touch interface — is **always open**. Wall tablets and shared room displays reach it without a login, as an AV panel should.
+- **The Programmer (configuration interface) and the control/admin API** require an **admin credential**.
 
-**If a separate device needs to access the touch panel** (a wall-mounted tablet, a phone, a room scheduling display, or a browser on any other computer), those devices need to reach OpenAVC over the network. This requires changing the bind address so OpenAVC listens on its network interface instead of only localhost.
+**Secure by default.** Packaged deployments (Windows installer, Linux `install.sh`, Docker, Raspberry Pi image) listen on all network interfaces so panels can reach them, but they ship with **no credential and refuse admin access until one is set**. The first time someone opens the Programmer, OpenAVC presents a one-time "create admin password" screen. Until that is done, the configuration interface and control API return HTTP 401; only the panel and health/status endpoints respond. There is no default password and no open admin surface on a shipped box.
 
-To allow network access, set the `OPENAVC_BIND` environment variable before starting the application:
+**Code-writing endpoints are never open.** The endpoints that create or edit Python drivers and scripts (which execute code on the host) always require the admin credential, even on an instance that is otherwise configured for open access.
 
-- **Windows (PowerShell):** `$env:OPENAVC_BIND = "0.0.0.0"` then start the application
-- **Windows (Command Prompt):** `set OPENAVC_BIND=0.0.0.0` then start the application
-- **Linux:** `export OPENAVC_BIND=0.0.0.0` then start the application, or add it to the systemd service file
-- **Docker:** Add `OPENAVC_BIND=0.0.0.0` under an `environment:` block in the compose file (Docker deployments do this by default)
-- **Windows Installer:** The installed service is pre-configured to accept network connections
+**Binding.** Packaged deployments bind to `0.0.0.0` (all interfaces). A bare manual run (`python -m server.main` from source) binds to `127.0.0.1` (localhost only). To force localhost-only on a packaged deployment, set `OPENAVC_BIND=127.0.0.1` (e.g. `sudo systemctl edit openavc` on Linux, or the `network.bind_address` field in `system.json`).
 
-Setting the bind address to `0.0.0.0` means OpenAVC will accept connections on all network interfaces. When you do this, you should also set credentials to protect the configuration interface. Set both a username and a password:
+**Credentials.** The admin password set during first-run setup is stored in `system.json` on the host. It can be changed later in **Settings > Security**. For unattended provisioning, it can also be supplied up front via `OPENAVC_PROGRAMMER_PASSWORD` (and optionally `OPENAVC_PROGRAMMER_USERNAME`) or an `OPENAVC_API_KEY` for programmatic clients — an instance configured this way is already "claimed" and goes straight to the login screen.
 
-- **Windows (PowerShell):**
-  - `$env:OPENAVC_PROGRAMMER_USERNAME = "your-username"`
-  - `$env:OPENAVC_PROGRAMMER_PASSWORD = "your-password"`
-- **Linux:**
-  - `export OPENAVC_PROGRAMMER_USERNAME=your-username`
-  - `export OPENAVC_PROGRAMMER_PASSWORD=your-password`
-- **Docker:** Add `OPENAVC_PROGRAMMER_USERNAME` and `OPENAVC_PROGRAMMER_PASSWORD` under an `environment:` block in the compose file
-
-The application logs a warning at startup if it is bound to all interfaces without a password configured. The end-user touch panel remains accessible without credentials; only the configuration interface (Programmer) is protected.
+**Fronting OpenAVC with your own auth** (an SSO reverse proxy, for example): set `OPENAVC_ALLOW_ANONYMOUS=true` to opt back into open admin access, and restrict reachability at the proxy. If you do this behind a trusted proxy that sets `X-Forwarded-For`, also set `network.trust_forwarded_for: true` in `system.json` so per-client rate limiting sees the real client IP.
 
 ---
 

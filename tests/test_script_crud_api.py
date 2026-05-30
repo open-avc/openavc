@@ -64,8 +64,15 @@ def mock_engine(tmp_path):
 def client(mock_engine):
     """Create a test client with the mock engine."""
     from fastapi import FastAPI
+
+    from server.api.auth import require_claimed_auth
+
     app = FastAPI()
     app.include_router(router)
+    # These tests exercise CRUD logic, not auth. Code-writing endpoints now
+    # require a claimed credential (C6) — neutralize that gate here; the gate
+    # itself is covered in test_auth_posture.py.
+    app.dependency_overrides[require_claimed_auth] = lambda: None
     set_engine(mock_engine)
     yield TestClient(app)
     set_engine(None)

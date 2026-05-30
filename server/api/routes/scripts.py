@@ -4,9 +4,10 @@ import re
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from server.api._engine import _get_engine
+from server.api.auth import require_claimed_auth
 from server.api.models import ScriptCreateRequest
 from server.core.project_loader import save_project
 from server.utils.paths import safe_path_within
@@ -62,7 +63,7 @@ async def get_script_source(script_id: str) -> dict[str, Any]:
     return {"id": script_id, "file": cfg["file"], "source": source}
 
 
-@router.put("/scripts/{script_id}/source")
+@router.put("/scripts/{script_id}/source", dependencies=[Depends(require_claimed_auth)])
 async def save_script_source(script_id: str, request: Request) -> dict[str, Any]:
     """Save a script's Python source code to disk."""
     cfg = _find_script_config(script_id)
@@ -120,7 +121,7 @@ async def get_script_references() -> dict[str, Any]:
     return {"references": references}
 
 
-@router.post("/scripts")
+@router.post("/scripts", dependencies=[Depends(require_claimed_auth)])
 async def create_script(request: Request) -> dict[str, Any]:
     """Create a new script entry and file."""
     engine = _get_engine()
@@ -178,7 +179,7 @@ async def delete_script(script_id: str) -> dict[str, Any]:
     return {"status": "deleted"}
 
 
-@router.post("/scripts/reload")
+@router.post("/scripts/reload", dependencies=[Depends(require_claimed_auth)])
 async def reload_scripts() -> dict[str, Any]:
     """Hot-reload all scripts."""
     engine = _get_engine()

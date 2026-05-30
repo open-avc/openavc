@@ -6,6 +6,7 @@ import ToastContainer from "./components/shared/ToastContainer";
 import { ShortcutsPanel } from "./components/shared/ShortcutsPanel";
 import { MissingDriversWatcher } from "./components/shared/MissingDriversWatcher";
 import { Login } from "./components/Login";
+import { Setup } from "./components/Setup";
 import { DashboardView } from "./views/DashboardView";
 import { useProjectStore } from "./store/projectStore";
 import { useNavigationStore } from "./store/navigationStore";
@@ -33,21 +34,24 @@ const PluginExtensionView = lazy(() => import("./views/PluginExtensionView").the
 const UpdatesView = lazy(() => import("./views/UpdatesView").then((m) => ({ default: m.UpdatesView })));
 const SystemSettingsView = lazy(() => import("./views/SystemSettingsView").then((m) => ({ default: m.SystemSettingsView })));
 
-type AuthState = "checking" | "needed" | "ready";
+type AuthState = "checking" | "setup" | "needed" | "ready";
 
 function App() {
   const [authState, setAuthState] = useState<AuthState>(() =>
     getStoredAuth() ? "ready" : "checking",
   );
 
-  // On first mount with no stored creds, ask the server whether auth is
-  // required. Skip the login screen if the deployment has no password set.
+  // On first mount with no stored creds, ask the server which screen to show:
+  // a first-run setup (unclaimed shipped instance), the login screen (a
+  // credential is set), or straight into the app (dev / anonymous allowed).
   useEffect(() => {
     if (authState !== "checking") return;
     let cancelled = false;
     probeAuth().then((result) => {
       if (cancelled) return;
-      setAuthState(result === "required" ? "needed" : "ready");
+      if (result === "setup") setAuthState("setup");
+      else if (result === "required") setAuthState("needed");
+      else setAuthState("ready");
     });
     return () => {
       cancelled = true;
@@ -63,6 +67,9 @@ function App() {
 
   if (authState === "checking") {
     return <div style={{ height: "100vh" }} />;
+  }
+  if (authState === "setup") {
+    return <Setup onComplete={() => setAuthState("ready")} />;
   }
   if (authState === "needed") {
     return <Login onSuccess={() => setAuthState("ready")} />;

@@ -22,19 +22,52 @@ async def startup_status() -> dict[str, Any]:
 
 
 @open_router.get("/auth/required")
-async def auth_required() -> dict[str, bool]:
-    """Tells the SPA whether the deployment has a programmer password set.
+async def auth_required() -> dict[str, Any]:
+    """Tells the SPA which auth screen to show, if any.
 
     The SPA can't rely on probing a protected endpoint because browsers
     auto-attach cached HTTP Basic credentials, masking whether auth is
-    actually required. This explicit signal lets the SPA decide between
-    showing its login screen or skipping straight to the app.
+    actually required. This explicit signal drives the SPA:
+
+    - state "required" → show the login screen (a credential is set)
+    - state "setup"    → show the first-run "create admin password" screen
+                          (shipped, unclaimed)
+    - state "ok"       → skip straight to the app (dev / anonymous allowed)
     """
-    from server.system_config import get_system_config
-    cfg = get_system_config()
-    pw = cfg.get("auth", "programmer_password", "")
-    api_key = cfg.get("auth", "api_key", "")
-    return {"required": bool(pw or api_key)}
+    from server.api.auth import auth_state
+    state = auth_state()
+    return {"required": state == "required", "state": state}
+
+
+@open_router.post("/auth/setup")
+async def auth_setup(request: Request) -> dict[str, Any]:
+    """First-run claim: set the initial admin password on an unclaimed instance.
+
+    Open (no auth) so a fresh shipped controller can be claimed, but succeeds
+    only while unclaimed — once a credential exists it returns 409 and the
+    caller must log in and change it through the authenticated path.
+    """
+    from server.api.auth import auth_state, claim_instance
+    try:
+        body = await request.json()
+    except (ValueError, TypeError):
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    try:
+        claim_instance(body.get("password", ""), body.get("username", ""))
+    except ValueError as e:
+        reason = str(e)
+        if reason == "already_claimed":
+            raise HTTPException(
+                status_code=409,
+                detail="This controller is already set up. Log in instead.",
+            )
+        raise HTTPException(
+            status_code=400,
+            detail="Password must be at least 8 characters.",
+        )
+    return {"ok": True, "state": auth_state()}
 
 
 @open_router.get("/status")

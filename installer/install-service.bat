@@ -28,7 +28,7 @@ REM Set environment variables for the service.
 REM OPENAVC_SERVICE_MANAGED=1 tells main.py that NSSM will relaunch us on
 REM exit, so the cloud-restart path can just exit instead of also
 REM spawning its own replacement (which would double-start under NSSM).
-"%INSTALL_DIR%\nssm.exe" set OpenAVC AppEnvironmentExtra "OPENAVC_DATA_DIR=%DATA_DIR%" "OPENAVC_LOG_DIR=%DATA_DIR%\logs" "OPENAVC_PROJECT=%DATA_DIR%\projects\default\project.avc" "OPENAVC_BIND=0.0.0.0" "OPENAVC_SERVICE_MANAGED=1"
+"%INSTALL_DIR%\nssm.exe" set OpenAVC AppEnvironmentExtra "OPENAVC_DATA_DIR=%DATA_DIR%" "OPENAVC_LOG_DIR=%DATA_DIR%\logs" "OPENAVC_PROJECT=%DATA_DIR%\projects\default\project.avc" "OPENAVC_BIND=0.0.0.0" "OPENAVC_ALLOW_ANONYMOUS=false" "OPENAVC_SERVICE_MANAGED=1"
 
 REM Configure restart on failure
 "%INSTALL_DIR%\nssm.exe" set OpenAVC AppExit Default Restart

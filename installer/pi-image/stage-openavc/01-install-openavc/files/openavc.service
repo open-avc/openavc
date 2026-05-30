@@ -16,6 +16,7 @@ Environment=OPENAVC_DATA_DIR=/var/lib/openavc
 Environment=OPENAVC_LOG_DIR=/var/log/openavc
 Environment=OPENAVC_PROJECT=/var/lib/openavc/projects/default/project.avc
 Environment=OPENAVC_BIND=0.0.0.0
+Environment=OPENAVC_ALLOW_ANONYMOUS=false
 
 # Security hardening
 NoNewPrivileges=true

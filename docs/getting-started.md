@@ -79,13 +79,11 @@ sudo systemctl status openavc    # Check status
 sudo journalctl -u openavc -f    # View logs
 ```
 
-Access at **http://localhost:8080/programmer**. By default, the server only accepts local connections. To allow network access from tablets and other devices, set the bind address:
+Access at **http://localhost:8080/programmer**, or **http://&lt;server-ip&gt;:8080/programmer** from another device. The installed service listens on all network interfaces so tablets and panels can reach it.
 
-```bash
-sudo systemctl edit openavc
-# Add: Environment=OPENAVC_BIND=0.0.0.0
-sudo systemctl restart openavc
-```
+The first time you open the Programmer, you create an admin password. That password protects the Programmer and the control API. The room panel at `/panel` stays open so wall tablets work without a login. You can change the password later in **Settings > Security**.
+
+To bind to localhost only (no network access) instead, set `Environment=OPENAVC_BIND=127.0.0.1` with `sudo systemctl edit openavc` and restart the service.
 
 ## Install from Source
 

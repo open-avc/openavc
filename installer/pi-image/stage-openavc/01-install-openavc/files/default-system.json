@@ -6,7 +6,8 @@
     "auth": {
         "programmer_password": "",
         "api_key": "",
-        "panel_lock_code": ""
+        "panel_lock_code": "",
+        "allow_anonymous": false
     },
     "isc": {
         "enabled": true,
