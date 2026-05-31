@@ -1223,12 +1223,31 @@ The easiest way to create a Python driver is in the Programmer IDE:
 
 The editor opens with a pre-filled template. Edit the code, then click **Save & Reload Driver** (or press Ctrl+Shift+R) to hot-reload the driver without restarting the server. If the code has errors, the old driver stays active and the error is shown in the console.
 
+### A Python driver is a bundle
+
+A Python driver is usually more than one file. Alongside the main `<driver>.py` you may have:
+
+- `<driver>_discovery.py` — an optional discovery companion that helps the network scan identify the device.
+- `<driver>_sim.py` — an optional simulator so the device can be tested without hardware.
+
+These companions sit next to the main file in `driver_repo/`. They don't appear in the **Python Drivers** list (only the driver itself does), but they travel with it.
+
+### Importing and Exporting Python Drivers
+
+In the **Code** view, the **Python Drivers** section header has an **Import** button (the upload icon), and each driver row has an **Export** button (the download icon):
+
+- **Export** downloads the driver and any companions as a single `.zip` bundle, so you can hand the whole driver to someone else in one file.
+- **Import** accepts either a single `.py` file or a `.zip` bundle. A bundle is unpacked into `driver_repo/`, the main driver is loaded, and the companions come along with it.
+
+A single `.py` file is enough to control hardware on its own; importing the bundle is what brings the simulator and the discovery companion too.
+
+> A Python driver is executable code. Importing one runs it inside the OpenAVC server, so only import drivers from a source you trust.
+
 ### Installing Python Drivers
 
 You can also install Python drivers from other sources:
-- **Browse Community** tab: click Install on any Python driver
-- **Import from File:** upload a `.py` file from your computer
-- **Manual:** place the `.py` file directly in `driver_repo/`
+- **Browse Community** tab: click Install on any Python driver. Companions (`_discovery.py` / `_sim.py`) are pulled in automatically.
+- **Manual:** place the `.py` file (and any companions) directly in `driver_repo/`.
 
 OpenAVC scans `driver_repo/` at startup and dynamically loads any Python file that contains a `BaseDriver` subclass with a valid `DRIVER_INFO` dict. Drivers created in the Code view are also saved to `driver_repo/`.
 

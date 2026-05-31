@@ -191,17 +191,63 @@ export async function listInstalledDrivers(): Promise<InstalledDriver[]> {
   return data.drivers;
 }
 
-export async function uploadDriver(file: File): Promise<void> {
+export interface DriverUploadResult {
+  status: string;
+  driver_id: string;
+  /** Single-file upload returns `file`; bundle upload returns `files`. */
+  file?: string;
+  files?: string[];
+  activated_devices: string[];
+}
+
+async function _parseUploadError(res: Response): Promise<string> {
+  const body = await res.text();
+  try {
+    const json = JSON.parse(body);
+    if (json && typeof json.detail === "string") return json.detail;
+  } catch {
+    /* not JSON — fall through to raw body */
+  }
+  return `API ${res.status}: ${body}`;
+}
+
+/** Upload a single driver file (.py or .avcdriver) into driver_repo/. */
+export async function uploadDriver(file: File): Promise<DriverUploadResult> {
   const formData = new FormData();
   formData.append("file", file);
   const res = await fetch(`${BASE}/drivers/upload`, {
     method: "POST",
     body: formData,
   });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`API ${res.status}: ${body}`);
-  }
+  if (!res.ok) throw new Error(await _parseUploadError(res));
+  return res.json();
+}
+
+/** Upload a driver as a .zip bundle (main + optional _discovery / _sim companions). */
+export async function importDriverBundle(file: File): Promise<DriverUploadResult> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch(`${BASE}/drivers/upload-bundle`, {
+    method: "POST",
+    body: formData,
+  });
+  if (!res.ok) throw new Error(await _parseUploadError(res));
+  return res.json();
+}
+
+/** Download a Python driver + its companions as a .zip and save it via the browser. */
+export async function downloadDriverBundle(driverId: string): Promise<void> {
+  const res = await fetch(`${BASE}/python-drivers/${driverId}/bundle`);
+  if (!res.ok) throw new Error(await _parseUploadError(res));
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${driverId}.zip`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 export async function uninstallDriver(

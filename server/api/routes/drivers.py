@@ -225,6 +225,51 @@ async def _download_companion(
     return companion_filepath
 
 
+async def _try_download_python_companion(
+    *,
+    main_url: str,
+    companion_filename: str,
+    driver_repo: Path,
+) -> Path | None:
+    """Best-effort fetch of a Python driver's conventional sibling companion.
+
+    Unlike ``_download_companion`` (YAML drivers, where the companion is
+    declared and required), Python-driver companions (``*_discovery.py`` /
+    ``*_sim.py``) are located by naming convention and are OPTIONAL: a missing
+    one must not fail the install, because the main ``.py`` controls hardware
+    and auto-identifies from its inline ``tcp_probe`` without them, and the
+    simulator is a bonus. Returns the written path, or ``None`` when the
+    sibling doesn't exist (404) or can't be fetched.
+    """
+    import re
+    import httpx
+    from urllib.parse import urljoin, urlparse
+
+    # Convention-named, but validate anyway: only the two documented suffixes,
+    # so a redirect can't land an arbitrary .py in driver_repo.
+    if not re.match(r'^[a-zA-Z0-9_\-]+_(discovery|sim)\.py$', companion_filename):
+        return None
+    companion_url = urljoin(main_url, companion_filename)
+    parsed = urlparse(companion_url)
+    if not parsed.hostname or parsed.hostname not in _GITHUB_HOSTS:
+        return None
+
+    companion_filepath = driver_repo / companion_filename
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(companion_url)
+            if resp.status_code == 404:
+                return None  # optional companion simply isn't published
+            resp.raise_for_status()
+            companion_filepath.write_text(resp.text, encoding="utf-8")
+    except (httpx.HTTPStatusError, httpx.RequestError, OSError) as e:
+        log.warning(
+            "Optional companion %s not installed: %s", companion_filename, e
+        )
+        return None
+    return companion_filepath
+
+
 @router.get("/drivers/community")
 async def get_community_drivers() -> dict[str, Any]:
     """Fetch the community driver index from GitHub (cached)."""
@@ -351,6 +396,23 @@ async def install_community_driver(body: CommunityDriverInstallRequest) -> dict[
             companion_filepath.unlink(missing_ok=True)
         raise _api_error(500, f"Failed to load driver '{body.driver_id}'", e)
 
+    # For Python drivers, also fetch the conventional sibling companions
+    # (_discovery.py / _sim.py) so the install is complete: discovery's backup
+    # path works and the device can be simulated. They're located by naming
+    # convention (not declared) and optional, so a 404 just means the driver
+    # ships without one. YAML drivers fetch their declared companion above and
+    # get simulation from their inline `simulator:` section instead.
+    if ext == ".py":
+        from pathlib import PurePosixPath
+        src_stem = PurePosixPath(urlparse(url).path).stem
+        if src_stem:
+            for suffix in ("_discovery.py", "_sim.py"):
+                await _try_download_python_companion(
+                    main_url=url,
+                    companion_filename=f"{src_stem}{suffix}",
+                    driver_repo=driver_repo,
+                )
+
     # Refresh discovery engine with new driver hints
     from server.api.discovery import refresh_all_device_matches
     await refresh_all_device_matches()
@@ -472,6 +534,150 @@ async def upload_driver(request: Request) -> dict[str, Any]:
         "status": "uploaded",
         "driver_id": driver_id,
         "file": filename,
+        "activated_devices": activated,
+    }
+
+
+@router.post("/drivers/upload-bundle")
+async def upload_driver_bundle(request: Request) -> dict[str, Any]:
+    """Upload a driver as a .zip bundle: one driver file plus its companions.
+
+    A Python driver is really a bundle — the main ``.py`` plus an optional
+    ``*_discovery.py`` companion and an optional ``*_sim.py`` simulator. This
+    endpoint accepts a zip of those files (it also handles a YAML driver +
+    its ``_discovery.py``), drops them into ``driver_repo/``, then loads and
+    registers the single main driver. Companion-only zips are rejected.
+
+    Note: a Python driver is executable code; loading one runs it in the
+    server process. This validates file *shape* (zip integrity, allowed
+    names/types, exactly one main), not safety — the same trust model as
+    installing any community Python driver.
+    """
+    import io
+    import re
+    import zipfile
+    from pathlib import PurePosixPath
+
+    from server.core.device_manager import register_driver
+    from server.drivers.driver_loader import (
+        load_driver_file,
+        load_python_driver_file,
+    )
+    from server.drivers.configurable import create_configurable_driver_class
+
+    driver_repo = _get_driver_repo_dir()
+    driver_repo.mkdir(parents=True, exist_ok=True)
+
+    form = await request.form()
+    upload = form.get("file")
+    if upload is None:
+        raise HTTPException(status_code=422, detail="No file provided. Use 'file' field in multipart form.")
+    raw_name = upload.filename or "bundle.zip"
+    if not raw_name.lower().endswith(".zip"):
+        raise HTTPException(status_code=422, detail="Bundle must be a .zip file")
+
+    content = await upload.read()
+    # Zip-bomb guards: generous ceilings (a driver bundle is a few small text
+    # files) that only stop pathological inputs, not legitimate drivers.
+    if len(content) > 25 * 1024 * 1024:
+        raise HTTPException(status_code=422, detail="Bundle is too large (max 25 MB).")
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(content))
+    except zipfile.BadZipFile:
+        raise HTTPException(status_code=422, detail="Not a valid .zip file.")
+
+    name_re = re.compile(r'^[a-zA-Z0-9_\-]+\.(py|avcdriver)$')
+    members = [m for m in archive.infolist() if not m.is_dir()]
+    if len(members) > 100:
+        raise HTTPException(status_code=422, detail="Bundle has too many files.")
+    if sum(m.file_size for m in members) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=422, detail="Bundle contents are too large.")
+
+    # Validate every entry up front: basename only (defuses path traversal),
+    # allowed name + type. Reject the whole bundle on any stray file so the
+    # contract is unambiguous.
+    entries: dict[str, bytes] = {}
+    for member in members:
+        base = PurePosixPath(member.filename).name
+        if not base or not name_re.match(base):
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Bundle contains a disallowed file: {member.filename!r}. "
+                    "Only .py and .avcdriver files are allowed."
+                ),
+            )
+        entries[base] = archive.read(member)
+    if not entries:
+        raise HTTPException(status_code=422, detail="Bundle is empty.")
+
+    def _is_companion(name: str) -> bool:
+        return name.endswith("_discovery.py") or name.endswith("_sim.py")
+
+    mains = [n for n in entries if not _is_companion(n)]
+    if not mains:
+        raise HTTPException(
+            status_code=422,
+            detail="Bundle has no main driver file — it contains only companions.",
+        )
+    if len(mains) > 1:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Bundle has more than one driver file ({', '.join(sorted(mains))}). "
+                "A bundle must hold exactly one driver plus its companions."
+            ),
+        )
+    main_name = mains[0]
+
+    # Write everything, then load the main. Roll back only the files this call
+    # created, so re-importing over an existing driver that fails to load
+    # doesn't delete the user's previous good copy.
+    created: list[Path] = []
+    try:
+        for name, data in entries.items():
+            filepath = driver_repo / name
+            if not filepath.exists():
+                created.append(filepath)
+            filepath.write_bytes(data)
+
+        main_path = driver_repo / main_name
+        if main_name.endswith(".avcdriver"):
+            driver_def = load_driver_file(main_path)
+            if driver_def is None:
+                raise HTTPException(status_code=422, detail="Invalid driver definition file in bundle.")
+            register_driver(create_configurable_driver_class(driver_def))
+            driver_id = driver_def.get("id", main_name)
+        else:
+            driver_class = load_python_driver_file(main_path)
+            if driver_class is None:
+                raise HTTPException(status_code=422, detail="No valid driver class found in the bundle's Python file.")
+            register_driver(driver_class)
+            driver_id = driver_class.DRIVER_INFO.get("id", main_name)
+    except HTTPException:
+        for fp in created:
+            fp.unlink(missing_ok=True)
+        raise
+    except Exception as e:
+        for fp in created:
+            fp.unlink(missing_ok=True)
+        raise _api_error(500, f"Failed to load uploaded driver bundle '{raw_name}'", e)
+
+    # Refresh discovery hints + promote any devices waiting on this driver,
+    # matching the single-file upload / community install paths.
+    from server.api.discovery import refresh_all_device_matches
+    await refresh_all_device_matches()
+    activated: list[str] = []
+    try:
+        engine = _get_engine()
+        activated = await engine.devices.retry_all_orphans()
+    except Exception:
+        log.exception("Failed to retry orphans after bundle upload")
+
+    return {
+        "status": "uploaded",
+        "driver_id": driver_id,
+        "files": sorted(entries.keys()),
         "activated_devices": activated,
     }
 
@@ -1629,6 +1835,41 @@ async def get_python_driver_source(driver_id: str) -> dict:
         raise HTTPException(status_code=500, detail=f"Failed to read driver file: {e}")
 
     return {"id": driver_id, "filename": filepath.name, "source": source}
+
+
+@router.get("/python-drivers/{driver_id}/bundle")
+async def export_python_driver_bundle(driver_id: str):
+    """Export a Python driver and its companions as a .zip bundle.
+
+    Bundles the main ``{id}.py`` plus any sibling ``{id}_discovery.py`` and
+    ``{id}_sim.py`` present in ``driver_repo/``, so the whole driver can be
+    handed to someone as a single file and re-imported via /drivers/upload-bundle.
+    """
+    import io
+    import zipfile
+    from fastapi import Response
+
+    main_path = _safe_driver_path(driver_id)
+    if not main_path.exists():
+        raise HTTPException(status_code=404, detail=f"Python driver '{driver_id}' not found")
+
+    driver_repo = _get_driver_repo_dir()
+    files = [main_path]
+    for suffix in ("_discovery.py", "_sim.py"):
+        companion = driver_repo / f"{driver_id}{suffix}"
+        if companion.is_file():
+            files.append(companion)
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for fp in files:
+            zf.write(fp, arcname=fp.name)
+
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{driver_id}.zip"'},
+    )
 
 
 @router.put("/python-drivers/{driver_id}/source", dependencies=[Depends(require_claimed_auth)])

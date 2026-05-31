@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Trash2, FileText, AlertTriangle, Cpu, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, Trash2, FileText, AlertTriangle, Cpu, ChevronDown, ChevronRight, Upload, Download } from "lucide-react";
 import type { ScriptConfig, PythonDriverInfo } from "../../api/types";
 import { CopyButton } from "../shared/CopyButton";
 
@@ -13,6 +13,8 @@ interface ScriptFileTreeProps {
   onSelectDriver: (id: string) => void;
   onCreateScript: (id: string, file: string, description: string) => void;
   onCreateDriver: () => void;
+  onImportDriver: () => void;
+  onExportDriver: (id: string) => void;
   onDeleteScript: (id: string) => void;
   onDeleteDriver: (id: string) => void;
 }
@@ -27,6 +29,8 @@ export function ScriptFileTree({
   onSelectDriver,
   onCreateScript,
   onCreateDriver,
+  onImportDriver,
+  onExportDriver,
   onDeleteScript,
   onDeleteDriver,
 }: ScriptFileTreeProps) {
@@ -256,13 +260,22 @@ export function ScriptFileTree({
                 Python Drivers ({drivers.length})
               </span>
             </div>
-            <button
-              onClick={(e) => { e.stopPropagation(); onCreateDriver(); }}
-              style={addBtnStyle}
-              title="New Python driver"
-            >
-              <Plus size={14} />
-            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <button
+                onClick={(e) => { e.stopPropagation(); onImportDriver(); }}
+                style={{ ...addBtnStyle, background: "var(--bg-hover)", color: "var(--text-secondary)" }}
+                title="Import a driver file (.py) or bundle (.zip)"
+              >
+                <Upload size={14} />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); onCreateDriver(); }}
+                style={addBtnStyle}
+                title="New Python driver"
+              >
+                <Plus size={14} />
+              </button>
+            </div>
           </div>
 
           {/* Driver list */}
@@ -338,18 +351,27 @@ export function ScriptFileTree({
                         </div>
                       </div>
                     </div>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onDeleteDriver(d.id); }}
-                      disabled={d.devices_using.length > 0}
-                      style={{
-                        ...deleteBtnStyle,
-                        opacity: d.devices_using.length > 0 ? 0.3 : 1,
-                        cursor: d.devices_using.length > 0 ? "not-allowed" : "pointer",
-                      }}
-                      title={d.devices_using.length > 0 ? `Cannot delete: used by ${d.devices_using.join(", ")}` : "Delete driver"}
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    <div style={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onExportDriver(d.id); }}
+                        style={deleteBtnStyle}
+                        title="Export driver + companions as a .zip bundle"
+                      >
+                        <Download size={14} />
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onDeleteDriver(d.id); }}
+                        disabled={d.devices_using.length > 0}
+                        style={{
+                          ...deleteBtnStyle,
+                          opacity: d.devices_using.length > 0 ? 0.3 : 1,
+                          cursor: d.devices_using.length > 0 ? "not-allowed" : "pointer",
+                        }}
+                        title={d.devices_using.length > 0 ? `Cannot delete: used by ${d.devices_using.join(", ")}` : "Delete driver"}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
                 ))
               )}

@@ -36,6 +36,7 @@ export function ScriptView() {
 
   const editorInstanceRef = useRef<any>(null);
   const pendingLineRef = useRef<number | null>(null);
+  const driverFileInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch script load errors and Python drivers on mount
   useEffect(() => {
@@ -43,12 +44,14 @@ export function ScriptView() {
     loadPythonDrivers();
   }, []);
 
-  const loadPythonDrivers = useCallback(async () => {
+  const loadPythonDrivers = useCallback(async (): Promise<PythonDriverInfo[]> => {
     try {
       const result = await api.getPythonDrivers();
       setPythonDrivers(result.drivers);
+      return result.drivers;
     } catch {
       // Silently handle — driver list is optional
+      return [];
     }
   }, []);
 
@@ -320,6 +323,42 @@ export function ScriptView() {
     [loadPythonDrivers, doSelect]
   );
 
+  const handleImportDriverFile = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      // Reset the input so the same file can be re-selected later.
+      if (driverFileInputRef.current) driverFileInputRef.current.value = "";
+      if (!file) return;
+      const isZip = file.name.toLowerCase().endsWith(".zip");
+      try {
+        const result = isZip
+          ? await api.importDriverBundle(file)
+          : await api.uploadDriver(file);
+        const drivers = await loadPythonDrivers();
+        const activated = result.activated_devices ?? [];
+        const extra = activated.length > 0 ? ` — connected ${activated.length} waiting device(s)` : "";
+        showSuccess(`Imported driver "${result.driver_id}"${extra}`);
+        // A YAML driver (e.g. an .avcdriver inside a bundle) lives in the
+        // Driver Builder, not this tree — only open it here when it actually
+        // shows up as a Python driver.
+        if (drivers.some((d) => d.id === result.driver_id)) {
+          doSelect(result.driver_id, "driver");
+        }
+      } catch (err) {
+        showError(`Import failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    },
+    [loadPythonDrivers, doSelect]
+  );
+
+  const handleExportDriver = useCallback(async (id: string) => {
+    try {
+      await api.downloadDriverBundle(id);
+    } catch (e) {
+      showError(`Export failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }, []);
+
   // --- Delete handlers ---
 
   const handleDeleteScript = useCallback(
@@ -523,6 +562,14 @@ export function ScriptView() {
         ) : undefined
       }
     >
+      {/* Hidden picker for importing a driver file (.py) or bundle (.zip) */}
+      <input
+        ref={driverFileInputRef}
+        type="file"
+        accept=".zip,.py"
+        style={{ display: "none" }}
+        onChange={handleImportDriverFile}
+      />
       <PanelGroup direction="horizontal" style={{ height: "100%" }}>
         {/* File tree */}
         <Panel defaultSize={20} minSize={15} maxSize={35}>
@@ -536,6 +583,8 @@ export function ScriptView() {
             onSelectDriver={handleSelectDriver}
             onCreateScript={handleCreateScript}
             onCreateDriver={() => setShowCreateDriver(true)}
+            onImportDriver={() => driverFileInputRef.current?.click()}
+            onExportDriver={handleExportDriver}
             onDeleteScript={handleDeleteScript}
             onDeleteDriver={handleDeleteDriver}
           />
