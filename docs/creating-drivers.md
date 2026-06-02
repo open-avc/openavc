@@ -575,6 +575,17 @@ child_entity_types:
 
 Python drivers declare the same block in `DRIVER_INFO` and register instances at runtime with `self.register_child(type, local_id, initial_state=...)`, update them with `set_child_state` / `set_children_state_batch`, and remove them with `deregister_child`. See the BaseDriver child-entity API for details.
 
+#### Exposing a previewable video stream
+
+If a device — or a child entity — offers a video stream a browser can show (a camera, an AV-over-IP encoder's preview feed), publish two state variables and the **Video Panel** plugin lists it automatically as a selectable source in the UI Builder. No manual setup, no plugin-specific code:
+
+| Property | Type | Value |
+|----------|------|-------|
+| `preview_url` | string | The stream URL, reachable **from the OpenAVC server** (the server proxies it to the panel; the panel never connects to the AV network directly). Set it to `""` when no stream is available right now. |
+| `preview_format` | string | `mjpeg` for multipart MJPEG over HTTP (rendered as a live image), or `rtsp` (played through the same WebRTC pipeline as a camera). |
+
+Declare them like any other `state_variables` entry and set them as the device reports. The plugin reuses the device's or child's `label` (or `name`) for the dropdown entry, so there's nothing extra to name. Device-level keys are `device.<id>.preview_url`; child-level keys follow the child-entity convention (`device.<id>.<type>.<padded>.preview_url`). A worked example is the `chazy_control_pro` encoder child, which derives these from its secondary-stream URLs.
+
 #### `commands` entry
 
 ```yaml
