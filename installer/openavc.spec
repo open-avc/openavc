@@ -73,6 +73,10 @@ hiddenimports = [
     'annotated_types',
     # Encoding support
     'encodings.idna',
+    # IANA tz database — zoneinfo loads it dynamically (cloud maintenance-window
+    # timezones), so PyInstaller's static analysis misses it. Listing it here
+    # makes the bundled hook-tzdata collect the data files into the frozen app.
+    'tzdata',
     # Our server modules (some loaded dynamically)
     'server.main',
     'server.config',

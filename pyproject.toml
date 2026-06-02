@@ -25,6 +25,7 @@ dependencies = [
     "psutil==7.2.2",             # BSD-3 - System metrics (cloud heartbeat: CPU, memory, disk, temperature)
     "aiohttp==3.13.5",           # Apache-2.0 - Async HTTP server (simulator HTTP device servers)
     "cryptography>=44.0.0,<45",  # Apache-2.0/BSD-3 - X.509 cert generation for HTTPS
+    "tzdata==2026.1",            # Apache-2.0 - IANA tz database for zoneinfo on Windows (cloud maintenance-window timezones; Windows ships no system tz db)
 ]
 
 [project.optional-dependencies]

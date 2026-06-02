@@ -34,3 +34,7 @@ psutil==7.2.2                # BSD-3-Clause
 
 # Async HTTP server (simulator HTTP device servers)
 aiohttp==3.13.5              # Apache-2.0
+
+# IANA timezone database for zoneinfo (cloud maintenance-window timezones).
+# Required on Windows, which ships no system tz database for ZoneInfo.
+tzdata==2026.1               # Apache-2.0
