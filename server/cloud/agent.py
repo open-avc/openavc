@@ -14,6 +14,7 @@ import json
 import time as _time
 from datetime import datetime, timezone
 from typing import Any, TYPE_CHECKING
+from urllib.parse import urlparse
 
 import websockets
 from websockets.exceptions import ConnectionClosed, InvalidURI, InvalidHandshake
@@ -47,6 +48,17 @@ BACKOFF_INITIAL = 5
 BACKOFF_MULTIPLIER = 2
 BACKOFF_MAX = 300  # 5 minutes
 
+# Upper bound on a cloud-supplied throttle retry_after (defense in depth: the
+# value crosses the trust boundary, so a hostile/buggy cloud can't pin a
+# message type off forever). 1 hour is far beyond any legitimate backpressure.
+THROTTLE_MAX_SECONDS = 3600
+
+# How many consecutive downstream signature failures the agent tolerates before
+# tearing down the session and reconnecting. A persistent failure is a key
+# desync or tamper signal; silently dropping every message forever (no commands,
+# no session rotation) is worse than forcing a fresh handshake.
+MAX_CONSECUTIVE_SIG_FAILURES = 5
+
 # Default capabilities the agent reports
 DEFAULT_CAPABILITIES = [
     "monitoring",
@@ -72,6 +84,16 @@ _CAPABILITY_GATED: dict[str, str] = {
     # ignores stray pushes instead of trying to apply an update it's not
     # supposed to. See A59 in the pre-release audit.
     "software_update": "fleet_update",
+    # The highest-risk remote-control messages: they drive AV hardware,
+    # full_replace the project, and restart the service. The spec model is
+    # that the agent enforces capabilities as defense-in-depth, so a plan that
+    # only grants `monitoring` (or an account whose `remote_access` was revoked
+    # mid-session) cannot execute them even if a cloud-side authorization bug
+    # sends them. Reads (`get_project`/`get_device_commands`) and AI tool calls
+    # stay ungated — they have their own gating and are not state-mutating.
+    "command": "remote_access",
+    "config_push": "remote_access",
+    "restart": "remote_access",
 }
 
 
@@ -138,9 +160,14 @@ class CloudAgent:
         # Tasks
         self._recv_task: asyncio.Task | None = None
         self._heartbeat_task: asyncio.Task | None = None
+        self._connection_loop_task: asyncio.Task | None = None
         self._running = False
         self._stopping = False
         self._connected = False
+
+        # Consecutive downstream signature-verification failures (reset on any
+        # successful verify). A persistent run forces a session teardown.
+        self._sig_failure_count = 0
 
         # Reconnection
         self._backoff = BACKOFF_INITIAL
@@ -151,8 +178,14 @@ class CloudAgent:
         self._connected_at: float = 0  # time.time() when connected
         self._last_heartbeat_at: float = 0  # time.time() of last heartbeat sent
 
-        # Throttle tracking: msg_type -> asyncio.Event (cleared when throttled)
+        # Throttle tracking: msg_type -> asyncio.Event (cleared when throttled).
+        # The release tasks and their deadlines are tracked so shutdown/reconnect
+        # can cancel them (no GC of pending tasks, no stale task from a prior
+        # connection releasing a throttle the cloud set on the new one) and so
+        # overlapping throttles release on the LATEST deadline, not the first.
         self._throttles: dict[str, asyncio.Event] = {}
+        self._throttle_tasks: dict[str, asyncio.Task] = {}
+        self._throttle_deadlines: dict[str, float] = {}
 
         # Application version
         self._version = __version__
@@ -169,6 +202,40 @@ class CloudAgent:
         except ValueError:
             return key_input.encode("utf-8")
 
+    @staticmethod
+    def _endpoint_is_encrypted(endpoint: str) -> bool:
+        """True if the agent may send confidential payloads over this endpoint.
+
+        Requires ``wss://`` (TLS). Plain ``ws://`` is permitted only for
+        loopback hosts so local development against a dev cloud still works;
+        any other cleartext endpoint is rejected so the system-key-derived auth
+        proof and signed traffic never cross an unencrypted link.
+        """
+        try:
+            parsed = urlparse(endpoint)
+        except (ValueError, TypeError):
+            return False
+        if parsed.scheme == "wss":
+            return True
+        if parsed.scheme == "ws":
+            host = (parsed.hostname or "").lower()
+            return host in ("localhost", "127.0.0.1", "::1")
+        return False
+
+    @staticmethod
+    def _normalize_capabilities(value: Any) -> list[str] | None:
+        """Validate a capabilities payload into a clean ``list[str]``.
+
+        Capabilities cross the cloud trust boundary at both the handshake and
+        the mid-session ``capabilities_update``. A malformed payload (not a list,
+        or non-string entries) must not be stored unvalidated — the gate consults
+        this list to decide whether to dispatch high-risk messages. Returns the
+        filtered string list, or ``None`` if the payload isn't a list at all.
+        """
+        if not isinstance(value, list):
+            return None
+        return [c for c in value if isinstance(c, str)]
+
     # --- Lifecycle ---
 
     async def connect(self) -> None:
@@ -182,18 +249,48 @@ class CloudAgent:
             log.warning("Cloud agent: no endpoint or system key configured, not starting")
             return
 
+        # Fail closed on a cleartext endpoint: never start the loop (and so never
+        # send the auth proof) over an unencrypted transport.
+        if not self._endpoint_is_encrypted(self._endpoint):
+            log.error(
+                "Cloud agent: refusing to connect to non-encrypted endpoint %r — "
+                "wss:// is required (ws:// is allowed only for loopback dev).",
+                self._endpoint,
+            )
+            self.state.set("system.cloud.status", "insecure_endpoint", source="cloud")
+            return
+
         self._running = True
         self._stopping = False
         log.info(f"Cloud agent: connecting to {self._endpoint}")
 
-        # Start the connection loop as a background task
-        asyncio.create_task(self._connection_loop())
+        # Start the connection loop as a background task. Keep the handle so
+        # stop() can cancel a loop that's mid-reconnect or sleeping in backoff,
+        # otherwise the detached task can resurrect the connection/subsystems
+        # after a graceful shutdown.
+        self._connection_loop_task = asyncio.create_task(self._connection_loop())
 
     async def stop(self) -> None:
         """Gracefully stop the cloud agent."""
         log.info("Cloud agent: stopping")
         self._stopping = True
         self._running = False
+
+        # Cancel the connection loop first. If it's mid-reconnect this lands a
+        # CancelledError on its current await (running _connect_and_run's finally,
+        # which closes the WS and stops the relay/alert subsystems), and if it's
+        # asleep in backoff this wakes it immediately instead of blocking
+        # shutdown for up to BACKOFF_MAX seconds. Without this the detached loop
+        # can re-establish the connection and restart subsystems we tear down
+        # below.
+        loop_task = self._connection_loop_task
+        self._connection_loop_task = None
+        if loop_task and not loop_task.done():
+            loop_task.cancel()
+            try:
+                await loop_task
+            except asyncio.CancelledError:
+                pass
 
         # Cancel tasks
         for task in [self._recv_task, self._heartbeat_task]:
@@ -203,6 +300,18 @@ class CloudAgent:
                     await task
                 except asyncio.CancelledError:
                     pass
+
+        # Cancel any pending throttle-release tasks so they don't outlive the
+        # agent (a large retry_after can leave one sleeping for an hour).
+        for task in list(self._throttle_tasks.values()):
+            if not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+        self._throttle_tasks.clear()
+        self._throttle_deadlines.clear()
 
         # Cancel any in-flight AI tool tasks (the receive loop is stopped, so
         # no new ones will start) before tearing down subsystems.
@@ -277,9 +386,25 @@ class CloudAgent:
 
     async def _connect_and_run(self) -> None:
         """Single connection attempt: connect, handshake, run."""
+        # Defense in depth: never send the system-key-derived auth proof or
+        # signed payloads over a cleartext transport. connect() already gates
+        # this, but re-assert at the point of connection so a reconfigured
+        # endpoint can't downgrade us. Stop the loop rather than reconnecting.
+        if not self._endpoint_is_encrypted(self._endpoint):
+            log.error("Cloud agent: refusing insecure endpoint %r — wss:// required.", self._endpoint)
+            self.state.set("system.cloud.status", "insecure_endpoint", source="cloud")
+            self._running = False
+            return
+
         self.state.set("system.cloud.status", "connecting", source="cloud")
 
-        # Clear stale throttles from previous connection
+        # Clear stale throttles from the previous connection, cancelling any
+        # in-flight release task so it can't fire against the new connection.
+        for task in list(self._throttle_tasks.values()):
+            if not task.done():
+                task.cancel()
+        self._throttle_tasks.clear()
+        self._throttle_deadlines.clear()
         for event in self._throttles.values():
             event.set()
         self._throttles.clear()
@@ -323,7 +448,9 @@ class CloudAgent:
 
             # Apply server config
             self._apply_config(result.config)
-            self._enabled_capabilities = result.enabled_capabilities
+            self._enabled_capabilities = self._normalize_capabilities(
+                result.enabled_capabilities
+            ) or []
 
             # Handle upgrade_required from cloud
             if result.upgrade_required:
@@ -355,12 +482,12 @@ class CloudAgent:
                 self.state.set("system.cloud_upgrade_required", False, source="cloud")
                 self.state.set("system.cloud_min_version", "", source="cloud")
 
-            # Apply cloud update policy to UpdateManager
-            update_policy = result.config.get("update_policy")
-            if update_policy and self._command_handler and hasattr(self._command_handler, '_update_manager'):
-                mgr = self._command_handler._update_manager
-                if mgr:
-                    await mgr.apply_update_policy(update_policy)
+            # Apply the cloud update policy to the UpdateManager. Always apply,
+            # even when update_policy is absent: session_start carries the full
+            # authoritative config, so a missing policy means the documented
+            # default 'manual' (apply_update_policy treats {} as manual and tears
+            # down any auto loop), not "keep whatever loop was running before".
+            await self._sync_update_policy(result.config)
 
             # Reset sequencer for new session
             self._sequencer.reset_for_new_session()
@@ -390,11 +517,18 @@ class CloudAgent:
                     )
                     self._sequencer.clear_buffer()
 
+            # A stop() may have landed during the handshake/resume awaits. Bail
+            # before spinning up steady-state tasks and subsystems so we don't
+            # resurrect what stop() is tearing down.
+            if self._stopping or not self._running:
+                return
+
             # Connected!
             self._connected = True
             self._connected_at = _time.time()
             self._backoff = BACKOFF_INITIAL
             self._disconnect_time = None
+            self._sig_failure_count = 0
             self.state.set("system.cloud.status", "connected", source="cloud")
             self.state.set("system.cloud.session_id", result.session_id, source="cloud")
             log.info("Cloud agent: connected and authenticated")
@@ -411,8 +545,10 @@ class CloudAgent:
             if self._alert_monitor and self._config["features"].get("alerts_enabled"):
                 await self._alert_monitor.start()
 
-            # Wait for tasks to complete (they run until disconnection)
-            await asyncio.gather(self._recv_task, self._heartbeat_task)
+            # Run until either steady-state task finishes (a clean disconnect
+            # returns from the receive loop; an error raises), then re-raise the
+            # first real error to drive reconnect.
+            await self._await_steady_state(self._recv_task, self._heartbeat_task)
 
         finally:
             # Clean up on disconnect — stop subsystems so they re-initialize
@@ -427,6 +563,32 @@ class CloudAgent:
                 except (ConnectionClosed, OSError):
                     pass  # Best-effort close during disconnect cleanup
                 self._ws = None
+
+    @staticmethod
+    async def _await_steady_state(recv_task: asyncio.Task, heartbeat_task: asyncio.Task) -> None:
+        """Wait for the first steady-state task to finish, then tear down.
+
+        ``asyncio.gather`` would leave the surviving sibling running against the
+        closing socket (and its exception unretrieved) if the other task raised.
+        Instead wait for FIRST_COMPLETED, cancel + await the still-pending
+        sibling, then re-raise the first real exception so reconnect is driven by
+        the original error (a clean return from the receive loop raises nothing
+        and the caller reconnects normally).
+        """
+        done, pending = await asyncio.wait(
+            {recv_task, heartbeat_task},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        for task in pending:
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
+        for task in done:
+            exc = task.exception()
+            if exc is not None:
+                raise exc
 
     # --- Message Pipeline ---
 
@@ -524,10 +686,28 @@ class CloudAgent:
             log.warning(f"Cloud agent: unexpected handshake message '{msg_type}' during steady state")
             return
 
-        # Verify signature on steady-state messages
+        # Verify signature on steady-state messages. A signature mismatch is a
+        # tamper or key-desync signal: dropping the message is right, but a
+        # *persistent* run means every downstream command/rotation is silently
+        # lost forever, so after a threshold we tear down the session and
+        # reconnect (a fresh handshake re-derives the signing key).
         if self._session and not self._session.verify_incoming(msg):
-            log.warning(f"Cloud agent: invalid signature on '{msg_type}' message, rejecting")
+            self._sig_failure_count += 1
+            log.warning(
+                f"Cloud agent: invalid signature on '{msg_type}' message, rejecting "
+                f"({self._sig_failure_count}/{MAX_CONSECUTIVE_SIG_FAILURES})"
+            )
+            if self._sig_failure_count >= MAX_CONSECUTIVE_SIG_FAILURES:
+                log.error(
+                    "Cloud agent: %d consecutive signature failures — tearing down "
+                    "session to re-handshake.",
+                    self._sig_failure_count,
+                )
+                raise SessionInvalid("persistent downstream signature failure")
             return
+
+        # A message verified (or there's no session yet): reset the failure run.
+        self._sig_failure_count = 0
 
         # Validate downstream sequence
         seq = msg.get("seq")
@@ -577,7 +757,7 @@ class CloudAgent:
             if self._session:
                 self._session.handle_session_invalid(msg)  # Raises SessionInvalid
         elif msg_type == CONFIG_UPDATE:
-            self._handle_config_update(msg)
+            await self._handle_config_update(msg)
         elif msg_type == CAPABILITIES_UPDATE:
             self._handle_capabilities_update(msg)
         elif msg_type == THROTTLE:
@@ -632,16 +812,33 @@ class CloudAgent:
             self._session.sign_outgoing(pong)
             await self._send_raw(pong)
 
-    def _handle_config_update(self, msg: dict[str, Any]) -> None:
-        """Apply a config update from the server."""
+    async def _handle_config_update(self, msg: dict[str, Any]) -> None:
+        """Apply a mid-session config update from the server."""
         payload = extract_payload(msg)
         self._apply_config(payload)
-        log.info(f"Cloud agent: config updated — {list(payload.keys())}")
+        log.info(f"Cloud agent: config updated — {list(payload.keys()) if isinstance(payload, dict) else payload}")
+
+        # A config_update is a partial merge, so only re-apply the update policy
+        # when this message actually carries one — but when it does, push it
+        # through to the UpdateManager immediately. Otherwise an operator
+        # reverting a room to 'manual' (or narrowing its maintenance window)
+        # would be ignored until the next reconnect, with the auto loop still
+        # firing updates against the just-revoked intent.
+        if isinstance(payload, dict) and "update_policy" in payload:
+            mgr = getattr(self._command_handler, "_update_manager", None)
+            if mgr:
+                await mgr.apply_update_policy(payload.get("update_policy") or {})
 
     def _handle_capabilities_update(self, msg: dict[str, Any]) -> None:
-        """Update enabled capabilities."""
+        """Update enabled capabilities mid-session (e.g. plan change)."""
         payload = extract_payload(msg)
-        new_caps = payload.get("enabled_capabilities", [])
+        new_caps = self._normalize_capabilities(payload.get("enabled_capabilities"))
+        if new_caps is None:
+            log.warning(
+                "Cloud agent: ignoring malformed capabilities_update "
+                "(enabled_capabilities is not a list) — keeping current capabilities"
+            )
+            return
         old_caps = set(self._enabled_capabilities)
         self._enabled_capabilities = new_caps
 
@@ -656,7 +853,13 @@ class CloudAgent:
         """Handle a throttle directive from the server."""
         payload = extract_payload(msg)
         limit_type = payload.get("limit", "")
-        retry_after = payload.get("retry_after_seconds", 30)
+        # retry_after crosses the trust boundary — coerce and clamp it so a bad
+        # value can't crash the sleep or pin the type off forever.
+        try:
+            retry_after = float(payload.get("retry_after_seconds", 30))
+        except (TypeError, ValueError):
+            retry_after = 30.0
+        retry_after = max(0.0, min(retry_after, THROTTLE_MAX_SECONDS))
         log.warning(
             f"Cloud agent: throttled on '{limit_type}' — "
             f"backing off for {retry_after}s"
@@ -668,13 +871,32 @@ class CloudAgent:
         event = self._throttles[limit_type]
         event.clear()
 
-        # Schedule unthrottle
-        asyncio.create_task(self._unthrottle(limit_type, retry_after))
+        # Release on the LATEST of any existing and the new deadline, so a
+        # second (shorter) throttle for the same type can't release early while
+        # a longer one is in effect. Cancel the prior timer and schedule one for
+        # the merged deadline. The task is tracked so shutdown/reconnect can
+        # cancel it (no GC of a pending task, no stale task leaking across
+        # connections).
+        loop = asyncio.get_running_loop()
+        deadline = max(self._throttle_deadlines.get(limit_type, 0.0), loop.time() + retry_after)
+        self._throttle_deadlines[limit_type] = deadline
+
+        old = self._throttle_tasks.pop(limit_type, None)
+        if old and not old.done():
+            old.cancel()
+        task = asyncio.create_task(self._unthrottle(limit_type, deadline - loop.time()))
+        self._throttle_tasks[limit_type] = task
 
     async def _unthrottle(self, limit_type: str, delay: float) -> None:
         """Release a throttle after the specified delay, then clean up."""
-        await asyncio.sleep(delay)
+        try:
+            if delay > 0:
+                await asyncio.sleep(delay)
+        except asyncio.CancelledError:
+            return
         event = self._throttles.pop(limit_type, None)
+        self._throttle_deadlines.pop(limit_type, None)
+        self._throttle_tasks.pop(limit_type, None)
         if event:
             event.set()
             log.info(f"Cloud agent: throttle on '{limit_type}' released")
@@ -697,12 +919,34 @@ class CloudAgent:
     # --- Config ---
 
     def _apply_config(self, config: dict[str, Any]) -> None:
-        """Merge server config into local config."""
+        """Merge server config into local config.
+
+        ``config`` crosses the cloud trust boundary (session_start / config_update).
+        A non-dict value (protocol drift, or an attacker past the handshake) would
+        otherwise raise in ``.items()`` and, on the session_start path, trap the
+        agent in a permanent reconnect loop — so reject it and keep prior config.
+        """
+        if not isinstance(config, dict):
+            log.warning("Cloud agent: ignoring non-dict config payload (%s)", type(config).__name__)
+            return
         for key, value in config.items():
             if key == "features" and isinstance(value, dict):
                 self._config.setdefault("features", {}).update(value)
             else:
                 self._config[key] = value
+
+    async def _sync_update_policy(self, config: dict[str, Any]) -> None:
+        """Push the session_start update policy through to the UpdateManager.
+
+        Session_start carries the full authoritative config, so this always
+        applies — an absent ``update_policy`` resolves to the documented
+        ``manual`` default (``apply_update_policy({})`` tears down any auto loop)
+        rather than leaving a previously-started auto loop running.
+        """
+        mgr = getattr(self._command_handler, "_update_manager", None)
+        if mgr:
+            policy = config.get("update_policy") if isinstance(config, dict) else None
+            await mgr.apply_update_policy(policy or {})
 
     # --- Heartbeat ---
 
@@ -753,6 +997,14 @@ class CloudAgent:
             log.info("Cloud agent: no messages to replay")
             return
 
+        # Drop the stale pre-reconnect buffer entries up front. `assign_seq`
+        # below re-buffers each replayed message under its new seq, so the
+        # buffer ends up holding exactly the replayed set (not duplicated old +
+        # new entries). Crucially we do NOT clear after the loop: the re-buffered
+        # messages must be retained until the cloud acks them, so a second
+        # reconnect before that ack can replay them again (retain-until-acked).
+        self._sequencer.clear_buffer()
+
         log.info(f"Cloud agent: replaying {len(messages)} buffered message(s)")
         for msg in messages:
             # Re-assign sequence numbers for the new session
@@ -763,9 +1015,6 @@ class CloudAgent:
             if self._session:
                 self._session.sign_outgoing(msg)
             await self._send_raw(msg)
-
-        # Clear the buffer after successful replay
-        self._sequencer.clear_buffer()
 
     # --- Subsystem Wiring ---
 

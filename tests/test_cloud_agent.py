@@ -969,23 +969,28 @@ class TestAgentThrottle:
 
     @pytest.mark.asyncio
     async def test_unthrottle_removes_entry(self):
-        """_unthrottle removes the throttle entry from the dict."""
+        """_unthrottle releases the event and removes all per-type tracking."""
         from server.cloud.agent import CloudAgent
 
         # Create a minimal agent instance without actually connecting
         agent = CloudAgent.__new__(CloudAgent)
         agent._throttles = {}
+        agent._throttle_tasks = {}
+        agent._throttle_deadlines = {}
 
         # Manually set up a throttle entry
         event = asyncio.Event()
         event.clear()
         agent._throttles["state_batch"] = event
+        agent._throttle_deadlines["state_batch"] = 0.0
 
         # Run _unthrottle with a very short delay
         await agent._unthrottle("state_batch", 0.01)
 
-        # Entry should be removed
+        # Entry should be removed and the event released
         assert "state_batch" not in agent._throttles
+        assert "state_batch" not in agent._throttle_deadlines
+        assert event.is_set()
 
 
 # ===========================================================================
@@ -1069,14 +1074,41 @@ class TestAgentCapabilityGating:
         assert agent._command_handler.called == "diagnostic"
 
     @pytest.mark.asyncio
-    async def test_command_not_gated(self):
-        """COMMAND is not in the gate map — it should dispatch regardless of capability list."""
-        agent = self._make_agent(enabled_capabilities=[])
+    async def test_command_dropped_when_remote_access_missing(self):
+        """H-020: command is gated on 'remote_access' — dropped when it's missing."""
+        agent = self._make_agent(enabled_capabilities=["monitoring"])
+        await agent._handle_message({
+            "type": "command",
+            "payload": {"request_id": "r1", "device_id": "d1", "command": "noop"},
+        })
+        assert agent._command_handler.called is False
+
+    @pytest.mark.asyncio
+    async def test_command_dispatched_when_remote_access_enabled(self):
+        """H-020: command reaches the handler when 'remote_access' is enabled."""
+        agent = self._make_agent(enabled_capabilities=["monitoring", "remote_access"])
         await agent._handle_message({
             "type": "command",
             "payload": {"request_id": "r1", "device_id": "d1", "command": "noop"},
         })
         assert agent._command_handler.called == "command"
+
+    @pytest.mark.asyncio
+    async def test_config_push_and_restart_gated_on_remote_access(self):
+        """H-020: config_push and restart are also gated on 'remote_access'."""
+        # Without remote_access: both dropped.
+        agent = self._make_agent(enabled_capabilities=["monitoring"])
+        await agent._handle_message({"type": "config_push", "payload": {"request_id": "r1"}})
+        assert agent._command_handler.called is False
+        await agent._handle_message({"type": "restart", "payload": {"request_id": "r2"}})
+        assert agent._command_handler.called is False
+
+        # With remote_access: both dispatched.
+        agent = self._make_agent(enabled_capabilities=["remote_access"])
+        await agent._handle_message({"type": "config_push", "payload": {"request_id": "r1"}})
+        assert agent._command_handler.called == "config_push"
+        await agent._handle_message({"type": "restart", "payload": {"request_id": "r2"}})
+        assert agent._command_handler.called == "restart"
 
     def test_capability_map_vocabulary_matches_default(self):
         """The capability names in _CAPABILITY_GATED must come from DEFAULT_CAPABILITIES.
