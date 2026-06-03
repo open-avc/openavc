@@ -24,6 +24,8 @@ import httpx
 
 from server.core.plugin_loader import (
     _PLUGIN_CLASS_REGISTRY,
+    _exec_plugin_in_package,
+    _purge_plugin_modules,
     register_plugin_class,
     unregister_plugin_class,
 )
@@ -1038,13 +1040,18 @@ def _register_installed_plugin(plugin_id: str, plugin_dir: Path) -> str | None:
     caller (install_plugin) uses the message to surface diagnostics to
     the UI — silently swallowing here would leave the user staring at a
     green "Installed" check with nothing in the Installed tab (A60).
-    """
-    import importlib.util
 
-    # Add .deps to sys.path
+    The plugin file is executed inside a per-plugin package namespace (shared
+    with the loader via ``_exec_plugin_in_package``), so a multi-file plugin's
+    helper modules import via relative imports and can't collide with another
+    plugin's same-named helpers in sys.modules (A388).
+    """
+    # Add .deps to sys.path. Append (don't insert at 0) so a bundled plugin
+    # dependency can't shadow a stdlib or first-party module — .deps holds
+    # extra packages plugins need, not overrides of ours.
     deps_path = str(PLUGIN_REPO_DIR / ".deps")
     if os.path.isdir(deps_path) and deps_path not in sys.path:
-        sys.path.insert(0, deps_path)
+        sys.path.append(deps_path)
 
     # Look for plugin file
     candidates = [
@@ -1068,27 +1075,11 @@ def _register_installed_plugin(plugin_id: str, plugin_dir: Path) -> str | None:
         if filepath.name.startswith("_") and filepath.name != "__init__.py":
             continue
 
-        # Keep sys.path on the plugin's dir scoped to the import attempt.
-        # On success (registered) we leave it so subsequent imports of the
-        # plugin's siblings work. On any other exit — exec_module raises,
-        # no PLUGIN_INFO class found, spec.loader missing — strip it back
-        # out so a failed install doesn't pollute the import path or let
-        # a later install accidentally pick up the failed plugin's files.
-        dir_str = str(plugin_dir)
-        added_to_path = dir_str not in sys.path
-        if added_to_path:
-            sys.path.insert(0, dir_str)
-
-        registered = False
         candidates_tried += 1
         try:
-            spec = importlib.util.spec_from_file_location(
-                f"plugin_{plugin_id}", filepath
-            )
-            if spec is None or spec.loader is None:
+            module = _exec_plugin_in_package(filepath, plugin_dir)
+            if module is None:
                 continue
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
 
             for attr_name in dir(module):
                 attr = getattr(module, attr_name)
@@ -1098,8 +1089,11 @@ def _register_installed_plugin(plugin_id: str, plugin_dir: Path) -> str | None:
                         attr.PLUGIN_INFO.get("id") == plugin_id):
                     register_plugin_class(attr)
                     log.info(f"Registered plugin class '{plugin_id}' from {filepath.name}")
-                    registered = True
                     return None
+
+            # No matching class in this file — drop the modules it loaded so a
+            # later candidate (or install) starts clean.
+            _purge_plugin_modules(f"plugin_{plugin_dir.name}")
 
         except Exception as e:  # Catch-all: exec_module runs arbitrary plugin code
             last_error = f"{filepath.name}: {type(e).__name__}: {e}"
@@ -1109,12 +1103,6 @@ def _register_installed_plugin(plugin_id: str, plugin_dir: Path) -> str | None:
                 f"Plugin '{plugin_id}' failed to load from {filepath.name}: "
                 f"{type(e).__name__}: {e}"
             )
-        finally:
-            if not registered and added_to_path:
-                try:
-                    sys.path.remove(dir_str)
-                except ValueError:
-                    pass
 
     if candidates_tried == 0:
         return f"no plugin module found in {plugin_dir.name}/"

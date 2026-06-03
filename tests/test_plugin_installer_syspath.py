@@ -1,12 +1,15 @@
-"""Tests for plugin install sys.path cleanup on failure (A36).
+"""Tests for plugin import isolation (A36 + A388).
 
-`_register_installed_plugin` inserts the plugin's directory into sys.path
-so importlib can resolve the plugin's submodules. Before A36, that
-insert was only cleaned up on the "no PLUGIN_INFO class found" exit
-path — not on exec_module() exceptions. A failed install would leave
-the plugin directory permanently on sys.path, and a later install
-with a colliding submodule name could silently pick up files from the
-failed plugin.
+`_register_installed_plugin` imports a plugin through `_exec_plugin_in_package`,
+which loads each plugin inside its own ``plugin_<dir>`` package namespace
+instead of dropping the plugin's directory onto the bare ``sys.path``. That
+gives two properties:
+
+  - A36: a failed import leaves nothing behind — no stray ``sys.path`` entry,
+    no half-loaded modules in ``sys.modules``.
+  - A388: a multi-file plugin's helper modules land under ``plugin_<dir>.<name>``
+    via relative imports, so two plugins that each ship a same-named helper
+    (``shared.py``) can't shadow each other under a bare ``sys.modules`` key.
 """
 
 import sys
@@ -14,69 +17,69 @@ import sys
 import pytest
 
 from server.core.plugin_installer import _register_installed_plugin
+from server.core.plugin_loader import unregister_plugin_class
 
 
-def _make_plugin(tmp_path, name: str, content: str):
+def _make_plugin(tmp_path, name: str, content: str, extra: dict | None = None):
     plugin_dir = tmp_path / name
     plugin_dir.mkdir()
     (plugin_dir / f"{name}_plugin.py").write_text(content, encoding="utf-8")
+    for fname, fcontent in (extra or {}).items():
+        (plugin_dir / fname).write_text(fcontent, encoding="utf-8")
     return plugin_dir
 
 
 @pytest.fixture(autouse=True)
-def _restore_sys_path():
-    """Snapshot sys.path before each test, restore after."""
-    snapshot = list(sys.path)
+def _restore_import_state():
+    """Snapshot sys.path + plugin sys.modules before each test, restore after."""
+    path_snapshot = list(sys.path)
+    module_snapshot = set(sys.modules)
     yield
-    sys.path[:] = snapshot
+    sys.path[:] = path_snapshot
+    for name in set(sys.modules) - module_snapshot:
+        if name.startswith("plugin_"):
+            sys.modules.pop(name, None)
 
 
-def test_failed_exec_module_does_not_leave_dir_on_sys_path(tmp_path):
-    """Regression for A36: a plugin whose top-level code raises during
-    exec_module must not leave its directory on sys.path. Without the
-    try/finally, the entry persisted forever.
+def test_failed_exec_module_leaves_no_trace(tmp_path):
+    """A plugin whose top-level code raises during import must leave nothing
+    behind — no sys.path entry and no half-loaded package in sys.modules.
     """
     plugin_dir = _make_plugin(
         tmp_path, "broken",
         "raise RuntimeError('boom at module load')\n",
     )
 
-    assert str(plugin_dir) not in sys.path
     result = _register_installed_plugin("broken", plugin_dir)
 
-    # A60 changed the return type: None on success, error-message str on
-    # failure (so install_plugin can surface the diagnostic in the UI).
+    # A60 return contract: None on success, error-message str on failure.
     assert result is not None
     assert "RuntimeError" in result
-    assert str(plugin_dir) not in sys.path, (
-        "_register_installed_plugin left the plugin directory on sys.path "
-        "after exec_module raised — subsequent plugin installs with "
-        "colliding submodule names will pick up files from this failed plugin."
-    )
+    assert str(plugin_dir) not in sys.path
+    assert "plugin_broken" not in sys.modules
+    assert not any(m.startswith("plugin_broken.") for m in sys.modules)
 
 
-def test_no_plugin_info_match_cleans_up_sys_path(tmp_path):
-    """The 'no PLUGIN_INFO class found' exit path must also clean up
-    (this worked before A36, must keep working after).
+def test_no_plugin_info_match_cleans_up(tmp_path):
+    """The 'no PLUGIN_INFO class found' exit path purges the package it
+    loaded so a later candidate/install starts clean.
     """
     plugin_dir = _make_plugin(
         tmp_path, "nothing",
         "# valid module, no plugin class\nVALUE = 1\n",
     )
 
-    assert str(plugin_dir) not in sys.path
     result = _register_installed_plugin("nothing", plugin_dir)
 
-    # Failure path returns an error message (str), not False.
     assert result is not None
     assert "PLUGIN_INFO" in result
     assert str(plugin_dir) not in sys.path
+    assert "plugin_nothing" not in sys.modules
 
 
-def test_successful_registration_keeps_dir_on_sys_path(tmp_path):
-    """On successful registration, the plugin's dir must stay on sys.path
-    so subsequent imports of the plugin's submodules work. This is the
-    one case where we intentionally don't clean up.
+def test_successful_registration_does_not_pollute_sys_path(tmp_path):
+    """A successful load registers the plugin under its package namespace and
+    leaves the bare directory off sys.path (the isolation guarantee).
     """
     plugin_dir = _make_plugin(
         tmp_path, "good",
@@ -88,25 +91,102 @@ class GoodPlugin:
 ''',
     )
 
-    assert str(plugin_dir) not in sys.path
     try:
         result = _register_installed_plugin("good", plugin_dir)
-        # Success returns None (no error message).
         assert result is None
-        assert str(plugin_dir) in sys.path, (
-            "Successful registration should leave plugin dir on sys.path "
-            "so the plugin's submodule imports continue to work."
-        )
+        # The bare dir is NOT added to sys.path — siblings resolve via the
+        # plugin_good package instead.
+        assert str(plugin_dir) not in sys.path
+        assert "plugin_good.good_plugin" in sys.modules
     finally:
-        # Unregister so the test doesn't leak global state.
-        from server.core.plugin_loader import unregister_plugin_class
         unregister_plugin_class("good")
+        for name in [m for m in sys.modules if m.startswith("plugin_good")]:
+            sys.modules.pop(name, None)
 
 
-def test_does_not_double_insert_when_dir_already_on_path(tmp_path):
-    """If the plugin dir is already on sys.path (rare but possible),
-    don't add a duplicate, and on cleanup don't remove the pre-existing
-    entry that wasn't ours to add.
+def test_multi_file_plugin_loads_via_relative_import(tmp_path):
+    """A plugin split across files importing a sibling with a relative import
+    loads, and the sibling lands under the plugin's package namespace.
+    """
+    plugin_dir = _make_plugin(
+        tmp_path, "multi",
+        '''
+from . import shared
+
+class MultiPlugin:
+    PLUGIN_INFO = {"id": "multi"}
+    MARKER = shared.MARKER
+    async def start(self, api): pass
+    async def stop(self): pass
+''',
+        extra={"shared.py": "MARKER = 'multi-shared'\n"},
+    )
+
+    try:
+        result = _register_installed_plugin("multi", plugin_dir)
+        assert result is None
+        assert "plugin_multi.shared" in sys.modules
+        # The sibling is namespaced, not bare.
+        assert sys.modules.get("shared") is None
+    finally:
+        unregister_plugin_class("multi")
+        for name in [m for m in sys.modules if m.startswith("plugin_multi")]:
+            sys.modules.pop(name, None)
+
+
+def test_same_named_helpers_do_not_collide(tmp_path):
+    """Two plugins that each ship their own ``shared.py`` must each see their
+    own helper — not whichever loaded first (A388).
+    """
+    alpha_dir = _make_plugin(
+        tmp_path, "alpha",
+        '''
+from . import shared
+
+class AlphaPlugin:
+    PLUGIN_INFO = {"id": "alpha"}
+    VALUE = shared.VALUE
+    async def start(self, api): pass
+    async def stop(self): pass
+''',
+        extra={"shared.py": "VALUE = 'alpha'\n"},
+    )
+    beta_dir = _make_plugin(
+        tmp_path, "beta",
+        '''
+from . import shared
+
+class BetaPlugin:
+    PLUGIN_INFO = {"id": "beta"}
+    VALUE = shared.VALUE
+    async def start(self, api): pass
+    async def stop(self): pass
+''',
+        extra={"shared.py": "VALUE = 'beta'\n"},
+    )
+
+    try:
+        assert _register_installed_plugin("alpha", alpha_dir) is None
+        assert _register_installed_plugin("beta", beta_dir) is None
+
+        from server.core.plugin_loader import _PLUGIN_CLASS_REGISTRY
+
+        # Each plugin captured its OWN helper's value — no cross-contamination.
+        assert _PLUGIN_CLASS_REGISTRY["alpha"].VALUE == "alpha"
+        assert _PLUGIN_CLASS_REGISTRY["beta"].VALUE == "beta"
+        assert sys.modules["plugin_alpha.shared"].VALUE == "alpha"
+        assert sys.modules["plugin_beta.shared"].VALUE == "beta"
+    finally:
+        for pid in ("alpha", "beta"):
+            unregister_plugin_class(pid)
+            for name in [m for m in sys.modules if m.startswith(f"plugin_{pid}")]:
+                sys.modules.pop(name, None)
+
+
+def test_does_not_touch_preexisting_sys_path_entry(tmp_path):
+    """If the plugin dir is already on sys.path (rare), the loader neither
+    removes it nor adds a duplicate — it manages its own package namespace,
+    not the bare path.
     """
     plugin_dir = _make_plugin(
         tmp_path, "preadded",
@@ -114,11 +194,9 @@ def test_does_not_double_insert_when_dir_already_on_path(tmp_path):
     )
 
     sys.path.insert(0, str(plugin_dir))
-    initial_count = sys.path.count(str(plugin_dir))
-    assert initial_count == 1
+    assert sys.path.count(str(plugin_dir)) == 1
 
     _register_installed_plugin("preadded", plugin_dir)
 
-    # Still present (we didn't add it, so finally shouldn't remove it),
-    # and only once.
+    # The pre-existing entry we didn't add is left exactly as it was.
     assert sys.path.count(str(plugin_dir)) == 1

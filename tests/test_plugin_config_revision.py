@@ -75,6 +75,9 @@ class _StubLoader:
     def clear_missing(self, plugin_id):
         pass
 
+    def remove_plugin_tracking(self, plugin_id):
+        pass
+
 
 @pytest.mark.asyncio
 async def test_uninstall_endpoint_removes_plugin_and_bumps_revision(tmp_path, monkeypatch):

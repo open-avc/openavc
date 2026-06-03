@@ -7,6 +7,8 @@ manages the start/stop lifecycle, and handles missing/incompatible plugins.
 
 import asyncio
 import importlib
+import importlib.machinery
+import importlib.util
 import inspect
 import os
 import platform
@@ -48,6 +50,34 @@ MIT_COMPATIBLE_LICENSES = {
 
 # Max consecutive callback failures before auto-disable
 MAX_CALLBACK_FAILURES = 10
+
+# Lifecycle-hook timeouts. Plugins are arbitrary third-party code, so a
+# start()/stop()/health_check() that never returns must not hang startup,
+# shutdown, or a REST request forever.
+PLUGIN_START_TIMEOUT = 30.0
+PLUGIN_STOP_TIMEOUT = 10.0
+PLUGIN_HEALTH_TIMEOUT = 5.0
+
+# Cap on in-flight plugin-log → event tasks. A plugin logging in a tight loop
+# can't spawn unbounded one-shot tasks on the shared event loop; past the cap
+# the event mirror is dropped (the logger line is still written).
+MAX_PENDING_LOG_EVENTS = 1000
+
+# Extension types the panel/IDE understand. EXTENSIONS keys outside this set
+# are rejected at load — an authoring typo shouldn't silently do nothing.
+VALID_EXTENSION_TYPES = {
+    "views", "device_panels", "status_cards", "context_actions", "panel_elements",
+}
+
+# Field that uniquely identifies an extension within its type. panel_elements
+# are keyed by their element `type`; every other extension type uses `id`.
+_EXTENSION_ID_FIELD = {
+    "views": "id",
+    "device_panels": "id",
+    "status_cards": "id",
+    "context_actions": "id",
+    "panel_elements": "type",
+}
 
 # Valid macro action param field types (mirrors the macro builder's renderer support)
 VALID_MACRO_ACTION_PARAM_TYPES = {
@@ -263,6 +293,119 @@ def validate_script_api(
     return True, ""
 
 
+def validate_extensions(
+    extensions: Any, plugin_id: str, plugin_class: type
+) -> tuple[bool, str]:
+    """Validate a plugin's EXTENSIONS declaration.
+
+    EXTENSIONS feeds the /api/plugins/extensions aggregation that the panel and
+    IDE render. Unlike MACRO_ACTIONS/SCRIPT_API this was previously unvalidated,
+    so a single malformed entry (a non-dict list element, a list where a dict was
+    expected) could blow up the serve-time loop for *every* plugin. Validate the
+    shape at load so a bad plugin fails to enable instead of blanking the whole
+    plugin UI.
+
+    Returns (valid, error_message).
+    """
+    if not isinstance(extensions, dict):
+        return False, "EXTENSIONS must be a dict"
+
+    for ext_type, ext_list in extensions.items():
+        if ext_type not in VALID_EXTENSION_TYPES:
+            return False, (
+                f"unknown extension type '{ext_type}' "
+                f"(allowed: {sorted(VALID_EXTENSION_TYPES)})"
+            )
+        if not isinstance(ext_list, list):
+            return False, f"extension type '{ext_type}' must be a list"
+
+        id_field = _EXTENSION_ID_FIELD[ext_type]
+        seen_ids: set[str] = set()
+        for i, ext in enumerate(ext_list):
+            if not isinstance(ext, dict):
+                return False, f"{ext_type}[{i}] must be a dict"
+            ext_id = ext.get(id_field)
+            if not ext_id or not isinstance(ext_id, str):
+                return False, f"{ext_type}[{i}] missing '{id_field}' (string)"
+            if ext_id in seen_ids:
+                return False, (
+                    f"{ext_type} has duplicate {id_field} '{ext_id}'"
+                )
+            seen_ids.add(ext_id)
+
+    return True, ""
+
+
+def _purge_plugin_modules(package_name: str) -> None:
+    """Remove a plugin's package and all its submodules from sys.modules."""
+    for name in [
+        m for m in sys.modules
+        if m == package_name or m.startswith(package_name + ".")
+    ]:
+        sys.modules.pop(name, None)
+
+
+def _exec_plugin_in_package(filepath: Path, plugin_dir: Path) -> Any:
+    """Import a plugin's main module inside a private package namespace.
+
+    Each plugin loads as a package ``plugin_<dir>`` whose ``__path__`` is the
+    plugin's own directory. A multi-file plugin's siblings therefore import via
+    relative imports (``from . import helper`` / ``from .helper import X``) and
+    land in ``sys.modules`` under ``plugin_<dir>.helper`` — never under a bare
+    ``helper`` key that a second plugin shipping its own ``helper.py`` could
+    clobber. No bare directory is added to ``sys.path``, so two plugins with
+    same-named helper modules can't shadow each other (A388).
+
+    On any exception every module this call added is rolled back so a failed or
+    partial import can't pollute later loads. Returns the executed module, or
+    ``None`` if the file has no importable spec.
+    """
+    package_name = f"plugin_{plugin_dir.name}"
+    before = set(sys.modules)
+    try:
+        if filepath.name == "__init__.py":
+            # The plugin's own package init carries the class.
+            spec = importlib.util.spec_from_file_location(
+                package_name, filepath,
+                submodule_search_locations=[str(plugin_dir)],
+            )
+            if spec is None or spec.loader is None:
+                return None
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[package_name] = module
+            spec.loader.exec_module(module)
+            return module
+
+        # Synthesize a parent package so the main module's relative imports
+        # resolve against the plugin directory, then load the file as a
+        # submodule of it.
+        if package_name not in sys.modules:
+            pkg_spec = importlib.machinery.ModuleSpec(
+                package_name, None, is_package=True
+            )
+            pkg = importlib.util.module_from_spec(pkg_spec)
+            pkg.__path__ = [str(plugin_dir)]
+            sys.modules[package_name] = pkg
+
+        # The main file is a regular module, not a package — relative imports
+        # resolve via the parent package's __path__ (set above), so don't pass
+        # submodule_search_locations here (that would mark it a package and make
+        # __spec__.parent disagree with __package__).
+        sub_name = f"{package_name}.{filepath.stem}"
+        spec = importlib.util.spec_from_file_location(sub_name, filepath)
+        if spec is None or spec.loader is None:
+            return None
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[sub_name] = module
+        spec.loader.exec_module(module)
+        return module
+    except BaseException:
+        for name in set(sys.modules) - before:
+            if name == package_name or name.startswith(package_name + "."):
+                sys.modules.pop(name, None)
+        raise
+
+
 class PluginLoader:
     """
     Manages plugin discovery, validation, lifecycle, and error isolation.
@@ -294,6 +437,20 @@ class PluginLoader:
         self._errors: dict[str, str] = {}
         # Callback failure counts: plugin_id -> count
         self._callback_failures: dict[str, int] = {}
+        # Plugins with an auto-disable in flight (so repeated failures past the
+        # threshold don't each spawn a duplicate _auto_disable_plugin task).
+        self._auto_disabling: set[str] = set()
+        # Per-plugin lifecycle lock so start/stop/auto-disable on the same
+        # plugin serialize and can't interleave (a restart can't be killed by a
+        # stale queued auto-disable; a config change can't race an enable).
+        self._locks: dict[str, asyncio.Lock] = {}
+        # Monotonic instance epoch per plugin — incremented on every start so a
+        # queued auto-disable can tell whether it targets the instance that
+        # actually failed or a freshly-restarted one.
+        self._instance_epoch: dict[str, int] = {}
+        self._epoch_counter = 0
+        # In-flight plugin-log → event tasks (bounded, self-pruning).
+        self._log_tasks: set[asyncio.Task] = set()
         # Config save callback
         self._save_config_fn = None
         # Router mount/unmount hooks (set by main.py, which owns the app).
@@ -331,10 +488,12 @@ class PluginLoader:
             log.debug(f"Plugin repo directory not found: {plugin_repo_dir}")
             return {}
 
-        # Add .deps to sys.path if it exists
+        # Add .deps to sys.path if it exists. Append (don't insert at 0) so a
+        # bundled plugin dependency can't shadow a stdlib or first-party module
+        # — .deps holds extra packages plugins need, not overrides of ours.
         deps_path = str(plugin_repo_dir / ".deps")
         if os.path.isdir(deps_path) and deps_path not in sys.path:
-            sys.path.insert(0, deps_path)
+            sys.path.append(deps_path)
 
         # On Windows, add .deps to DLL search path so native libs (e.g. hidapi.dll)
         # are findable by ctypes.  Both methods needed: add_dll_directory for
@@ -399,22 +558,16 @@ class PluginLoader:
         return None
 
     def _load_plugin_from_file(self, filepath: Path, plugin_dir: Path) -> type | None:
-        """Import a Python file and find a class with PLUGIN_INFO."""
-        module_name = f"plugin_{plugin_dir.name}"
+        """Import a Python file and find a class with PLUGIN_INFO.
 
-        # Add plugin dir to path temporarily for relative imports
-        dir_str = str(plugin_dir)
-        added_to_path = False
-        if dir_str not in sys.path:
-            sys.path.insert(0, dir_str)
-            added_to_path = True
-
+        The file is executed inside a per-plugin package namespace (see
+        ``_exec_plugin_in_package``) so a multi-file plugin's helper modules
+        can't collide with another plugin's same-named helpers.
+        """
         try:
-            spec = importlib.util.spec_from_file_location(module_name, filepath)
-            if spec is None or spec.loader is None:
+            module = _exec_plugin_in_package(filepath, plugin_dir)
+            if module is None:
                 return None
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
 
             # Find the plugin class
             for attr_name in dir(module):
@@ -425,14 +578,11 @@ class PluginLoader:
                         "id" in attr.PLUGIN_INFO):
                     return attr
 
+            # No plugin class in this file — drop the modules it loaded so a
+            # later candidate (or plugin) starts clean.
+            _purge_plugin_modules(f"plugin_{plugin_dir.name}")
         except Exception:  # Catch-all: exec_module runs arbitrary plugin code
             log.exception(f"Error loading plugin file {filepath}")
-        finally:
-            if added_to_path:
-                try:
-                    sys.path.remove(dir_str)
-                except ValueError:
-                    pass
 
         return None
 
@@ -517,6 +667,13 @@ class PluginLoader:
             if not valid:
                 return False, f"SCRIPT_API invalid: {error}"
 
+        # EXTENSIONS validation
+        extensions = getattr(plugin_class, "EXTENSIONS", None)
+        if extensions is not None:
+            valid, error = validate_extensions(extensions, info["id"], plugin_class)
+            if not valid:
+                return False, f"EXTENSIONS invalid: {error}"
+
         return True, ""
 
     def is_platform_compatible(self, plugin_class: type) -> bool:
@@ -559,33 +716,81 @@ class PluginLoader:
                 continue
 
             if not self.is_platform_compatible(plugin_class):
-                info = plugin_class.PLUGIN_INFO
-                self._incompatible_plugins[plugin_id] = {
-                    "plugin_id": plugin_id,
-                    "current_platform": self._platform_id,
-                    "supported_platforms": info.get("platforms", []),
-                }
-                self._status[plugin_id] = "incompatible"
-                self._state.set(
-                    f"plugin.{plugin_id}.incompatible", True, source="system"
-                )
-                log.warning(
-                    f"Plugin '{plugin_id}' is not compatible with {self._platform_id}"
-                )
+                self._mark_incompatible(plugin_id, plugin_class)
                 continue
 
             if enabled:
                 await self.start_plugin(plugin_id, config)
 
+    def _get_lock(self, plugin_id: str) -> asyncio.Lock:
+        """Return the per-plugin lifecycle lock, creating it on first use."""
+        lock = self._locks.get(plugin_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._locks[plugin_id] = lock
+        return lock
+
+    def _mark_incompatible(self, plugin_id: str, plugin_class: type) -> None:
+        """Record a plugin as platform-incompatible (distinct from 'error')."""
+        info = getattr(plugin_class, "PLUGIN_INFO", {})
+        self._incompatible_plugins[plugin_id] = {
+            "plugin_id": plugin_id,
+            "current_platform": self._platform_id,
+            "supported_platforms": info.get("platforms", []),
+        }
+        self._status[plugin_id] = "incompatible"
+        self._errors.pop(plugin_id, None)
+        self._state.set(f"plugin.{plugin_id}.incompatible", True, source="system")
+        log.warning(
+            f"Plugin '{plugin_id}' is not compatible with {self._platform_id}"
+        )
+
+    def _clear_missing_state(self, plugin_id: str) -> None:
+        """Drop missing-plugin tracking and its broadcast state keys."""
+        self._missing_plugins.pop(plugin_id, None)
+        self._state.delete(f"plugin.{plugin_id}.missing")
+        self._state.delete(f"plugin.{plugin_id}.missing_reason")
+
+    def _clear_plugin_flags(self, plugin_id: str) -> None:
+        """Drop incompatible/auto-disabled tracking and their state keys."""
+        self._incompatible_plugins.pop(plugin_id, None)
+        self._state.delete(f"plugin.{plugin_id}.incompatible")
+        self._state.delete(f"plugin.{plugin_id}.auto_disabled")
+
     async def start_plugin(self, plugin_id: str, config: dict | None = None) -> bool:
-        """Start a single plugin. Returns True on success."""
+        """Start a single plugin. Returns True on success.
+
+        Serialized per-plugin so a concurrent enable / config-update /
+        auto-disable on the same plugin can't interleave.
+        """
+        async with self._get_lock(plugin_id):
+            return await self._start_plugin_locked(plugin_id, config)
+
+    async def _start_plugin_locked(
+        self, plugin_id: str, config: dict | None = None
+    ) -> bool:
         if plugin_id in self._instances:
-            log.warning(f"Plugin '{plugin_id}' is already running")
-            return True
+            # Already running. Don't silently drop a differing config — restart
+            # to apply it (config-update relies on the new config taking
+            # effect); an identical or empty config is a genuine no-op.
+            if config is not None and config != self.get_running_config(plugin_id):
+                log.info(
+                    f"Plugin '{plugin_id}' already running with a different config "
+                    f"— restarting to apply it"
+                )
+                await self._stop_plugin_locked(plugin_id)
+            else:
+                return True
 
         plugin_class = _PLUGIN_CLASS_REGISTRY.get(plugin_id)
         if plugin_class is None:
             log.error(f"Plugin '{plugin_id}' class not found in registry")
+            return False
+
+        # Platform check first so an incompatible plugin surfaces as
+        # 'incompatible' (its own banner) and not a generic 'error'.
+        if not self.is_platform_compatible(plugin_class):
+            self._mark_incompatible(plugin_id, plugin_class)
             return False
 
         # Validate manifest
@@ -600,10 +805,21 @@ class PluginLoader:
         if config is None:
             config = {}
 
+        # New instance epoch so a queued auto-disable from a previous instance
+        # can tell it no longer applies.
+        self._epoch_counter += 1
+        epoch = self._epoch_counter
+        self._instance_epoch[plugin_id] = epoch
+        self._auto_disabling.discard(plugin_id)
+
         # Create registry and API
         registry = PluginRegistry(plugin_id)
 
-        def _on_callback_failure(_pid=plugin_id):
+        def _on_callback_failure(_pid=plugin_id, _epoch=epoch):
+            # One auto-disable per failure streak — past the threshold, don't
+            # keep spawning duplicate _auto_disable_plugin tasks.
+            if _pid in self._auto_disabling:
+                return
             count = self._callback_failures.get(_pid, 0) + 1
             self._callback_failures[_pid] = count
             if count >= MAX_CALLBACK_FAILURES:
@@ -611,7 +827,8 @@ class PluginLoader:
                     f"Plugin '{_pid}' hit {count} consecutive callback failures "
                     f"— auto-disabling"
                 )
-                asyncio.create_task(self._auto_disable_plugin(_pid))
+                self._auto_disabling.add(_pid)
+                asyncio.create_task(self._auto_disable_plugin(_pid, _epoch))
 
         def _on_callback_success(_pid=plugin_id):
             # Reset failure counter on success so transient errors don't accumulate
@@ -636,7 +853,7 @@ class PluginLoader:
         # Instantiate and start
         try:
             instance = plugin_class()
-            await instance.start(api)
+            await asyncio.wait_for(instance.start(api), timeout=PLUGIN_START_TIMEOUT)
             self._register_macro_actions(plugin_id, instance)
             self._register_script_api(plugin_id, instance)
 
@@ -647,10 +864,9 @@ class PluginLoader:
             self._errors.pop(plugin_id, None)
             self._callback_failures.pop(plugin_id, None)
 
-            # Clear any missing state
-            self._missing_plugins.pop(plugin_id, None)
-            self._state.set(f"plugin.{plugin_id}.missing", None, source="system")
-            self._state.set(f"plugin.{plugin_id}.missing_reason", None, source="system")
+            # Clear missing / incompatible / auto-disabled state from a prior run
+            self._clear_missing_state(plugin_id)
+            self._clear_plugin_flags(plugin_id)
 
             # Mount any HTTP router the plugin registered during start()
             if registry.http_router is not None and self._mount_router_fn:
@@ -666,23 +882,34 @@ class PluginLoader:
             return True
 
         except Exception as e:  # Catch-all: plugin start() runs arbitrary code
-            log.exception(f"Plugin '{plugin_id}' failed to start")
+            if isinstance(e, asyncio.TimeoutError):
+                msg = f"start() timed out after {PLUGIN_START_TIMEOUT}s"
+                log.error(f"Plugin '{plugin_id}' {msg}")
+            else:
+                msg = str(e)
+                log.exception(f"Plugin '{plugin_id}' failed to start")
             self._status[plugin_id] = "error"
-            self._errors[plugin_id] = str(e)
+            self._errors[plugin_id] = msg
             # Clean up any partial registrations
             self._macros.unregister_plugin_actions(plugin_id)
             self._unregister_script_api(plugin_id)
             await registry.cleanup(self._state, self._events)
             await self._events.emit(
-                "plugin.error", {"plugin_id": plugin_id, "error": str(e)}
+                "plugin.error", {"plugin_id": plugin_id, "error": msg}
             )
             return False
 
     async def stop_plugin(self, plugin_id: str) -> None:
         """Stop a running plugin and clean up all registrations."""
+        async with self._get_lock(plugin_id):
+            await self._stop_plugin_locked(plugin_id)
+
+    async def _stop_plugin_locked(self, plugin_id: str) -> None:
         instance = self._instances.pop(plugin_id, None)
         registry = self._registries.pop(plugin_id, None)
         self._apis.pop(plugin_id, None)
+        # Forget the instance epoch so a stale queued auto-disable no-ops.
+        self._instance_epoch.pop(plugin_id, None)
 
         # Unregister macro actions and script API methods before stop() so
         # in-flight macros and scripts can't dispatch to a half-shutdown plugin
@@ -691,7 +918,12 @@ class PluginLoader:
 
         if instance is not None:
             try:
-                await instance.stop()
+                await asyncio.wait_for(instance.stop(), timeout=PLUGIN_STOP_TIMEOUT)
+            except asyncio.TimeoutError:
+                log.error(
+                    f"Plugin '{plugin_id}' stop() timed out after "
+                    f"{PLUGIN_STOP_TIMEOUT}s — continuing teardown"
+                )
             except Exception:  # Catch-all: plugin stop() runs arbitrary code
                 log.exception(f"Plugin '{plugin_id}' stop() raised an exception")
 
@@ -708,6 +940,10 @@ class PluginLoader:
         self._status[plugin_id] = "stopped"
         self._errors.pop(plugin_id, None)
         self._callback_failures.pop(plugin_id, None)
+        self._auto_disabling.discard(plugin_id)
+        # A normal stop clears the auto-disabled flag; auto-disable re-sets it
+        # right after its own stop call, so the True it wants still survives.
+        self._state.delete(f"plugin.{plugin_id}.auto_disabled")
         await self._events.emit("plugin.stopped", {"plugin_id": plugin_id})
         log.info(f"Plugin '{plugin_id}' stopped")
 
@@ -716,6 +952,10 @@ class PluginLoader:
         plugin_ids = list(self._instances.keys())
         for plugin_id in plugin_ids:
             await self.stop_plugin(plugin_id)
+        # Cancel any in-flight plugin-log → event tasks.
+        for task in list(self._log_tasks):
+            task.cancel()
+        self._log_tasks.clear()
 
     # ──── Activate After Install ────
 
@@ -726,9 +966,7 @@ class PluginLoader:
             return {"activated": False, "reason": "Plugin still not found in registry"}
 
         # Clear missing state
-        self._missing_plugins.pop(plugin_id, None)
-        self._state.set(f"plugin.{plugin_id}.missing", None, source="system")
-        self._state.set(f"plugin.{plugin_id}.missing_reason", None, source="system")
+        self._clear_missing_state(plugin_id)
 
         if config is None:
             config = {}
@@ -750,7 +988,14 @@ class PluginLoader:
 
         if hasattr(instance, "health_check"):
             try:
-                return await instance.health_check()
+                return await asyncio.wait_for(
+                    instance.health_check(), timeout=PLUGIN_HEALTH_TIMEOUT
+                )
+            except asyncio.TimeoutError:
+                return {
+                    "status": "error",
+                    "message": f"Health check timed out after {PLUGIN_HEALTH_TIMEOUT}s",
+                }
             except Exception as e:  # Catch-all: plugin health_check() runs arbitrary code
                 return {"status": "error", "message": f"Health check failed: {e}"}
 
@@ -773,10 +1018,20 @@ class PluginLoader:
         return ids
 
     def remove_plugin_tracking(self, plugin_id: str) -> None:
-        """Remove all internal tracking for a plugin (status, missing, incompatible)."""
+        """Remove all internal tracking for a plugin and its broadcast state.
+
+        Called when a plugin is removed from the project or uninstalled. Drops
+        the in-memory trackers and deletes the ``plugin.<id>.*`` status keys so
+        a stale incompatible/auto-disabled/missing flag isn't broadcast to every
+        connecting panel forever.
+        """
         self._status.pop(plugin_id, None)
-        self._missing_plugins.pop(plugin_id, None)
-        self._incompatible_plugins.pop(plugin_id, None)
+        self._callback_failures.pop(plugin_id, None)
+        self._auto_disabling.discard(plugin_id)
+        self._instance_epoch.pop(plugin_id, None)
+        self._locks.pop(plugin_id, None)
+        self._clear_missing_state(plugin_id)
+        self._clear_plugin_flags(plugin_id)
 
     def get_running_config(self, plugin_id: str) -> dict[str, Any]:
         """Return the config dict of a running plugin, or empty dict if not running."""
@@ -815,6 +1070,7 @@ class PluginLoader:
         # Missing plugins (referenced in project but not installed)
         for plugin_id, missing_info in self._missing_plugins.items():
             if plugin_id not in seen:
+                seen.add(plugin_id)
                 plugins.append({
                     "plugin_id": plugin_id,
                     "name": plugin_id,
@@ -822,6 +1078,24 @@ class PluginLoader:
                     "installed": False,
                     "compatible": True,
                     "missing_reason": missing_info.get("reason", ""),
+                })
+
+        # Incompatible plugins that aren't in the class registry (e.g. failed to
+        # register but were marked incompatible). Registered-but-incompatible
+        # plugins already surface above with status 'incompatible'; this is the
+        # fallback so the tracker dict can't hold dead, un-surfaced state.
+        for plugin_id, incompat_info in self._incompatible_plugins.items():
+            if plugin_id not in seen:
+                seen.add(plugin_id)
+                plugins.append({
+                    "plugin_id": plugin_id,
+                    "name": plugin_id,
+                    "status": "incompatible",
+                    "installed": True,
+                    "compatible": False,
+                    "supported_platforms": incompat_info.get(
+                        "supported_platforms", []
+                    ),
                 })
 
         return plugins
@@ -963,6 +1237,13 @@ class PluginLoader:
     def get_all_extensions(self) -> dict[str, Any]:
         """Get all extensions from running plugins, organized by extension type.
 
+        Each plugin's contribution is collected under its own try/except and
+        every entry is shape-checked, so one plugin shipping a malformed
+        EXTENSIONS (a non-dict, a list where a dict was expected, a non-dict
+        element) can't break the endpoint for every other plugin (A125). IDs are
+        de-duplicated across plugins so a second plugin can't silently shadow a
+        first plugin's view/card/element id (A619).
+
         Sanitizes each extension's ``state_pattern`` to keep plugins inside their
         ``plugin.<id>.*`` namespace. A hostile or careless extension that
         declares ``state_pattern: "*"`` or ``"device.*"`` would otherwise let a
@@ -981,47 +1262,86 @@ class PluginLoader:
             "context_actions": [],
             "panel_elements": [],
         }
+        # (ext_type, id) pairs already emitted — first plugin to claim an id wins.
+        seen_ids: set[tuple[str, str]] = set()
 
         for plugin_id, instance in self._instances.items():
-            plugin_class = type(instance)
-            extensions = getattr(plugin_class, "EXTENSIONS", None)
-            if not extensions:
-                continue
+            try:
+                plugin_class = type(instance)
+                extensions = getattr(plugin_class, "EXTENSIONS", None)
+                if extensions is None:
+                    continue
+                if not isinstance(extensions, dict):
+                    log.warning(
+                        "Plugin '%s' EXTENSIONS is not a dict (%s); skipping",
+                        plugin_id, type(extensions).__name__,
+                    )
+                    continue
 
-            info = plugin_class.PLUGIN_INFO
-            plugin_name = info.get("name", plugin_id)
-            namespace_prefix = f"plugin.{plugin_id}."
+                info = plugin_class.PLUGIN_INFO
+                plugin_name = info.get("name", plugin_id)
+                namespace_prefix = f"plugin.{plugin_id}."
 
-            for ext_type in result:
-                for ext in extensions.get(ext_type, []):
-                    safe_ext = {
-                        **ext,
-                        "plugin_id": plugin_id,
-                        "plugin_name": plugin_name,
-                    }
-                    pattern = safe_ext.get("state_pattern")
-                    if pattern is not None:
-                        normalized = self._sanitize_state_pattern(
-                            pattern, plugin_id, namespace_prefix
+                for ext_type in result:
+                    ext_list = extensions.get(ext_type, [])
+                    if not isinstance(ext_list, list):
+                        log.warning(
+                            "Plugin '%s' EXTENSIONS['%s'] is not a list; skipping",
+                            plugin_id, ext_type,
                         )
-                        safe_ext["state_pattern"] = normalized
-                    if ext_type == "panel_elements":
-                        safe_ext["sandbox_permissions"] = self._sanitize_token_list(
-                            safe_ext.get("sandbox_permissions"),
-                            _ALLOWED_SANDBOX_PERMISSIONS,
-                            plugin_id, "sandbox_permissions",
-                        )
-                        safe_ext["allow_features"] = self._sanitize_token_list(
-                            safe_ext.get("allow_features"),
-                            _ALLOWED_ALLOW_FEATURES,
-                            plugin_id, "allow_features",
-                        )
-                        # Surface the plugin's declared capabilities so the panel
-                        # iframe bridge can gate openavc:action requests
-                        # (device.command / state.set) against them, mirroring the
-                        # server-side PluginAPI capability checks.
-                        safe_ext["capabilities"] = list(info.get("capabilities", []))
-                    result[ext_type].append(safe_ext)
+                        continue
+                    id_field = _EXTENSION_ID_FIELD[ext_type]
+                    for ext in ext_list:
+                        if not isinstance(ext, dict):
+                            log.warning(
+                                "Plugin '%s' %s entry is not a dict; skipping",
+                                plugin_id, ext_type,
+                            )
+                            continue
+                        ext_id = ext.get(id_field)
+                        if isinstance(ext_id, str) and ext_id:
+                            key = (ext_type, ext_id)
+                            if key in seen_ids:
+                                log.warning(
+                                    "Plugin '%s' %s '%s' duplicates an already-"
+                                    "registered id; skipping",
+                                    plugin_id, ext_type, ext_id,
+                                )
+                                continue
+                            seen_ids.add(key)
+                        safe_ext = {
+                            **ext,
+                            "plugin_id": plugin_id,
+                            "plugin_name": plugin_name,
+                        }
+                        pattern = safe_ext.get("state_pattern")
+                        if pattern is not None:
+                            safe_ext["state_pattern"] = self._sanitize_state_pattern(
+                                pattern, plugin_id, namespace_prefix
+                            )
+                        if ext_type == "panel_elements":
+                            safe_ext["sandbox_permissions"] = self._sanitize_token_list(
+                                safe_ext.get("sandbox_permissions"),
+                                _ALLOWED_SANDBOX_PERMISSIONS,
+                                plugin_id, "sandbox_permissions",
+                            )
+                            safe_ext["allow_features"] = self._sanitize_token_list(
+                                safe_ext.get("allow_features"),
+                                _ALLOWED_ALLOW_FEATURES,
+                                plugin_id, "allow_features",
+                            )
+                            # Surface the plugin's declared capabilities so the
+                            # panel iframe bridge can gate openavc:action requests
+                            # (device.command / state.set) against them, mirroring
+                            # the server-side PluginAPI capability checks.
+                            safe_ext["capabilities"] = list(
+                                info.get("capabilities", [])
+                            )
+                        result[ext_type].append(safe_ext)
+            except Exception:  # One bad plugin must not blank the whole endpoint
+                log.exception(
+                    "Failed to collect extensions for plugin '%s'", plugin_id
+                )
 
         return result
 
@@ -1142,17 +1462,33 @@ class PluginLoader:
 
     # ──── Auto-Disable ────
 
-    async def _auto_disable_plugin(self, plugin_id: str) -> None:
-        """Stop a plugin that has exceeded MAX_CALLBACK_FAILURES."""
-        if plugin_id not in self._instances:
-            return
-        await self.stop_plugin(plugin_id)
-        self._status[plugin_id] = "error"
-        self._errors[plugin_id] = (
-            f"Auto-disabled after {MAX_CALLBACK_FAILURES} consecutive callback failures"
-        )
-        self._state.set(f"plugin.{plugin_id}.auto_disabled", True, source="system")
-        await self._events.emit("plugin.auto_disabled", {"plugin_id": plugin_id})
+    async def _auto_disable_plugin(self, plugin_id: str, epoch: int) -> None:
+        """Stop a plugin that has exceeded MAX_CALLBACK_FAILURES.
+
+        Held under the per-plugin lock and gated on the instance epoch so a
+        queued auto-disable can't kill a plugin that was already stopped or
+        restarted in the meantime (the failures it counted belonged to a
+        previous instance).
+        """
+        async with self._get_lock(plugin_id):
+            self._auto_disabling.discard(plugin_id)
+            if (
+                plugin_id not in self._instances
+                or self._instance_epoch.get(plugin_id) != epoch
+            ):
+                return
+            await self._stop_plugin_locked(plugin_id)
+            self._status[plugin_id] = "error"
+            self._errors[plugin_id] = (
+                f"Auto-disabled after {MAX_CALLBACK_FAILURES} consecutive "
+                f"callback failures"
+            )
+            self._state.set(
+                f"plugin.{plugin_id}.auto_disabled", True, source="system"
+            )
+            await self._events.emit(
+                "plugin.auto_disabled", {"plugin_id": plugin_id}
+            )
 
     # ──── Internal ────
 
@@ -1191,17 +1527,22 @@ class PluginLoader:
         """Log a message from a plugin."""
         logger_fn = getattr(log, level, log.info)
         logger_fn(f"[Plugin:{plugin_id}] {message}")
-        # Also emit as event for the IDE system log
+        # Also emit as event for the IDE system log. The mirror task is tracked
+        # and bounded — a plugin logging in a tight loop can't spawn unbounded
+        # one-shot tasks on the shared event loop; past the cap the mirror is
+        # dropped (the logger line above is already written).
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             return
-        loop.call_soon(
-            lambda: asyncio.create_task(
-                self._events.emit("log.plugin", {
-                    "plugin_id": plugin_id,
-                    "message": message,
-                    "level": level,
-                })
-            )
+        if len(self._log_tasks) >= MAX_PENDING_LOG_EVENTS:
+            return
+        task = loop.create_task(
+            self._events.emit("log.plugin", {
+                "plugin_id": plugin_id,
+                "message": message,
+                "level": level,
+            })
         )
+        self._log_tasks.add(task)
+        task.add_done_callback(self._log_tasks.discard)

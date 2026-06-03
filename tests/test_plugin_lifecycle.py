@@ -21,6 +21,7 @@ from server.core.plugin_loader import (
     _PLUGIN_CLASS_REGISTRY,
     _REGISTRY_LOCK,
     register_plugin_class,
+    validate_extensions,
 )
 from server.core.plugin_registry import PluginRegistry
 from server.core.state_store import StateStore
@@ -1262,3 +1263,447 @@ class TestErrorIsolation:
         assert success is True
         assert loader.get_plugin_status("valid_plugin") == "running"
         assert "valid_plugin" not in loader._errors
+
+
+# ═══════════════════════════════════════════════════════════
+#  5. EXTENSIONS Validation (H-025 / L-029)
+# ═══════════════════════════════════════════════════════════
+
+
+def _valid_info(plugin_id="extplug", **extra):
+    info = {
+        "id": plugin_id,
+        "name": "Ext Plugin",
+        "version": "1.0.0",
+        "author": "X",
+        "description": "Has extensions.",
+        "category": "utility",
+        "license": "MIT",
+    }
+    info.update(extra)
+    return info
+
+
+class TestExtensionsValidation:
+    """validate_extensions: shape + per-type id field + within-plugin dedup."""
+
+    def test_non_dict_rejected(self):
+        ok, err = validate_extensions([], "p", object)
+        assert ok is False
+        assert "must be a dict" in err
+
+    def test_unknown_type_rejected(self):
+        ok, err = validate_extensions({"widgets": []}, "p", object)
+        assert ok is False
+        assert "unknown extension type" in err
+
+    def test_type_value_must_be_list(self):
+        ok, err = validate_extensions({"views": {"id": "x"}}, "p", object)
+        assert ok is False
+        assert "must be a list" in err
+
+    def test_entry_must_be_dict(self):
+        ok, err = validate_extensions({"views": ["nope"]}, "p", object)
+        assert ok is False
+        assert "must be a dict" in err
+
+    def test_views_require_id(self):
+        ok, err = validate_extensions({"views": [{"label": "X"}]}, "p", object)
+        assert ok is False
+        assert "missing 'id'" in err
+
+    def test_panel_elements_require_type_field(self):
+        # panel_elements are keyed by `type`, not `id`.
+        ok, err = validate_extensions(
+            {"panel_elements": [{"label": "X"}]}, "p", object
+        )
+        assert ok is False
+        assert "missing 'type'" in err
+
+    def test_duplicate_id_within_plugin_rejected(self):
+        ok, err = validate_extensions(
+            {"views": [{"id": "dash"}, {"id": "dash"}]}, "p", object
+        )
+        assert ok is False
+        assert "duplicate" in err
+
+    def test_valid_extensions_pass(self):
+        ok, err = validate_extensions(
+            {
+                "views": [{"id": "a"}, {"id": "b"}],
+                "panel_elements": [{"type": "widget"}],
+            },
+            "p", object,
+        )
+        assert ok is True
+        assert err == ""
+
+    def test_validate_manifest_rejects_malformed_extensions(self, loader):
+        class BadExt:
+            PLUGIN_INFO = _valid_info("bad_ext")
+            EXTENSIONS = []  # a list, not a dict — the A125 footgun
+
+        valid, error = loader.validate_manifest(BadExt)
+        assert valid is False
+        assert "EXTENSIONS invalid" in error
+
+    def test_validate_manifest_accepts_good_extensions(self, loader):
+        class GoodExt:
+            PLUGIN_INFO = _valid_info("good_ext")
+            EXTENSIONS = {"views": [{"id": "v1", "label": "V1"}]}
+
+        valid, error = loader.validate_manifest(GoodExt)
+        assert valid is True
+
+
+class TestGetAllExtensionsIsolation:
+    """get_all_extensions: one bad plugin can't break the endpoint (H-025);
+    duplicate ids across plugins are de-duplicated (L-029)."""
+
+    @pytest.mark.asyncio
+    async def test_malformed_extensions_does_not_break_endpoint(self, loader):
+        class GoodExtPlugin:
+            PLUGIN_INFO = _valid_info("good_ext")
+            EXTENSIONS = {"views": [{"id": "good_view", "label": "Good"}]}
+
+            async def start(self, api):
+                pass
+
+            async def stop(self):
+                pass
+
+        register_plugin_class(GoodExtPlugin)
+        await loader.start_plugin("good_ext")
+
+        # A plugin that slipped a non-dict EXTENSIONS into a running instance
+        # (e.g. mutated after load) must not blank the endpoint for everyone.
+        class RogueExtPlugin:
+            PLUGIN_INFO = _valid_info("rogue")
+            EXTENSIONS = "not a dict"
+
+        loader._instances["rogue"] = RogueExtPlugin()
+
+        result = loader.get_all_extensions()
+        view_ids = [v["id"] for v in result["views"]]
+        assert "good_view" in view_ids
+
+    @pytest.mark.asyncio
+    async def test_non_dict_entry_skipped_rest_kept(self, loader):
+        class MixedExtPlugin:
+            PLUGIN_INFO = _valid_info("mixed")
+
+            async def start(self, api):
+                pass
+
+            async def stop(self):
+                pass
+
+        register_plugin_class(MixedExtPlugin)
+        await loader.start_plugin("mixed")
+        # Bypass load-time validation to exercise serve-time defensiveness.
+        MixedExtPlugin.EXTENSIONS = {
+            "views": [{"id": "ok"}, "garbage", {"id": "ok2"}]
+        }
+
+        result = loader.get_all_extensions()
+        view_ids = [v["id"] for v in result["views"]]
+        assert "ok" in view_ids and "ok2" in view_ids
+
+    @pytest.mark.asyncio
+    async def test_duplicate_ids_across_plugins_deduped(self, loader):
+        class PluginA:
+            PLUGIN_INFO = _valid_info("plug_a")
+            EXTENSIONS = {"views": [{"id": "dash", "label": "A dash"}]}
+
+            async def start(self, api):
+                pass
+
+            async def stop(self):
+                pass
+
+        class PluginB:
+            PLUGIN_INFO = _valid_info("plug_b")
+            EXTENSIONS = {"views": [{"id": "dash", "label": "B dash"}]}
+
+            async def start(self, api):
+                pass
+
+            async def stop(self):
+                pass
+
+        register_plugin_class(PluginA)
+        register_plugin_class(PluginB)
+        await loader.start_plugin("plug_a")
+        await loader.start_plugin("plug_b")
+
+        result = loader.get_all_extensions()
+        dash_views = [v for v in result["views"] if v["id"] == "dash"]
+        assert len(dash_views) == 1  # second plugin's duplicate skipped
+
+
+# ═══════════════════════════════════════════════════════════
+#  6. Lifecycle-Hook Timeouts (H-026)
+# ═══════════════════════════════════════════════════════════
+
+
+class TestLifecycleTimeouts:
+    @pytest.mark.asyncio
+    async def test_start_hook_timeout_fails_cleanly(self, loader, monkeypatch):
+        monkeypatch.setattr("server.core.plugin_loader.PLUGIN_START_TIMEOUT", 0.05)
+
+        class HangStart:
+            PLUGIN_INFO = _valid_info("hang_start")
+
+            async def start(self, api):
+                await asyncio.sleep(10)
+
+            async def stop(self):
+                pass
+
+        register_plugin_class(HangStart)
+        success = await loader.start_plugin("hang_start")
+        assert success is False
+        assert loader.get_plugin_status("hang_start") == "error"
+        assert "timed out" in loader._errors.get("hang_start", "")
+        assert not loader.is_running("hang_start")
+
+    @pytest.mark.asyncio
+    async def test_stop_hook_timeout_still_tears_down(self, loader, monkeypatch):
+        monkeypatch.setattr("server.core.plugin_loader.PLUGIN_STOP_TIMEOUT", 0.05)
+
+        class HangStop:
+            PLUGIN_INFO = _valid_info("hang_stop")
+
+            async def start(self, api):
+                pass
+
+            async def stop(self):
+                await asyncio.sleep(10)
+
+        register_plugin_class(HangStop)
+        await loader.start_plugin("hang_stop")
+        assert loader.is_running("hang_stop")
+
+        # Must return (not hang) and complete teardown despite the stuck stop().
+        await asyncio.wait_for(loader.stop_plugin("hang_stop"), timeout=2.0)
+        assert not loader.is_running("hang_stop")
+        assert loader.get_plugin_status("hang_stop") == "stopped"
+
+    @pytest.mark.asyncio
+    async def test_health_check_timeout(self, loader, monkeypatch):
+        monkeypatch.setattr("server.core.plugin_loader.PLUGIN_HEALTH_TIMEOUT", 0.05)
+
+        class HangHealth:
+            PLUGIN_INFO = _valid_info("hang_health")
+
+            async def start(self, api):
+                pass
+
+            async def stop(self):
+                pass
+
+            async def health_check(self):
+                await asyncio.sleep(10)
+
+        register_plugin_class(HangHealth)
+        await loader.start_plugin("hang_health")
+
+        health = await asyncio.wait_for(
+            loader.get_health("hang_health"), timeout=2.0
+        )
+        assert health["status"] == "error"
+        assert "timed out" in health["message"]
+
+
+# ═══════════════════════════════════════════════════════════
+#  7. Lifecycle Concurrency: locks, epoch, config (M-041..M-043)
+# ═══════════════════════════════════════════════════════════
+
+
+class _ConfigEchoPlugin:
+    PLUGIN_INFO = _valid_info("cfg_echo")
+
+    async def start(self, api):
+        self.api = api
+
+    async def stop(self):
+        pass
+
+
+class TestLifecycleConcurrency:
+    @pytest.mark.asyncio
+    async def test_already_running_different_config_restarts_to_apply(self, loader):
+        register_plugin_class(_ConfigEchoPlugin)
+        await loader.start_plugin("cfg_echo", {"a": 1})
+        first = loader._instances["cfg_echo"]
+
+        # A second start with a DIFFERENT config must apply it (not silently
+        # drop it) — done by restarting the instance.
+        await loader.start_plugin("cfg_echo", {"a": 2})
+        second = loader._instances["cfg_echo"]
+        assert second is not first
+        assert loader.get_running_config("cfg_echo") == {"a": 2}
+
+    @pytest.mark.asyncio
+    async def test_already_running_same_config_is_noop(self, loader):
+        register_plugin_class(_ConfigEchoPlugin)
+        await loader.start_plugin("cfg_echo", {"a": 1})
+        first = loader._instances["cfg_echo"]
+
+        await loader.start_plugin("cfg_echo", {"a": 1})
+        second = loader._instances["cfg_echo"]
+        assert second is first  # no needless restart
+
+    @pytest.mark.asyncio
+    async def test_stale_auto_disable_does_not_kill_restarted_instance(self, loader):
+        register_plugin_class(ValidPlugin)
+        await loader.start_plugin("valid_plugin")
+        stale_epoch = loader._instance_epoch["valid_plugin"]
+
+        # Restart: the running instance is now a different epoch.
+        await loader.stop_plugin("valid_plugin")
+        await loader.start_plugin("valid_plugin")
+        assert loader.is_running("valid_plugin")
+
+        # A queued auto-disable from the OLD instance must no-op.
+        await loader._auto_disable_plugin("valid_plugin", stale_epoch)
+        assert loader.is_running("valid_plugin")
+        assert loader.get_plugin_status("valid_plugin") == "running"
+
+    @pytest.mark.asyncio
+    async def test_auto_disable_scheduled_once_past_threshold(self, loader, monkeypatch):
+        """M-041: once the failure threshold is crossed, further failures don't
+        each spawn a duplicate _auto_disable_plugin task."""
+        state = loader._state
+        calls = []
+
+        async def fake_disable(pid, epoch):
+            calls.append((pid, epoch))  # deliberately does NOT clear the guard
+
+        monkeypatch.setattr(loader, "_auto_disable_plugin", fake_disable)
+
+        class Fragile:
+            PLUGIN_INFO = _valid_info("fragile2", capabilities=["state_read"])
+
+            async def start(self, api):
+                async def always_fail(key, value, old_value):
+                    raise RuntimeError("always fails")
+
+                await api.state_subscribe("var.*", always_fail)
+
+            async def stop(self):
+                pass
+
+        register_plugin_class(Fragile)
+        await loader.start_plugin("fragile2")
+
+        for i in range(MAX_CALLBACK_FAILURES + 5):
+            state.set("var.trigger", i, source="test")
+            await asyncio.sleep(0.01)
+        await asyncio.sleep(0.05)
+
+        assert len(calls) == 1
+
+
+# ═══════════════════════════════════════════════════════════
+#  8. State-key hygiene & incompatible surfacing (M-044..M-046, L-028..L-031)
+# ═══════════════════════════════════════════════════════════
+
+
+class _LinuxOnlyPlugin:
+    PLUGIN_INFO = _valid_info("linux_only", platforms=["linux_arm64"])
+
+    async def start(self, api):
+        pass
+
+    async def stop(self):
+        pass
+
+
+class TestStateKeyHygiene:
+    @pytest.mark.asyncio
+    async def test_missing_keys_deleted_not_set_none(self, loader):
+        """L-028: clearing missing state uses delete(), so no dead None-valued
+        keys linger in the snapshot broadcast to panels."""
+        loader._state.set("plugin.valid_plugin.missing", True)
+        loader._state.set("plugin.valid_plugin.missing_reason", "x")
+        register_plugin_class(ValidPlugin)
+
+        await loader.start_plugin("valid_plugin")
+        snap = loader._state.snapshot()
+        assert "plugin.valid_plugin.missing" not in snap
+        assert "plugin.valid_plugin.missing_reason" not in snap
+
+    @pytest.mark.asyncio
+    async def test_incompatible_and_auto_disabled_cleared_on_start(self, loader):
+        """M-045: a successful start clears any stale incompatible/auto_disabled
+        flag from a prior run."""
+        loader._state.set("plugin.valid_plugin.incompatible", True)
+        loader._state.set("plugin.valid_plugin.auto_disabled", True)
+        register_plugin_class(ValidPlugin)
+
+        await loader.start_plugin("valid_plugin")
+        snap = loader._state.snapshot()
+        assert "plugin.valid_plugin.incompatible" not in snap
+        assert "plugin.valid_plugin.auto_disabled" not in snap
+
+    @pytest.mark.asyncio
+    async def test_manual_stop_clears_auto_disabled(self, loader):
+        register_plugin_class(ValidPlugin)
+        await loader.start_plugin("valid_plugin")
+        loader._state.set("plugin.valid_plugin.auto_disabled", True)
+
+        await loader.stop_plugin("valid_plugin")
+        assert "plugin.valid_plugin.auto_disabled" not in loader._state.snapshot()
+
+    def test_remove_tracking_clears_all_state_keys(self, loader):
+        for suffix in ("incompatible", "auto_disabled", "missing", "missing_reason"):
+            loader._state.set(f"plugin.ghost.{suffix}", True)
+        loader._incompatible_plugins["ghost"] = {"plugin_id": "ghost"}
+        loader._status["ghost"] = "incompatible"
+
+        loader.remove_plugin_tracking("ghost")
+        snap = loader._state.snapshot()
+        assert not any(k.startswith("plugin.ghost.") for k in snap)
+        assert "ghost" not in loader._incompatible_plugins
+        assert "ghost" not in loader._status
+
+    @pytest.mark.asyncio
+    async def test_incompatible_start_reports_incompatible_not_error(self, loader):
+        """M-046: enabling an incompatible plugin surfaces as 'incompatible'
+        (its own banner), not a generic 'error' / 'Invalid manifest'."""
+        loader._platform_id = "win_x64"
+        register_plugin_class(_LinuxOnlyPlugin)
+
+        success = await loader.start_plugin("linux_only")
+        assert success is False
+        assert loader.get_plugin_status("linux_only") == "incompatible"
+        assert "linux_only" not in loader._errors
+        assert loader._state.snapshot().get("plugin.linux_only.incompatible") is True
+
+    @pytest.mark.asyncio
+    async def test_list_plugins_surfaces_incompatible(self, loader):
+        """L-030: an incompatible plugin shows up with status 'incompatible'
+        and compatible=False so the IDE can render its distinct banner."""
+        loader._platform_id = "win_x64"
+        register_plugin_class(_LinuxOnlyPlugin)
+        await loader.start_plugin("linux_only")
+
+        entry = next(
+            p for p in loader.list_plugins() if p["plugin_id"] == "linux_only"
+        )
+        assert entry["status"] == "incompatible"
+        assert entry["compatible"] is False
+
+    @pytest.mark.asyncio
+    async def test_plugin_log_tasks_are_bounded(self, loader, monkeypatch):
+        """L-031: a plugin logging in a tight loop can't spawn unbounded
+        one-shot event tasks."""
+        monkeypatch.setattr("server.core.plugin_loader.MAX_PENDING_LOG_EVENTS", 5)
+
+        for i in range(50):
+            loader._plugin_log("noisy", f"msg {i}")
+        # Capped before the tasks even get a chance to run.
+        assert len(loader._log_tasks) <= 5
+
+        await asyncio.sleep(0.05)  # let the queued mirrors drain

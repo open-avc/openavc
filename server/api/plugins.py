@@ -523,8 +523,9 @@ async def uninstall_plugin_endpoint(
             # silently restoring the just-removed plugin and its config.
             engine.bump_project_revision()
 
-        # Clear missing plugin state if tracked
-        engine.plugin_loader.clear_missing(plugin_id)
+        # Clear all in-memory tracking and broadcast state keys (missing,
+        # incompatible, auto_disabled) so nothing lingers for the uninstalled id.
+        engine.plugin_loader.remove_plugin_tracking(plugin_id)
 
         return result
     except ValueError as e:

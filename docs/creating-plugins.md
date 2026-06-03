@@ -174,6 +174,8 @@ plugin_repo/
         └── app.js        # Logic
 ```
 
+If your plugin's Python code spans several files, import the extra modules with a relative import (`from . import helpers` or `from .helpers import Thing`). Each plugin loads in its own isolated namespace, so a plain `import helpers` won't find a sibling file.
+
 ### postMessage API
 
 The panel and the plugin iframe communicate through `window.postMessage`. All messages are JSON objects with a `type` field.
