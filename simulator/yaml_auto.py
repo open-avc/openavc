@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import re
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,44 @@ import yaml
 from simulator.tcp_simulator import TCPSimulator
 
 logger = logging.getLogger(__name__)
+
+
+# Names exposed to inline `handler:` scripts (both TCP and OSC). This is the
+# documented contract (writing-simulators.md "Script Handlers"): the same set
+# for every transport. The exec sandbox empties __builtins__, so exception
+# types must be injected explicitly — otherwise a handler's `try/except
+# ValueError` raises NameError and the intended error branch is silently lost.
+_SAFE_HANDLER_BUILTINS: dict[str, Any] = {
+    "int": int, "float": float, "str": str, "bool": bool,
+    "max": max, "min": min, "round": round, "abs": abs, "len": len,
+    "re": re, "format": format, "range": range, "list": list,
+    "dict": dict, "set": set, "tuple": tuple, "sorted": sorted,
+    "enumerate": enumerate,
+    "True": True, "False": False, "None": None,
+    # Common exception types — make try/except branches work under the
+    # emptied __builtins__ sandbox.
+    "Exception": Exception, "ValueError": ValueError, "TypeError": TypeError,
+    "KeyError": KeyError, "IndexError": IndexError,
+    "AttributeError": AttributeError, "ZeroDivisionError": ZeroDivisionError,
+    "RuntimeError": RuntimeError, "StopIteration": StopIteration,
+}
+
+
+def _as_number(value: Any) -> float | None:
+    """Return value as a float, or None if it isn't numeric.
+
+    Used for min/max bounds, which the schema types as numbers but a malformed
+    driver could author as a non-numeric scalar. Returning None lets the caller
+    skip clamping rather than crash on `value < min` (TypeError) or int('abc').
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return None
 
 
 class YAMLAutoSimulator(TCPSimulator):
@@ -232,6 +271,7 @@ class YAMLAutoSimulator(TCPSimulator):
 
     async def stop(self) -> None:
         """Stop the simulator server."""
+        self._cancel_state_machine_timers()
         if self._is_http:
             await self._stop_http()
             return
@@ -522,18 +562,7 @@ class YAMLAutoSimulator(TCPSimulator):
             "state": state_proxy,
             "config": self.config,
             "respond": respond,
-            "int": int,
-            "float": float,
-            "str": str,
-            "bool": bool,
-            "max": max,
-            "min": min,
-            "round": round,
-            "abs": abs,
-            "len": len,
-            "True": True,
-            "False": False,
-            "None": None,
+            **_SAFE_HANDLER_BUILTINS,
         }
 
         try:
@@ -593,6 +622,12 @@ class YAMLAutoSimulator(TCPSimulator):
         """Execute a command handler: update state and generate response."""
         delimiter = self._get_delimiter()
 
+        # Drive any state machines with this command name (the documented
+        # trigger contract). A machine that rejects the command in its current
+        # state (e.g. during cooldown) suppresses the response entirely.
+        if self._state_machines and self._fire_state_machine_triggers(handler.name):
+            return None
+
         # Apply state changes
         for state_key, source in handler.state_changes.items():
             if isinstance(source, int) and not isinstance(source, bool):
@@ -611,6 +646,21 @@ class YAMLAutoSimulator(TCPSimulator):
             return (response_text + delimiter).encode()
 
         return None
+
+    def _fire_state_machine_triggers(self, trigger_name: str) -> bool:
+        """Drive every state machine with a command-name trigger.
+
+        Returns True if any machine rejects the command in its current state,
+        in which case the caller suppresses the response and no machine
+        transitions (reject is all-or-nothing).
+        """
+        if any(
+            sm.is_rejected(trigger_name) for sm in self._state_machines.values()
+        ):
+            return True
+        for sm in self._state_machines.values():
+            sm.trigger(trigger_name)
+        return False
 
     def _execute_query_handler(self, handler: QueryHandler) -> bytes | None:
         """Execute a query handler: respond with current state."""
@@ -655,27 +705,7 @@ class YAMLAutoSimulator(TCPSimulator):
             "state": state_proxy,
             "config": self.config,
             "respond": respond,
-            "re": re,
-            "int": int,
-            "float": float,
-            "str": str,
-            "bool": bool,
-            "max": max,
-            "min": min,
-            "format": format,
-            "round": round,
-            "abs": abs,
-            "len": len,
-            "range": range,
-            "list": list,
-            "dict": dict,
-            "set": set,
-            "tuple": tuple,
-            "sorted": sorted,
-            "enumerate": enumerate,
-            "True": True,
-            "False": False,
-            "None": None,
+            **_SAFE_HANDLER_BUILTINS,
         }
 
         try:
@@ -920,9 +950,18 @@ class YAMLAutoSimulator(TCPSimulator):
         if controls:
             self.SIMULATOR_INFO["controls"] = controls
 
-        # Build state machines
+        # Build state machines. Skip malformed entries with a warning rather
+        # than letting a missing key raise a KeyError that aborts the whole
+        # device's construction (the validator flags these up front).
         from simulator.base import StateMachine
         for name, sm_def in sim.get("state_machines", {}).items():
+            if not (isinstance(sm_def, dict)
+                    and {"states", "initial", "transitions"} <= sm_def.keys()):
+                logger.warning(
+                    "%s: skipping malformed state_machine '%s' "
+                    "(needs states, initial, transitions)", self.driver_id, name,
+                )
+                continue
             self._state_machines[name] = StateMachine(
                 name=name,
                 states=sm_def["states"],
@@ -941,7 +980,15 @@ class YAMLAutoSimulator(TCPSimulator):
         for handler_def in sim.get("command_handlers", []):
             # OSC handlers use "address" key (fnmatch pattern)
             if "address" in handler_def and "handler" in handler_def:
-                code = compile(handler_def["handler"], f"<sim:{self.driver_id}>", "exec")
+                try:
+                    code = compile(handler_def["handler"], f"<sim:{self.driver_id}>", "exec")
+                except SyntaxError as e:
+                    logger.warning(
+                        "%s: skipping OSC handler for %s — handler code has a "
+                        "syntax error: %s",
+                        self.driver_id, handler_def["address"], e,
+                    )
+                    continue
                 self._osc_script_handlers.append(OSCScriptHandler(
                     address_pattern=handler_def["address"],
                     code=code,
@@ -959,7 +1006,14 @@ class YAMLAutoSimulator(TCPSimulator):
                 continue
 
             if "handler" in handler_def:
-                code = compile(handler_def["handler"], f"<sim:{self.driver_id}>", "exec")
+                try:
+                    code = compile(handler_def["handler"], f"<sim:{self.driver_id}>", "exec")
+                except SyntaxError as e:
+                    logger.warning(
+                        "%s: skipping command handler %r — handler code has a "
+                        "syntax error: %s", self.driver_id, pattern_str, e,
+                    )
+                    continue
                 self._script_handlers.append(ScriptHandler(
                     pattern=pattern,
                     code=code,
@@ -973,7 +1027,7 @@ class YAMLAutoSimulator(TCPSimulator):
 
         # Parse notification templates — maps state changes to unsolicited messages
         # Format: notifications: { "state_key": { "value": "message template", ... } }
-        # Template variables: {key} = state key name, {value} = new value, {channel} = extracted channel number
+        # Template variables: {key} = state key name, {value} = new value
         self._notification_map: dict[str, dict[str, str]] = {}
         for key, value_map in sim.get("notifications", {}).items():
             if isinstance(value_map, dict):
@@ -993,16 +1047,21 @@ class YAMLAutoSimulator(TCPSimulator):
 
     def set_state(self, key: str, value: Any) -> None:
         """Override to broadcast state changes to connected clients (TCP, UDP, and OSC)."""
-        # Clamp numeric values to declared min/max before storing
+        # Clamp numeric values to declared min/max before storing. Bounds are
+        # typed as numbers, but a malformed driver could author a non-numeric
+        # scalar — _as_number returns None for those so we skip clamping rather
+        # than raise on `value < min`. For an integer value, round a fractional
+        # bound inward (ceil a lower bound, floor an upper bound) so the clamped
+        # value still respects the bound instead of truncating past it.
         if isinstance(value, (int, float)) and not isinstance(value, bool):
             state_vars = self._driver_def.get("state_variables", {})
             var_def = state_vars.get(key, {})
-            v_min = var_def.get("min")
-            v_max = var_def.get("max")
+            v_min = _as_number(var_def.get("min"))
+            v_max = _as_number(var_def.get("max"))
             if v_min is not None and value < v_min:
-                value = type(value)(v_min)
+                value = math.ceil(v_min) if isinstance(value, int) else v_min
             if v_max is not None and value > v_max:
-                value = type(value)(v_max)
+                value = math.floor(v_max) if isinstance(value, int) else v_max
 
         old = self._state.get(key)
         super().set_state(key, value)
@@ -1126,25 +1185,28 @@ class YAMLAutoSimulator(TCPSimulator):
             try:
                 result = int(value)
             except (ValueError, TypeError):
-                return 0
-            v_min = var_def.get("min")
-            v_max = var_def.get("max")
+                # Parity with ConfigurableDriver._coerce_value: a non-integer
+                # value is returned raw (so bindings/conditions see what the
+                # real device would send) rather than silently coerced to 0.
+                return value
+            v_min = _as_number(var_def.get("min"))
+            v_max = _as_number(var_def.get("max"))
             if v_min is not None:
-                result = max(int(v_min), result)
+                result = max(math.ceil(v_min), result)
             if v_max is not None:
-                result = min(int(v_max), result)
+                result = min(math.floor(v_max), result)
             return result
         elif var_type == "number":
             try:
                 result = float(value)
             except (ValueError, TypeError):
-                return 0.0
-            v_min = var_def.get("min")
-            v_max = var_def.get("max")
+                return value
+            v_min = _as_number(var_def.get("min"))
+            v_max = _as_number(var_def.get("max"))
             if v_min is not None:
-                result = max(float(v_min), result)
+                result = max(v_min, result)
             if v_max is not None:
-                result = min(float(v_max), result)
+                result = min(v_max, result)
             return result
         elif var_type == "boolean":
             if isinstance(value, bool):
@@ -1181,7 +1243,10 @@ class YAMLAutoSimulator(TCPSimulator):
             var_type = var_def.get("type", "string")
             label = var_def.get("label", key.replace("_", " ").title())
             if var_type == "integer":
-                initial_state[key] = var_def.get("min", 0)
+                # An integer var must start as an int even if min is authored
+                # fractional; ceil keeps the start value >= min.
+                min_num = _as_number(var_def.get("min"))
+                initial_state[key] = math.ceil(min_num) if min_num is not None else 0
                 v_min = var_def.get("min")
                 v_max = var_def.get("max")
                 if v_min is not None and v_max is not None:
@@ -1329,7 +1394,10 @@ def _send_template_to_regex(template: str, params: dict) -> str:
     result = template
     for param_name, param_def in params.items():
         param_type = param_def.get("type", "string")
-        if param_type == "integer":
+        if param_type in ("integer", "child_id"):
+            # child_id values are integer child-entity IDs (optionally
+            # zero-padded), so capture digits — not a greedy (.+) that
+            # over-matches and breaks parity with the driver's send shape.
             capture = r"(\d+)"
         elif param_type == "number":
             capture = r"([\d.]+)"

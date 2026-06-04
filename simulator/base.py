@@ -39,8 +39,17 @@ class BaseSimulator(ABC):
         self._running = False
         self._network_layer = None  # Set by SimulatorManager
 
-        # Build state machines from SIMULATOR_INFO if present
+        # Build state machines from SIMULATOR_INFO if present. Skip malformed
+        # entries with a warning instead of letting a missing key raise a
+        # KeyError that aborts construction of the whole simulator.
         for name, sm_def in info.get("state_machines", {}).items():
+            if not (isinstance(sm_def, dict)
+                    and {"states", "initial", "transitions"} <= sm_def.keys()):
+                logger.warning(
+                    "Skipping malformed state_machine '%s' on %s "
+                    "(needs states, initial, transitions)", name, self.device_id,
+                )
+                continue
             self._state_machines[name] = StateMachine(
                 name=name,
                 states=sm_def["states"],
@@ -114,6 +123,13 @@ class BaseSimulator(ABC):
             logger.warning("No state machine '%s' on %s", machine_name, self.device_id)
             return False
         return sm.trigger(trigger)
+
+    def _cancel_state_machine_timers(self) -> None:
+        """Cancel pending auto-transition timers so a stopped simulator doesn't
+        fire a transition into a dead instance. Idempotent; safe to call from
+        every stop() path."""
+        for sm in self._state_machines.values():
+            sm.cancel_timers()
 
     # ── Error Injection ──
 
@@ -280,6 +296,22 @@ class StateMachine:
 
         return False
 
+    def is_rejected(self, trigger_name: str) -> bool:
+        """True if the current state explicitly rejects this trigger.
+
+        Lets command dispatch suppress the response for commands a device
+        ignores in its current state (e.g. anything during projector cooldown,
+        declared as ``{from: cooling, trigger: "*", reject: true}``).
+        """
+        for t in self.transitions:
+            if t.get("from") != self.current:
+                continue
+            if t.get("reject"):
+                t_trigger = t.get("trigger")
+                if t_trigger == "*" or t_trigger == trigger_name:
+                    return True
+        return False
+
     def _enter_state(self, new_state: str) -> None:
         """Transition to a new state and schedule auto-transitions."""
         self.current = new_state
@@ -304,6 +336,12 @@ class StateMachine:
         """Wait and then auto-transition."""
         await asyncio.sleep(delay)
         self._enter_state(target)
+
+    def cancel_timers(self) -> None:
+        """Cancel a pending auto-transition timer (called on simulator stop)."""
+        if self._timer_task and not self._timer_task.done():
+            self._timer_task.cancel()
+        self._timer_task = None
 
 
 def _safe_ascii(data: bytes) -> str:

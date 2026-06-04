@@ -134,7 +134,93 @@ def validate_yaml_driver(path: Path) -> ValidationResult:
     # ── Check 5: Type consistency ──
     _check_type_consistency(result, state_vars, sim_initial, sim_handlers)
 
+    # ── Check 6: State machine structure ──
+    _check_state_machines(result, sim, commands)
+
     return result
+
+
+def _check_state_machines(result: ValidationResult, sim: dict, commands: dict) -> None:
+    """Validate the simulator.state_machines structure.
+
+    Catches the malformed entries that would otherwise raise a KeyError at
+    simulation-launch time (missing states/initial/transitions, off-list
+    states), and warns when a transition can never fire (trigger names no
+    command, or no trigger/after_seconds at all).
+    """
+    machines = sim.get("state_machines")
+    if not machines:
+        return
+    if not isinstance(machines, dict):
+        result.error("state_machine", "simulator.state_machines must be a mapping")
+        return
+
+    command_names = set(commands.keys())
+    for name, sm in machines.items():
+        if not isinstance(sm, dict):
+            result.error("state_machine", f"state_machine '{name}' must be a mapping")
+            continue
+
+        states = sm.get("states")
+        if not isinstance(states, list) or not states:
+            result.error(
+                "state_machine",
+                f"state_machine '{name}' needs a non-empty 'states' list",
+            )
+            states = states if isinstance(states, list) else []
+
+        initial = sm.get("initial")
+        if initial is None:
+            result.error("state_machine", f"state_machine '{name}' needs an 'initial' state")
+        elif states and initial not in states:
+            result.error(
+                "state_machine",
+                f"state_machine '{name}' initial '{initial}' is not one of {states}",
+            )
+
+        transitions = sm.get("transitions")
+        if not isinstance(transitions, list):
+            result.error(
+                "state_machine",
+                f"state_machine '{name}' needs a 'transitions' list",
+            )
+            continue
+
+        for i, t in enumerate(transitions):
+            label = f"state_machine '{name}' transition {i}"
+            if not isinstance(t, dict):
+                result.error("state_machine", f"{label} must be a mapping")
+                continue
+
+            frm = t.get("from")
+            if frm is None:
+                result.error("state_machine", f"{label} is missing 'from'")
+            elif states and frm not in states:
+                result.error("state_machine", f"{label} 'from' state '{frm}' is not one of {states}")
+
+            is_reject = bool(t.get("reject"))
+            to = t.get("to")
+            if not is_reject:
+                if to is None:
+                    result.error("state_machine", f"{label} is missing 'to'")
+                elif states and to not in states:
+                    result.error("state_machine", f"{label} 'to' state '{to}' is not one of {states}")
+
+            if "after_seconds" in t and not isinstance(t["after_seconds"], (int, float)):
+                result.error("state_machine", f"{label} 'after_seconds' must be a number")
+
+            if "trigger" not in t and "after_seconds" not in t and not is_reject:
+                result.warning(
+                    "state_machine",
+                    f"{label} has neither 'trigger' nor 'after_seconds' — it can never fire",
+                )
+
+            trig = t.get("trigger")
+            if trig and trig != "*" and command_names and trig not in command_names:
+                result.warning(
+                    "state_machine",
+                    f"{label} trigger '{trig}' matches no command name — it will never fire",
+                )
 
 
 def _check_state_coverage(

@@ -124,6 +124,7 @@ class TCPSimulator(BaseSimulator):
     async def stop(self) -> None:
         """Stop the TCP server and disconnect all clients."""
         self._running = False
+        self._cancel_state_machine_timers()
         # Close all client connections
         for client_id, writer in list(self._clients.items()):
             try:
