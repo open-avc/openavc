@@ -41,17 +41,71 @@ from server.utils.paths import safe_path_within
 log = get_logger(__name__)
 
 _SEED_DIR = SEED_TEMPLATES_DIR
-_MAX_IMPORT_SIZE = 10 * 1024 * 1024  # 10 MB
+_MAX_IMPORT_SIZE = 10 * 1024 * 1024  # 10 MB compressed
+# Zip-bomb guards for archive extraction (generous — a real project bundle is
+# text + already-compressed images; these only stop pathological archives).
+_MAX_DECOMPRESSED_SIZE = 250 * 1024 * 1024  # 250 MB total uncompressed
+_MAX_ZIP_MEMBERS = 10_000
+
+# Names Windows reserves as legacy device files; a directory named any of these
+# (case-insensitively, with or without an extension) can't be created normally.
+_WINDOWS_RESERVED = {
+    "con", "prn", "aux", "nul",
+    *(f"com{i}" for i in range(1, 10)),
+    *(f"lpt{i}" for i in range(1, 10)),
+}
 
 
 # --- Helpers ---
 
 
 def sanitize_id(raw: str) -> str:
-    """Sanitize a string to a valid project ID."""
+    """Sanitize a string to a valid, lowercase, filesystem-safe project ID.
+
+    Lowercased so ids that differ only in case (``Lobby`` vs ``lobby``) map to
+    one project on case-insensitive filesystems instead of spuriously
+    colliding. Windows reserved device names (``con``, ``nul``, ``com1`` ...)
+    get a suffix so the project directory can actually be created.
+    """
     s = re.sub(r"[^a-zA-Z0-9_-]", "_", raw.strip())
-    s = re.sub(r"_+", "_", s).strip("_")
-    return s or "untitled"
+    s = re.sub(r"_+", "_", s).strip("_").lower()
+    if not s:
+        return "untitled"
+    if s in _WINDOWS_RESERVED:
+        s = f"{s}_project"
+    return s
+
+
+def _check_zip_safety(zf: zipfile.ZipFile) -> None:
+    """Reject archives whose member count or total uncompressed size would make
+    extraction a DoS (zip bomb). Uses the central-directory declared sizes."""
+    infos = zf.infolist()
+    if len(infos) > _MAX_ZIP_MEMBERS:
+        raise ValueError(f"Archive has too many entries (max {_MAX_ZIP_MEMBERS}).")
+    total = 0
+    for info in infos:
+        total += info.file_size
+        if total > _MAX_DECOMPRESSED_SIZE:
+            raise ValueError(
+                f"Archive is too large uncompressed "
+                f"(max {_MAX_DECOMPRESSED_SIZE // (1024 * 1024)} MB)."
+            )
+
+
+def _copy_assets(src_assets: Path, dest_assets: Path) -> None:
+    """Copy a project's assets/ tree to a destination, preserving subdirs.
+
+    No-op when the source has no assets. Used so saving, duplicating, and
+    opening library projects carry uploaded images/backgrounds along instead
+    of leaving dead asset:// references.
+    """
+    if not src_assets.is_dir():
+        return
+    for f in src_assets.rglob("*"):
+        if f.is_file():
+            target = dest_assets / f.relative_to(src_assets)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(f, target)
 
 
 def _lib_dir() -> Path:
@@ -131,6 +185,7 @@ def _seed_zip_to_library(zip_path: Path, project_id: str, lib: Path) -> None:
     project_dir.mkdir(parents=True, exist_ok=True)
 
     with zipfile.ZipFile(zip_path, "r") as zf:
+        _check_zip_safety(zf)
         # Extract and migrate the project file
         avc_names = [n for n in zf.namelist() if n.endswith(".avc")]
         if not avc_names:
@@ -189,7 +244,7 @@ def ensure_starter_projects() -> None:
     # installed when the user actually opens the project, because the
     # open_from_library flow handles bundled driver installation.)
     for zip_file in sorted(_SEED_DIR.glob("*.zip")):
-        project_id = zip_file.stem
+        project_id = sanitize_id(zip_file.stem)
         if (lib / project_id / "project.avc").exists():
             continue
         try:
@@ -200,7 +255,7 @@ def ensure_starter_projects() -> None:
 
     # Seed plain .avc files (skip if a .zip with the same stem was already seeded)
     for avc_file in sorted(_SEED_DIR.glob("*.avc")):
-        project_dir = lib / avc_file.stem
+        project_dir = lib / sanitize_id(avc_file.stem)
         if project_dir.exists():
             continue
         project_dir.mkdir()
@@ -265,6 +320,7 @@ def save_to_library(
     scripts_dir: Path,
     name: str,
     description: str,
+    assets_dir: Path | None = None,
 ) -> None:
     """Save the current project to the library."""
     sid = sanitize_id(project_id)
@@ -290,6 +346,11 @@ def save_to_library(
         dest_scripts.mkdir(exist_ok=True)
         for f in scripts_dir.glob("*.py"):
             shutil.copy2(f, dest_scripts / f.name)
+
+    # Carry uploaded assets so the saved project's image/background references
+    # still resolve.
+    if assets_dir is not None:
+        _copy_assets(assets_dir, project_dir / "assets")
 
     log.info(f"Saved project '{sid}' to library")
 
@@ -349,14 +410,20 @@ def duplicate_project(source_id: str, new_id: str, new_name: str) -> None:
         for fname, source_code in scripts.items():
             (dest_scripts / fname).write_text(source_code, encoding="utf-8")
 
+    # Carry the source project's uploaded assets so the duplicate's references
+    # resolve (get_project returns only data + scripts).
+    _copy_assets(_lib_dir() / sanitize_id(source_id) / "assets", project_dir / "assets")
+
     log.info(f"Duplicated project '{source_id}' -> '{new_sid}'")
 
 
 def create_blank_project(project_id: str, project_name: str) -> ProjectConfig:
     """Create a minimal empty project."""
+    from server.core.project_migration import CURRENT_VERSION
+
     now = datetime.now().isoformat()
     return ProjectConfig(
-        openavc_version="0.4.0",
+        openavc_version=CURRENT_VERSION,
         project=ProjectMeta(
             id=project_id,
             name=project_name,
@@ -407,6 +474,14 @@ def open_from_library(
 
     replace_scripts(scripts_dir, scripts)
 
+    # Replace the active project's assets with the library project's so
+    # image/background references resolve and stale assets don't linger
+    # (assets are served from project_path.parent/assets).
+    active_assets = project_path.parent / "assets"
+    if active_assets.exists():
+        shutil.rmtree(active_assets, ignore_errors=True)
+    _copy_assets(_lib_dir() / sanitize_id(project_id) / "assets", active_assets)
+
     log.info(f"Opened project '{project_id}' as '{new_project_name}'")
     return project
 
@@ -420,6 +495,7 @@ def _install_bundled_from_library(project_id: str) -> None:
 
     try:
         with zipfile.ZipFile(bundle_path, "r") as zf:
+            _check_zip_safety(zf)
             installed_drivers = _install_bundled_drivers(zf)
             installed_plugins = _install_bundled_plugins(zf)
             if installed_drivers:
@@ -589,12 +665,16 @@ def _import_avc(content: bytes, override_id: str | None) -> dict[str, Any]:
         raise ValueError(f"Project '{pid}' already exists in library")
 
     project_dir = _lib_dir() / pid
-    project_dir.mkdir(parents=True, exist_ok=True)
-
-    data["project"]["modified"] = datetime.now().isoformat()
-    (project_dir / "project.avc").write_text(
-        json.dumps(data, indent=4, ensure_ascii=False), encoding="utf-8"
-    )
+    try:
+        project_dir.mkdir(parents=True, exist_ok=True)
+        data["project"]["modified"] = datetime.now().isoformat()
+        _atomic_write_text(
+            project_dir / "project.avc",
+            json.dumps(data, indent=4, ensure_ascii=False),
+        )
+    except BaseException:
+        shutil.rmtree(project_dir, ignore_errors=True)
+        raise
 
     missing = _check_missing_drivers(data)
     warnings = []
@@ -602,11 +682,21 @@ def _import_avc(content: bytes, override_id: str | None) -> dict[str, Any]:
         names = ", ".join(m["affected_devices"])
         warnings.append(f"Driver '{m['driver_id']}' is not installed (used by: {names})")
 
+    # Parity with the .zip import path: a plain .avc bundles no plugins, so
+    # surface any plugins the project references but that aren't installed.
+    missing_plugins = _check_missing_plugins(data)
+    for mp in missing_plugins:
+        warnings.append(
+            f"Plugin '{mp}' is not installed. Install it from the community repository."
+        )
+
     log.info(f"Imported project '{pid}' from .avc file")
     return {
         "id": pid,
         "installed_drivers": [],
+        "installed_plugins": [],
         "missing_drivers": missing,
+        "missing_plugins": missing_plugins,
         "warnings": warnings,
     }
 
@@ -620,7 +710,7 @@ def _install_bundled_drivers(zf: zipfile.ZipFile) -> list[str]:
         load_driver_file,
         load_python_driver_file,
     )
-    from server.core.device_manager import register_driver
+    from server.core.device_manager import _DRIVER_REGISTRY, register_driver
 
     driver_repo = _DRIVER_REPO_DIR
     driver_repo.mkdir(exist_ok=True)
@@ -643,18 +733,33 @@ def _install_bundled_drivers(zf: zipfile.ZipFile) -> list[str]:
 
         # Register the driver immediately
         try:
+            driver_class = None
+            driver_id = None
             if fname.endswith(".avcdriver"):
                 driver_def = load_driver_file(dest)
                 if driver_def:
                     from server.drivers.configurable import create_configurable_driver_class
                     driver_class = create_configurable_driver_class(driver_def)
-                    register_driver(driver_class)
-                    installed.append(driver_def.get("id", fname))
+                    driver_id = driver_def.get("id", fname)
             elif fname.endswith(".py"):
                 driver_class = load_python_driver_file(dest)
                 if driver_class:
+                    driver_id = driver_class.DRIVER_INFO.get("id", fname)
+
+            # Dedup on driver_id, not just filename: a bundle file under a new
+            # name but a colliding id must not overwrite an existing registered
+            # driver in the process-global registry (register_driver is an
+            # unconditional overwrite).
+            if driver_class and driver_id:
+                if driver_id in _DRIVER_REGISTRY:
+                    log.warning(
+                        "Bundled driver id '%s' (%s) already registered; "
+                        "keeping the existing driver", driver_id, fname,
+                    )
+                    dest.unlink(missing_ok=True)
+                else:
                     register_driver(driver_class)
-                    installed.append(driver_class.DRIVER_INFO.get("id", fname))
+                    installed.append(driver_id)
         except Exception as e:  # Catch-all: driver loading can execute arbitrary Python
             log.warning(f"Could not register bundled driver {fname}: {e}")
 
@@ -732,6 +837,8 @@ def _import_zip(content: bytes, override_id: str | None) -> dict[str, Any]:
 
     buf = io.BytesIO(content)
     with zipfile.ZipFile(buf, "r") as zf:
+        _check_zip_safety(zf)  # zip-bomb guard
+
         avc_names = [n for n in zf.namelist() if n.endswith(".avc")]
         if not avc_names:
             raise ValueError("No .avc file found in zip")
@@ -746,36 +853,45 @@ def _import_zip(content: bytes, override_id: str | None) -> dict[str, Any]:
         if (_lib_dir() / pid / "project.avc").exists():
             raise ValueError(f"Project '{pid}' already exists in library")
 
-        # Install bundled drivers first
-        installed_drivers = _install_bundled_drivers(zf)
-
-        # Install bundled plugins
-        installed_plugins = _install_bundled_plugins(zf)
-
+        # Write the project (validated) + its scripts/assets as a unit that is
+        # rolled back on any failure, BEFORE touching the shared driver/plugin
+        # repos. Driver/plugin install mutates process-global state and the
+        # filesystem; doing it after the project is safely on disk means a
+        # failed import can't leave half-installed artifacts with no project.
         project_dir = _lib_dir() / pid
-        project_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            project_dir.mkdir(parents=True, exist_ok=True)
+            data["project"]["modified"] = datetime.now().isoformat()
+            _atomic_write_text(
+                project_dir / "project.avc",
+                json.dumps(data, indent=4, ensure_ascii=False),
+            )
 
-        data["project"]["modified"] = datetime.now().isoformat()
-        (project_dir / "project.avc").write_text(
-            json.dumps(data, indent=4, ensure_ascii=False), encoding="utf-8"
-        )
+            for name in zf.namelist():
+                if name.startswith("scripts/") and name.endswith(".py"):
+                    script_name = Path(name).name
+                    if "/" not in script_name and "\\" not in script_name:
+                        dest = project_dir / "scripts"
+                        dest.mkdir(exist_ok=True)
+                        (dest / script_name).write_bytes(zf.read(name))
 
-        for name in zf.namelist():
-            if name.startswith("scripts/") and name.endswith(".py"):
-                script_name = Path(name).name
-                if "/" not in script_name and "\\" not in script_name:
-                    dest = project_dir / "scripts"
-                    dest.mkdir(exist_ok=True)
-                    (dest / script_name).write_bytes(zf.read(name))
+            # Extract bundled assets
+            for name in zf.namelist():
+                if name.startswith("assets/") and not name.endswith("/"):
+                    asset_name = Path(name).name
+                    if asset_name and not asset_name.startswith("."):
+                        assets_dest = project_dir / "assets"
+                        assets_dest.mkdir(exist_ok=True)
+                        (assets_dest / asset_name).write_bytes(zf.read(name))
+        except BaseException:
+            shutil.rmtree(project_dir, ignore_errors=True)
+            raise
 
-        # Extract bundled assets
-        for name in zf.namelist():
-            if name.startswith("assets/") and not name.endswith("/"):
-                asset_name = Path(name).name
-                if asset_name and not asset_name.startswith("."):
-                    assets_dest = project_dir / "assets"
-                    assets_dest.mkdir(exist_ok=True)
-                    (assets_dest / asset_name).write_bytes(zf.read(name))
+        # Project committed — now install bundled drivers/plugins (shared,
+        # idempotent). A failure here leaves the project intact with the
+        # affected drivers simply reported as missing below.
+        installed_drivers = _install_bundled_drivers(zf)
+        installed_plugins = _install_bundled_plugins(zf)
 
     # Check for still-missing drivers after installing bundled ones
     missing = _check_missing_drivers(data)

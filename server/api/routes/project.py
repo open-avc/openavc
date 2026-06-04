@@ -157,9 +157,11 @@ async def save_to_library(request: Request) -> dict[str, Any]:
     body = await request.json()
     data = LibrarySaveRequest(**body)
     scripts_dir = engine.project_path.parent / "scripts"
+    assets_dir = engine.project_path.parent / "assets"
 
     try:
-        _save(data.id, engine.project, scripts_dir, data.name, data.description)
+        _save(data.id, engine.project, scripts_dir, data.name, data.description,
+              assets_dir=assets_dir)
     except ValueError as e:
         raise _api_error(409, f"Library project '{data.id}' already exists", e)
 

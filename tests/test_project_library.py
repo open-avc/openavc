@@ -1,11 +1,14 @@
 """Tests for project library — saved project file management."""
 
+import io
 import json
+import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
+import server.core.project_library as plib
 from server.core.project_library import (
     sanitize_id,
     list_projects,
@@ -17,6 +20,9 @@ from server.core.project_library import (
     create_blank_project,
     replace_scripts,
     ensure_starter_projects,
+    import_project,
+    open_from_library,
+    _install_bundled_drivers,
     _project_meta,
 )
 
@@ -117,8 +123,19 @@ class TestSanitizeId:
     def test_hyphens_preserved(self):
         assert sanitize_id("my-project") == "my-project"
 
-    def test_alphanumeric_preserved(self):
-        assert sanitize_id("Room101") == "Room101"
+    def test_lowercased_for_case_insensitive_filesystems(self):
+        # Ids are lowercased so 'Lobby' and 'lobby' map to one project instead
+        # of spuriously colliding on case-insensitive filesystems.
+        assert sanitize_id("Room101") == "room101"
+        assert sanitize_id("Lobby") == sanitize_id("lobby")
+
+    def test_windows_reserved_names_get_suffix(self):
+        # Bare Windows device names can't be created as directories.
+        assert sanitize_id("NUL") == "nul_project"
+        assert sanitize_id("con") == "con_project"
+        assert sanitize_id("COM1") == "com1_project"
+        # A name that merely contains a reserved word is fine.
+        assert sanitize_id("console") == "console"
 
 
 # --- list_projects tests ---
@@ -337,10 +354,13 @@ class TestDuplicateProject:
 
 class TestCreateBlankProject:
     def test_creates_valid_project(self):
+        from server.core.project_migration import CURRENT_VERSION
         project = create_blank_project("lobby", "Lobby")
         assert project.project.id == "lobby"
         assert project.project.name == "Lobby"
-        assert project.openavc_version == "0.4.0"
+        # New projects are stamped with the current schema version (no spurious
+        # migrate-and-resave on first load).
+        assert project.openavc_version == CURRENT_VERSION
         assert len(project.devices) == 0
         assert len(project.macros) == 0
         assert len(project.ui.pages) == 1
@@ -469,3 +489,132 @@ class TestProjectMeta:
         meta = _project_meta("test", data)
         assert "pjlink_class1" in meta["required_drivers"]
         assert "samsung_mdc" in meta["required_drivers"]
+
+
+# --- Hardening regressions (asset propagation, zip safety, transactional import) ---
+
+
+def _zip_bytes(files: dict[str, object]) -> bytes:
+    """Build an in-memory .zip from {archive_name: str-or-bytes content}."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name, content in files.items():
+            if isinstance(content, str):
+                content = content.encode("utf-8")
+            zf.writestr(name, content)
+    return buf.getvalue()
+
+
+def _valid_avc(pid: str = "imported", plugins: dict | None = None) -> str:
+    """A valid project.avc JSON string, optionally with a plugins section."""
+    data = create_blank_project(pid, pid).model_dump(mode="json")
+    if plugins is not None:
+        data["plugins"] = plugins
+    return json.dumps(data)
+
+
+class TestAssetPropagation:
+    def test_save_to_library_copies_assets(self, tmp_lib, tmp_path, sample_project_config):
+        active = tmp_path / "active"
+        (active / "scripts").mkdir(parents=True)
+        assets = active / "assets"
+        assets.mkdir()
+        (assets / "logo.png").write_bytes(b"PNGDATA")
+
+        save_to_library("proj", sample_project_config, active / "scripts",
+                        "Proj", "", assets_dir=assets)
+
+        assert (tmp_lib / "proj" / "assets" / "logo.png").read_bytes() == b"PNGDATA"
+
+    def test_duplicate_project_copies_assets(self, tmp_lib, sample_project_data):
+        _seed_project(tmp_lib, "src", sample_project_data)
+        (tmp_lib / "src" / "assets").mkdir()
+        (tmp_lib / "src" / "assets" / "bg.jpg").write_bytes(b"JPGDATA")
+
+        duplicate_project("src", "copy", "Copy")
+
+        assert (tmp_lib / "copy" / "assets" / "bg.jpg").read_bytes() == b"JPGDATA"
+
+    def test_open_from_library_copies_assets(self, tmp_lib, tmp_path, sample_project_data):
+        _seed_project(tmp_lib, "lib", sample_project_data)
+        (tmp_lib / "lib" / "assets").mkdir()
+        (tmp_lib / "lib" / "assets" / "wall.png").write_bytes(b"WALLDATA")
+
+        active_path = tmp_path / "active" / "project.avc"
+        active_path.parent.mkdir(parents=True)
+        open_from_library("lib", active_path, active_path.parent / "scripts", "lib", "Lib")
+
+        assert (active_path.parent / "assets" / "wall.png").read_bytes() == b"WALLDATA"
+
+    def test_open_from_library_replaces_stale_assets(self, tmp_lib, tmp_path, sample_project_data):
+        _seed_project(tmp_lib, "lib", sample_project_data)
+        (tmp_lib / "lib" / "assets").mkdir()
+        (tmp_lib / "lib" / "assets" / "new.png").write_bytes(b"NEW")
+
+        active_path = tmp_path / "active" / "project.avc"
+        active_assets = active_path.parent / "assets"
+        active_assets.mkdir(parents=True)
+        (active_assets / "stale.png").write_bytes(b"STALE")
+
+        open_from_library("lib", active_path, active_path.parent / "scripts", "lib", "Lib")
+
+        assert (active_assets / "new.png").exists()
+        assert not (active_assets / "stale.png").exists()  # replaced, not merged
+
+
+class TestZipBombGuard:
+    def test_import_rejects_too_many_members(self, tmp_lib, monkeypatch):
+        monkeypatch.setattr(plib, "_MAX_ZIP_MEMBERS", 2)
+        files = {"project.avc": _valid_avc(), "a.txt": "x", "b.txt": "y", "c.txt": "z"}
+        with pytest.raises(ValueError, match="too many entries"):
+            import_project(_zip_bytes(files), "x.zip")
+
+    def test_import_rejects_oversize_decompressed(self, tmp_lib, monkeypatch):
+        monkeypatch.setattr(plib, "_MAX_DECOMPRESSED_SIZE", 50)  # avc alone exceeds this
+        with pytest.raises(ValueError, match="too large uncompressed"):
+            import_project(_zip_bytes({"project.avc": _valid_avc()}), "x.zip")
+
+
+class TestTransactionalImport:
+    def test_import_zip_rolls_back_project_dir_on_write_failure(self, tmp_lib, monkeypatch):
+        def _boom(path, content):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(plib, "_atomic_write_text", _boom)
+        with pytest.raises(OSError):
+            import_project(_zip_bytes({"project.avc": _valid_avc("rollback_me")}), "x.zip")
+
+        assert not (tmp_lib / "rollback_me").exists()  # cleaned up, no half-written project
+
+
+class TestMissingPluginParity:
+    def test_import_avc_reports_missing_plugins(self, tmp_lib):
+        avc = _valid_avc("withplugin", plugins={"acme_widget": {"enabled": True}})
+        result = import_project(avc.encode("utf-8"), "withplugin.avc")
+        assert "acme_widget" in result["missing_plugins"]
+        assert any("acme_widget" in w for w in result["warnings"])
+
+
+class TestBundledDriverIdDedup:
+    def test_bundled_driver_does_not_clobber_existing_id(self, tmp_path, monkeypatch):
+        from server.core.device_manager import _DRIVER_REGISTRY
+
+        repo = tmp_path / "driver_repo"
+        repo.mkdir()
+        monkeypatch.setattr(plib, "_DRIVER_REPO_DIR", repo)
+
+        existing = type("ExistingDriver", (), {"DRIVER_INFO": {"id": "dup_id"}})
+        monkeypatch.setitem(_DRIVER_REGISTRY, "dup_id", existing)
+
+        # A bundle file under a NEW name but declaring the already-registered id.
+        new_class = type("NewDriver", (), {"DRIVER_INFO": {"id": "dup_id"}})
+        monkeypatch.setattr(
+            "server.drivers.driver_loader.load_python_driver_file", lambda path: new_class
+        )
+
+        with zipfile.ZipFile(io.BytesIO(_zip_bytes({"drivers/renamed.py": "# x"}))) as zf:
+            installed = _install_bundled_drivers(zf)
+
+        assert _DRIVER_REGISTRY["dup_id"] is existing  # not overwritten
+        assert "dup_id" not in installed
+        assert not (repo / "renamed.py").exists()  # the colliding file was removed
