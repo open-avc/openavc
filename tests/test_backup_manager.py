@@ -2,10 +2,13 @@
 
 import json
 import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
+from server.core import backup_manager
 from server.core.backup_manager import (
     cleanup_backups,
     create_backup,
@@ -314,3 +317,132 @@ class TestCleanupBackups:
 
         backups = list((project_dir / "backups").glob("backup_*.zip"))
         assert len(backups) == 3
+
+
+# ---------------------------------------------------------------------------
+# Hardening regressions (audit group H-043..L-060)
+# ---------------------------------------------------------------------------
+
+def _temp_artifacts(project_dir: Path) -> list[str]:
+    """Names of any restore/backup staging artifacts that should never linger."""
+    names = []
+    for p in list(project_dir.iterdir()) + list((project_dir / "backups").glob("*")):
+        n = p.name
+        if (n.startswith(".restore_") or n.startswith(".backup_")
+                or n.endswith(".restore-new") or n.endswith(".restore-old")
+                or n.endswith(".zip.tmp")):
+            names.append(n)
+    return names
+
+
+class TestBackupHardening:
+    def test_restore_clears_orphan_scripts_and_assets(self, project_dir: Path):
+        """H-044: restore replaces scripts/ + assets/ with the backup's content,
+        removing orphans that aren't in the backup, with no staging leftovers."""
+        backup = create_backup(project_dir, "snapshot")
+        assert backup is not None
+        # Add files that the backup does NOT contain.
+        (project_dir / "scripts" / "orphan.py").write_text("x=1", encoding="utf-8")
+        (project_dir / "assets" / "orphan.png").write_bytes(b"junk")
+
+        restore_from_backup(backup, project_dir)
+
+        scripts = {p.name for p in (project_dir / "scripts").glob("*.py")}
+        assets = {p.name for p in (project_dir / "assets").iterdir() if p.is_file()}
+        assert scripts == {"startup.py", "shutdown.py"}
+        assert assets == {"logo.png", "bg.jpg"}
+        assert _temp_artifacts(project_dir) == []
+
+    def test_restore_produces_no_temp_artifacts(self, project_dir: Path):
+        """H-043/L-058: the atomic writes leave no temp files behind."""
+        backup = create_backup(project_dir, "snapshot")
+        assert backup is not None
+        restore_from_backup(backup, project_dir)
+        assert _temp_artifacts(project_dir) == []
+
+    def test_restore_clears_stale_state_when_backup_lacks_it(self, project_dir: Path):
+        """L-057: restoring a backup that predates persistence removes a newer
+        state.json so the older project doesn't boot with newer values."""
+        backup = create_backup(project_dir, "no-state")  # project_dir has no state.json
+        assert backup is not None
+        # A newer persisted state appears after the backup was taken.
+        (project_dir / "state.json").write_text('{"var.vol": 99}', encoding="utf-8")
+
+        restore_from_backup(backup, project_dir)
+
+        assert not (project_dir / "state.json").exists()
+
+    def test_restore_keeps_state_json(self, project_dir: Path):
+        """Positive: a backup that includes state.json restores it atomically."""
+        (project_dir / "state.json").write_text('{"var.vol": 50}', encoding="utf-8")
+        backup = create_backup(project_dir, "with-state")
+        assert backup is not None
+        (project_dir / "state.json").unlink()
+
+        restore_from_backup(backup, project_dir)
+
+        assert json.loads((project_dir / "state.json").read_text(encoding="utf-8")) == {"var.vol": 50}
+
+    def test_same_second_same_reason_backups_get_unique_names(self, project_dir: Path, monkeypatch):
+        """M-085: two backups stamped in the same second with the same reason get
+        distinct filenames instead of the second clobbering the first."""
+        fixed = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        monkeypatch.setattr(backup_manager, "datetime", MagicMock(now=lambda tz=None: fixed))
+
+        b1 = create_backup(project_dir, "Periodic")
+        b2 = create_backup(project_dir, "Periodic")
+        assert b1 is not None and b2 is not None
+        assert b1 != b2
+        assert b1.exists() and b2.exists()
+        zips = list((project_dir / "backups").glob("backup_*.zip"))
+        assert len(zips) == 2
+
+    def test_list_backups_surfaces_legacy_timestamped(self, project_dir: Path):
+        """L-059: a timestamped legacy *.avc.bak is listed; the quick-restore
+        project.avc.bak stays hidden."""
+        (project_dir / "project.20240315_143022.avc.bak").write_bytes(b"{}")
+        (project_dir / "project.avc.bak").write_bytes(b"{}")
+
+        names = {b.filename for b in list_backups(project_dir)}
+        assert "project.20240315_143022.avc.bak" in names
+        assert "project.avc.bak" not in names
+
+    def test_list_backups_pre_restore_listed_once(self, project_dir: Path):
+        """L-060: a pre_restore backup surfaces exactly once (no duplicate)."""
+        (project_dir / "project.pre_restore_20240315.avc.bak").write_bytes(b"{}")
+
+        results = [b for b in list_backups(project_dir)
+                   if b.filename == "project.pre_restore_20240315.avc.bak"]
+        assert len(results) == 1
+        assert results[0].reason == "Pre-restore backup"
+
+
+def test_reload_persisted_state_applies_restore(tmp_path: Path):
+    """M-083: after a restore, reload_persisted_state re-loads state.json into the
+    store (and falls back to a variable's default when the backup had no value),
+    so the persister can't write stale pre-restore values back over the restore."""
+    from server.core.engine import Engine
+    from server.core.project_loader import ProjectConfig, ProjectMeta, VariableConfig
+    from server.core.state_persister import StatePersister
+
+    project_path = tmp_path / "project.avc"
+    project_path.write_text('{"project": {"id": "p", "name": "P"}}', encoding="utf-8")
+    engine = Engine(str(project_path))
+    engine.project = ProjectConfig(
+        project=ProjectMeta(id="p", name="P"),
+        variables=[
+            VariableConfig(id="vol", default=0, persist=True),
+            VariableConfig(id="bright", default=10, persist=True),
+        ],
+    )
+    engine.persister = StatePersister(tmp_path / "state.json", engine.state)
+    # Pre-restore in-memory values that should NOT survive.
+    engine.state.set("var.vol", 1, source="system")
+    engine.state.set("var.bright", 2, source="system")
+    # The restored state.json carries vol but not bright.
+    (tmp_path / "state.json").write_text('{"var.vol": 77}', encoding="utf-8")
+
+    engine.reload_persisted_state()
+
+    assert engine.state.get("var.vol") == 77          # restored value applied
+    assert engine.state.get("var.bright") == 10       # absent -> variable default

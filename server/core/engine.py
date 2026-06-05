@@ -485,6 +485,31 @@ class Engine:
         async with self._reload_lock:
             await self._reload_project_inner()
 
+    def reload_persisted_state(self) -> None:
+        """Re-apply state.json to the store and restart the persister.
+
+        Called after a backup restore. A plain reload only re-subscribes the
+        persister (via ``update_keys``); it never re-reads state.json, so the
+        running store would keep the stale pre-restore values and the persister
+        would write them straight back over the just-restored file. This reloads
+        the restored values into the store — falling back to each persistent
+        variable's default when the backup carried no value for it — then
+        restarts the persister so it tracks the restored state cleanly.
+        """
+        if not self.persister or not self.project:
+            return
+        persisted = self.persister.load()
+        for var in self.project.variables:
+            if not var.persist:
+                continue
+            key = f"var.{var.id}"
+            self.state.set(key, persisted.get(key, var.default), source="system")
+        persistent_keys = {f"var.{v.id}" for v in self.project.variables if v.persist}
+        # stop() clears any prior subscriptions + the _stopped flag the caller's
+        # pre-restore stop() set; start() re-subscribes with _stopped cleared.
+        self.persister.stop()
+        self.persister.start(persistent_keys)
+
     async def _reload_project_inner(self) -> None:
         log.info("Reloading project...")
 

@@ -411,6 +411,14 @@ async def restore_backup(filename: str) -> dict[str, Any]:
     import asyncio
     await asyncio.to_thread(create_backup, project_dir, "Before restore")
 
+    # Stop the state persister first so its pending debounced flush (up to a 1s
+    # window) can't overwrite the state.json we're about to restore.
+    if engine.persister:
+        engine.persister.stop()
+
     restore_from_backup(backup_path, project_dir)
     await engine.reload_project()
+    # Re-apply the restored state.json to the store + restart the persister, so
+    # the restore takes effect immediately and isn't written back over.
+    engine.reload_persisted_state()
     return {"status": "restored", "filename": filename}
