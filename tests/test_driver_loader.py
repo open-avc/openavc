@@ -121,6 +121,53 @@ def test_validate_bad_regex():
     assert any("regex" in e.lower() or "invalid" in e.lower() for e in errors)
 
 
+# --- frame_parser validation (H-062: reject at load, not at connect) ---
+
+
+def test_validate_frame_parser_valid_header_sizes():
+    for size in (1, 2, 4):
+        defn = {**VALID_DEFINITION,
+                "frame_parser": {"type": "length_prefix", "header_size": size}}
+        assert validate_driver_definition(defn) == []
+
+
+def test_validate_frame_parser_bad_header_size():
+    # The runtime LengthPrefixFrameParser raises on anything but 1/2/4, which
+    # would crash connect() — catch it at load instead.
+    for bad in (3, 8, 0):
+        defn = {**VALID_DEFINITION,
+                "frame_parser": {"type": "length_prefix", "header_size": bad}}
+        errors = validate_driver_definition(defn)
+        assert any("header_size" in e for e in errors), bad
+
+
+def test_validate_frame_parser_negative_offset_ok():
+    # A negative header_offset is the documented case (length field includes
+    # the header) — it must validate, not be rejected.
+    defn = {**VALID_DEFINITION,
+            "frame_parser": {"type": "length_prefix", "header_size": 2,
+                             "header_offset": -2}}
+    assert validate_driver_definition(defn) == []
+
+
+def test_validate_frame_parser_bad_offset_type():
+    defn = {**VALID_DEFINITION,
+            "frame_parser": {"type": "length_prefix", "header_offset": "two"}}
+    assert any("header_offset" in e for e in validate_driver_definition(defn))
+
+
+def test_validate_frame_parser_fixed_length():
+    ok = {**VALID_DEFINITION, "frame_parser": {"type": "fixed_length", "length": 8}}
+    assert validate_driver_definition(ok) == []
+    bad = {**VALID_DEFINITION, "frame_parser": {"type": "fixed_length", "length": 0}}
+    assert any("length" in e for e in validate_driver_definition(bad))
+
+
+def test_validate_frame_parser_unknown_type():
+    defn = {**VALID_DEFINITION, "frame_parser": {"type": "crc16"}}
+    assert any("crc16" in e or "type" in e for e in validate_driver_definition(defn))
+
+
 def test_load_driver_file_valid(tmp_path):
     filepath = tmp_path / "test.avcdriver"
     _write_avcdriver(filepath, VALID_DEFINITION)

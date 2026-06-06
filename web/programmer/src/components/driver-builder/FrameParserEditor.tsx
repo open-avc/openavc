@@ -126,19 +126,19 @@ export function FrameParserEditor({ draft, onUpdate }: FrameParserEditorProps) {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-md)" }}>
                 <div>
                   <label style={labelStyle}>Header Size (bytes)</label>
-                  <input
-                    type="number"
+                  <select
                     value={(fp.header_size as number | undefined) ?? 2}
                     onChange={(e) =>
-                      update({ header_size: parseInt(e.target.value) || 2 })
+                      update({ header_size: parseInt(e.target.value) })
                     }
-                    min={1}
-                    max={8}
                     style={{ width: "100%" }}
-                  />
+                  >
+                    <option value={1}>1 (uint8)</option>
+                    <option value={2}>2 (uint16)</option>
+                    <option value={4}>4 (uint32)</option>
+                  </select>
                   <div style={helpStyle}>
                     Number of bytes that hold the body length, big-endian.
-                    Common: 1, 2, or 4.
                   </div>
                 </div>
                 <div>
@@ -149,13 +149,14 @@ export function FrameParserEditor({ draft, onUpdate }: FrameParserEditorProps) {
                     onChange={(e) =>
                       update({ header_offset: parseInt(e.target.value) || 0 })
                     }
-                    min={0}
+                    min={-16}
                     max={16}
                     style={{ width: "100%" }}
                   />
                   <div style={helpStyle}>
-                    Bytes before the length header (e.g., a sync/magic prefix).
-                    Default 0.
+                    Added to the length the header decodes to. Use a negative
+                    value (e.g. -2) when the length field counts the header
+                    bytes themselves, so only the body is read. Default 0.
                   </div>
                 </div>
               </div>

@@ -116,11 +116,19 @@ class LengthPrefixFrameParser(FrameParser):
             if payload_len < 0:
                 payload_len = 0
             total = self._header_size + payload_len
-            # Reject obviously bogus lengths
+            # A claimed frame larger than the whole buffer cap can never be
+            # assembled — it's a desync or garbage. A length-prefixed stream
+            # has no in-band resync point, so (like the sibling parsers on
+            # overflow) clear the buffer instead of walking it one byte at a
+            # time looking for a valid header — that byte-walk re-slices the
+            # whole buffer each step (O(n^2)) on the shared event loop.
             if total > self._max_buffer:
-                log.warning(f"Length-prefix parser: claimed size {total} exceeds max {self._max_buffer}, skipping byte")
-                self._buffer = self._buffer[1:]
-                continue
+                log.warning(
+                    "Length-prefix parser: claimed frame size %d exceeds max "
+                    "%d; clearing desynced buffer", total, self._max_buffer,
+                )
+                self._buffer = b""
+                break
             if len(self._buffer) < total:
                 break
             if self._include_header:
@@ -128,6 +136,15 @@ class LengthPrefixFrameParser(FrameParser):
             else:
                 messages.append(self._buffer[self._header_size : total])
             self._buffer = self._buffer[total:]
+        # Defensive symmetry with the other parsers: never retain more than
+        # max_buffer. A stalled partial frame (header received, payload never
+        # completes) is otherwise silently pinned until disconnect.
+        if len(self._buffer) > self._max_buffer:
+            log.warning(
+                "Length-prefix parser buffer overflow (%d bytes), clearing",
+                len(self._buffer),
+            )
+            self._buffer = b""
         return messages
 
     def reset(self) -> None:
@@ -152,11 +169,15 @@ class FixedLengthFrameParser(FrameParser):
     def feed(self, data: bytes) -> list[bytes]:
         self._buffer += data
         if len(self._buffer) > self._max_buffer:
+            # Clear, don't trim. A fixed-length protocol has no in-band resync,
+            # so keeping an arbitrary tail (max_buffer is rarely a multiple of
+            # length) leaves every subsequent frame misaligned permanently.
+            # Dropping to an empty buffer resyncs on the next whole frame.
             log.warning(
-                "FixedLength parser buffer overflow (%d bytes), dropping oldest data",
+                "FixedLength parser buffer overflow (%d bytes), clearing",
                 len(self._buffer),
             )
-            self._buffer = self._buffer[-self._max_buffer:]
+            self._buffer = b""
         messages: list[bytes] = []
         while len(self._buffer) >= self._length:
             messages.append(self._buffer[: self._length])
@@ -201,6 +222,18 @@ class CallableFrameParser(FrameParser):
                 if msg is None:
                     break
                 messages.append(msg)
+                if len(remaining) >= len(self._buffer):
+                    # No forward progress: a buggy parse_fn returned a message
+                    # without consuming any buffer. Without this guard the loop
+                    # spins forever and wedges the shared event loop (every
+                    # device, poll, and WS client). Take the message it found,
+                    # then stop this pass.
+                    log.warning(
+                        "Custom frame parser made no forward progress "
+                        "(buffer not consumed); stopping to avoid a hang"
+                    )
+                    self._buffer = remaining
+                    break
                 self._buffer = remaining
         except Exception:  # Catch-all: user-supplied parse_fn can raise anything
             log.exception("Error in custom frame parser function, clearing buffer")

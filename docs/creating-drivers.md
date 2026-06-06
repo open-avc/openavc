@@ -724,6 +724,14 @@ For protocols that don't use a simple delimiter, you can specify a frame parser:
 
 Types: `length_prefix` (reads a length header then N bytes), `fixed_length` (messages are always N bytes). For anything more complex, use a Python driver.
 
+For `length_prefix`:
+
+- `header_size` — big-endian bytes that hold the body length. Must be `1`, `2`, or `4`.
+- `header_offset` — added to the length the header decodes to. Use a negative value (e.g. `-2`) when the length field counts the header bytes themselves, so only the body is read. Default `0`.
+- `include_header` — `true` keeps the header bytes in the parsed frame; `false` (default) returns just the body.
+
+For `fixed_length`, set `length` to the byte count of every frame.
+
 ### Discovery
 
 The `discovery:` block tells the matcher which network signals identify your device. Two kinds of declarations:

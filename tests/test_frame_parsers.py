@@ -167,3 +167,72 @@ def test_callable_parser_reset():
     p.feed(b"partial")
     p.reset()
     assert p.feed(b"new;") == [b"new"]
+
+
+# --- Hardening regressions (overflow / framing safety) ---
+
+
+def test_callable_parser_no_forward_progress_does_not_hang():
+    """H-064: a parse_fn that returns a message without consuming the buffer
+    must not spin forever (it would wedge the whole event loop)."""
+    calls = {"n": 0}
+
+    def parse(buf):
+        calls["n"] += 1
+        # Always claims a message but never shrinks the buffer.
+        return b"x", buf
+
+    p = CallableFrameParser(parse)
+    msgs = p.feed(b"data")
+    # Emits the message it found, then stops — no infinite loop.
+    assert msgs == [b"x"]
+    assert calls["n"] == 1
+
+
+def test_callable_parser_buffer_grows_is_stopped():
+    """A parse_fn that returns MORE buffer than it got is also no-progress."""
+    def parse(buf):
+        return b"m", buf + b"!"  # buffer grows, never shrinks
+
+    p = CallableFrameParser(parse)
+    assert p.feed(b"ab") == [b"m"]
+
+
+def test_fixed_length_overflow_clears_not_trims():
+    """M-108: on overflow a fixed-length parser clears (resyncs on the next
+    whole frame) rather than keeping a misaligned tail that corrupts every
+    subsequent frame."""
+    length = 7
+    p = FixedLengthFrameParser(length, max_buffer=20)
+    # Feed > max_buffer of data that is NOT a multiple of length. The old code
+    # trimmed to the last max_buffer bytes (20 % 7 = 6 -> misaligned).
+    p.feed(b"\x00" * 25)
+    # After the overflow clear, a clean run of whole frames parses aligned.
+    msgs = p.feed(b"A" * length + b"B" * length)
+    assert msgs == [b"A" * length, b"B" * length]
+
+
+def test_length_prefix_bogus_length_clears_no_byte_walk():
+    """M-109: a claimed frame larger than max_buffer clears the buffer instead
+    of walking it one byte at a time (O(n^2) on the event loop)."""
+    p = LengthPrefixFrameParser(header_size=2, max_buffer=1024)
+    # Header claims 60000 bytes — far over max_buffer.
+    bogus = (60000).to_bytes(2, "big") + b"garbage" * 100
+    assert p.feed(bogus) == []
+    # Buffer was cleared, so a valid frame right after parses cleanly.
+    good = (3).to_bytes(2, "big") + b"abc"
+    assert p.feed(good) == [b"abc"]
+
+
+def test_length_prefix_stalled_frame_stays_bounded():
+    """L-074: a stalled partial frame (header received, payload never
+    completes) keeps the buffer bounded by max_buffer — symmetric with the
+    other parsers, never silently pinning more than the cap."""
+    p = LengthPrefixFrameParser(header_size=2, max_buffer=64)
+    # Header claims 50 bytes of payload; only 10 arrive, then the device
+    # goes silent. The buffer waits but stays within the cap.
+    assert p.feed((50).to_bytes(2, "big") + b"x" * 10) == []
+    assert len(p._buffer) <= p._max_buffer
+    # More dribbles, still no completion — still bounded, never over-cap.
+    assert p.feed(b"y" * 5) == []
+    assert len(p._buffer) <= p._max_buffer

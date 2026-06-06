@@ -293,6 +293,43 @@ def validate_driver_definition(driver_def: dict[str, Any]) -> list[str]:
         if not var_def.get("label"):
             errors.append(f"State variable '{var_name}': missing 'label'")
 
+    # Validate the optional frame_parser block (binary protocols). The runtime
+    # LengthPrefixFrameParser only accepts header_size in {1, 2, 4} and
+    # FixedLengthFrameParser needs a positive length; an out-of-range value
+    # (authored by hand or by an older Driver Builder) would otherwise raise
+    # in connect() and wedge the device in a permanent reconnect loop. Surface
+    # it at load instead, with a clear message.
+    frame_parser = driver_def.get("frame_parser")
+    if frame_parser is not None:
+        if not isinstance(frame_parser, dict):
+            errors.append("frame_parser: must be a mapping")
+        else:
+            fp_type = frame_parser.get("type", "")
+            if fp_type == "length_prefix":
+                header_size = frame_parser.get("header_size", 2)
+                if header_size not in (1, 2, 4):
+                    errors.append(
+                        f"frame_parser: header_size must be 1, 2, or 4 (got {header_size!r})"
+                    )
+                offset = frame_parser.get("header_offset", 0)
+                if isinstance(offset, bool) or not isinstance(offset, int):
+                    errors.append(
+                        f"frame_parser: header_offset must be an integer (got {offset!r})"
+                    )
+            elif fp_type == "fixed_length":
+                length = frame_parser.get("length", 1)
+                if isinstance(length, bool) or not isinstance(length, int) or length <= 0:
+                    errors.append(
+                        f"frame_parser: length must be a positive integer (got {length!r})"
+                    )
+            elif fp_type:
+                errors.append(
+                    f"frame_parser: unknown type '{fp_type}' "
+                    f"(expected 'length_prefix' or 'fixed_length')"
+                )
+            else:
+                errors.append("frame_parser: missing 'type'")
+
     return errors
 
 
