@@ -74,6 +74,26 @@ export function DeviceCard({ device }: { device: DeviceInfo }) {
         {device.push_state ? "Pushes state changes" : "Poll-only (no push)"}
       </div>
 
+      {/* Child entities (v0.5.0) — read-only summary; per-child wire modeling
+          is up to a Python _sim.py (the auto-generator doesn't model it yet). */}
+      {device.child_entities && Object.keys(device.child_entities).length > 0 && (
+        <div style={{ padding: "2px 8px", fontSize: 10, color: "var(--text-muted)", display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {Object.entries(device.child_entities).map(([type, children]) => {
+            const items = Object.entries(children);
+            return (
+              <span
+                key={type}
+                title={items.map(([id, c]) => `${id}: ${c.label || id}`).join("\n")}
+                style={{ border: "1px solid var(--border-color)", borderRadius: 3, padding: "0 4px" }}
+              >
+                {items.length} {type}
+                {items.length === 1 ? "" : "s"}
+              </span>
+            );
+          })}
+        </div>
+      )}
+
       {/* Declarative controls or category-specific panel */}
       <div className="device-card-body">
         {device.controls && device.controls.length > 0 ? (

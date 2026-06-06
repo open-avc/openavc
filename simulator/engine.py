@@ -180,6 +180,7 @@ class SimulatorManager:
         device_name: str = "",
         real_host: str = "",
         real_port: int = 0,
+        child_entities: dict | None = None,
     ) -> BaseSimulator:
         """Start a simulator instance for a device.
 
@@ -209,6 +210,10 @@ class SimulatorManager:
         simulator._device_name = device_name or device_id
         simulator._real_host = real_host
         simulator._real_port = real_port
+        # v0.5.0 child entities ({child_type: {padded_id: {label, config}}}).
+        # Passed through so Python _sim.py simulators can model per-child
+        # state/responses; the BaseSimulator default is an empty dict.
+        simulator.set_child_entities(child_entities or {})
 
         # Allocate port
         if port == 0:

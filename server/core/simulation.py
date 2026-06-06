@@ -85,6 +85,30 @@ class SimulationManager:
         finally:
             self._starting = False
 
+    def _device_sim_payload(self, device_id: str, cfg: dict) -> dict:
+        """Build the launch/sync payload for one device.
+
+        Used by BOTH the initial launch and the incremental ``sync()`` add
+        path so the two can't diverge — the sync path historically sent only
+        ``{driver_id, port}``, leaving an added device with no friendly name,
+        no real host/port, an empty config, and (since v0.5.0) no
+        ``child_entities``, so its children were silently absent from the
+        simulator. ``child_entities`` lives at the top level of the device
+        config (not under ``config``), alongside the connection fields.
+        """
+        device_cfg = cfg.get("config", {}) or {}
+        return {
+            "device_id": device_id,
+            "driver_id": cfg.get("driver", ""),
+            "device_name": cfg.get("name", device_id),
+            "real_host": device_cfg.get("host", ""),
+            "real_port": device_cfg.get("port", 0),
+            "port": 0,  # auto-allocate
+            "config": {k: v for k, v in device_cfg.items()
+                       if k not in ("host", "port")},
+            "child_entities": cfg.get("child_entities") or {},
+        }
+
     async def _do_start(self, device_ids: list[str] | None) -> dict:
         dm = self.engine.devices
         project = self.engine.project
@@ -114,20 +138,7 @@ class SimulationManager:
             if not cfg:
                 log.warning("Device %s not found, skipping simulation", device_id)
                 continue
-
-            driver_id = cfg.get("driver", "")
-            device_cfg = cfg.get("config", {})
-
-            devices_config.append({
-                "device_id": device_id,
-                "driver_id": driver_id,
-                "device_name": cfg.get("name", device_id),
-                "real_host": device_cfg.get("host", ""),
-                "real_port": device_cfg.get("port", 0),
-                "port": 0,  # auto-allocate
-                "config": {k: v for k, v in device_cfg.items()
-                           if k not in ("host", "port")},
-            })
+            devices_config.append(self._device_sim_payload(device_id, cfg))
 
         if not devices_config:
             raise RuntimeError("No devices to simulate")
@@ -186,6 +197,17 @@ class SimulationManager:
         except Exception as e:
             raise RuntimeError(f"Failed to start simulator process: {e}")
 
+        # Drain stdout NOW, before the readiness wait. The readiness loop reads
+        # only stderr (for uvicorn's ready marker); if nothing reads stdout, a
+        # _sim.py that prints a large blob at import time fills the ~64 KB OS
+        # pipe buffer and blocks the simulator until this loop times out (~4s).
+        # stderr is drained after readiness (the loop owns it until then).
+        self._drain_tasks = [
+            asyncio.ensure_future(
+                self._drain_stream(self._process.stdout, "simulator.stdout"),
+            ),
+        ]
+
         # Wait for the simulator to start up
         try:
             await self._await_simulator_ready(self._process)
@@ -194,18 +216,14 @@ class SimulationManager:
         except Exception as e:
             raise RuntimeError(f"Error waiting for simulator startup: {e}")
 
-        # Drain stdout/stderr from this point on. The readiness loop above
-        # consumes stderr explicitly; once it exits, nothing reads the pipes
-        # so uvicorn would eventually block when its OS pipe buffer fills
-        # (~64 KB), which freezes the simulator and drops client connections.
-        self._drain_tasks = [
-            asyncio.ensure_future(
-                self._drain_stream(self._process.stdout, "simulator.stdout"),
-            ),
+        # Now drain stderr too. Once the readiness loop exits, nothing else
+        # reads stderr, so uvicorn would eventually block when its pipe buffer
+        # fills, freezing the simulator and dropping client connections.
+        self._drain_tasks.append(
             asyncio.ensure_future(
                 self._drain_stream(self._process.stderr, "simulator.stderr"),
             ),
-        ]
+        )
 
         self._sim_ui_url = f"http://localhost:{sim_config['ui_port']}"
 
@@ -280,8 +298,8 @@ class SimulationManager:
         Uvicorn logs ``Uvicorn running on …`` or ``Application startup complete``
         to stderr once it's ready. We poll stderr in 100 ms slices for up to
         4 seconds, log each line as we see it so misbehaving startups aren't
-        invisible (the drain tasks only start AFTER this loop exits), and
-        raise if the process exits early.
+        invisible (the stderr drain task only starts AFTER this loop exits —
+        stdout is already being drained), and raise if the process exits early.
 
         Returns silently on success. Raises RuntimeError if the process exits
         during startup; warns and returns if it stays up but never prints the
@@ -295,12 +313,12 @@ class SimulationManager:
                 stderr = ""
                 if process.stderr:
                     stderr = (await process.stderr.read()).decode(errors="replace")
-                stdout = ""
-                if process.stdout:
-                    stdout = (await process.stdout.read()).decode(errors="replace")
+                # stdout is being drained to the logs by the task started in
+                # _do_start, so don't read it here (the read would race the
+                # drainer); point at the logs instead.
                 raise RuntimeError(
                     f"Simulator exited with code {process.returncode}. "
-                    f"stderr: {stderr[:500]} stdout: {stdout[:500]}"
+                    f"stderr: {stderr[:500]} (stdout in simulator.stdout logs)"
                 )
             if process.stderr:
                 try:
@@ -313,8 +331,8 @@ class SimulationManager:
                     continue
                 text = chunk.decode(errors="replace")
                 # Forward each startup line so a misbehaving simulator's
-                # diagnostics aren't lost. The drain tasks only start AFTER
-                # this loop returns, so anything emitted here is otherwise
+                # diagnostics aren't lost. The stderr drain task only starts
+                # AFTER this loop returns, so anything emitted here is otherwise
                 # discarded the moment we hit the "ready" condition.
                 for line in text.splitlines():
                     if line.strip():
@@ -545,61 +563,144 @@ class SimulationManager:
         # Stop simulators for removed devices
         for device_id in removed:
             log.info("Simulation sync: removing %s", device_id)
-            # Restore original connection if we have it
-            orig = self._original_configs.pop(device_id, None)
+            # Restore the original connection if we still have the device.
+            orig = self._original_configs.get(device_id)
             if orig:
                 driver = dm._devices.get(device_id)
                 if driver:
                     driver.config["host"] = orig["host"]
                     driver.config["port"] = orig["port"]
-            # Tell simulator to stop this device
+            # Only forget the port slot when the stop actually succeeds (200)
+            # or the instance is already gone (404). On any other outcome the
+            # subprocess instance keeps running — dropping the slot would leak
+            # its port; leaving it tracked lets the next sync retry the stop.
+            stopped = False
             try:
                 async with aiohttp.ClientSession() as session:
-                    await session.post(f"{sim_api}/api/devices/{device_id}/stop")
+                    resp = await session.post(
+                        f"{sim_api}/api/devices/{device_id}/stop",
+                        timeout=aiohttp.ClientTimeout(total=5),
+                    )
+                    if resp.status in (200, 404):
+                        stopped = True
+                    else:
+                        body = await resp.text()
+                        log.warning(
+                            "Simulator stop for removed device %s returned %s: %s",
+                            device_id, resp.status, body[:200],
+                        )
             except Exception as e:
                 log.warning("Failed to stop simulator for removed device %s: %s", device_id, e)
-            self._sim_ports.pop(device_id, None)
+            if stopped:
+                self._original_configs.pop(device_id, None)
+                self._sim_ports.pop(device_id, None)
 
-        # Start simulators for new devices
+        # Start simulators for new devices — send the SAME full payload as the
+        # initial launch (name, real host/port, config, child_entities) so an
+        # added device isn't a degraded simulation missing its children.
         for device_id in added:
             cfg = dm._device_configs.get(device_id)
             if not cfg:
                 continue
-            driver_id = cfg.get("driver", "")
-            log.info("Simulation sync: adding %s (driver=%s)", device_id, driver_id)
+            payload = self._device_sim_payload(device_id, cfg)
+            payload.pop("device_id", None)  # carried in the URL path
+            log.info("Simulation sync: adding %s (driver=%s)", device_id, payload["driver_id"])
+            started_ok = False
             try:
                 async with aiohttp.ClientSession() as session:
                     resp = await session.post(
                         f"{sim_api}/api/devices/{device_id}/start",
-                        json={"driver_id": driver_id, "port": 0},
+                        json=payload,
+                        timeout=aiohttp.ClientTimeout(total=10),
                     )
                     if resp.status == 200:
+                        started_ok = True
                         data = await resp.json()
                         sim_port = data.get("port", 0)
                         if sim_port:
-                            self._sim_ports[device_id] = sim_port
-                            # Redirect connection
-                            driver = dm._devices.get(device_id)
-                            if driver:
-                                self._original_configs[device_id] = {
-                                    "host": driver.config.get("host", ""),
-                                    "port": driver.config.get("port", 0),
-                                }
-                                driver.config["host"] = "127.0.0.1"
-                                driver.config["port"] = sim_port
-                                try:
-                                    await dm.reconnect_device(device_id)
-                                except Exception as e:
-                                    log.warning("Failed to reconnect %s to simulator: %s", device_id, e)
+                            self._redirect_device_to_sim(device_id, sim_port)
+                            await self._reconnect_quietly(device_id)
                             log.info("Simulation sync: %s on port %d", device_id, sim_port)
+                        else:
+                            log.warning("Simulator started %s but reported no port", device_id)
+                    elif resp.status == 400:
+                        # A prior leak may have left an orphaned instance the
+                        # simulator now reports as "already simulated". Adopt its
+                        # running port instead of leaving the device pointed at
+                        # its real address.
+                        if not await self._adopt_existing_sim(sim_api, device_id):
+                            body = await resp.text()
+                            log.warning("Simulator refused device %s: %s", device_id, body[:200])
                     else:
                         body = await resp.text()
                         log.warning("Simulator refused device %s: %s", device_id, body[:200])
             except Exception as e:
                 log.warning("Failed to start simulator for new device %s: %s", device_id, e)
+                # If /start committed an instance server-side but our handling
+                # then failed (e.g. response parse), roll it back so we don't
+                # leak the instance + one of only 500 sim ports.
+                if started_ok and device_id not in self._sim_ports:
+                    await self._best_effort_stop(sim_api, device_id)
 
         if added or removed:
             log.info("Simulation sync complete: +%d -%d devices", len(added), len(removed))
+
+    def _redirect_device_to_sim(self, device_id: str, sim_port: int) -> None:
+        """Record the original config and point one device at the simulator."""
+        dm = self.engine.devices
+        self._sim_ports[device_id] = sim_port
+        driver = dm._devices.get(device_id)
+        if driver:
+            self._original_configs[device_id] = {
+                "host": driver.config.get("host", ""),
+                "port": driver.config.get("port", 0),
+            }
+            driver.config["host"] = "127.0.0.1"
+            driver.config["port"] = sim_port
+
+    async def _reconnect_quietly(self, device_id: str) -> None:
+        try:
+            await self.engine.devices.reconnect_device(device_id)
+        except Exception as e:
+            log.warning("Failed to reconnect %s to simulator: %s", device_id, e)
+
+    async def _adopt_existing_sim(self, sim_api: str, device_id: str) -> bool:
+        """Adopt an already-running instance's port after a 400 'already
+        simulated' (a prior leak left it). Returns True on success."""
+        import aiohttp
+        try:
+            async with aiohttp.ClientSession() as session:
+                resp = await session.get(
+                    f"{sim_api}/api/devices", timeout=aiohttp.ClientTimeout(total=5)
+                )
+                if resp.status != 200:
+                    return False
+                data = await resp.json()
+            for dev in data.get("devices", []):
+                if dev.get("device_id") == device_id and dev.get("port"):
+                    self._redirect_device_to_sim(device_id, dev["port"])
+                    await self._reconnect_quietly(device_id)
+                    log.info(
+                        "Adopted orphaned simulator instance for %s on port %d",
+                        device_id, dev["port"],
+                    )
+                    return True
+        except Exception as e:
+            log.warning("Failed to adopt existing simulator instance for %s: %s", device_id, e)
+        return False
+
+    async def _best_effort_stop(self, sim_api: str, device_id: str) -> None:
+        """POST /stop to roll back a leaked instance; swallow errors."""
+        import aiohttp
+        try:
+            async with aiohttp.ClientSession() as session:
+                await session.post(
+                    f"{sim_api}/api/devices/{device_id}/stop",
+                    timeout=aiohttp.ClientTimeout(total=5),
+                )
+            log.info("Rolled back leaked simulator instance for %s", device_id)
+        except Exception as e:
+            log.warning("Failed to roll back simulator instance for %s: %s", device_id, e)
 
     def status(self) -> dict:
         """Get simulation status for the API."""

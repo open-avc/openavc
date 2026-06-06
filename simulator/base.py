@@ -38,6 +38,11 @@ class BaseSimulator(ABC):
         self._port: int = 0
         self._running = False
         self._network_layer = None  # Set by SimulatorManager
+        # v0.5.0 child entities from the project, keyed
+        # {child_type: {padded_local_id: {label, config}}}. Set by the manager
+        # via set_child_entities after construction; Python simulators read
+        # self.child_entities to model per-child state and responses.
+        self._child_entities: dict[str, dict[str, dict]] = {}
 
         # Build state machines from SIMULATOR_INFO if present. Skip malformed
         # entries with a warning instead of letting a missing key raise a
@@ -61,6 +66,21 @@ class BaseSimulator(ABC):
             self._state[name] = sm_def["initial"]
 
     # ── Properties ──
+
+    @property
+    def child_entities(self) -> dict[str, dict[str, dict]]:
+        """Project child entities, ``{child_type: {padded_id: {label, config}}}``.
+
+        Empty unless the device declares child entities. Python simulators use
+        this to model per-child state and answer child-addressed queries; the
+        YAML auto-generator currently surfaces the children for display but
+        does not auto-model their wire protocol (use a Python ``_sim.py``).
+        """
+        return self._child_entities
+
+    def set_child_entities(self, child_entities: dict[str, dict[str, dict]]) -> None:
+        """Set the project child entities (called by the manager at start)."""
+        self._child_entities = child_entities or {}
 
     @property
     def driver_id(self) -> str:
@@ -257,6 +277,8 @@ class BaseSimulator(ABC):
         if controls:
             info["controls"] = controls
         info["push_state"] = getattr(self, "_push_state", False)
+        if self._child_entities:
+            info["child_entities"] = self._child_entities
         return info
 
 

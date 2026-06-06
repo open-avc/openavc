@@ -51,6 +51,7 @@ async def lifespan(app: FastAPI):
                 real_port=device.get("real_port", 0),
                 port=device.get("port", 0),
                 config=device.get("config"),
+                child_entities=device.get("child_entities"),
             )
         except Exception:
             logger.exception(
