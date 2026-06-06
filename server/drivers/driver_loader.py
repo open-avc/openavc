@@ -21,6 +21,7 @@ import os
 import re
 import sys
 import tempfile
+import threading
 from pathlib import Path
 from typing import Sequence, Any
 
@@ -96,7 +97,31 @@ def _redos_structural_reason(pattern: str) -> str | None:
     return None
 
 
-def _regex_redos_error(label: str, pattern: str) -> str | None:
+def _regex_search_exceeds(compiled: "re.Pattern[str]", test_str: str, budget: float) -> bool:
+    """Run ``compiled.search(test_str)`` in a worker thread, time-boxed.
+
+    Returns True if the search has not returned within ``budget`` seconds. The
+    worker is a daemon and the probe strings are short and fixed, so a runaway
+    search terminates on its own shortly after; the point is that the
+    *validation call itself* is bounded and never freezes the request thread.
+    The old in-line timing measured elapsed time only AFTER ``search`` returned,
+    so it could not bound the very operation it was meant to police — a probe
+    string that backtracked for ~2s blocked the caller for that whole time
+    before the threshold was even checked.
+    """
+    done = threading.Event()
+
+    def _run() -> None:
+        try:
+            compiled.search(test_str)
+        finally:
+            done.set()
+
+    threading.Thread(target=_run, daemon=True).start()
+    return not done.wait(budget)
+
+
+def _regex_redos_error(label: str, pattern: Any) -> str | None:
     """Compile ``pattern`` and check it for catastrophic backtracking.
 
     Returns an error string (prefixed with ``label``) when the pattern is
@@ -106,6 +131,8 @@ def _regex_redos_error(label: str, pattern: str) -> str | None:
     primary check; the empirical probe is a secondary backstop for shapes the
     structural rules don't model.
     """
+    if not isinstance(pattern, str):
+        return f"{label}: pattern must be a string, got {type(pattern).__name__}"
     try:
         compiled = re.compile(pattern)
     except re.error as e:
@@ -113,12 +140,8 @@ def _regex_redos_error(label: str, pattern: str) -> str | None:
 
     reason = _redos_structural_reason(pattern)
     if reason is None and _REDOS_RISK_RE.search(pattern):
-        import time as _time
-
         for test_str in _REDOS_PROBE_STRINGS:
-            t0 = _time.monotonic()
-            compiled.search(test_str)
-            if _time.monotonic() - t0 > 0.1:
+            if _regex_search_exceeds(compiled, test_str, 0.1):
                 reason = "shows runaway backtracking on a short input"
                 break
 
@@ -138,6 +161,15 @@ def validate_driver_definition(driver_def: dict[str, Any]) -> list[str]:
     """
     errors: list[str] = []
 
+    # A malformed driver file can yaml-parse to a non-mapping, or carry
+    # non-mapping `responses`/`commands`/`state_variables` sections (e.g. a
+    # YAML list where a map was expected). Those used to raise uncaught
+    # AttributeError/TypeError here, aborting the whole driver-loading pass and
+    # taking every other driver down with the one bad file. Validate the shape
+    # of each section before iterating it so a bad file is reported and skipped.
+    if not isinstance(driver_def, dict):
+        return ["Driver definition must be a mapping"]
+
     for field in REQUIRED_FIELDS:
         if field not in driver_def:
             errors.append(f"Missing required field: {field}")
@@ -147,7 +179,14 @@ def validate_driver_definition(driver_def: dict[str, Any]) -> list[str]:
         errors.append(f"Unsupported transport: {transport}")
 
     # Validate response patterns compile and don't have catastrophic backtracking
-    for i, resp in enumerate(driver_def.get("responses", [])):
+    responses = driver_def.get("responses", [])
+    if not isinstance(responses, list):
+        errors.append("responses: must be a list")
+        responses = []
+    for i, resp in enumerate(responses):
+        if not isinstance(resp, dict):
+            errors.append(f"Response {i}: must be a mapping")
+            continue
         # OSC responses use "address" key — validate it starts with /
         if "address" in resp:
             addr = resp["address"]
@@ -164,7 +203,11 @@ def validate_driver_definition(driver_def: dict[str, Any]) -> list[str]:
                 errors.append(err)
 
     # Validate commands structure
-    for cmd_name, cmd_def in driver_def.get("commands", {}).items():
+    commands = driver_def.get("commands", {})
+    if not isinstance(commands, dict):
+        errors.append("commands: must be a mapping")
+        commands = {}
+    for cmd_name, cmd_def in commands.items():
         if not isinstance(cmd_def, dict):
             errors.append(f"Command '{cmd_name}': must be a dict")
             continue
@@ -236,7 +279,11 @@ def validate_driver_definition(driver_def: dict[str, Any]) -> list[str]:
 
     # Validate state_variables structure
     valid_types = {"string", "integer", "number", "boolean", "enum", "float"}
-    for var_name, var_def in driver_def.get("state_variables", {}).items():
+    state_variables = driver_def.get("state_variables", {})
+    if not isinstance(state_variables, dict):
+        errors.append("state_variables: must be a mapping")
+        state_variables = {}
+    for var_name, var_def in state_variables.items():
         if not isinstance(var_def, dict):
             errors.append(f"State variable '{var_name}': must be a dict")
             continue
@@ -377,6 +424,11 @@ def load_python_driver_file(filepath: Path) -> type | None:
         spec.loader.exec_module(module)
     except Exception:  # Catch-all: exec_module runs arbitrary driver code
         log.exception(f"Failed to load Python driver from {filepath}")
+        # Drop the half-initialized module: leaving it resident for the process
+        # lifetime leaks state, defeats the "module not loaded" health check in
+        # list_python_drivers (so the panel shows no load error), and makes a
+        # later hot-reload see an inconsistent sys.modules.
+        sys.modules.pop(module_name, None)
         return None
 
     # Find BaseDriver subclasses defined in this module
@@ -489,6 +541,58 @@ def save_driver_definition(
     return filepath
 
 
+def _is_within(path: Path, root: Path) -> bool:
+    """True if ``path`` resolves to a location inside ``root``."""
+    try:
+        Path(path).resolve().relative_to(Path(root).resolve())
+        return True
+    except (ValueError, OSError):
+        return False
+
+
+def is_builtin_definition_path(filepath: Path) -> bool:
+    """True if ``filepath`` lives in the read-only built-in definitions tree.
+
+    The built-in ``.avcdriver`` files ship inside ``APP_DIR`` (the install
+    tree on an installed/frozen deployment). They must never be unlinked or
+    overwritten by an API call — there is no recovery short of reinstalling.
+    """
+    from server.system_config import DRIVER_DEFINITIONS_DIR
+
+    return _is_within(filepath, DRIVER_DEFINITIONS_DIR)
+
+
+def is_builtin_driver(
+    driver_id: str,
+    directories: Sequence[Path | str],
+) -> bool:
+    """True if ``driver_id`` is served by a read-only built-in with no override.
+
+    A user copy in ``driver_repo`` with the same id (which the Driver Builder
+    never creates — "Customize a copy" forks to a new ``<id>_copy``) takes
+    precedence and is freely editable, so we only treat an id as a protected
+    built-in when its only on-disk file is under the definitions tree.
+    """
+    builtin_match = False
+    user_match = False
+    for dir_path in directories:
+        dir_path = Path(dir_path)
+        if not dir_path.exists():
+            continue
+        for filepath in dir_path.glob(f"*{DRIVER_EXTENSION}"):
+            try:
+                data = yaml.safe_load(filepath.read_text(encoding="utf-8"))
+            except (OSError, yaml.YAMLError):
+                continue
+            if not (isinstance(data, dict) and data.get("id") == driver_id):
+                continue
+            if is_builtin_definition_path(filepath):
+                builtin_match = True
+            else:
+                user_match = True
+    return builtin_match and not user_match
+
+
 def delete_driver_definition(
     driver_id: str,
     directories: Sequence[Path | str],
@@ -497,6 +601,11 @@ def delete_driver_definition(
     Delete a driver definition file by driver ID.
 
     Searches all provided directories. Returns True if a file was deleted.
+
+    Never unlinks a shipped built-in (a file under the read-only definitions
+    tree): a single API call with a built-in id would otherwise permanently
+    remove a platform driver from the install tree with no recovery. A
+    same-id user copy in ``driver_repo`` is still deleted.
     """
     for dir_path in directories:
         dir_path = Path(dir_path)
@@ -506,6 +615,11 @@ def delete_driver_definition(
             try:
                 data = yaml.safe_load(filepath.read_text(encoding="utf-8"))
                 if isinstance(data, dict) and data.get("id") == driver_id:
+                    if is_builtin_definition_path(filepath):
+                        log.warning(
+                            f"Refusing to delete built-in driver definition: {filepath}"
+                        )
+                        continue
                     filepath.unlink()
                     log.info(f"Deleted driver definition: {filepath}")
                     return True
@@ -614,9 +728,23 @@ def list_python_drivers(directories: Sequence[Path | str]) -> list[dict[str, Any
             if is_driver_registered(driver_id):
                 entry["loaded"] = True
             else:
-                # Check if there was a load error by trying module lookup
+                # Not registered under this file's id. Distinguish the two
+                # failure modes so the Code tab / Installed Drivers panel can
+                # tell the integrator WHY the driver isn't usable instead of
+                # showing it as cleanly loaded with no error:
+                #   - module present in sys.modules but not registered under
+                #     this id → it imported but registration was rejected
+                #     (duplicate driver id) or a last hot-reload left a stale
+                #     class registered under a different id.
+                #   - module absent → it never loaded (failed import, or the
+                #     startup scan hasn't run for this file).
                 module_name = f"openavc_driver_{filepath.stem}"
-                if module_name not in sys.modules:
+                if module_name in sys.modules:
+                    entry["load_error"] = (
+                        "Imported but not registered — duplicate driver ID "
+                        "or a failed last reload"
+                    )
+                else:
                     entry["load_error"] = "Not loaded"
 
             drivers.append(entry)
@@ -729,12 +857,30 @@ def reload_python_driver(
                     break
 
     # --- Step 3: Remove old module and load properly ---
+    # Keep a handle on the old module so we can restore it if the canonical
+    # re-import fails after Step-1 validation already passed (a TOCTOU edit /
+    # delete of the file between validation and here, or an environment error).
+    # Without the restore, sys.modules would be left empty while the old class
+    # stays registered — registry and sys.modules disagreeing, with no repair.
+    old_module = sys.modules.get(module_name)
     sys.modules.pop(module_name, None)
 
     final_class = load_python_driver_file(filepath)
     if final_class is None:
-        # This shouldn't happen since validation passed, but handle it
-        return {"status": "error", "error": "Failed to load driver after validation passed"}
+        # Reload failed after validation passed. The old class is still
+        # registered (Step 4 hasn't run), so restore its module to keep
+        # sys.modules consistent and report that it is still serving devices —
+        # matching the old_driver_preserved contract of the Step-1 error paths.
+        if old_module is not None:
+            sys.modules[module_name] = old_module
+        return {
+            "status": "error",
+            "error": (
+                "Failed to reload driver after validation passed; the "
+                "previously loaded driver is still active"
+            ),
+            "old_driver_preserved": True,
+        }
 
     # --- Step 4: Unregister old and register new ---
     if old_driver_id and old_driver_id != new_driver_id:

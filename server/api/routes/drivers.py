@@ -1129,6 +1129,7 @@ async def update_driver_definition(driver_id: str, body: DriverDefinitionRequest
     """Update an existing JSON driver definition."""
     from server.drivers.driver_loader import (
         delete_driver_definition,
+        is_builtin_driver,
         list_driver_definitions as _list,
         save_driver_definition,
         validate_driver_definition,
@@ -1145,6 +1146,20 @@ async def update_driver_definition(driver_id: str, body: DriverDefinitionRequest
         raise HTTPException(
             status_code=404,
             detail=f"Driver definition '{driver_id}' not found",
+        )
+
+    # Built-in drivers are read-only: editing in place would unlink the
+    # shipped file from the install tree (no recovery). The Driver Builder
+    # forks built-ins to an editable copy with a new id instead.
+    if is_builtin_driver(driver_id, dirs):
+        raise HTTPException(
+            status_code=403,
+            detail="Built-in drivers are read-only. Customize a copy to edit.",
+        )
+    if driver_def.get("id") != driver_id and is_builtin_driver(driver_def.get("id", ""), dirs):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Driver id '{driver_def.get('id')}' belongs to a read-only built-in driver.",
         )
 
     # Validate
@@ -1172,6 +1187,7 @@ async def patch_driver_definition(driver_id: str, body: dict) -> dict:
     """Partially update a driver definition (merge provided fields)."""
     from server.drivers.driver_loader import (
         delete_driver_definition,
+        is_builtin_driver,
         list_driver_definitions as _list,
         save_driver_definition,
         validate_driver_definition,
@@ -1188,6 +1204,13 @@ async def patch_driver_definition(driver_id: str, body: dict) -> dict:
         raise HTTPException(
             status_code=404,
             detail=f"Driver definition '{driver_id}' not found",
+        )
+
+    # Built-in drivers are read-only (see update_driver_definition).
+    if is_builtin_driver(driver_id, dirs):
+        raise HTTPException(
+            status_code=403,
+            detail="Built-in drivers are read-only. Customize a copy to edit.",
         )
 
     # Merge: shallow merge top-level keys from body into current
@@ -1218,9 +1241,18 @@ async def patch_driver_definition(driver_id: str, body: dict) -> dict:
 @router.delete("/driver-definitions/{driver_id}")
 async def delete_driver_definition_endpoint(driver_id: str) -> dict:
     """Delete a JSON driver definition."""
-    from server.drivers.driver_loader import delete_driver_definition
+    from server.drivers.driver_loader import delete_driver_definition, is_builtin_driver
 
     dirs = _get_driver_dirs()
+
+    # Built-in drivers ship inside the install tree and can't be deleted —
+    # unlinking one would remove it permanently with no recovery.
+    if is_builtin_driver(driver_id, dirs):
+        raise HTTPException(
+            status_code=403,
+            detail="Built-in drivers can't be deleted.",
+        )
+
     deleted = delete_driver_definition(driver_id, dirs)
     if not deleted:
         raise HTTPException(

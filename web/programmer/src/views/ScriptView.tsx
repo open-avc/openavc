@@ -231,7 +231,12 @@ export function ScriptView() {
       const result = await api.reloadPythonDriver(selectedId);
 
       if (result.status === "error") {
-        showError(`Driver reload failed: ${result.error}`);
+        // Reassure the operator the room isn't down when the previous driver
+        // is still serving devices (validation/import/reload failed safely).
+        const preserved = result.old_driver_preserved
+          ? " The previously loaded driver is still active."
+          : "";
+        showError(`Driver reload failed: ${result.error}${preserved}`);
         // Show error marker on the offending line
         if (result.line) {
           setDriverReloadErrors([{ line: result.line, message: result.error ?? "Reload error" }]);
@@ -241,7 +246,7 @@ export function ScriptView() {
           level: "ERROR",
           source: "openavc.programmer",
           category: "driver",
-          message: `Driver reload failed: ${result.error}`,
+          message: `Driver reload failed: ${result.error}${preserved}`,
         });
       } else {
         setDriverReloadErrors([]);

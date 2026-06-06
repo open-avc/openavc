@@ -1,15 +1,22 @@
 """Tests for driver loader (.avcdriver YAML files)."""
 
+import sys
+import time
 from pathlib import Path
 
 import yaml
 
 from server.drivers.driver_loader import (
     DRIVER_EXTENSION,
+    _regex_search_exceeds,
     delete_driver_definition,
+    is_builtin_driver,
     list_driver_definitions,
+    list_python_drivers,
     load_driver_file,
     load_driver_files,
+    load_python_driver_file,
+    reload_python_driver,
     save_driver_definition,
     validate_driver_definition,
 )
@@ -208,8 +215,6 @@ def test_list_python_drivers_skips_companions(tmp_path):
     panel as if they were standalone Python drivers — clicking them
     triggered a fetch on a stem that has no driver class behind it.
     """
-    from server.drivers.driver_loader import list_python_drivers
-
     # Real driver — has a class with DRIVER_INFO.
     (tmp_path / "real_driver.py").write_text(
         '"""A real driver."""\n'
@@ -247,3 +252,235 @@ def test_list_python_drivers_skips_companions(tmp_path):
     assert "real_driver_sim" not in listed_ids
     assert "_helpers" not in listed_ids
     assert "helpers" not in listed_ids
+
+
+# --- H-050: malformed driver YAML must be reported, never crash the pass ---
+
+
+def test_validate_non_mapping_definition():
+    """A YAML file that parses to a non-mapping is reported, not raised."""
+    assert validate_driver_definition([1, 2, 3]) == ["Driver definition must be a mapping"]
+    assert validate_driver_definition("just a string") == ["Driver definition must be a mapping"]
+
+
+def test_validate_commands_as_list_does_not_raise():
+    """`commands` as a list (the original crash vector) is a reported error."""
+    defn = {**VALID_DEFINITION, "commands": ["power_on", "power_off"]}
+    errors = validate_driver_definition(defn)  # must not raise AttributeError
+    assert any("commands" in e for e in errors)
+
+
+def test_validate_state_variables_as_list_does_not_raise():
+    defn = {**VALID_DEFINITION, "state_variables": ["power"]}
+    errors = validate_driver_definition(defn)
+    assert any("state_variables" in e for e in errors)
+
+
+def test_validate_responses_as_dict_does_not_raise():
+    defn = {**VALID_DEFINITION, "responses": {"not": "a list"}}
+    errors = validate_driver_definition(defn)
+    assert any("responses" in e for e in errors)
+
+
+def test_validate_non_dict_response_entry():
+    defn = {**VALID_DEFINITION, "responses": ["raw string entry"]}
+    errors = validate_driver_definition(defn)
+    assert any("must be a mapping" in e for e in errors)
+
+
+def test_validate_non_string_pattern():
+    defn = {**VALID_DEFINITION, "responses": [{"pattern": 1234}]}
+    errors = validate_driver_definition(defn)
+    assert any("must be a string" in e for e in errors)
+
+
+def test_bad_driver_file_does_not_abort_the_pass(tmp_path):
+    """A single malformed .avcdriver must not stop other drivers loading.
+
+    Regression for the bug where a non-dict `commands`/`responses`/etc. raised
+    an uncaught AttributeError that aborted load_driver_files, so every
+    alphabetically-later good driver silently failed to load too.
+    """
+    # `a_bad` sorts before `z_good`, so the crash (if any) happens first.
+    _write_avcdriver(
+        tmp_path / "a_bad.avcdriver",
+        {"id": "a_bad", "name": "Bad", "transport": "tcp", "commands": ["nope"]},
+    )
+    good = {**VALID_DEFINITION, "id": "z_good", "name": "Good"}
+    _write_avcdriver(tmp_path / "z_good.avcdriver", good)
+
+    count = load_driver_files([tmp_path])  # must not raise
+
+    from server.core.device_manager import get_driver_registry, unregister_driver
+
+    try:
+        ids = [d["id"] for d in get_driver_registry()]
+        assert "z_good" in ids  # the good driver loaded despite the bad one
+        assert "a_bad" not in ids  # the bad driver was skipped
+        assert count >= 1
+    finally:
+        unregister_driver("z_good")
+
+
+# --- H-051: built-in driver files must not be unlinked by the API ---
+
+
+def test_is_builtin_driver_and_delete_guard(tmp_path, monkeypatch):
+    import server.system_config as sc
+
+    builtin_dir = tmp_path / "definitions"
+    repo_dir = tmp_path / "repo"
+    builtin_dir.mkdir()
+    repo_dir.mkdir()
+    monkeypatch.setattr(sc, "DRIVER_DEFINITIONS_DIR", builtin_dir)
+
+    save_driver_definition(VALID_DEFINITION, builtin_dir)
+    dirs = [builtin_dir, repo_dir]
+
+    # An id served only by the built-in tree is protected.
+    assert is_builtin_driver("test_loader_driver", dirs) is True
+    assert delete_driver_definition("test_loader_driver", dirs) is False
+    assert (builtin_dir / "test_loader_driver.avcdriver").exists()
+
+    # A same-id user copy in the repo overrides it and IS deletable, while the
+    # built-in file is left untouched.
+    save_driver_definition(VALID_DEFINITION, repo_dir)
+    assert is_builtin_driver("test_loader_driver", dirs) is False
+    assert delete_driver_definition("test_loader_driver", dirs) is True
+    assert not (repo_dir / "test_loader_driver.avcdriver").exists()
+    assert (builtin_dir / "test_loader_driver.avcdriver").exists()
+
+
+# --- M-096: a failed Python-driver import leaves no module behind ---
+
+
+def test_failed_python_import_clears_sys_modules(tmp_path):
+    filepath = tmp_path / "explode.py"
+    filepath.write_text("raise RuntimeError('boom at import')\n", encoding="utf-8")
+    module_name = "openavc_driver_explode"
+    sys.modules.pop(module_name, None)
+
+    result = load_python_driver_file(filepath)
+
+    assert result is None
+    assert module_name not in sys.modules  # not left half-initialized
+
+
+# --- M-097 / L-064: reload Step-3 failure restores the old module + flag ---
+
+
+def test_reload_step3_failure_preserves_old_driver(tmp_path, monkeypatch):
+    src = (
+        '"""Reload TOCTOU driver."""\n'
+        "from server.drivers.base import BaseDriver\n"
+        "class TocTouDriver(BaseDriver):\n"
+        '    DRIVER_INFO = {"id": "reload_toctou", "name": "TocTou"}\n'
+    )
+    filepath = tmp_path / "reload_toctou.py"
+    filepath.write_text(src, encoding="utf-8")
+    module_name = "openavc_driver_reload_toctou"
+
+    # Pre-load so the old module is resident (as after a real first load).
+    sys.modules.pop(module_name, None)
+    assert load_python_driver_file(filepath) is not None
+    old_module = sys.modules.get(module_name)
+    assert old_module is not None
+
+    # Simulate the canonical re-import failing after Step-1 validation passed
+    # (a TOCTOU edit/delete of the file between validation and reload).
+    import server.drivers.driver_loader as dl
+
+    monkeypatch.setattr(dl, "load_python_driver_file", lambda fp: None)
+
+    try:
+        result = reload_python_driver(filepath)
+        assert result["status"] == "error"
+        assert result["old_driver_preserved"] is True
+        # The old module was restored, not left missing.
+        assert sys.modules.get(module_name) is old_module
+    finally:
+        sys.modules.pop(module_name, None)
+
+
+# --- L-062: list_python_drivers distinguishes unregistered from not-loaded ---
+
+
+def test_list_python_drivers_reports_imported_but_unregistered(tmp_path, monkeypatch):
+    src = (
+        "from server.drivers.base import BaseDriver\n"
+        "class GhostDriver(BaseDriver):\n"
+        '    DRIVER_INFO = {"id": "ghost_driver", "name": "Ghost"}\n'
+    )
+    filepath = tmp_path / "ghost_driver.py"
+    filepath.write_text(src, encoding="utf-8")
+
+    # Module is resident in sys.modules but the id is NOT registered.
+    module_name = "openavc_driver_ghost_driver"
+    sys.modules[module_name] = object()  # stand-in resident module
+    monkeypatch.setattr(
+        "server.core.device_manager.is_driver_registered", lambda _id: False
+    )
+    try:
+        listed = list_python_drivers([tmp_path])
+        entry = next(d for d in listed if d["id"] == "ghost_driver")
+        assert entry["loaded"] is False
+        assert entry["load_error"] and "not registered" in entry["load_error"]
+    finally:
+        sys.modules.pop(module_name, None)
+
+
+def test_list_python_drivers_reports_not_loaded(tmp_path, monkeypatch):
+    src = (
+        "from server.drivers.base import BaseDriver\n"
+        "class AbsentDriver(BaseDriver):\n"
+        '    DRIVER_INFO = {"id": "absent_driver", "name": "Absent"}\n'
+    )
+    filepath = tmp_path / "absent_driver.py"
+    filepath.write_text(src, encoding="utf-8")
+    sys.modules.pop("openavc_driver_absent_driver", None)
+    monkeypatch.setattr(
+        "server.core.device_manager.is_driver_registered", lambda _id: False
+    )
+
+    listed = list_python_drivers([tmp_path])
+    entry = next(d for d in listed if d["id"] == "absent_driver")
+    assert entry["loaded"] is False
+    assert entry["load_error"] == "Not loaded"
+
+
+# --- L-063: the empirical ReDoS probe is time-boxed ---
+
+
+class _SlowSearch:
+    """Stand-in for a compiled regex whose search backtracks for `delay` s."""
+
+    def __init__(self, delay: float):
+        self.delay = delay
+
+    def search(self, _s):
+        time.sleep(self.delay)
+        return None
+
+
+def test_regex_search_is_time_boxed():
+    """A slow search returns control to the caller within the budget.
+
+    The old code measured elapsed time only AFTER `search` returned, so a
+    runaway probe blocked the caller for its full duration. The worker-thread
+    probe must hand control back within ~budget regardless of how long the
+    search runs (a deterministic 0.5s stub stands in for a catastrophic regex).
+    """
+    t0 = time.monotonic()
+    exceeded = _regex_search_exceeds(_SlowSearch(0.5), "x", 0.1)
+    elapsed = time.monotonic() - t0
+
+    assert exceeded is True
+    # Bounded by the budget (plus scheduling slack), NOT by the slow search.
+    assert elapsed < 0.4
+
+
+def test_regex_search_fast_pattern_within_budget():
+    import re
+
+    safe = re.compile(r"PWR=(\d)")
+    assert _regex_search_exceeds(safe, "PWR=1", 0.5) is False
