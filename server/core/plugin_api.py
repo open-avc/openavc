@@ -14,8 +14,13 @@ from pathlib import Path
 from typing import Any, Callable, Coroutine
 
 from server.utils.logger import get_logger
+from server.utils.net_safety import assert_safe_outbound_url
 
 log = get_logger(__name__)
+
+# Sentinel for "key absent" so variable_set can tell a missing key apart from
+# one explicitly set to None.
+_MISSING = object()
 
 # Hop-by-hop headers that must not be forwarded across a proxy boundary
 # (RFC 7230 §6.1). Stripped in both directions by PluginAPI.proxy_to.
@@ -117,6 +122,12 @@ class PluginAPI:
         Writes to var.<variable_id> in the state store. User variables are
         shared room-logic state, so writing to them is gated by a separate
         capability from plugin-namespace state_write.
+
+        A var.* key the plugin *creates* (one that doesn't already exist —
+        declared user variables are seeded at startup before plugins run) is
+        tracked so it's removed on stop/uninstall. Writing to a pre-existing /
+        declared user variable does not track it, so a shared variable is never
+        deleted out from under the project.
         """
         self._require("variable_write")
         if value is not None and not isinstance(value, (str, int, float, bool)):
@@ -124,7 +135,10 @@ class PluginAPI:
                 f"Variable values must be flat primitives, got {type(value).__name__}"
             )
         key = f"var.{variable_id}"
+        created = self._state.get(key, _MISSING) is _MISSING
         self._state.set(key, value, source=f"plugin.{self._plugin_id}")
+        if created:
+            self._registry.track_variable_key(key)
 
     async def state_subscribe(self, pattern: str, callback: Callable) -> str:
         """Subscribe to state changes matching a glob pattern. Requires: state_read.
@@ -259,15 +273,28 @@ class PluginAPI:
             )
         self._registry.http_router = router
 
-    async def proxy_to(self, url: str, request, *, timeout: float = 30.0):
+    async def proxy_to(
+        self, url: str, request, *, timeout: float = 30.0, allow_internal: bool = False
+    ):
         """Proxy an incoming request to ``url`` and return the upstream response.
+
+        Requires: http_endpoints.
 
         Buffered pass-through (httpx) sized for small request/response bodies
         such as WHEP SDP signaling — forwards the method, query string, body,
         and headers (minus host / hop-by-hop). Not for streaming media.
+
+        SSRF guard: the upstream host must be public and the scheme http(s).
+        Loopback, RFC1918, link-local (incl. cloud metadata 169.254.169.254),
+        and other reserved address space are refused. A plugin proxying to its
+        own localhost sidecar must pass ``allow_internal=True`` (an explicit,
+        auditable opt-in) — a ``ValueError`` is raised otherwise.
         """
+        self._require("http_endpoints")
         import httpx
         from starlette.responses import Response
+
+        await assert_safe_outbound_url(url, allow_internal=allow_internal)
 
         body = await request.body()
         fwd_headers = {
@@ -370,10 +397,35 @@ class PluginAPI:
         return dict(self._config)
 
     async def save_config(self, config: dict) -> None:
-        """Save updated configuration to the project file."""
+        """Save updated configuration to the project file.
+
+        ``config`` must be a JSON-serializable dict (the project file is JSON).
+        A non-serializable or self-referential value is rejected here, before
+        it is written into the engine's in-memory project — otherwise it would
+        poison the shared project model and block every subsequent save for the
+        rest of the session. On a save failure the in-memory config is reverted
+        so ``config`` / ``get_running_config`` never report an unpersisted value
+        as saved.
+        """
+        if not isinstance(config, dict):
+            raise PluginPermissionError(
+                f"Plugin config must be a dict, got {type(config).__name__}"
+            )
+        import json
+        try:
+            json.dumps(config)
+        except (TypeError, ValueError, RecursionError) as e:
+            raise PluginPermissionError(
+                f"Plugin config must be JSON-serializable: {e}"
+            )
+        previous = self._config
         self._config = dict(config)
         if self._save_config_fn:
-            await self._save_config_fn(self._plugin_id, config)
+            try:
+                await self._save_config_fn(self._plugin_id, config)
+            except Exception:
+                self._config = previous
+                raise
 
     # ──── Identity & Logging ────
 

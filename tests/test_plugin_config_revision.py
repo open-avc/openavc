@@ -63,6 +63,31 @@ async def test_save_plugin_config_unknown_plugin_does_not_bump(tmp_path, monkeyp
     assert engine._project_revision == 9
 
 
+@pytest.mark.asyncio
+async def test_save_plugin_config_reverts_on_save_failure(tmp_path, monkeypatch):
+    from unittest.mock import AsyncMock
+
+    engine = _engine(tmp_path, monkeypatch)
+    engine.project.plugins["video_panel"].config = {"keep": 1}
+    engine._project_revision = 5
+
+    # Persisting fails (e.g. disk full). The in-memory config must revert so it
+    # matches disk and doesn't poison the next save of anything.
+    def _boom(*a, **k):
+        raise OSError("disk full")
+
+    monkeypatch.setattr("server.core.engine.save_project", _boom)
+    engine.broadcast_ws = AsyncMock()
+
+    with pytest.raises(OSError):
+        await engine._save_plugin_config("video_panel", {"keep": 2})
+
+    # Reverted to the last-good config; revision not bumped.
+    assert engine.project.plugins["video_panel"].config == {"keep": 1}
+    assert engine._project_revision == 5
+    engine.broadcast_ws.assert_awaited_once()
+
+
 class _StubLoader:
     """Minimal plugin_loader stand-in for the uninstall endpoint."""
 

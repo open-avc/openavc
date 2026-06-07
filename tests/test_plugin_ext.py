@@ -289,7 +289,11 @@ class TestProxyTo:
 
         @app.post("/call")
         async def call(request: Request):
-            return await api.proxy_to("http://upstream/target", request)
+            # allow_internal=True: this test fakes the upstream (the host isn't
+            # resolvable), so skip the SSRF resolution and exercise forwarding.
+            return await api.proxy_to(
+                "http://upstream/target", request, allow_internal=True
+            )
 
         client = TestClient(app)
         resp = client.post("/call?a=1&b=2", content=b"hello", headers={"x-test": "v"})
@@ -309,6 +313,105 @@ class TestProxyTo:
         # upstream's wrong content-length must not leak into the response
         assert resp.headers.get("x-upstream") == "yes"
         assert resp.headers["content-length"] == str(len(b'{"upstream": true}'))
+
+    def test_requires_http_endpoints_capability(self):
+        """proxy_to is egress; a plugin that didn't declare http_endpoints
+        can't make outbound requests (auditability)."""
+        from server.core.plugin_api import PluginPermissionError
+
+        api, _ = _make_api("p", capabilities=[])
+
+        app = FastAPI()
+
+        @app.post("/call")
+        async def call(request: Request):
+            return await api.proxy_to("http://8.8.8.8/x", request)
+
+        client = TestClient(app)
+        with pytest.raises(PluginPermissionError):
+            client.post("/call", content=b"")
+
+    def test_blocks_internal_host_by_default(self, monkeypatch):
+        """Default-deny SSRF guard: a loopback/internal upstream is refused
+        even with the capability, unless the caller opts into allow_internal."""
+        monkeypatch.setattr(httpx, "AsyncClient", _FakeAsyncClient)
+        api, _ = _make_api("p", capabilities=["http_endpoints"])
+
+        app = FastAPI()
+
+        @app.post("/blocked")
+        async def blocked(request: Request):
+            return await api.proxy_to("http://127.0.0.1:9000/x", request)
+
+        @app.post("/allowed")
+        async def allowed(request: Request):
+            return await api.proxy_to(
+                "http://127.0.0.1:9000/x", request, allow_internal=True
+            )
+
+        client = TestClient(app)
+        with pytest.raises(ValueError):
+            client.post("/blocked", content=b"")
+        # Same loopback target proceeds when explicitly opted in.
+        assert client.post("/allowed", content=b"").status_code == 207
+
+
+class TestSaveConfig:
+    @pytest.mark.asyncio
+    async def test_rejects_non_serializable_config(self):
+        """A non-JSON-serializable config is refused before it can poison the
+        in-memory project; api.config is left unchanged."""
+        from server.core.plugin_api import PluginPermissionError
+
+        api, _ = _make_api("p", capabilities=[])
+        with pytest.raises(PluginPermissionError):
+            await api.save_config({"sock": object()})
+        assert api.config == {}
+
+    @pytest.mark.asyncio
+    async def test_rejects_cyclic_config(self):
+        from server.core.plugin_api import PluginPermissionError
+
+        api, _ = _make_api("p", capabilities=[])
+        cyclic: dict = {}
+        cyclic["self"] = cyclic
+        with pytest.raises(PluginPermissionError):
+            await api.save_config(cyclic)
+        assert api.config == {}
+
+    @pytest.mark.asyncio
+    async def test_reverts_config_on_save_failure(self):
+        """If the persist step fails, api.config reverts so it never reports an
+        unpersisted value as saved."""
+        api, _ = _make_api("p", capabilities=[])
+        api._config = {"keep": 1}
+        api._save_config_fn = AsyncMock(side_effect=OSError("disk full"))
+        with pytest.raises(OSError):
+            await api.save_config({"keep": 2})
+        assert api.config == {"keep": 1}
+
+
+class TestVariableCleanup:
+    @pytest.mark.asyncio
+    async def test_created_vars_cleaned_declared_preserved(self):
+        """A plugin's ad-hoc var.* keys are removed on cleanup; a declared user
+        variable the plugin merely wrote to is left intact."""
+        from server.core.plugin_api import _MISSING
+
+        api, reg = _make_api("p", capabilities=["variable_write"])
+        # A declared user variable is seeded by the engine before plugins run.
+        api._state.set("var.declared", "seed", source="system")
+
+        await api.variable_set("declared", "from_plugin")  # pre-existing -> not tracked
+        await api.variable_set("created", "ad_hoc")  # new -> tracked
+
+        assert reg.variable_keys_set == {"var.created"}
+
+        await reg.cleanup(api._state, api._events)
+
+        # The plugin's ad-hoc var is gone; the declared one survives.
+        assert api._state.get("var.created", _MISSING) is _MISSING
+        assert api._state.get("var.declared") == "from_plugin"
 
 
 # ═══════════════════════════════════════════════════════════

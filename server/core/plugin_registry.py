@@ -21,6 +21,11 @@ class PluginRegistry:
         self.state_subscriptions: list[str] = []
         self.event_subscriptions: list[str] = []
         self.state_keys_set: set[str] = set()
+        # var.* keys this plugin CREATED (the key didn't exist when first
+        # written), so they can be removed on stop/uninstall. Declared /
+        # pre-existing user variables are never tracked here, so writing to a
+        # shared room-logic variable never causes it to be deleted.
+        self.variable_keys_set: set[str] = set()
         self.managed_tasks: list[asyncio.Task] = []
         self.periodic_task_ids: list[str] = []
         # FastAPI APIRouter the plugin registered via api.register_router().
@@ -37,6 +42,9 @@ class PluginRegistry:
 
     def track_state_key(self, key: str) -> None:
         self.state_keys_set.add(key)
+
+    def track_variable_key(self, key: str) -> None:
+        self.variable_keys_set.add(key)
 
     def track_task(self, task: asyncio.Task) -> None:
         self.managed_tasks.append(task)
@@ -56,6 +64,7 @@ class PluginRegistry:
                   f"{len(self.state_subscriptions)} state subs, "
                   f"{len(self.event_subscriptions)} event subs, "
                   f"{len(self.state_keys_set)} state keys, "
+                  f"{len(self.variable_keys_set)} variable keys, "
                   f"{len(self.managed_tasks)} tasks")
 
         for sub_id in self.state_subscriptions:
@@ -78,6 +87,16 @@ class PluginRegistry:
             except (KeyError, ValueError):
                 log.debug(f"Failed to clear state key {key}")
         self.state_keys_set.clear()
+
+        # Remove only the user variables this plugin created (never declared
+        # ones), so an uninstalled plugin doesn't leave orphaned var.* keys
+        # still broadcasting to panels and satisfying triggers/conditions.
+        for key in list(self.variable_keys_set):
+            try:
+                state_store.delete(key)
+            except (KeyError, ValueError):
+                log.debug(f"Failed to clear variable key {key}")
+        self.variable_keys_set.clear()
 
         for task in self.managed_tasks:
             if not task.done():

@@ -810,16 +810,22 @@ class Engine:
         if not self.project:
             return
         if plugin_id in self.project.plugins:
+            previous = self.project.plugins[plugin_id].config
             self.project.plugins[plugin_id].config = config
             try:
                 save_project(self.project_path, self.project)
                 self.bump_project_revision()
-            except (OSError, ValueError, TypeError) as e:
+            except Exception as e:
+                # Revert the in-memory project so it matches disk. Otherwise a
+                # bad/unwritable config lingers in the shared project model and
+                # the next save of ANYTHING re-serializes it and fails too.
+                self.project.plugins[plugin_id].config = previous
                 log.error(f"Failed to save plugin config for '{plugin_id}': {e}")
                 await self.broadcast_ws({
                     "type": "error",
                     "message": f"Failed to save plugin config: {e}",
                 })
+                raise
 
     # --- UI Event Handling ---
 
