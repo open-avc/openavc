@@ -531,3 +531,193 @@ async def test_disabled_rule_not_evaluated():
     assert len(alerts) == 0
 
     await monitor.stop()
+
+
+# --- Hardening regressions ---
+
+
+@pytest.mark.asyncio
+async def test_absence_default_key_prefix_fires():
+    """An absence rule with no explicit key_prefix uses the default "device."
+    which must match every device.<id> key. A literal fnmatch matched nothing,
+    so the offline watchdog silently never fired.
+    """
+    agent = MockAgent()
+    state = MockStateStore()
+    events = MockEventBus()
+    monitor = AlertMonitor(agent, state, events)
+    await monitor.start()
+
+    monitor._on_rules_update_sync("cloud.alert_rules_update", {
+        "rules": [_make_rule(
+            rule_id="abs1",
+            rule_type="absence",
+            condition={"threshold_seconds": 60},  # no key_prefix -> default "device."
+        )]
+    })
+
+    import time as _t
+    now = _t.time()
+    monitor._last_state_times["projector1"] = now - 120  # 2 min stale
+
+    await monitor._run_periodic_checks(now=now)
+
+    alerts = [m for m in agent.sent_messages if m[0] == "alert"]
+    assert len(alerts) == 1
+    assert alerts[0][1]["device_id"] == "projector1"
+
+    await monitor.stop()
+
+
+@pytest.mark.asyncio
+async def test_absence_threshold_beyond_24h_fires():
+    """An absence threshold above the old hardcoded 24h prune horizon must still
+    fire — the device entry has to survive long enough to be evaluated.
+    """
+    agent = MockAgent()
+    state = MockStateStore()
+    events = MockEventBus()
+    monitor = AlertMonitor(agent, state, events)
+    await monitor.start()
+
+    monitor._on_rules_update_sync("cloud.alert_rules_update", {
+        "rules": [_make_rule(
+            rule_id="abs-long",
+            rule_type="absence",
+            condition={"key_prefix": "device.*", "threshold_seconds": 90000},  # 25h
+        )]
+    })
+
+    import time as _t
+    now = _t.time()
+    # Stale just past the 25h threshold. The old 24h prune evicted this entry
+    # before the absence check could ever see it.
+    monitor._last_state_times["projector1"] = now - 90030
+
+    await monitor._run_periodic_checks(now=now)
+
+    alerts = [m for m in agent.sent_messages if m[0] == "alert"]
+    assert len(alerts) == 1
+    assert monitor._last_state_times.get("projector1") is not None  # not pruned
+
+    await monitor.stop()
+
+
+@pytest.mark.asyncio
+async def test_periodic_loop_survives_tick_exception(monkeypatch):
+    """An exception during a periodic tick (e.g. ConnectionClosed from a send)
+    must not terminate the loop — that would silently stop all pattern and
+    absence evaluation for the rest of the connection's life.
+    """
+    agent = MockAgent()
+    monitor = AlertMonitor(agent, MockStateStore(), MockEventBus())
+    monitor._running = True
+
+    calls = []
+
+    async def fake_checks(now):
+        calls.append(now)
+        if len(calls) == 1:
+            raise ConnectionError("simulated send failure")
+        # Stop once the loop has proven it survived the first-tick exception.
+        monitor._running = False
+
+    monitor._run_periodic_checks = fake_checks
+
+    real_sleep = asyncio.sleep
+
+    async def instant_sleep(_seconds):
+        await real_sleep(0)
+
+    monkeypatch.setattr("server.cloud.alert_monitor.asyncio.sleep", instant_sleep)
+
+    await monitor._periodic_check_loop()
+
+    # A second tick ran: the loop did not die on the first tick's exception.
+    assert len(calls) >= 2
+
+
+def test_unsafe_regex_rule_dropped():
+    """A catastrophic-backtracking 'matches' regex pushed as a rule value is
+    rejected at update time so it never runs synchronously on the event loop.
+    """
+    monitor = AlertMonitor(MockAgent(), MockStateStore(), MockEventBus())
+    monitor._on_rules_update_sync("cloud.alert_rules_update", {
+        "rules": [_make_rule(
+            rule_id="redos",
+            condition={"key": "device.*.msg", "operator": "matches", "value": "(a+)+$"},
+        )]
+    })
+    assert monitor._rules == []
+
+
+def test_safe_regex_rule_kept():
+    """A well-formed 'matches' regex is preserved."""
+    monitor = AlertMonitor(MockAgent(), MockStateStore(), MockEventBus())
+    monitor._on_rules_update_sync("cloud.alert_rules_update", {
+        "rules": [_make_rule(
+            rule_id="ok",
+            condition={"key": "device.*.msg", "operator": "matches", "value": r"error \d+"},
+        )]
+    })
+    assert [r["id"] for r in monitor._rules] == ["ok"]
+
+
+def test_malformed_rule_dropped_others_survive():
+    """A rule missing 'id' is dropped without discarding the rest of the update
+    (a KeyError used to swallow the whole update silently).
+    """
+    monitor = AlertMonitor(MockAgent(), MockStateStore(), MockEventBus())
+    good = _make_rule(rule_id="good", condition={"key": "device.a.x", "operator": ">", "value": 1})
+    bad = {"name": "no id", "rule_type": "threshold", "condition": {}}  # missing id
+    monitor._on_rules_update_sync("cloud.alert_rules_update", {"rules": [good, bad]})
+    assert {r["id"] for r in monitor._rules} == {"good"}
+
+
+def test_malformed_rule_does_not_drop_whole_update():
+    """The update still applies (replacing the prior rule set) rather than being
+    silently dropped and leaving the stale rules in place.
+    """
+    monitor = AlertMonitor(MockAgent(), MockStateStore(), MockEventBus())
+    monitor._on_rules_update_sync("cloud.alert_rules_update", {
+        "rules": [_make_rule(rule_id="r1", condition={"key": "device.a.x", "operator": ">", "value": 1})]
+    })
+    assert {r["id"] for r in monitor._rules} == {"r1"}
+    monitor._on_rules_update_sync("cloud.alert_rules_update", {"rules": [
+        _make_rule(rule_id="r2", condition={"key": "device.a.x", "operator": ">", "value": 1}),
+        {"name": "bad", "rule_type": "threshold", "condition": {}},
+    ]})
+    assert {r["id"] for r in monitor._rules} == {"r2"}
+
+
+@pytest.mark.asyncio
+async def test_alert_message_truncated_to_column_limit():
+    """An alert message must not exceed the cloud's String(2000) column or
+    PostgreSQL rejects the insert (22001) and the alert is silently lost.
+    """
+    agent = MockAgent()
+    state = MockStateStore()
+    events = MockEventBus()
+    monitor = AlertMonitor(agent, state, events)
+    await monitor.start()
+
+    monitor._on_rules_update_sync("cloud.alert_rules_update", {
+        "rules": [_make_rule(
+            rule_id="r",
+            condition={"key": "device.d.msg", "operator": "contains", "value": "X"},
+        )]
+    })
+
+    # A device reports a very long string state into the matched key.
+    state.set("device.d.msg", "X" * 5000)
+
+    await asyncio.sleep(0)
+    async with monitor._pending_lock:
+        batch = monitor._pending_sends[:]
+        monitor._pending_sends.clear()
+
+    alerts = [b for b in batch if b[0] == "alert"]
+    assert len(alerts) == 1
+    assert len(alerts[0][1]["message"]) <= 2000
+
+    await monitor.stop()

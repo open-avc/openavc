@@ -17,6 +17,7 @@ from typing import Any, TYPE_CHECKING
 
 from server.cloud.protocol import ALERT, ALERT_RESOLVED
 from server.utils.logger import get_logger
+from server.utils.regex_safety import regex_safety_error
 
 if TYPE_CHECKING:
     from server.cloud.agent import CloudAgent
@@ -169,7 +170,9 @@ class AlertMonitor:
                 "severity": rule.get("severity", "warning"),
                 "category": rule.get("category", "device"),
                 "device_id": device_id,
-                "message": f"{rule['name']}: {key} {operator} {threshold} (current: {value})",
+                "message": _clip_message(
+                    f"{rule['name']}: {key} {operator} {threshold} (current: {value})"
+                ),
                 "detail": {"rule_id": rule["id"], "key": key, "value": value, "threshold": threshold},
             })
         elif not triggered and alert_key in self._active_alerts:
@@ -206,12 +209,18 @@ class AlertMonitor:
 
     async def _periodic_check_loop(self) -> None:
         """Runs every 30 seconds. Checks pattern durations and absence rules."""
-        try:
-            while self._running:
+        while self._running:
+            try:
                 await asyncio.sleep(30)
                 await self._run_periodic_checks(time.time())
-        except asyncio.CancelledError:
-            return
+            except asyncio.CancelledError:
+                return
+            except Exception:
+                # A send failure (e.g. ConnectionClosed) or any other error
+                # during a tick must not kill the loop — that would silently
+                # stop ALL pattern-duration and device-absence evaluation for
+                # the rest of this connection's life. Log and keep ticking.
+                log.exception("Alert monitor: periodic check iteration failed")
 
     async def _run_periodic_checks(self, now: float) -> None:
         """Run one iteration of the periodic checks.
@@ -240,12 +249,27 @@ class AlertMonitor:
                     "severity": rule.get("severity", "warning"),
                     "category": rule.get("category", "device"),
                     "device_id": device_id,
-                    "message": f"{rule['name']}: condition held for {duration}s",
+                    "message": _clip_message(f"{rule['name']}: condition held for {duration}s"),
                     "detail": {"rule_id": rule["id"], "duration_seconds": duration},
                 })
 
-        # Prune stale device entries (devices not seen in 24 hours)
-        stale_cutoff = now - 86400
+        # Prune stale device entries. The horizon must outlast the largest
+        # absence threshold, or a device would be evicted before its absence
+        # rule can fire (the absence check below iterates _last_state_times).
+        # A hardcoded 24h floor made any threshold above 86400s unreachable.
+        max_absence = 0
+        for rule in self._rules:
+            if rule.get("rule_type") == "absence" and rule.get("enabled", True):
+                try:
+                    max_absence = max(
+                        max_absence,
+                        int(rule.get("condition", {}).get("threshold_seconds", 120)),
+                    )
+                except (TypeError, ValueError):
+                    pass
+        # +60s slack so at least one 30s tick runs after the threshold elapses
+        # but before the entry is pruned.
+        stale_cutoff = now - max(86400, max_absence + 60)
         for dev_id in [k for k, t in self._last_state_times.items() if t < stale_cutoff]:
             self._last_state_times.pop(dev_id, None)
 
@@ -255,12 +279,17 @@ class AlertMonitor:
                 continue
 
             threshold_secs = rule.get("condition", {}).get("threshold_seconds", 120)
-            key_prefix = rule.get("condition", {}).get("key_prefix", "device.")
+            key_prefix = rule.get("condition", {}).get("key_prefix") or "device."
+            if not isinstance(key_prefix, str):
+                key_prefix = "device."
 
             for device_id, last_time in list(self._last_state_times.items()):
-                # Only check devices matching the key_prefix (glob-style)
+                # Only check devices matching the key_prefix. The field is a
+                # prefix by name and by the portal default ("device."); treat a
+                # bare prefix as startswith and a glob (containing * ? [) as
+                # fnmatch — a literal fnmatch of "device." matched nothing.
                 full_key = f"device.{device_id}"
-                if not fnmatch(full_key, key_prefix):
+                if not _matches_key_prefix(full_key, key_prefix):
                     continue
 
                 alert_key = f"rule:{rule['id']}:{device_id}"
@@ -275,7 +304,9 @@ class AlertMonitor:
                         "severity": rule.get("severity", "warning"),
                         "category": "device",
                         "device_id": device_id,
-                        "message": f"{rule['name']}: {device_id} not reporting for {elapsed}s",
+                        "message": _clip_message(
+                            f"{rule['name']}: {device_id} not reporting for {elapsed}s"
+                        ),
                         "detail": {"rule_id": rule["id"], "threshold_seconds": threshold_secs},
                     })
                 elif now - last_time <= threshold_secs and alert_key in self._active_alerts:
@@ -312,10 +343,16 @@ class AlertMonitor:
     def _on_rules_update_sync(self, event: str, data: Any) -> None:
         """Handle rules pushed from cloud (may be called sync or async)."""
         if isinstance(data, dict):
-            rules = data.get("rules", [])
+            raw_rules = data.get("rules", [])
         else:
-            rules = []
+            raw_rules = []
 
+        rules = self._sanitize_rules(raw_rules)
+
+        # Safe now that _sanitize_rules guarantees every stored/incoming rule
+        # is a dict with a string "id": a malformed rule used to raise KeyError
+        # here, BEFORE self._rules was reassigned, and the event bus swallowed
+        # it — silently dropping the whole update and keeping the stale rule set.
         old_rule_ids = {r["id"] for r in self._rules}
         new_rule_ids = {r["id"] for r in rules}
 
@@ -338,6 +375,43 @@ class AlertMonitor:
 
     # --- Helpers ---
 
+    def _sanitize_rules(self, rules: Any) -> list[dict[str, Any]]:
+        """Filter cloud-pushed rules down to a safe, well-formed set.
+
+        Drops anything that isn't a dict or is missing a usable string ``id``
+        (the evaluation paths index ``rule['id']`` / ``rule['name']`` directly,
+        so a malformed rule would otherwise crash rule processing). Also drops
+        a ``matches`` rule whose regex is invalid or prone to catastrophic
+        backtracking — that regex runs synchronously on the event loop on every
+        state change, so a ReDoS pattern pushed as a rule value would stall
+        device control, the receive loop, and heartbeats. A missing ``name``
+        falls back to the id. Dropped rules are logged, not silently ignored.
+        """
+        valid: list[dict[str, Any]] = []
+        for rule in rules if isinstance(rules, list) else []:
+            if not isinstance(rule, dict):
+                log.warning("Alert monitor: dropping non-dict rule: %r", rule)
+                continue
+            rule_id = rule.get("id")
+            if not isinstance(rule_id, str) or not rule_id:
+                log.warning(
+                    "Alert monitor: dropping rule with missing/invalid id: %r", rule
+                )
+                continue
+            condition = rule.get("condition")
+            if isinstance(condition, dict) and condition.get("operator") == "matches":
+                # _compare runs re.search(str(threshold), ...); validate that.
+                err = regex_safety_error(
+                    f"alert rule {rule_id}", str(condition.get("value", ""))
+                )
+                if err:
+                    log.warning("Alert monitor: dropping rule %s — %s", rule_id, err)
+                    continue
+            if not rule.get("name"):
+                rule = {**rule, "name": rule_id}
+            valid.append(rule)
+        return valid
+
     def _queue_send(self, msg_type: str, payload: dict[str, Any]) -> None:
         """Queue a message to be sent asynchronously (safe to call from sync context)."""
         max_pending = 100
@@ -359,6 +433,32 @@ class AlertMonitor:
 
 
 # --- Module-level helpers ---
+
+# The cloud stores alert messages in a String(2000) column. An over-length
+# message (e.g. a device reporting a long string state into a matched key)
+# makes PostgreSQL reject the insert (error 22001) and silently drops the
+# alert — it passes on SQLite but fails in production. Clip before sending.
+_MAX_MESSAGE_LEN = 2000
+
+
+def _clip_message(message: str) -> str:
+    """Truncate an alert message to the cloud's column limit."""
+    if len(message) <= _MAX_MESSAGE_LEN:
+        return message
+    return message[: _MAX_MESSAGE_LEN - 1] + "…"
+
+
+def _matches_key_prefix(key: str, key_prefix: str) -> bool:
+    """Match a state key against an absence rule's ``key_prefix``.
+
+    Treat a glob (containing ``*``, ``?`` or ``[``) as fnmatch; otherwise treat
+    it as a literal prefix (startswith). A bare ``fnmatch`` matched the portal
+    default ``"device."`` against nothing, so every absence rule using the
+    default silently never fired.
+    """
+    if any(c in key_prefix for c in "*?["):
+        return fnmatch(key, key_prefix)
+    return key.startswith(key_prefix)
 
 
 def _compare(value: Any, operator: str, threshold: Any) -> bool:

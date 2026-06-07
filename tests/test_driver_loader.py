@@ -6,9 +6,9 @@ from pathlib import Path
 
 import yaml
 
+from server.utils.regex_safety import _regex_search_exceeds
 from server.drivers.driver_loader import (
     DRIVER_EXTENSION,
-    _regex_search_exceeds,
     delete_driver_definition,
     is_builtin_driver,
     list_driver_definitions,
