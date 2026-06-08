@@ -58,6 +58,10 @@ class UDPTransport:
         self._connected = False
         self._send_lock = asyncio.Lock()
         self.last_data_received: float = 0.0
+        # Last send/socket error string, for the connection-fault classifier.
+        # UDP is connectionless, so this is best-effort — an ICMP
+        # port-unreachable surfaces via the protocol's error_received.
+        self._last_error = ""
 
         # For send_and_wait: queue to capture the next response
         self._response_queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=100)
@@ -80,6 +84,7 @@ class UDPTransport:
             lambda: _UDPProtocol(
                 name=self._name,
                 on_data=self._deliver_message,
+                on_error=self._record_error,
             ),
             local_addr=(bind_addr, 0),
             allow_broadcast=allow_broadcast,
@@ -109,6 +114,7 @@ class UDPTransport:
             try:
                 self._transport.sendto(data, (host, port))
             except OSError as e:
+                self._last_error = str(e) or type(e).__name__
                 log.error(f"[{self._name}] UDP send failed to {host}:{port}: {e}")
                 raise
             log.debug(f"[{self._name}] TX: {_format_data(data)} -> {host}:{port}")
@@ -196,6 +202,15 @@ class UDPTransport:
         """Alias for connected (backward compat with ad-hoc usage)."""
         return self._transport is not None
 
+    @property
+    def last_error(self) -> str:
+        """Last send/socket error string (for the connection-fault classifier)."""
+        return self._last_error
+
+    def _record_error(self, exc: Exception) -> None:
+        """Record a socket error (e.g. ICMP port-unreachable) for classification."""
+        self._last_error = str(exc) or type(exc).__name__
+
     def _deliver_message(self, data: bytes, addr: tuple[str, int]) -> None:
         """Route an incoming datagram to the response queue and/or callback."""
         import time
@@ -237,9 +252,11 @@ class _UDPProtocol(asyncio.DatagramProtocol):
         self,
         name: str = "udp",
         on_data: Callable[[bytes, tuple[str, int]], None] | None = None,
+        on_error: Callable[[Exception], None] | None = None,
     ) -> None:
         self._name = name
         self._on_data = on_data
+        self._on_error = on_error
 
     def datagram_received(self, data: bytes, addr: tuple[str, int]) -> None:
         if self._on_data is not None:
@@ -247,6 +264,8 @@ class _UDPProtocol(asyncio.DatagramProtocol):
 
     def error_received(self, exc: Exception) -> None:
         log.warning(f"[{self._name}] UDP error: {exc}")
+        if self._on_error is not None:
+            self._on_error(exc)
 
     def connection_lost(self, exc: Exception | None) -> None:
         if exc:

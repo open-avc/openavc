@@ -182,6 +182,12 @@ class OSCTransport:
         """True if the send socket is open and ready."""
         return self._udp is not None and self._udp.connected
 
+    @property
+    def last_error(self) -> str:
+        """Last error string from the underlying UDP socket (for the
+        connection-fault classifier)."""
+        return self._udp.last_error if self._udp is not None else ""
+
 
 class _OSCListenProtocol(asyncio.DatagramProtocol):
     """Dedicated listen socket that routes incoming data to the on_data callback."""

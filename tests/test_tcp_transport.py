@@ -196,6 +196,39 @@ async def test_connection_refused():
         )
 
 
+async def test_last_error_captured_and_classified_on_connect_failure():
+    """A failed connect records a non-empty last_error, and the shared
+    classifier turns that real OS string into an actionable (non-generic) code.
+
+    The exact failure mode for a closed localhost port is OS-dependent (refused
+    on Linux, sometimes a connect timeout on Windows), so this asserts only the
+    transport contract — capture *something* the classifier can act on. The
+    precise string->code mapping is covered in test_connection_fault.py.
+    """
+    from server.core.connection_fault import (
+        TRANSPORT_DISCONNECTED,
+        classify_connection_fault,
+    )
+
+    transport = TCPTransport(
+        "127.0.0.1", 19999,
+        on_data=lambda d: None,
+        on_disconnect=lambda: None,
+        delimiter=b"\r",
+        timeout=1.0,
+        inter_command_delay=0.0,
+    )
+    with pytest.raises(ConnectionError):
+        await transport._connect()
+
+    assert transport.last_error  # non-empty regardless of OS
+    fault = classify_connection_fault(
+        last_error=transport.last_error, exc=None,
+        host="127.0.0.1", port=19999, transport="tcp",
+    )
+    assert fault.code != TRANSPORT_DISCONNECTED  # an actionable reason, not the fallback
+
+
 # --- Connection errors and timeouts ---
 
 

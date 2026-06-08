@@ -77,6 +77,8 @@ class SerialTransport:
         self._reader_task: asyncio.Task | None = None
         self._send_lock = asyncio.Lock()
         self._connected = False
+        # Last open/IO error string, for the connection-fault classifier.
+        self._last_error = ""
 
         # For send_and_wait
         self._response_queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=100)
@@ -166,6 +168,7 @@ class SerialTransport:
             self._reader_task = asyncio.create_task(self._reader_loop())
             log.info(f"Serial connected to {self.port} @ {self.baudrate}")
         except (OSError, asyncio.TimeoutError) as e:
+            self._last_error = str(e) or type(e).__name__
             raise ConnectionError(
                 f"Failed to open serial port {self.port}: {e}"
             ) from e
@@ -196,6 +199,7 @@ class SerialTransport:
             if self._inter_command_delay > 0:
                 await asyncio.sleep(self._inter_command_delay)
         except (OSError, ConnectionError) as e:
+            self._last_error = str(e) or type(e).__name__
             log.error(f"Serial send error: {e}")
             await self._handle_disconnect()
             raise
@@ -249,6 +253,11 @@ class SerialTransport:
     def connected(self) -> bool:
         return self._connected
 
+    @property
+    def last_error(self) -> str:
+        """Last open/IO error string (for the connection-fault classifier)."""
+        return self._last_error
+
     # --- Simulation helpers ---
 
     def sim_receive(self, data: bytes) -> None:
@@ -269,6 +278,7 @@ class SerialTransport:
         except asyncio.CancelledError:
             return
         except (OSError, ConnectionError) as e:
+            self._last_error = str(e) or type(e).__name__
             log.debug(f"Serial reader error: {e}")
         finally:
             if self._connected:

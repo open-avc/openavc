@@ -326,6 +326,99 @@ async def test_on_device_disconnected_triggers_reconnect(dm, core):
     # Should have started a reconnect task
     await asyncio.sleep(0.05)  # Let event handler run
     assert "test_dev" in dm._reconnect_tasks
+    await dm._cancel_reconnect("test_dev")
+
+
+# ---------------------------------------------------------------------------
+# Offline reason classification (§53)
+# ---------------------------------------------------------------------------
+
+class AuthFailDriver(BaseDriver):
+    """A driver whose transport reports an SSH auth failure on connect.
+
+    Mirrors what BaseDriver does on an SSH post-connect auth failure: the ssh
+    stderr is stashed into last_transport_error before the transport is torn
+    down, then a generic ConnectionError propagates.
+    """
+
+    DRIVER_INFO = {
+        "id": "auth_fail_driver",
+        "name": "Auth Fail Driver",
+        "manufacturer": "Test",
+        "category": "utility",
+        "transport": "ssh",
+        "default_config": {"host": "169.254.100.100", "port": 22},
+        "commands": {},
+        "state_variables": {},
+        "config_schema": {},
+    }
+
+    async def connect(self):
+        self._last_transport_error = (
+            "admin@169.254.100.100: Permission denied (publickey,password)."
+        )
+        raise ConnectionError("[sw] No CLI prompt from 169.254.100.100")
+
+    async def disconnect(self):
+        self._connected = False
+
+    async def send_command(self, command, params=None):
+        pass
+
+    async def stop_polling(self):
+        pass
+
+
+async def test_offline_reason_auth_failed_from_permission_denied(dm, core):
+    """A transport last_error of 'Permission denied' classifies as auth_failed
+    with a human-readable offline_detail (the §53 acceptance test)."""
+    state, events = core
+    driver = AuthFailDriver(
+        "sw", {"host": "169.254.100.100", "port": 22, "transport": "ssh"},
+        state, events,
+    )
+    dm._devices["sw"] = driver
+
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        await dm._reconnect_loop("sw", max_attempts=1)
+
+    assert state.get("device.sw.offline_reason") == "auth_failed"
+    detail = state.get("device.sw.offline_detail")
+    assert detail and "Authentication failed" in detail
+
+
+async def test_set_offline_reason_direct(dm, core):
+    """_set_offline_reason reads the driver's stashed transport error + config
+    and publishes both the stable code and the human message."""
+    state, events = core
+    driver = AuthFailDriver(
+        "sw", {"host": "169.254.100.100", "port": 22, "transport": "ssh"},
+        state, events,
+    )
+    driver._last_transport_error = "ssh: connect to host 169.254.100.100 port 22: No route to host"
+    dm._set_offline_reason("sw", driver)
+
+    assert state.get("device.sw.offline_reason") == "unreachable"
+    # The message interpolates the configured endpoint, not whatever IP the
+    # transport's error string happened to contain.
+    assert "169.254.100.100:22" in state.get("device.sw.offline_detail")
+
+
+async def test_offline_reason_cleared_on_reconnect_success(dm, core):
+    """A successful reconnect clears both offline_reason and offline_detail."""
+    state, events = core
+    driver = MockDriver("test_dev", {}, state, events)
+    driver._connected = False
+    dm._devices["test_dev"] = driver
+    state.set("device.test_dev.offline_reason", "auth_failed", source="test")
+    state.set("device.test_dev.offline_detail", "Authentication failed.", source="test")
+
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        await dm._reconnect_loop("test_dev", max_attempts=1)
+
+    assert driver._connected is True
+    assert state.get("device.test_dev.offline_reason") is None
+    assert state.get("device.test_dev.offline_detail") is None
 
     await dm._cancel_reconnect("test_dev")
 

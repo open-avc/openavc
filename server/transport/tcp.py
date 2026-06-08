@@ -67,6 +67,8 @@ class TCPTransport:
         self._reader_task: asyncio.Task | None = None
         self._send_lock = asyncio.Lock()
         self._connected = False
+        # Last connect/IO error string, for the connection-fault classifier.
+        self._last_error = ""
 
         # For send_and_wait: a queue to capture the next response
         self._response_queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=100)
@@ -145,6 +147,7 @@ class TCPTransport:
             self._reader_task = asyncio.create_task(self._reader_loop())
             log.info(f"TCP connected to {self.host}:{self.port}")
         except (ConnectionError, OSError, asyncio.TimeoutError) as e:
+            self._last_error = str(e) or type(e).__name__
             raise ConnectionError(
                 f"Failed to connect to {self.host}:{self.port}: {e}"
             ) from e
@@ -172,6 +175,7 @@ class TCPTransport:
             if self._inter_command_delay > 0:
                 await asyncio.sleep(self._inter_command_delay)
         except (ConnectionError, OSError) as e:
+            self._last_error = str(e) or type(e).__name__
             log.error(f"TCP send error: {e}")
             await self._handle_disconnect()
             raise
@@ -226,6 +230,11 @@ class TCPTransport:
     def connected(self) -> bool:
         return self._connected
 
+    @property
+    def last_error(self) -> str:
+        """Last connect/IO error string (for the connection-fault classifier)."""
+        return self._last_error
+
     async def _reader_loop(self) -> None:
         """Background task that reads from the socket and delivers messages."""
         try:
@@ -245,6 +254,7 @@ class TCPTransport:
         except asyncio.CancelledError:
             return
         except (ConnectionError, OSError) as e:
+            self._last_error = str(e) or type(e).__name__
             log.debug(f"TCP reader error: {e}")
         finally:
             if self._connected:

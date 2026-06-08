@@ -130,6 +130,21 @@ The table below lists common AV control ports. This is not exhaustive. AV manufa
 
 An OpenAVC instance controlling only PJLink projectors and a Biamp DSP, for example, will only generate traffic on ports 4352 and 49152. If your network policy requires explicit allow-listing, the exact ports in use for a given deployment can be determined from the project's device configuration.
 
+### Diagnosing offline devices
+
+When a device can't connect, its card in the Programmer shows an "Offline" banner with a specific reason. Use it to tell a network problem from a credentials or device problem before escalating:
+
+| Banner reason | What it means | What to check |
+|---------------|---------------|---------------|
+| Authentication failed | The device answered, but rejected the username/password or key. | The credentials in the device's configuration. For SSH gear, that the OpenAVC key is installed, or that password auth is enabled. Not a network problem. |
+| Connection refused | OpenAVC reached the device's IP, but nothing is listening on that port. | That the control service is enabled on the device (SSH/Telnet/HTTP/API server), and that the configured port matches. Not usually a firewall problem (a firewall drop normally shows as "unreachable"). |
+| Can't reach the device | No route to the host, a DNS failure, or a connection timeout. | The device IP, that the host is powered and on the network, VLAN/routing between the OpenAVC host and the device, and any firewall blocking the control port. |
+| SSH host key changed | The device's SSH host key no longer matches the one OpenAVC trusted. | Whether the device was replaced or re-imaged (expected), or whether this is unexpected (possible man-in-the-middle). Re-accept the key only once verified. |
+| Device didn't respond as expected | The connection opened, but the device didn't speak the expected protocol. | That the right driver and transport (e.g. SSH vs Telnet, the right port) are selected for this device. |
+| Required client not found | A client OpenAVC shells out to is missing on the host (e.g. the OpenSSH `ssh` client). | That the client is installed and on the system PATH on the OpenAVC host. |
+
+OpenAVC retries automatically with exponential backoff (about an hour) before giving up; the banner shows the current attempt. The same reason is also published as the `device.<id>.offline_reason` state key for automation and monitoring.
+
 ### Device discovery (on-demand only)
 
 OpenAVC includes a network discovery feature to help AV integrators find devices during initial setup. Discovery is never automatic. It runs only when an integrator explicitly starts a scan from the Programmer interface. Default scan budgets are 60 s (Quick), 120 s (Standard), and 180 s (Thorough).

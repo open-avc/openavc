@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { Send, Pencil, Trash2, Wifi, Power, RefreshCw, Copy, Settings, Check, X, Loader2, Search, ChevronDown } from "lucide-react";
+import { Send, Pencil, Trash2, Wifi, WifiOff, Power, RefreshCw, Copy, Settings, Check, X, Loader2, Search, ChevronDown } from "lucide-react";
 import { CopyButton } from "../../components/shared/CopyButton";
 import { DeviceStatusDot } from "../../components/shared/DeviceStatusDot";
 import { useProjectStore } from "../../store/projectStore";
@@ -136,6 +136,12 @@ export function DeviceDetail({
 
   const deviceName = String(liveState[`device.${deviceId}.name`] ?? deviceId);
   const connected = Boolean(liveState[`device.${deviceId}.connected`]);
+  const orphaned = Boolean(liveState[`device.${deviceId}.orphaned`]);
+  // Server-built, human-readable offline reason (device.<id>.offline_detail).
+  // The taxonomy lives server-side; this view only renders the message.
+  const offlineDetail = String(liveState[`device.${deviceId}.offline_detail`] ?? "");
+  const reconnectAttempt = Number(liveState[`device.${deviceId}.reconnect_attempt`]) || 0;
+  const reconnectFailed = Boolean(liveState[`device.${deviceId}.reconnect_failed`]);
 
   const commands = deviceInfo?.commands ?? {};
   const commandNames = Object.keys(commands);
@@ -353,12 +359,21 @@ export function DeviceDetail({
       </div>
 
       {/* Orphaned device banner */}
-      {Boolean(liveState[`device.${deviceId}.orphaned`]) && (
+      {orphaned && (
         <OrphanBanner
           driverId={deviceConfig?.driver ?? ""}
           onReassign={() => deviceConfig && onEdit(deviceConfig)}
           onBrowseDrivers={onBrowseDrivers}
           onActivated={() => api.getDevice(deviceId).then(setDeviceInfo).catch(console.error)}
+        />
+      )}
+
+      {/* Offline reason banner — actionable cause from device.<id>.offline_detail */}
+      {!connected && isEnabled && !orphaned && offlineDetail && (
+        <OfflineBanner
+          detail={offlineDetail}
+          attempt={reconnectAttempt}
+          failed={reconnectFailed}
         />
       )}
 
@@ -1380,6 +1395,53 @@ const devLogTdStyle: React.CSSProperties = {
   textOverflow: "ellipsis",
   maxWidth: 150,
 };
+
+function OfflineBanner({
+  detail,
+  attempt,
+  failed,
+}: {
+  detail: string;
+  attempt: number;
+  failed: boolean;
+}) {
+  const accent = "var(--color-warning, #f59e0b)";
+  return (
+    <div
+      style={{
+        padding: "var(--space-md)",
+        borderRadius: "var(--border-radius)",
+        marginBottom: "var(--space-md)",
+        background: "rgba(245, 158, 11, 0.1)",
+        border: "2px solid rgba(245, 158, 11, 0.4)",
+        display: "flex",
+        gap: "var(--space-sm)",
+        alignItems: "flex-start",
+      }}
+    >
+      <WifiOff size={18} style={{ color: accent, flexShrink: 0, marginTop: 2 }} />
+      <div>
+        <div style={{ fontWeight: 600, color: accent, fontSize: "var(--font-size-md)" }}>
+          Offline
+        </div>
+        <div style={{ fontSize: "var(--font-size-sm)", marginTop: 2 }}>{detail}</div>
+        <div
+          style={{
+            fontSize: "var(--font-size-sm)",
+            color: "var(--text-muted)",
+            marginTop: "var(--space-xs)",
+          }}
+        >
+          {failed
+            ? "Automatic reconnection gave up. Use the Reconnect button above to try again."
+            : attempt > 0
+              ? `Reconnecting automatically… (attempt ${attempt})`
+              : "Reconnecting automatically…"}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function OrphanBanner({
   driverId,

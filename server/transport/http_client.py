@@ -101,6 +101,8 @@ class HTTPClientTransport:
         self._client: httpx.AsyncClient | None = None
         self._last_response: HTTPResponse | None = None
         self.last_data_received: float = 0.0
+        # Last request error string, for the connection-fault classifier.
+        self._last_error = ""
 
     async def open(self) -> None:
         """Create the httpx.AsyncClient session with configured auth and TLS."""
@@ -156,13 +158,21 @@ class HTTPClientTransport:
         try:
             await self._client.head("/", timeout=timeout)
             return True
-        except Exception:
+        except Exception as e:
+            # Keep the underlying cause so the connection-fault classifier can
+            # tell "refused" / "unreachable" apart from a generic verify miss.
+            self._last_error = str(e) or type(e).__name__
             return False
 
     @property
     def connected(self) -> bool:
         """HTTP is 'connected' if the client session exists."""
         return self._client is not None
+
+    @property
+    def last_error(self) -> str:
+        """Last request error string (for the connection-fault classifier)."""
+        return self._last_error
 
     @property
     def last_response(self) -> HTTPResponse | None:
@@ -272,14 +282,19 @@ class HTTPClientTransport:
             return result
 
         except httpx.TimeoutException as e:
+            # ConnectTimeout/ReadTimeout often stringify empty; fall back to the
+            # class name so the classifier still sees a "timeout" signal.
+            self._last_error = str(e) or type(e).__name__
             log.warning(f"HTTP {method} {path} timeout: {e}")
             raise
         except httpx.ConnectError as e:
+            self._last_error = str(e) or type(e).__name__
             log.error(f"HTTP {method} {path} connection error: {e}")
             raise ConnectionError(
                 f"Failed to connect to {self.base_url}{path}: {e}"
             ) from e
         except httpx.HTTPError as e:
+            self._last_error = str(e) or type(e).__name__
             log.error(f"HTTP {method} {path} error: {e}")
             raise
 

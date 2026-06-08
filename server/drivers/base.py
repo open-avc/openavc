@@ -51,6 +51,12 @@ class BaseDriver(ABC):
         self._poll_task: asyncio.Task | None = None
         self._connected = False
         self._last_poll_success: float = 0.0
+        # Last transport error captured before the live transport is torn down
+        # on a failure path, so the DeviceManager's connection-fault classifier
+        # can still read it after self.transport has been nulled. Cleared at
+        # the start of each connect() attempt so a stale cause can't leak into
+        # a later, unrelated failure.
+        self._last_transport_error: str = ""
         # Strong refs to fire-and-forget tasks (disconnect cleanup) so the GC
         # can't collect them mid-run — a bare create_task is only weakly held.
         self._bg_tasks: set[asyncio.Task] = set()
@@ -93,6 +99,29 @@ class BaseDriver(ABC):
         if self.transport is None:
             return False
         return getattr(self.transport, "connected", False)
+
+    @property
+    def last_transport_error(self) -> str:
+        """The transport's last error string, retained across teardown.
+
+        Read by the DeviceManager's connection-fault classifier — the live
+        transport is nulled on every failure path, so the raw cause (an SSH
+        ``Permission denied``, a refused socket) would otherwise be lost before
+        the offline reason is computed.
+        """
+        return self._last_transport_error
+
+    def _stash_transport_error(self) -> None:
+        """Capture the live transport's ``last_error`` before it's torn down.
+
+        A no-op when there's no transport or it reports no error, so it never
+        overwrites a real cause with an empty string.
+        """
+        transport = self.transport
+        if transport is not None:
+            err = getattr(transport, "last_error", "") or ""
+            if err:
+                self._last_transport_error = err
 
     @staticmethod
     def _numeric_default(var_def: dict[str, Any], *, as_int: bool) -> int | float:
@@ -147,6 +176,9 @@ class BaseDriver(ABC):
         appropriate transport (TCP or serial). Override this method for
         custom connection logic (e.g., greeting handshakes).
         """
+        # Start each attempt with a clean slate so a previous failure's cause
+        # can't be misattributed to this one by the fault classifier.
+        self._last_transport_error = ""
         if self.transport:
             try:
                 await self.transport.close()
@@ -326,6 +358,10 @@ class BaseDriver(ABC):
         verify_timeout = self.config.get("verify_timeout", 3.0)
         if verify_timeout > 0 and hasattr(self.transport, "verify"):
             if not await self.transport.verify(timeout=verify_timeout):
+                # Retain the transport's underlying cause (refused / timeout)
+                # before tearing it down — the raise below only says "not
+                # responding", which the classifier would read as no_response.
+                self._stash_transport_error()
                 if self.transport:
                     await self.transport.close()
                     self.transport = None
@@ -345,7 +381,10 @@ class BaseDriver(ABC):
             await self.events.emit(f"device.connected.{self.device_id}")
             log.info(f"[{self.device_id}] Connected via {transport_type}")
         except Exception:
-            # Clean up transport if post-connect setup fails
+            # Clean up transport if post-connect setup fails. Stash the
+            # transport's last error first (e.g. an SSH auth failure surfaces
+            # as ssh stderr on the transport, not in this exception).
+            self._stash_transport_error()
             if self.transport:
                 await self.transport.close()
                 self.transport = None
@@ -626,6 +665,10 @@ class BaseDriver(ABC):
         so it never re-enters this handler.
         """
         await self.stop_polling()
+        # Capture the transport's last error before nulling it, so the
+        # DeviceManager can classify the offline reason from the event handler
+        # (which runs after this teardown).
+        self._stash_transport_error()
         transport = self.transport
         self.transport = None
         if transport is not None:

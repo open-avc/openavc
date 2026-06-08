@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any, TYPE_CHECKING
 
+from server.core.connection_fault import classify_connection_fault
 from server.core.event_bus import EventBus
 from server.core.state_store import StateStore
 from server.utils.logger import get_logger
@@ -201,6 +202,7 @@ class DeviceManager:
             await self._apply_pending_settings(device_id)
         except Exception as e:
             log.warning(f"Failed to connect '{device_id}': {e}")
+            self._set_offline_reason(device_id, driver, exc=e)
             self._start_reconnect(device_id)
 
     async def remove_device(self, device_id: str) -> None:
@@ -536,6 +538,7 @@ class DeviceManager:
                 await asyncio.wait_for(driver.connect(), timeout=30)
             except Exception as e:
                 log.warning(f"Failed to connect '{device_id}': {e}")
+                self._set_offline_reason(device_id, driver, exc=e)
                 failed.append(device_id)
                 self._start_reconnect(device_id)
 
@@ -610,6 +613,77 @@ class DeviceManager:
         config["pending_settings"].update(settings)
         log.info(f"[{device_id}] Stored {len(settings)} pending setting(s)")
 
+    # --- Offline reason classification ---
+
+    @staticmethod
+    def _connection_descriptor(driver: BaseDriver) -> tuple[str, Any, str]:
+        """Return (host, port, transport) for a driver's connection, for the
+        connection-fault classifier's message. Mirrors how BaseDriver.connect()
+        resolves the transport (device config overrides the driver default).
+        """
+        cfg = getattr(driver, "config", {}) or {}
+        transport = (
+            cfg.get("transport")
+            or driver.DRIVER_INFO.get("transport", "tcp")
+            or ""
+        ).lower()
+        if transport == "serial":
+            # Serial has no host; its "port" is the COM/tty path.
+            return "", cfg.get("port", ""), transport
+        host = cfg.get("host", "") or ""
+        port = cfg.get("port")
+        if port in (None, "") and transport == "http":
+            port = 443 if cfg.get("ssl") else 80
+        return host, port, transport
+
+    def _set_offline_reason(
+        self,
+        device_id: str,
+        driver: BaseDriver | None,
+        exc: BaseException | None = None,
+    ) -> None:
+        """Classify why a device is offline and publish both the stable code
+        (``device.<id>.offline_reason``, for triggers/automation) and the human
+        message (``device.<id>.offline_detail``, for the device card).
+
+        Reads the transport's last error from the driver — preferring the live
+        transport, falling back to the value BaseDriver stashes before tearing
+        a failed transport down — plus the connect exception, and runs the one
+        shared classifier. No per-transport branching here.
+        """
+        last_error = ""
+        host, port, transport = "", None, ""
+        if driver is not None:
+            last_error = getattr(driver, "last_transport_error", "") or ""
+            live = getattr(driver, "transport", None)
+            if live is not None:
+                fresh = getattr(live, "last_error", "") or ""
+                if fresh:
+                    last_error = fresh
+            host, port, transport = self._connection_descriptor(driver)
+
+        fault = classify_connection_fault(
+            last_error=last_error, exc=exc,
+            host=host, port=port, transport=transport,
+        )
+        self.state.set_batch(
+            {
+                f"device.{device_id}.offline_reason": fault.code,
+                f"device.{device_id}.offline_detail": fault.message,
+            },
+            source="device_manager",
+        )
+
+    def _clear_offline_reason(self, device_id: str) -> None:
+        """Clear both offline-reason keys after a successful (re)connect."""
+        self.state.set_batch(
+            {
+                f"device.{device_id}.offline_reason": None,
+                f"device.{device_id}.offline_detail": None,
+            },
+            source="device_manager",
+        )
+
     # --- Reconnection ---
 
     async def _on_device_disconnected(self, event: str, payload: dict[str, Any]) -> None:
@@ -634,7 +708,10 @@ class DeviceManager:
             return
 
         log.info(f"[{device_id}] Transport disconnected — starting auto-reconnect")
-        self.state.set(f"device.{device_id}.offline_reason", "transport_disconnected", source="device_manager")
+        # Classify the drop from the transport's stashed last error (no connect
+        # exception on this path) so the device card shows an actionable reason
+        # instead of a bare code.
+        self._set_offline_reason(device_id, self._devices.get(device_id))
         self._start_reconnect(device_id)
 
     def _start_reconnect(self, device_id: str) -> None:
@@ -693,12 +770,15 @@ class DeviceManager:
                     await driver.stop_polling()
                     await driver.connect()
                     log.info(f"[{device_id}] Reconnected successfully")
-                    self.state.set(f"device.{device_id}.offline_reason", None, source="device_manager")
+                    self._clear_offline_reason(device_id)
                     self.state.set(f"device.{device_id}.reconnect_attempt", None, source="device_manager")
                     await self._apply_pending_settings(device_id)
                     return
                 except Exception as e:
                     log.warning(f"[{device_id}] Reconnect failed: {e}")
+                    # Refine the offline reason from this attempt's failure —
+                    # the cause can change between attempts (auth vs unreachable).
+                    self._set_offline_reason(device_id, driver, exc=e)
                     attempt += 1
 
             # Exhausted all attempts
@@ -723,7 +803,7 @@ class DeviceManager:
         # Cancel any existing auto-reconnect task first
         await self._cancel_reconnect(device_id)
         self.state.set(f"device.{device_id}.reconnect_failed", None, source="device_manager")
-        self.state.set(f"device.{device_id}.offline_reason", None, source="device_manager")
+        self._clear_offline_reason(device_id)
         self.state.set(f"device.{device_id}.reconnect_attempt", None, source="device_manager")
         # Suppress auto-reconnect during intentional disconnect
         self._intentional_disconnect.add(device_id)
@@ -738,6 +818,7 @@ class DeviceManager:
             except Exception as e:
                 self.state.set(f"device.{device_id}.connected", False, source="device_manager")
                 log.warning(f"Reconnect failed for {device_id}: {e}")
+                self._set_offline_reason(device_id, driver, exc=e)
                 self._start_reconnect(device_id)
         finally:
             self._intentional_disconnect.discard(device_id)
@@ -782,4 +863,5 @@ class DeviceManager:
         except Exception as e:
             self.state.set(f"device.{device_id}.connected", False, source="device_manager")
             log.warning(f"resume_device: connect failed for {device_id}: {e}")
+            self._set_offline_reason(device_id, driver, exc=e)
             self._start_reconnect(device_id)
