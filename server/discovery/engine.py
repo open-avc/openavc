@@ -54,6 +54,26 @@ from server.discovery.result import (
 
 log = logging.getLogger("discovery")
 
+
+def _driver_version_tuple(version: object) -> tuple[int, int, int]:
+    """Comparable (major, minor, patch) from a driver version string like
+    ``'1.2.0'``. Unparseable or missing versions sort lowest, so a real catalog
+    version supersedes a driver that declares no usable version. Stdlib-only
+    (no regex) and never raises.
+    """
+    nums: list[int] = []
+    for part in str(version or "").split(".")[:3]:
+        digits = ""
+        for ch in part.strip():
+            if ch.isdigit():
+                digits += ch
+            else:
+                break
+        nums.append(int(digits) if digits else 0)
+    while len(nums) < 3:
+        nums.append(0)
+    return (nums[0], nums[1], nums[2])
+
 # Phase weights per scan depth — proportional to expected wall-clock time.
 # Ensures the progress bar allocates more space to slower phases (ping sweep)
 # and less to instant ones (subnet detection).  Must sum to 1.0.
@@ -288,24 +308,44 @@ class DiscoveryEngine:
     ) -> None:
         """Rebuild the SignalIndex from installed registry + community catalog.
 
-        Installed drivers register first; their rules win on (kind, source_id,
-        txt_match) collisions. Community drivers fill in coverage for devices
-        not yet installed — that's how discovery surfaces "Install & Add"
-        candidates for unfamiliar gear.
+        For a driver that's both installed and in the catalog, the NEWER copy
+        is authoritative for discovery hints. The installed copy usually wins
+        (it may carry local corrections), but a STALE install must not mask a
+        newer catalog's improved fingerprints — otherwise a device that a clean
+        machine would identify outright shows here only as a weak "possible"
+        just because an older copy happens to be installed. Catalog drivers with
+        no installed counterpart fill in coverage for devices not yet installed
+        — that's how discovery surfaces "Install & Add" candidates.
         """
-        installed_ids: set[str] = {
-            str(d.get("id") or "") for d in self._installed_registry
+        installed_by_id: dict[str, dict[str, Any]] = {
+            str(d.get("id") or ""): d
+            for d in self._installed_registry
+            if d.get("id")
         }
 
-        installed_hints = load_discovery_hints(self._installed_registry)
+        catalog_only: list[dict[str, Any]] = []
+        superseded_installed_ids: set[str] = set()
+        for d in community_drivers:
+            cid = str(d.get("id") or "")
+            if not cid:
+                continue
+            installed = installed_by_id.get(cid)
+            if installed is None:
+                catalog_only.append(d)  # not installed — catalog covers it
+            elif _driver_version_tuple(d.get("version")) > _driver_version_tuple(
+                installed.get("version")
+            ):
+                # Catalog is newer than the installed copy: its (improved)
+                # fingerprints win, and the stale installed hints are dropped
+                # so they can't shadow the catalog's stronger signal.
+                catalog_only.append(d)
+                superseded_installed_ids.add(cid)
 
-        # Skip catalog drivers already represented by an installed driver —
-        # the installed copy is authoritative (may be a newer version with
-        # corrected hints).
-        catalog_only = [
-            d for d in community_drivers
-            if str(d.get("id") or "") not in installed_ids
+        installed_kept = [
+            d for d in self._installed_registry
+            if str(d.get("id") or "") not in superseded_installed_ids
         ]
+        installed_hints = load_discovery_hints(installed_kept)
         community_hints = load_discovery_hints(catalog_only)
 
         all_hints = installed_hints + community_hints
