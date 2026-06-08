@@ -1197,6 +1197,7 @@ Python drivers give you full control. Use this method when:
 - The device's authentication scheme isn't a Telnet-style `Username:` / `Password:` prompt handshake. (Prompt-driven Telnet auth is supported declaratively via the `.avcdriver` `auth` section — use that first. Python is needed for `LOGIN <password>` command-style auth, JSON-RPC login, OAuth, challenge-response, etc.)
 - You need **complex state logic** that can't be expressed as regex patterns.
 - The device uses a **non-standard transport** (UDP, HTTP, etc.).
+- The device must be **provisioned before it will connect** — e.g. a control interface that ships switched off. A Python driver can declare a setup action (a Quick Action with `kind: "setup"`) and implement `run_setup_action`, a wizard that runs while the device is offline, talks to the device over its own connection, and can rewrite the device config and reconnect when done. See the driver development guide for the `run_setup_action` contract.
 
 ### Minimal Example: Simple TCP Device
 

@@ -188,6 +188,16 @@ def validate_driver_definition(driver_def: dict[str, Any]) -> list[str]:
     # (kind:"command" promotes a command, kind:"setup" is a provisioning wizard).
     from server.drivers.actions import validate_actions
     errors.extend(validate_actions(driver_def))
+    # A YAML driver is interpreted by ConfigurableDriver, which has no
+    # run_setup_action handler — so kind:"setup" can never do anything here.
+    # Reject it at load time rather than render a button that errors on click.
+    for i, entry in enumerate(driver_def.get("actions") or []):
+        if isinstance(entry, dict) and entry.get("kind") == "setup":
+            errors.append(
+                f"actions[{i}]: kind 'setup' requires a Python driver "
+                f"(a run_setup_action handler); YAML drivers support "
+                f"kind 'command' only"
+            )
 
     # Validate state_variables structure
     valid_types = {"string", "integer", "number", "boolean", "enum", "float"}

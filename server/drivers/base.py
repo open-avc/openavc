@@ -69,6 +69,9 @@ class BaseDriver(ABC):
         # write doesn't clobber the reset (ABA guard).
         self._children: dict[str, dict[int, int]] = {}
         self._child_register_seq = 0
+        # Set by the platform only for the duration of a run_setup_action call;
+        # backs request_config_update / request_reconnect. None at all other times.
+        self._setup_context: Any = None
         # Project-side child metadata: {child_type: {local_id_padded: {label, config}}}.
         # Populated by DeviceManager.add_device after construction (via
         # set_project_child_entities) so existing driver subclasses with a
@@ -443,6 +446,71 @@ class BaseDriver(ABC):
         raise NotImplementedError(
             f"Driver {self.DRIVER_INFO.get('id', '?')} does not implement set_device_setting"
         )
+
+    # --- Setup / provisioning actions ---
+    #
+    # A "setup action" is a driver-declared provisioning wizard (an action of
+    # kind:"setup", see server/drivers/actions.py). Unlike a command, it can run
+    # while the device is OFFLINE, brings its own out-of-band transport, reports
+    # multi-step progress, and may rewrite the device's connection config and
+    # reconnect on success. The platform invokes run_setup_action with a live
+    # `progress` callback and, for the duration of the call, a setup context that
+    # backs request_config_update / request_reconnect. Everything device-specific
+    # (which transport, which commands, what the config delta is) lives in the
+    # driver's handler; the platform stays generic.
+
+    async def run_setup_action(
+        self,
+        action_id: str,
+        params: dict[str, Any],
+        progress: Callable[..., Awaitable[None]],
+    ) -> dict[str, Any]:
+        """Run a declared setup action. May run while the device is offline.
+
+        ``progress(step, pct=None)`` is awaitable and streams a live progress
+        line to the UI (``pct`` is an optional 0-100 percentage). The handler
+        may open its own transports independent of the device's normal one, and
+        may call ``await self.request_config_update({...})`` to persist new
+        connection settings and ``await self.request_reconnect()`` to bring the
+        device back online over them. Return a result dict; raise to report
+        failure. Default raises NotImplementedError.
+        """
+        raise NotImplementedError(
+            f"Driver {self.DRIVER_INFO.get('id', '?')} does not implement "
+            f"run_setup_action"
+        )
+
+    async def request_config_update(self, delta: dict[str, Any]) -> None:
+        """Persist a connection/config delta for this device (from a setup
+        action handler). Connection fields land in the project's connections
+        table, the rest in the device config; the live driver's ``self.config``
+        is updated so the next connect() uses the new settings.
+
+        Only callable from inside ``run_setup_action`` — the platform installs
+        the backing context for the duration of the run.
+        """
+        if self._setup_context is None:
+            raise RuntimeError(
+                "request_config_update is only available during a setup action"
+            )
+        await self._setup_context.apply_config_update(delta)
+
+    async def request_reconnect(self) -> None:
+        """Reconnect the device using its current (possibly just-updated)
+        config. Typically the final step of a setup action. Only callable from
+        inside ``run_setup_action``.
+        """
+        if self._setup_context is None:
+            raise RuntimeError(
+                "request_reconnect is only available during a setup action"
+            )
+        await self._setup_context.reconnect()
+
+    def _set_setup_context(self, context: Any) -> None:
+        """Platform-only: install (or clear, with None) the setup context that
+        backs request_config_update / request_reconnect for one setup run.
+        """
+        self._setup_context = context
 
     # --- Optional overrides ---
 

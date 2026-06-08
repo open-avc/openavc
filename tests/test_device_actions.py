@@ -226,6 +226,13 @@ def test_loader_validates_actions_block():
     assert validate_driver_definition(good) == []
 
 
+def test_loader_rejects_setup_action_on_yaml_driver():
+    # A YAML driver can't implement run_setup_action, so kind:"setup" is invalid.
+    bad = _yaml_driver(actions=[{"id": "provision", "kind": "setup"}])
+    errors = validate_driver_definition(bad)
+    assert any("requires a Python driver" in e for e in errors)
+
+
 def test_configurable_driver_carries_actions_into_driver_info():
     driver_def = _yaml_driver(
         actions=[{"id": "power_on", "kind": "command", "icon": "power"}],
@@ -296,6 +303,12 @@ def actions_client():
     engine.devices = MagicMock()
     engine.devices.get_driver = MagicMock(return_value=driver)
     engine.devices.send_command = AsyncMock(return_value=True)
+    # Route-level wiring test: stub the runner; its internals are covered in
+    # test_setup_actions.py with a real SetupActionRunner.
+    engine.setup_actions = MagicMock()
+    engine.setup_actions.start = AsyncMock(
+        return_value={"run_id": "run123", "status": "started", "action_id": "enable_remote"}
+    )
 
     rest.set_engine(engine)
     ws.set_engine(engine)
@@ -320,11 +333,20 @@ def test_invoke_unknown_action_returns_404(actions_client):
     assert resp.status_code == 404
 
 
-def test_invoke_setup_action_not_yet_supported(actions_client):
+def test_invoke_setup_action_starts_run(actions_client):
     c, engine = actions_client
-    resp = c.post("/api/devices/dev1/actions/enable_remote", json={"params": {}})
-    assert resp.status_code == 501
+    resp = c.post("/api/devices/dev1/actions/enable_remote", json={"params": {"x": 1}})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["run_id"] == "run123"
+    assert body["status"] == "started"
+    # Routed to the setup runner, not the command path.
     engine.devices.send_command.assert_not_awaited()
+    engine.setup_actions.start.assert_awaited_once()
+    args = engine.setup_actions.start.await_args.args
+    assert args[0] == "dev1"
+    assert args[1]["id"] == "enable_remote"  # the resolved action
+    assert args[2] == {"x": 1}  # params
 
 
 def test_invoke_action_on_device_without_driver_returns_404(actions_client):

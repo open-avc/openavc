@@ -828,6 +828,52 @@ class DeviceManager:
         finally:
             self._intentional_disconnect.discard(device_id)
 
+    async def begin_setup(self, device_id: str) -> None:
+        """Suppress auto-reconnect for the duration of a setup action.
+
+        A setup action opens its own out-of-band transport, independent of the
+        device's normal (often failing) one. Cancel any running reconnect loop
+        and add the device to the intentional-disconnect set so the
+        auto-reconnect machinery doesn't race the handler's own connection. The
+        device's live transport (if any) is left untouched — an offline device
+        is already down, and the handler doesn't use it. Pair with ``end_setup``.
+        """
+        if device_id not in self._devices:
+            raise ValueError(f"Device '{device_id}' not found")
+        await self._cancel_reconnect(device_id)
+        self._intentional_disconnect.add(device_id)
+
+    async def end_setup(self, device_id: str) -> None:
+        """Re-enable auto-reconnect after a setup action. If the device didn't
+        come back online during the run (the handler didn't reconnect, or its
+        reconnect failed), resume the normal auto-reconnect loop so it keeps
+        trying. Idempotent and safe if the device was removed mid-run.
+        """
+        self._intentional_disconnect.discard(device_id)
+        driver = self._devices.get(device_id)
+        if driver is not None and not driver.get_state("connected"):
+            self._start_reconnect(device_id)
+
+    async def reconnect_in_place(self, device_id: str) -> None:
+        """Reconnect the existing driver instance using its current config.
+
+        Used by a setup action's ``request_reconnect`` after a config update —
+        it reconnects the *same* driver instance (so the handler's `self` stays
+        valid) with whatever settings ``request_config_update`` merged into
+        ``self.config``. Does not touch the intentional-disconnect set: the
+        setup runner owns that suppression for the whole run. Raises on connect
+        failure so the handler can see it.
+        """
+        driver = self._devices.get(device_id)
+        if driver is None:
+            raise ValueError(f"Device '{device_id}' not found")
+        self._clear_offline_reason(device_id)
+        try:
+            await driver.disconnect()
+        except Exception:
+            pass
+        await driver.connect()
+
     async def pause_device(self, device_id: str) -> None:
         """Cleanly disconnect a device and suppress auto-reconnect (A81).
 

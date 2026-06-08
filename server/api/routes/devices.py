@@ -484,11 +484,20 @@ async def invoke_device_action(
                 500, f"Failed to run action '{action_id}' on device '{device_id}'", e
             )
 
-    # kind == "setup": the provisioning-wizard mechanism (Phase 2).
-    raise HTTPException(
-        status_code=501,
-        detail=f"Setup action '{action_id}' is not yet supported",
-    )
+    # kind == "setup": offline-capable provisioning wizard. Kicks off a
+    # background run and returns a run_id; progress streams over the WS
+    # `action.progress` channel until status "done" or "error".
+    from server.core.setup_actions import SetupActionInProgress
+
+    try:
+        return await engine.setup_actions.start(device_id, action, body.params)
+    except SetupActionInProgress as e:
+        raise HTTPException(
+            status_code=409,
+            detail=f"A setup action is already running on device '{device_id}'",
+        ) from e
+    except ValueError as e:
+        raise _api_error(404, f"Device '{device_id}' not found", e)
 
 
 # --- Device Settings ---

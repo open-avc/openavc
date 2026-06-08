@@ -4,14 +4,22 @@ import { ElementIcon } from "../../components/ui-builder/ElementIcon";
 import { Dialog } from "../../components/shared/Dialog";
 import { ConfirmDialog } from "../../components/shared/ConfirmDialog";
 import * as api from "../../api/restClient";
-import type { ActionParam, DeviceAction } from "../../api/types";
+import type { DeviceAction } from "../../api/types";
 import { isActionVisible } from "./actionVisibility";
+import {
+  ActionParamFields,
+  buildParams,
+  hasMissingRequired,
+  seedParamValues,
+} from "./actionParamFields";
+import { SetupActionWizard } from "./SetupActionWizard";
 
 /**
  * Quick Actions strip — driver-declared actions promoted to one-click buttons
- * at the top of the device view. No-param actions fire on click (with an
- * optional confirm); actions with params open an input dialog. The full
- * "Send Command" list below stays complete — this strip is purely additive.
+ * at the top of the device view. No-param command actions fire on click (with
+ * an optional confirm); command actions with params open an input dialog;
+ * setup actions (provisioning wizards) open a wizard with live progress. The
+ * full "Send Command" list below stays complete — this strip is additive.
  */
 export function QuickActions({
   deviceId,
@@ -28,6 +36,7 @@ export function QuickActions({
 }) {
   const [dialogAction, setDialogAction] = useState<DeviceAction | null>(null);
   const [confirmAction, setConfirmAction] = useState<DeviceAction | null>(null);
+  const [wizardAction, setWizardAction] = useState<DeviceAction | null>(null);
   const [running, setRunning] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<
     { id: string; ok: boolean; message: string } | null
@@ -59,7 +68,10 @@ export function QuickActions({
 
   const handleClick = useCallback(
     (action: DeviceAction) => {
-      if (Object.keys(action.params).length > 0) {
+      if (action.kind === "setup") {
+        // The wizard owns the whole flow: confirm, params, and live progress.
+        setWizardAction(action);
+      } else if (Object.keys(action.params).length > 0) {
         setDialogAction(action);
       } else if (action.confirm) {
         setConfirmAction(action);
@@ -163,34 +175,20 @@ export function QuickActions({
           onRun={(params) => invoke(dialogAction, params)}
         />
       )}
+
+      {wizardAction && (
+        <SetupActionWizard
+          deviceId={deviceId}
+          action={wizardAction}
+          onClose={() => setWizardAction(null)}
+          onComplete={() => onInvoked?.()}
+        />
+      )}
     </div>
   );
 }
 
-// --- Param input dialog ---
-
-function defaultFor(def: ActionParam): string {
-  if (def.default !== undefined && def.default !== null) return String(def.default);
-  if (def.type === "enum" && def.values && def.values.length > 0 && def.required) {
-    return def.values[0];
-  }
-  if (def.type === "boolean") return "false";
-  return "";
-}
-
-/** Coerce a string field value to the param's declared type. */
-function coerce(value: string, type?: string): unknown {
-  if (type === "integer") {
-    const n = parseInt(value, 10);
-    return Number.isNaN(n) ? value : n;
-  }
-  if (type === "number" || type === "float") {
-    const n = parseFloat(value);
-    return Number.isNaN(n) ? value : n;
-  }
-  if (type === "boolean") return value === "true";
-  return value;
-}
+// --- Param input dialog (command actions) ---
 
 function ActionParamDialog({
   action,
@@ -203,34 +201,12 @@ function ActionParamDialog({
   onCancel: () => void;
   onRun: (params: Record<string, unknown>) => void;
 }) {
-  const paramKeys = Object.keys(action.params);
-  const [values, setValues] = useState<Record<string, string>>(() => {
-    const seed: Record<string, string> = {};
-    for (const [name, def] of Object.entries(action.params)) {
-      seed[name] = defaultFor(def);
-    }
-    return seed;
-  });
-
-  const setParam = (name: string, val: string) =>
-    setValues((v) => ({ ...v, [name]: val }));
-
-  const missingRequired = paramKeys.some(
-    (k) => action.params[k].required && values[k].trim() === "",
+  const [values, setValues] = useState<Record<string, string>>(() =>
+    seedParamValues(action.params),
   );
 
-  const submit = () => {
-    const params: Record<string, unknown> = {};
-    for (const [name, def] of Object.entries(action.params)) {
-      const raw = values[name];
-      if (raw === "" && !def.required) continue;
-      params[name] = coerce(raw, def.type);
-    }
-    onRun(params);
-  };
-
-  const confirmNote =
-    typeof action.confirm === "string" ? action.confirm : null;
+  const missingRequired = hasMissingRequired(action.params, values);
+  const confirmNote = typeof action.confirm === "string" ? action.confirm : null;
 
   return (
     <Dialog title={action.label} onClose={onCancel}>
@@ -246,75 +222,11 @@ function ActionParamDialog({
         </div>
       )}
       <div style={{ marginBottom: "var(--space-lg)" }}>
-        {paramKeys.map((name) => {
-          const def = action.params[name];
-          const label = def.label || name;
-          const type = def.type || "string";
-          const current = values[name] ?? "";
-          return (
-            <div key={name} style={{ marginBottom: "var(--space-md)" }}>
-              <label
-                style={{
-                  display: "block",
-                  fontSize: "var(--font-size-sm)",
-                  color: "var(--text-secondary)",
-                  marginBottom: 4,
-                }}
-              >
-                {label}
-                {def.required && <span style={{ color: "var(--color-error)" }}> *</span>}
-              </label>
-              {type === "enum" && def.values ? (
-                <select
-                  value={current}
-                  onChange={(e) => setParam(name, e.target.value)}
-                  style={{ width: "100%" }}
-                >
-                  {!def.required && <option value="">(none)</option>}
-                  {def.values.map((v) => (
-                    <option key={v} value={v}>
-                      {v}
-                    </option>
-                  ))}
-                </select>
-              ) : type === "boolean" ? (
-                <select
-                  value={current || "false"}
-                  onChange={(e) => setParam(name, e.target.value)}
-                  style={{ width: "100%" }}
-                >
-                  <option value="true">Yes</option>
-                  <option value="false">No</option>
-                </select>
-              ) : (
-                <input
-                  type={
-                    def.secret || type === "password"
-                      ? "password"
-                      : type === "integer" || type === "number"
-                        ? "number"
-                        : "text"
-                  }
-                  value={current}
-                  min={def.min}
-                  max={def.max}
-                  onChange={(e) => setParam(name, e.target.value)}
-                  placeholder={
-                    def.min !== undefined && def.max !== undefined
-                      ? `${def.min}-${def.max}`
-                      : name
-                  }
-                  style={{ width: "100%" }}
-                />
-              )}
-              {def.help && (
-                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-                  {def.help}
-                </div>
-              )}
-            </div>
-          );
-        })}
+        <ActionParamFields
+          params={action.params}
+          values={values}
+          onChange={(name, val) => setValues((v) => ({ ...v, [name]: val }))}
+        />
       </div>
       <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-sm)" }}>
         <button
@@ -328,7 +240,7 @@ function ActionParamDialog({
           Cancel
         </button>
         <button
-          onClick={submit}
+          onClick={() => onRun(buildParams(action.params, values))}
           disabled={running || missingRequired}
           style={{
             padding: "var(--space-sm) var(--space-lg)",

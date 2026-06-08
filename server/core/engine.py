@@ -99,6 +99,10 @@ class Engine:
         self.update_manager = None  # UpdateManager, initialized in start()
         self.mdns_advertiser = None  # MDNSAdvertiser, initialized in start() if enabled
 
+        # Setup-action runner (driver-declared provisioning wizards)
+        from server.core.setup_actions import SetupActionRunner
+        self.setup_actions = SetupActionRunner(self)
+
         # Simulation
         from server.core.simulation import SimulationManager
         self.simulation = SimulationManager(self)
