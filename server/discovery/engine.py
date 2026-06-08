@@ -817,6 +817,10 @@ class DiscoveryEngine:
                         merge_device_info(device, {"open_ports": open_ports}, "port_scan")
                     await self._emit_device_update(device, "passive_followup")
 
+            # Pick up a MAC + OUI for passive-discovered devices the phase-4
+            # ARP harvest missed (found via mDNS/SSDP on a ping-skipped subnet).
+            await self._late_arp_harvest()
+
             # Driver-declared probes run after the full host inventory is
             # known — UDP broadcasts, TCP probes against every host whose
             # port-scan results include the spec port, and Python
@@ -1191,6 +1195,50 @@ class DiscoveryEngine:
         if ip not in self.results:
             self.results[ip] = DiscoveredDevice(ip=ip)
         return self.results[ip]
+
+    async def _late_arp_harvest(self) -> None:
+        """Harvest a MAC + OUI for alive devices the phase-4 ARP pass missed.
+
+        Passive-discovered devices (mDNS/SSDP) on a subnet the ping sweep
+        skipped — e.g. a switch at its factory-default link-local /16, which
+        exceeds ``max_subnet_size`` — never went through phase 4, so they carry
+        no MAC and thus no OUI enrichment, and an OUI-only driver hint can never
+        surface them. By now the unicast traffic from the passive-only port
+        scan (and the passive exchange) has populated the OS ARP cache for them,
+        so a second read picks up the MAC and emits the same OUI evidence +
+        vendor lookup phase 4 does. Only touches devices without a MAC, so
+        ping-swept hosts already harvested in phase 4 are left untouched.
+        """
+        mac_missing = [
+            ip for ip, dev in self.results.items()
+            if dev.alive and not dev.mac
+        ]
+        if not mac_missing:
+            return
+        arp_late = await harvest_arp_table()
+        enriched = 0
+        for ip in mac_missing:
+            mac = arp_late.get(ip)
+            if not mac:
+                continue
+            device = self._get_or_create(ip)
+            info: dict[str, Any] = {"mac": mac}
+            oui_result = self.oui_db.lookup(mac)
+            oui_vendor = None
+            if oui_result:
+                manufacturer, category = oui_result
+                info["manufacturer"] = manufacturer
+                info["category"] = category
+                oui_vendor = manufacturer
+            merge_device_info(device, info, "arp")
+            device.evidence_log.append(evidence_oui(mac, vendor=oui_vendor))
+            enriched += 1
+            await self._emit_device_update(device, "arp_harvest")
+        if enriched:
+            log.info(
+                "Late ARP harvest enriched %d passive-only device(s) with a "
+                "MAC/OUI", enriched,
+            )
 
     def _phase_base_progress(self, phase: str) -> float:
         """Cumulative progress at the START of a phase (sum of preceding weights)."""
