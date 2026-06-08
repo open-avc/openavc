@@ -86,12 +86,13 @@ Fill in identity:
 | Author | `Your Name` | |
 | Description | `Controls Extron SW4 HD 4K HDMI switcher via RS-232 or TCP.` | One sentence. Shown in the catalog. |
 
-Below the identity block, the **Help & Setup** section takes two markdown fields:
+Below the identity block, the **Help & Setup** section takes these markdown fields:
 
 - **Overview** — what the device is, who uses it.
 - **Setup Instructions** — step-by-step the integrator follows to get the device talking (IP setup, pairing, physical buttons).
+- **Connection hint** (optional) — a short troubleshooting line shown on the device's offline banner when it can't connect. Use it for a device-specific cause the platform can't infer, such as a remote-access setting (SSH, a control port, an API toggle) the integrator must enable on the device first.
 
-Both appear in the Add Device dialog when someone picks this driver.
+Overview and Setup appear in the Add Device dialog when someone picks this driver; the connection hint appears later, on the device's offline banner.
 
 The **Publishing** section holds catalog metadata (`min_platform_version`, `protocols`, `tags`, `source_url`, default ports, simulated flag). Verified is server-controlled and read-only.
 

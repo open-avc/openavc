@@ -142,6 +142,13 @@ export function DeviceDetail({
   const offlineDetail = String(liveState[`device.${deviceId}.offline_detail`] ?? "");
   const reconnectAttempt = Number(liveState[`device.${deviceId}.reconnect_attempt`]) || 0;
   const reconnectFailed = Boolean(liveState[`device.${deviceId}.reconnect_failed`]);
+  // Optional driver-provided troubleshooting hint (DRIVER_INFO.help.connection),
+  // surfaced under the offline reason. The driver supplies device-specific
+  // guidance the generic classifier can't know (e.g. "enable SSH first").
+  const connectionHint = String(
+    (deviceInfo?.driver_info as { help?: { connection?: string } } | undefined)
+      ?.help?.connection ?? ""
+  );
 
   const commands = deviceInfo?.commands ?? {};
   const commandNames = Object.keys(commands);
@@ -374,6 +381,7 @@ export function DeviceDetail({
           detail={offlineDetail}
           attempt={reconnectAttempt}
           failed={reconnectFailed}
+          hint={connectionHint}
         />
       )}
 
@@ -1400,10 +1408,12 @@ function OfflineBanner({
   detail,
   attempt,
   failed,
+  hint,
 }: {
   detail: string;
   attempt: number;
   failed: boolean;
+  hint?: string;
 }) {
   const accent = "var(--color-warning, #f59e0b)";
   return (
@@ -1425,6 +1435,17 @@ function OfflineBanner({
           Offline
         </div>
         <div style={{ fontSize: "var(--font-size-sm)", marginTop: 2 }}>{detail}</div>
+        {hint && (
+          <div
+            style={{
+              fontSize: "var(--font-size-sm)",
+              marginTop: "var(--space-xs)",
+              whiteSpace: "pre-line",
+            }}
+          >
+            {hint}
+          </div>
+        )}
         <div
           style={{
             fontSize: "var(--font-size-sm)",
