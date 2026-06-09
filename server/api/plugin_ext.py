@@ -108,10 +108,13 @@ def require_plugin_access(plugin_id: str):
         )
         if token and verify_plugin_token(token, plugin_id):
             return
+        # No WWW-Authenticate challenge: the only browser-usable auth here is the
+        # injected token, not HTTP Basic, so advertising a Basic challenge would
+        # only make the browser pop its native dialog inside an unauthenticated
+        # panel's plugin iframe. A plain 401 is handled in JS.
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication required",
-            headers={"WWW-Authenticate": "Basic"},
         )
 
     return _dependency

@@ -13,6 +13,7 @@ interface SetupProps {
  * open the whole time — only the Programmer needs this.
  */
 export function Setup({ onComplete }: SetupProps) {
+  const [user, setUser] = useState("admin");
   const [pass, setPass] = useState("");
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
@@ -20,9 +21,14 @@ export function Setup({ onComplete }: SetupProps) {
   const passRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    // Username is prefilled with "admin", so land the cursor on the password —
+    // most people keep the default username and just pick a password.
     passRef.current?.focus();
   }, []);
 
+  // Empty username falls back to "admin" so the login screen's default always
+  // matches a click-through setup. Set explicitly so it's never a mystery later.
+  const username = user.trim() || "admin";
   const tooShort = pass.length > 0 && pass.length < 8;
   const mismatch = confirm.length > 0 && pass !== confirm;
   const canSubmit = pass.length >= 8 && pass === confirm && !busy;
@@ -36,11 +42,10 @@ export function Setup({ onComplete }: SetupProps) {
       const res = await fetch(`${getTunnelPrefix()}/api/auth/setup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: pass }),
+        body: JSON.stringify({ username, password: pass }),
       });
       if (res.ok) {
-        // No username is configured, so any username pairs with the password.
-        setStoredAuth("admin", pass);
+        setStoredAuth(username, pass);
         onComplete();
         return;
       }
@@ -86,10 +91,25 @@ export function Setup({ onComplete }: SetupProps) {
         <div style={{ textAlign: "center", marginBottom: 4 }}>
           <h2 style={{ margin: 0, fontSize: 20 }}>Set up OpenAVC</h2>
           <p style={{ marginTop: 6, fontSize: 13, opacity: 0.7, lineHeight: 1.4 }}>
-            Create an admin password to protect this controller. The room panel
-            stays open — only the Programmer needs this.
+            Choose an admin username and password. You'll use these to open the
+            Programmer. The room panel stays open and never asks for a login.
           </p>
         </div>
+
+        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+          Admin username
+          <input
+            type="text"
+            value={user}
+            onChange={(e) => setUser(e.target.value)}
+            autoComplete="username"
+            disabled={busy}
+            style={inputStyle}
+          />
+          <span style={{ fontSize: 12, opacity: 0.55 }}>
+            Keep "admin" or pick your own. You'll enter this to sign in.
+          </span>
+        </label>
 
         <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
           New password

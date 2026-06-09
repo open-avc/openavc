@@ -1219,7 +1219,7 @@ export function SystemSettingsView() {
         <div style={cardStyle}>
           <h4 style={subCardTitle}>Programmer login</h4>
           <div style={subCardDescription}>
-            For humans opening the Programmer IDE in a browser. When set, the browser prompts for username and password before showing the IDE.
+            For humans opening the Programmer IDE in a browser. When a password is set, the Programmer shows its own sign-in screen first. The room panel stays open and is never protected.
           </div>
           <div style={fieldRow}>
             <label style={labelStyle}>Username</label>
@@ -1233,7 +1233,7 @@ export function SystemSettingsView() {
               onChange={(e) => update("auth", "programmer_username", e.target.value)}
             />
             <span style={helpText}>
-              Required if a password is set. The browser asks for both username and password.
+              Paired with the password on the Programmer sign-in screen. Defaults to admin; leave blank to accept any username.
             </span>
           </div>
           <div style={fieldRow}>

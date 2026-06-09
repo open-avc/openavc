@@ -81,7 +81,7 @@ sudo journalctl -u openavc -f    # View logs
 
 Access at **http://localhost:8080/programmer**, or **http://&lt;server-ip&gt;:8080/programmer** from another device. The installed service listens on all network interfaces so tablets and panels can reach it.
 
-The first time you open the Programmer, you create an admin password. That password protects the Programmer and the control API. The room panel at `/panel` stays open so wall tablets work without a login. You can change the password later in **Settings > Security**.
+The first time you open the Programmer, you choose an admin username (prefilled with `admin`) and password. They protect the Programmer and the control API, and you'll enter both on the Programmer's sign-in screen. The room panel at `/panel` stays open so wall tablets work without a login. You can change them later in **Settings > Security**.
 
 To bind to localhost only (no network access) instead, set `Environment=OPENAVC_BIND=127.0.0.1` with `sudo systemctl edit openavc` and restart the service.
 

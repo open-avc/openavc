@@ -202,3 +202,28 @@ def test_auth_setup_rejects_weak_password():
     client = TestClient(_auth_api_app())
     r = client.post("/api/auth/setup", json={"password": "short"})
     assert r.status_code == 400
+
+
+def test_auth_setup_stores_and_enforces_username():
+    """First-run setup now sends a username (prefilled "admin"). It is persisted
+    and the credential check enforces it, so the field a user sees at login is
+    never a phantom."""
+    _set_auth(
+        programmer_password="", api_key="", programmer_username="",
+        allow_anonymous=False,
+    )
+    client = TestClient(_auth_api_app())
+
+    r = client.post(
+        "/api/auth/setup",
+        json={"username": "aaron", "password": "freshadmin123"},
+    )
+    assert r.status_code == 200
+
+    cfg = get_system_config()
+    assert cfg.get("auth", "programmer_username") == "aaron"
+    assert cfg.get("auth", "programmer_password") == "freshadmin123"
+
+    # The stored username is now enforced: right pair passes, wrong user fails.
+    assert auth._check_credentials("aaron", "freshadmin123") is True
+    assert auth._check_credentials("admin", "freshadmin123") is False

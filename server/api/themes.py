@@ -21,6 +21,14 @@ from server.utils.logger import get_logger
 log = get_logger(__name__)
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_programmer_auth)])
+# Open router (no auth): the panel runtime fetches a single theme by id to apply
+# it before the first render. The room panel is unauthenticated by design, so a
+# protected GET returns 401 WWW-Authenticate: Basic to a standalone panel, which
+# makes the browser pop its native HTTP Basic dialog (an unfillable
+# username/password prompt). Theme data is cosmetic CSS variables — the same
+# security shape as /api/projects/{id}/assets/* (also open). Only the
+# single-theme GET is open; the theme list and all mutations stay protected.
+open_router = APIRouter(prefix="/api")
 
 _engine = None
 
@@ -133,9 +141,11 @@ async def list_themes() -> list[dict[str, Any]]:
     ]
 
 
-@router.get("/themes/{theme_id}")
+@open_router.get("/themes/{theme_id}")
 async def get_theme(theme_id: str) -> dict[str, Any]:
-    """Get full theme definition."""
+    """Get full theme definition. Open (no auth) so the unauthenticated panel
+    can load and apply the project's theme without triggering the browser's
+    native HTTP Basic dialog."""
     # Check built-in first
     builtin_path = _safe_theme_path(BUILTIN_THEMES_DIR, theme_id)
     if builtin_path.exists():

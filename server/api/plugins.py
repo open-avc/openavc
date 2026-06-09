@@ -11,8 +11,9 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
-from server.api.auth import require_programmer_auth
+from server.api.auth import programmer_auth_satisfied, require_programmer_auth
 from server.api.errors import api_error as _api_error
 from server.core.project_loader import (
     PluginConfig,
@@ -33,6 +34,11 @@ router = APIRouter(prefix="/api", dependencies=[Depends(require_programmer_auth)
 # application/octet-stream, so opening these is the same security shape as
 # /api/projects/{id}/assets/* (also open).
 open_router = APIRouter(prefix="/api")
+
+# Non-erroring Basic scheme: lets an open-router handler read credentials when
+# present without forcing a 401 (which would summon the browser's native dialog
+# on an unauthenticated panel).
+_basic = HTTPBasic(auto_error=False)
 
 _engine = None
 
@@ -61,7 +67,7 @@ async def list_plugins() -> list[dict[str, Any]]:
 
 # ──── Browse / Install / Uninstall ────
 # These static paths MUST be defined before /plugins/{plugin_id}
-# so FastAPI doesn't match "browse", "installed", "extensions" as a plugin_id.
+# so FastAPI doesn't match "browse", "installed" as a plugin_id.
 
 
 @router.get("/plugins/browse")
@@ -81,7 +87,16 @@ async def list_installed() -> dict[str, Any]:
     return {"plugins": list_installed_plugins()}
 
 
-@router.get("/plugins/extensions")
+# Open router (no auth): the panel runtime fetches this on every load to learn
+# each plugin panel-element's sandbox permissions before the first render. The
+# room panel is unauthenticated by design, so requiring auth here returns 401
+# WWW-Authenticate: Basic to a standalone panel, which makes the browser pop its
+# native HTTP Basic dialog (an unfillable username/password prompt). The payload
+# is read-only UI metadata — the same security shape as the plugin panel/files
+# assets already on the open router. Registered before the protected
+# /plugins/{plugin_id}, and the open router is mounted first, so "extensions" is
+# never matched as a plugin_id.
+@open_router.get("/plugins/extensions")
 async def get_all_extensions() -> dict[str, Any]:
     """Get all UI extensions from running plugins."""
     engine = _get_engine()
@@ -470,22 +485,39 @@ async def get_plugin_data_info_endpoint(plugin_id: str) -> dict[str, Any]:
         raise _api_error(422, f"Invalid plugin id '{plugin_id}'", e)
 
 
-@router.get("/plugins/{plugin_id}/ext-token")
-async def get_plugin_ext_token(plugin_id: str) -> dict[str, Any]:
+# Open router (no auth) so a standalone room panel can fetch it without a 401 —
+# a 401 here would pop the browser's native Basic dialog. The token itself is
+# still only minted for an authenticated caller; an unauthenticated panel gets
+# an empty token (200), and the plugin's /ext/* routes independently reject an
+# empty/invalid token, so nothing leaks.
+@open_router.get("/plugins/{plugin_id}/ext-token")
+async def get_plugin_ext_token(
+    plugin_id: str,
+    request: Request,
+    credentials: HTTPBasicCredentials | None = Depends(_basic),
+) -> dict[str, Any]:
     """Mint a short-lived, plugin-scoped token for the plugin's panel iframe.
 
-    The panel runtime fetches this (authenticated as the programmer) and hands
-    it to the plugin iframe via `openavc:init.ext_token`; the iframe presents
-    it to the plugin's `/api/plugins/{id}/ext/*` routes, which can't otherwise
-    carry programmer credentials. When no auth is configured the instance is
-    open, so an empty token is returned with `auth_required: false`.
+    The panel runtime fetches this and hands it to the plugin iframe via
+    `openavc:init.ext_token`; the iframe presents it to the plugin's
+    `/api/plugins/{id}/ext/*` routes, which can't otherwise carry programmer
+    credentials.
+
+    - Open instance (no auth): empty token, `auth_required: false`.
+    - Claimed instance, authenticated caller (Programmer IDE, or a panel
+      embedded in it): a real token.
+    - Claimed instance, unauthenticated caller (standalone room panel): empty
+      token with `auth_required: true` and a 200 — never a 401, so the browser
+      stays quiet. The iframe simply has no privileged token, which is correct.
     """
     from server.api.plugin_ext import auth_required, mint_plugin_token
 
     if not auth_required():
         return {"token": "", "expires_at": 0, "auth_required": False}
-    token, expires_at = mint_plugin_token(plugin_id)
-    return {"token": token, "expires_at": expires_at, "auth_required": True}
+    if programmer_auth_satisfied(request, credentials):
+        token, expires_at = mint_plugin_token(plugin_id)
+        return {"token": token, "expires_at": expires_at, "auth_required": True}
+    return {"token": "", "expires_at": 0, "auth_required": True}
 
 
 @router.delete("/plugins/{plugin_id}")
