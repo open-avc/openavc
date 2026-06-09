@@ -126,6 +126,21 @@ with a top-level "touchscreen" object:
 }
 
 Zones split the strip evenly; explicit "x"/"w" pixel bounds override.
+
+Touch keys (optional): surfaces reporting touch_key_count in plugin state have
+color-only keys at the indices after the LCD keys (key_count .. key_count +
+touch_key_count - 1). Configure them as ordinary "buttons" entries at those
+indices: presses and feedback work normally, but the key shows only its
+bg_color (or feedback bg colors) as an RGB glow — label and icon are ignored.
+
+Info screen (optional): surfaces reporting has_info_screen accept a top-level
+"info_strip" object that renders their small secondary screen:
+
+"info_strip": { "source": "state", "key": "var.room_temp", "label": "Temp" }
+// or static text:
+"info_strip": { "source": "text", "text": "Room A", "label": "" }
+
+A "state" source shows the key's live value and refreshes when it changes.
 """
 
 

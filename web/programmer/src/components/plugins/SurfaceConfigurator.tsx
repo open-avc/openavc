@@ -137,6 +137,12 @@ export function SurfaceConfigurator({
     : 0;
   const liveHasTouchscreen =
     deckConnected && Boolean(liveState[`${statePrefix}has_touchscreen`]);
+  const liveKeyCount = Number(liveState[`${statePrefix}key_count`] ?? 0);
+  const liveTouchKeyCount = deckConnected
+    ? Number(liveState[`${statePrefix}touch_key_count`] ?? 0)
+    : 0;
+  const liveHasInfoScreen =
+    deckConnected && Boolean(liveState[`${statePrefix}has_info_screen`]);
   const layout: SurfaceLayout =
     staticLayout.type === "grid" && deckConnected && liveRows > 0 && liveColumns > 0
       ? { ...staticLayout, rows: liveRows, columns: liveColumns }
@@ -255,6 +261,17 @@ export function SurfaceConfigurator({
                   getDial={getDial}
                 />
               )}
+              {/* Color-only touch keys (indexed after the LCD keys) */}
+              {liveTouchKeyCount > 0 && liveKeyCount > 0 && (
+                <TouchKeyRow
+                  keyCount={liveKeyCount}
+                  touchKeyCount={liveTouchKeyCount}
+                  currentPage={currentPage}
+                  selectedControl={selectedControl}
+                  onSelectControl={setSelectedControl}
+                  getAssignment={getAssignment}
+                />
+              )}
             </div>
             {selectedDialIndex !== null && (
               <DialAssignmentPanel
@@ -272,6 +289,12 @@ export function SurfaceConfigurator({
                 controlId={selectedControl}
                 allowedActions={allowedActions}
                 navigateOptions={navigateOptions}
+                colorOnly={
+                  liveTouchKeyCount > 0 &&
+                  liveKeyCount > 0 &&
+                  parseInt(selectedControl) >= liveKeyCount
+                }
+                keyCount={liveKeyCount}
                 assignment={getAssignment(
                   parseInt(selectedControl),
                   currentPage
@@ -293,6 +316,9 @@ export function SurfaceConfigurator({
               allowedActions={allowedActions}
               navigateOptions={navigateOptions}
             />
+          )}
+          {liveHasInfoScreen && (
+            <InfoStripEditor config={config} onConfigChange={onConfigChange} />
           )}
           {layout.supports_pages && (
             <AutoPageEditor
@@ -1080,6 +1106,8 @@ function ControlAssignmentPanel({
   onClose,
   allowedActions,
   navigateOptions,
+  colorOnly = false,
+  keyCount = 0,
 }: {
   controlId: string;
   assignment: ButtonAssignment | undefined;
@@ -1088,10 +1116,17 @@ function ControlAssignmentPanel({
   onClose: () => void;
   allowedActions?: string[];
   navigateOptions?: { value: string; label: string }[];
+  // Touch keys have no LCD: only the background color (RGB glow) applies.
+  colorOnly?: boolean;
+  keyCount?: number;
 }) {
   const project = useProjectStore((s) => s.project);
 
   const currentBindings: ButtonBindings = assignment?.bindings ?? {};
+  const controlIndex = parseInt(controlId);
+  const title = colorOnly
+    ? `Touch Key ${controlIndex - keyCount + 1}`
+    : `Button ${controlIndex + 1}`;
 
   return (
     <div
@@ -1112,25 +1147,27 @@ function ControlAssignmentPanel({
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <h4 style={{ fontSize: "var(--font-size-sm)", fontWeight: 600 }}>
-          Button {parseInt(controlId) + 1}
+          {title}
         </h4>
         <button onClick={onClose} style={{ color: "var(--text-muted)", cursor: "pointer" }}>
           <X size={14} />
         </button>
       </div>
 
-      {/* Icon */}
-      <div>
-        <label style={panelLabelStyle}>Icon</label>
-        <IconPicker
-          value={assignment?.icon ?? ""}
-          onChange={(icon) => onUpdate({ icon: icon || undefined })}
-        />
-      </div>
+      {/* Icon (LCD keys only) */}
+      {!colorOnly && (
+        <div>
+          <label style={panelLabelStyle}>Icon</label>
+          <IconPicker
+            value={assignment?.icon ?? ""}
+            onChange={(icon) => onUpdate({ icon: icon || undefined })}
+          />
+        </div>
+      )}
 
       {/* Default Colors */}
       <div>
-        <label style={panelLabelStyle}>Default Colors</label>
+        <label style={panelLabelStyle}>{colorOnly ? "Key Color" : "Default Colors"}</label>
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
             <span style={panelHintStyle}>Background</span>
@@ -1139,16 +1176,20 @@ function ControlAssignmentPanel({
               onChange={(c) => onUpdate({ bg_color: c || undefined })}
             />
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
-            <span style={panelHintStyle}>Text</span>
-            <InlineColorPicker
-              value={assignment?.text_color ?? ""}
-              onChange={(c) => onUpdate({ text_color: c || undefined })}
-            />
-          </div>
+          {!colorOnly && (
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
+              <span style={panelHintStyle}>Text</span>
+              <InlineColorPicker
+                value={assignment?.text_color ?? ""}
+                onChange={(c) => onUpdate({ text_color: c || undefined })}
+              />
+            </div>
+          )}
         </div>
         <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
-          Feedback colors override these when active.
+          {colorOnly
+            ? "This key has no display — it glows with this color. Feedback colors override it when active; labels and icons don't apply."
+            : "Feedback colors override these when active."}
         </div>
       </div>
 
@@ -1162,8 +1203,8 @@ function ControlAssignmentPanel({
             onUpdate({ bindings: newBindings })
           }
           onLabelChange={(label) => onUpdate({ label: label || undefined })}
-          showLabel={true}
-          showToggleLabels={true}
+          showLabel={!colorOnly}
+          showToggleLabels={!colorOnly}
           allowedActions={allowedActions}
           navigateOptions={navigateOptions}
         />
@@ -1736,6 +1777,165 @@ function TouchscreenZonesEditor({
       >
         + Add custom zone
       </button>
+    </div>
+  );
+}
+
+// ──── Touch Key Row (color-only keys indexed after the LCD keys) ────
+
+function TouchKeyRow({
+  keyCount,
+  touchKeyCount,
+  currentPage,
+  selectedControl,
+  onSelectControl,
+  getAssignment,
+}: {
+  keyCount: number;
+  touchKeyCount: number;
+  currentPage: number;
+  selectedControl: string | null;
+  onSelectControl: (id: string) => void;
+  getAssignment: (index: number, page?: number) => ButtonAssignment | undefined;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        gap: "var(--space-sm)",
+        marginTop: "var(--space-sm)",
+        padding: "var(--space-sm) var(--space-md)",
+        background: "var(--bg-base)",
+        borderRadius: "var(--border-radius)",
+        border: "1px solid var(--border-color)",
+      }}
+    >
+      {Array.from({ length: touchKeyCount }, (_, i) => {
+        const index = keyCount + i;
+        const assignment = getAssignment(index, currentPage);
+        const isSelected = selectedControl === String(index);
+        const hasAssignment = !!assignment?.bg_color || !!assignment?.bindings?.press;
+        return (
+          <button
+            key={index}
+            onClick={() => onSelectControl(String(index))}
+            title={`Touch Key ${i + 1}${hasAssignment ? "" : " (unassigned)"}`}
+            style={{
+              flex: 1,
+              height: 22,
+              borderRadius: 11,
+              background: isSelected
+                ? "var(--accent-dim)"
+                : assignment?.bg_color || "var(--bg-surface)",
+              border: isSelected
+                ? "2px solid var(--accent)"
+                : "1px solid var(--border-color)",
+              cursor: "pointer",
+              fontSize: 9,
+              color: "var(--text-muted)",
+            }}
+          >
+            {hasAssignment ? "" : `T${i + 1}`}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ──── Info Strip Editor (secondary info screen) ────
+
+function InfoStripEditor({
+  config,
+  onConfigChange,
+}: {
+  config: Record<string, unknown>;
+  onConfigChange: (config: Record<string, unknown>) => void;
+}) {
+  const infoStrip =
+    (config.info_strip as { source?: string; key?: string; text?: string; label?: string } | undefined) ?? undefined;
+  const source = infoStrip ? (infoStrip.source ?? "state") : "";
+
+  const update = (patch: Record<string, unknown>) => {
+    onConfigChange({ ...config, info_strip: { ...(infoStrip ?? {}), ...patch } });
+  };
+
+  const inputStyle: React.CSSProperties = {
+    width: "100%", padding: "4px 6px",
+    borderRadius: "var(--border-radius)",
+    border: "1px solid var(--border-color)",
+    background: "var(--bg-surface)", color: "var(--text-primary)",
+    fontSize: "var(--font-size-sm)",
+  };
+
+  return (
+    <div style={{ maxWidth: 560 }}>
+      <h4 style={{ fontSize: "var(--font-size-sm)", fontWeight: 600, marginBottom: 4 }}>
+        Info Screen
+      </h4>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
+        The small screen between the touch keys can show a live state value or
+        static text.
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)", maxWidth: 320 }}>
+        <div>
+          <label style={panelHintStyle}>Show</label>
+          <select
+            value={source}
+            onChange={(e) => {
+              const next = e.target.value;
+              if (!next) {
+                const { info_strip: _drop, ...rest } = config;
+                onConfigChange(rest);
+              } else {
+                update({ source: next });
+              }
+            }}
+            style={inputStyle}
+          >
+            <option value="">Nothing</option>
+            <option value="state">A live state value</option>
+            <option value="text">Static text</option>
+          </select>
+        </div>
+
+        {source === "state" && (
+          <div>
+            <label style={panelHintStyle}>State key</label>
+            <VariableKeyPicker
+              value={infoStrip?.key ?? ""}
+              onChange={(key) => update({ key })}
+              placeholder="Pick a state key to display..."
+            />
+          </div>
+        )}
+        {source === "text" && (
+          <div>
+            <label style={panelHintStyle}>Text</label>
+            <input
+              type="text"
+              value={infoStrip?.text ?? ""}
+              onChange={(e) => update({ text: e.target.value })}
+              placeholder="Text shown on the screen"
+              style={inputStyle}
+            />
+          </div>
+        )}
+        {source && (
+          <div>
+            <label style={panelHintStyle}>Heading (optional, shown above)</label>
+            <input
+              type="text"
+              value={infoStrip?.label ?? ""}
+              onChange={(e) => update({ label: e.target.value || undefined })}
+              placeholder="e.g. Room Temp"
+              style={inputStyle}
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
