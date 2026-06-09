@@ -88,6 +88,44 @@ switch pages automatically when state changes:
 
 Each "when" uses the same operator schema (and supports "any":[...] for OR). Rules are
 evaluated in order; the first match wins, so list more specific conditions first.
+
+Dials (optional): surfaces with rotary encoders report a dial_count in their plugin
+state. Configure them with a top-level "dials" array (dials are not paged):
+
+"dials": [
+  {
+    "index": 0,            // Dial position (0-based)
+    "label": "Volume",     // Shown on the surface's display if it has one
+    "adjust": {            // Optional: turn increments a numeric state value
+      "key": "var.volume", // var.* variable or the plugin's own plugin.<id>.* state
+      "step": 2,           // Added per detent turned (negative when turned back)
+      "min": 0, "max": 100 // Optional clamp
+    },
+    "cw": [{...}],         // Optional actions per clockwise turn event
+    "ccw": [{...}],        // Optional actions per counter-clockwise turn event
+    "press": [{...}]       // Optional actions on dial push
+  }
+]
+
+Action objects use the same format as button "press" actions. A macro or trigger
+watching the adjust key turns the dial into a device control (volume, gain, pan).
+
+Touchscreen strip (optional): surfaces reporting has_touchscreen render one zone per
+dial by default (the dial's label + live adjust value, no config needed). Customize
+with a top-level "touchscreen" object:
+
+"touchscreen": {
+  "zones": [
+    {
+      "label": "Mics",                 // Static label (label_source state key overrides)
+      "value_source": "var.mic_gain",  // State key whose live value is displayed
+      "touch": [{...}],                // Optional actions when the zone is tapped
+      "bg_color": "#1a1a2e", "text_color": "#e0e0e0"  // Optional colors
+    }
+  ]
+}
+
+Zones split the strip evenly; explicit "x"/"w" pixel bounds override.
 """
 
 

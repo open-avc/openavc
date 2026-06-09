@@ -20,8 +20,11 @@ import type { ButtonBindings } from "../shared/ButtonBindingEditor";
 import { ConditionGroupEditor, type ConditionGroup } from "../shared/ConditionGroupEditor";
 import { VisibilityProperties } from "../ui-builder/PropertySections/VisibilityProperties";
 import { InlineColorPicker } from "../shared/InlineColorPicker";
+import { VariableKeyPicker } from "../shared/VariableKeyPicker";
+import { ActionPicker } from "../ui-builder/BindingEditor/ActionPicker";
 import { IconPicker } from "../ui-builder/IconPicker";
 import { ElementIcon } from "../ui-builder/ElementIcon";
+import type { ProjectConfig } from "../../api/types";
 import * as api from "../../api/restClient";
 
 // ──── Types ────
@@ -72,6 +75,33 @@ interface ButtonAssignment {
   bindings?: ButtonBindings;
 }
 
+interface DialAdjust {
+  key?: string;
+  step?: number;
+  min?: number;
+  max?: number;
+}
+
+interface DialAssignment {
+  index?: number;
+  label?: string;
+  adjust?: DialAdjust;
+  cw?: Record<string, unknown>[];
+  ccw?: Record<string, unknown>[];
+  press?: Record<string, unknown>[];
+}
+
+interface TouchZone {
+  label?: string;
+  label_source?: string;
+  value_source?: string;
+  bg_color?: string;
+  text_color?: string;
+  x?: number;
+  w?: number;
+  touch?: Record<string, unknown>[];
+}
+
 interface SurfaceConfiguratorProps {
   layout: SurfaceLayout;
   pluginId: string;
@@ -102,12 +132,18 @@ export function SurfaceConfigurator({
   const deckConnected = Boolean(liveState[`${statePrefix}connected`]);
   const liveRows = Number(liveState[`${statePrefix}rows`] ?? 0);
   const liveColumns = Number(liveState[`${statePrefix}columns`] ?? 0);
+  const liveDialCount = deckConnected
+    ? Number(liveState[`${statePrefix}dial_count`] ?? 0)
+    : 0;
+  const liveHasTouchscreen =
+    deckConnected && Boolean(liveState[`${statePrefix}has_touchscreen`]);
   const layout: SurfaceLayout =
     staticLayout.type === "grid" && deckConnected && liveRows > 0 && liveColumns > 0
       ? { ...staticLayout, rows: liveRows, columns: liveColumns }
       : staticLayout;
 
   const buttons = (config.buttons as ButtonAssignment[] | undefined) ?? [];
+  const dials = (config.dials as DialAssignment[] | undefined) ?? [];
 
   // A physical surface button supports a subset of element actions: macro,
   // device command, set-state, and (on paged surfaces) deck-page navigation.
@@ -159,6 +195,36 @@ export function SurfaceConfigurator({
     [buttons, config, onConfigChange]
   );
 
+  const getDial = useCallback(
+    (index: number): DialAssignment | undefined =>
+      dials.find((d) => d.index === index),
+    [dials]
+  );
+
+  const updateDial = useCallback(
+    (index: number, updates: Partial<DialAssignment>) => {
+      const others = dials.filter((d) => d.index !== index);
+      const current = dials.find((d) => d.index === index);
+      onConfigChange({
+        ...config,
+        dials: [...others, { index, ...(current ?? {}), ...updates }],
+      });
+    },
+    [dials, config, onConfigChange]
+  );
+
+  const clearDial = useCallback(
+    (index: number) => {
+      onConfigChange({ ...config, dials: dials.filter((d) => d.index !== index) });
+    },
+    [dials, config, onConfigChange]
+  );
+
+  const selectedDialIndex =
+    selectedControl !== null && selectedControl.startsWith("dial:")
+      ? parseInt(selectedControl.slice(5))
+      : null;
+
   switch (layout.type) {
     case "grid":
       return (
@@ -180,8 +246,28 @@ export function SurfaceConfigurator({
                 onSelectControl={setSelectedControl}
                 getAssignment={getAssignment}
               />
+              {/* Dials (detected on the connected hardware) */}
+              {liveDialCount > 0 && (
+                <DialRow
+                  count={liveDialCount}
+                  selectedControl={selectedControl}
+                  onSelectControl={setSelectedControl}
+                  getDial={getDial}
+                />
+              )}
             </div>
-            {selectedControl !== null && (
+            {selectedDialIndex !== null && (
+              <DialAssignmentPanel
+                dialIndex={selectedDialIndex}
+                dial={getDial(selectedDialIndex)}
+                allowedActions={allowedActions}
+                navigateOptions={navigateOptions}
+                onUpdate={(updates) => updateDial(selectedDialIndex, updates)}
+                onClear={() => clearDial(selectedDialIndex)}
+                onClose={() => setSelectedControl(null)}
+              />
+            )}
+            {selectedControl !== null && selectedDialIndex === null && (
               <ControlAssignmentPanel
                 controlId={selectedControl}
                 allowedActions={allowedActions}
@@ -200,6 +286,14 @@ export function SurfaceConfigurator({
               />
             )}
           </div>
+          {liveHasTouchscreen && (
+            <TouchscreenZonesEditor
+              config={config}
+              onConfigChange={onConfigChange}
+              allowedActions={allowedActions}
+              navigateOptions={navigateOptions}
+            />
+          )}
           {layout.supports_pages && (
             <AutoPageEditor
               layout={layout}
@@ -1112,6 +1206,535 @@ function ControlAssignmentPanel({
       >
         <Trash2 size={12} />
         Clear Assignment
+      </button>
+    </div>
+  );
+}
+
+// ──── Dial Row (rotary encoders under the key grid) ────
+
+function DialRow({
+  count,
+  selectedControl,
+  onSelectControl,
+  getDial,
+}: {
+  count: number;
+  selectedControl: string | null;
+  onSelectControl: (id: string) => void;
+  getDial: (index: number) => DialAssignment | undefined;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-around",
+        gap: "var(--space-sm)",
+        marginTop: "var(--space-sm)",
+        padding: "var(--space-md)",
+        background: "var(--bg-base)",
+        borderRadius: "var(--border-radius)",
+        border: "1px solid var(--border-color)",
+      }}
+    >
+      {Array.from({ length: count }, (_, i) => {
+        const dial = getDial(i);
+        const isSelected = selectedControl === `dial:${i}`;
+        const hasAssignment =
+          !!dial?.label || !!dial?.adjust?.key ||
+          !!dial?.cw?.length || !!dial?.ccw?.length || !!dial?.press?.length;
+        return (
+          <div
+            key={i}
+            style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}
+          >
+            <button
+              onClick={() => onSelectControl(`dial:${i}`)}
+              title={dial?.label ? `Dial ${i + 1}: ${dial.label}` : `Dial ${i + 1} (unassigned)`}
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: "50%",
+                background: isSelected
+                  ? "var(--accent-dim)"
+                  : hasAssignment
+                    ? "var(--bg-elevated)"
+                    : "var(--bg-surface)",
+                border: isSelected
+                  ? "2px solid var(--accent)"
+                  : "1px solid var(--border-color)",
+                cursor: "pointer",
+                position: "relative",
+              }}
+            >
+              {/* Knob indicator line */}
+              <div
+                style={{
+                  position: "absolute",
+                  top: 4,
+                  left: "50%",
+                  width: 2,
+                  height: 10,
+                  marginLeft: -1,
+                  background: hasAssignment ? "var(--accent)" : "var(--text-muted)",
+                  borderRadius: 1,
+                }}
+              />
+            </button>
+            <div style={{ fontSize: 9, color: "var(--text-muted)", maxWidth: 60, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {dial?.label || `Dial ${i + 1}`}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ──── Action List Editor (ordered list of surface actions) ────
+
+function ActionListEditor({
+  actions,
+  onChange,
+  project,
+  allowedActions,
+  navigateOptions,
+  addLabel,
+}: {
+  actions: Record<string, unknown>[];
+  onChange: (actions: Record<string, unknown>[]) => void;
+  project: ProjectConfig;
+  allowedActions?: string[];
+  navigateOptions?: { value: string; label: string }[];
+  addLabel: string;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+      {actions.map((act, i) => (
+        <div
+          key={i}
+          style={{
+            border: "1px solid var(--border-color)",
+            borderRadius: "var(--border-radius)",
+            padding: "var(--space-sm)",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--space-xs)" }}>
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Action {i + 1}</span>
+            <button
+              onClick={() => onChange(actions.filter((_, j) => j !== i))}
+              style={{
+                padding: "2px 6px", borderRadius: "var(--border-radius)",
+                fontSize: 11, color: "var(--color-error)",
+                background: "transparent", border: "1px solid var(--border-color)",
+                cursor: "pointer",
+              }}
+            >
+              Remove
+            </button>
+          </div>
+          <ActionPicker
+            value={act}
+            project={project}
+            onChange={(v) => onChange(actions.map((a, j) => (j === i ? v : a)))}
+            allowedActions={allowedActions}
+            navigateOptions={navigateOptions}
+          />
+        </div>
+      ))}
+      <button
+        onClick={() => onChange([...actions, { action: "" }])}
+        style={{
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
+          padding: "5px 10px", borderRadius: "var(--border-radius)",
+          border: "1px dashed var(--border-color)", background: "transparent",
+          color: "var(--text-muted)", fontSize: 12, cursor: "pointer",
+        }}
+      >
+        + {addLabel}
+      </button>
+    </div>
+  );
+}
+
+// ──── Dial Assignment Panel ────
+
+function DialAssignmentPanel({
+  dialIndex,
+  dial,
+  onUpdate,
+  onClear,
+  onClose,
+  allowedActions,
+  navigateOptions,
+}: {
+  dialIndex: number;
+  dial: DialAssignment | undefined;
+  onUpdate: (updates: Partial<DialAssignment>) => void;
+  onClear: () => void;
+  onClose: () => void;
+  allowedActions?: string[];
+  navigateOptions?: { value: string; label: string }[];
+}) {
+  const project = useProjectStore((s) => s.project);
+  const adjust = dial?.adjust ?? {};
+
+  const updateAdjust = (patch: Partial<DialAdjust>) => {
+    const next = { ...adjust, ...patch };
+    // Strip empty fields so a cleared adjust disappears from the config
+    if (!next.key) {
+      onUpdate({ adjust: undefined });
+    } else {
+      onUpdate({ adjust: next });
+    }
+  };
+
+  const numberField = (
+    label: string,
+    field: "step" | "min" | "max",
+    placeholder: string
+  ) => (
+    <div style={{ flex: 1 }}>
+      <label style={panelHintStyle}>{label}</label>
+      <input
+        type="number"
+        value={adjust[field] ?? ""}
+        placeholder={placeholder}
+        onChange={(e) => {
+          const raw = e.target.value;
+          updateAdjust({ [field]: raw === "" ? undefined : Number(raw) });
+        }}
+        style={{
+          width: "100%", padding: "4px 6px",
+          borderRadius: "var(--border-radius)",
+          border: "1px solid var(--border-color)",
+          background: "var(--bg-surface)", color: "var(--text-primary)",
+          fontSize: "var(--font-size-sm)",
+        }}
+      />
+    </div>
+  );
+
+  if (!project) {
+    return (
+      <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Loading project...</div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        width: 300,
+        flexShrink: 0,
+        background: "var(--bg-surface)",
+        borderRadius: "var(--border-radius)",
+        border: "1px solid var(--border-color)",
+        padding: "var(--space-md)",
+        display: "flex",
+        flexDirection: "column",
+        gap: "var(--space-lg)",
+        maxHeight: "100%",
+        overflow: "auto",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <h4 style={{ fontSize: "var(--font-size-sm)", fontWeight: 600 }}>
+          Dial {dialIndex + 1}
+        </h4>
+        <button onClick={onClose} style={{ color: "var(--text-muted)", cursor: "pointer" }}>
+          <X size={14} />
+        </button>
+      </div>
+
+      {/* Label */}
+      <div>
+        <label style={panelLabelStyle}>Label</label>
+        <input
+          type="text"
+          value={dial?.label ?? ""}
+          placeholder="Shown on the touchscreen"
+          onChange={(e) => onUpdate({ label: e.target.value || undefined })}
+          style={{
+            width: "100%", padding: "var(--space-sm) var(--space-md)",
+            borderRadius: "var(--border-radius)",
+            border: "1px solid var(--border-color)",
+            background: "var(--bg-surface)", color: "var(--text-primary)",
+            fontSize: "var(--font-size-sm)",
+          }}
+        />
+      </div>
+
+      {/* Adjust-a-value */}
+      <div>
+        <label style={panelLabelStyle}>Turning Adjusts a Value</label>
+        <VariableKeyPicker
+          value={adjust.key ?? ""}
+          onChange={(key) => updateAdjust({ key })}
+          placeholder="Pick a variable to adjust..."
+        />
+        {adjust.key && (
+          <div style={{ display: "flex", gap: "var(--space-sm)", marginTop: "var(--space-sm)" }}>
+            {numberField("Step", "step", "1")}
+            {numberField("Min", "min", "none")}
+            {numberField("Max", "max", "none")}
+          </div>
+        )}
+        <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
+          Each detent adds or subtracts the step, clamped to min/max. Use a
+          variable, then have a macro or trigger watch it to drive a device.
+          The live value shows on the touchscreen under this dial.
+        </div>
+      </div>
+
+      {/* Turn / press actions */}
+      <div>
+        <label style={panelLabelStyle}>Clockwise Turn Actions</label>
+        <ActionListEditor
+          actions={dial?.cw ?? []}
+          onChange={(cw) => onUpdate({ cw: cw.length ? cw : undefined })}
+          project={project}
+          allowedActions={allowedActions}
+          navigateOptions={navigateOptions}
+          addLabel="Add clockwise action"
+        />
+      </div>
+      <div>
+        <label style={panelLabelStyle}>Counter-Clockwise Turn Actions</label>
+        <ActionListEditor
+          actions={dial?.ccw ?? []}
+          onChange={(ccw) => onUpdate({ ccw: ccw.length ? ccw : undefined })}
+          project={project}
+          allowedActions={allowedActions}
+          navigateOptions={navigateOptions}
+          addLabel="Add counter-clockwise action"
+        />
+      </div>
+      <div>
+        <label style={panelLabelStyle}>Press Actions</label>
+        <ActionListEditor
+          actions={dial?.press ?? []}
+          onChange={(press) => onUpdate({ press: press.length ? press : undefined })}
+          project={project}
+          allowedActions={allowedActions}
+          navigateOptions={navigateOptions}
+          addLabel="Add press action"
+        />
+      </div>
+
+      {/* Clear */}
+      <button
+        onClick={onClear}
+        style={{
+          display: "flex", alignItems: "center", justifyContent: "center",
+          gap: "var(--space-xs)", padding: "var(--space-sm)",
+          borderRadius: "var(--border-radius)", background: "transparent",
+          border: "1px solid var(--border-color)", color: "var(--color-error)",
+          fontSize: "var(--font-size-sm)", cursor: "pointer",
+        }}
+      >
+        <Trash2 size={12} />
+        Clear Assignment
+      </button>
+    </div>
+  );
+}
+
+// ──── Touchscreen Zones Editor ────
+
+function TouchscreenZonesEditor({
+  config,
+  onConfigChange,
+  allowedActions,
+  navigateOptions,
+}: {
+  config: Record<string, unknown>;
+  onConfigChange: (config: Record<string, unknown>) => void;
+  allowedActions?: string[];
+  navigateOptions?: { value: string; label: string }[];
+}) {
+  const project = useProjectStore((s) => s.project);
+  const touchscreen = (config.touchscreen as { zones?: TouchZone[] } | undefined) ?? {};
+  const zones = touchscreen.zones ?? [];
+  const [expandedZone, setExpandedZone] = useState<number | null>(null);
+
+  const setZones = (next: TouchZone[]) => {
+    onConfigChange({
+      ...config,
+      touchscreen: { ...touchscreen, zones: next },
+    });
+  };
+  const updateZone = (i: number, patch: Partial<TouchZone>) =>
+    setZones(zones.map((z, j) => (j === i ? { ...z, ...patch } : z)));
+  const removeZone = (i: number) => {
+    setZones(zones.filter((_, j) => j !== i));
+    setExpandedZone(null);
+  };
+
+  if (!project) return null;
+
+  return (
+    <div style={{ maxWidth: 560 }}>
+      <h4 style={{ fontSize: "var(--font-size-sm)", fontWeight: 600, marginBottom: 4 }}>
+        Touchscreen
+      </h4>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
+        By default the touchscreen shows one zone per dial with its label and
+        live value. Add custom zones to take over the strip — zones split it
+        evenly, and tapping a zone runs its actions.
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+        {zones.map((zone, i) => {
+          const isExpanded = expandedZone === i;
+          return (
+            <div
+              key={i}
+              style={{
+                border: "1px solid var(--border-color)",
+                borderRadius: "var(--border-radius)",
+                overflow: "hidden",
+              }}
+            >
+              <button
+                onClick={() => setExpandedZone(isExpanded ? null : i)}
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  width: "100%", padding: "6px 10px", fontSize: "var(--font-size-sm)",
+                  background: "var(--bg-surface)", textAlign: "left", cursor: "pointer",
+                }}
+              >
+                <span style={{ fontWeight: 500 }}>
+                  Zone {i + 1}{zone.label ? ` — ${zone.label}` : ""}
+                </span>
+                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                  {zone.value_source || "no value"}
+                </span>
+              </button>
+              {isExpanded && (
+                <div style={{
+                  padding: "var(--space-sm)",
+                  borderTop: "1px solid var(--border-color)",
+                  display: "flex", flexDirection: "column", gap: "var(--space-sm)",
+                }}>
+                  <div>
+                    <label style={panelHintStyle}>Label</label>
+                    <input
+                      type="text"
+                      value={zone.label ?? ""}
+                      onChange={(e) => updateZone(i, { label: e.target.value || undefined })}
+                      placeholder="Text shown in the zone"
+                      style={{
+                        width: "100%", padding: "4px 6px",
+                        borderRadius: "var(--border-radius)",
+                        border: "1px solid var(--border-color)",
+                        background: "var(--bg-surface)", color: "var(--text-primary)",
+                        fontSize: "var(--font-size-sm)",
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label style={panelHintStyle}>Label from state (optional, overrides Label)</label>
+                    <VariableKeyPicker
+                      value={zone.label_source ?? ""}
+                      onChange={(key) => updateZone(i, { label_source: key || undefined })}
+                      placeholder="Pick a state key for the label..."
+                    />
+                  </div>
+                  <div>
+                    <label style={panelHintStyle}>Show value from state</label>
+                    <VariableKeyPicker
+                      value={zone.value_source ?? ""}
+                      onChange={(key) => updateZone(i, { value_source: key || undefined })}
+                      placeholder="Pick a state key to display..."
+                    />
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "var(--space-md)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
+                      <span style={panelHintStyle}>Background</span>
+                      <InlineColorPicker
+                        value={zone.bg_color ?? ""}
+                        onChange={(c) => updateZone(i, { bg_color: c || undefined })}
+                      />
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
+                      <span style={panelHintStyle}>Text</span>
+                      <InlineColorPicker
+                        value={zone.text_color ?? ""}
+                        onChange={(c) => updateZone(i, { text_color: c || undefined })}
+                      />
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: "var(--space-sm)" }}>
+                    {([["Position (px, optional)", "x"], ["Width (px, optional)", "w"]] as const).map(
+                      ([fieldLabel, field]) => (
+                        <div key={field} style={{ flex: 1 }}>
+                          <label style={panelHintStyle}>{fieldLabel}</label>
+                          <input
+                            type="number"
+                            value={zone[field] ?? ""}
+                            placeholder="auto"
+                            onChange={(e) =>
+                              updateZone(i, {
+                                [field]: e.target.value === "" ? undefined : Number(e.target.value),
+                              })
+                            }
+                            style={{
+                              width: "100%", padding: "4px 6px",
+                              borderRadius: "var(--border-radius)",
+                              border: "1px solid var(--border-color)",
+                              background: "var(--bg-surface)", color: "var(--text-primary)",
+                              fontSize: "var(--font-size-sm)",
+                            }}
+                          />
+                        </div>
+                      )
+                    )}
+                  </div>
+                  <div>
+                    <label style={panelHintStyle}>Tap actions</label>
+                    <ActionListEditor
+                      actions={zone.touch ?? []}
+                      onChange={(touch) => updateZone(i, { touch: touch.length ? touch : undefined })}
+                      project={project}
+                      allowedActions={allowedActions}
+                      navigateOptions={navigateOptions}
+                      addLabel="Add tap action"
+                    />
+                  </div>
+                  <button
+                    onClick={() => removeZone(i)}
+                    style={{
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      gap: "var(--space-xs)", padding: "var(--space-xs)",
+                      borderRadius: "var(--border-radius)", background: "transparent",
+                      border: "1px solid var(--border-color)", color: "var(--color-error)",
+                      fontSize: "var(--font-size-sm)", cursor: "pointer",
+                    }}
+                  >
+                    <Trash2 size={12} />
+                    Remove Zone
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <button
+        onClick={() => {
+          setZones([...zones, {}]);
+          setExpandedZone(zones.length);
+        }}
+        style={{
+          marginTop: "var(--space-sm)",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
+          padding: "5px 10px", borderRadius: "var(--border-radius)",
+          border: "1px dashed var(--border-color)", background: "transparent",
+          color: "var(--text-muted)", fontSize: 12, cursor: "pointer",
+        }}
+      >
+        + Add custom zone
       </button>
     </div>
   );
