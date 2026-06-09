@@ -473,6 +473,7 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
                 ) : (
                   <input
                     type={field.secret ? "password" : "text"}
+                    autoComplete="new-password"
                     value={configOverrides[field.key] ?? ""}
                     onChange={(e) =>
                       setConfigOverrides((prev) => ({

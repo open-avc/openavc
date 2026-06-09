@@ -225,8 +225,10 @@ export function ConfigSchemaEditor({ draft, onUpdate }: ConfigSchemaEditorProps)
                   <div>
                     <label style={labelStyle}>Default Value</label>
                     <input
-                      value={String(defaultConfig[name] ?? "")}
+                      value={field.secret ? "" : String(defaultConfig[name] ?? "")}
                       onChange={(e) => updateDefault(name, e.target.value)}
+                      disabled={field.secret}
+                      placeholder={field.secret ? "Secret fields can't have a default" : ""}
                       style={{ width: "100%" }}
                     />
                   </div>
@@ -266,9 +268,21 @@ export function ConfigSchemaEditor({ draft, onUpdate }: ConfigSchemaEditorProps)
                       <input
                         type="checkbox"
                         checked={field.secret ?? false}
-                        onChange={(e) =>
-                          updateField(name, { secret: e.target.checked })
-                        }
+                        onChange={(e) => {
+                          const isSecret = e.target.checked;
+                          // A secret must never carry a default value — clear it
+                          // when the field is marked secret.
+                          onUpdate(
+                            isSecret
+                              ? {
+                                  config_schema: { ...schema, [name]: { ...schema[name], secret: true } },
+                                  default_config: { ...defaultConfig, [name]: "" },
+                                }
+                              : {
+                                  config_schema: { ...schema, [name]: { ...schema[name], secret: false } },
+                                },
+                          );
+                        }}
                       />
                       Secret
                     </label>

@@ -119,6 +119,7 @@ function ConfigFieldInputs({
             ) : fieldType === "password" ? (
               <input
                 type="password"
+                autoComplete="new-password"
                 value={configValues[key] ?? ""}
                 onChange={(e) =>
                   setConfigValues((v) => ({ ...v, [key]: e.target.value }))

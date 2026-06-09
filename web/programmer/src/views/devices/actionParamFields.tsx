@@ -121,6 +121,7 @@ export function ActionParamFields({
                       ? "number"
                       : "text"
                 }
+                autoComplete="new-password"
                 value={current}
                 min={def.min}
                 max={def.max}

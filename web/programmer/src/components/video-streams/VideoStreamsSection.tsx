@@ -243,7 +243,7 @@ function StreamForm({
             <input style={inputStyle} value={username} onChange={(e) => setUsername(e.target.value)} />
           </Field>
           <Field label="Password">
-            <input style={inputStyle} type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+            <input style={inputStyle} type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
           </Field>
         </div>
 

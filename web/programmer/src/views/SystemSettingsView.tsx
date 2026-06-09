@@ -166,6 +166,7 @@ function PasswordField({
     <div style={{ position: "relative" }}>
       <input
         type={visible ? "text" : "password"}
+        autoComplete="new-password"
         style={inputStyle}
         value={isRedacted ? "" : value}
         placeholder={isRedacted ? "Set (hidden)" : placeholder}

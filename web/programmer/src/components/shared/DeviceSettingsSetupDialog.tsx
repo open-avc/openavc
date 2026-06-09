@@ -222,6 +222,7 @@ export function DeviceSettingsSetupDialog({
                         ? "number"
                         : "text"
                   }
+                  autoComplete="new-password"
                   style={{ width: "100%" }}
                 />
               )}
