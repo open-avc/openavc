@@ -83,7 +83,7 @@ interface SurfaceConfiguratorProps {
 // ──── Main Component ────
 
 export function SurfaceConfigurator({
-  layout,
+  layout: staticLayout,
   pluginId,
   config,
   onConfigChange,
@@ -91,6 +91,21 @@ export function SurfaceConfigurator({
 }: SurfaceConfiguratorProps) {
   const [selectedControl, setSelectedControl] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
+
+  // Live-detected hardware geometry. Surface plugins publish what's actually
+  // plugged in (plugin.<id>.rows / columns / connected ...), which beats the
+  // static SURFACE_LAYOUT default — so an XL renders as 8x4 even though the
+  // plugin's declared default is the Neo's 2x4. Falls back to the static
+  // layout when no hardware is connected.
+  const liveState = useConnectionStore((s) => s.liveState);
+  const statePrefix = `plugin.${pluginId}.`;
+  const deckConnected = Boolean(liveState[`${statePrefix}connected`]);
+  const liveRows = Number(liveState[`${statePrefix}rows`] ?? 0);
+  const liveColumns = Number(liveState[`${statePrefix}columns`] ?? 0);
+  const layout: SurfaceLayout =
+    staticLayout.type === "grid" && deckConnected && liveRows > 0 && liveColumns > 0
+      ? { ...staticLayout, rows: liveRows, columns: liveColumns }
+      : staticLayout;
 
   const buttons = (config.buttons as ButtonAssignment[] | undefined) ?? [];
 
