@@ -806,6 +806,137 @@ async def test_delete_ui_elements_not_found(handler, mock_agent, mock_engine):
     assert "No matching elements" in payload["result"]["error"]
 
 
+# ===== UI VALIDATION & SIMULATION (H-079, M-134..M-137) =====
+
+
+@pytest.mark.asyncio
+async def test_update_ui_element_rejects_non_dict_bindings(handler, mock_engine):
+    """H-079: a non-dict bindings value must be rejected, not assigned raw
+    (UIElement has no validate_assignment, so a raw assign would persist a
+    structurally invalid element)."""
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        result = await handler._update_ui_element({
+            "element_id": "btn_on",
+            "bindings": ["not", "a", "dict"],
+        })
+
+    assert "error" in result
+    assert "must be an object" in result["error"]
+    # The element's bindings were not corrupted.
+    page = next(p for p in mock_engine.project.ui.pages if p.id == "main")
+    el = next(e for e in page.elements if e.id == "btn_on")
+    assert isinstance(el.bindings, dict)
+
+
+@pytest.mark.asyncio
+async def test_add_ui_page_validates_inline_element_bindings(handler, mock_engine):
+    """M-134: inline elements get the same binding validation as add_ui_elements."""
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        with patch("server.core.project_loader.save_project"):
+            result = await handler._add_ui_page({
+                "id": "bad_page",
+                "name": "Bad",
+                "elements": [
+                    {"id": "b1", "type": "button",
+                     "bindings": {"press": [{"action": "macro"}]}},  # missing 'macro'
+                ],
+            })
+
+    assert "error" in result
+    assert "macro" in result["error"]
+    # The invalid page was not added.
+    assert not any(p.id == "bad_page" for p in mock_engine.project.ui.pages)
+
+
+@pytest.mark.asyncio
+async def test_add_ui_page_accepts_valid_inline_bindings(handler, mock_engine):
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        with patch("server.core.project_loader.save_project"):
+            result = await handler._add_ui_page({
+                "id": "good_page",
+                "name": "Good",
+                "elements": [
+                    {"id": "b1", "type": "button",
+                     "bindings": {"press": [{"action": "navigate", "page": "main"}]}},
+                ],
+            })
+
+    assert result.get("status") == "created"
+    page = next(p for p in mock_engine.project.ui.pages if p.id == "good_page")
+    # Bindings were normalized (press wrapped as a list of action objects).
+    assert isinstance(page.elements[0].bindings["press"], list)
+
+
+@pytest.mark.asyncio
+async def test_simulate_navigate_broadcasts_ui_navigate(handler, mock_engine):
+    """M-135: simulate navigate must broadcast ui.navigate so panels switch."""
+    mock_engine.events.emit = AsyncMock()
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        result = await handler._simulate_ui_action({"action": "navigate", "page_id": "main"})
+
+    assert result["success"] is True
+    mock_engine.broadcast_ws.assert_awaited_once_with({"type": "ui.navigate", "page_id": "main"})
+
+
+@pytest.mark.asyncio
+async def test_simulate_action_filters_background_state_changes(handler, mock_agent, mock_engine):
+    """M-136: only changes the action plausibly caused are reported — background
+    activity (heartbeat/system/cloud/ai/isc/discovered) is filtered out."""
+    from server.core.state_store import StateStore
+
+    store = StateStore()
+    mock_agent.state = store  # real store: subscribe/unsubscribe + listener fire
+
+    async def fake_handle(action, element_id, *args):
+        store.set("device.projector1.power", "on", source="device.projector1")  # real effect
+        store.set("system.cpu_percent", 42, source="heartbeat")                  # background noise
+        store.set("var.other_tool", "x", source="ai")                            # concurrent tool
+
+    mock_engine.handle_ui_event = fake_handle
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        result = await handler._simulate_ui_action({"action": "press", "element_id": "btn_on"})
+
+    keys = {c["key"] for c in result["state_changes"]}
+    assert "device.projector1.power" in keys
+    assert "system.cpu_percent" not in keys
+    assert "var.other_tool" not in keys
+
+
+@pytest.mark.asyncio
+async def test_update_ui_page_grid_partial_merge(handler, mock_engine):
+    """M-137: a partial grid update keeps omitted fields + forward-compat keys."""
+    from server.core.project_loader import GridConfig
+
+    page = next(p for p in mock_engine.project.ui.pages if p.id == "main")
+    page.grid = GridConfig(columns=12, rows=4, custom_hint="keep-me")  # non-default + extra
+
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        with patch("server.core.project_loader.save_project"):
+            result = await handler._update_ui_page({"page_id": "main", "grid": {"columns": 6}})
+
+    assert result.get("status") == "updated"
+    page = next(p for p in mock_engine.project.ui.pages if p.id == "main")
+    assert page.grid.columns == 6        # applied
+    assert page.grid.rows == 4           # NOT reset to the default (8)
+    assert page.grid.model_dump().get("custom_hint") == "keep-me"  # forward-compat survived
+
+
+@pytest.mark.asyncio
+async def test_update_ui_element_grid_area_partial_merge(handler, mock_engine):
+    """M-137: a partial grid_area update keeps omitted fields (no snap to 1)."""
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        with patch("server.core.project_loader.save_project"):
+            # btn_on starts at col=1,row=1,col_span=2,row_span=1; move col only.
+            result = await handler._update_ui_element({"element_id": "btn_on", "grid_area": {"col": 5}})
+
+    assert result.get("status") == "updated"
+    page = next(p for p in mock_engine.project.ui.pages if p.id == "main")
+    el = next(e for e in page.elements if e.id == "btn_on")
+    assert el.grid_area.col == 5         # applied
+    assert el.grid_area.col_span == 2    # NOT reset to the default (1)
+    assert el.grid_area.row == 1
+
+
 # ===== SCHEDULE TOOLS =====
 
 

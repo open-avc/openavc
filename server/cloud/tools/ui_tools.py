@@ -2,6 +2,28 @@
 
 from typing import Any
 
+# State-change sources a simulated UI action can never itself produce. They're
+# excluded from _simulate_ui_action's captured effects so concurrent event-loop
+# activity (system metrics/heartbeat, other AI tools, cloud pushes, ISC peers,
+# discovery) isn't misattributed to the action. Device polling shares the
+# device.<id> source with real command effects, so it can't be filtered here
+# without also hiding the action's genuine device changes.
+_SIMULATE_IGNORED_SOURCES = frozenset({
+    "heartbeat", "system", "cloud", "ai", "isc", "discovered",
+})
+
+
+def _merge_forward_compat(existing: Any, model_cls: type, partial: dict) -> Any:
+    """Apply a partial update to a forward-compat (extra='allow') sub-model.
+
+    Dumps the existing model, overlays the partial input, then re-validates —
+    so omitted fields keep their current values (not the model defaults) and
+    any unknown forward-compat keys a newer platform stored survive the
+    round-trip, instead of being reset by ``model_cls(**partial)``.
+    """
+    merged = {**existing.model_dump(), **partial}
+    return model_cls(**merged)
+
 
 class UIToolsMixin:
     """UI page CRUD, element management, master elements, and action simulation."""
@@ -27,12 +49,25 @@ class UIToolsMixin:
         if any(p.id == page_id for p in engine.project.ui.pages):
             return {"error": f"UI page '{page_id}' already exists"}
 
+        # Normalize + validate inline-element bindings the same way
+        # _add_ui_elements does — otherwise a page-with-elements created in one
+        # call yields bindings that were never validated (buttons silently do
+        # nothing), while the identical elements added via add_ui_elements work.
+        from server.cloud.ai_tool_handler import _normalize_bindings, _validate_bindings
         from server.core.project_loader import UIPage, save_project
+        elements = input.get("elements", [])
+        for el_data in elements:
+            if isinstance(el_data, dict) and isinstance(el_data.get("bindings"), dict):
+                el_data["bindings"] = _normalize_bindings(el_data["bindings"])
+                err = _validate_bindings(el_data["bindings"], engine.project)
+                if err:
+                    return {"error": f"Element '{el_data.get('id', '?')}': {err}"}
+
         new_page = UIPage(
             id=page_id,
             name=input.get("name", page_id),
             grid=input.get("grid", {}),
-            elements=input.get("elements", []),
+            elements=elements,
         )
         engine.project.ui.pages.append(new_page)
         save_project(engine.project_path, engine.project)
@@ -62,7 +97,9 @@ class UIToolsMixin:
             changed.append("name")
         if "grid" in input:
             from server.core.project_loader import GridConfig
-            page.grid = GridConfig(**input["grid"])
+            # Partial merge: keep omitted fields (don't reset rows/columns to
+            # defaults) and preserve any forward-compat keys.
+            page.grid = _merge_forward_compat(page.grid, GridConfig, input["grid"])
             changed.append("grid")
         if "page_type" in input:
             page.page_type = input["page_type"]
@@ -178,15 +215,22 @@ class UIToolsMixin:
         if target_el is None:
             return {"error": f"UI element '{element_id}' not found"}
 
-        # Validate bindings BEFORE mutating any fields (avoid partial updates)
+        # Validate bindings BEFORE mutating any fields (avoid partial updates).
+        # A non-dict bindings value would bypass the validator AND Pydantic
+        # (UIElement has no validate_assignment), persisting a structurally
+        # invalid element — reject it instead of assigning it raw.
         if "bindings" in input:
             from server.cloud.ai_tool_handler import _normalize_bindings, _validate_bindings
             bindings = input["bindings"]
-            if isinstance(bindings, dict):
-                bindings = _normalize_bindings(bindings)
-                err = _validate_bindings(bindings, engine.project)
-                if err:
-                    return {"error": f"Element '{element_id}': {err}"}
+            if not isinstance(bindings, dict):
+                return {
+                    "error": f"Element '{element_id}': 'bindings' must be an object, "
+                             f"got {type(bindings).__name__}"
+                }
+            bindings = _normalize_bindings(bindings)
+            err = _validate_bindings(bindings, engine.project)
+            if err:
+                return {"error": f"Element '{element_id}': {err}"}
 
         if "label" in input:
             target_el.label = input["label"]
@@ -194,11 +238,13 @@ class UIToolsMixin:
             target_el.text = input["text"]
         if "grid_area" in input:
             from server.core.project_loader import GridArea
-            target_el.grid_area = GridArea(**input["grid_area"])
+            # Partial merge: keep omitted fields (don't snap col/row back to 1)
+            # and preserve any forward-compat keys.
+            target_el.grid_area = _merge_forward_compat(target_el.grid_area, GridArea, input["grid_area"])
         if "style" in input:
             target_el.style = input["style"]
         if "bindings" in input:
-            target_el.bindings = bindings if isinstance(input["bindings"], dict) else input["bindings"]
+            target_el.bindings = bindings
 
         from server.core.project_loader import save_project
         save_project(engine.project_path, engine.project)
@@ -303,15 +349,25 @@ class UIToolsMixin:
         if action == "navigate":
             if not page_id:
                 return {"error": "page_id is required for navigate action"}
+            # Mirror the real navigation path (engine.handle_ui_event): emit the
+            # page event AND broadcast ui.navigate — panels switch page only on
+            # the WS broadcast, so the emit alone would report success while no
+            # panel actually moves.
             await engine.events.emit(f"ui.page.{page_id}")
+            await engine.broadcast_ws({"type": "ui.navigate", "page_id": page_id})
             return {"success": True, "action": "navigate", "page_id": page_id, "state_changes": []}
 
         if not element_id:
             return {"error": "element_id is required for this action"}
 
-        # Capture state changes during action execution
+        # Capture state changes during action execution. The '*' subscription
+        # sees all event-loop-wide activity during the await, so drop changes
+        # from sources the action can't have caused (system metrics, other
+        # tools, ISC peers, discovery) — otherwise they're misattributed to it.
         state_changes = []
         def on_change(key, old_val, new_val, source):
+            if source in _SIMULATE_IGNORED_SOURCES:
+                return
             state_changes.append({"key": key, "old_value": old_val, "new_value": new_val})
 
         sub_id = self._agent.state.subscribe("*", on_change)
