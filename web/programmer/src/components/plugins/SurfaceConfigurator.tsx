@@ -156,10 +156,26 @@ export function SurfaceConfigurator({
     : 0;
   const liveHasInfoScreen =
     deckConnected && Boolean(liveState[liveKey("has_info_screen")]);
-  const layout: SurfaceLayout =
-    staticLayout.type === "grid" && deckConnected && liveRows > 0 && liveColumns > 0
+  // Page count is a global plugin setting (config.max_pages, flat config —
+  // the runtime reads it un-overridden), beating the static SURFACE_LAYOUT.
+  const configMaxPages = Number((config as { max_pages?: unknown }).max_pages);
+  const effectiveMaxPages =
+    Number.isFinite(configMaxPages) && configMaxPages >= 1
+      ? Math.min(100, Math.floor(configMaxPages))
+      : staticLayout.max_pages ?? 10;
+  const layout: SurfaceLayout = {
+    ...(staticLayout.type === "grid" && deckConnected && liveRows > 0 && liveColumns > 0
       ? { ...staticLayout, rows: liveRows, columns: liveColumns }
-      : staticLayout;
+      : staticLayout),
+    max_pages: effectiveMaxPages,
+  };
+
+  // Keep the selected page tab valid when the page count is lowered.
+  useEffect(() => {
+    if (currentPage > effectiveMaxPages - 1) {
+      setCurrentPage(effectiveMaxPages - 1);
+    }
+  }, [currentPage, effectiveMaxPages]);
 
   // Per-deck config view. A decks[serial] override fully replaces the deck's
   // sections (buttons, dials, ...); a deck without one mirrors the flat
@@ -283,6 +299,10 @@ export function SurfaceConfigurator({
               config={config}
               onConfigChange={onConfigChange}
             />
+          )}
+          {/* Per-deck overrides for the global scalar settings (customized decks only) */}
+          {isCustomized && (
+            <DeckScalarSettings viewConfig={viewConfig} onViewChange={onViewChange} />
           )}
           <div style={{ display: "flex", gap: "var(--space-lg)" }}>
             <div style={{ flex: "0 0 auto" }}>
@@ -1469,6 +1489,91 @@ function DeckPicker({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ──── Per-Deck Scalar Settings (customized decks only) ────
+//
+// The runtime resolves brightness/button_color/text_color per deck via the
+// decks[serial] override first, then the flat plugin settings. This row lets
+// a customized deck author those overrides; blank = inherit the main setting.
+
+function DeckScalarSettings({
+  viewConfig,
+  onViewChange,
+}: {
+  viewConfig: Record<string, unknown>;
+  onViewChange: (next: Record<string, unknown>) => void;
+}) {
+  const brightness = viewConfig.brightness;
+  const setField = (field: string, value: unknown) => {
+    const next = { ...viewConfig };
+    if (value === undefined || value === "") {
+      delete next[field];
+    } else {
+      next[field] = value;
+    }
+    onViewChange(next);
+  };
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "var(--space-lg)",
+        flexWrap: "wrap",
+        padding: "var(--space-sm) var(--space-md)",
+        border: "1px solid var(--border-color)",
+        borderRadius: "var(--border-radius)",
+        background: "var(--bg-surface)",
+      }}
+    >
+      <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)" }}>
+        This deck's settings
+      </span>
+      <label style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", fontSize: 12, color: "var(--text-muted)" }}>
+        Brightness
+        <input
+          type="number"
+          min={0}
+          max={100}
+          value={typeof brightness === "number" ? brightness : ""}
+          placeholder="main"
+          onChange={(e) =>
+            setField(
+              "brightness",
+              e.target.value === "" ? undefined : Math.max(0, Math.min(100, Number(e.target.value)))
+            )
+          }
+          style={{
+            width: 64, padding: "4px 6px",
+            borderRadius: "var(--border-radius)",
+            border: "1px solid var(--border-color)",
+            background: "var(--bg-surface)", color: "var(--text-primary)",
+            fontSize: "var(--font-size-sm)",
+          }}
+        />
+        %
+      </label>
+      <label style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", fontSize: 12, color: "var(--text-muted)" }}>
+        Button color
+        <InlineColorPicker
+          value={typeof viewConfig.button_color === "string" ? viewConfig.button_color : ""}
+          onChange={(c) => setField("button_color", c || undefined)}
+        />
+      </label>
+      <label style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", fontSize: 12, color: "var(--text-muted)" }}>
+        Text color
+        <InlineColorPicker
+          value={typeof viewConfig.text_color === "string" ? viewConfig.text_color : ""}
+          onChange={(c) => setField("text_color", c || undefined)}
+        />
+      </label>
+      <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
+        Blank values use the main plugin settings.
+      </span>
     </div>
   );
 }
