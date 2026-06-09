@@ -94,6 +94,25 @@ export function SurfaceConfigurator({
 
   const buttons = (config.buttons as ButtonAssignment[] | undefined) ?? [];
 
+  // A physical surface button supports a subset of element actions: macro,
+  // device command, set-state, and (on paged surfaces) deck-page navigation.
+  // value_map needs a continuous input value and script.call is panel-only.
+  const supportsPages = !!layout.supports_pages;
+  const maxPages = layout.max_pages ?? 10;
+  const allowedActions = supportsPages
+    ? ["macro", "device.command", "state.set", "navigate"]
+    : ["macro", "device.command", "state.set"];
+  const navigateOptions = supportsPages
+    ? [
+        { value: "__next_page__", label: "Next Page" },
+        { value: "__prev_page__", label: "Previous Page" },
+        ...Array.from({ length: maxPages }, (_, p) => ({
+          value: String(p),
+          label: `Page ${p + 1}`,
+        })),
+      ]
+    : undefined;
+
   const getAssignment = useCallback(
     (index: number, page: number = 0): ButtonAssignment | undefined => {
       return buttons.find((b) => b.index === index && (b.page ?? 0) === page);
@@ -150,6 +169,8 @@ export function SurfaceConfigurator({
             {selectedControl !== null && (
               <ControlAssignmentPanel
                 controlId={selectedControl}
+                allowedActions={allowedActions}
+                navigateOptions={navigateOptions}
                 assignment={getAssignment(
                   parseInt(selectedControl),
                   currentPage
@@ -186,6 +207,8 @@ export function SurfaceConfigurator({
           {selectedControl !== null && (
             <ControlAssignmentPanel
               controlId={selectedControl}
+              allowedActions={allowedActions}
+              navigateOptions={navigateOptions}
               assignment={getAssignment(parseInt(selectedControl), 0)}
               onUpdate={(updates) =>
                 updateAssignment(parseInt(selectedControl), 0, updates)
@@ -209,6 +232,8 @@ export function SurfaceConfigurator({
           {selectedControl !== null && (
             <ControlAssignmentPanel
               controlId={selectedControl}
+              allowedActions={allowedActions}
+              navigateOptions={navigateOptions}
               assignment={getAssignment(parseInt(selectedControl), 0)}
               onUpdate={(updates) =>
                 updateAssignment(parseInt(selectedControl), 0, updates)
@@ -944,12 +969,16 @@ function ControlAssignmentPanel({
   onUpdate,
   onClear,
   onClose,
+  allowedActions,
+  navigateOptions,
 }: {
   controlId: string;
   assignment: ButtonAssignment | undefined;
   onUpdate: (updates: Partial<ButtonAssignment>) => void;
   onClear: () => void;
   onClose: () => void;
+  allowedActions?: string[];
+  navigateOptions?: { value: string; label: string }[];
 }) {
   const project = useProjectStore((s) => s.project);
 
@@ -1026,6 +1055,8 @@ function ControlAssignmentPanel({
           onLabelChange={(label) => onUpdate({ label: label || undefined })}
           showLabel={true}
           showToggleLabels={true}
+          allowedActions={allowedActions}
+          navigateOptions={navigateOptions}
         />
       ) : (
         <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Loading project...</div>

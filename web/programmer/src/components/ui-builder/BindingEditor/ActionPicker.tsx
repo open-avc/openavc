@@ -9,6 +9,12 @@ interface ActionPickerProps {
   project: ProjectConfig;
   onChange: (value: Record<string, unknown>) => void;
   forChangeBinding?: boolean;
+  // Restrict the offered action types (e.g. a control surface can't run
+  // script.call/value_map). When omitted, all types are offered.
+  allowedActions?: string[];
+  // When provided, the Navigate picker offers these targets instead of the
+  // project's panel pages (a control surface navigates its own deck pages).
+  navigateOptions?: { value: string; label: string }[];
 }
 
 const ACTION_TYPES = [
@@ -19,8 +25,11 @@ const ACTION_TYPES = [
   { value: "script.call", label: "Script Function" },
 ];
 
-export function ActionPicker({ value, project, onChange, forChangeBinding }: ActionPickerProps) {
+export function ActionPicker({ value, project, onChange, forChangeBinding, allowedActions, navigateOptions }: ActionPickerProps) {
   const actionType = String(value?.action || "");
+  const actionTypes = allowedActions
+    ? ACTION_TYPES.filter((t) => allowedActions.includes(t.value))
+    : ACTION_TYPES;
 
   const handleActionTypeChange = (action: string) => {
     onChange({ action });
@@ -43,7 +52,7 @@ export function ActionPicker({ value, project, onChange, forChangeBinding }: Act
           style={{ width: "100%", padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
         >
           <option value="">Select action...</option>
-          {ACTION_TYPES.map((t) => (
+          {actionTypes.map((t) => (
             <option key={t.value} value={t.value}>
               {t.label}
             </option>
@@ -66,7 +75,7 @@ export function ActionPicker({ value, project, onChange, forChangeBinding }: Act
         <StateSetConfig value={value} onChange={onChange} forChangeBinding={forChangeBinding} />
       )}
       {actionType === "navigate" && (
-        <NavigateConfig value={value} project={project} onChange={onChange} />
+        <NavigateConfig value={value} project={project} onChange={onChange} navigateOptions={navigateOptions} />
       )}
       {actionType === "script.call" && (
         <ScriptCallConfig value={value} onChange={onChange} />
@@ -412,11 +421,33 @@ function NavigateConfig({
   value,
   project,
   onChange,
+  navigateOptions,
 }: {
   value: Record<string, unknown> | null;
   project: ProjectConfig;
   onChange: (v: Record<string, unknown>) => void;
+  navigateOptions?: { value: string; label: string }[];
 }) {
+  // Control surfaces navigate their own deck pages, not the project's panel
+  // pages, so they supply an explicit target list.
+  if (navigateOptions) {
+    return (
+      <div>
+        <label style={labelStyle}>Go To</label>
+        <select
+          value={String(value?.page || "")}
+          onChange={(e) => onChange({ action: "navigate", page: e.target.value })}
+          style={{ width: "100%", padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
+        >
+          <option value="">Select...</option>
+          {navigateOptions.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+      </div>
+    );
+  }
+
   const pages = project.ui.pages;
   const regularPages = pages.filter((p) => (p.page_type ?? "page") === "page");
   const overlayPages = pages.filter((p) => {

@@ -48,8 +48,9 @@ Each entry in the array represents one physical button:
       // "action": "device.command", "device": "device_id", "command": "cmd", "params": {}
       // OR for state.set:
       // "action": "state.set", "key": "var.my_var", "value": "new_value"
-      // OR for page navigation:
-      // "action": "navigate", "page": "__next_page__"  (or "__prev_page__")
+      // OR for deck-page navigation:
+      // "action": "navigate", "page": "__next_page__" (next), "__prev_page__" (previous),
+      //   or a 0-based page index, e.g. "page": 2
 
       // Optional mode (default is "tap"):
       // "mode": "toggle",  — requires toggle_key, toggle_value, off_action

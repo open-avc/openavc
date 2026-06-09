@@ -40,6 +40,10 @@ interface ButtonBindingEditorProps {
   showRelease?: boolean;
   showLabel?: boolean;
   showToggleLabels?: boolean;
+  // Restrict the offered action types (control surfaces support a subset).
+  allowedActions?: string[];
+  // Navigate targets for control surfaces (deck pages, not panel pages).
+  navigateOptions?: { value: string; label: string }[];
 }
 
 export function ButtonBindingEditor({
@@ -51,6 +55,8 @@ export function ButtonBindingEditor({
   showRelease = false,
   showLabel = true,
   showToggleLabels = false,
+  allowedActions,
+  navigateOptions,
 }: ButtonBindingEditorProps) {
   const [expandedSlot, setExpandedSlot] = useState<string | null>(null);
 
@@ -126,7 +132,13 @@ export function ButtonBindingEditor({
     if (action.action === "macro") return `Macro: ${action.macro}`;
     if (action.action === "device.command") return `${action.device}.${action.command}`;
     if (action.action === "state.set") return `Set ${action.key}`;
-    if (action.action === "navigate") return `Go to ${action.page}`;
+    if (action.action === "navigate") {
+      const p = String(action.page ?? "");
+      if (p === "__next_page__") return "Next page";
+      if (p === "__prev_page__") return "Previous page";
+      if (/^\d+$/.test(p)) return `Go to page ${Number(p) + 1}`;
+      return `Go to ${p}`;
+    }
     if (action.action === "script.call") return `Call ${action.function}`;
     return String(action.action || "Configured");
   };
@@ -424,6 +436,8 @@ export function ButtonBindingEditor({
                       value={getActionValue(section.id)}
                       project={project}
                       onChange={(v) => setActionValue(section.id, v)}
+                      allowedActions={allowedActions}
+                      navigateOptions={navigateOptions}
                     />
                     {getActionValue(section.id) && (
                       <button
@@ -508,6 +522,8 @@ export function ButtonBindingEditor({
                   newExtra[i] = v;
                   onBindingsChange({ ...bindings, press: [press, ...newExtra] });
                 }}
+                allowedActions={allowedActions}
+                navigateOptions={navigateOptions}
               />
             </div>
           ))}
