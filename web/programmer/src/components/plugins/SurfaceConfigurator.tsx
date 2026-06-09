@@ -121,35 +121,68 @@ export function SurfaceConfigurator({
 }: SurfaceConfiguratorProps) {
   const [selectedControl, setSelectedControl] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
+  const [selectedDeckSerial, setSelectedDeckSerial] = useState<string | null>(null);
 
   // Live-detected hardware geometry. Surface plugins publish what's actually
   // plugged in (plugin.<id>.rows / columns / connected ...), which beats the
   // static SURFACE_LAYOUT default — so an XL renders as 8x4 even though the
   // plugin's declared default is the Neo's 2x4. Falls back to the static
-  // layout when no hardware is connected.
+  // layout when no hardware is connected. With more than one deck attached,
+  // the deck picker selects which deck's geometry and config are shown
+  // (per-serial state keys: plugin.<id>.<serial>.*).
   const liveState = useConnectionStore((s) => s.liveState);
   const statePrefix = `plugin.${pluginId}.`;
-  const deckConnected = Boolean(liveState[`${statePrefix}connected`]);
-  const liveRows = Number(liveState[`${statePrefix}rows`] ?? 0);
-  const liveColumns = Number(liveState[`${statePrefix}columns`] ?? 0);
+  const deckSerials = String(liveState[`${statePrefix}deck_serials`] ?? "")
+    .split(",")
+    .filter(Boolean);
+  const activeSerial =
+    selectedDeckSerial && deckSerials.includes(selectedDeckSerial)
+      ? selectedDeckSerial
+      : deckSerials[0] ?? null;
+  const liveKey = (suffix: string) =>
+    activeSerial ? `${statePrefix}${activeSerial}.${suffix}` : `${statePrefix}${suffix}`;
+
+  const deckConnected = Boolean(liveState[liveKey("connected")]);
+  const liveRows = Number(liveState[liveKey("rows")] ?? 0);
+  const liveColumns = Number(liveState[liveKey("columns")] ?? 0);
   const liveDialCount = deckConnected
-    ? Number(liveState[`${statePrefix}dial_count`] ?? 0)
+    ? Number(liveState[liveKey("dial_count")] ?? 0)
     : 0;
   const liveHasTouchscreen =
-    deckConnected && Boolean(liveState[`${statePrefix}has_touchscreen`]);
-  const liveKeyCount = Number(liveState[`${statePrefix}key_count`] ?? 0);
+    deckConnected && Boolean(liveState[liveKey("has_touchscreen")]);
+  const liveKeyCount = Number(liveState[liveKey("key_count")] ?? 0);
   const liveTouchKeyCount = deckConnected
-    ? Number(liveState[`${statePrefix}touch_key_count`] ?? 0)
+    ? Number(liveState[liveKey("touch_key_count")] ?? 0)
     : 0;
   const liveHasInfoScreen =
-    deckConnected && Boolean(liveState[`${statePrefix}has_info_screen`]);
+    deckConnected && Boolean(liveState[liveKey("has_info_screen")]);
   const layout: SurfaceLayout =
     staticLayout.type === "grid" && deckConnected && liveRows > 0 && liveColumns > 0
       ? { ...staticLayout, rows: liveRows, columns: liveColumns }
       : staticLayout;
 
-  const buttons = (config.buttons as ButtonAssignment[] | undefined) ?? [];
-  const dials = (config.dials as DialAssignment[] | undefined) ?? [];
+  // Per-deck config view. A decks[serial] override fully replaces the deck's
+  // sections (buttons, dials, ...); a deck without one mirrors the flat
+  // config — the runtime resolves it the same way.
+  const decksMap =
+    (config.decks as Record<string, Record<string, unknown>> | undefined) ?? {};
+  const deckOverride = activeSerial ? decksMap[activeSerial] : undefined;
+  const isCustomized = deckOverride !== undefined;
+  const viewConfig = isCustomized ? deckOverride : config;
+  const onViewChange = useCallback(
+    (next: Record<string, unknown>) => {
+      if (isCustomized && activeSerial) {
+        onConfigChange({ ...config, decks: { ...decksMap, [activeSerial]: next } });
+      } else {
+        onConfigChange(next);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [isCustomized, activeSerial, config, onConfigChange]
+  );
+
+  const buttons = (viewConfig.buttons as ButtonAssignment[] | undefined) ?? [];
+  const dials = (viewConfig.dials as DialAssignment[] | undefined) ?? [];
 
   // A physical surface button supports a subset of element actions: macro,
   // device command, set-state, and (on paged surfaces) deck-page navigation.
@@ -186,9 +219,9 @@ export function SurfaceConfigurator({
         (b) => b.index === index && (b.page ?? 0) === page
       );
       const updated = { index, page, ...(current ?? {}), ...updates };
-      onConfigChange({ ...config, buttons: [...existing, updated] });
+      onViewChange({ ...viewConfig, buttons: [...existing, updated] });
     },
-    [buttons, config, onConfigChange]
+    [buttons, viewConfig, onViewChange]
   );
 
   const clearAssignment = useCallback(
@@ -196,9 +229,9 @@ export function SurfaceConfigurator({
       const filtered = buttons.filter(
         (b) => !(b.index === index && (b.page ?? 0) === page)
       );
-      onConfigChange({ ...config, buttons: filtered });
+      onViewChange({ ...viewConfig, buttons: filtered });
     },
-    [buttons, config, onConfigChange]
+    [buttons, viewConfig, onViewChange]
   );
 
   const getDial = useCallback(
@@ -211,19 +244,19 @@ export function SurfaceConfigurator({
     (index: number, updates: Partial<DialAssignment>) => {
       const others = dials.filter((d) => d.index !== index);
       const current = dials.find((d) => d.index === index);
-      onConfigChange({
-        ...config,
+      onViewChange({
+        ...viewConfig,
         dials: [...others, { index, ...(current ?? {}), ...updates }],
       });
     },
-    [dials, config, onConfigChange]
+    [dials, viewConfig, onViewChange]
   );
 
   const clearDial = useCallback(
     (index: number) => {
-      onConfigChange({ ...config, dials: dials.filter((d) => d.index !== index) });
+      onViewChange({ ...viewConfig, dials: dials.filter((d) => d.index !== index) });
     },
-    [dials, config, onConfigChange]
+    [dials, viewConfig, onViewChange]
   );
 
   const selectedDialIndex =
@@ -235,6 +268,22 @@ export function SurfaceConfigurator({
     case "grid":
       return (
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-lg)" }}>
+          {/* Deck picker — only with more than one deck attached */}
+          {deckSerials.length > 1 && (
+            <DeckPicker
+              serials={deckSerials}
+              activeSerial={activeSerial}
+              onSelect={(serial) => {
+                setSelectedDeckSerial(serial);
+                setSelectedControl(null);
+              }}
+              statePrefix={statePrefix}
+              pluginId={pluginId}
+              decksMap={decksMap}
+              config={config}
+              onConfigChange={onConfigChange}
+            />
+          )}
           <div style={{ display: "flex", gap: "var(--space-lg)" }}>
             <div style={{ flex: "0 0 auto" }}>
               {/* Page tabs */}
@@ -311,23 +360,23 @@ export function SurfaceConfigurator({
           </div>
           {liveHasTouchscreen && (
             <TouchscreenZonesEditor
-              config={config}
-              onConfigChange={onConfigChange}
+              config={viewConfig}
+              onConfigChange={onViewChange}
               allowedActions={allowedActions}
               navigateOptions={navigateOptions}
             />
           )}
           {liveHasInfoScreen && (
-            <InfoStripEditor config={config} onConfigChange={onConfigChange} />
+            <InfoStripEditor config={viewConfig} onConfigChange={onViewChange} />
           )}
           {layout.supports_pages && (
             <AutoPageEditor
               layout={layout}
-              config={config}
-              onConfigChange={onConfigChange}
+              config={viewConfig}
+              onConfigChange={onViewChange}
             />
           )}
-          <BrightnessEditor config={config} onConfigChange={onConfigChange} />
+          <BrightnessEditor config={viewConfig} onConfigChange={onViewChange} />
         </div>
       );
 
@@ -1249,6 +1298,177 @@ function ControlAssignmentPanel({
         <Trash2 size={12} />
         Clear Assignment
       </button>
+    </div>
+  );
+}
+
+// ──── Deck Picker (multiple decks attached) ────
+
+function DeckPicker({
+  serials,
+  activeSerial,
+  onSelect,
+  statePrefix,
+  pluginId,
+  decksMap,
+  config,
+  onConfigChange,
+}: {
+  serials: string[];
+  activeSerial: string | null;
+  onSelect: (serial: string) => void;
+  statePrefix: string;
+  pluginId: string;
+  decksMap: Record<string, Record<string, unknown>>;
+  config: Record<string, unknown>;
+  onConfigChange: (config: Record<string, unknown>) => void;
+}) {
+  const liveState = useConnectionStore((s) => s.liveState);
+  const [confirmRevert, setConfirmRevert] = useState(false);
+  const isCustomized = activeSerial ? decksMap[activeSerial] !== undefined : false;
+
+  // The per-deck config sections an override replaces (mirrors the runtime).
+  const DECK_SECTIONS = [
+    "buttons", "auto_page", "dials", "touchscreen",
+    "info_strip", "auto_brightness", "idle_dim",
+  ];
+
+  const customizeDeck = () => {
+    if (!activeSerial) return;
+    // Start the override as a copy of the main config's sections so the deck
+    // keeps its current behavior until it's edited.
+    const copy: Record<string, unknown> = {};
+    for (const section of DECK_SECTIONS) {
+      if (config[section] !== undefined) {
+        copy[section] = JSON.parse(JSON.stringify(config[section]));
+      }
+    }
+    onConfigChange({ ...config, decks: { ...decksMap, [activeSerial]: copy } });
+  };
+
+  const revertDeck = () => {
+    if (!activeSerial) return;
+    const next = { ...decksMap };
+    delete next[activeSerial];
+    onConfigChange({ ...config, decks: next });
+    setConfirmRevert(false);
+  };
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "var(--space-sm)",
+        flexWrap: "wrap",
+      }}
+    >
+      {serials.map((serial) => {
+        const model = String(liveState[`${statePrefix}${serial}.model`] ?? "Deck");
+        const custom = decksMap[serial] !== undefined;
+        const isActive = serial === activeSerial;
+        return (
+          <button
+            key={serial}
+            onClick={() => {
+              setConfirmRevert(false);
+              onSelect(serial);
+            }}
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-start",
+              padding: "var(--space-xs) var(--space-md)",
+              borderRadius: "var(--border-radius)",
+              background: isActive ? "var(--accent-dim)" : "var(--bg-surface)",
+              border: isActive
+                ? "2px solid var(--accent)"
+                : "1px solid var(--border-color)",
+              cursor: "pointer",
+            }}
+          >
+            <span style={{ fontSize: "var(--font-size-sm)", fontWeight: isActive ? 600 : 400 }}>
+              {model}
+            </span>
+            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
+              {serial} — {custom ? "custom layout" : "mirrors main config"}
+            </span>
+          </button>
+        );
+      })}
+
+      {activeSerial && (
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", marginLeft: "auto" }}>
+          <button
+            onClick={() => api.emitContextAction(pluginId, "identify_deck", { serial: activeSerial })}
+            title="Flash this deck's keys so you can tell which one it is"
+            style={{
+              padding: "var(--space-xs) var(--space-sm)",
+              borderRadius: "var(--border-radius)",
+              background: "var(--bg-hover)",
+              fontSize: "var(--font-size-sm)",
+              cursor: "pointer",
+            }}
+          >
+            Identify
+          </button>
+          {!isCustomized && (
+            <button
+              onClick={customizeDeck}
+              title="Give this deck its own button/dial assignments instead of mirroring the main config"
+              style={{
+                padding: "var(--space-xs) var(--space-sm)",
+                borderRadius: "var(--border-radius)",
+                background: "var(--bg-hover)",
+                fontSize: "var(--font-size-sm)",
+                cursor: "pointer",
+              }}
+            >
+              Customize separately
+            </button>
+          )}
+          {isCustomized && !confirmRevert && (
+            <button
+              onClick={() => setConfirmRevert(true)}
+              title="Drop this deck's custom assignments and mirror the main config again"
+              style={{
+                padding: "var(--space-xs) var(--space-sm)",
+                borderRadius: "var(--border-radius)",
+                background: "var(--bg-hover)",
+                fontSize: "var(--font-size-sm)",
+                cursor: "pointer",
+              }}
+            >
+              Mirror main config
+            </button>
+          )}
+          {confirmRevert && (
+            <span style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", fontSize: 12 }}>
+              <span style={{ color: "var(--color-error, #ef4444)" }}>
+                Delete this deck's custom assignments?
+              </span>
+              <button
+                onClick={revertDeck}
+                style={{
+                  padding: "2px 8px", borderRadius: "var(--border-radius)",
+                  background: "var(--bg-hover)", fontSize: 12, cursor: "pointer",
+                }}
+              >
+                Yes
+              </button>
+              <button
+                onClick={() => setConfirmRevert(false)}
+                style={{
+                  padding: "2px 8px", borderRadius: "var(--border-radius)",
+                  background: "var(--bg-hover)", fontSize: 12, cursor: "pointer",
+                }}
+              >
+                No
+              </button>
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
