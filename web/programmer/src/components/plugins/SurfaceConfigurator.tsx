@@ -12,7 +12,8 @@
  *   matrix — Routing matrix (Dante, NDI). Dynamic rows/cols from state.
  */
 import { useState, useCallback, useRef, useEffect } from "react";
-import { X, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import { X, Trash2, ChevronLeft, ChevronRight, Usb } from "lucide-react";
+import { CollapsibleSection } from "../driver-builder/CollapsibleSection";
 import { useConnectionStore } from "../../store/connectionStore";
 import { useProjectStore } from "../../store/projectStore";
 import { ButtonBindingEditor } from "../shared/ButtonBindingEditor";
@@ -48,6 +49,12 @@ interface SurfaceLayout {
   cell_type?: string;
   cell_state_pattern?: string;
   presets?: boolean;
+  // Device-backed surfaces (declared by the plugin): the editor renders only
+  // real units (connected hardware or virtual units). With none present, a
+  // connect / add-virtual empty state shows instead of the static layout.
+  requires_device?: boolean;
+  device_label?: string;
+  virtual_models?: string[];
 }
 
 interface ControlDef {
@@ -477,12 +484,60 @@ export function SurfaceConfigurator({
       ? parseInt(selectedControl.slice(5))
       : null;
 
+  // Collapsed-section summaries (shown in the headers so a glance tells
+  // what's configured without expanding anything).
+  const activeIsVirtual = activeSerial
+    ? Boolean(liveState[`${statePrefix}${activeSerial}.virtual`])
+    : false;
+  const autoPageRules = (viewConfig.auto_page as unknown[] | undefined) ?? [];
+  const brightnessRules =
+    (viewConfig.auto_brightness as unknown[] | undefined) ?? [];
+  const idleDim = viewConfig.idle_dim as
+    | { after_seconds?: number; level?: number }
+    | undefined;
+  const customZones =
+    ((viewConfig.touchscreen as { zones?: unknown[] } | undefined)?.zones) ?? [];
+  const infoStrip = viewConfig.info_strip as
+    | { source?: string; key?: string; text?: string }
+    | undefined;
+  const infoStripMeta = !infoStrip
+    ? "off"
+    : (infoStrip.source ?? "state") === "text"
+      ? "static text"
+      : infoStrip.key || "state value";
+  const effectiveBaseBrightness =
+    typeof viewConfig.brightness === "number"
+      ? (viewConfig.brightness as number)
+      : typeof config.brightness === "number"
+        ? (config.brightness as number)
+        : 70;
+  const brightnessParts = [`base ${effectiveBaseBrightness}%`];
+  if (idleDim) brightnessParts.push(`idle dim ${idleDim.level ?? 10}%`);
+  if (brightnessRules.length) {
+    brightnessParts.push(
+      `${brightnessRules.length} rule${brightnessRules.length === 1 ? "" : "s"}`
+    );
+  }
+  const brightnessMeta = brightnessParts.join(" · ");
+
   switch (layout.type) {
     case "grid":
+      // Device-backed surface with nothing attached: an honest empty state
+      // instead of an editable grid for hardware that isn't there.
+      if (staticLayout.requires_device && deckSerials.length === 0) {
+        return (
+          <NoDeviceState
+            layout={staticLayout}
+            config={config}
+            onConfigChange={onConfigChange}
+          />
+        );
+      }
       return (
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-lg)" }}>
-          {/* Deck picker — only with more than one deck attached */}
-          {deckSerials.length > 1 && (
+          {/* Deck strip — names the deck being edited (even with just one)
+              and carries the per-deck tools + the add-virtual affordance */}
+          {deckSerials.length > 0 && (
             <DeckPicker
               serials={deckSerials}
               activeSerial={activeSerial}
@@ -496,6 +551,8 @@ export function SurfaceConfigurator({
               config={config}
               onConfigChange={onConfigChange}
               onTransferLayout={reassignLayout}
+              virtualModels={staticLayout.virtual_models ?? []}
+              deviceLabel={staticLayout.device_label}
             />
           )}
           {/* Custom layouts saved for decks that are no longer connected
@@ -510,8 +567,6 @@ export function SurfaceConfigurator({
               onDelete={deleteOrphanLayout}
             />
           )}
-          {/* Virtual decks — work on layouts with no hardware attached */}
-          <VirtualDeckManager config={config} onConfigChange={onConfigChange} />
           {/* Per-deck overrides for the global scalar settings (customized decks only) */}
           {isCustomized && (
             <DeckScalarSettings viewConfig={viewConfig} onViewChange={onViewChange} />
@@ -621,34 +676,129 @@ export function SurfaceConfigurator({
                 }}
               />
             )}
+            {/* Nothing selected: show where the editor lives instead of
+                leaving the space blank */}
+            {selectedControl === null && (
+              <div
+                style={{
+                  width: 300,
+                  flexShrink: 0,
+                  alignSelf: "stretch",
+                  minHeight: 120,
+                  border: "1px dashed var(--border-color)",
+                  borderRadius: "var(--border-radius)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: "var(--space-lg)",
+                  color: "var(--text-muted)",
+                  fontSize: "var(--font-size-sm)",
+                  textAlign: "center",
+                  lineHeight: 1.6,
+                }}
+              >
+                Select a key to set what it does.
+                <br />
+                Its label, icon, colors, and actions are edited here.
+              </div>
+            )}
           </div>
-          {/* Live View — the deck's actual rendering, clickable to press */}
+          {/* Live preview — the deck's actual rendering, clickable to press.
+              Keyed by serial so switching decks resets the open state (open
+              by default for virtual decks: clicking it is how they're used). */}
           {deckConnected && activeSerial && (
-            <LiveViewSection
-              pluginId={pluginId}
-              serial={activeSerial}
-              statePrefix={statePrefix}
-            />
+            <CollapsibleSection
+              key={`live-${activeSerial}`}
+              title="Live Preview"
+              subtitle="Exactly what this deck is showing right now. Click keys to press them."
+              meta={activeIsVirtual ? "virtual deck" : undefined}
+              defaultOpen={activeIsVirtual}
+            >
+              <SurfaceLiveView
+                pluginId={pluginId}
+                serial={activeSerial}
+                statePrefix={statePrefix}
+              />
+            </CollapsibleSection>
           )}
           {liveHasTouchscreen && (
-            <TouchscreenZonesEditor
-              config={viewConfig}
-              onConfigChange={onViewChange}
-              allowedActions={allowedActions}
-              navigateOptions={navigateOptions}
-            />
+            <CollapsibleSection
+              title="Touch Strip"
+              subtitle="What the touchscreen under the dials shows, and what tapping it does"
+              meta={
+                customZones.length
+                  ? `${customZones.length} custom zone${customZones.length === 1 ? "" : "s"}`
+                  : "default: one zone per dial"
+              }
+              defaultOpen={false}
+            >
+              <TouchscreenZonesEditor
+                config={viewConfig}
+                onConfigChange={onViewChange}
+                allowedActions={allowedActions}
+                navigateOptions={navigateOptions}
+              />
+            </CollapsibleSection>
           )}
           {liveHasInfoScreen && (
-            <InfoStripEditor config={viewConfig} onConfigChange={onViewChange} />
+            <CollapsibleSection
+              title="Info Screen"
+              subtitle="Show a live state value or static text on the small screen between the touch keys"
+              meta={infoStripMeta}
+              defaultOpen={false}
+            >
+              <InfoStripEditor config={viewConfig} onConfigChange={onViewChange} />
+            </CollapsibleSection>
           )}
           {layout.supports_pages && (
-            <AutoPageEditor
-              layout={layout}
+            <CollapsibleSection
+              title="Automatic Page Switching"
+              subtitle="Jump to a button page when system state changes"
+              meta={
+                autoPageRules.length
+                  ? `${autoPageRules.length} rule${autoPageRules.length === 1 ? "" : "s"}`
+                  : "off"
+              }
+              defaultOpen={false}
+            >
+              <AutoPageEditor
+                layout={layout}
+                config={viewConfig}
+                onConfigChange={onViewChange}
+              />
+            </CollapsibleSection>
+          )}
+          <CollapsibleSection
+            title="Brightness"
+            subtitle="Base level, idle dimming, and state-driven rules"
+            meta={brightnessMeta}
+            defaultOpen={false}
+          >
+            <BrightnessEditor
               config={viewConfig}
               onConfigChange={onViewChange}
+              baseBrightness={
+                isCustomized
+                  ? undefined
+                  : typeof config.brightness === "number"
+                    ? (config.brightness as number)
+                    : undefined
+              }
+              onBaseBrightnessChange={
+                isCustomized
+                  ? undefined
+                  : (v) => {
+                      const next = { ...config };
+                      if (v === undefined) {
+                        delete next.brightness;
+                      } else {
+                        next.brightness = v;
+                      }
+                      onConfigChange(next);
+                    }
+              }
             />
-          )}
-          <BrightnessEditor config={viewConfig} onConfigChange={onViewChange} />
+          </CollapsibleSection>
         </div>
       );
 
@@ -1890,163 +2040,150 @@ function OrphanLayoutNotice({
   );
 }
 
-// ──── Virtual Deck Manager ────
+// ──── No Device State ────
 //
-// Virtual decks are software decks the plugin runs exactly like attached
-// hardware — build and test layouts with nothing plugged in, then watch and
-// click them in the Live View. Stored as config.virtual_decks.
+// Shown by device-backed surfaces (layout.requires_device) when no unit is
+// connected: a plain explanation of how a unit appears, plus the add-virtual
+// path when the plugin declares virtual models. Replaces the old behavior of
+// rendering the static fallback grid as if hardware were attached.
 
-const VIRTUAL_DECK_MODELS = [
-  "Stream Deck Neo",
-  "Stream Deck Mini",
-  "Stream Deck MK.2",
-  "Stream Deck XL",
-  "Stream Deck +",
-  "Stream Deck Pedal",
-];
+function addVirtualUnit(
+  config: Record<string, unknown>,
+  model: string
+): { next: Record<string, unknown>; serial: string } {
+  const entries =
+    (config.virtual_decks as { model?: string; serial?: string }[] | undefined) ?? [];
+  const serial = `VIRT-${Date.now().toString(36).toUpperCase()}`;
+  return {
+    next: { ...config, virtual_decks: [...entries, { model, serial }] },
+    serial,
+  };
+}
 
-function VirtualDeckManager({
+function NoDeviceState({
+  layout,
   config,
   onConfigChange,
 }: {
+  layout: SurfaceLayout;
   config: Record<string, unknown>;
   onConfigChange: (config: Record<string, unknown>) => void;
 }) {
-  const entries =
-    (config.virtual_decks as { model?: string; serial?: string }[] | undefined) ?? [];
-  const [adding, setAdding] = useState(false);
-  const [model, setModel] = useState("Stream Deck +");
+  const noun = layout.device_label || "device";
+  const models = layout.virtual_models ?? [];
+  const [model, setModel] = useState(models[0] ?? "");
+  const [pending, setPending] = useState(false);
 
-  const addDeck = () => {
-    const serial = `VIRT-${Date.now().toString(36).toUpperCase()}`;
-    onConfigChange({
-      ...config,
-      virtual_decks: [...entries, { model, serial }],
-    });
-    setAdding(false);
-  };
+  // If the save fails silently, don't leave the button dead forever.
+  useEffect(() => {
+    if (!pending) return;
+    const timer = setTimeout(() => setPending(false), 10000);
+    return () => clearTimeout(timer);
+  }, [pending]);
 
-  const removeDeck = (serial?: string) => {
-    onConfigChange({
-      ...config,
-      virtual_decks: entries.filter((e) => e.serial !== serial),
-    });
+  const add = () => {
+    if (!model || pending) return;
+    onConfigChange(addVirtualUnit(config, model).next);
+    setPending(true);
   };
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", flexWrap: "wrap" }}>
-      {entries.map((entry) => (
-        <span
-          key={entry.serial}
-          style={{
-            display: "inline-flex", alignItems: "center", gap: "var(--space-xs)",
-            padding: "2px var(--space-sm)", borderRadius: "var(--border-radius)",
-            border: "1px dashed var(--border-color)", fontSize: 11,
-            color: "var(--text-secondary)",
-          }}
-        >
-          {entry.model} <span style={{ color: "var(--text-muted)" }}>({entry.serial} · virtual)</span>
-          <button
-            onClick={() => removeDeck(entry.serial)}
-            title="Remove this virtual deck"
-            style={{ color: "var(--color-error)", cursor: "pointer", fontSize: 12, lineHeight: 1 }}
-          >
-            &times;
-          </button>
-        </span>
-      ))}
-      {!adding && (
-        <button
-          onClick={() => setAdding(true)}
-          style={{
-            padding: "2px var(--space-sm)", borderRadius: "var(--border-radius)",
-            border: "1px dashed var(--border-color)", background: "transparent",
-            color: "var(--text-muted)", fontSize: 11, cursor: "pointer",
-          }}
-          title="Add a software deck to build and test layouts with no hardware attached"
-        >
-          + Add virtual deck
-        </button>
-      )}
-      {adding && (
-        <span style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-xs)" }}>
-          <select
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
+    <div
+      style={{
+        maxWidth: 460,
+        margin: "var(--space-xl) auto",
+        padding: "var(--space-xl)",
+        border: "1px solid var(--border-color)",
+        borderRadius: "var(--border-radius)",
+        background: "var(--bg-surface)",
+        textAlign: "center",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: "var(--space-md)",
+      }}
+    >
+      <Usb size={40} strokeWidth={1.2} style={{ color: "var(--text-muted)" }} />
+      <div style={{ fontWeight: 600 }}>No {noun} detected</div>
+      <div
+        style={{
+          fontSize: "var(--font-size-sm)",
+          color: "var(--text-secondary)",
+          lineHeight: 1.6,
+        }}
+      >
+        Connect a {noun} by USB and it appears here automatically, ready to
+        set up.
+      </div>
+      {models.length > 0 && (
+        <>
+          <div
             style={{
-              padding: "2px 6px", borderRadius: "var(--border-radius)",
-              border: "1px solid var(--border-color)", background: "var(--bg-surface)",
-              color: "var(--text-primary)", fontSize: 11,
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--space-sm)",
+              width: "100%",
+              color: "var(--text-muted)",
+              fontSize: 11,
             }}
           >
-            {VIRTUAL_DECK_MODELS.map((m) => (
-              <option key={m} value={m}>{m}</option>
-            ))}
-          </select>
-          <button
-            onClick={addDeck}
+            <span style={{ flex: 1, borderTop: "1px solid var(--border-color)" }} />
+            or
+            <span style={{ flex: 1, borderTop: "1px solid var(--border-color)" }} />
+          </div>
+          <div style={{ display: "flex", gap: "var(--space-sm)" }}>
+            <select
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              style={{
+                padding: "var(--space-xs) var(--space-sm)",
+                borderRadius: "var(--border-radius)",
+                border: "1px solid var(--border-color)",
+                background: "var(--bg-surface)",
+                color: "var(--text-primary)",
+                fontSize: "var(--font-size-sm)",
+              }}
+            >
+              {models.map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+            <button
+              onClick={add}
+              disabled={pending}
+              style={{
+                padding: "var(--space-xs) var(--space-md)",
+                borderRadius: "var(--border-radius)",
+                background: "var(--accent-bg)",
+                color: "var(--text-on-accent)",
+                fontSize: "var(--font-size-sm)",
+                fontWeight: 500,
+                cursor: pending ? "default" : "pointer",
+                opacity: pending ? 0.6 : 1,
+              }}
+            >
+              {pending ? "Starting..." : `Add virtual ${noun}`}
+            </button>
+          </div>
+          <div
             style={{
-              padding: "2px 8px", borderRadius: "var(--border-radius)",
-              background: "var(--accent-bg)", color: "white", fontSize: 11, cursor: "pointer",
+              fontSize: 11,
+              color: "var(--text-muted)",
+              lineHeight: 1.6,
+              maxWidth: 360,
             }}
           >
-            Add
-          </button>
-          <button
-            onClick={() => setAdding(false)}
-            style={{
-              padding: "2px 8px", borderRadius: "var(--border-radius)",
-              background: "var(--bg-hover)", fontSize: 11, cursor: "pointer",
-            }}
-          >
-            Cancel
-          </button>
-        </span>
-      )}
-      {entries.length > 0 && (
-        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
-          Virtual decks connect a moment after saving.
-        </span>
+            {pending
+              ? `Saving... the virtual ${noun} appears here in a few seconds.`
+              : `A virtual ${noun} works exactly like plugged-in hardware: build and test the layout now, and a real ${noun} picks it up the moment it's connected.`}
+          </div>
+        </>
       )}
     </div>
   );
 }
 
 // ──── Live View (mirrored deck rendering, clickable) ────
-
-function LiveViewSection({
-  pluginId,
-  serial,
-  statePrefix,
-}: {
-  pluginId: string;
-  serial: string;
-  statePrefix: string;
-}) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <div>
-      <button
-        onClick={() => setOpen(!open)}
-        style={{
-          display: "flex", alignItems: "center", gap: "var(--space-xs)",
-          padding: "var(--space-xs) var(--space-sm)",
-          borderRadius: "var(--border-radius)", background: "var(--bg-hover)",
-          fontSize: "var(--font-size-sm)", cursor: "pointer",
-        }}
-        title="Show what's actually rendered on the deck right now; click keys to press them"
-      >
-        {open ? "Hide live view" : "Show live view"}
-      </button>
-      {open && (
-        <div style={{ marginTop: "var(--space-sm)" }}>
-          <SurfaceLiveView pluginId={pluginId} serial={serial} statePrefix={statePrefix} />
-        </div>
-      )}
-    </div>
-  );
-}
 
 function SurfaceLiveView({
   pluginId,
@@ -2297,7 +2434,12 @@ function TouchKeyPill({ color, onTap }: { color: string; onTap: () => void }) {
   );
 }
 
-// ──── Deck Picker (multiple decks attached) ────
+// ──── Deck Picker (the "you are editing this deck" strip) ────
+//
+// Renders for every deck count >= 1: each unit is a labeled card (name,
+// model, serial, virtual marker, custom-vs-mirrored), the active unit
+// carries the per-deck tools, and adding a virtual unit lives at the end
+// of the strip.
 
 function DeckPicker({
   serials,
@@ -2309,6 +2451,8 @@ function DeckPicker({
   config,
   onConfigChange,
   onTransferLayout,
+  virtualModels = [],
+  deviceLabel,
 }: {
   serials: string[];
   activeSerial: string | null;
@@ -2319,12 +2463,26 @@ function DeckPicker({
   config: Record<string, unknown>;
   onConfigChange: (config: Record<string, unknown>) => void;
   onTransferLayout?: (fromSerial: string, toSerial: string) => void;
+  virtualModels?: string[];
+  deviceLabel?: string;
 }) {
   const liveState = useConnectionStore((s) => s.liveState);
   const [confirmRevert, setConfirmRevert] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
   const [transferTarget, setTransferTarget] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [addModel, setAddModel] = useState(virtualModels[0] ?? "");
+  const [pendingAdd, setPendingAdd] = useState<string | null>(null);
   const isCustomized = activeSerial ? decksMap[activeSerial] !== undefined : false;
   const deckNames = (config.deck_names as Record<string, string> | undefined) ?? {};
+  const activeIsVirtual = activeSerial
+    ? Boolean(liveState[`${statePrefix}${activeSerial}.virtual`])
+    : false;
+
+  // Clear the "connecting..." hint once the new virtual unit shows up.
+  useEffect(() => {
+    if (pendingAdd && serials.includes(pendingAdd)) setPendingAdd(null);
+  }, [pendingAdd, serials]);
 
   // The per-deck config sections an override replaces (mirrors the runtime).
   const DECK_SECTIONS = [
@@ -2361,6 +2519,27 @@ function DeckPicker({
     delete next[activeSerial];
     onConfigChange({ ...config, decks: next });
     setConfirmRevert(false);
+  };
+
+  const addVirtual = () => {
+    if (!addModel) return;
+    const { next, serial } = addVirtualUnit(config, addModel);
+    onConfigChange(next);
+    setPendingAdd(serial);
+    setAdding(false);
+  };
+
+  // Removing a virtual unit keeps any custom layout it had — the saved
+  // layout resurfaces via the orphan notice if it was customized.
+  const removeVirtualDeck = () => {
+    if (!activeSerial) return;
+    const virtuals =
+      (config.virtual_decks as { model?: string; serial?: string }[] | undefined) ?? [];
+    onConfigChange({
+      ...config,
+      virtual_decks: virtuals.filter((v) => v.serial !== activeSerial),
+    });
+    setConfirmRemove(false);
   };
 
   return (
@@ -2401,11 +2580,76 @@ function DeckPicker({
               {deckNames[serial] || model}
             </span>
             <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
-              {deckNames[serial] ? `${model} · ` : ""}{serial}{virtual ? " · virtual" : ""} — {custom ? "custom layout" : "mirrors main config"}
+              {deckNames[serial] ? `${model} · ` : ""}{serial}{virtual ? " · virtual" : ""}
+              {custom
+                ? " — custom layout"
+                : serials.length > 1
+                  ? " — mirrors main config"
+                  : ""}
             </span>
           </button>
         );
       })}
+
+      {/* Add a virtual unit (software deck, runs like attached hardware) */}
+      {virtualModels.length > 0 && !adding && (
+        <button
+          onClick={() => setAdding(true)}
+          title="Add a software unit that runs exactly like attached hardware, for building layouts without it"
+          style={{
+            padding: "var(--space-xs) var(--space-md)",
+            borderRadius: "var(--border-radius)",
+            border: "1px dashed var(--border-color)",
+            background: "transparent",
+            color: "var(--text-muted)",
+            fontSize: "var(--font-size-sm)",
+            cursor: "pointer",
+          }}
+        >
+          + Virtual {deviceLabel || "unit"}
+        </button>
+      )}
+      {adding && (
+        <span style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-xs)" }}>
+          <select
+            value={addModel}
+            onChange={(e) => setAddModel(e.target.value)}
+            style={{
+              padding: "4px 6px", borderRadius: "var(--border-radius)",
+              border: "1px solid var(--border-color)", background: "var(--bg-surface)",
+              color: "var(--text-primary)", fontSize: 12,
+            }}
+          >
+            {virtualModels.map((m) => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
+          <button
+            onClick={addVirtual}
+            style={{
+              padding: "4px 10px", borderRadius: "var(--border-radius)",
+              background: "var(--accent-bg)", color: "var(--text-on-accent)",
+              fontSize: 12, cursor: "pointer",
+            }}
+          >
+            Add
+          </button>
+          <button
+            onClick={() => setAdding(false)}
+            style={{
+              padding: "4px 10px", borderRadius: "var(--border-radius)",
+              background: "var(--bg-hover)", fontSize: 12, cursor: "pointer",
+            }}
+          >
+            Cancel
+          </button>
+        </span>
+      )}
+      {pendingAdd && (
+        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+          Connecting... the new deck appears here in a few seconds.
+        </span>
+      )}
 
       {activeSerial && (
         <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", marginLeft: "auto" }}>
@@ -2544,6 +2788,47 @@ function DeckPicker({
               </button>
               <button
                 onClick={() => setConfirmRevert(false)}
+                style={{
+                  padding: "2px 8px", borderRadius: "var(--border-radius)",
+                  background: "var(--bg-hover)", fontSize: 12, cursor: "pointer",
+                }}
+              >
+                No
+              </button>
+            </span>
+          )}
+          {activeIsVirtual && !confirmRemove && (
+            <button
+              onClick={() => setConfirmRemove(true)}
+              title="Remove this virtual deck. A custom layout it had is kept and can be put on another deck."
+              style={{
+                padding: "var(--space-xs) var(--space-sm)",
+                borderRadius: "var(--border-radius)",
+                background: "var(--bg-hover)",
+                color: "var(--color-error, #dc2626)",
+                fontSize: "var(--font-size-sm)",
+                cursor: "pointer",
+              }}
+            >
+              Remove
+            </button>
+          )}
+          {confirmRemove && (
+            <span style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", fontSize: 12 }}>
+              <span style={{ color: "var(--color-error, #ef4444)" }}>
+                Remove this virtual deck?
+              </span>
+              <button
+                onClick={removeVirtualDeck}
+                style={{
+                  padding: "2px 8px", borderRadius: "var(--border-radius)",
+                  background: "var(--bg-hover)", fontSize: 12, cursor: "pointer",
+                }}
+              >
+                Yes
+              </button>
+              <button
+                onClick={() => setConfirmRemove(false)}
                 style={{
                   padding: "2px 8px", borderRadius: "var(--border-radius)",
                   background: "var(--bg-hover)", fontSize: 12, cursor: "pointer",
@@ -3010,9 +3295,6 @@ function TouchscreenZonesEditor({
 
   return (
     <div style={{ maxWidth: 560 }}>
-      <h4 style={{ fontSize: "var(--font-size-sm)", fontWeight: 600, marginBottom: 4 }}>
-        Touchscreen
-      </h4>
       <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
         By default the touchscreen shows one zone per dial with its label and
         live value. Add custom zones to take over the strip — zones split it
@@ -3325,14 +3607,6 @@ function InfoStripEditor({
 
   return (
     <div style={{ maxWidth: 560 }}>
-      <h4 style={{ fontSize: "var(--font-size-sm)", fontWeight: 600, marginBottom: 4 }}>
-        Info Screen
-      </h4>
-      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
-        The small screen between the touch keys can show a live state value or
-        static text.
-      </div>
-
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)", maxWidth: 320 }}>
         <div>
           <label style={panelHintStyle}>Show</label>
@@ -3536,16 +3810,14 @@ function AutoPageEditor({
 
   return (
     <div style={{ maxWidth: 560 }}>
-      <h4 style={{ fontSize: "var(--font-size-sm)", fontWeight: 600, marginBottom: 4 }}>
-        Automatic Paging
-      </h4>
-      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
-        Switch pages automatically when system state changes. Rules are checked in order; the first match wins.
-      </div>
-
-      {rules.length === 0 && (
+      {rules.length === 0 ? (
         <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
-          No automatic paging rules yet.
+          No rules yet. Example: switch to an "Off Hours" page when the room
+          powers down.
+        </div>
+      ) : (
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
+          Rules are checked in order; the first match wins.
         </div>
       )}
 
@@ -3638,9 +3910,16 @@ interface BrightnessRule {
 function BrightnessEditor({
   config,
   onConfigChange,
+  baseBrightness,
+  onBaseBrightnessChange,
 }: {
   config: Record<string, unknown>;
   onConfigChange: (config: Record<string, unknown>) => void;
+  // Base level lives in the flat plugin settings (config.brightness). Only
+  // passed when editing the main config — a customized deck overrides it
+  // via the "This deck's settings" row instead.
+  baseBrightness?: number;
+  onBaseBrightnessChange?: (value: number | undefined) => void;
 }) {
   const rules = (config.auto_brightness as BrightnessRule[] | undefined) ?? [];
   const idleDim = config.idle_dim as { after_seconds?: number; level?: number } | undefined;
@@ -3684,14 +3963,32 @@ function BrightnessEditor({
 
   return (
     <div style={{ maxWidth: 560 }}>
-      <h4 style={{ fontSize: "var(--font-size-sm)", fontWeight: 600, marginBottom: 4 }}>
-        Brightness
-      </h4>
-      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
-        Change the deck brightness automatically. Rules are checked in order;
-        the first match wins, and with no match the base brightness from the
-        plugin settings applies.
-      </div>
+      {/* Base level (flat plugin setting) */}
+      {onBaseBrightnessChange && (
+        <label
+          style={{
+            display: "flex", alignItems: "center", gap: "var(--space-sm)",
+            fontSize: "var(--font-size-sm)", color: "var(--text-secondary)",
+            marginBottom: "var(--space-sm)",
+          }}
+        >
+          Base brightness
+          <input
+            type="number" min={0} max={100}
+            value={baseBrightness ?? ""}
+            placeholder="70"
+            onChange={(e) =>
+              onBaseBrightnessChange(
+                e.target.value === ""
+                  ? undefined
+                  : Math.max(0, Math.min(100, Number(e.target.value)))
+              )
+            }
+            style={numInputStyle}
+          />
+          <span style={{ fontSize: 12 }}>% applies when no rule below matches.</span>
+        </label>
+      )}
 
       {/* Idle dim */}
       <label style={{

@@ -14,6 +14,9 @@ import { useLogStore } from "../../store/logStore";
 import type { PluginExtension } from "../../api/restClient";
 import * as api from "../../api/restClient";
 import { SurfaceConfigurator } from "./SurfaceConfigurator";
+import { SchemaFormRenderer } from "./PluginConfigForm";
+import { CollapsibleSection } from "../driver-builder/CollapsibleSection";
+import type { SchemaField } from "../../api/types";
 
 // Convert a glob-style state pattern to an anchored RegExp.
 //
@@ -526,6 +529,9 @@ function SurfaceViewRenderer({ ext }: { ext: PluginExtension }) {
   );
 
   const surfaceLayout = pluginDetail?.surface_layout as Record<string, unknown> | undefined;
+  const configSchema = pluginDetail?.config_schema as
+    | Record<string, SchemaField>
+    | undefined;
   if (!surfaceLayout) {
     return (
       <div style={{ padding: "var(--space-lg)", color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}>
@@ -542,6 +548,24 @@ function SurfaceViewRenderer({ ext }: { ext: PluginExtension }) {
         config={config}
         onConfigChange={handleConfigChange}
       />
+      {/* The plugin's settings, editable without leaving this view */}
+      {configSchema && Object.keys(configSchema).length > 0 && (
+        <div style={{ marginTop: "var(--space-lg)", maxWidth: 560 }}>
+          <CollapsibleSection
+            title="Plugin Settings"
+            subtitle="Options that apply to the whole plugin"
+            defaultOpen={false}
+          >
+            <SchemaFormRenderer
+              schema={configSchema}
+              values={config}
+              onChange={(key, value) =>
+                handleConfigChange({ ...config, [key]: value })
+              }
+            />
+          </CollapsibleSection>
+        </div>
+      )}
     </div>
   );
 }
