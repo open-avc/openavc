@@ -120,12 +120,18 @@ with a top-level "touchscreen" object:
       "label": "Mics",                 // Static label (label_source state key overrides)
       "value_source": "var.mic_gain",  // State key whose live value is displayed
       "touch": [{...}],                // Optional actions when the zone is tapped
+      "long_touch": [{...}],           // Optional actions on long-press (falls back to touch)
+      "drag_adjust": {                 // Optional: a horizontal swipe steps a value
+        "key": "var.mic_gain", "step": 1, "min": 0, "max": 100
+      },
       "bg_color": "#1a1a2e", "text_color": "#e0e0e0"  // Optional colors
     }
   ]
 }
 
-Zones split the strip evenly; explicit "x"/"w" pixel bounds override.
+Zones split the strip evenly; explicit "x"/"w" pixel bounds override. Default
+per-dial zones wire drag_adjust to the dial's adjust automatically, so swiping
+under a dial does what turning it does.
 
 Touch keys (optional): surfaces reporting touch_key_count in plugin state have
 color-only keys at the indices after the LCD keys (key_count .. key_count +

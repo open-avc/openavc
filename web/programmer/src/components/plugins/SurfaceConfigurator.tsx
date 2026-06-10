@@ -101,6 +101,8 @@ interface TouchZone {
   x?: number;
   w?: number;
   touch?: Record<string, unknown>[];
+  long_touch?: Record<string, unknown>[];
+  drag_adjust?: DialAdjust;
 }
 
 interface SurfaceConfiguratorProps {
@@ -2486,6 +2488,62 @@ function TouchscreenZonesEditor({
                       navigateOptions={navigateOptions}
                       addLabel="Add tap action"
                     />
+                  </div>
+                  <div>
+                    <label style={panelHintStyle}>Long-press actions (optional — falls back to tap)</label>
+                    <ActionListEditor
+                      actions={zone.long_touch ?? []}
+                      onChange={(long_touch) =>
+                        updateZone(i, { long_touch: long_touch.length ? long_touch : undefined })
+                      }
+                      project={project}
+                      allowedActions={allowedActions}
+                      navigateOptions={navigateOptions}
+                      addLabel="Add long-press action"
+                    />
+                  </div>
+                  <div>
+                    <label style={panelHintStyle}>Swipe adjusts a value (optional)</label>
+                    <VariableKeyPicker
+                      value={zone.drag_adjust?.key ?? ""}
+                      onChange={(key) =>
+                        updateZone(i, {
+                          drag_adjust: key ? { ...(zone.drag_adjust ?? {}), key } : undefined,
+                        })
+                      }
+                      placeholder="Pick a variable to adjust by swiping..."
+                    />
+                    {zone.drag_adjust?.key && (
+                      <div style={{ display: "flex", gap: "var(--space-sm)", marginTop: "var(--space-xs)" }}>
+                        {(["step", "min", "max"] as const).map((field) => (
+                          <div key={field} style={{ flex: 1 }}>
+                            <label style={panelHintStyle}>
+                              {field[0].toUpperCase() + field.slice(1)}
+                            </label>
+                            <input
+                              type="number"
+                              value={zone.drag_adjust?.[field] ?? ""}
+                              placeholder={field === "step" ? "1" : "none"}
+                              onChange={(e) =>
+                                updateZone(i, {
+                                  drag_adjust: {
+                                    ...(zone.drag_adjust ?? {}),
+                                    [field]: e.target.value === "" ? undefined : Number(e.target.value),
+                                  },
+                                })
+                              }
+                              style={{
+                                width: "100%", padding: "4px 6px",
+                                borderRadius: "var(--border-radius)",
+                                border: "1px solid var(--border-color)",
+                                background: "var(--bg-surface)", color: "var(--text-primary)",
+                                fontSize: "var(--font-size-sm)",
+                              }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <button
                     onClick={() => removeZone(i)}
