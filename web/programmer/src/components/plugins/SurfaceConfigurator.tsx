@@ -288,6 +288,110 @@ export function SurfaceConfigurator({
     [buttons, viewConfig, onViewChange]
   );
 
+  // Assignment clipboard + arrange operations (copy/paste/move/swap pages
+  // included). All operate on the current view so per-deck overrides are
+  // respected.
+  const [clipboard, setClipboard] = useState<ButtonAssignment | null>(null);
+
+  const copyAssignment = useCallback(
+    (index: number, page: number) => {
+      const current = buttons.find(
+        (b) => b.index === index && (b.page ?? 0) === page
+      );
+      if (!current) return;
+      const { index: _i, page: _p, ...rest } = current;
+      setClipboard(JSON.parse(JSON.stringify(rest)));
+    },
+    [buttons]
+  );
+
+  const pasteAssignment = useCallback(
+    (index: number, page: number) => {
+      if (!clipboard) return;
+      const others = buttons.filter(
+        (b) => !(b.index === index && (b.page ?? 0) === page)
+      );
+      onViewChange({
+        ...viewConfig,
+        buttons: [...others, { ...JSON.parse(JSON.stringify(clipboard)), index, page }],
+      });
+    },
+    [clipboard, buttons, viewConfig, onViewChange]
+  );
+
+  const moveAssignment = useCallback(
+    (from: { index: number; page: number }, to: { index: number; page: number }) => {
+      const source = buttons.find(
+        (b) => b.index === from.index && (b.page ?? 0) === from.page
+      );
+      if (!source) return;
+      const others = buttons.filter(
+        (b) =>
+          !(b.index === from.index && (b.page ?? 0) === from.page) &&
+          !(b.index === to.index && (b.page ?? 0) === to.page)
+      );
+      onViewChange({
+        ...viewConfig,
+        buttons: [...others, { ...source, index: to.index, page: to.page }],
+      });
+      setSelectedControl(String(to.index));
+      setCurrentPage(to.page);
+    },
+    [buttons, viewConfig, onViewChange]
+  );
+
+  const swapAssignments = useCallback(
+    (a: { index: number; page: number }, b: { index: number; page: number }) => {
+      const first = buttons.find(
+        (x) => x.index === a.index && (x.page ?? 0) === a.page
+      );
+      const second = buttons.find(
+        (x) => x.index === b.index && (x.page ?? 0) === b.page
+      );
+      const others = buttons.filter(
+        (x) =>
+          !(x.index === a.index && (x.page ?? 0) === a.page) &&
+          !(x.index === b.index && (x.page ?? 0) === b.page)
+      );
+      const next = [...others];
+      if (first) next.push({ ...first, index: b.index, page: b.page });
+      if (second) next.push({ ...second, index: a.index, page: a.page });
+      onViewChange({ ...viewConfig, buttons: next });
+    },
+    [buttons, viewConfig, onViewChange]
+  );
+
+  const firstEmptyPage = useCallback((): number | null => {
+    for (let p = 0; p < effectiveMaxPages; p++) {
+      if (!buttons.some((b) => (b.page ?? 0) === p)) return p;
+    }
+    return null;
+  }, [buttons, effectiveMaxPages]);
+
+  const duplicatePage = useCallback(
+    (fromPage: number) => {
+      const target = firstEmptyPage();
+      if (target === null || target === fromPage) return;
+      const copies = buttons
+        .filter((b) => (b.page ?? 0) === fromPage)
+        .map((b) => ({ ...JSON.parse(JSON.stringify(b)), page: target }));
+      onViewChange({ ...viewConfig, buttons: [...buttons, ...copies] });
+      setCurrentPage(target);
+    },
+    [buttons, viewConfig, onViewChange, firstEmptyPage]
+  );
+
+  const clearPage = useCallback(
+    (page: number) => {
+      onViewChange({
+        ...viewConfig,
+        buttons: buttons.filter((b) => (b.page ?? 0) !== page),
+      });
+      setSelectedControl(null);
+    },
+    [buttons, viewConfig, onViewChange]
+  );
+
   const getDial = useCallback(
     (index: number): DialAssignment | undefined =>
       dials.find((d) => d.index === index),
@@ -348,13 +452,20 @@ export function SurfaceConfigurator({
             <div style={{ flex: "0 0 auto" }}>
               {/* Page tabs */}
               {layout.supports_pages && (
-                <PageTabs
-                  currentPage={currentPage}
-                  maxPages={layout.max_pages ?? 10}
-                  onChange={setCurrentPage}
-                  label={pageLabel(currentPage)}
-                  onRename={(name) => renamePage(currentPage, name)}
-                />
+                <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
+                  <PageTabs
+                    currentPage={currentPage}
+                    maxPages={layout.max_pages ?? 10}
+                    onChange={setCurrentPage}
+                    label={pageLabel(currentPage)}
+                    onRename={(name) => renamePage(currentPage, name)}
+                  />
+                  <PageActions
+                    canDuplicate={firstEmptyPage() !== null && buttons.some((b) => (b.page ?? 0) === currentPage)}
+                    onDuplicate={() => duplicatePage(currentPage)}
+                    onClear={() => clearPage(currentPage)}
+                  />
+                </div>
               )}
               <GridSurface
                 layout={layout}
@@ -420,6 +531,26 @@ export function SurfaceConfigurator({
                   clearAssignment(parseInt(selectedControl), currentPage)
                 }
                 onClose={() => setSelectedControl(null)}
+                arrange={{
+                  page: currentPage,
+                  maxPages: effectiveMaxPages,
+                  totalKeys:
+                    deckConnected && liveKeyCount > 0
+                      ? liveKeyCount + liveTouchKeyCount
+                      : (layout.rows ?? 3) * (layout.columns ?? 5),
+                  pageLabel,
+                  clipboardReady: clipboard !== null,
+                  onCopy: () => copyAssignment(parseInt(selectedControl), currentPage),
+                  onPaste: () => pasteAssignment(parseInt(selectedControl), currentPage),
+                  onMove: (to) =>
+                    moveAssignment(
+                      { index: parseInt(selectedControl), page: currentPage }, to
+                    ),
+                  onSwap: (to) =>
+                    swapAssignments(
+                      { index: parseInt(selectedControl), page: currentPage }, to
+                    ),
+                }}
               />
             )}
           </div>
@@ -1224,6 +1355,18 @@ function RoutingMatrix({
 
 // ──── Control Assignment Panel ────
 
+interface ArrangeOps {
+  page: number;
+  maxPages: number;
+  totalKeys: number;
+  pageLabel: (p: number) => string;
+  clipboardReady: boolean;
+  onCopy: () => void;
+  onPaste: () => void;
+  onMove: (to: { index: number; page: number }) => void;
+  onSwap: (to: { index: number; page: number }) => void;
+}
+
 function ControlAssignmentPanel({
   controlId,
   assignment,
@@ -1234,6 +1377,7 @@ function ControlAssignmentPanel({
   navigateOptions,
   colorOnly = false,
   keyCount = 0,
+  arrange,
 }: {
   controlId: string;
   assignment: ButtonAssignment | undefined;
@@ -1245,8 +1389,12 @@ function ControlAssignmentPanel({
   // Touch keys have no LCD: only the background color (RGB glow) applies.
   colorOnly?: boolean;
   keyCount?: number;
+  arrange?: ArrangeOps;
 }) {
   const project = useProjectStore((s) => s.project);
+  const [arrangeMode, setArrangeMode] = useState<"move" | "swap" | null>(null);
+  const [targetPage, setTargetPage] = useState(0);
+  const [targetKey, setTargetKey] = useState(0);
 
   const currentBindings: ButtonBindings = assignment?.bindings ?? {};
   const controlIndex = parseInt(controlId);
@@ -1354,6 +1502,92 @@ function ControlAssignmentPanel({
         </div>
       </div>
 
+      {/* Arrange: copy/paste/move/swap */}
+      {arrange && (
+        <div>
+          <label style={panelLabelStyle}>Arrange</label>
+          <div style={{ display: "flex", gap: "var(--space-xs)", flexWrap: "wrap" }}>
+            <button onClick={arrange.onCopy} disabled={!assignment} style={arrangeBtnStyle(!assignment)}>
+              Copy
+            </button>
+            <button
+              onClick={arrange.onPaste}
+              disabled={!arrange.clipboardReady}
+              title={arrange.clipboardReady ? "Paste the copied assignment here" : "Copy an assignment first"}
+              style={arrangeBtnStyle(!arrange.clipboardReady)}
+            >
+              Paste
+            </button>
+            <button
+              onClick={() => setArrangeMode(arrangeMode === "move" ? null : "move")}
+              disabled={!assignment}
+              style={arrangeBtnStyle(!assignment, arrangeMode === "move")}
+            >
+              Move to...
+            </button>
+            <button
+              onClick={() => setArrangeMode(arrangeMode === "swap" ? null : "swap")}
+              disabled={!assignment}
+              style={arrangeBtnStyle(!assignment, arrangeMode === "swap")}
+            >
+              Swap with...
+            </button>
+          </div>
+          {arrangeMode && (
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", marginTop: "var(--space-sm)" }}>
+              <select
+                value={targetPage}
+                onChange={(e) => setTargetPage(Number(e.target.value))}
+                style={{
+                  padding: "4px 6px", borderRadius: "var(--border-radius)",
+                  border: "1px solid var(--border-color)",
+                  background: "var(--bg-surface)", color: "var(--text-primary)",
+                  fontSize: "var(--font-size-sm)", flex: 1,
+                }}
+              >
+                {Array.from({ length: arrange.maxPages }, (_, p) => (
+                  <option key={p} value={p}>{arrange.pageLabel(p)}</option>
+                ))}
+              </select>
+              <select
+                value={targetKey}
+                onChange={(e) => setTargetKey(Number(e.target.value))}
+                style={{
+                  padding: "4px 6px", borderRadius: "var(--border-radius)",
+                  border: "1px solid var(--border-color)",
+                  background: "var(--bg-surface)", color: "var(--text-primary)",
+                  fontSize: "var(--font-size-sm)", width: 96,
+                }}
+              >
+                {Array.from({ length: arrange.totalKeys }, (_, k) => (
+                  <option key={k} value={k}>Key {k + 1}</option>
+                ))}
+              </select>
+              <button
+                onClick={() => {
+                  const to = { index: targetKey, page: targetPage };
+                  if (arrangeMode === "move") arrange.onMove(to);
+                  else arrange.onSwap(to);
+                  setArrangeMode(null);
+                }}
+                style={{
+                  padding: "4px 10px", borderRadius: "var(--border-radius)",
+                  background: "var(--accent-bg)", color: "white",
+                  fontSize: "var(--font-size-sm)", cursor: "pointer",
+                }}
+              >
+                Go
+              </button>
+            </div>
+          )}
+          {arrangeMode === "move" && (
+            <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
+              Moving replaces whatever is at the target.
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Clear All */}
       <button
         onClick={onClear}
@@ -1374,6 +1608,113 @@ function ControlAssignmentPanel({
         <Trash2 size={12} />
         Clear Assignment
       </button>
+    </div>
+  );
+}
+
+const arrangeBtnStyle = (disabled: boolean, active = false): React.CSSProperties => ({
+  padding: "4px 10px",
+  borderRadius: "var(--border-radius)",
+  border: active ? "1px solid var(--accent)" : "1px solid var(--border-color)",
+  background: active ? "var(--accent-dim)" : "var(--bg-hover)",
+  color: disabled ? "var(--text-muted)" : "var(--text-secondary)",
+  fontSize: "var(--font-size-sm)",
+  cursor: disabled ? "default" : "pointer",
+  opacity: disabled ? 0.5 : 1,
+});
+
+// ──── Page Actions (duplicate / clear) ────
+
+function PageActions({
+  canDuplicate,
+  onDuplicate,
+  onClear,
+}: {
+  canDuplicate: boolean;
+  onDuplicate: () => void;
+  onClear: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
+
+  return (
+    <div style={{ position: "relative", marginBottom: "var(--space-sm)" }}>
+      <button
+        onClick={() => {
+          setOpen(!open);
+          setConfirmClear(false);
+        }}
+        title="Page actions"
+        style={{
+          padding: "var(--space-xs) var(--space-sm)",
+          borderRadius: "var(--border-radius)",
+          background: "var(--bg-hover)",
+          fontSize: "var(--font-size-sm)",
+          cursor: "pointer",
+        }}
+      >
+        &#8943;
+      </button>
+      {open && (
+        <div
+          style={{
+            position: "absolute", top: "100%", left: 0, zIndex: 50,
+            marginTop: 4, minWidth: 200,
+            background: "var(--bg-surface)",
+            border: "1px solid var(--border-color)",
+            borderRadius: "var(--border-radius)",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+            display: "flex", flexDirection: "column",
+          }}
+        >
+          <button
+            onClick={() => {
+              onDuplicate();
+              setOpen(false);
+            }}
+            disabled={!canDuplicate}
+            title={canDuplicate ? "Copy every assignment on this page to the first empty page" : "Needs assignments here and an empty page to copy to"}
+            style={{
+              padding: "var(--space-sm) var(--space-md)", textAlign: "left",
+              fontSize: "var(--font-size-sm)", cursor: canDuplicate ? "pointer" : "default",
+              opacity: canDuplicate ? 1 : 0.5,
+            }}
+          >
+            Duplicate to first empty page
+          </button>
+          {!confirmClear ? (
+            <button
+              onClick={() => setConfirmClear(true)}
+              style={{
+                padding: "var(--space-sm) var(--space-md)", textAlign: "left",
+                fontSize: "var(--font-size-sm)", color: "var(--color-error)", cursor: "pointer",
+              }}
+            >
+              Clear this page...
+            </button>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", padding: "var(--space-sm) var(--space-md)", fontSize: 12 }}>
+              <span style={{ color: "var(--color-error)" }}>Remove every assignment?</span>
+              <button
+                onClick={() => {
+                  onClear();
+                  setOpen(false);
+                  setConfirmClear(false);
+                }}
+                style={{ padding: "2px 8px", borderRadius: "var(--border-radius)", background: "var(--bg-hover)", cursor: "pointer", fontSize: 12 }}
+              >
+                Yes
+              </button>
+              <button
+                onClick={() => setConfirmClear(false)}
+                style={{ padding: "2px 8px", borderRadius: "var(--border-radius)", background: "var(--bg-hover)", cursor: "pointer", fontSize: 12 }}
+              >
+                No
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
