@@ -545,6 +545,10 @@ export function DeviceView() {
         <div style={{ flex: 1, overflow: "auto" }}>
           {selectedId ? (
             <DeviceDetail
+              // Remount per device: detail state (state-change log, command
+              // selection, in-progress setting edits) must never carry over
+              // from a previously-viewed device.
+              key={selectedId}
               deviceId={selectedId}
               onEdit={(config) => setEditDevice(config)}
               onDeleted={handleDeviceDeleted}

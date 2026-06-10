@@ -6,9 +6,9 @@ import { useProjectStore } from "../../store/projectStore";
 import { useConnectionStore } from "../../store/connectionStore";
 import { useLogStore } from "../../store/logStore";
 import * as api from "../../api/restClient";
-import type { DeviceConfig, DeviceInfo, DeviceSettingValue } from "../../api/types";
+import type { ChildEntityEntry, DeviceConfig, DeviceInfo, DeviceSettingValue } from "../../api/types";
 import { DevicePanelSlot, ContextActionRenderer } from "../../components/plugins/PluginExtensions";
-import { findDeviceReferences } from "./deviceUtils";
+import { findDeviceReferences, validateSettingValue } from "./deviceUtils";
 import { ChildEntities } from "./ChildEntities";
 import { QuickActions } from "./QuickActions";
 
@@ -160,6 +160,42 @@ export function DeviceDetail({
 
   const commands = deviceInfo?.commands ?? {};
   const commandNames = Object.keys(commands);
+
+  // child_id params render a dropdown of the device's live children (the
+  // runtime contract for that param type) instead of a hand-typed integer.
+  // Fetched fresh whenever such a command is selected — children register
+  // dynamically as the driver discovers them.
+  const [childOptions, setChildOptions] = useState<
+    Record<string, ChildEntityEntry[]>
+  >({});
+  useEffect(() => {
+    const pdefs = (
+      deviceInfo?.commands?.[selectedCommand] as Record<string, unknown> | undefined
+    )?.params as Record<string, Record<string, unknown>> | undefined;
+    const types = new Set<string>();
+    for (const d of Object.values(pdefs ?? {})) {
+      if (String(d?.type ?? "") === "child_id" && d?.child_type) {
+        types.add(String(d.child_type));
+      }
+    }
+    if (types.size === 0) return;
+    let cancelled = false;
+    (async () => {
+      for (const ct of types) {
+        try {
+          const resp = await api.listChildEntitiesByType(deviceId, ct);
+          if (!cancelled) {
+            setChildOptions((prev) => ({ ...prev, [ct]: resp.children }));
+          }
+        } catch {
+          if (!cancelled) setChildOptions((prev) => ({ ...prev, [ct]: [] }));
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCommand, deviceId, deviceInfo]);
 
   const handleSendCommand = useCallback(async () => {
     if (!selectedCommand) return;
@@ -723,6 +759,54 @@ export function DeviceDetail({
                           <option value="true">Yes</option>
                           <option value="false">No</option>
                         </select>
+                      ) : paramType === "child_id" ? (
+                        (() => {
+                          // Dropdown of the device's registered children of
+                          // the declared type — hand-typing the integer id
+                          // risks routing/deleting the wrong sub-unit.
+                          const ct = String(def?.child_type ?? "");
+                          const opts = childOptions[ct];
+                          const registered = (opts ?? []).filter(
+                            (c) => c.registered,
+                          );
+                          return (
+                            <div style={{ flex: 1 }}>
+                              <select
+                                value={current}
+                                onChange={(e) => setParam(e.target.value)}
+                                style={{ width: "100%" }}
+                              >
+                                <option value="">
+                                  {opts === undefined
+                                    ? "Loading children..."
+                                    : `(select ${ct || "child"})`}
+                                </option>
+                                {registered.map((c) => (
+                                  <option
+                                    key={c.local_id}
+                                    value={String(c.local_id)}
+                                  >
+                                    {c.label
+                                      ? `${c.label} (${c.local_id})`
+                                      : `${ct} ${c.local_id}`}
+                                  </option>
+                                ))}
+                              </select>
+                              {opts !== undefined && registered.length === 0 && (
+                                <div
+                                  style={{
+                                    fontSize: 11,
+                                    color: "var(--text-muted)",
+                                    marginTop: 2,
+                                  }}
+                                >
+                                  No registered {ct || "child"} entries on this
+                                  device yet — see the Child Entities tab.
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()
                       ) : (
                         <input
                           type={paramType === "integer" || paramType === "number" ? "number" : "text"}
@@ -997,13 +1081,17 @@ function DeviceSettingsSection({ deviceId, connected }: { deviceId: string; conn
     setSaveResult(null);
     try {
       const def = settings[key];
-      const fieldType = String(def?.type ?? "string");
-      let coerced: unknown = editValue;
-      if (fieldType === "integer") coerced = parseInt(editValue, 10) || 0;
-      else if (fieldType === "number") coerced = parseFloat(editValue) || 0;
-      else if (fieldType === "boolean") coerced = editValue === "true";
+      // Reject invalid input instead of coercing it: the old parseInt(v)||0
+      // silently wrote 0 to the hardware for a blank or mistyped value and
+      // never enforced the definition's min/max/regex.
+      const validated = validateSettingValue(def, editValue);
+      if (!validated.ok) {
+        setSaveResult({ key, success: false, error: validated.error });
+        setSaving(null);
+        return;
+      }
 
-      await api.setDeviceSetting(deviceId, key, coerced);
+      await api.setDeviceSetting(deviceId, key, validated.value);
       setSaveResult({ key, success: true });
       setEditingKey(null);
       // Refresh settings to get updated current_value
@@ -1098,6 +1186,14 @@ function DeviceSettingsSection({ deviceId, connected }: { deviceId: string; conn
                         value={editValue}
                         onChange={(e) => setEditValue(e.target.value)}
                         type={fieldType === "integer" || fieldType === "number" ? "number" : "text"}
+                        min={def?.min}
+                        max={def?.max}
+                        step={fieldType === "integer" ? 1 : undefined}
+                        placeholder={
+                          def?.min !== undefined && def?.max !== undefined
+                            ? `${def.min}-${def.max}`
+                            : undefined
+                        }
                         style={{
                           fontSize: "var(--font-size-sm)",
                           padding: "2px 6px",
@@ -1282,11 +1378,15 @@ function DeviceProtocolLog({ deviceId }: { deviceId: string }) {
   );
   const recent = deviceLogs.slice(-50);
 
+  // Tail the newest entry. Depending on the slice LENGTH stops working the
+  // moment the window saturates (50 entries, length pinned) — key on the
+  // newest entry's identity instead, which changes with every append.
+  const newest = recent[recent.length - 1];
   useEffect(() => {
     if (listRef.current) {
       listRef.current.scrollTop = listRef.current.scrollHeight;
     }
-  }, [recent.length]);
+  }, [newest]);
 
   const LEVEL_COLORS: Record<string, string> = {
     DEBUG: "var(--text-muted)",
@@ -1362,6 +1462,7 @@ function DeviceProtocolLog({ deviceId }: { deviceId: string }) {
 function DeviceStateLog({ deviceId }: { deviceId: string }) {
   const liveState = useConnectionStore((s) => s.liveState);
   const prevStateRef = useRef<Record<string, unknown>>({});
+  const prevDeviceRef = useRef<string>(deviceId);
   const [entries, setEntries] = useState<
     { key: string; oldValue: unknown; newValue: unknown; timestamp: number }[]
   >([]);
@@ -1371,6 +1472,17 @@ function DeviceStateLog({ deviceId }: { deviceId: string }) {
 
   // Track live state changes for this device
   useEffect(() => {
+    // Switching devices must start a fresh log — accumulated rows and the
+    // previous-state snapshot belong to the old device, and diffing the new
+    // device's keys against them fabricates misleading change rows.
+    // (DeviceView also keys <DeviceDetail> by deviceId, so this is a
+    // defensive reset for any future keyless call site.)
+    if (prevDeviceRef.current !== deviceId) {
+      prevDeviceRef.current = deviceId;
+      prevStateRef.current = { ...liveState };
+      setEntries([]);
+      return;
+    }
     const prev = prevStateRef.current;
     const newEntries: typeof entries = [];
     for (const [key, value] of Object.entries(liveState)) {
@@ -1388,13 +1500,16 @@ function DeviceStateLog({ deviceId }: { deviceId: string }) {
     if (newEntries.length > 0) {
       setEntries((prev) => [...prev, ...newEntries].slice(-100));
     }
-  }, [liveState, devicePrefix]);
+  }, [liveState, devicePrefix, deviceId]);
 
+  // Tail the newest entry — keying on length stalls once the 100-row window
+  // saturates; the newest entry's identity changes with every append.
+  const newestEntry = entries[entries.length - 1];
   useEffect(() => {
     if (listRef.current) {
       listRef.current.scrollTop = listRef.current.scrollHeight;
     }
-  }, [entries.length]);
+  }, [newestEntry]);
 
   const formatValue = (v: unknown) => {
     if (v === null || v === undefined) return "null";

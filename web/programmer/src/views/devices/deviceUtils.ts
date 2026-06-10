@@ -35,3 +35,57 @@ export function findDeviceReferences(project: ProjectConfig, deviceId: string): 
 
   return refs;
 }
+
+/**
+ * Validate and coerce a device-setting edit before it is written to the
+ * hardware. The old inline coercion turned a blank or non-numeric entry
+ * into 0 (`parseInt(v) || 0`) and ignored the definition's min/max/regex —
+ * silently saving a wrong control value (input level, fan threshold, ID)
+ * to a real device. Returns the coerced value or an actionable error.
+ */
+export function validateSettingValue(
+  def: { type?: string; min?: number; max?: number; regex?: string } | undefined,
+  raw: string,
+): { ok: true; value: unknown } | { ok: false; error: string } {
+  const fieldType = String(def?.type ?? "string");
+
+  if (fieldType === "boolean") {
+    return { ok: true, value: raw === "true" };
+  }
+
+  if (fieldType === "integer" || fieldType === "number") {
+    const trimmed = raw.trim();
+    if (trimmed === "") {
+      return { ok: false, error: "Enter a number — the setting was not saved." };
+    }
+    const n = Number(trimmed);
+    if (!Number.isFinite(n)) {
+      return { ok: false, error: `"${raw}" is not a number — the setting was not saved.` };
+    }
+    if (fieldType === "integer" && !Number.isInteger(n)) {
+      return { ok: false, error: "Enter a whole number — the setting was not saved." };
+    }
+    if (def?.min !== undefined && n < def.min) {
+      return { ok: false, error: `Must be at least ${def.min}.` };
+    }
+    if (def?.max !== undefined && n > def.max) {
+      return { ok: false, error: `Must be at most ${def.max}.` };
+    }
+    return { ok: true, value: n };
+  }
+
+  // String-ish settings: honor the definition's regex when present.
+  if (def?.regex) {
+    try {
+      if (!new RegExp(def.regex).test(raw)) {
+        return {
+          ok: false,
+          error: `Doesn't match the required format (${def.regex}).`,
+        };
+      }
+    } catch {
+      // A driver shipped an invalid regex — don't block the save on it.
+    }
+  }
+  return { ok: true, value: raw };
+}
