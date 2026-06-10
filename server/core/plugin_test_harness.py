@@ -124,6 +124,22 @@ class PluginTestHarness:
             await registry.cleanup(self.state, self.events)
         self._apis.pop(plugin_id, None)
 
+    async def apply_config(self, plugin, new_config: dict) -> bool:
+        """Hot-apply new config the way the platform loader does.
+
+        Swaps the live ``api.config`` and awaits the plugin's
+        ``on_config_changed`` hook. Returns True when the plugin handled the
+        change (the platform would skip the restart). Returns False when the
+        plugin doesn't define the hook or declined.
+        """
+        plugin_id = plugin.PLUGIN_INFO["id"]
+        api = self._apis.get(plugin_id)
+        hook = getattr(plugin, "on_config_changed", None)
+        if api is None or not callable(hook):
+            return False
+        api._update_config(new_config)
+        return await hook(dict(new_config)) is True
+
     # ──── State Helpers ────
 
     async def state_set(self, key: str, value: Any, source: str = "test") -> None:

@@ -220,9 +220,7 @@ class PluginToolsMixin:
         save_project(engine.project_path, engine.project)
         await self._notify_project_changed()
 
-        # Restart if running
-        if engine.plugin_loader.is_running(plugin_id):
-            await engine.plugin_loader.stop_plugin(plugin_id)
-            await engine.plugin_loader.start_plugin(plugin_id, new_config)
+        # Hot-apply when the plugin supports it, else restart
+        await engine.plugin_loader.restart_or_apply(plugin_id, new_config)
 
         return {"status": "updated", "plugin_id": plugin_id}

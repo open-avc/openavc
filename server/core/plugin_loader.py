@@ -1005,6 +1005,49 @@ class PluginLoader:
         """Check if a plugin is currently running."""
         return plugin_id in self._instances
 
+    async def apply_config(self, plugin_id: str, new_config: dict) -> bool:
+        """Hot-apply new config to a running plugin, if it opts in.
+
+        A plugin opts in by defining ``async def on_config_changed(self,
+        new_config) -> bool``. The loader swaps the live ``api.config``
+        first, then awaits the hook; a ``True`` return means the plugin
+        handled the change and no restart is needed. ``False`` or any
+        exception falls back to the normal stop/start restart (the caller's
+        job — see ``restart_or_apply``), which is also the safety net for a
+        buggy hook.
+        """
+        instance = self._instances.get(plugin_id)
+        api = self._apis.get(plugin_id)
+        hook = getattr(instance, "on_config_changed", None) if instance else None
+        if instance is None or api is None or not callable(hook):
+            return False
+        try:
+            api._update_config(new_config)
+            handled = await hook(dict(new_config))
+        except Exception as e:  # Catch-all: hook runs arbitrary plugin code
+            log.warning(
+                f"Plugin '{plugin_id}' on_config_changed failed ({e}); "
+                f"falling back to restart"
+            )
+            return False
+        if handled is True:
+            log.info(f"Plugin '{plugin_id}' hot-applied a config change")
+            return True
+        return False
+
+    async def restart_or_apply(self, plugin_id: str, new_config: dict) -> bool:
+        """Apply new config to a running plugin: hot when the plugin opts in
+        via ``on_config_changed``, otherwise stop/start. Every config-write
+        path (REST, cloud AI) routes through here so behavior is identical.
+        Returns False when the plugin wasn't running (nothing to do)."""
+        if not self.is_running(plugin_id):
+            return False
+        if await self.apply_config(plugin_id, new_config):
+            return True
+        await self.stop_plugin(plugin_id)
+        await self.start_plugin(plugin_id, new_config)
+        return True
+
     def clear_missing(self, plugin_id: str) -> None:
         """Remove a plugin from the missing-plugins tracker."""
         self._missing_plugins.pop(plugin_id, None)

@@ -396,6 +396,15 @@ class PluginAPI:
         """This plugin's saved configuration (from the project file). Read-only."""
         return dict(self._config)
 
+    def _update_config(self, new_config: dict) -> None:
+        """Swap the live config (loader-internal, used by hot config apply).
+
+        Called by the plugin loader right before invoking a plugin's
+        ``on_config_changed`` hook, so ``api.config`` already reflects the
+        new values when the hook runs.
+        """
+        self._config = dict(new_config)
+
     async def save_config(self, config: dict) -> None:
         """Save updated configuration to the project file.
 
