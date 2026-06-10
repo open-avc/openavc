@@ -3,17 +3,12 @@ import { useProjectStore } from "../../store/projectStore";
 import * as api from "../../api/restClient";
 import type { DeviceConfig, DriverInfo } from "../../api/types";
 import { DeviceSettingsSetupDialog, hasDriverSetupSettings } from "../../components/shared/DeviceSettingsSetupDialog";
-import { coerceConfigValue } from "./deviceConfigCoerce";
-
-// A password/secret config field must never be pre-filled — render it blank so
-// a masked default (or stored value) can't be re-saved by accident.
-function isSecretConfigField(
-  schema: Record<string, unknown> | undefined,
-  key: string,
-): boolean {
-  const f = schema?.[key] as { type?: string; secret?: boolean } | undefined;
-  return f?.type === "password" || f?.secret === true;
-}
+import {
+  coerceConfigValue,
+  configFieldKind,
+  isSecretConfigField,
+  splitConnectionFields,
+} from "./deviceConfigCoerce";
 
 // --- Typed Config Fields ---
 
@@ -40,6 +35,9 @@ function ConfigFieldInputs({
         const isRequired = schema.required === true;
         const defaultVal = schema.default;
         const isObjectField = fieldType === "object" || fieldType === "json";
+        // Widget choice lives in configFieldKind so secret fields reliably
+        // mask and the dialogs can't drift from the coercion rules.
+        const kind = configFieldKind(schema);
         // Build helpful placeholder from key name conventions
         const placeholder = isObjectField
           ? (defaultVal && typeof defaultVal === "object" && Object.keys(defaultVal).length > 0
@@ -69,7 +67,7 @@ function ConfigFieldInputs({
                 <span style={{ color: "var(--error, #f44336)", marginLeft: 2 }}>*</span>
               )}
             </label>
-            {fieldType === "boolean" ? (
+            {kind === "boolean" ? (
               <button
                 onClick={() =>
                   setConfigValues((v) => ({
@@ -91,32 +89,7 @@ function ConfigFieldInputs({
               >
                 {configValues[key] === "true" ? "Yes" : "No"}
               </button>
-            ) : values && values.length > 0 ? (
-              <select
-                value={configValues[key] ?? ""}
-                onChange={(e) =>
-                  setConfigValues((v) => ({ ...v, [key]: e.target.value }))
-                }
-                style={{ width: "100%" }}
-              >
-                <option value="">Select...</option>
-                {values.map((v) => (
-                  <option key={v} value={v}>
-                    {v}
-                  </option>
-                ))}
-              </select>
-            ) : fieldType === "integer" || fieldType === "number" ? (
-              <input
-                type="number"
-                value={configValues[key] ?? ""}
-                onChange={(e) =>
-                  setConfigValues((v) => ({ ...v, [key]: e.target.value }))
-                }
-                placeholder={placeholder}
-                style={{ width: "100%" }}
-              />
-            ) : fieldType === "password" ? (
+            ) : kind === "password" ? (
               <input
                 type="password"
                 autoComplete="new-password"
@@ -127,7 +100,32 @@ function ConfigFieldInputs({
                 placeholder={placeholder}
                 style={{ width: "100%" }}
               />
-            ) : fieldType === "text" || isObjectField ? (
+            ) : kind === "select" ? (
+              <select
+                value={configValues[key] ?? ""}
+                onChange={(e) =>
+                  setConfigValues((v) => ({ ...v, [key]: e.target.value }))
+                }
+                style={{ width: "100%" }}
+              >
+                <option value="">Select...</option>
+                {values?.map((v) => (
+                  <option key={v} value={v}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+            ) : kind === "number" ? (
+              <input
+                type="number"
+                value={configValues[key] ?? ""}
+                onChange={(e) =>
+                  setConfigValues((v) => ({ ...v, [key]: e.target.value }))
+                }
+                placeholder={placeholder}
+                style={{ width: "100%" }}
+              />
+            ) : kind === "textarea" ? (
               <textarea
                 value={configValues[key] ?? ""}
                 onChange={(e) =>
@@ -383,7 +381,7 @@ export function AddDeviceDialog({
     for (const [key, val] of Object.entries(configValues)) {
       if (val === "") continue;
       const fieldType = String(schema[key]?.type || "");
-      const result = coerceConfigValue(val, fieldType);
+      const result = coerceConfigValue(val, fieldType, schema[key]?.secret === true);
       if (!result.ok) {
         setError(`${String(schema[key]?.label || key)}: ${result.error}`);
         return;
@@ -391,15 +389,30 @@ export function AddDeviceDialog({
       config[key] = result.value;
     }
 
+    // Same split the device-update API applies: connection fields go to the
+    // connections table (v0.5.0 schema), the rest stays in device.config.
+    const { config: protocolConfig, connection } = splitConnectionFields(config);
+
     const newDevice: DeviceConfig = {
       id: deviceId,
       driver: selectedDriver,
       name: deviceName || deviceId,
-      config,
+      config: protocolConfig,
     };
 
+    // Read devices + connections from the same store snapshot so the two
+    // halves of the patch can't disagree.
+    const current = useProjectStore.getState().project;
     update({
-      devices: [...(project?.devices ?? []), newDevice],
+      devices: [...(current?.devices ?? []), newDevice],
+      ...(Object.keys(connection).length > 0
+        ? {
+            connections: {
+              ...(current?.connections ?? {}),
+              [deviceId]: connection,
+            },
+          }
+        : {}),
     });
 
     save();
@@ -712,7 +725,7 @@ export function EditDeviceDialog({
       for (const [key, val] of Object.entries(configValues)) {
         if (val === "") continue;
         const fieldType = String(schema[key]?.type || "");
-        const result = coerceConfigValue(val, fieldType);
+        const result = coerceConfigValue(val, fieldType, schema[key]?.secret === true);
         if (!result.ok) {
           setError(`${String(schema[key]?.label || key)}: ${result.error}`);
           setSaving(false);
