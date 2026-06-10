@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { Send, Pencil, Trash2, Wifi, WifiOff, Power, RefreshCw, Copy, Settings, Check, X, Loader2, Search, ChevronDown } from "lucide-react";
+import { Send, Pencil, Trash2, Wifi, WifiOff, Power, RefreshCw, Copy, Settings, Check, X, Loader2, Search, ChevronDown, Pause, Play } from "lucide-react";
 import { CopyButton } from "../../components/shared/CopyButton";
 import { DeviceStatusDot } from "../../components/shared/DeviceStatusDot";
 import { useProjectStore } from "../../store/projectStore";
@@ -142,6 +142,9 @@ export function DeviceDetail({
   const deviceName = String(liveState[`device.${deviceId}.name`] ?? deviceId);
   const connected = Boolean(liveState[`device.${deviceId}.connected`]);
   const orphaned = Boolean(liveState[`device.${deviceId}.orphaned`]);
+  // Paused for driver testing (device.<id>.paused) — auto-reconnect is
+  // suspended until a resume, a manual reconnect, or the server's pause TTL.
+  const paused = Boolean(liveState[`device.${deviceId}.paused`]);
   // Server-built, human-readable offline reason (device.<id>.offline_detail).
   // The taxonomy lives server-side; this view only renders the message.
   const offlineDetail = String(liveState[`device.${deviceId}.offline_detail`] ?? "");
@@ -206,7 +209,12 @@ export function DeviceDetail({
             flexWrap: "wrap",
           }}
         >
-          <DeviceStatusDot connected={connected} orphaned={Boolean(liveState[`device.${deviceId}.orphaned`])} size={12} />
+          <DeviceStatusDot
+            connected={connected}
+            orphaned={Boolean(liveState[`device.${deviceId}.orphaned`])}
+            paused={Boolean(liveState[`device.${deviceId}.paused`])}
+            size={12}
+          />
           <h2 style={{ fontSize: "var(--font-size-xl)", flex: 1 }}>{deviceName}</h2>
           <button
             onClick={handleToggleEnabled}
@@ -380,8 +388,58 @@ export function DeviceDetail({
         />
       )}
 
+      {/* Paused banner — the device was paused for driver testing (Driver
+          Builder test panel). Auto-reconnect is suspended; offer Resume so a
+          pause left behind by a closed test session is recoverable here. */}
+      {paused && !orphaned && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--space-sm)",
+            padding: "var(--space-sm) var(--space-md)",
+            borderRadius: "var(--border-radius)",
+            marginBottom: "var(--space-md)",
+            fontSize: "var(--font-size-sm)",
+            background: "var(--bg-info, #1a2a3a)",
+            border: "1px solid var(--color-info, #6aa3d6)",
+            color: "var(--color-info, #6aa3d6)",
+          }}
+        >
+          <Pause size={14} style={{ flexShrink: 0 }} />
+          <span style={{ flex: 1 }}>
+            Paused for driver testing — auto-reconnect is suspended until the
+            test session resumes it (or it times out).
+          </span>
+          <button
+            onClick={async () => {
+              try {
+                await api.resumeDevice(deviceId);
+              } catch (e) {
+                console.error(e);
+              }
+            }}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              padding: "2px 10px",
+              borderRadius: 12,
+              border: "1px solid var(--color-info, #6aa3d6)",
+              background: "transparent",
+              color: "var(--color-info, #6aa3d6)",
+              fontSize: 11,
+              cursor: "pointer",
+            }}
+            title="Clear the pause and reconnect now"
+          >
+            <Play size={12} /> Resume
+          </button>
+        </div>
+      )}
+
       {/* Offline reason banner — actionable cause from device.<id>.offline_detail */}
-      {!connected && isEnabled && !orphaned && offlineDetail && (
+      {!connected && isEnabled && !orphaned && !paused && offlineDetail && (
         <OfflineBanner
           detail={offlineDetail}
           attempt={reconnectAttempt}

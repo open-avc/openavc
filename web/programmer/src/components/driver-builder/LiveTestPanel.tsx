@@ -13,10 +13,18 @@ import type {
   DriverParamDef,
 } from "../../api/types";
 import * as api from "../../api/restClient";
+import { BASE } from "../../api/base";
 import type {
   TestCommandResult,
   TestPanelConflict,
 } from "../../api/driverClient";
+import { commandShapeMismatch, previewWire } from "./liveTestHelpers";
+
+// Re-pause cadence while devices stay paused. The server expires a pause
+// after its TTL (device_manager.PAUSE_TTL, 10 min) so an abandoned pause
+// can't strand a production device; refreshing well inside that window
+// keeps legitimate long test sessions paused.
+const PAUSE_KEEPALIVE_MS = 4 * 60 * 1000;
 
 interface LiveTestPanelProps {
   draft: DriverDefinition;
@@ -163,21 +171,54 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
     return () => clearInterval(interval);
   }, [cooldownUntil]);
 
-  // Resume any devices we paused when the panel unmounts. A useRef snapshot
-  // keeps the cleanup closure pointing at the current paused-id list instead
-  // of the stale value captured at mount time.
-  const pausedRef = useRef<string[]>([]);
-  useEffect(() => {
-    pausedRef.current = pausedDeviceIds;
-  }, [pausedDeviceIds]);
+  // Every device we may have paused — added BEFORE the pause request goes
+  // out, so a request that settles ambiguously (network error after the
+  // server already committed) is still resumed by the cleanup paths. The
+  // server's pause TTL is the final backstop when none of these run.
+  const pauseIntentRef = useRef<Set<string>>(new Set());
+
+  // Resume any devices we paused when the panel unmounts.
   useEffect(
     () => () => {
-      for (const id of pausedRef.current) {
+      for (const id of pauseIntentRef.current) {
         api.resumeDevice(id).catch(() => {});
       }
     },
     [],
   );
+
+  // Hard tab close / reload skips React cleanup — fire best-effort resumes
+  // with keepalive so the requests survive the page teardown.
+  useEffect(() => {
+    const onPageHide = () => {
+      for (const id of pauseIntentRef.current) {
+        try {
+          fetch(`${BASE}/devices/${encodeURIComponent(id)}/resume`, {
+            method: "POST",
+            keepalive: true,
+            headers: { "Content-Type": "application/json" },
+          }).catch(() => {});
+        } catch {
+          /* best-effort — the server TTL covers the rest */
+        }
+      }
+    };
+    window.addEventListener("pagehide", onPageHide);
+    return () => window.removeEventListener("pagehide", onPageHide);
+  }, []);
+
+  // Keep active pauses alive: the server auto-resumes a pause after its TTL,
+  // so refresh it periodically while the panel is open and devices are
+  // paused. Re-pausing is idempotent and just rearms the TTL.
+  useEffect(() => {
+    if (pausedDeviceIds.length === 0) return;
+    const interval = setInterval(() => {
+      for (const id of pausedDeviceIds) {
+        api.pauseDevice(id).catch(() => {});
+      }
+    }, PAUSE_KEEPALIVE_MS);
+    return () => clearInterval(interval);
+  }, [pausedDeviceIds]);
 
   // Authoring-time config fields (anything declared in config_schema that
   // isn't a baseline transport key). Surface these so users can fill in
@@ -214,16 +255,27 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
       ? command !== null
       : rawString.trim().length > 0);
 
-  // Unresolved conflict: at least one matching production device that the
-  // user hasn't paused or explicitly chosen to override.
-  const unpausedConflicts = conflicts.filter(
-    (c) => !pausedDeviceIds.includes(c.device_id),
-  );
+  // Unresolved conflict: at least one matching production device that isn't
+  // paused (by us in this session, or already on the server — a pause leaked
+  // from an earlier session shows up via the server's `paused` flag and is
+  // both visible and resumable here) and that the user hasn't explicitly
+  // chosen to override.
+  const isConflictPaused = (c: TestPanelConflict) =>
+    c.paused || pausedDeviceIds.includes(c.device_id);
+  const unpausedConflicts = conflicts.filter((c) => !isConflictPaused(c));
   const hasUnresolvedConflict =
     unpausedConflicts.length > 0 && !conflictAcknowledged;
 
+  // A command whose shape doesn't match the transport is refused by the
+  // runtime — block the send and explain, instead of failing the same way.
+  const shapeMismatch =
+    selectedCommand !== RAW_COMMAND && command
+      ? commandShapeMismatch(transport, command)
+      : null;
+
   const isCooldown = cooldownRemainingMs > 0;
-  const canSend = baseCanSend && !hasUnresolvedConflict && !isCooldown;
+  const canSend =
+    baseCanSend && !hasUnresolvedConflict && !isCooldown && !shapeMismatch;
 
   // Serial uses the port string as a device path; IP transports need an int.
   const resolvePortForSend = (): number | string => {
@@ -233,12 +285,27 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
 
   const handlePause = async (deviceId: string) => {
     setPausingId(deviceId);
+    // Record intent before the request: if the panel unmounts while the
+    // request is in flight, the cleanup still resumes the device.
+    pauseIntentRef.current.add(deviceId);
     try {
       await api.pauseDevice(deviceId);
       setPausedDeviceIds((prev) =>
         prev.includes(deviceId) ? prev : [...prev, deviceId],
       );
+      // Keep the conflict snapshot truthful without a refetch.
+      setConflicts((prev) =>
+        prev.map((c) =>
+          c.device_id === deviceId ? { ...c, paused: true } : c,
+        ),
+      );
     } catch {
+      // The request failed but the server may have committed the pause
+      // before the response was lost — undo best-effort so a rejected
+      // pause can't strand the device offline behind an error message
+      // that implies nothing happened.
+      api.resumeDevice(deviceId).catch(() => {});
+      pauseIntentRef.current.delete(deviceId);
       // Surface as a result entry so the user sees what went wrong instead
       // of getting silently blocked.
       setResults((prev) => [
@@ -263,7 +330,13 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
     } catch {
       /* idempotent — drop errors */
     }
+    pauseIntentRef.current.delete(deviceId);
     setPausedDeviceIds((prev) => prev.filter((id) => id !== deviceId));
+    setConflicts((prev) =>
+      prev.map((c) =>
+        c.device_id === deviceId ? { ...c, paused: false } : c,
+      ),
+    );
   };
 
   const handleSend = async () => {
@@ -511,9 +584,9 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
       {/* Per-command form */}
       {selectedCommand !== RAW_COMMAND && command && (
         <CommandPreview
-          transport={transport}
           command={command}
           paramValues={paramValues}
+          shapeMismatch={shapeMismatch}
           onParamChange={(name, value) =>
             setParamValues((prev) => ({ ...prev, [name]: value }))
           }
@@ -784,9 +857,13 @@ function ConflictBanner({
   onResume: (deviceId: string) => void;
   onAcknowledge: () => void;
 }) {
-  const allPaused = conflicts.every((c) =>
-    pausedDeviceIds.includes(c.device_id),
-  );
+  // A conflict counts as paused when WE paused it this session or when the
+  // server already reports it paused (e.g. a pause leaked from an earlier
+  // session) — the server flag is what makes a leaked pause visible and
+  // recoverable here.
+  const isPausedConflict = (c: TestPanelConflict) =>
+    c.paused || pausedDeviceIds.includes(c.device_id);
+  const allPaused = conflicts.every(isPausedConflict);
   const allResolved = allPaused || acknowledged;
   const tone = allResolved
     ? { bg: "var(--bg-info, #1a2a3a)", fg: "var(--color-info, #6aa3d6)" }
@@ -840,7 +917,7 @@ function ConflictBanner({
         }}
       >
         {conflicts.map((c) => {
-          const isPaused = pausedDeviceIds.includes(c.device_id);
+          const isPaused = isPausedConflict(c);
           const isPausing = pausingId === c.device_id;
           return (
             <div
@@ -932,14 +1009,16 @@ const pillButtonStyle: React.CSSProperties = {
  * a transport-specific summary of what will go on the wire.
  */
 function CommandPreview({
-  transport,
   command,
   paramValues,
+  shapeMismatch,
   onParamChange,
 }: {
-  transport: string;
   command: DriverCommandDef;
   paramValues: Record<string, string>;
+  /** Set when the command's wire shape doesn't match the transport — the
+   *  runtime would refuse the send, so show why instead of a bogus preview. */
+  shapeMismatch: string | null;
   onParamChange: (name: string, value: string) => void;
 }) {
   const params = Object.entries(command.params ?? {});
@@ -1018,35 +1097,56 @@ function CommandPreview({
         </div>
       )}
 
-      <div
-        style={{
-          fontSize: "11px",
-          color: "var(--text-muted)",
-          marginBottom: 4,
-        }}
-      >
-        Wire format
-      </div>
-      <div
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: "var(--font-size-sm)",
-          background: "var(--bg-base)",
-          border: "1px solid var(--border-color)",
-          borderRadius: "var(--border-radius)",
-          padding: "var(--space-xs) var(--space-sm)",
-          color: "var(--text-primary)",
-          display: "flex",
-          alignItems: "center",
-          gap: 4,
-          overflow: "auto",
-        }}
-      >
-        <ChevronRight size={12} />
-        <span style={{ whiteSpace: "pre" }}>
-          {previewWire(transport, command, paramValues)}
-        </span>
-      </div>
+      {shapeMismatch ? (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: "var(--space-xs)",
+            fontSize: "var(--font-size-sm)",
+            color: "var(--color-error)",
+            background: "var(--bg-base)",
+            border: "1px solid var(--color-error)",
+            borderRadius: "var(--border-radius)",
+            padding: "var(--space-xs) var(--space-sm)",
+          }}
+        >
+          <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+          <span>{shapeMismatch}</span>
+        </div>
+      ) : (
+        <>
+          <div
+            style={{
+              fontSize: "11px",
+              color: "var(--text-muted)",
+              marginBottom: 4,
+            }}
+          >
+            Wire format
+          </div>
+          <div
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: "var(--font-size-sm)",
+              background: "var(--bg-base)",
+              border: "1px solid var(--border-color)",
+              borderRadius: "var(--border-radius)",
+              padding: "var(--space-xs) var(--space-sm)",
+              color: "var(--text-primary)",
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              overflow: "auto",
+            }}
+          >
+            <ChevronRight size={12} />
+            <span style={{ whiteSpace: "pre" }}>
+              {previewWire(command, paramValues)}
+            </span>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -1136,42 +1236,6 @@ function coerceParams(
     }
   }
   return out;
-}
-
-/** Substitute {placeholder} tokens against the param map for the wire preview. */
-function previewWire(
-  transport: string,
-  command: DriverCommandDef,
-  paramValues: Record<string, string>,
-): string {
-  const subst = (template: string): string =>
-    template.replace(/\{(\w+)\}/g, (m, key) =>
-      paramValues[key] !== undefined && paramValues[key] !== ""
-        ? paramValues[key]
-        : m,
-    );
-
-  if (command.address) {
-    const addr = subst(command.address);
-    const args = (command.args ?? [])
-      .map((a) => `${a.type}=${subst(a.value)}`)
-      .join(", ");
-    return args ? `${addr} [${args}]` : addr;
-  }
-
-  if (command.method || command.path || transport === "http") {
-    const method = (command.method || "GET").toUpperCase();
-    const path = subst(command.path ?? "/");
-    const headers = command.headers
-      ? Object.entries(command.headers)
-          .map(([k, v]) => `${k}: ${subst(v)}`)
-          .join("\n")
-      : "";
-    const body = command.body ? subst(command.body) : "";
-    return [`${method} ${path}`, headers, body].filter(Boolean).join("\n");
-  }
-
-  return subst(command.send ?? command.string ?? "");
 }
 
 function visibleBytes(s: string): string {

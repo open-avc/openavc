@@ -122,6 +122,13 @@ def _load_builtin_drivers() -> None:
 _load_builtin_drivers()
 
 
+# Backstop for a test-panel pause whose owner never resumes it (tab closed or
+# crashed, request lost). The panel refreshes the pause while it stays open,
+# so expiry only fires for genuinely abandoned pauses — without it a paused
+# production device stays offline indefinitely with auto-reconnect suppressed.
+PAUSE_TTL = 600.0
+
+
 class DeviceManager:
     """Manages all device driver instances."""
 
@@ -133,6 +140,7 @@ class DeviceManager:
         self._reconnect_tasks: dict[str, asyncio.Task] = {}
         self._orphaned_devices: dict[str, dict[str, Any]] = {}  # devices with missing drivers
         self._intentional_disconnect: set[str] = set()  # suppress auto-reconnect
+        self._pause_expiry_tasks: dict[str, asyncio.Task] = {}  # pause TTL backstops
 
         # Auto-reconnect when a device transport drops mid-session
         self.events.on(
@@ -209,6 +217,12 @@ class DeviceManager:
         """Disconnect and remove a device (handles both active and orphaned)."""
         # Cancel reconnect if running — await so reconnect loop finishes
         await self._cancel_reconnect(device_id)
+        # Drop pause bookkeeping: the TTL backstop must not fire a resume for
+        # a device that no longer exists, and a stale intentional-disconnect
+        # entry would suppress auto-reconnect for a future device re-added
+        # under the same id.
+        self._cancel_pause_expiry(device_id)
+        self._intentional_disconnect.discard(device_id)
 
         driver = self._devices.pop(device_id, None)
         if driver:
@@ -561,6 +575,9 @@ class DeviceManager:
         # Cancel all reconnect tasks first — await each so loops finish cleanly
         for device_id in list(self._reconnect_tasks.keys()):
             await self._cancel_reconnect(device_id)
+        # Cancel pause-TTL backstops so none fires a resume mid-shutdown
+        for device_id in list(self._pause_expiry_tasks.keys()):
+            self._cancel_pause_expiry(device_id)
 
         for device_id, driver in self._devices.items():
             try:
@@ -805,6 +822,12 @@ class DeviceManager:
         if device_id not in self._devices:
             raise ValueError(f"Device '{device_id}' not found")
         driver = self._devices[device_id]
+        # A manual reconnect overrides a test-panel pause — clear the pause
+        # bookkeeping so the flag can't go stale and the TTL backstop can't
+        # fire a redundant resume later.
+        if self.state.get(f"device.{device_id}.paused"):
+            self._cancel_pause_expiry(device_id)
+            self.state.set(f"device.{device_id}.paused", False, source="device_manager")
         # Cancel any existing auto-reconnect task first
         await self._cancel_reconnect(device_id)
         self.state.set(f"device.{device_id}.reconnect_failed", None, source="device_manager")
@@ -874,13 +897,17 @@ class DeviceManager:
             pass
         await driver.connect()
 
-    async def pause_device(self, device_id: str) -> None:
+    async def pause_device(self, device_id: str, ttl: float | None = None) -> None:
         """Cleanly disconnect a device and suppress auto-reconnect (A81).
 
         Used by the driver test panel before it opens a competing TCP session
         against the same host:port on single-session devices. The device stays
-        paused until ``resume_device`` is called; ``device.<id>.paused`` is
-        set so the UI can surface the state.
+        paused until ``resume_device`` is called — or until ``ttl`` seconds
+        pass without a re-pause (the panel keeps the pause alive while open),
+        at which point the device auto-resumes so a closed/crashed tab can't
+        strand it offline forever. ``device.<id>.paused`` is set so the UI can
+        surface the state. Re-pausing an already-paused device just resets
+        the TTL.
         """
         if device_id not in self._devices:
             raise ValueError(f"Device '{device_id}' not found")
@@ -895,7 +922,47 @@ class DeviceManager:
             log.warning(f"pause_device: disconnect raised for {device_id}: {e}")
         self.state.set(f"device.{device_id}.paused", True, source="device_manager")
         self.state.set(f"device.{device_id}.connected", False, source="device_manager")
+        self._schedule_pause_expiry(device_id, PAUSE_TTL if ttl is None else ttl)
         log.info(f"Paused device: {device_id}")
+
+    def _schedule_pause_expiry(self, device_id: str, ttl: float) -> None:
+        """(Re)arm the auto-resume backstop for a paused device."""
+        self._cancel_pause_expiry(device_id)
+        task = asyncio.create_task(self._pause_expiry(device_id, ttl))
+        self._pause_expiry_tasks[device_id] = task
+
+    def _cancel_pause_expiry(self, device_id: str) -> None:
+        task = self._pause_expiry_tasks.pop(device_id, None)
+        if task is not None:
+            task.cancel()
+
+    async def _pause_expiry(self, device_id: str, ttl: float) -> None:
+        try:
+            await asyncio.sleep(ttl)
+            # Drop our own registration BEFORE resuming, so resume_device's
+            # _cancel_pause_expiry doesn't cancel the very task running it.
+            self._pause_expiry_tasks.pop(device_id, None)
+            log.warning(
+                f"[{device_id}] Test-panel pause expired after {ttl:.0f}s "
+                f"without a resume — auto-resuming (the panel likely closed "
+                f"without cleanup)"
+            )
+            await self.resume_device(device_id)
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            # resume_device handles connect failures itself; this guards the
+            # device-removed race (ValueError) and anything unexpected.
+            log.warning(f"[{device_id}] Pause-expiry auto-resume failed: {e}")
+        finally:
+            # current_task() raises if the loop is already gone (cancellation
+            # during shutdown/teardown) — nothing to clean up in that case.
+            try:
+                current = asyncio.current_task()
+            except RuntimeError:
+                current = None
+            if current is not None and self._pause_expiry_tasks.get(device_id) is current:
+                self._pause_expiry_tasks.pop(device_id, None)
 
     async def resume_device(self, device_id: str) -> None:
         """Resume a paused device — clear the pause flag and reconnect.
@@ -906,6 +973,7 @@ class DeviceManager:
         if device_id not in self._devices:
             raise ValueError(f"Device '{device_id}' not found")
         driver = self._devices[device_id]
+        self._cancel_pause_expiry(device_id)
         self._intentional_disconnect.discard(device_id)
         self.state.set(f"device.{device_id}.paused", False, source="device_manager")
         try:

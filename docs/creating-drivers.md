@@ -209,7 +209,7 @@ Each result shows what was sent, every received chunk (with `\r` and `\n` made v
 
 **Production-device conflict warning.** When you type a host and port that's already used by a device in your project, the panel surfaces a warning above the Send button identifying the device. Many AV devices (Sony BVM, Christie projectors, Crestron 3-Series console) accept only one TCP control session at a time, so testing would kick the live device offline. You can:
 
-- **Pause device** — cleanly disconnect the production driver and suppress auto-reconnect for the duration of the test. The panel offers a **Resume** button to bring it back online. Closing the test tab automatically resumes any devices the panel paused.
+- **Pause device** — cleanly disconnect the production driver and suppress auto-reconnect for the duration of the test. The panel offers a **Resume** button to bring it back online. Closing the test tab automatically resumes any devices the panel paused, and as a safety net the server resumes a paused device on its own if the test session disappears without cleaning up (browser crash, lost connection). A paused device shows a Paused badge on the Devices page with its own Resume button.
 - **Connect anyway** — proceed without pausing. Use this when you know the device is already gone (e.g. it's been physically disconnected), or when the device tolerates multiple sessions.
 
 The check is TCP-only; UDP, HTTP, and OSC don't have the single-session problem.

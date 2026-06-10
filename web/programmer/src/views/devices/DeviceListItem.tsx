@@ -24,6 +24,9 @@ export function DeviceListItem({
   const orphaned = useConnectionStore(
     (s) => s.liveState[`device.${deviceId}.orphaned`] as boolean | undefined
   );
+  const paused = useConnectionStore(
+    (s) => s.liveState[`device.${deviceId}.paused`] as boolean | undefined
+  );
 
   return (
     <button
@@ -42,7 +45,11 @@ export function DeviceListItem({
         opacity: enabled && !orphaned ? 1 : 0.6,
       }}
     >
-      <DeviceStatusDot connected={connected ?? false} orphaned={orphaned ?? false} />
+      <DeviceStatusDot
+        connected={connected ?? false}
+        orphaned={orphaned ?? false}
+        paused={paused ?? false}
+      />
       <div style={{ minWidth: 0 }}>
         <div
           style={{

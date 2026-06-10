@@ -1,20 +1,27 @@
 interface DeviceStatusDotProps {
   connected: boolean;
   orphaned?: boolean;
+  /** Paused for driver testing (device.<id>.paused) — auto-reconnect is
+   *  suspended, so show a distinct state instead of a plain "offline". */
+  paused?: boolean;
   size?: number;
 }
 
-export function DeviceStatusDot({ connected, orphaned, size = 10 }: DeviceStatusDotProps) {
+export function DeviceStatusDot({ connected, orphaned, paused, size = 10 }: DeviceStatusDotProps) {
   const color = orphaned
     ? "var(--color-warning, #f59e0b)"
-    : connected
-      ? "var(--color-success)"
-      : "var(--color-error)";
+    : paused
+      ? "var(--color-info, #6aa3d6)"
+      : connected
+        ? "var(--color-success)"
+        : "var(--color-error)";
   const title = orphaned
     ? "Driver not installed"
-    : connected
-      ? "Connected"
-      : "Disconnected";
+    : paused
+      ? "Paused for driver testing"
+      : connected
+        ? "Connected"
+        : "Disconnected";
   const shape = orphaned
     ? {
         width: 0,

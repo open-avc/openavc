@@ -98,6 +98,10 @@ async def test_pause_device_disconnects_and_sets_paused_flag(dm, core):
     assert state.get("device.dev1.connected") is False
     assert "dev1" in dm._intentional_disconnect
 
+    # Tidy the default-TTL backstop so the test loop closes cleanly.
+    dm._cancel_pause_expiry("dev1")
+    await asyncio.sleep(0)
+
 
 async def test_pause_device_suppresses_auto_reconnect(dm, core):
     """Pausing must add the device to _intentional_disconnect BEFORE the
@@ -115,6 +119,10 @@ async def test_pause_device_suppresses_auto_reconnect(dm, core):
     # Give any spurious reconnect task a chance to start.
     await asyncio.sleep(0)
     assert "dev1" not in dm._reconnect_tasks
+
+    # Tidy the default-TTL backstop so the test loop closes cleanly.
+    dm._cancel_pause_expiry("dev1")
+    await asyncio.sleep(0)
 
 
 async def test_resume_device_reconnects_and_clears_paused_flag(dm, core):
@@ -161,6 +169,119 @@ async def test_pause_unknown_device_raises(dm):
 async def test_resume_unknown_device_raises(dm):
     with pytest.raises(ValueError, match="not found"):
         await dm.resume_device("nope")
+
+
+# ---------------------------------------------------------------------------
+# Pause TTL backstop — a pause whose owner never resumes must not strand a
+# production device offline forever (tab closed/crashed, request lost).
+# ---------------------------------------------------------------------------
+
+
+async def test_pause_ttl_auto_resumes(dm, core):
+    state, _ = core
+    driver = MockTCPDriver("dev1", {}, *core)
+    driver._connected = True
+    dm._devices["dev1"] = driver
+
+    await dm.pause_device("dev1", ttl=0.05)
+    assert state.get("device.dev1.paused") is True
+
+    await asyncio.sleep(0.2)
+
+    # The TTL fired: device resumed, flag cleared, backstop task gone.
+    assert state.get("device.dev1.paused") is False
+    assert state.get("device.dev1.connected") is True
+    assert driver.connect_calls == 1
+    assert "dev1" not in dm._pause_expiry_tasks
+    assert "dev1" not in dm._intentional_disconnect
+
+
+async def test_pause_schedules_default_ttl_and_resume_cancels_it(dm, core):
+    driver = MockTCPDriver("dev1", {}, *core)
+    driver._connected = True
+    dm._devices["dev1"] = driver
+
+    await dm.pause_device("dev1")
+    task = dm._pause_expiry_tasks.get("dev1")
+    assert task is not None and not task.done()
+
+    await dm.resume_device("dev1")
+    await asyncio.sleep(0)
+    assert "dev1" not in dm._pause_expiry_tasks
+    assert task.cancelled()
+
+
+async def test_re_pause_rearms_ttl(dm, core):
+    """The test panel keeps a pause alive by re-pausing; each re-pause must
+    replace the running backstop, not stack a second one."""
+    driver = MockTCPDriver("dev1", {}, *core)
+    driver._connected = True
+    dm._devices["dev1"] = driver
+
+    await dm.pause_device("dev1", ttl=30)
+    first = dm._pause_expiry_tasks["dev1"]
+    await dm.pause_device("dev1", ttl=30)
+    second = dm._pause_expiry_tasks["dev1"]
+    await asyncio.sleep(0)
+
+    assert second is not first
+    assert first.cancelled()
+    assert not second.done()
+    assert len(dm._pause_expiry_tasks) == 1
+    second.cancel()
+    await asyncio.sleep(0)  # let the cancellation land before the loop closes
+
+
+async def test_reconnect_device_clears_pause(dm, core):
+    """A manual reconnect overrides a test-panel pause — the paused flag and
+    the TTL backstop must both be cleared, or the flag goes stale and the
+    backstop later fires a redundant resume."""
+    state, _ = core
+    driver = MockTCPDriver("dev1", {}, *core)
+    driver._connected = True
+    dm._devices["dev1"] = driver
+
+    await dm.pause_device("dev1", ttl=30)
+    await dm.reconnect_device("dev1")
+
+    assert state.get("device.dev1.paused") is False
+    assert state.get("device.dev1.connected") is True
+    assert "dev1" not in dm._pause_expiry_tasks
+    await asyncio.sleep(0)  # let the cancellation land before the loop closes
+
+
+async def test_remove_device_clears_pause_bookkeeping(dm, core):
+    """Removing a paused device must cancel the TTL backstop (no resume for a
+    device that no longer exists) and drop the intentional-disconnect entry
+    (a stale one would suppress auto-reconnect for a re-added same-id
+    device)."""
+    driver = MockTCPDriver("dev1", {}, *core)
+    driver._connected = True
+    dm._devices["dev1"] = driver
+
+    await dm.pause_device("dev1", ttl=0.05)
+    await dm.remove_device("dev1")
+
+    assert "dev1" not in dm._pause_expiry_tasks
+    assert "dev1" not in dm._intentional_disconnect
+    # Past the TTL: nothing fires (no resume attempt on the removed device).
+    connect_calls_before = driver.connect_calls
+    await asyncio.sleep(0.2)
+    assert driver.connect_calls == connect_calls_before
+
+
+async def test_disconnect_all_cancels_pause_ttl(dm, core):
+    driver = MockTCPDriver("dev1", {}, *core)
+    driver._connected = True
+    dm._devices["dev1"] = driver
+
+    await dm.pause_device("dev1", ttl=30)
+    task = dm._pause_expiry_tasks["dev1"]
+    await dm.disconnect_all()
+    await asyncio.sleep(0)
+
+    assert "dev1" not in dm._pause_expiry_tasks
+    assert task.cancelled()
 
 
 # ---------------------------------------------------------------------------
