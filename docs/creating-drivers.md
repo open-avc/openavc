@@ -1123,6 +1123,8 @@ commands:
 
 Argument types: `f` (float32), `i` (int32), `s` (string), `h` (int64), `d` (float64), `T` (true), `F` (false), `N` (nil).
 
+Argument `value` strings support `{param}` substitution from the command's params and device config, including format specs — `value: "{level}"` sends the param as-is, `value: "{level:.2f}"` formats it first. Address paths substitute the same way.
+
 #### OSC Response Format
 
 ```yaml

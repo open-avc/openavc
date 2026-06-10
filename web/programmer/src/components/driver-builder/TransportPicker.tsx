@@ -1,4 +1,5 @@
 import type { DriverDefinition } from "../../api/types";
+import { scrubForTransport } from "./validateDriver";
 
 interface TransportPickerProps {
   draft: DriverDefinition;
@@ -17,13 +18,37 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
     marginBottom: "var(--space-md)",
   };
 
+  const switchTransport = (next: string) => {
+    if (next === draft.transport) return;
+    // Commands and setting writes keep transport-specific wire fields
+    // (an OSC address, an HTTP path) that the form no longer renders
+    // after a switch — invisible leftovers that kill the command at
+    // runtime. Scrub them, confirming first when authored content would
+    // be removed.
+    const scrub = scrubForTransport(draft, next);
+    if (scrub.removals.length > 0) {
+      const detail = scrub.removals
+        .map((r) => `  ${r.name}: ${r.fields.join(", ")}`)
+        .join("\n");
+      const ok = window.confirm(
+        `Switching the transport removes fields that don't apply to it:\n\n${detail}\n\nContinue?`,
+      );
+      if (!ok) return;
+    }
+    onUpdate({
+      transport: next,
+      commands: scrub.commands,
+      ...(scrub.device_settings ? { device_settings: scrub.device_settings } : {}),
+    });
+  };
+
   return (
     <div>
       <div style={rowStyle}>
         <label style={labelStyle}>Transport Type</label>
         <select
           value={draft.transport}
-          onChange={(e) => onUpdate({ transport: e.target.value })}
+          onChange={(e) => switchTransport(e.target.value)}
           style={{ width: "100%" }}
         >
           <option value="tcp">TCP</option>
