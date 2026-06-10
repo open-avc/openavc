@@ -40,6 +40,9 @@ interface ButtonBindingEditorProps {
   showRelease?: boolean;
   showLabel?: boolean;
   showToggleLabels?: boolean;
+  // Surfaces without a display (e.g. foot pedals) have nothing for visual
+  // feedback to change — hide that section entirely.
+  showFeedback?: boolean;
   // Restrict the offered action types (control surfaces support a subset).
   allowedActions?: string[];
   // Navigate targets for control surfaces (deck pages, not panel pages).
@@ -58,6 +61,7 @@ export function ButtonBindingEditor({
   showRelease = false,
   showLabel = true,
   showToggleLabels = false,
+  showFeedback = true,
   allowedActions,
   navigateOptions,
   surfaceOrder = false,
@@ -567,13 +571,13 @@ export function ButtonBindingEditor({
           {extrasBlock}
           {labelBlock}
           {modeBlock}
-          {feedbackSections.map(renderSection)}
+          {showFeedback && feedbackSections.map(renderSection)}
         </>
       ) : (
         <>
           {labelBlock}
           {modeBlock}
-          {sections.map(renderSection)}
+          {(showFeedback ? sections : actionSections).map(renderSection)}
           {extrasBlock}
         </>
       )}

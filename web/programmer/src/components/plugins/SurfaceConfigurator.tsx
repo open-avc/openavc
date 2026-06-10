@@ -74,6 +74,22 @@ interface ControlDef {
   detents?: number;
 }
 
+interface MeterConfig {
+  min?: number;
+  max?: number;
+  color?: string;
+  thresholds?: { above?: number; color?: string }[];
+}
+
+// Conditional styling shared by zones and info items (same schema as key
+// feedback; the runtime resolves all of them through one path).
+interface DisplayFeedback {
+  key?: string;
+  condition?: { equals?: string };
+  style_active?: { bg_color?: string; text_color?: string };
+  style_inactive?: { bg_color?: string; text_color?: string };
+}
+
 interface ButtonAssignment {
   index?: number;
   page?: number;
@@ -81,6 +97,11 @@ interface ButtonAssignment {
   icon?: string;
   bg_color?: string;
   text_color?: string;
+  // Live display: label/value from state, optional meter bar
+  label_source?: string;
+  value_source?: string;
+  unit?: string;
+  meter?: MeterConfig | boolean;
   // Same binding format as web UI buttons
   bindings?: ButtonBindings;
 }
@@ -90,21 +111,38 @@ interface DialAdjust {
   step?: number;
   min?: number;
   max?: number;
+  fader?: boolean;
 }
 
 interface DialAssignment {
   index?: number;
   label?: string;
+  icon?: string;
+  unit?: string;
+  meter?: MeterConfig | boolean;
   adjust?: DialAdjust;
   cw?: Record<string, unknown>[];
   ccw?: Record<string, unknown>[];
   press?: Record<string, unknown>[];
+  long_press?: Record<string, unknown>[];
+  hold_threshold_ms?: number;
+  pressed_adjust?: DialAdjust;
+  pressed_cw?: Record<string, unknown>[];
+  pressed_ccw?: Record<string, unknown>[];
+  // The dial's strip zone is its touch surface
+  touch?: Record<string, unknown>[];
+  long_touch?: Record<string, unknown>[];
+  fader?: boolean;
 }
 
 interface TouchZone {
   label?: string;
   label_source?: string;
   value_source?: string;
+  unit?: string;
+  icon?: string;
+  meter?: MeterConfig | boolean;
+  feedback?: DisplayFeedback;
   bg_color?: string;
   text_color?: string;
   x?: number;
@@ -1077,6 +1115,7 @@ function ControlAssignmentPanel({
   onToggleLock,
   lockShadowCount = 0,
   onPress,
+  visualDeck = true,
 }: {
   controlId: string;
   assignment: ButtonAssignment | undefined;
@@ -1096,6 +1135,8 @@ function ControlAssignmentPanel({
   onToggleLock?: (locked: boolean) => void;
   lockShadowCount?: number;
   onPress?: () => void;
+  // False for display-less decks (foot pedals): hide everything visual.
+  visualDeck?: boolean;
 }) {
   const project = useProjectStore((s) => s.project);
   const [arrangeMode, setArrangeMode] = useState<"move" | "swap" | null>(null);
@@ -1116,7 +1157,12 @@ function ControlAssignmentPanel({
       ? `${keyNoun} — ${pageName}`
       : keyNoun;
 
-  const whatItShows = (
+  const whatItShows = !visualDeck ? (
+    <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
+      This model has no display — the label only names the switch in the
+      editor, and there is nothing for colors or feedback to change.
+    </div>
+  ) : (
     <div>
       <label style={panelLabelStyle}>{colorOnly ? "Key Color" : "What It Shows"}</label>
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
@@ -1148,6 +1194,46 @@ function ControlAssignmentPanel({
           ? "This key has no display — it glows with this color. Feedback colors override it when active; labels and icons don't apply."
           : "Feedback colors override these when active."}
       </div>
+      {!colorOnly && (
+        <div style={{ marginTop: "var(--space-md)", display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+          <div>
+            <label style={panelHintStyle}>Live value from state (optional)</label>
+            <VariableKeyPicker
+              value={assignment?.value_source ?? ""}
+              onChange={(key) => onUpdate({ value_source: key || undefined })}
+              placeholder="Show a state key's live value..."
+            />
+          </div>
+          {assignment?.value_source && (
+            <div style={{ display: "flex", gap: "var(--space-sm)" }}>
+              <div style={{ width: 80 }}>
+                <label style={panelHintStyle}>Unit</label>
+                <input
+                  type="text"
+                  value={assignment?.unit ?? ""}
+                  placeholder="dB, %"
+                  onChange={(e) => onUpdate({ unit: e.target.value || undefined })}
+                  style={fieldInputStyle}
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <MeterFields
+                  meter={assignment?.meter}
+                  onChange={(meter) => onUpdate({ meter })}
+                />
+              </div>
+            </div>
+          )}
+          <div>
+            <label style={panelHintStyle}>Label from state (optional)</label>
+            <VariableKeyPicker
+              value={assignment?.label_source ?? ""}
+              onChange={(key) => onUpdate({ label_source: key || undefined })}
+              placeholder="Live label overriding the static one..."
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 
@@ -1240,7 +1326,8 @@ function ControlAssignmentPanel({
           }
           onLabelChange={(label) => onUpdate({ label: label || undefined })}
           showLabel={!colorOnly}
-          showToggleLabels={!colorOnly}
+          showToggleLabels={!colorOnly && visualDeck}
+          showFeedback={visualDeck}
           allowedActions={allowedActions}
           navigateOptions={navigateOptions}
           surfaceOrder
@@ -1630,6 +1717,7 @@ function DialAssignmentPanel({
   allowedActions,
   navigateOptions,
   onSimulate,
+  onOpenStrip,
 }: {
   dialIndex: number;
   dial: DialAssignment | undefined;
@@ -1640,9 +1728,12 @@ function DialAssignmentPanel({
   navigateOptions?: { value: string; label: string }[];
   // Workbench extra: fire real dial input (simulate_input) to test it.
   onSimulate?: (payload: Record<string, unknown>) => void;
+  // Jump to the whole-strip zone editor.
+  onOpenStrip?: () => void;
 }) {
   const project = useProjectStore((s) => s.project);
   const adjust = dial?.adjust ?? {};
+  const pressedAdjust = dial?.pressed_adjust ?? {};
 
   const updateAdjust = (patch: Partial<DialAdjust>) => {
     const next = { ...adjust, ...patch };
@@ -1651,6 +1742,14 @@ function DialAssignmentPanel({
       onUpdate({ adjust: undefined });
     } else {
       onUpdate({ adjust: next });
+    }
+  };
+  const updatePressedAdjust = (patch: Partial<DialAdjust>) => {
+    const next = { ...pressedAdjust, ...patch };
+    if (!next.key) {
+      onUpdate({ pressed_adjust: undefined });
+    } else {
+      onUpdate({ pressed_adjust: next });
     }
   };
 
@@ -1730,6 +1829,19 @@ function DialAssignmentPanel({
             <Play size={11} />
           </button>
           <button
+            onClick={() => {
+              onSimulate({ type: "dial_push", index: dialIndex, pressed: true });
+              setTimeout(
+                () => onSimulate({ type: "dial_push", index: dialIndex, pressed: false }),
+                700
+              );
+            }}
+            title="Long-press the dial"
+            style={dialTestBtnStyle}
+          >
+            Long
+          </button>
+          <button
             onClick={() => onSimulate({ type: "dial_turn", index: dialIndex, amount: 1 })}
             title="Turn clockwise"
             style={dialTestBtnStyle}
@@ -1757,6 +1869,42 @@ function DialAssignmentPanel({
         />
       </div>
 
+      {/* Readout — what the strip shows under this dial */}
+      <div>
+        <label style={panelLabelStyle}>Readout</label>
+        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+          <div style={{ display: "flex", gap: "var(--space-sm)" }}>
+            <div style={{ flex: 1 }}>
+              <label style={panelHintStyle}>Icon (optional)</label>
+              <IconPicker
+                value={dial?.icon ?? ""}
+                onChange={(icon) => onUpdate({ icon: icon || undefined })}
+              />
+            </div>
+            <div style={{ width: 80 }}>
+              <label style={panelHintStyle}>Unit</label>
+              <input
+                type="text"
+                value={dial?.unit ?? ""}
+                placeholder="dB, %"
+                onChange={(e) => onUpdate({ unit: e.target.value || undefined })}
+                style={fieldInputStyle}
+              />
+            </div>
+          </div>
+          <MeterFields
+            meter={dial?.meter}
+            bounds={dial?.adjust}
+            allowAuto
+            onChange={(meter) => onUpdate({ meter })}
+          />
+        </div>
+        <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
+          The strip under this dial shows the label, icon, live value, and
+          level bar.
+        </div>
+      </div>
+
       {/* Adjust-a-value */}
       <div>
         <label style={panelLabelStyle}>Turning Adjusts a Value</label>
@@ -1776,6 +1924,42 @@ function DialAssignmentPanel({
           Each detent adds or subtracts the step, clamped to min/max. Use a
           variable, then have a macro or trigger watch it to drive a device.
           The live value shows on the touchscreen under this dial.
+        </div>
+      </div>
+
+      {/* Push-and-turn: fine adjust while the dial is held */}
+      <div>
+        <label style={panelLabelStyle}>Push + Turn Adjusts (Fine)</label>
+        <VariableKeyPicker
+          value={pressedAdjust.key ?? ""}
+          onChange={(key) => updatePressedAdjust({ key })}
+          placeholder="Pick a variable for fine adjust..."
+        />
+        {pressedAdjust.key && (
+          <div style={{ display: "flex", gap: "var(--space-sm)", marginTop: "var(--space-sm)" }}>
+            {(["step", "min", "max"] as const).map((field) => (
+              <div key={field} style={{ flex: 1 }}>
+                <label style={panelHintStyle}>
+                  {field[0].toUpperCase() + field.slice(1)}
+                </label>
+                <input
+                  type="number"
+                  value={pressedAdjust[field] ?? ""}
+                  placeholder={field === "step" ? "1" : "none"}
+                  onChange={(e) =>
+                    updatePressedAdjust({
+                      [field]: e.target.value === "" ? undefined : Number(e.target.value),
+                    })
+                  }
+                  style={fieldInputStyle}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
+          Turning while the dial is held uses this instead — a smaller step
+          for fine trim. A push that turned never fires the press actions.
         </div>
       </div>
 
@@ -1813,6 +1997,104 @@ function DialAssignmentPanel({
           addLabel="Add press action"
         />
       </div>
+      <div>
+        <label style={panelLabelStyle}>Long-Press Actions</label>
+        <ActionListEditor
+          actions={dial?.long_press ?? []}
+          onChange={(long_press) =>
+            onUpdate({ long_press: long_press.length ? long_press : undefined })
+          }
+          project={project}
+          allowedActions={allowedActions}
+          navigateOptions={navigateOptions}
+          addLabel="Add long-press action"
+        />
+        {(dial?.long_press?.length ?? 0) > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", marginTop: "var(--space-xs)" }}>
+            <span style={panelHintStyle}>Hold threshold (ms)</span>
+            <input
+              type="number"
+              value={dial?.hold_threshold_ms ?? ""}
+              placeholder="500"
+              onChange={(e) =>
+                onUpdate({
+                  hold_threshold_ms:
+                    e.target.value === "" ? undefined : Number(e.target.value),
+                })
+              }
+              style={{ ...fieldInputStyle, width: 90 }}
+            />
+          </div>
+        )}
+        <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
+          With a long-press set, a quick push fires Press on release; holding
+          past the threshold fires this instead.
+        </div>
+      </div>
+
+      {/* Touch — the dial's strip zone is its touch surface */}
+      <div>
+        <label style={panelLabelStyle}>Touch (the readout on the strip)</label>
+        <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: "var(--space-xs)" }}>
+          Tapping this dial's readout presses the dial; long-tapping runs the
+          long-press. Override either below.
+        </div>
+        <label style={panelHintStyle}>Tap actions (override)</label>
+        <ActionListEditor
+          actions={dial?.touch ?? []}
+          onChange={(touch) => onUpdate({ touch: touch.length ? touch : undefined })}
+          project={project}
+          allowedActions={allowedActions}
+          navigateOptions={navigateOptions}
+          addLabel="Add tap action"
+        />
+        <label style={{ ...panelHintStyle, marginTop: "var(--space-xs)", display: "block" }}>
+          Long-tap actions (override)
+        </label>
+        <ActionListEditor
+          actions={dial?.long_touch ?? []}
+          onChange={(long_touch) =>
+            onUpdate({ long_touch: long_touch.length ? long_touch : undefined })
+          }
+          project={project}
+          allowedActions={allowedActions}
+          navigateOptions={navigateOptions}
+          addLabel="Add long-tap action"
+        />
+        <label
+          style={{
+            display: "flex", alignItems: "center", gap: "var(--space-sm)",
+            fontSize: "var(--font-size-sm)", cursor: "pointer",
+            color: "var(--text-primary)", marginTop: "var(--space-sm)",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={!!dial?.fader}
+            onChange={(e) => onUpdate({ fader: e.target.checked || undefined })}
+            disabled={adjust.min === undefined || adjust.max === undefined}
+            style={{ accentColor: "var(--accent)" }}
+          />
+          Touch fader
+        </label>
+        <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
+          {adjust.min === undefined || adjust.max === undefined
+            ? "Set Min and Max on the adjust to enable: touching the readout will jump straight to that position."
+            : "Touching the readout sets the value to the touched position (replaces the tap-presses-the-dial default)."}
+        </div>
+        {onOpenStrip && (
+          <button
+            onClick={onOpenStrip}
+            style={{
+              marginTop: "var(--space-sm)", fontSize: 11,
+              color: "var(--accent)", background: "transparent",
+              cursor: "pointer", padding: 0, textAlign: "left",
+            }}
+          >
+            Customize the whole strip…
+          </button>
+        )}
+      </div>
 
       {/* Clear */}
       <button
@@ -1834,12 +2116,257 @@ function DialAssignmentPanel({
 
 // ──── Touchscreen Zones Editor ────
 
+const fieldInputStyle: React.CSSProperties = {
+  width: "100%", padding: "4px 6px",
+  borderRadius: "var(--border-radius)",
+  border: "1px solid var(--border-color)",
+  background: "var(--bg-surface)", color: "var(--text-primary)",
+  fontSize: "var(--font-size-sm)",
+};
+
+// Build the zones the runtime generates for the current dials — the
+// "start from the current zones" seed when taking over the strip.
+function defaultZonesFromDials(
+  dials: DialAssignment[],
+  dialCount: number
+): TouchZone[] {
+  return Array.from({ length: dialCount }, (_, i) => {
+    const dial = dials.find((d) => d.index === i);
+    const adjust = dial?.adjust?.key ? { ...dial.adjust } : undefined;
+    if (adjust && dial?.fader) adjust.fader = true;
+    return {
+      label: dial?.label || undefined,
+      icon: dial?.icon || undefined,
+      unit: dial?.unit || undefined,
+      meter: dial?.meter,
+      value_source: dial?.adjust?.key || undefined,
+      touch: dial?.touch ?? dial?.press,
+      long_touch: dial?.long_touch ?? dial?.long_press,
+      drag_adjust: adjust,
+    } as TouchZone;
+  });
+}
+
+// Meter (level bar) fields. Zones and dial readouts auto-enable when their
+// adjust declares min+max (mirrors the runtime), so they get a tri-state;
+// keys are plain on/off.
+function MeterFields({
+  meter,
+  bounds,
+  onChange,
+  allowAuto = false,
+}: {
+  meter: MeterConfig | boolean | undefined;
+  bounds?: DialAdjust;
+  onChange: (meter: MeterConfig | boolean | undefined) => void;
+  allowAuto?: boolean;
+}) {
+  const autoAvailable =
+    allowAuto && bounds?.min !== undefined && bounds?.max !== undefined;
+  const mode =
+    meter === false || (meter === undefined && !allowAuto)
+      ? "off"
+      : meter === undefined
+        ? "auto"
+        : "on";
+  const cfg: MeterConfig = typeof meter === "object" && meter !== null ? meter : {};
+  const update = (patch: Partial<MeterConfig>) => {
+    const next = { ...cfg, ...patch };
+    (Object.keys(next) as (keyof MeterConfig)[]).forEach((k) => {
+      if (next[k] === undefined) delete next[k];
+    });
+    onChange(next);
+  };
+  const thresholds = cfg.thresholds ?? [];
+
+  return (
+    <div>
+      <label style={panelHintStyle}>Level bar (meter)</label>
+      <select
+        value={mode}
+        onChange={(e) => {
+          const v = e.target.value;
+          onChange(v === "on" ? {} : v === "off" ? (allowAuto ? false : undefined) : undefined);
+        }}
+        style={fieldInputStyle}
+      >
+        {allowAuto && (
+          <option value="auto">
+            {autoAvailable ? "Automatic (from the adjust range)" : "Automatic (needs an adjust range)"}
+          </option>
+        )}
+        <option value="on">On</option>
+        <option value="off">Off</option>
+      </select>
+      {mode === "on" && (
+        <div style={{ marginTop: "var(--space-xs)", display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
+          <div style={{ display: "flex", gap: "var(--space-sm)" }}>
+            {(["min", "max"] as const).map((field) => (
+              <div key={field} style={{ flex: 1 }}>
+                <label style={panelHintStyle}>{field === "min" ? "Min" : "Max"}</label>
+                <input
+                  type="number"
+                  value={cfg[field] ?? ""}
+                  placeholder={field === "min" ? "0" : "100"}
+                  onChange={(e) =>
+                    update({ [field]: e.target.value === "" ? undefined : Number(e.target.value) })
+                  }
+                  style={fieldInputStyle}
+                />
+              </div>
+            ))}
+            <div>
+              <label style={panelHintStyle}>Color</label>
+              <InlineColorPicker
+                value={cfg.color ?? ""}
+                onChange={(c) => update({ color: c || undefined })}
+              />
+            </div>
+          </div>
+          {thresholds.map((rule, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
+              <span style={panelHintStyle}>Above</span>
+              <input
+                type="number"
+                value={rule.above ?? ""}
+                onChange={(e) =>
+                  update({
+                    thresholds: thresholds.map((r, j) =>
+                      j === i
+                        ? { ...r, above: e.target.value === "" ? undefined : Number(e.target.value) }
+                        : r
+                    ),
+                  })
+                }
+                style={{ ...fieldInputStyle, width: 70 }}
+              />
+              <InlineColorPicker
+                value={rule.color ?? ""}
+                onChange={(c) =>
+                  update({
+                    thresholds: thresholds.map((r, j) =>
+                      j === i ? { ...r, color: c || undefined } : r
+                    ),
+                  })
+                }
+              />
+              <button
+                onClick={() =>
+                  update({
+                    thresholds: thresholds.filter((_, j) => j !== i).length
+                      ? thresholds.filter((_, j) => j !== i)
+                      : undefined,
+                  })
+                }
+                title="Remove this color rule"
+                style={{ color: "var(--text-muted)", cursor: "pointer" }}
+              >
+                <X size={12} />
+              </button>
+            </div>
+          ))}
+          {thresholds.length < 3 && (
+            <button
+              onClick={() => update({ thresholds: [...thresholds, {}] })}
+              style={{
+                alignSelf: "flex-start", fontSize: 11, color: "var(--text-muted)",
+                border: "1px dashed var(--border-color)", borderRadius: "var(--border-radius)",
+                padding: "2px 8px", background: "transparent", cursor: "pointer",
+              }}
+            >
+              + Color above a level
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Simple conditional styling for zones / info items (the runtime accepts the
+// full key-feedback schema; this edits the common active/inactive pair).
+function ZoneFeedbackFields({
+  feedback,
+  onChange,
+}: {
+  feedback: DisplayFeedback | undefined;
+  onChange: (fb: DisplayFeedback | undefined) => void;
+}) {
+  const fb = feedback ?? {};
+  const update = (patch: Partial<DisplayFeedback>) => {
+    const next = { ...fb, ...patch };
+    if (!next.key) {
+      onChange(undefined);
+    } else {
+      onChange(next);
+    }
+  };
+  const colorPair = (
+    label: string,
+    styleKey: "style_active" | "style_inactive"
+  ) => (
+    <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
+      <span style={panelHintStyle}>{label}</span>
+      <InlineColorPicker
+        value={fb[styleKey]?.bg_color ?? ""}
+        onChange={(c) =>
+          update({ [styleKey]: { ...(fb[styleKey] ?? {}), bg_color: c || undefined } })
+        }
+      />
+      <InlineColorPicker
+        value={fb[styleKey]?.text_color ?? ""}
+        onChange={(c) =>
+          update({ [styleKey]: { ...(fb[styleKey] ?? {}), text_color: c || undefined } })
+        }
+      />
+    </div>
+  );
+  return (
+    <div>
+      <label style={panelHintStyle}>Colors from state (optional)</label>
+      <VariableKeyPicker
+        value={fb.key ?? ""}
+        onChange={(key) => update({ key: key || undefined })}
+        placeholder="Watch a state key..."
+      />
+      {fb.key && (
+        <>
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", marginTop: "var(--space-xs)" }}>
+            <span style={{ ...panelHintStyle, whiteSpace: "nowrap" }}>Active when equals</span>
+            <input
+              type="text"
+              value={fb.condition?.equals ?? ""}
+              placeholder="any truthy value"
+              onChange={(e) =>
+                update({
+                  condition: e.target.value === "" ? undefined : { equals: e.target.value },
+                })
+              }
+              style={{ ...fieldInputStyle, flex: 1 }}
+            />
+          </div>
+          <div style={{ display: "flex", gap: "var(--space-md)", marginTop: "var(--space-xs)", flexWrap: "wrap" }}>
+            {colorPair("Active", "style_active")}
+            {colorPair("Inactive", "style_inactive")}
+          </div>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
+            Each pair is background then text.
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function TouchscreenZonesEditor({
   config,
   onConfigChange,
   allowedActions,
   navigateOptions,
   initialExpanded = null,
+  dials = [],
+  dialCount = 0,
+  onSimulate,
 }: {
   config: Record<string, unknown>;
   onConfigChange: (config: Record<string, unknown>) => void;
@@ -1847,9 +2374,15 @@ function TouchscreenZonesEditor({
   navigateOptions?: { value: string; label: string }[];
   // The workbench canvas opens the editor on the zone that was clicked.
   initialExpanded?: number | null;
+  // For seeding custom zones from the current per-dial readouts.
+  dials?: DialAssignment[];
+  dialCount?: number;
+  // Fire real touch input (simulate_input) to test a zone.
+  onSimulate?: (payload: Record<string, unknown>) => void;
 }) {
   const project = useProjectStore((s) => s.project);
-  const touchscreen = (config.touchscreen as { zones?: TouchZone[] } | undefined) ?? {};
+  const touchscreen =
+    (config.touchscreen as { zones?: TouchZone[]; idle?: string } | undefined) ?? {};
   const zones = touchscreen.zones ?? [];
   const [expandedZone, setExpandedZone] = useState<number | null>(initialExpanded);
 
@@ -1865,15 +2398,90 @@ function TouchscreenZonesEditor({
     setZones(zones.filter((_, j) => j !== i));
     setExpandedZone(null);
   };
+  // Center x of a zone in strip pixels, for the test buttons.
+  const zoneCenter = (i: number) => {
+    const slot = 800 / Math.max(1, zones.length);
+    const z = zones[i] ?? {};
+    const x = typeof z.x === "number" ? z.x : i * slot;
+    const w = typeof z.w === "number" ? z.w : slot;
+    return Math.round(x + w / 2);
+  };
 
   if (!project) return null;
+
+  if (zones.length === 0) {
+    const anyDialConfigured = dials.some(
+      (d) => d.label || d.icon || d.adjust?.key || d.press?.length || d.cw?.length
+    );
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+        <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+          {anyDialConfigured
+            ? "The strip is showing one readout per dial (label, live value, meter). Tapping a readout presses its dial. Take over the strip with custom zones when you want your own layout — meters, status panels, wider faders."
+            : dialCount > 0
+              ? "Nothing is set up yet, so the strip shows a clock. Configure a dial (click one in the picture) to get a live readout here, or take over the strip with custom zones."
+              : "Add zones to put live values, meters, and touch actions on the strip."}
+        </div>
+        <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>
+          {dialCount > 0 && (
+            <button
+              onClick={() => {
+                setZones(defaultZonesFromDials(dials, dialCount));
+                setExpandedZone(0);
+              }}
+              style={{
+                padding: "5px 10px", borderRadius: "var(--border-radius)",
+                background: "var(--accent-bg)", color: "white",
+                fontSize: 12, cursor: "pointer",
+              }}
+              title="Copy the current per-dial readouts into editable zones"
+            >
+              Customize zones — start from the current ones
+            </button>
+          )}
+          <button
+            onClick={() => {
+              setZones([{}]);
+              setExpandedZone(0);
+            }}
+            style={{
+              padding: "5px 10px", borderRadius: "var(--border-radius)",
+              border: "1px dashed var(--border-color)", background: "transparent",
+              color: "var(--text-muted)", fontSize: 12, cursor: "pointer",
+            }}
+          >
+            Start empty
+          </button>
+        </div>
+        <div>
+          <label style={panelHintStyle}>When nothing is configured</label>
+          <select
+            value={touchscreen.idle === "blank" ? "blank" : "clock"}
+            onChange={(e) =>
+              onConfigChange({
+                ...config,
+                touchscreen: {
+                  ...touchscreen,
+                  idle: e.target.value === "blank" ? "blank" : undefined,
+                },
+              })
+            }
+            style={fieldInputStyle}
+          >
+            <option value="clock">Show a clock</option>
+            <option value="blank">Stay blank</option>
+          </select>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ maxWidth: 560 }}>
       <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
-        By default the touchscreen shows one zone per dial with its label and
-        live value. Add custom zones to take over the strip — zones split it
-        evenly, and tapping a zone runs its actions.
+        Custom zones own the whole strip (the per-dial readouts are replaced).
+        Zones split it evenly unless given pixel bounds; tapping a zone runs
+        its actions.
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
@@ -1909,6 +2517,51 @@ function TouchscreenZonesEditor({
                   borderTop: "1px solid var(--border-color)",
                   display: "flex", flexDirection: "column", gap: "var(--space-sm)",
                 }}>
+                  {onSimulate && (
+                    <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
+                      <span style={{ fontSize: 11, color: "var(--text-muted)", flex: 1 }}>Try it</span>
+                      <button
+                        onClick={() => onSimulate({ type: "touch", x: zoneCenter(i) })}
+                        title="Tap this zone for real"
+                        style={dialTestBtnStyle}
+                      >
+                        Tap
+                      </button>
+                      <button
+                        onClick={() =>
+                          onSimulate({ type: "touch", x: zoneCenter(i), touch_type: "long" })
+                        }
+                        title="Long-press this zone for real"
+                        style={dialTestBtnStyle}
+                      >
+                        Long
+                      </button>
+                      <button
+                        onClick={() =>
+                          onSimulate({
+                            type: "touch", x: zoneCenter(i) - 40,
+                            x_out: zoneCenter(i) + 40, touch_type: "drag",
+                          })
+                        }
+                        title="Swipe right across this zone"
+                        style={dialTestBtnStyle}
+                      >
+                        Swipe →
+                      </button>
+                      <button
+                        onClick={() =>
+                          onSimulate({
+                            type: "touch", x: zoneCenter(i) + 40,
+                            x_out: zoneCenter(i) - 40, touch_type: "drag",
+                          })
+                        }
+                        title="Swipe left across this zone"
+                        style={dialTestBtnStyle}
+                      >
+                        ← Swipe
+                      </button>
+                    </div>
+                  )}
                   <div>
                     <label style={panelHintStyle}>Label</label>
                     <input
@@ -1941,6 +2594,35 @@ function TouchscreenZonesEditor({
                       placeholder="Pick a state key to display..."
                     />
                   </div>
+                  <div style={{ display: "flex", gap: "var(--space-sm)" }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={panelHintStyle}>Icon (optional)</label>
+                      <IconPicker
+                        value={zone.icon ?? ""}
+                        onChange={(icon) => updateZone(i, { icon: icon || undefined })}
+                      />
+                    </div>
+                    <div style={{ width: 80 }}>
+                      <label style={panelHintStyle}>Unit</label>
+                      <input
+                        type="text"
+                        value={zone.unit ?? ""}
+                        placeholder="dB, %"
+                        onChange={(e) => updateZone(i, { unit: e.target.value || undefined })}
+                        style={fieldInputStyle}
+                      />
+                    </div>
+                  </div>
+                  <MeterFields
+                    meter={zone.meter}
+                    bounds={zone.drag_adjust}
+                    allowAuto
+                    onChange={(meter) => updateZone(i, { meter })}
+                  />
+                  <ZoneFeedbackFields
+                    feedback={zone.feedback}
+                    onChange={(feedback) => updateZone(i, { feedback })}
+                  />
                   <div style={{ display: "flex", alignItems: "center", gap: "var(--space-md)" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
                       <span style={panelHintStyle}>Background</span>
@@ -2049,6 +2731,41 @@ function TouchscreenZonesEditor({
                         ))}
                       </div>
                     )}
+                    {zone.drag_adjust?.key && (
+                      <div style={{ marginTop: "var(--space-xs)" }}>
+                        <label
+                          style={{
+                            display: "flex", alignItems: "center", gap: "var(--space-sm)",
+                            fontSize: "var(--font-size-sm)", cursor: "pointer",
+                            color: "var(--text-primary)",
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={!!zone.drag_adjust?.fader}
+                            onChange={(e) =>
+                              updateZone(i, {
+                                drag_adjust: {
+                                  ...(zone.drag_adjust ?? {}),
+                                  fader: e.target.checked || undefined,
+                                },
+                              })
+                            }
+                            disabled={
+                              zone.drag_adjust?.min === undefined ||
+                              zone.drag_adjust?.max === undefined
+                            }
+                            style={{ accentColor: "var(--accent)" }}
+                          />
+                          Touch fader
+                        </label>
+                        <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
+                          {zone.drag_adjust?.min === undefined || zone.drag_adjust?.max === undefined
+                            ? "Set Min and Max to enable: taps and swipes will jump straight to the touched position."
+                            : "Taps and swipes set the value to the touched position (replaces the tap actions for this zone)."}
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <button
                     onClick={() => removeZone(i)}
@@ -2091,6 +2808,118 @@ function TouchscreenZonesEditor({
 
 // ──── Info Strip Editor (secondary info screen) ────
 
+interface InfoItem {
+  label?: string;
+  source?: string;
+  key?: string;
+  text?: string;
+  icon?: string;
+  unit?: string;
+  meter?: MeterConfig | boolean;
+  feedback?: DisplayFeedback;
+  items?: InfoItem[];
+}
+
+// One info-screen display element: heading + live value (or static text)
+// + icon/unit/meter/feedback.
+function InfoItemFields({
+  item,
+  onChange,
+  showTextMode = true,
+}: {
+  item: InfoItem;
+  onChange: (item: InfoItem) => void;
+  showTextMode?: boolean;
+}) {
+  const update = (patch: Partial<InfoItem>) => onChange({ ...item, ...patch });
+  const isText = item.source === "text";
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+      {showTextMode && (
+        <div>
+          <label style={panelHintStyle}>Shows</label>
+          <select
+            value={isText ? "text" : "state"}
+            onChange={(e) =>
+              update(
+                e.target.value === "text"
+                  ? { source: "text" }
+                  : { source: "state" }
+              )
+            }
+            style={fieldInputStyle}
+          >
+            <option value="state">A live state value</option>
+            <option value="text">Static text</option>
+          </select>
+        </div>
+      )}
+      {isText ? (
+        <div>
+          <label style={panelHintStyle}>Text</label>
+          <input
+            type="text"
+            value={item.text ?? ""}
+            onChange={(e) => update({ text: e.target.value })}
+            placeholder="Text shown on the screen"
+            style={fieldInputStyle}
+          />
+        </div>
+      ) : (
+        <div>
+          <label style={panelHintStyle}>State key</label>
+          <VariableKeyPicker
+            value={item.key ?? ""}
+            onChange={(key) => update({ key })}
+            placeholder="Pick a state key to display..."
+          />
+        </div>
+      )}
+      <div>
+        <label style={panelHintStyle}>Heading (optional, shown above)</label>
+        <input
+          type="text"
+          value={item.label ?? ""}
+          onChange={(e) => update({ label: e.target.value || undefined })}
+          placeholder="e.g. Room Temp"
+          style={fieldInputStyle}
+        />
+      </div>
+      <div style={{ display: "flex", gap: "var(--space-sm)" }}>
+        <div style={{ flex: 1 }}>
+          <label style={panelHintStyle}>Icon (optional)</label>
+          <IconPicker
+            value={item.icon ?? ""}
+            onChange={(icon) => update({ icon: icon || undefined })}
+          />
+        </div>
+        <div style={{ width: 80 }}>
+          <label style={panelHintStyle}>Unit</label>
+          <input
+            type="text"
+            value={item.unit ?? ""}
+            placeholder="dB, %"
+            onChange={(e) => update({ unit: e.target.value || undefined })}
+            style={fieldInputStyle}
+          />
+        </div>
+      </div>
+      {!isText && (
+        <>
+          <MeterFields
+            meter={item.meter}
+            onChange={(meter) => update({ meter })}
+          />
+          <ZoneFeedbackFields
+            feedback={item.feedback}
+            onChange={(feedback) => update({ feedback })}
+          />
+        </>
+      )}
+    </div>
+  );
+}
+
 function InfoStripEditor({
   config,
   onConfigChange,
@@ -2098,21 +2927,33 @@ function InfoStripEditor({
   config: Record<string, unknown>;
   onConfigChange: (config: Record<string, unknown>) => void;
 }) {
-  const infoStrip =
-    (config.info_strip as { source?: string; key?: string; text?: string; label?: string } | undefined) ?? undefined;
-  const source = infoStrip ? (infoStrip.source ?? "state") : "";
+  const infoStrip = (config.info_strip as InfoItem | undefined) ?? undefined;
 
-  const update = (patch: Record<string, unknown>) => {
-    onConfigChange({ ...config, info_strip: { ...(infoStrip ?? {}), ...patch } });
+  // Mode mirrors the runtime: no config (or source "clock") = clock.
+  const mode = !infoStrip
+    ? "clock"
+    : infoStrip.source === "blank"
+      ? "blank"
+      : infoStrip.source === "clock"
+        ? "clock"
+        : Array.isArray(infoStrip.items) && infoStrip.items.length > 0
+          ? "items"
+          : infoStrip.source === "text"
+            ? "text"
+            : infoStrip.key || infoStrip.label || infoStrip.icon
+              ? "state"
+              : "clock";
+
+  const setInfoStrip = (value: InfoItem | undefined) => {
+    if (value === undefined) {
+      const { info_strip: _drop, ...rest } = config;
+      onConfigChange(rest);
+    } else {
+      onConfigChange({ ...config, info_strip: value });
+    }
   };
 
-  const inputStyle: React.CSSProperties = {
-    width: "100%", padding: "4px 6px",
-    borderRadius: "var(--border-radius)",
-    border: "1px solid var(--border-color)",
-    background: "var(--bg-surface)", color: "var(--text-primary)",
-    fontSize: "var(--font-size-sm)",
-  };
+  const items = infoStrip?.items ?? [];
 
   return (
     <div style={{ maxWidth: 560 }}>
@@ -2120,58 +2961,56 @@ function InfoStripEditor({
         <div>
           <label style={panelHintStyle}>Show</label>
           <select
-            value={source}
+            value={mode}
             onChange={(e) => {
               const next = e.target.value;
-              if (!next) {
-                const { info_strip: _drop, ...rest } = config;
-                onConfigChange(rest);
-              } else {
-                update({ source: next });
-              }
+              if (next === "clock") setInfoStrip(undefined);
+              else if (next === "blank") setInfoStrip({ source: "blank" });
+              else if (next === "text") setInfoStrip({ source: "text", text: infoStrip?.text ?? "" });
+              else if (next === "items") setInfoStrip({ items: [{}, {}] });
+              else setInfoStrip({ source: "state", key: infoStrip?.key ?? "" });
             }}
-            style={inputStyle}
+            style={fieldInputStyle}
           >
-            <option value="">Nothing</option>
+            <option value="clock">A clock (default)</option>
             <option value="state">A live state value</option>
             <option value="text">Static text</option>
+            <option value="items">Two items side by side</option>
+            <option value="blank">Nothing (blank)</option>
           </select>
         </div>
 
-        {source === "state" && (
-          <div>
-            <label style={panelHintStyle}>State key</label>
-            <VariableKeyPicker
-              value={infoStrip?.key ?? ""}
-              onChange={(key) => update({ key })}
-              placeholder="Pick a state key to display..."
-            />
-          </div>
+        {(mode === "state" || mode === "text") && infoStrip && (
+          <InfoItemFields
+            item={infoStrip}
+            onChange={(item) => setInfoStrip({ ...item })}
+            showTextMode={false}
+          />
         )}
-        {source === "text" && (
-          <div>
-            <label style={panelHintStyle}>Text</label>
-            <input
-              type="text"
-              value={infoStrip?.text ?? ""}
-              onChange={(e) => update({ text: e.target.value })}
-              placeholder="Text shown on the screen"
-              style={inputStyle}
-            />
-          </div>
-        )}
-        {source && (
-          <div>
-            <label style={panelHintStyle}>Heading (optional, shown above)</label>
-            <input
-              type="text"
-              value={infoStrip?.label ?? ""}
-              onChange={(e) => update({ label: e.target.value || undefined })}
-              placeholder="e.g. Room Temp"
-              style={inputStyle}
-            />
-          </div>
-        )}
+
+        {mode === "items" &&
+          [0, 1].map((i) => (
+            <div
+              key={i}
+              style={{
+                border: "1px solid var(--border-color)",
+                borderRadius: "var(--border-radius)",
+                padding: "var(--space-sm)",
+              }}
+            >
+              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", marginBottom: "var(--space-xs)" }}>
+                {i === 0 ? "Left item" : "Right item"}
+              </div>
+              <InfoItemFields
+                item={items[i] ?? {}}
+                onChange={(item) => {
+                  const next = [items[0] ?? {}, items[1] ?? {}];
+                  next[i] = item;
+                  setInfoStrip({ ...(infoStrip ?? {}), items: next });
+                }}
+              />
+            </div>
+          ))}
       </div>
     </div>
   );
@@ -3384,6 +4223,24 @@ function DeckWorkbench({
   const selectedKeyIndex = selection.kind === "key" ? selection.index : null;
   const totalKeys = keyCount + touchKeyCount;
 
+  // Strip zone pixel bounds (mirrors the runtime: explicit x/w, else an even
+  // split; default = one zone per dial). Drives canvas clicks + touch echo.
+  const stripZones =
+    ((viewConfig.touchscreen as { zones?: TouchZone[] } | undefined)?.zones) ?? [];
+  const zoneBounds = useMemo(() => {
+    const count = stripZones.length > 0 ? stripZones.length : dialCount;
+    if (count <= 0) return [];
+    const slot = 800 / count;
+    if (stripZones.length > 0) {
+      return stripZones.map((z, i) => ({
+        x: typeof z.x === "number" ? z.x : i * slot,
+        w: typeof z.w === "number" ? z.w : slot,
+      }));
+    }
+    return Array.from({ length: count }, (_, i) => ({ x: i * slot, w: slot }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewConfig.touchscreen, dialCount]);
+
   const inspector =
     selection.kind === "key" && selectedKeyIndex !== null ? (
       <ControlAssignmentPanel
@@ -3391,6 +4248,7 @@ function DeckWorkbench({
         allowedActions={SURFACE_ACTIONS}
         navigateOptions={navigateOptions}
         colorOnly={touchKeyCount > 0 && selectedKeyIndex >= keyCount}
+        visualDeck={isVisual}
         keyCount={keyCount}
         assignment={getAssignment(selectedKeyIndex, editorPage)}
         onUpdate={(updates) => updateAssignment(selectedKeyIndex, editorPage, updates)}
@@ -3427,6 +4285,11 @@ function DeckWorkbench({
         onClear={() => clearDial(selection.index)}
         onClose={() => setSelection({ kind: "deck" })}
         onSimulate={connected ? simulate : undefined}
+        onOpenStrip={
+          hasTouchscreen
+            ? () => setSelection({ kind: "strip", zone: null })
+            : undefined
+        }
       />
     ) : selection.kind === "strip" ? (
       <RailPanel title="Touch Strip" onClose={() => setSelection({ kind: "deck" })}>
@@ -3436,6 +4299,9 @@ function DeckWorkbench({
           allowedActions={SURFACE_ACTIONS}
           navigateOptions={navigateOptions}
           initialExpanded={selection.zone}
+          dials={dials}
+          dialCount={dialCount}
+          onSimulate={connected ? simulate : undefined}
         />
       </RailPanel>
     ) : selection.kind === "screen" ? (
@@ -3491,6 +4357,9 @@ function DeckWorkbench({
         virtualModels={staticLayout.virtual_models ?? []}
         deviceLabel={staticLayout.device_label || "device"}
         onAddVirtual={addVirtual}
+        hasTouchscreen={hasTouchscreen}
+        customZoneCount={stripZones.length}
+        onOpenStrip={() => setSelection({ kind: "strip", zone: null })}
       />
     );
 
@@ -3584,9 +4453,8 @@ function DeckWorkbench({
               currentPage={editorPage}
               getAssignment={getAssignment}
               getDial={getDial}
-              customZoneCount={
-                (((viewConfig.touchscreen as { zones?: TouchZone[] } | undefined)?.zones) ?? []).length
-              }
+              customZoneCount={stripZones.length}
+              zoneBounds={zoneBounds}
               onSelect={setSelection}
               onSimulate={connected ? simulate : undefined}
             />
@@ -4059,6 +4927,7 @@ function BezelCanvas({
   getAssignment,
   getDial,
   customZoneCount,
+  zoneBounds,
   onSelect,
   onSimulate,
 }: {
@@ -4083,10 +4952,12 @@ function BezelCanvas({
   getAssignment: (index: number, page?: number) => ButtonAssignment | undefined;
   getDial: (index: number) => DialAssignment | undefined;
   customZoneCount: number;
+  zoneBounds: { x: number; w: number }[];
   onSelect: (sel: WorkbenchSelection) => void;
   onSimulate?: (payload: Record<string, unknown>) => void;
 }) {
   const gridWidth = columns * CANVAS_KEY_PX + (columns - 1) * CANVAS_GAP;
+  const [stripHover, setStripHover] = useState(false);
 
   return (
     <div
@@ -4194,21 +5065,27 @@ function BezelCanvas({
               onSimulate?.({ type: "touch", x });
               return;
             }
+            const hit = zoneBounds.findIndex((b) => x >= b.x && x < b.x + b.w);
             if (customZoneCount > 0) {
-              const zone = Math.min(
-                customZoneCount - 1,
-                Math.floor(x / (800 / customZoneCount))
-              );
+              const zone =
+                hit >= 0 ? hit : Math.min(
+                  customZoneCount - 1,
+                  Math.floor(x / (800 / customZoneCount))
+                );
               onSelect({ kind: "strip", zone });
             } else if (dialCount > 0) {
               // Default zones are the dials' readouts — clicking one edits
               // that dial.
-              const dial = Math.min(dialCount - 1, Math.floor(x / (800 / dialCount)));
+              const dial =
+                hit >= 0 ? Math.min(hit, dialCount - 1)
+                  : Math.min(dialCount - 1, Math.floor(x / (800 / dialCount)));
               onSelect({ kind: "dial", index: dial });
             } else {
               onSelect({ kind: "strip", zone: null });
             }
           }}
+          onMouseEnter={() => setStripHover(true)}
+          onMouseLeave={() => setStripHover(false)}
           title="Touch strip — click to edit, Shift+click to tap it"
           style={{
             width: gridWidth,
@@ -4219,15 +5096,14 @@ function BezelCanvas({
             border:
               selection.kind === "strip"
                 ? "2px solid var(--accent)"
-                : inputFlash?.kind === "touch"
-                  ? "2px solid #f59e0b"
-                  : "1px solid #2a2a3a",
+                : "1px solid #2a2a3a",
             cursor: "pointer",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             color: "#445",
             fontSize: 10,
+            position: "relative",
           }}
         >
           {liveImagesValid && images["touchscreen"] ? (
@@ -4240,6 +5116,40 @@ function BezelCanvas({
           ) : (
             "touch strip"
           )}
+          {/* Hovering reveals the zone boundaries — the strip is editable. */}
+          {stripHover && zoneBounds.length > 1 &&
+            zoneBounds.slice(1).map((b, i) => (
+              <div
+                key={i}
+                style={{
+                  position: "absolute",
+                  left: `${(b.x / 800) * 100}%`,
+                  top: 4, bottom: 4, width: 1,
+                  background: "rgba(255,255,255,0.25)",
+                  pointerEvents: "none",
+                }}
+              />
+            ))}
+          {/* A real touch on the hardware flashes the touched zone. */}
+          {inputFlash?.kind === "touch" && (() => {
+            const b =
+              zoneBounds.find(
+                (zb) => inputFlash.index >= zb.x && inputFlash.index < zb.x + zb.w
+              ) ?? { x: 0, w: 800 };
+            return (
+              <div
+                style={{
+                  position: "absolute",
+                  left: `${(b.x / 800) * 100}%`,
+                  width: `${(b.w / 800) * 100}%`,
+                  top: 0, bottom: 0,
+                  border: "2px solid #f59e0b",
+                  borderRadius: 3,
+                  pointerEvents: "none",
+                }}
+              />
+            );
+          })()}
         </div>
       )}
 
@@ -4538,6 +5448,9 @@ function DeckInspector({
   virtualModels,
   deviceLabel,
   onAddVirtual,
+  hasTouchscreen = false,
+  customZoneCount = 0,
+  onOpenStrip,
 }: {
   serial: string;
   name: string;
@@ -4561,6 +5474,10 @@ function DeckInspector({
   virtualModels: string[];
   deviceLabel: string;
   onAddVirtual: (model: string) => void;
+  // Touch strip summary row (decks that have one).
+  hasTouchscreen?: boolean;
+  customZoneCount?: number;
+  onOpenStrip?: () => void;
 }) {
   const [confirmShared, setConfirmShared] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
@@ -4634,6 +5551,35 @@ function DeckInspector({
           <CopyButton value={serial} title="Copy serial" />
         </div>
       </div>
+
+      {/* Touch strip — what it's showing, and the way into the zone editor */}
+      {hasTouchscreen && onOpenStrip && (
+        <div>
+          <label style={panelLabelStyle}>Touch Strip</label>
+          <div
+            style={{
+              display: "flex", alignItems: "center",
+              justifyContent: "space-between", gap: "var(--space-sm)",
+            }}
+          >
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+              {customZoneCount > 0
+                ? `${customZoneCount} custom zone${customZoneCount === 1 ? "" : "s"}`
+                : "One readout per dial"}
+            </span>
+            <button
+              onClick={onOpenStrip}
+              style={{
+                padding: "2px 10px", borderRadius: "var(--border-radius)",
+                background: "var(--bg-hover)", color: "var(--text-secondary)",
+                fontSize: 11, cursor: "pointer",
+              }}
+            >
+              Customize…
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Brightness — a property of this unit, not of any layout */}
       {connected && (
