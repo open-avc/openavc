@@ -242,6 +242,8 @@ Cancel all active timers at once. Returns the number of timers cancelled.
 count = cancel_all_timers()
 ```
 
+Timer callbacks get the same protections as event handlers: an async callback is bounded by the handler timeout, and a callback that fails or times out emits a `script.error` event (`script_id`, `handler`, `timer_id`, `error`, `traceback`) instead of failing silently. Sync callbacks run inline on the control loop — keep them quick (see the [Scripting Guide](scripting-guide.md)).
+
 ---
 
 ## Condition Helper

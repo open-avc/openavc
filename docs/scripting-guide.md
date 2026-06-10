@@ -58,6 +58,8 @@ A handler can be a plain `def` (synchronous) or an `async def`. Prefer `async de
 
 A synchronous handler runs **inline on the control loop**: nothing else (device commands, the touch panel, other handlers) runs until it returns. Keep sync handlers to quick, in-memory work like `state.set(...)` or `log.info(...)`. Never call `time.sleep()`, a blocking network request, or any long loop in a sync handler — it will freeze the whole system until it finishes. If you need to wait, use an async handler with `await delay(seconds)`.
 
+The same rules apply to `after()`/`every()` timer callbacks: an async callback gets the built-in timeout, a sync callback runs inline and must stay quick. Either way, a callback that fails or times out raises a `script.error` event rather than failing silently.
+
 ```python
 # Fine: quick, synchronous reaction
 @on_state_change("var.room_active")

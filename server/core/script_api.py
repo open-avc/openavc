@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import sys
+import traceback
 from contextvars import ContextVar
 from typing import Any, Callable, TYPE_CHECKING
 
@@ -196,7 +197,13 @@ class _MacroProxy:
     async def execute(self, macro_id: str) -> None:
         if self._engine is None:
             raise RuntimeError("Script API not configured — macro proxy not bound")
-        await self._engine.execute(macro_id)
+        # Carry the macro call chain across the script boundary: a handler
+        # task spawned by a running macro's steps inherits that macro's
+        # chain via context, so a script that re-enters the same macro is
+        # caught by the engine's circular/depth guards instead of resetting
+        # them. Outside any macro this is an empty chain (normal behavior).
+        from server.core.macro_engine import active_call_chain
+        await self._engine.execute(macro_id, _call_chain=active_call_chain())
 
 
 class _LogProxy:
@@ -457,6 +464,57 @@ async def delay(seconds: float) -> None:
     await asyncio.sleep(seconds)
 
 
+async def _emit_timer_error(
+    timer_id: str, handler_name: str, error: str, tb: str,
+) -> None:
+    """Emit ``script.error`` for a timer callback failure; never raises."""
+    try:
+        await events.emit("script.error", {
+            "script_id": _timer_owners.get(timer_id) or "",
+            "handler": handler_name,
+            "timer_id": timer_id,
+            "error": error,
+            "traceback": tb,
+        })
+    except Exception:  # Catch-all: error event emission must not raise
+        pass
+
+
+async def _run_timer_callback(
+    timer_id: str, kind: str, callback: Callable, args: tuple,
+) -> None:
+    """Run one timer callback with the same protections event handlers get:
+    async bodies are bounded by the handler timeout, and any failure is
+    re-emitted as ``script.error`` instead of vanishing into the log.
+
+    Synchronous callbacks run inline on the event loop — same documented
+    constraint as sync event handlers (the state/devices/events proxies
+    assume the loop thread, so thread offload would break them). Keep timer
+    callbacks short or make them async.
+    """
+    from server.core.script_engine import ScriptEngine
+
+    handler_name = getattr(callback, "__name__", "anonymous")
+    try:
+        result = callback(*args)
+        if asyncio.iscoroutine(result):
+            await asyncio.wait_for(result, timeout=ScriptEngine.HANDLER_TIMEOUT)
+    except asyncio.CancelledError:
+        raise
+    except asyncio.TimeoutError:
+        msg = (
+            f"{kind}() callback '{handler_name}' timed out after "
+            f"{ScriptEngine.HANDLER_TIMEOUT}s (timer {timer_id})"
+        )
+        _log.error(msg)
+        await _emit_timer_error(timer_id, handler_name, msg, "")
+    except Exception as exc:  # Catch-all: isolates user callback errors from timer
+        _log.exception(f"Error in {kind}() timer {timer_id}")
+        await _emit_timer_error(
+            timer_id, handler_name, str(exc), traceback.format_exc()
+        )
+
+
 def after(seconds: float, callback: Callable, *args: Any) -> str:
     """Run *callback* once after *seconds*. Returns timer ID for cancellation."""
     timer_id = _next_timer_id()
@@ -464,13 +522,9 @@ def after(seconds: float, callback: Callable, *args: Any) -> str:
     async def _run():
         try:
             await asyncio.sleep(seconds)
-            result = callback(*args)
-            if asyncio.iscoroutine(result):
-                await result
+            await _run_timer_callback(timer_id, "after", callback, args)
         except asyncio.CancelledError:
             pass
-        except Exception:  # Catch-all: isolates user callback errors from timer
-            _log.exception(f"Error in after() timer {timer_id}")
         finally:
             _forget_timer(timer_id)
 
@@ -486,12 +540,9 @@ def every(seconds: float, callback: Callable, *args: Any) -> str:
         try:
             while True:
                 await asyncio.sleep(seconds)
-                try:
-                    result = callback(*args)
-                    if asyncio.iscoroutine(result):
-                        await result
-                except Exception:  # Catch-all: isolates user callback errors from timer loop
-                    _log.exception(f"Error in every() timer {timer_id}")
+                # _run_timer_callback isolates callback errors, so one bad
+                # tick never stops the interval loop.
+                await _run_timer_callback(timer_id, "every", callback, args)
         except asyncio.CancelledError:
             pass
         finally:

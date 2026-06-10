@@ -560,3 +560,131 @@ async def test_cancel_script_timers_is_scoped():
     assert t_beta in script_api._active_timers  # beta untouched
 
     script_api.cancel_all_timers()
+
+
+# --- Macro call chain survives the script boundary ---
+
+
+async def test_macro_chain_survives_script_boundary(subsystems):
+    """A macro that drives a handler which re-enters the same macro via the
+    script proxy must hit the engine's circular guard, not restart the chain."""
+    from server.core.macro_engine import MacroEngine
+
+    state, events, devices = subsystems
+    macro_engine = MacroEngine(state, events, devices)
+    macro_engine.load_macros([{
+        "id": "loop_macro",
+        "name": "Loop",
+        "steps": [{"action": "event.emit", "event": "loop.go"}],
+    }])
+
+    proxy = script_api._MacroProxy()
+    proxy._bind(macro_engine)
+
+    runs: list[int] = []
+    reentry_errors: list[str] = []
+
+    async def handler(event, payload):
+        runs.append(1)
+        if len(runs) > 15:
+            return  # safety brake against pre-fix runaway re-entry
+        try:
+            await proxy.execute("loop_macro")
+        except ValueError as e:
+            reentry_errors.append(str(e))
+
+    events.on("loop.go", handler)
+    await macro_engine.execute("loop_macro")
+    await asyncio.sleep(0.05)
+
+    assert len(runs) == 1, f"macro re-entered {len(runs)} times across the script boundary"
+    assert reentry_errors and "circular" in reentry_errors[0]
+
+
+async def test_macro_proxy_outside_macro_context_unaffected(subsystems):
+    """macros.execute from a plain handler (no active macro) still works."""
+    from server.core.macro_engine import MacroEngine
+
+    state, events, devices = subsystems
+    macro_engine = MacroEngine(state, events, devices)
+    macro_engine.load_macros([{
+        "id": "plain",
+        "name": "Plain",
+        "steps": [{"action": "state.set", "key": "var.ran", "value": True}],
+    }])
+    proxy = script_api._MacroProxy()
+    proxy._bind(macro_engine)
+
+    await proxy.execute("plain")
+    assert state.get("var.ran") is True
+
+
+# --- Timer callback protections (script.error parity with event handlers) ---
+
+
+class _EmitRecorder:
+    def __init__(self):
+        self.emitted = []
+
+    async def emit(self, name, payload=None):
+        self.emitted.append((name, payload))
+
+
+async def test_after_async_callback_error_emits_script_error(monkeypatch):
+    recorder = _EmitRecorder()
+    monkeypatch.setattr(script_api, "events", recorder)
+
+    async def boom():
+        raise RuntimeError("kaput")
+
+    script_api.after(0.01, boom)
+    await asyncio.sleep(0.15)
+
+    errors = [p for n, p in recorder.emitted if n == "script.error"]
+    assert len(errors) == 1
+    assert errors[0]["handler"] == "boom"
+    assert "kaput" in errors[0]["error"]
+    assert "RuntimeError" in errors[0]["traceback"]
+
+
+async def test_after_async_callback_timeout_emits_script_error(monkeypatch):
+    """A never-finishing async timer body is bounded by the handler timeout."""
+    recorder = _EmitRecorder()
+    monkeypatch.setattr(script_api, "events", recorder)
+    monkeypatch.setattr(ScriptEngine, "HANDLER_TIMEOUT", 0.05)
+
+    async def hang():
+        await asyncio.Event().wait()
+
+    script_api.after(0.01, hang)
+    await asyncio.sleep(0.3)
+
+    errors = [p for n, p in recorder.emitted if n == "script.error"]
+    assert len(errors) == 1
+    assert "timed out" in errors[0]["error"]
+
+
+async def test_every_sync_callback_error_emits_and_keeps_ticking(monkeypatch):
+    """A sync callback that raises surfaces script.error each tick and never
+    kills the interval loop."""
+    recorder = _EmitRecorder()
+    monkeypatch.setattr(script_api, "events", recorder)
+
+    count = 0
+
+    def tick():
+        nonlocal count
+        count += 1
+        raise ValueError("tick failed")
+
+    timer_id = script_api.every(0.02, tick)
+    try:
+        await asyncio.sleep(0.15)
+    finally:
+        script_api.cancel_timer(timer_id)
+
+    assert count >= 2, "interval loop died after a callback error"
+    errors = [p for n, p in recorder.emitted if n == "script.error"]
+    assert len(errors) >= 2
+    assert errors[0]["timer_id"] == timer_id
+    assert "tick failed" in errors[0]["error"]

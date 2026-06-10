@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from contextvars import ContextVar
 from typing import Any, Awaitable, Callable, TYPE_CHECKING
 
 from server.core.condition_eval import eval_operator
@@ -25,6 +26,22 @@ log = get_logger(__name__)
 
 PluginActionHandler = Callable[[dict[str, Any], dict[str, Any]], Awaitable[None]]
 BroadcastWS = Callable[[dict[str, Any]], Awaitable[None]]
+
+# The call chain of the macro currently executing in this task context.
+# The in-engine ``_call_chain`` argument only covers direct macro->macro
+# nesting; tasks spawned during step execution (event-bus handler dispatch,
+# state-change handler dispatch — i.e. script handlers) inherit this
+# ContextVar, so a script that re-enters via ``macros.execute()`` carries
+# the chain across the script boundary instead of resetting the circular/
+# depth guards.
+_active_call_chain: ContextVar[frozenset[str]] = ContextVar(
+    "openavc_macro_call_chain", default=frozenset()
+)
+
+
+def active_call_chain() -> frozenset[str]:
+    """Return the macro call chain active in the current task context."""
+    return _active_call_chain.get()
 
 
 class MacroEngine:
@@ -225,6 +242,10 @@ class MacroEngine:
                 f"Macro '{macro_id}' blocked — max nesting depth ({self._max_depth}) reached"
             )
         _call_chain = _call_chain | {macro_id}
+        # Publish the chain to this task's context so handler tasks spawned
+        # by this macro's steps (and any macros.execute() they make) inherit
+        # it — see active_call_chain().
+        _chain_token = _active_call_chain.set(_call_chain)
 
         name = macro.get("name", macro_id)
         steps = macro.get("steps", [])
@@ -289,6 +310,7 @@ class MacroEngine:
                 {"macro_id": macro_id, "name": name, "error": str(e)},
             )
         finally:
+            _active_call_chain.reset(_chain_token)
             if task is not None:
                 task_set = self._running.get(macro_id)
                 if task_set is not None:
