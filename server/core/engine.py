@@ -168,7 +168,11 @@ class Engine:
         self._start_time = time.time()
 
         # Ensure system.json exists in data directory
-        from server.system_config import get_system_config, migrate_legacy_repos
+        from server.system_config import (
+            get_system_config,
+            migrate_legacy_project_dir,
+            migrate_legacy_repos,
+        )
         sys_config = get_system_config()
         sys_config.ensure_file()
 
@@ -180,6 +184,15 @@ class Engine:
             migrate_legacy_repos()
         except Exception:  # never block startup on the migration
             log.exception("migrate_legacy_repos failed")
+
+        # Same one-shot treatment for the legacy default project location
+        # (APP_DIR/projects). Must run before the project load, cloud config
+        # read, and ISC instance-id read below so they all see the moved
+        # directory. No-op when OPENAVC_PROJECT or OPENAVC_DATA_DIR is set.
+        try:
+            migrate_legacy_project_dir()
+        except Exception:  # never block startup on the migration
+            log.exception("migrate_legacy_project_dir failed")
 
         # Set system state keys
         from server.updater.platform import detect_deployment_type

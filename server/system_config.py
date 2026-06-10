@@ -362,6 +362,81 @@ def migrate_legacy_repos() -> None:
                 pass
 
 
+def migrate_legacy_project_dir(
+    legacy_dir: Path | None = None,
+    target_dir: Path | None = None,
+) -> None:
+    """Move the legacy default project directory (APP_DIR/projects) into data_dir.
+
+    The default project path used to resolve to APP_DIR/projects/default/
+    project.avc; it now lives under get_data_dir()/projects like every other
+    piece of persistent user data (and like every packaged deployment already
+    configures via OPENAVC_PROJECT). The project directory carries much more
+    than project.avc — state.json, cloud.json, .instance_id, scripts/,
+    assets/, themes/, and backups/ all live beside it — so the whole tree is
+    moved with a single os.rename: either everything moves atomically or
+    nothing changes.
+
+    Skipped entirely when OPENAVC_PROJECT or OPENAVC_DATA_DIR is set: an
+    explicit path is the operator's choice, and files must never be moved out
+    from under it.
+
+    On any failure the directory is left untouched and a warning explains how
+    to finish the move manually.
+    """
+    if os.environ.get("OPENAVC_PROJECT") or os.environ.get("OPENAVC_DATA_DIR"):
+        return
+
+    legacy = legacy_dir if legacy_dir is not None else APP_DIR / "projects"
+    target = target_dir if target_dir is not None else get_data_dir() / "projects"
+
+    try:
+        if legacy.resolve() == target.resolve():
+            return
+    except OSError:
+        if legacy == target:
+            return
+
+    if not legacy.is_dir():
+        return
+
+    try:
+        if not any(legacy.iterdir()):
+            return
+    except OSError as e:
+        log.warning("Cannot read legacy projects directory at %s: %s", legacy, e)
+        return
+
+    if target.exists():
+        try:
+            if any(target.iterdir()):
+                log.warning(
+                    "Legacy projects directory found at %s, but %s already has "
+                    "content; leaving both in place. Merge them manually (with "
+                    "the server stopped) or set OPENAVC_PROJECT to the "
+                    "project.avc you want to load.",
+                    legacy, target,
+                )
+                return
+            # Empty directory at the target would make the rename fail.
+            target.rmdir()
+        except OSError as e:
+            log.warning("Cannot inspect projects directory at %s: %s", target, e)
+            return
+
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        legacy.rename(target)
+        log.info("Migrated projects directory from %s to %s", legacy, target)
+    except OSError as e:
+        log.warning(
+            "Could not move projects directory from %s to %s: %s. Nothing was "
+            "changed — your data is still at %s. Move it to %s manually (with "
+            "the server stopped), or set OPENAVC_PROJECT to its project.avc.",
+            legacy, target, e, legacy, target,
+        )
+
+
 def _parse_env_value(raw: str, target_type: type) -> Any:
     """Parse an environment variable string to the target type."""
     if target_type is bool:

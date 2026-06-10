@@ -13,8 +13,13 @@ from server.system_config import get_system_config, get_data_dir, APP_DIR
 
 # Paths
 BASE_DIR = APP_DIR
+# The default project lives in the data directory with the rest of the
+# persistent user data (driver_repo, plugin_repo, saved_projects). Packaged
+# deployments set OPENAVC_PROJECT explicitly; this default covers development
+# checkouts and bare runs. Engine startup migrates the pre-data_dir location
+# (APP_DIR/projects) via migrate_legacy_project_dir().
 PROJECT_PATH = os.environ.get(
-    "OPENAVC_PROJECT", str(BASE_DIR / "projects" / "default" / "project.avc")
+    "OPENAVC_PROJECT", str(get_data_dir() / "projects" / "default" / "project.avc")
 )
 
 # Project Library (saved project files — lives in the data directory, not the app directory,

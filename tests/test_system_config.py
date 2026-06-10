@@ -22,6 +22,7 @@ from server.system_config import (
     _resolve_app_dir,
     _resolve_install_dir,
     get_system_config,
+    migrate_legacy_project_dir,
     reset_system_config,
 )
 
@@ -457,3 +458,112 @@ class TestMigrateLegacyRepos:
              patch.object(sc, "DRIVER_REPO_DIR", tmp_path / "data" / "driver_repo"):
             sc.migrate_legacy_repos()
         assert (shared / "p.py").read_text() == "ok"
+
+
+class TestMigrateLegacyProjectDir:
+    """The legacy default project dir (APP_DIR/projects) moves into data_dir.
+
+    The project directory carries state.json, cloud.json, .instance_id,
+    scripts/, and assets/ alongside project.avc — the migration must move the
+    whole tree atomically or leave everything untouched.
+    """
+
+    def _clear_env(self, monkeypatch):
+        monkeypatch.delenv("OPENAVC_PROJECT", raising=False)
+        monkeypatch.delenv("OPENAVC_DATA_DIR", raising=False)
+
+    def _make_legacy(self, root: Path) -> Path:
+        legacy = root / "projects"
+        default = legacy / "default"
+        (default / "scripts").mkdir(parents=True)
+        (default / "assets").mkdir()
+        (default / "project.avc").write_text('{"project": {}}')
+        (default / "state.json").write_text("{}")
+        (default / "cloud.json").write_text('{"enabled": true}')
+        (default / ".instance_id").write_text("abc-123")
+        (default / "scripts" / "startup.py").write_text("pass\n")
+        (default / "assets" / "logo.png").write_bytes(b"\x89PNG")
+        return legacy
+
+    def test_moves_whole_tree(self, tmp_path, monkeypatch):
+        self._clear_env(monkeypatch)
+        legacy = self._make_legacy(tmp_path)
+        target = tmp_path / "data" / "projects"
+
+        migrate_legacy_project_dir(legacy, target)
+
+        assert not legacy.exists()
+        d = target / "default"
+        assert json.loads((d / "project.avc").read_text()) == {"project": {}}
+        assert (d / "cloud.json").read_text() == '{"enabled": true}'
+        assert (d / ".instance_id").read_text() == "abc-123"
+        assert (d / "state.json").read_text() == "{}"
+        assert (d / "scripts" / "startup.py").read_text() == "pass\n"
+        assert (d / "assets" / "logo.png").read_bytes() == b"\x89PNG"
+
+    def test_noop_when_legacy_missing(self, tmp_path, monkeypatch):
+        self._clear_env(monkeypatch)
+        target = tmp_path / "data" / "projects"
+        migrate_legacy_project_dir(tmp_path / "projects", target)
+        assert not target.exists()
+
+    def test_noop_when_legacy_empty(self, tmp_path, monkeypatch):
+        self._clear_env(monkeypatch)
+        legacy = tmp_path / "projects"
+        legacy.mkdir()
+        target = tmp_path / "data" / "projects"
+        migrate_legacy_project_dir(legacy, target)
+        assert legacy.exists()
+        assert not target.exists()
+
+    def test_skipped_when_project_env_set(self, tmp_path, monkeypatch):
+        # An explicit OPENAVC_PROJECT means the operator controls the path —
+        # never move files out from under it.
+        self._clear_env(monkeypatch)
+        monkeypatch.setenv("OPENAVC_PROJECT", str(tmp_path / "x" / "project.avc"))
+        legacy = self._make_legacy(tmp_path)
+        target = tmp_path / "data" / "projects"
+        migrate_legacy_project_dir(legacy, target)
+        assert (legacy / "default" / "project.avc").exists()
+        assert not target.exists()
+
+    def test_skipped_when_data_dir_env_set(self, tmp_path, monkeypatch):
+        # OPENAVC_DATA_DIR redirects the target (the test suite pins it to a
+        # temp dir); migrating there would strand or destroy the real data.
+        self._clear_env(monkeypatch)
+        monkeypatch.setenv("OPENAVC_DATA_DIR", str(tmp_path / "data"))
+        legacy = self._make_legacy(tmp_path)
+        target = tmp_path / "data" / "projects"
+        migrate_legacy_project_dir(legacy, target)
+        assert (legacy / "default" / "project.avc").exists()
+        assert not target.exists()
+
+    def test_preserves_populated_destination(self, tmp_path, monkeypatch):
+        self._clear_env(monkeypatch)
+        legacy = self._make_legacy(tmp_path)
+        target = tmp_path / "data" / "projects"
+        (target / "default").mkdir(parents=True)
+        (target / "default" / "project.avc").write_text('{"existing": true}')
+
+        migrate_legacy_project_dir(legacy, target)
+
+        # Both left in place, nothing overwritten
+        assert (target / "default" / "project.avc").read_text() == '{"existing": true}'
+        assert (legacy / "default" / "cloud.json").exists()
+
+    def test_replaces_empty_destination_dir(self, tmp_path, monkeypatch):
+        self._clear_env(monkeypatch)
+        legacy = self._make_legacy(tmp_path)
+        target = tmp_path / "data" / "projects"
+        target.mkdir(parents=True)
+
+        migrate_legacy_project_dir(legacy, target)
+
+        assert not legacy.exists()
+        assert (target / "default" / "project.avc").exists()
+
+    def test_same_path_short_circuits(self, tmp_path, monkeypatch):
+        self._clear_env(monkeypatch)
+        shared = self._make_legacy(tmp_path)
+        migrate_legacy_project_dir(shared, shared)
+        assert (shared / "default" / "project.avc").exists()
