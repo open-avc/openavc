@@ -44,6 +44,10 @@ interface SurfaceLayout {
   controls?: ControlDef[];
   supports_pages?: boolean;
   max_pages?: number;
+  // Device-backed surfaces that can also be reached over the network
+  // (plugin serves ext/network/scan + ext/network/test and reads a
+  // top-level network_decks config array).
+  network?: boolean;
   rows_label?: string;
   columns_label?: string;
   rows_state_pattern?: string;
@@ -184,7 +188,13 @@ export function SurfaceConfigurator({
     (config.decks as Record<string, Record<string, unknown>> | undefined) ?? {};
   const deckNames = (config.deck_names as Record<string, string> | undefined) ?? {};
   const rememberedSerials = [
-    ...new Set([...Object.keys(decksMap), ...Object.keys(deckNames)]),
+    ...new Set([
+      ...Object.keys(decksMap),
+      ...Object.keys(deckNames),
+      ...networkEntriesOf(config)
+        .map((e) => e.serial)
+        .filter((s): s is string => Boolean(s)),
+    ]),
   ].filter((s) => !deckSerials.includes(s));
   const knownSerials = [...deckSerials, ...rememberedSerials];
 
@@ -245,9 +255,13 @@ export function SurfaceConfigurator({
       // With no unit at all — connected or remembered — an honest empty
       // state instead of an editable grid for hardware that isn't there.
       if (staticLayout.requires_device) {
-        if (knownSerials.length === 0) {
+        // A configured network deck counts as a known unit even before its
+        // first connect — the workbench shows its status card instead of
+        // pretending nothing exists.
+        if (knownSerials.length === 0 && networkEntriesOf(config).length === 0) {
           return (
             <NoDeviceState
+              pluginId={pluginId}
               layout={staticLayout}
               config={config}
               onConfigChange={onConfigChange}
@@ -1517,11 +1531,319 @@ function addVirtualUnit(
   };
 }
 
+// ──── Network decks ────
+//
+// Decks reached over the network (Elgato Network Dock, Stream Deck Studio
+// Ethernet) are explicit opt-in: an entry in the plugin's network_decks
+// config array. The dialog below finds them via the plugin's scan route
+// (where multicast discovery works) and always offers add-by-address.
+
+interface NetworkDeckEntry {
+  host?: string;
+  port?: number;
+  serial?: string;
+}
+
+function networkEntriesOf(config: Record<string, unknown>): NetworkDeckEntry[] {
+  const raw = config.network_decks;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (e): e is NetworkDeckEntry =>
+      Boolean(e) && typeof e === "object" && typeof (e as NetworkDeckEntry).host === "string"
+  );
+}
+
+function networkEntryKey(e: NetworkDeckEntry): string {
+  return `${e.host}:${e.port ?? 5343}`;
+}
+
+interface NetworkScanResult {
+  host: string;
+  port: number;
+  name: string;
+  serial: string;
+  kind: string;
+  already_added: boolean;
+}
+
+function NetworkDeckDialog({
+  pluginId,
+  config,
+  onConfigChange,
+  onClose,
+}: {
+  pluginId: string;
+  config: Record<string, unknown>;
+  onConfigChange: (config: Record<string, unknown>) => void;
+  onClose: () => void;
+}) {
+  const [found, setFound] = useState<NetworkScanResult[] | null>(null);
+  const [browseAvailable, setBrowseAvailable] = useState(true);
+  const [host, setHost] = useState("");
+  const [port, setPort] = useState("5343");
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; error?: string } | null>(null);
+
+  const scan = useCallback(async () => {
+    setFound(null);
+    try {
+      const res = await fetch(`${BASE}/plugins/${pluginId}/ext/network/scan`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      setBrowseAvailable(Boolean(data.browse_available));
+      setFound(Array.isArray(data.found) ? data.found : []);
+    } catch {
+      setBrowseAvailable(false);
+      setFound([]);
+    }
+  }, [pluginId]);
+
+  useEffect(() => {
+    void scan();
+  }, [scan]);
+
+  const addEntry = (h: string, p: number) => {
+    const entries = networkEntriesOf(config);
+    if (entries.some((e) => networkEntryKey(e) === `${h}:${p}`)) {
+      onClose();
+      return;
+    }
+    onConfigChange({
+      ...config,
+      network_decks: [...((config.network_decks as unknown[]) ?? []), { host: h, port: p }],
+    });
+    onClose();
+  };
+
+  const portNum = Number(port) || 5343;
+  const hostTrimmed = host.trim();
+
+  const runTest = async () => {
+    if (!hostTrimmed) return;
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const res = await fetch(`${BASE}/plugins/${pluginId}/ext/network/test`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ host: hostTrimmed, port: portNum }),
+      });
+      setTestResult(await res.json());
+    } catch {
+      setTestResult({ ok: false, error: "test failed" });
+    }
+    setTesting(false);
+  };
+
+  const inputStyle: React.CSSProperties = {
+    padding: "var(--space-xs) var(--space-sm)",
+    borderRadius: "var(--border-radius)",
+    border: "1px solid var(--border-color)",
+    background: "var(--bg-surface)",
+    color: "var(--text-primary)",
+    fontSize: "var(--font-size-sm)",
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.5)",
+        zIndex: 1000,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: 440,
+          maxHeight: "80vh",
+          overflow: "auto",
+          background: "var(--bg-surface)",
+          border: "1px solid var(--border-color)",
+          borderRadius: "var(--border-radius)",
+          padding: "var(--space-lg)",
+          display: "flex",
+          flexDirection: "column",
+          gap: "var(--space-md)",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ fontWeight: 600 }}>Add a network deck</div>
+          <button onClick={onClose} style={{ color: "var(--text-muted)", cursor: "pointer" }}>
+            <X size={16} />
+          </button>
+        </div>
+
+        {found === null && (
+          <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>
+            Looking for decks on this network…
+          </div>
+        )}
+        {found !== null && found.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
+            {found.map((f) => (
+              <div
+                key={`${f.host}:${f.port}`}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "var(--space-sm)",
+                  padding: "var(--space-xs) var(--space-sm)",
+                  border: "1px solid var(--border-color)",
+                  borderRadius: "var(--border-radius)",
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: "var(--font-size-sm)", fontWeight: 500 }}>{f.name}</div>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                    {f.kind} · {f.host}:{f.port}
+                    {f.serial ? ` · ${f.serial}` : ""}
+                  </div>
+                </div>
+                {f.already_added ? (
+                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Added</span>
+                ) : (
+                  <button
+                    onClick={() => addEntry(f.host, f.port)}
+                    style={{
+                      padding: "2px 12px",
+                      borderRadius: "var(--border-radius)",
+                      background: "var(--accent-bg)",
+                      color: "var(--text-on-accent)",
+                      fontSize: "var(--font-size-sm)",
+                      cursor: "pointer",
+                      flexShrink: 0,
+                    }}
+                  >
+                    Add
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        {found !== null && found.length === 0 && (
+          <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.6 }}>
+            {browseAvailable
+              ? "No decks answered. Automatic discovery only sees decks on this network segment — add one by address below."
+              : "Automatic discovery isn't available from this server (it doesn't cross Docker bridge networks, NAT, or VLANs). Add the deck by its address."}
+          </div>
+        )}
+        {found !== null && (
+          <button
+            onClick={() => void scan()}
+            style={{
+              alignSelf: "flex-start",
+              fontSize: 11,
+              color: "var(--text-secondary)",
+              background: "var(--bg-hover)",
+              borderRadius: "var(--border-radius)",
+              padding: "2px 10px",
+              cursor: "pointer",
+            }}
+          >
+            Scan again
+          </button>
+        )}
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--space-sm)",
+            color: "var(--text-muted)",
+            fontSize: 11,
+          }}
+        >
+          <span style={{ flex: 1, borderTop: "1px solid var(--border-color)" }} />
+          add by address
+          <span style={{ flex: 1, borderTop: "1px solid var(--border-color)" }} />
+        </div>
+
+        <div style={{ display: "flex", gap: "var(--space-xs)" }}>
+          <input
+            value={host}
+            onChange={(e) => {
+              setHost(e.target.value);
+              setTestResult(null);
+            }}
+            placeholder="192.168.1.40"
+            style={{ ...inputStyle, flex: 1 }}
+          />
+          <input
+            value={port}
+            onChange={(e) => {
+              setPort(e.target.value.replace(/[^0-9]/g, ""));
+              setTestResult(null);
+            }}
+            title="Port (5343 unless changed on the device)"
+            style={{ ...inputStyle, width: 64 }}
+          />
+          <button
+            onClick={() => void runTest()}
+            disabled={!hostTrimmed || testing}
+            style={{
+              padding: "var(--space-xs) var(--space-sm)",
+              borderRadius: "var(--border-radius)",
+              background: "var(--bg-hover)",
+              color: "var(--text-secondary)",
+              fontSize: "var(--font-size-sm)",
+              cursor: hostTrimmed && !testing ? "pointer" : "default",
+              opacity: hostTrimmed && !testing ? 1 : 0.5,
+            }}
+          >
+            {testing ? "Testing…" : "Test"}
+          </button>
+          <button
+            onClick={() => addEntry(hostTrimmed, portNum)}
+            disabled={!hostTrimmed}
+            style={{
+              padding: "var(--space-xs) var(--space-md)",
+              borderRadius: "var(--border-radius)",
+              background: "var(--accent-bg)",
+              color: "var(--text-on-accent)",
+              fontSize: "var(--font-size-sm)",
+              fontWeight: 500,
+              cursor: hostTrimmed ? "pointer" : "default",
+              opacity: hostTrimmed ? 1 : 0.5,
+            }}
+          >
+            Add deck
+          </button>
+        </div>
+        {testResult && (
+          <div
+            style={{
+              fontSize: 11,
+              color: testResult.ok ? "var(--color-success)" : "var(--color-error)",
+            }}
+          >
+            {testResult.ok ? "Reachable — ready to add." : `Not reachable: ${testResult.error}`}
+          </div>
+        )}
+        <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.6 }}>
+          The deck shows its address on its keys at power-up. For installed
+          systems, set a static IP there so the address never changes.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function NoDeviceState({
+  pluginId,
   layout,
   config,
   onConfigChange,
 }: {
+  pluginId: string;
   layout: SurfaceLayout;
   config: Record<string, unknown>;
   onConfigChange: (config: Record<string, unknown>) => void;
@@ -1530,6 +1852,7 @@ function NoDeviceState({
   const models = layout.virtual_models ?? [];
   const [model, setModel] = useState(models[0] ?? "");
   const [pending, setPending] = useState(false);
+  const [showNetwork, setShowNetwork] = useState(false);
 
   // If the save fails silently, don't leave the button dead forever.
   useEffect(() => {
@@ -1572,6 +1895,31 @@ function NoDeviceState({
         Connect a {noun} by USB and it appears here automatically, ready to
         set up.
       </div>
+      {layout.network && (
+        <button
+          onClick={() => setShowNetwork(true)}
+          style={{
+            padding: "var(--space-xs) var(--space-md)",
+            borderRadius: "var(--border-radius)",
+            border: "1px dashed var(--border-color)",
+            background: "transparent",
+            color: "var(--text-secondary)",
+            fontSize: "var(--font-size-sm)",
+            cursor: "pointer",
+          }}
+          title="Add a deck reached over the network (Network Dock or built-in Ethernet)"
+        >
+          Add a network {noun}…
+        </button>
+      )}
+      {showNetwork && (
+        <NetworkDeckDialog
+          pluginId={pluginId}
+          config={config}
+          onConfigChange={onConfigChange}
+          onClose={() => setShowNetwork(false)}
+        />
+      )}
       {models.length > 0 && (
         <>
           <div
@@ -3590,8 +3938,18 @@ function DeckWorkbench({
   const deckNames = (config.deck_names as Record<string, string> | undefined) ?? {};
   const deckSettings =
     (config.deck_settings as Record<string, { brightness?: number }> | undefined) ?? {};
+  const networkEntries = networkEntriesOf(config);
+  // A network deck the plugin has connected to at least once carries its
+  // serial on the config entry, so it ghosts like any remembered deck.
+  const networkSerials = networkEntries
+    .map((e) => e.serial)
+    .filter((s): s is string => Boolean(s));
   const rememberedSerials = [
-    ...new Set([...Object.keys(decksMap), ...Object.keys(deckNames)]),
+    ...new Set([
+      ...Object.keys(decksMap),
+      ...Object.keys(deckNames),
+      ...networkSerials,
+    ]),
   ].filter((s) => !deckSerials.includes(s));
   const knownSerials = [...deckSerials, ...rememberedSerials];
 
@@ -3614,6 +3972,24 @@ function DeckWorkbench({
     ? true
     : Boolean(liveState[`${sp}visual`]);
   const isVirtual = Boolean(liveState[`${sp}virtual`]);
+  // Network decks: transport/address come from state once connected; a
+  // ghost still matches its config entry by serial.
+  const activeNetworkEntry = networkEntries.find(
+    (e) => e.serial && e.serial === activeSerial
+  );
+  const transport = String(
+    liveState[`${sp}transport`] ?? (activeNetworkEntry ? "network" : "")
+  );
+  const address =
+    String(liveState[`${sp}address`] ?? "") ||
+    (activeNetworkEntry ? networkEntryKey(activeNetworkEntry) : "");
+  const networkStatus = address
+    ? String(
+        liveState[
+          `${statePrefix}net.${address.replace(/[^A-Za-z0-9_-]/g, "_")}.status`
+        ] ?? ""
+      )
+    : "";
   const renderVersion = Number(liveState[`${sp}render_version`] ?? 0);
   const deckPage = Number(liveState[`${sp}current_page`] ?? 0);
   // Geometry can outlive a disconnect within a session; a ghost with no
@@ -4219,6 +4595,32 @@ function DeckWorkbench({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [config, onConfigChange]
   );
+  const [showNetworkDialog, setShowNetworkDialog] = useState(false);
+  const removeNetworkDeck = useCallback(
+    (serial: string) => {
+      const entries = networkEntriesOf(config);
+      const addr = String(liveState[`${statePrefix}${serial}.address`] ?? "");
+      onConfigChange({
+        ...config,
+        network_decks: entries.filter(
+          (e) => networkEntryKey(e) !== addr && e.serial !== serial
+        ),
+      });
+      setSelectedSerial(null);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [config, onConfigChange, liveState, statePrefix]
+  );
+  // Configured network decks that have never connected (no serial yet, no
+  // live session at their address) — surfaced as cards so an entry that's
+  // unreachable is visible, not silently absent.
+  const connectedAddresses = new Set(
+    deckSerials.map((s) => String(liveState[`${statePrefix}${s}.address`] ?? ""))
+  );
+  const pendingNetwork = networkEntries.filter((e) => {
+    if (connectedAddresses.has(networkEntryKey(e))) return false;
+    return !(e.serial && knownSerials.includes(e.serial));
+  });
 
   // ── Section summary metas ──
   const autoPageRules = (viewConfig.auto_page as unknown[] | undefined) ?? [];
@@ -4378,6 +4780,17 @@ function DeckWorkbench({
         onForget={
           !connected && activeSerial ? () => forgetDeck(activeSerial) : undefined
         }
+        transport={transport}
+        address={address}
+        networkStatus={networkStatus}
+        onRemoveNetwork={
+          transport === "network" && activeSerial
+            ? () => removeNetworkDeck(activeSerial)
+            : undefined
+        }
+        onAddNetwork={
+          staticLayout.network ? () => setShowNetworkDialog(true) : undefined
+        }
         virtualModels={staticLayout.virtual_models ?? []}
         deviceLabel={staticLayout.device_label || "device"}
         onAddVirtual={addVirtual}
@@ -4402,6 +4815,70 @@ function DeckWorkbench({
           onSelect={(serial) => {
             setSelectedSerial(serial);
           }}
+        />
+      )}
+
+      {/* Network decks that haven't connected yet — visible with their
+          live connection status, never silently absent */}
+      {pendingNetwork.length > 0 && (
+        <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>
+          {pendingNetwork.map((entry) => {
+            const key = networkEntryKey(entry);
+            const status = String(
+              liveState[
+                `${statePrefix}net.${key.replace(/[^A-Za-z0-9_-]/g, "_")}.status`
+              ] ?? "connecting"
+            );
+            return (
+              <button
+                key={key}
+                onClick={() => setShowNetworkDialog(true)}
+                title="Manage network decks"
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "flex-start",
+                  gap: 2,
+                  padding: "var(--space-xs) var(--space-md)",
+                  borderRadius: "var(--border-radius)",
+                  background: "var(--bg-surface)",
+                  border: "1px dashed var(--border-color)",
+                  opacity: 0.75,
+                  cursor: "pointer",
+                  textAlign: "left",
+                }}
+              >
+                <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "var(--font-size-sm)" }}>
+                  <span
+                    style={{
+                      width: 7,
+                      height: 7,
+                      borderRadius: "50%",
+                      flexShrink: 0,
+                      background:
+                        status === "connecting"
+                          ? "var(--color-warning, #f59e0b)"
+                          : "var(--color-error, #ef4444)",
+                    }}
+                  />
+                  {key}
+                  <span style={{ fontSize: 9, color: "var(--text-muted)", border: "1px solid var(--border-color)", borderRadius: 3, padding: "0 4px" }}>
+                    network
+                  </span>
+                </span>
+                <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{status}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {showNetworkDialog && (
+        <NetworkDeckDialog
+          pluginId={pluginId}
+          config={config}
+          onConfigChange={onConfigChange}
+          onClose={() => setShowNetworkDialog(false)}
         />
       )}
 
@@ -5470,6 +5947,11 @@ function DeckInspector({
   hasTouchscreen = false,
   customZoneCount = 0,
   onOpenStrip,
+  transport = "",
+  address = "",
+  networkStatus = "",
+  onRemoveNetwork,
+  onAddNetwork,
 }: {
   serial: string;
   name: string;
@@ -5497,10 +5979,17 @@ function DeckInspector({
   hasTouchscreen?: boolean;
   customZoneCount?: number;
   onOpenStrip?: () => void;
+  // Network decks (transport "network"): address line + entry removal.
+  transport?: string;
+  address?: string;
+  networkStatus?: string;
+  onRemoveNetwork?: () => void;
+  onAddNetwork?: () => void;
 }) {
   const [confirmShared, setConfirmShared] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [confirmForget, setConfirmForget] = useState(false);
+  const [confirmNetRemove, setConfirmNetRemove] = useState(false);
   const [moveTarget, setMoveTarget] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [addModel, setAddModel] = useState(virtualModels[0] ?? "");
@@ -5562,6 +6051,9 @@ function DeckInspector({
           {connected ? "Connected" : "Not connected"}
           {model && <> · {model}</>}
           {isVirtual && <> · virtual</>}
+          {transport === "network" && <> · network</>}
+          {transport === "network" && !connected && networkStatus &&
+            networkStatus !== "removed" && <> · {networkStatus}</>}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2 }}>
           <code style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
@@ -5569,6 +6061,14 @@ function DeckInspector({
           </code>
           <CopyButton value={serial} title="Copy serial" />
         </div>
+        {transport === "network" && address && (
+          <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2 }}>
+            <code style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+              {address}
+            </code>
+            <CopyButton value={address} title="Copy address" />
+          </div>
+        )}
       </div>
 
       {/* Touch strip — what it's showing, and the way into the zone editor */}
@@ -5723,9 +6223,28 @@ function DeckInspector({
         </div>
       )}
 
-      {/* Virtual / remembered-unit upkeep */}
-      {(onRemoveVirtual || onForget) && (
+      {/* Virtual / network / remembered-unit upkeep */}
+      {(onRemoveVirtual || onForget || onRemoveNetwork) && (
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
+          {onRemoveNetwork && !confirmNetRemove && (
+            <button
+              onClick={() => setConfirmNetRemove(true)}
+              style={{ ...deckActionBtnStyle, color: "var(--color-error)" }}
+              title="Stop connecting to this deck over the network. A layout of its own is kept and can be moved to another deck."
+            >
+              Remove network deck
+            </button>
+          )}
+          {onRemoveNetwork && confirmNetRemove && (
+            <InlineConfirm
+              question={`Stop connecting to ${name || address || serial}?`}
+              onYes={() => {
+                onRemoveNetwork();
+                setConfirmNetRemove(false);
+              }}
+              onNo={() => setConfirmNetRemove(false)}
+            />
+          )}
           {onRemoveVirtual && !confirmRemove && (
             <button
               onClick={() => setConfirmRemove(true)}
@@ -5767,10 +6286,35 @@ function DeckInspector({
         </div>
       )}
 
-      {/* Add a virtual unit */}
-      {virtualModels.length > 0 && (
-        <div style={{ marginTop: "auto" }}>
-          {!adding ? (
+      {/* Add a virtual or network unit */}
+      {(virtualModels.length > 0 || onAddNetwork) && (
+        <div
+          style={{
+            marginTop: "auto",
+            display: "flex",
+            flexDirection: "column",
+            gap: "var(--space-xs)",
+          }}
+        >
+          {onAddNetwork && (
+            <button
+              onClick={onAddNetwork}
+              style={{
+                padding: "var(--space-xs) var(--space-sm)",
+                borderRadius: "var(--border-radius)",
+                border: "1px dashed var(--border-color)",
+                background: "transparent",
+                color: "var(--text-muted)",
+                fontSize: "var(--font-size-sm)",
+                cursor: "pointer",
+                width: "100%",
+              }}
+              title="Add a deck reached over the network (Network Dock or built-in Ethernet)"
+            >
+              + Network {deviceLabel}
+            </button>
+          )}
+          {virtualModels.length > 0 && (!adding ? (
             <button
               onClick={() => setAdding(true)}
               style={{
@@ -5819,7 +6363,7 @@ function DeckInspector({
                 Cancel
               </button>
             </div>
-          )}
+          ))}
         </div>
       )}
     </div>

@@ -127,8 +127,11 @@ The table below lists common AV control ports. This is not exhaustive. AV manufa
 | 52000 | TCP | Audio DSPs | QSC Q-SYS |
 | 61000 | TCP | Wireless microphones | Shure DCS |
 | 161 | UDP | SNMP-managed devices | Read-only status query (discovery only) |
+| 5343 | TCP | Network-attached control surfaces | Elgato Network Dock, Stream Deck Studio (Stream Deck plugin) |
 
 An OpenAVC instance controlling only PJLink projectors and a Biamp DSP, for example, will only generate traffic on ports 4352 and 49152. If your network policy requires explicit allow-listing, the exact ports in use for a given deployment can be determined from the project's device configuration.
+
+**Network-attached control surfaces (port 5343):** when the Stream Deck plugin is configured with a network-attached deck, the server keeps an outbound TCP connection to the unit on port 5343 and may send mDNS queries (UDP multicast 224.0.0.251:5353) to find it. This protocol has no authentication or encryption — any host on the segment can drive the unit — so place these devices on the control VLAN with the AV equipment. mDNS discovery does not cross VLANs, NAT, or Docker bridge networks; the surface is added by IP address there (a static IP on the unit is recommended).
 
 ### Diagnosing offline devices
 

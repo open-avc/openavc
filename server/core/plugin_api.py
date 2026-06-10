@@ -242,6 +242,54 @@ class PluginAPI:
         self._require("device_command")
         return await self._devices.send_command(device_id, command, params)
 
+    # ──── Network Discovery ────
+
+    async def mdns_browse(
+        self, service_types: list[str], duration: float = 5.0
+    ) -> list[dict]:
+        """Browse the local network for mDNS/DNS-SD services. Requires: network_listen.
+
+        Sends PTR queries for the given service types (e.g.
+        ``["_elg._tcp.local."]``) and listens for ``duration`` seconds.
+        Returns a list of dicts, one per responding host::
+
+            {
+                "ip": "192.168.1.40",
+                "port": 5343,                  # from the SRV record, may be None
+                "hostname": "device.local.",   # may be None
+                "instance_name": "My Device",  # may be None
+                "service_type": "_elg._tcp.local.",
+                "txt": {"sn": "ABC123", ...},  # TXT records
+            }
+
+        Uses the platform's stdlib mDNS listener (one shared implementation
+        for discovery, advertising, and plugins). Multicast does not cross
+        Docker bridge networks, NAT, or VLANs — callers should always offer
+        a manual fallback alongside browse results.
+        """
+        self._require("network_listen")
+        from server.discovery.mdns_scanner import MDNSScanner
+
+        if not service_types or not all(
+            isinstance(s, str) and s.strip() for s in service_types
+        ):
+            raise ValueError("service_types must be a non-empty list of strings")
+        duration = max(1.0, min(float(duration), 60.0))
+        scanner = MDNSScanner(service_types=list(service_types))
+        results = await scanner.start(duration=duration)
+        out = []
+        for r in results.values():
+            out.append({
+                "ip": r.ip,
+                "port": r.port,
+                "hostname": r.hostname,
+                "instance_name": r.instance_name,
+                "service_type": r.service_type,
+                "txt": dict(r.txt_records),
+            })
+        out.sort(key=lambda d: d["ip"])
+        return out
+
     # ──── HTTP Endpoints ────
 
     def register_router(self, router) -> None:

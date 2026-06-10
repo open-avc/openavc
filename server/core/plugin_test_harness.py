@@ -83,6 +83,10 @@ class PluginTestHarness:
         # Track log messages
         self._logs: list[dict[str, str]] = []
 
+        # Results returned by the stubbed api.mdns_browse (tests never hit
+        # the real network). Set this before/after start_plugin as needed.
+        self.mdns_results: list[dict] = []
+
         # Active plugins
         self._registries: dict[str, PluginRegistry] = {}
         self._apis: dict[str, PluginAPI] = {}
@@ -123,6 +127,17 @@ class PluginTestHarness:
             save_config_fn=None,
             log_fn=self._log_fn,
         )
+
+        # Stub mDNS browse so harness runs never touch the network. The
+        # capability gate still applies, matching the real PluginAPI.
+        async def _stub_mdns_browse(
+            service_types: list[str], duration: float = 5.0
+        ) -> list[dict]:
+            api._require("network_listen")
+            _ = (service_types, duration)
+            return [dict(r) for r in self.mdns_results]
+
+        api.mdns_browse = _stub_mdns_browse
 
         self._registries[plugin_id] = registry
         self._apis[plugin_id] = api
