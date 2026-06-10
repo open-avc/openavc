@@ -2086,9 +2086,13 @@ function DialAssignmentPanel({
           <button
             onClick={onOpenStrip}
             style={{
-              marginTop: "var(--space-sm)", fontSize: 11,
-              color: "var(--accent)", background: "transparent",
-              cursor: "pointer", padding: 0, textAlign: "left",
+              marginTop: "var(--space-sm)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              width: "100%", padding: "5px 10px",
+              borderRadius: "var(--border-radius)",
+              border: "1px solid var(--border-color)",
+              background: "var(--bg-hover)", color: "var(--text-secondary)",
+              fontSize: 12, cursor: "pointer",
             }}
           >
             Customize the whole strip…
@@ -2417,9 +2421,9 @@ function TouchscreenZonesEditor({
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
         <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
           {anyDialConfigured
-            ? "The strip is showing one readout per dial (label, live value, meter). Tapping a readout presses its dial. Take over the strip with custom zones when you want your own layout — meters, status panels, wider faders."
+            ? "The strip is showing one readout per dial (label, icon, live value, meter) — each readout is edited on its dial, so click a knob in the picture to change one. Take over the strip with custom zones when you want your own layout — meters, status panels, wider faders."
             : dialCount > 0
-              ? "Nothing is set up yet, so the strip shows a clock. Configure a dial (click one in the picture) to get a live readout here, or take over the strip with custom zones."
+              ? "Nothing is set up yet, so the strip shows a clock. Click a knob in the picture to configure a dial and its readout takes over this strip, or build your own layout with custom zones."
               : "Add zones to put live values, meters, and touch actions on the strip."}
         </div>
         <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>
@@ -3704,6 +3708,26 @@ function DeckWorkbench({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deckPage, connected]);
+
+  // Esc steps back to the deck panel (matching the ✕ on every inspector).
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      ) {
+        return; // let fields handle their own Esc (e.g. rename cancel)
+      }
+      setSelection((prev) => (prev.kind === "deck" ? prev : { kind: "deck" }));
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   // Switching decks resets the bench to that deck's reality.
   useEffect(() => {
@@ -5073,14 +5097,9 @@ function BezelCanvas({
                   Math.floor(x / (800 / customZoneCount))
                 );
               onSelect({ kind: "strip", zone });
-            } else if (dialCount > 0) {
-              // Default zones are the dials' readouts — clicking one edits
-              // that dial.
-              const dial =
-                hit >= 0 ? Math.min(hit, dialCount - 1)
-                  : Math.min(dialCount - 1, Math.floor(x / (800 / dialCount)));
-              onSelect({ kind: "dial", index: dial });
             } else {
+              // Clicking the strip edits the strip. (The default readouts
+              // are configured on their dials — the editor says so.)
               onSelect({ kind: "strip", zone: null });
             }
           }}
