@@ -301,6 +301,8 @@ WantedBy=graphical.target
 
 The `panel-kiosk.sh` script reads the kiosk settings from `system.json`, waits for the server to be ready, hides the cursor (for touch-only panels), and launches Chromium in fullscreen kiosk mode. Touch input via USB HID (including HDMI monitors with a USB touch cable) is handled by the Linux kernel automatically.
 
+While kiosk mode is off (the default on a fresh device), the display shows the **setup screen** (`/setup`) instead of the panel: the device's IP address, the Programmer and Panel URLs, and first-run instructions. The screen updates live — connecting a network cable or claiming the device refreshes it automatically, no reboot needed.
+
 On the Raspberry Pi image, an `openavc-info.service` also displays the IP address and access URLs on the HDMI console at boot, so you can find the device on the network even without mDNS.
 
 ### Raspberry Pi: OS login and SSH

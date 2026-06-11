@@ -1,17 +1,21 @@
 #!/bin/bash
-# OpenAVC Panel / Info Screen Launcher
+# OpenAVC Panel / Setup Screen Launcher
 #
 # Runs from the labwc autostart inside the graphical session.
 #
 # If kiosk mode is enabled:  fullscreen Chromium showing the Panel UI.
-# If kiosk mode is disabled: fullscreen Chromium showing a local info page
-#   with IP address, access URLs, and setup instructions.
+# If kiosk mode is disabled: fullscreen Chromium showing the server-served
+#   setup screen (/setup) with live IP address, access URLs, and first-run
+#   instructions.
+#
+# If the server never comes up, a minimal local fallback page is shown that
+# keeps probing /api/health and forwards to the real page once it passes.
 #
 # Touch input (USB HID) is handled by the Linux kernel automatically.
 # No special drivers needed for HDMI + USB touch displays.
 
 CONFIG_FILE="${OPENAVC_DATA_DIR:-/var/lib/openavc}/system.json"
-INFO_PAGE="/tmp/openavc-info.html"
+FALLBACK_PAGE="/tmp/openavc-fallback.html"
 
 # --- Read settings from system.json ---
 
@@ -52,6 +56,22 @@ PORT=$(echo "$CONFIG_OUTPUT" | sed -n '4p')
 PROTO=$(echo "$CONFIG_OUTPUT" | sed -n '5p')
 EFFECTIVE_PORT=$(echo "$CONFIG_OUTPUT" | sed -n '6p')
 
+# --- Determine what this display should show ---
+#
+# Kiosk mode: the configured target (the panel by default).
+# Otherwise:  the server-served setup screen. It renders live network info
+# and first-run instructions from /api/setup/status.
+
+SETUP_URL="${PROTO}://localhost:${EFFECTIVE_PORT}/setup"
+
+if [ "$KIOSK_ENABLED" = "True" ]; then
+    NEXT_URL="$TARGET_URL"
+    echo "Kiosk mode enabled. Target: $NEXT_URL"
+else
+    NEXT_URL="$SETUP_URL"
+    echo "Kiosk mode disabled. Showing setup screen."
+fi
+
 # --- Wait for the OpenAVC server to be ready ---
 #
 # When TLS is on, the server's cert is self-signed by default — curl's -k skips
@@ -72,51 +92,12 @@ while [ $ATTEMPTS -lt $MAX_ATTEMPTS ]; do
 done
 
 if [ $ATTEMPTS -eq $MAX_ATTEMPTS ]; then
-    echo "WARNING: Server did not respond after ${MAX_ATTEMPTS} attempts. Launching anyway."
-fi
+    # Server didn't come up. Show a local fallback page that keeps probing
+    # the health endpoint and forwards to the real page once it passes.
+    echo "WARNING: Server did not respond after ${MAX_ATTEMPTS} attempts. Showing fallback page."
 
-# --- Determine IP and URLs ---
-
-IP_ADDR=$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'src \K\S+')
-HOSTNAME=$(hostname)
-
-# When TLS is on, info-page URLs advertise the HTTPS port; otherwise the HTTP port.
-if [ "$EFFECTIVE_PORT" = "80" ] || [ "$EFFECTIVE_PORT" = "443" ]; then
-    BASE_URL="${PROTO}://${IP_ADDR}"
-    MDNS_URL="${PROTO}://${HOSTNAME}.local"
-else
-    BASE_URL="${PROTO}://${IP_ADDR}:${EFFECTIVE_PORT}"
-    MDNS_URL="${PROTO}://${HOSTNAME}.local:${EFFECTIVE_PORT}"
-fi
-
-# --- Determine what to show ---
-
-if [ "$KIOSK_ENABLED" = "True" ]; then
-    CHROMIUM_URL="$TARGET_URL"
-    echo "Kiosk mode enabled. Target: $CHROMIUM_URL"
-else
-    # Generate info page
-    echo "Kiosk mode disabled. Showing info screen."
-
-    if [ -n "$IP_ADDR" ]; then
-        PROGRAMMER_URL="${BASE_URL}/programmer"
-        PANEL_URL="${BASE_URL}/panel"
-        NETWORK_INFO="<div class=\"field\"><span class=\"label\">IP Address</span><span class=\"value\">${IP_ADDR}</span></div>"
-    else
-        PROGRAMMER_URL="${MDNS_URL}/programmer"
-        PANEL_URL="${MDNS_URL}/panel"
-        NETWORK_INFO="<div class=\"field\"><span class=\"label\">Network</span><span class=\"value\">No connection detected. Connect Ethernet and reboot.</span></div>"
-    fi
-
-    # SSH ships off (C10). Show the live state: the integrator enables it from
-    # the Programmer under Settings > Security when remote login is wanted.
-    if systemctl is-active ssh >/dev/null 2>&1; then
-        SSH_VALUE="ssh openavc@${HOSTNAME}.local"
-    else
-        SSH_VALUE="Off (enable in Settings &gt; Security)"
-    fi
-
-    cat > "$INFO_PAGE" << INFOHTML
+    HOSTNAME=$(hostname)
+    cat > "$FALLBACK_PAGE" << FALLBACKHTML
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -126,112 +107,40 @@ else
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
-    background: #1a1a2e;
-    color: #e0e0e0;
+    background: #1a1a2e; color: #e0e0e0;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 100vh;
-    padding: 1.5rem;
+    display: flex; align-items: center; justify-content: center;
+    min-height: 100vh; padding: 1.5rem; text-align: center;
   }
-  .container {
-    width: 100%;
-    text-align: center;
-  }
-  .logo {
-    font-size: 2rem;
-    font-weight: 700;
-    color: #8AB493;
-    margin-bottom: 0.15rem;
-    letter-spacing: -0.5px;
-  }
-  .subtitle {
-    font-size: 0.85rem;
-    color: #888;
-    margin-bottom: 1.5rem;
-  }
-  .card {
-    background: #16213e;
-    border: 1px solid #2a2a4a;
-    border-radius: 10px;
-    padding: 1rem 1.25rem;
-    margin-bottom: 1rem;
-    text-align: left;
-  }
-  .card h2 {
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: #8AB493;
-    margin-bottom: 0.75rem;
-  }
-  .field {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    padding: 0.4rem 0;
-    border-bottom: 1px solid #2a2a4a;
-  }
-  .field:last-child { border-bottom: none; }
-  .label {
-    color: #888;
-    font-size: 0.8rem;
-    flex-shrink: 0;
-    margin-right: 1rem;
-  }
-  .value {
-    font-family: "SF Mono", "Consolas", "Liberation Mono", monospace;
-    font-size: 0.8rem;
-    color: #fff;
-    text-align: right;
-    word-break: break-all;
-  }
-  .hint {
-    background: #1a2340;
-    border: 1px solid #2a2a4a;
-    border-radius: 10px;
-    padding: 1rem 1.25rem;
-    text-align: center;
-  }
-  .hint p {
-    color: #888;
-    font-size: 0.8rem;
-    line-height: 1.4;
-  }
-  .hint strong {
-    color: #8AB493;
-  }
+  .logo { font-size: 2rem; font-weight: 700; color: #8AB493; margin-bottom: 0.5rem; }
+  p { color: #888; font-size: 0.85rem; line-height: 1.6; }
+  .host { font-family: "Consolas", monospace; color: #fff; }
 </style>
 </head>
 <body>
-<div class="container">
+<div>
   <div class="logo">OpenAVC</div>
-  <div class="subtitle">Room Control System</div>
-
-  <div class="card">
-    <h2>Network</h2>
-    ${NETWORK_INFO}
-    <div class="field"><span class="label">Hostname</span><span class="value">${HOSTNAME}.local</span></div>
-    <div class="field"><span class="label">Port</span><span class="value">${EFFECTIVE_PORT}</span></div>
-  </div>
-
-  <div class="card">
-    <h2>Access From Another Computer</h2>
-    <div class="field"><span class="label">Programmer</span><span class="value">${PROGRAMMER_URL}</span></div>
-    <div class="field"><span class="label">Panel</span><span class="value">${PANEL_URL}</span></div>
-    <div class="field"><span class="label">SSH</span><span class="value">${SSH_VALUE}</span></div>
-  </div>
-
-  <div class="hint">
-    <p>To show the <strong>Panel UI</strong> on this display, enable <strong>Kiosk Mode</strong><br>in the Programmer under Settings, then reboot this device.</p>
-  </div>
+  <p>The OpenAVC server on <span class="host">${HOSTNAME}</span> has not started yet.<br>
+  This screen keeps checking and will continue automatically.<br>
+  If it never does, check the device's power and logs.</p>
 </div>
+<script>
+(function () {
+  'use strict';
+  setInterval(function () {
+    fetch('${PROTO}://localhost:${EFFECTIVE_PORT}/api/health', { mode: 'no-cors', cache: 'no-store' })
+      .then(function () { window.location.replace('${NEXT_URL}'); })
+      .catch(function () {});
+  }, 3000);
+})();
+</script>
 </body>
 </html>
-INFOHTML
+FALLBACKHTML
 
-    CHROMIUM_URL="file://${INFO_PAGE}"
+    CHROMIUM_URL="file://${FALLBACK_PAGE}"
+else
+    CHROMIUM_URL="$NEXT_URL"
 fi
 
 # --- Configure display environment ---

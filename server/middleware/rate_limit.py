@@ -34,7 +34,7 @@ STALE_THRESHOLD = 300.0  # 5 minutes
 _SKIP_PREFIXES = ("/panel", "/programmer", "/docs", "/openapi.json", "/ws", "/isc/ws")
 
 # Open tier paths (high limit, no auth needed)
-_OPEN_EXACT = {"/api/status", "/api/health", "/api/cloud/status", "/api/startup-status", "/api/auth/required"}
+_OPEN_EXACT = {"/api/status", "/api/health", "/api/cloud/status", "/api/startup-status", "/api/auth/required", "/api/setup/status"}
 _OPEN_PREFIXES = ()
 
 

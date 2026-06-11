@@ -1691,6 +1691,16 @@ class Engine:
         self._network_info = (local_ip, hostname)
         return self._network_info
 
+    def refresh_network_info(self) -> tuple[str, str]:
+        """Re-detect (and re-cache) the local IP and hostname.
+
+        Blocking — call off-loop. The setup screen polls through this so a
+        device that boots before its network is up shows its address as soon
+        as the cable goes in, instead of serving the stale startup cache.
+        """
+        self._network_info = None
+        return self._detect_network_info()
+
     def get_status(self, include_sensitive: bool = True) -> dict[str, Any]:
         """Return system status info.
 
