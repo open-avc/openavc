@@ -55,8 +55,11 @@ Name: "service"; Description: "Install as Windows Service (auto-start on boot)";
 Name: "shortcuts"; Description: "Desktop and Start Menu shortcuts"; Types: full
 
 [Files]
-; Server bundle
-Source: "..\dist\openavc\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs; Components: server
+; Server bundle - always installed unconditionally (server is a fixed/required
+; component, and Inno Setup silently skips Components:-gated entries on upgrades
+; when the registry Inno_SelectedComponents value is empty).
+Source: "..\dist\openavc\openavc-server.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\dist\openavc\_internal\*"; DestDir: "{app}\_internal"; Flags: ignoreversion recursesubdirs
 ; Tray app bundle (merge into same directory to share DLLs)
 Source: "..\dist\openavc-tray\openavc-tray.exe"; DestDir: "{app}"; Flags: ignoreversion; Components: tray
 Source: "..\dist\openavc-tray\_internal\*"; DestDir: "{app}\_internal"; Flags: ignoreversion recursesubdirs skipifsourcedoesntexist; Components: tray
