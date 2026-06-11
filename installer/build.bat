@@ -77,12 +77,14 @@ REM Step 5: Compile installer
 echo [5/5] Compiling installer with Inno Setup...
 set ISCC="C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
 if not exist %ISCC% set ISCC="C:\Program Files\Inno Setup 6\ISCC.exe"
+if not exist %ISCC% set ISCC="%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe"
 if not exist %ISCC% (
     echo Inno Setup 6 not found. Installing via winget...
     winget install --id JRSoftware.InnoSetup --silent --accept-package-agreements --accept-source-agreements
     if errorlevel 1 (echo FAILED: could not install Inno Setup via winget & exit /b 1)
     set ISCC="C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
     if not exist %ISCC% set ISCC="C:\Program Files\Inno Setup 6\ISCC.exe"
+    if not exist %ISCC% set ISCC="%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe"
     if not exist %ISCC% (echo FAILED: Inno Setup installed but ISCC.exe not found & exit /b 1)
 )
 %ISCC% /DMyAppVersion=%VERSION% installer\setup.iss
