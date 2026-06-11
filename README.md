@@ -120,6 +120,12 @@ Full documentation is available at [docs.openavc.com](https://docs.openavc.com).
 - [Community Plugins](https://github.com/open-avc/openavc-plugins) - Extensions like Stream Deck integration, MQTT bridges, and custom control surfaces
 - [Cloud Platform](https://cloud.openavc.com) - Remote monitoring, alerts, and fleet management
 
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for
+development setup and the pull request workflow. New to open source? Start
+with [first-contributions](https://github.com/firstcontributions/first-contributions).
+
 ## About
 
 OpenAVC is maintained by an AV system designer with 20 years in the industry, working with Crestron, Extron, and Q-SYS control systems. The project grew out of frustration with the tools available and a belief that there should be an open alternative.
