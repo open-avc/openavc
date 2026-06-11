@@ -7,11 +7,14 @@ Network settings, with no SSH or desktop required.
 
 Backends are capability-detected at runtime:
 
+- A deployment-provided backend: an image can ship its own implementation
+  and point ``network.backend_module`` in system.json at it (a module
+  exposing ``create_backend() -> NetworkBackend | None``). Checked first so
+  appliance images take precedence over the generic probes.
 - ``NmcliBackend`` — any POSIX host with NetworkManager running (the Pi
   appliance image, most desktop Linux). Talks to ``nmcli``; on the Pi image a
   polkit rule authorizes the unprivileged service user for NetworkManager and
   hostnamed actions (``sudo`` is unusable under ``NoNewPrivileges``).
-- Additional appliance backends slot in behind the same interface.
 
 Where no backend is available (Windows, Docker, generic servers without
 NetworkManager) ``get_backend()`` returns ``None``, the API answers 404, and
@@ -478,6 +481,41 @@ def _nmcli_running() -> bool:
     return proc.returncode == 0 and proc.stdout.strip().lower() == "running"
 
 
+def _deployment_backend() -> NetworkBackend | None:
+    """Load a deployment-provided backend, if one is configured.
+
+    ``network.backend_module`` names an importable module exposing
+    ``create_backend() -> NetworkBackend | None``. Only an administrator can
+    set it (system.json / config PATCH are credentialed surfaces), and it
+    runs with the server's own privileges — same trust level as a plugin.
+    """
+    from server.system_config import get_system_config
+
+    module_name = str(
+        get_system_config().get("network", "backend_module", "") or ""
+    ).strip()
+    if not module_name:
+        return None
+    try:
+        import importlib
+
+        module = importlib.import_module(module_name)
+        backend = module.create_backend()
+    except Exception:
+        log.exception(
+            f"network.backend_module '{module_name}' failed to load; "
+            "falling back to built-in detection"
+        )
+        return None
+    if backend is not None and not isinstance(backend, NetworkBackend):
+        log.error(
+            f"network.backend_module '{module_name}' returned "
+            f"{type(backend).__name__}, not a NetworkBackend; ignoring"
+        )
+        return None
+    return backend
+
+
 def get_backend() -> NetworkBackend | None:
     """Resolve the host network backend, once per process.
 
@@ -487,10 +525,9 @@ def get_backend() -> NetworkBackend | None:
     global _backend_resolved, _backend
     if _backend_resolved:
         return _backend
-    backend: NetworkBackend | None = None
-    if _nmcli_running():
+    backend: NetworkBackend | None = _deployment_backend()
+    if backend is None and _nmcli_running():
         backend = NmcliBackend()
-    # Additional appliance backends are detected here, most capable first.
     _backend = backend
     _backend_resolved = True
     if backend:

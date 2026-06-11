@@ -334,6 +334,54 @@ async def test_hostname_invalid_is_400(with_backend):
     assert resp.status_code == 400
 
 
+# --- Deployment-provided backend hook ---
+
+
+class _ProvidedBackend(NmcliBackend):
+    name = "provided"
+
+
+async def test_deployment_backend_module_wins(monkeypatch):
+    """network.backend_module loads first, beating built-in detection."""
+    import sys
+    import types
+
+    module = types.ModuleType("fake_net_backend")
+    module.create_backend = lambda: _ProvidedBackend()
+    monkeypatch.setitem(sys.modules, "fake_net_backend", module)
+
+    import server.system_config as syscfg
+    cfg = syscfg.get_system_config()
+    monkeypatch.setattr(
+        cfg, "get",
+        lambda section, key, default=None: "fake_net_backend"
+        if (section, key) == ("network", "backend_module") else default,
+    )
+    netmod.reset_backend_cache()
+    try:
+        backend = netmod.get_backend()
+        assert backend is not None and backend.name == "provided"
+    finally:
+        netmod.reset_backend_cache()
+
+
+async def test_broken_backend_module_falls_through(monkeypatch):
+    """A module that fails to import or create never breaks detection."""
+    import server.system_config as syscfg
+    cfg = syscfg.get_system_config()
+    monkeypatch.setattr(
+        cfg, "get",
+        lambda section, key, default=None: "module_that_does_not_exist"
+        if (section, key) == ("network", "backend_module") else default,
+    )
+    monkeypatch.setattr(netmod, "_nmcli_running", lambda: False)
+    netmod.reset_backend_cache()
+    try:
+        assert netmod.get_backend() is None  # fell through cleanly
+    finally:
+        netmod.reset_backend_cache()
+
+
 # --- Auth: loopback bootstrap vs remote callers ---
 
 
