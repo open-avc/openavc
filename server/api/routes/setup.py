@@ -12,6 +12,11 @@ URLs) follow the same disclosure rule as /api/status — authenticated callers
 get them, anonymous remote callers on a claimed instance do not — with one
 addition: loopback callers always get them, because a loopback caller is the
 device's own kiosk browser rendering the device's own address.
+
+The page auto-switches to /panel as soon as the loaded project has panel
+content, so an appliance display flips from setup screen to room panel the
+moment the integrator's UI arrives — live, no reboot, no kiosk toggle.
+Open /setup?stay=1 to read the screen without being redirected.
 """
 
 from __future__ import annotations
@@ -242,7 +247,7 @@ _PAGE = """<!DOCTYPE html>
   </div>
 
   <div class="hint" id="hint" hidden>
-    <p>To show the <strong>Panel UI</strong> on this display, enable <strong>Kiosk Mode</strong><br>in the Programmer under Settings.</p>
+    <p>This display will switch to the <strong>Panel UI</strong> automatically<br>once a project with panel content is loaded.</p>
   </div>
 
   <div class="version" id="version"></div>
@@ -252,12 +257,20 @@ _PAGE = """<!DOCTYPE html>
 (function () {
   'use strict';
   var failures = 0;
+  // ?stay=1 disables the auto-switch to /panel (for reading device info
+  // while a project is running).
+  var stayHere = /[?&]stay=1/.test(window.location.search);
 
   function text(id, value) { document.getElementById(id).textContent = value; }
   function show(id, visible) { document.getElementById(id).hidden = !visible; }
 
   function render(s) {
     document.body.classList.remove('server-offline');
+
+    if (s.panel_has_content && !stayHere) {
+      window.location.replace('/panel');
+      return;
+    }
 
     if (s.state === 'setup') {
       text('headline', 'Set up this controller');
