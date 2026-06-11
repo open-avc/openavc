@@ -557,6 +557,15 @@ def _preflight_port(port: int, *, retries: int) -> "OSError | None":
     last_err: "OSError | None" = None
     for attempt in range(retries):
         test = _sock.socket(_sock.AF_INET, _sock.SOCK_STREAM)
+        # Mirror the listening socket uvicorn actually binds (asyncio sets
+        # SO_REUSEADDR on POSIX). Without it the pre-flight is stricter than
+        # the real bind and false-fails on a port still in TIME_WAIT from a
+        # just-exited server — exactly the rapid-restart case (crash recovery,
+        # in-place updates) the appliance supervisor relies on. SO_REUSEADDR
+        # still refuses a port held by a live listener, so a genuine "another
+        # copy is running" conflict is still caught.
+        if os.name != "nt":
+            test.setsockopt(_sock.SOL_SOCKET, _sock.SO_REUSEADDR, 1)
         try:
             test.bind((config.BIND_ADDRESS, port))
             test.close()
