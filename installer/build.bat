@@ -52,8 +52,10 @@ echo.
 
 REM Step 2: Install build dependencies
 echo [2/5] Installing build dependencies...
+pip install -r requirements.txt --quiet
+if errorlevel 1 (echo FAILED: pip install requirements & exit /b 1)
 pip install pyinstaller infi.systray --quiet
-if errorlevel 1 (echo FAILED: pip install & exit /b 1)
+if errorlevel 1 (echo FAILED: pip install build tools & exit /b 1)
 echo       Done.
 echo.
 
