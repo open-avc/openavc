@@ -12,7 +12,7 @@ pyserial==3.5                # BSD-3-Clause
 pyserial-asyncio==0.6        # BSD-3-Clause
 
 # Data
-pydantic==2.11.1             # MIT
+pydantic==2.13.4             # MIT
 pyyaml==6.0.3                # MIT
 packaging==24.2              # Apache-2.0/BSD-2 - version parsing (plugin/driver min-version gates)
 
