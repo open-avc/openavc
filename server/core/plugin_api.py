@@ -437,6 +437,20 @@ class PluginAPI:
         if task and not task.done():
             task.cancel()
 
+    def _cancel_all_tasks(self) -> None:
+        """Cancel every periodic task this API created (loader stop path).
+
+        Defense in depth alongside the registry: a periodic task that keeps
+        firing after its plugin stops executes actions from beyond the grave
+        (a leaked hold-repeat once drove a volume macro 4x/second for over
+        half an hour). The loader also reaps by task name as the final
+        backstop.
+        """
+        for task in self._periodic_tasks.values():
+            if not task.done():
+                task.cancel()
+        self._periodic_tasks.clear()
+
     # ──── Configuration ────
 
     @property

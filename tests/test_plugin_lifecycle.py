@@ -1707,3 +1707,65 @@ class TestStateKeyHygiene:
         assert len(loader._log_tasks) <= 5
 
         await asyncio.sleep(0.05)  # let the queued mirrors drain
+
+
+# ═══════════════════════════════════════════════════════════
+#  Orphaned-task reaping on stop
+# ═══════════════════════════════════════════════════════════
+
+
+@pytest.mark.asyncio
+async def test_stop_reaps_orphaned_plugin_named_tasks(loader):
+    """A task named ``plugin.<id>.*`` that escaped registry tracking must
+    not survive stop_plugin. An escaped periodic task keeps executing its
+    action after the plugin is gone (a leaked hold-repeat once drove a
+    volume macro 4x/second through stop, uninstall, and reinstall)."""
+    register_plugin_class(ValidPlugin)
+    await loader.start_plugin("valid_plugin")
+
+    fired = []
+
+    async def runaway():
+        while True:
+            fired.append(1)
+            await asyncio.sleep(0.01)
+
+    rogue = asyncio.create_task(
+        runaway(), name="plugin.valid_plugin.hold_repeat_DECK_4"
+    )
+    await asyncio.sleep(0.03)
+    assert fired, "the rogue task should be running before the stop"
+
+    await loader.stop_plugin("valid_plugin")
+    await asyncio.sleep(0.05)
+    assert rogue.done(), "stop_plugin must reap plugin-named orphan tasks"
+    count = len(fired)
+    await asyncio.sleep(0.05)
+    assert len(fired) == count, "the orphan must stay silent after stop"
+
+
+@pytest.mark.asyncio
+async def test_stop_cancels_api_periodic_tasks_even_if_untracked(loader):
+    """Belt-and-braces: periodic tasks held by the PluginAPI map are
+    cancelled at stop even when the registry lost track of them."""
+    register_plugin_class(ValidPlugin)
+    await loader.start_plugin("valid_plugin")
+    api = loader._apis["valid_plugin"]
+
+    ticks = []
+
+    def tick():
+        ticks.append(1)
+
+    api.create_periodic_task(tick, interval_seconds=0.01, name="poller")
+    # Simulate a tracking escape: the registry forgets, the API map doesn't.
+    loader._registries["valid_plugin"].managed_tasks.clear()
+
+    await asyncio.sleep(0.03)
+    assert ticks
+
+    await loader.stop_plugin("valid_plugin")
+    await asyncio.sleep(0.05)
+    count = len(ticks)
+    await asyncio.sleep(0.05)
+    assert len(ticks) == count

@@ -911,7 +911,7 @@ class PluginLoader:
     async def _stop_plugin_locked(self, plugin_id: str) -> None:
         instance = self._instances.pop(plugin_id, None)
         registry = self._registries.pop(plugin_id, None)
-        self._apis.pop(plugin_id, None)
+        api = self._apis.pop(plugin_id, None)
         # Forget the instance epoch so a stale queued auto-disable no-ops.
         self._instance_epoch.pop(plugin_id, None)
 
@@ -933,6 +933,26 @@ class PluginLoader:
 
         if registry is not None:
             await registry.cleanup(self._state, self._events)
+
+        if api is not None:
+            api._cancel_all_tasks()
+
+        # Final backstop: every task a PluginAPI creates is named
+        # ``plugin.<id>.<name>``, so reap anything carrying this plugin's
+        # name that the registry didn't hold. A periodic task that escapes
+        # tracking (any generation, any path) keeps executing actions after
+        # the plugin is gone — observed in the field as a leaked hold-repeat
+        # driving a volume macro 4x/second through stop, uninstall, and
+        # reinstall. Nothing named for this plugin survives a stop.
+        prefix = f"plugin.{plugin_id}."
+        for task in asyncio.all_tasks():
+            name = task.get_name() or ""
+            if name.startswith(prefix) and not task.done():
+                log.warning(
+                    f"Reaping orphaned task '{name}' that outlived plugin "
+                    f"'{plugin_id}' teardown"
+                )
+                task.cancel()
 
         # Remove any HTTP routes the plugin had mounted
         if self._unmount_router_fn:
