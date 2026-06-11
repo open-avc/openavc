@@ -119,6 +119,28 @@ class TestSystemConfig:
         assert cfg.get("tls", "enabled") is False
         assert cfg.get("tls", "port") == 8443
 
+    def test_network_backend_module_survives_load(self, tmp_path):
+        """A key only meaningful to a backend (network.backend_module) must
+        round-trip through load — DEFAULTS declares it, so _deep_merge keeps
+        it instead of silently dropping the file value."""
+        system_json = tmp_path / "system.json"
+        system_json.write_text(json.dumps({
+            "network": {"backend_module": "my_appliance_net"},
+        }))
+
+        cfg = SystemConfig()
+        cfg._data_dir = tmp_path
+        cfg._file_path = system_json
+        cfg.load()
+
+        assert cfg.get("network", "backend_module") == "my_appliance_net"
+        # Default stays empty when the file doesn't set it.
+        cfg2 = SystemConfig()
+        cfg2._data_dir = tmp_path / "empty"
+        cfg2._file_path = tmp_path / "empty" / "system.json"
+        cfg2.load()
+        assert cfg2.get("network", "backend_module") == ""
+
     def test_tls_env_overrides(self, tmp_path):
         """OPENAVC_TLS_* env vars override defaults."""
         cfg = SystemConfig()

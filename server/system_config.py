@@ -169,6 +169,11 @@ DEFAULTS: dict[str, Any] = {
         # known reverse proxy. Off by default so a client can't spoof its
         # source IP to dodge rate limits / the localhost exemption.
         "trust_forwarded_for": False,
+        # Optional deployment-provided host-network backend: an importable
+        # module exposing create_backend() -> NetworkBackend | None. Empty =
+        # use built-in detection (nmcli). Appliance images set this to point
+        # at their own backend. See server/system/network.py.
+        "backend_module": "",
     },
     "auth": {
         "programmer_username": "",
