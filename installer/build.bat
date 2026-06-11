@@ -52,9 +52,9 @@ echo.
 
 REM Step 2: Install build dependencies
 echo [2/5] Installing build dependencies...
-pip install -r requirements.txt --quiet
+python -m pip install -r requirements.txt --quiet
 if errorlevel 1 (echo FAILED: pip install requirements & exit /b 1)
-pip install pyinstaller infi.systray --quiet
+python -m pip install pyinstaller infi.systray --quiet
 if errorlevel 1 (echo FAILED: pip install build tools & exit /b 1)
 echo       Done.
 echo.
@@ -78,15 +78,7 @@ echo [5/5] Compiling installer with Inno Setup...
 set ISCC="C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
 if not exist %ISCC% set ISCC="C:\Program Files\Inno Setup 6\ISCC.exe"
 if not exist %ISCC% set ISCC="%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe"
-if not exist %ISCC% (
-    echo Inno Setup 6 not found. Installing via winget...
-    winget install --id JRSoftware.InnoSetup --silent --accept-package-agreements --accept-source-agreements
-    if errorlevel 1 (echo FAILED: could not install Inno Setup via winget & exit /b 1)
-    set ISCC="C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-    if not exist %ISCC% set ISCC="C:\Program Files\Inno Setup 6\ISCC.exe"
-    if not exist %ISCC% set ISCC="%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe"
-    if not exist %ISCC% (echo FAILED: Inno Setup installed but ISCC.exe not found & exit /b 1)
-)
+if not exist %ISCC% (echo FAILED: Inno Setup 6 not found. Install from https://jrsoftware.org/isdl.php & exit /b 1)
 %ISCC% /DMyAppVersion=%VERSION% installer\setup.iss
 if errorlevel 1 (echo FAILED: Inno Setup & exit /b 1)
 echo       Done.
