@@ -59,14 +59,14 @@ echo.
 
 REM Step 3: Bundle server
 echo [3/5] Bundling server with PyInstaller...
-pyinstaller installer\openavc.spec --noconfirm --clean
+python -m PyInstaller installer\openavc.spec --noconfirm --clean
 if errorlevel 1 (echo FAILED: pyinstaller server & exit /b 1)
 echo       Done.
 echo.
 
 REM Step 4: Bundle tray app
 echo [4/5] Bundling tray app with PyInstaller...
-pyinstaller installer\tray.spec --noconfirm --clean
+python -m PyInstaller installer\tray.spec --noconfirm --clean
 if errorlevel 1 (echo FAILED: pyinstaller tray & exit /b 1)
 echo       Done.
 echo.
