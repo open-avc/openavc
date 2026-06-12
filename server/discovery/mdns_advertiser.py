@@ -415,14 +415,17 @@ class MDNSAdvertiser:
                 await self._send_announcement()
                 last_announce = loop.time()
 
-            # Listen for incoming queries
+            # Listen for incoming queries. Executor + timeout recvfrom, NOT
+            # loop.sock_recvfrom — uvloop doesn't implement it (same reason
+            # as the send path). socket.timeout is an OSError subclass, so
+            # it must be caught first.
             try:
-                data, addr = await asyncio.wait_for(
-                    loop.sock_recvfrom(self._sock, 4096),
-                    timeout=min(5.0, RE_ANNOUNCE_INTERVAL),
+                self._sock.settimeout(min(5.0, RE_ANNOUNCE_INTERVAL))
+                data, addr = await loop.run_in_executor(
+                    None, self._sock.recvfrom, 4096,
                 )
                 self._handle_query(data, addr)
-            except asyncio.TimeoutError:
+            except socket.timeout:
                 continue
             except asyncio.CancelledError:
                 return
@@ -483,7 +486,13 @@ class MDNSAdvertiser:
                         socket.IP_MULTICAST_IF,
                         socket.inet_aton(iface),
                     )
-                await loop.sock_sendto(self._sock, packet, (MDNS_ADDR, MDNS_PORT))
+                # Executor + plain sendto, NOT loop.sock_sendto: uvloop (the
+                # event loop on Linux deployments) does not implement
+                # sock_sendto and raises NotImplementedError, which killed
+                # the advertiser at startup on every Linux install.
+                await loop.run_in_executor(
+                    None, self._sock.sendto, packet, (MDNS_ADDR, MDNS_PORT),
+                )
             except OSError as e:
                 log.debug("mDNS: Failed to send via %s: %s", iface, e)
 

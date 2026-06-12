@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import errno
 import socket
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 from server.discovery import amx_ddp_scanner, mdns_advertiser, mdns_scanner
@@ -281,22 +282,15 @@ class TestAdvertiserResilience:
 
 
 class TestAdvertiserPerInterfaceAnnouncements:
-    async def test_announcement_per_interface_with_own_a_record(self, monkeypatch):
+    async def test_announcement_per_interface_with_own_a_record(self):
         adv = MDNSAdvertiser("Test", "instance-id", 8080, "1.0")
         adv._sock = FakeSendSock()
         adv._hostname = "testhost"
         adv._joined_ips = ["10.0.0.5", "192.168.2.6"]
 
-        sent_packets: list[bytes] = []
-
-        async def fake_sock_sendto(sock, packet, dest):
-            sent_packets.append(packet)
-
-        loop = asyncio.get_running_loop()
-        monkeypatch.setattr(loop, "sock_sendto", fake_sock_sendto)
-
         await adv._send_announcement()
 
+        sent_packets = [packet for _iface, packet, _dest in adv._sock.sends]
         assert len(sent_packets) == 2
         # Each interface's packet advertises that interface's own IP
         assert socket.inet_aton("10.0.0.5") in sent_packets[0]
@@ -304,3 +298,25 @@ class TestAdvertiserPerInterfaceAnnouncements:
         assert socket.inet_aton("192.168.2.6") in sent_packets[1]
         # Outbound pinned per interface
         assert adv._sock.pins == ["10.0.0.5", "192.168.2.6"]
+
+
+class TestNoUnimplementedLoopSocketAPIs:
+    """uvloop, the event loop on Linux deployments, does not implement
+    loop.sock_sendto or loop.sock_recvfrom — both raise NotImplementedError
+    at runtime. Server code must use executor-based sendto/recvfrom instead.
+    The calls work fine on Windows dev (selector loop implements them), so
+    only this guard catches the mistake before it ships.
+    """
+
+    def test_no_sock_sendto_or_recvfrom_in_server(self):
+        server_root = Path(__file__).resolve().parents[1] / "server"
+        offenders: list[str] = []
+        for path in server_root.rglob("*.py"):
+            text = path.read_text(encoding="utf-8", errors="replace")
+            if ".sock_sendto(" in text or ".sock_recvfrom(" in text:
+                offenders.append(path.name)
+        assert offenders == [], (
+            f"loop.sock_sendto/sock_recvfrom found in {offenders} — "
+            "uvloop raises NotImplementedError for these; use "
+            "run_in_executor with sock.sendto/recvfrom instead"
+        )
