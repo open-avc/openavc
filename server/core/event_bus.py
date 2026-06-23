@@ -49,6 +49,7 @@ callback owns that path.
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import uuid
 from fnmatch import fnmatch
 from typing import Any, Callable
@@ -58,15 +59,29 @@ from server.utils.logger import get_logger
 log = get_logger(__name__)
 
 
+# Recursion depth of a SINGLE emit chain (emit -> handler -> emit -> ...), not
+# the number of emits running concurrently. A ContextVar gives us exactly this:
+# asyncio.create_task / gather copy the current context, so independent
+# concurrent emits (many devices connecting at once, several macros emitting
+# progress, the per-transaction state.changed dispatch) each start from depth 0
+# in their own context, while a handler that re-emits inherits depth+1. The old
+# shared instance counter was incremented across the gather() await, so it
+# conflated breadth with depth and silently dropped legitimate high-fan-out
+# events once enough were in flight at the same time. Mirrors the same idiom
+# used for the macro call chain (macro_engine._active_call_chain).
+_emit_depth: contextvars.ContextVar[int] = contextvars.ContextVar(
+    "openavc_event_emit_depth", default=0
+)
+
+
 class EventBus:
     """Async pub/sub event bus with glob pattern matching."""
 
-    MAX_EMIT_DEPTH = 4  # prevent runaway recursive event chains
+    MAX_EMIT_DEPTH = 4  # prevent runaway recursive event chains (per chain)
 
     def __init__(self):
         # pattern -> list of (handler_id, handler_fn, once_flag)
         self._handlers: dict[str, list[tuple[str, Callable, bool]]] = {}
-        self._emit_depth = 0
 
     async def emit(self, event: str, payload: dict[str, Any] | None = None) -> None:
         """
@@ -75,7 +90,8 @@ class EventBus:
         Handlers that raise exceptions are caught and logged — one bad handler
         never prevents others from running. This is critical for system reliability.
         """
-        if self._emit_depth >= self.MAX_EMIT_DEPTH:
+        depth = _emit_depth.get()
+        if depth >= self.MAX_EMIT_DEPTH:
             log.warning(
                 f"Event '{event}' dropped — max emit depth ({self.MAX_EMIT_DEPTH}) "
                 f"reached. Possible recursive event chain."
@@ -90,29 +106,29 @@ class EventBus:
 
         log.debug(f"Event: {event} -> {len(matching)} handler(s)")
 
-        # Collect handlers to remove after (once-handlers)
-        to_remove: list[str] = []
+        # Unregister once-handlers BEFORE the await below: a concurrent re-emit
+        # of the same event between here and gather() must not find them still
+        # registered and fire them a second time. We already captured them in
+        # ``matching``, so they still run exactly once this time.
+        for handler_id, _handler, once in matching:
+            if once:
+                self.off(handler_id)
 
-        # Run all matching handlers concurrently (with depth tracking)
-        self._emit_depth += 1
+        # Run all matching handlers concurrently. The depth bumps live in this
+        # task's context, so handler tasks spawned by gather() inherit depth+1
+        # (true recursion) while unrelated concurrent emits keep their own.
+        token = _emit_depth.set(depth + 1)
         try:
-            tasks = []
-            for handler_id, handler, once in matching:
-                if once:
-                    to_remove.append(handler_id)
-                tasks.append(self._call_handler(handler, event, payload))
-
-            if tasks:
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-                for r in results:
-                    if isinstance(r, Exception):
-                        log.error(f"Event handler error during '{event}': {r}")
+            tasks = [
+                self._call_handler(handler, event, payload)
+                for _handler_id, handler, _once in matching
+            ]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for r in results:
+                if isinstance(r, Exception):
+                    log.error(f"Event handler error during '{event}': {r}")
         finally:
-            self._emit_depth -= 1
-
-        # Remove once-handlers that fired
-        for handler_id in to_remove:
-            self.off(handler_id)
+            _emit_depth.reset(token)
 
     def on(self, event_pattern: str, handler: Callable) -> str:
         """

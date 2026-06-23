@@ -115,3 +115,60 @@ async def test_payload_defaults_to_empty_dict(events):
     events.on("test.default", lambda e, p: payloads.append(p))
     await events.emit("test.default")
     assert payloads == [{}]
+
+
+async def test_concurrent_emits_not_dropped_by_depth_guard(events):
+    """High-fan-out CONCURRENT emits (more than MAX_EMIT_DEPTH) whose handlers
+    await must all be delivered. The depth guard bounds recursion per chain, not
+    how many independent emits are in flight at once — the old shared counter
+    conflated the two and silently dropped legitimate events."""
+    received = []
+
+    async def handler(event, payload):
+        # Await so every emit holds its depth bump across this window at once,
+        # which is exactly when the old shared counter over-counted.
+        await asyncio.sleep(0.01)
+        received.append(event)
+
+    events.on("fan.*", handler)
+
+    n = events.MAX_EMIT_DEPTH + 4
+    await asyncio.gather(*[events.emit(f"fan.{i}") for i in range(n)])
+
+    assert sorted(received) == sorted(f"fan.{i}" for i in range(n))
+
+
+async def test_recursive_emit_chain_still_bounded(events):
+    """A genuine recursive chain (a handler that re-emits the same event) is
+    still capped at MAX_EMIT_DEPTH so runaway recursion can't spin forever."""
+    fires = []
+
+    async def recursive(event, payload):
+        fires.append(event)
+        await events.emit("recurse")  # re-emit -> recursion
+
+    events.on("recurse", recursive)
+    await events.emit("recurse")
+
+    # Handler fires once per depth level up to the cap, then the next emit drops.
+    assert len(fires) == events.MAX_EMIT_DEPTH
+
+
+async def test_once_does_not_double_fire_under_concurrent_emit(events):
+    """A once-handler must fire exactly once even when the same event is emitted
+    concurrently — the handler is unregistered before the await, so a second
+    concurrent emit can't find it still registered and fire it again."""
+    fires = []
+
+    async def once_handler(event, payload):
+        await asyncio.sleep(0.01)  # keep the first emit awaiting while the 2nd runs
+        fires.append(event)
+
+    events.once("test.once.race", once_handler)
+
+    await asyncio.gather(
+        events.emit("test.once.race"),
+        events.emit("test.once.race"),
+    )
+
+    assert fires == ["test.once.race"]
