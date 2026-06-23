@@ -122,13 +122,11 @@ async def get_script_references() -> dict[str, Any]:
 
 
 @router.post("/scripts", dependencies=[Depends(require_claimed_auth)])
-async def create_script(request: Request) -> dict[str, Any]:
+async def create_script(data: ScriptCreateRequest) -> dict[str, Any]:
     """Create a new script entry and file."""
     engine = _get_engine()
     if not engine.project:
         raise HTTPException(status_code=503, detail="No project loaded")
-    body = await request.json()
-    data = ScriptCreateRequest(**body)
 
     # Check for duplicate ID
     for s in engine.project.scripts:

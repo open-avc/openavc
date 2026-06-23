@@ -57,7 +57,7 @@ export function ScriptFileTree({
 
   const handleCreateScript = () => {
     if (!newId.trim()) return;
-    const safeId = newId.trim().replace(/[^a-zA-Z0-9_-]/g, "_");
+    const safeId = newId.trim().toLowerCase().replace(/[^a-z0-9_]/g, "_");
     const file = `${safeId}.py`;
     onCreateScript(safeId, file, newDesc.trim());
     setNewId("");
