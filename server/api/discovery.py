@@ -6,7 +6,7 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import PlainTextResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from server.api.auth import require_programmer_auth
 from server.api.errors import api_error as _api_error
@@ -157,6 +157,12 @@ class DiscoveryConfigRequest(BaseModel):
 
 
 class AddDeviceRequest(BaseModel):
+    # Reject unknown fields with a 422 instead of the default extra='ignore'
+    # silent drop. That default once swallowed a client sending an obsolete
+    # per-device `group` field (device grouping moved to project-level
+    # `device_groups` in v0.4.0), so the assignment vanished with no error.
+    model_config = ConfigDict(extra="forbid")
+
     ip: str
     driver_id: str
     name: str = ""
@@ -326,6 +332,37 @@ async def get_config() -> dict[str, Any]:
     return config
 
 
+def _sanitize_add_device_config(config: dict[str, Any]) -> dict[str, Any]:
+    """Validate caller-supplied device config before it is persisted.
+
+    ``add_device`` merges this dict straight into the saved ``.avc``, so it
+    must be a flat map of JSON primitives. Keys are driver-defined (we don't
+    second-guess them against a schema, which would break the deliberately
+    flexible config model) but must be non-empty, reasonably short strings;
+    values must be ``str``/``int``/``float``/``bool``/``None``. A nested
+    object/array or non-serializable value would corrupt the project file or
+    surprise the driver at runtime — reject it with a 422 instead.
+    """
+    if not isinstance(config, dict):
+        raise HTTPException(status_code=422, detail="config must be an object")
+    clean: dict[str, Any] = {}
+    for key, value in config.items():
+        if not isinstance(key, str) or not key or len(key) > 128:
+            raise HTTPException(status_code=422, detail=f"Invalid config key: {key!r}")
+        # bool is a subclass of int — listing it is documentation, not logic.
+        if value is not None and not isinstance(value, (str, int, float, bool)):
+            raise HTTPException(
+                status_code=422,
+                detail=f"config['{key}'] must be a string, number, boolean, or null",
+            )
+        if isinstance(value, str) and len(value) > 4096:
+            raise HTTPException(
+                status_code=422, detail=f"config['{key}'] value is too long"
+            )
+        clean[key] = value
+    return clean
+
+
 @router.post("/add-device")
 async def add_device(req: AddDeviceRequest) -> dict[str, Any]:
     """Add a discovered device to the project.
@@ -346,6 +383,24 @@ async def add_device(req: AddDeviceRequest) -> dict[str, Any]:
     ip_suffix = re.sub(r'[.:\-]', '_', req.ip)
     raw_id = f"{req.driver_id}_{ip_suffix}"
     device_id = re.sub(r'[^a-z0-9_]', '_', raw_id.lower())
+
+    # Idempotency guard. The id is deterministic from driver+IP, so re-adding a
+    # device the project already has is the same device — not a new one. Without
+    # this, the project ``devices`` list (no uniqueness check) would gain a
+    # duplicate DeviceConfig while the ``connections`` dict kept only one entry,
+    # and device_manager.add_device would overwrite the live driver without
+    # disconnecting it, leaking its open transport. Reject the duplicate before
+    # any runtime/project mutation; editing an existing device goes through
+    # PUT /api/devices/{id}.
+    already_added = (
+        any(d.id == device_id for d in _app_engine.project.devices)
+        if _app_engine.project else False
+    ) or _app_engine.devices.get_device_config(device_id) is not None
+    if already_added:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Device '{device_id}' is already in the project",
+        )
 
     # Use provided name, or build one from discovery info
     name = req.name
@@ -372,7 +427,7 @@ async def add_device(req: AddDeviceRequest) -> dict[str, Any]:
     }
 
     config = {**driver_defaults, "host": req.ip}
-    config.update(req.config)
+    config.update(_sanitize_add_device_config(req.config))
 
     # Split config into connection fields and protocol fields
     protocol_config = {}

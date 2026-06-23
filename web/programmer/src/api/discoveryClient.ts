@@ -149,7 +149,8 @@ export async function discoveryAddDevice(options: {
   driver_id: string;
   name?: string;
   config?: Record<string, unknown>;
-  group?: string;
+  // No per-device `group`: device grouping lives in project-level
+  // `device_groups` (v0.4.0+). The backend rejects unknown fields.
 }): Promise<{ status: string; device_id: string; name: string }> {
   return request("/discovery/add-device", {
     method: "POST",

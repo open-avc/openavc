@@ -256,6 +256,8 @@ async def test_discovery_add_device_pulls_in_driver_defaults_on_first_add(
     )
     engine.devices = MagicMock()
     engine.devices.add_device = AsyncMock()
+    # Untracked device — the idempotency guard reads this.
+    engine.devices.get_device_config = MagicMock(return_value=None)
     engine._project_revision = 0
 
     discovery_api.set_app_engine(engine)
@@ -287,6 +289,144 @@ async def test_discovery_add_device_pulls_in_driver_defaults_on_first_add(
     assert saved_conn["port"] == 5000
     assert saved_device.config["machine_number"] == "01"
     assert saved_device.config["poll_interval"] == 10
+
+
+def _wire_add_device_env(tmp_path):
+    """Stub the discovery + app engine so ``add_device`` runs in isolation.
+
+    Returns the Engine whose mocked ``devices.add_device`` records hand-offs
+    and whose in-memory project the route mutates.
+    """
+    from unittest.mock import AsyncMock, MagicMock
+
+    from server.api import discovery as discovery_api
+
+    fake_discovery = MagicMock()
+    fake_discovery.results = {}
+    discovery_api.set_discovery_engine(fake_discovery)
+
+    engine = Engine(str(tmp_path / "test.avc"))
+    engine.project = ProjectConfig(
+        project=ProjectMeta(id="t", name="Test"),
+        devices=[],
+        connections={},
+    )
+    engine.devices = MagicMock()
+    engine.devices.add_device = AsyncMock()
+    # No device tracked yet — mirrors a fresh runtime.
+    engine.devices.get_device_config = MagicMock(return_value=None)
+    engine._project_revision = 0
+
+    discovery_api.set_app_engine(engine)
+    return engine
+
+
+async def test_discovery_add_device_rejects_duplicate(
+    tmp_path, fake_tcp_driver, monkeypatch
+):
+    """Re-adding a device the project already has must 409 — not append a
+    duplicate DeviceConfig or overwrite (and leak) the live runtime driver.
+    """
+    from fastapi import HTTPException
+
+    from server.api.discovery import AddDeviceRequest, add_device
+
+    engine = _wire_add_device_env(tmp_path)
+    monkeypatch.setattr(
+        "server.core.project_loader.save_project", lambda *a, **k: None
+    )
+
+    req = AddDeviceRequest(ip="192.0.2.50", driver_id="fake_kramer_test")
+    first = await add_device(req)
+    assert first["status"] == "ok"
+    assert len(engine.project.devices) == 1
+    assert engine.devices.add_device.await_count == 1
+
+    # The first add appended the device to the project, so the guard fires on
+    # the project check alone — the realistic re-add path after a rescan.
+    with pytest.raises(HTTPException) as exc:
+        await add_device(req)
+    assert exc.value.status_code == 409
+    assert "already in the project" in exc.value.detail
+
+    # No second runtime hand-off and no duplicate row persisted.
+    assert engine.devices.add_device.await_count == 1
+    assert len(engine.project.devices) == 1
+
+
+async def test_discovery_add_device_rejects_nested_config(
+    tmp_path, fake_tcp_driver, monkeypatch
+):
+    """Caller-supplied config must be flat primitives; a nested object or a
+    list value is rejected with 422 before anything is persisted.
+    """
+    from fastapi import HTTPException
+
+    from server.api.discovery import AddDeviceRequest, add_device
+
+    engine = _wire_add_device_env(tmp_path)
+    monkeypatch.setattr(
+        "server.core.project_loader.save_project", lambda *a, **k: None
+    )
+
+    nested = AddDeviceRequest(
+        ip="192.0.2.51",
+        driver_id="fake_kramer_test",
+        config={"creds": {"password": "x"}},
+    )
+    with pytest.raises(HTTPException) as exc:
+        await add_device(nested)
+    assert exc.value.status_code == 422
+    # Nothing persisted, nothing handed to the runtime.
+    assert engine.project.devices == []
+    assert engine.devices.add_device.await_count == 0
+
+    listy = AddDeviceRequest(
+        ip="192.0.2.52",
+        driver_id="fake_kramer_test",
+        config={"ports": [1, 2, 3]},
+    )
+    with pytest.raises(HTTPException) as exc2:
+        await add_device(listy)
+    assert exc2.value.status_code == 422
+
+
+async def test_discovery_add_device_accepts_flat_primitive_config(
+    tmp_path, fake_tcp_driver, monkeypatch
+):
+    """A flat primitive config (string/number/bool/None) is accepted and
+    merged into the saved device.
+    """
+    from server.api.discovery import AddDeviceRequest, add_device
+
+    engine = _wire_add_device_env(tmp_path)
+    monkeypatch.setattr(
+        "server.core.project_loader.save_project", lambda *a, **k: None
+    )
+
+    req = AddDeviceRequest(
+        ip="192.0.2.53",
+        driver_id="fake_kramer_test",
+        config={"machine_number": "07", "poll_interval": 5, "verify_ssl": False},
+    )
+    result = await add_device(req)
+    assert result["status"] == "ok"
+    saved = engine.project.devices[-1]
+    assert saved.config["machine_number"] == "07"
+    assert saved.config["poll_interval"] == 5
+    assert saved.config["verify_ssl"] is False
+
+
+def test_add_device_request_forbids_unknown_fields():
+    """The obsolete per-device ``group`` field (now project-level
+    ``device_groups``) must raise instead of being silently dropped.
+    """
+    from pydantic import ValidationError
+
+    from server.api.discovery import AddDeviceRequest
+
+    with pytest.raises(ValidationError):
+        AddDeviceRequest(ip="192.0.2.54", driver_id="fake_kramer_test", group="A/V")
 
 
 # ---------------------------------------------------------------------------
