@@ -158,6 +158,42 @@ _load_builtin_drivers()
 PAUSE_TTL = 600.0
 
 
+# Device-config field names whose values are credentials and must never leave
+# the device manager in cleartext. get_device_info's orphaned-device branch is
+# the only path that returns raw connection config, and that payload flows to
+# the cloud AI (cloud/tools/device_tools.py::_get_device_info) — a missing
+# driver must not turn a simple get_device_info into a credential dump. Matched
+# case-insensitively: exact names for ambiguous words (so a benign `user_label`
+# isn't caught), substrings for the unambiguous secret markers. Mirrors the auth
+# fields BaseDriver.connect reads (username/password/token/api_key) plus common
+# variants.
+_SECRET_KEY_EXACT = frozenset({"username", "user", "bearer"})
+_SECRET_KEY_SUBSTRINGS = (
+    "password", "passwd", "passphrase", "secret",
+    "token", "api_key", "apikey", "credential", "private",
+)
+
+
+def _redact_config(config: dict[str, Any]) -> dict[str, Any]:
+    """Return a copy of a device config with credential values masked.
+
+    A present-but-masked value (``"***"``) still tells a caller the field is
+    set without revealing it; empty/None values are left as-is so "not
+    configured" stays visible. Nested dicts are redacted recursively.
+    """
+    redacted: dict[str, Any] = {}
+    for key, value in config.items():
+        if isinstance(value, dict):
+            redacted[key] = _redact_config(value)
+            continue
+        key_l = str(key).lower()
+        is_secret = key_l in _SECRET_KEY_EXACT or any(
+            marker in key_l for marker in _SECRET_KEY_SUBSTRINGS
+        )
+        redacted[key] = "***" if (is_secret and value not in (None, "")) else value
+    return redacted
+
+
 class DeviceManager:
     """Manages all device driver instances."""
 
@@ -370,7 +406,11 @@ class DeviceManager:
                 "state": self.state.get_namespace(f"device.{device_id}"),
                 "commands": {},
                 "driver_info": {},
-                "config": config.get("config", {}),
+                # Redact credentials: this is the only get_device_info branch
+                # that returns raw connection config, and it reaches the cloud
+                # AI. A missing driver must not leak the device's password /
+                # API key (see _redact_config).
+                "config": _redact_config(config.get("config", {})),
             }
 
         driver = self._devices.get(device_id)
@@ -785,11 +825,21 @@ class DeviceManager:
         device_id = parts[2]
 
         # Only reconnect if device still exists and isn't being removed
-        if device_id not in self._devices:
+        driver = self._devices.get(device_id)
+        if driver is None:
             return
 
         # Skip if this is an intentional disconnect (reconnect_device, remove, update)
         if device_id in self._intentional_disconnect:
+            return
+
+        # Skip a stale/deferred disconnect event for a device that's already
+        # back online. The transport schedules its drop emit via create_task
+        # (base.py:_handle_transport_disconnect), so it can fire AFTER a manual
+        # reconnect_device has already reconnected and cleared the intentional
+        # flag — without this guard that stale event would spin up a redundant
+        # reconnect loop against a live connection.
+        if driver.get_state("connected"):
             return
 
         # Check the device isn't disabled
@@ -801,7 +851,7 @@ class DeviceManager:
         # Classify the drop from the transport's stashed last error (no connect
         # exception on this path) so the device card shows an actionable reason
         # instead of a bare code.
-        self._set_offline_reason(device_id, self._devices.get(device_id))
+        self._set_offline_reason(device_id, driver)
         self._start_reconnect(device_id)
 
     def _start_reconnect(self, device_id: str) -> None:

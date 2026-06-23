@@ -123,6 +123,45 @@ async def test_get_device_info(dm, core, pjlink_sim):
     await dm.disconnect_all()
 
 
+async def test_get_device_info_redacts_orphan_credentials(dm):
+    """An orphaned device (driver not installed) must not leak its plaintext
+    connection credentials via get_device_info — that payload reaches the
+    cloud AI. Secrets are masked; non-secret fields (host/port) survive."""
+    import json
+
+    await dm.add_device({
+        "id": "orphan_dev",
+        "driver": "uninstalled_driver",
+        "name": "Orphan",
+        "config": {
+            "host": "10.0.0.5",
+            "port": 80,
+            "username": "admin",
+            "password": "hunter2",
+            "token": "bearer-secret",
+            "api_key": "sk-live-123",
+            "poll_interval": 5,
+        },
+    })
+
+    info = dm.get_device_info("orphan_dev")
+    assert info["orphaned"] is True
+    cfg = info["config"]
+    # Non-secret connection fields are preserved for the UI / AI to reason about
+    assert cfg["host"] == "10.0.0.5"
+    assert cfg["port"] == 80
+    assert cfg["poll_interval"] == 5
+    # Credentials are masked, never returned in cleartext
+    assert cfg["password"] == "***"
+    assert cfg["username"] == "***"
+    assert cfg["token"] == "***"
+    assert cfg["api_key"] == "***"
+    # No cleartext secret value appears anywhere in the returned payload
+    blob = json.dumps(info)
+    for secret in ("hunter2", "bearer-secret", "sk-live-123"):
+        assert secret not in blob
+
+
 # ---------------------------------------------------------------------------
 # Mock driver for reconnection tests
 # ---------------------------------------------------------------------------
@@ -326,6 +365,28 @@ async def test_on_device_disconnected_triggers_reconnect(dm, core):
     # Should have started a reconnect task
     await asyncio.sleep(0.05)  # Let event handler run
     assert "test_dev" in dm._reconnect_tasks
+    await dm._cancel_reconnect("test_dev")
+
+
+async def test_on_device_disconnected_skips_when_already_connected(dm, core):
+    """A stale/deferred disconnect event that arrives after the device has
+    already reconnected (a manual reconnect racing the transport's own deferred
+    drop emit) must NOT start a redundant reconnect loop against a live link."""
+    state, events = core
+    driver = MockDriver("test_dev", {}, state, events)
+    driver._connected = True
+    state.set("device.test_dev.connected", True, source="driver")
+    dm._devices["test_dev"] = driver
+    dm._device_configs["test_dev"] = {"id": "test_dev", "driver": "mock_driver", "enabled": True}
+    state.set("device.test_dev.enabled", True, source="config")
+
+    # Stale disconnect event for a device that is currently connected
+    await events.emit("device.disconnected.test_dev", {"device_id": "test_dev"})
+    await asyncio.sleep(0.05)  # Let event handler run
+
+    # No reconnect task should have been started
+    assert "test_dev" not in dm._reconnect_tasks
+    # Defensive cleanup in case of regression
     await dm._cancel_reconnect("test_dev")
 
 
