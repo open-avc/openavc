@@ -27,6 +27,13 @@ log = get_logger(__name__)
 PluginActionHandler = Callable[[dict[str, Any], dict[str, Any]], Awaitable[None]]
 BroadcastWS = Callable[[dict[str, Any]], Awaitable[None]]
 
+# Grace period a cancelled macro's tasks get to unwind before cancel()/
+# cancel_all() give up waiting. A macro that ignores cancellation (a tight
+# loop with no await, or a step that swallows CancelledError) can still be
+# sending bytes to AV hardware past this window — we surface that rather
+# than silently reporting success.
+_CANCEL_GRACE_SECONDS = 5.0
+
 # The call chain of the macro currently executing in this task context.
 # The in-engine ``_call_chain`` argument only covers direct macro->macro
 # nesting; tasks spawned during step execution (event-bus handler dispatch,
@@ -93,10 +100,17 @@ class MacroEngine:
             return False
         for task in tasks:
             task.cancel()
+        pending: set[asyncio.Task] = set()
         try:
-            await asyncio.wait(tasks, timeout=5.0)
+            _done, pending = await asyncio.wait(tasks, timeout=_CANCEL_GRACE_SECONDS)
         except asyncio.CancelledError:
-            pass
+            pending = set()
+        if pending:
+            log.warning(
+                "Macro '%s' cancel: %d invocation(s) did not stop within %.0fs "
+                "and may still be sending commands to AV hardware",
+                macro_id, len(pending), _CANCEL_GRACE_SECONDS,
+            )
         return True
 
     async def cancel_all(self) -> None:
@@ -106,10 +120,17 @@ class MacroEngine:
             return
         for task in all_tasks:
             task.cancel()
+        pending: set[asyncio.Task] = set()
         try:
-            await asyncio.wait(all_tasks, timeout=5.0)
+            _done, pending = await asyncio.wait(all_tasks, timeout=_CANCEL_GRACE_SECONDS)
         except asyncio.CancelledError:
-            pass
+            pending = set()
+        if pending:
+            log.warning(
+                "Shutdown cancel_all: %d macro task(s) did not stop within %.0fs; "
+                "control output to AV hardware may continue past shutdown",
+                len(pending), _CANCEL_GRACE_SECONDS,
+            )
 
     def _collect_group_targets(
         self, group: str, exclude_task: asyncio.Task | None

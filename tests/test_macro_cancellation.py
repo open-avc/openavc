@@ -94,6 +94,106 @@ async def test_cancel_cleanup(engine, state):
     assert "test_macro" not in engine._running
 
 
+# ===== L-100: cancel()/cancel_all() surface tasks that ignore cancellation =====
+
+
+async def _stubborn_invocation():
+    """A macro task that swallows the first cancellation and keeps running,
+    simulating a step that doesn't honour CancelledError within the grace
+    period (tight loop, or an except that re-awaits)."""
+    try:
+        await asyncio.sleep(10)
+    except asyncio.CancelledError:
+        # Ignore the cancel and keep going — this is what leaves AV output
+        # in flight past a "cancelled" result.
+        await asyncio.sleep(10)
+
+
+@pytest.mark.asyncio
+async def test_cancel_warns_when_task_does_not_stop(engine, caplog, monkeypatch):
+    """cancel() must not report success silently when a task ignores the
+    cancellation — it inspects the still-pending set and logs a warning."""
+    import logging
+
+    from server.core import macro_engine as me
+
+    monkeypatch.setattr(me, "_CANCEL_GRACE_SECONDS", 0.1)
+
+    task = asyncio.create_task(_stubborn_invocation())
+    await asyncio.sleep(0.05)  # let it reach its first await before cancel
+    engine._running["stubborn"] = {task}
+
+    with caplog.at_level(logging.WARNING):
+        result = await engine.cancel("stubborn")
+
+    assert result is True
+    assert any(
+        "did not stop within" in r.message and "stubborn" in r.message
+        for r in caplog.records
+    ), f"expected a warning about the unstopped invocation; got {caplog.records}"
+
+    # Hard-stop the stubborn task so it doesn't leak into other tests.
+    task.cancel()
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+
+@pytest.mark.asyncio
+async def test_cancel_all_warns_when_task_does_not_stop(engine, caplog, monkeypatch):
+    """cancel_all() (shutdown path) must surface tasks still running past the
+    grace period rather than swallowing the asyncio.wait result."""
+    import logging
+
+    from server.core import macro_engine as me
+
+    monkeypatch.setattr(me, "_CANCEL_GRACE_SECONDS", 0.1)
+
+    task = asyncio.create_task(_stubborn_invocation())
+    await asyncio.sleep(0.05)  # let it reach its first await before cancel
+    engine._running["stubborn"] = {task}
+
+    with caplog.at_level(logging.WARNING):
+        await engine.cancel_all()
+
+    assert any(
+        "did not stop within" in r.message for r in caplog.records
+    ), f"expected a shutdown warning about the unstopped task; got {caplog.records}"
+
+    task.cancel()
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+
+@pytest.mark.asyncio
+async def test_cancel_no_warning_when_task_stops_cleanly(engine, caplog, monkeypatch):
+    """A well-behaved macro that honours cancellation produces no warning."""
+    import logging
+
+    from server.core import macro_engine as me
+
+    monkeypatch.setattr(me, "_CANCEL_GRACE_SECONDS", 0.5)
+
+    engine.load_macros([{
+        "id": "clean",
+        "name": "Clean",
+        "steps": [{"action": "delay", "seconds": 10}],
+    }])
+    asyncio.create_task(engine.execute("clean"))
+    await asyncio.sleep(0.05)
+
+    with caplog.at_level(logging.WARNING):
+        result = await engine.cancel("clean")
+
+    assert result is True
+    assert not any("did not stop within" in r.message for r in caplog.records)
+
+
 # ===== cancel_group preemption =====
 
 
