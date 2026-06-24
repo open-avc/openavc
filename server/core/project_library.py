@@ -253,13 +253,28 @@ def ensure_starter_projects() -> None:
         except Exception as e:
             log.warning("Failed to seed starter project %s: %s", project_id, e)
 
-    # Seed plain .avc files (skip if a .zip with the same stem was already seeded)
+    # Seed plain .avc files (skip if a .zip with the same stem was already
+    # seeded). Migrate + validate before writing, parity with the .zip path, so
+    # a starter authored against an older schema lands already-migrated instead
+    # of relying on a later open to fix it. The dir is only created once the
+    # project validates, so a bad starter is retried on the next start.
+    from server.core.project_migration import migrate_project
+    from server.core.project_loader import ProjectConfig
     for avc_file in sorted(_SEED_DIR.glob("*.avc")):
         project_dir = lib / sanitize_id(avc_file.stem)
         if project_dir.exists():
             continue
+        try:
+            data = json.loads(avc_file.read_text(encoding="utf-8"))
+            data, _ = migrate_project(data)
+            ProjectConfig(**data)  # validate before writing
+        except Exception as e:
+            log.warning("Failed to seed starter project %s: %s", avc_file.stem, e)
+            continue
         project_dir.mkdir()
-        shutil.copy2(avc_file, project_dir / "project.avc")
+        (project_dir / "project.avc").write_text(
+            json.dumps(data, indent=4, ensure_ascii=False), encoding="utf-8"
+        )
         scripts_seed = _SEED_DIR / f"{avc_file.stem}.scripts"
         if scripts_seed.is_dir():
             dest_scripts = project_dir / "scripts"
