@@ -14,6 +14,13 @@ let disconnectHandlers: LifecycleHandler[] = [];
  *  "server rejected us" (probably auth) from "connection dropped mid-session". */
 let everConnected = false;
 
+/** Consecutive pre-open 1006 closes. A 1006 before we ever open is ambiguous
+ *  (proxy-level 401 vs. a server that isn't up yet); we retry with backoff and
+ *  only conclude an auth failure once it persists, so a slow-starting server
+ *  doesn't wipe valid credentials. */
+let preOpenFailures = 0;
+const MAX_PREOPEN_RETRIES = 3;
+
 /** Queue for messages sent while disconnected (commands only, capped). */
 const MAX_SEND_QUEUE = 50;
 let sendQueue: Record<string, unknown>[] = [];
@@ -26,6 +33,13 @@ function getWsUrl(): string {
   const pathParts = window.location.pathname.split("/programmer");
   const basePath = pathParts[0] || "";
   return `${proto}//${window.location.host}${basePath}/ws?client=programmer`;
+}
+
+/** Clear cached credentials and ask the App to show the login screen. */
+function requestLogin(code: number): void {
+  console.warn(`[WS] Connection rejected (code ${code}); requesting login`);
+  clearStoredAuth();
+  window.dispatchEvent(new CustomEvent(AUTH_REQUIRED_EVENT));
 }
 
 export function connect(): void {
@@ -42,6 +56,7 @@ export function connect(): void {
   socket.onopen = () => {
     console.log("[WS] Connected");
     everConnected = true;
+    preOpenFailures = 0;
     reconnectDelay = 2000; // Reset backoff on successful connect
     if (reconnectTimer) {
       clearTimeout(reconnectTimer);
@@ -82,20 +97,23 @@ export function connect(): void {
     for (const handler of disconnectHandlers) {
       handler();
     }
-    // Auth rejection: the server can return either 4001 (sent after accept)
-    // or close the upgrade with HTTP 401, which the browser surfaces as
-    // 1006 (abnormal close, no message). When the close happens before any
-    // successful open AND the server requires auth, treat it as an auth
-    // failure and bounce the user to the login screen rather than looping
-    // reconnects forever.
-    const looksLikeAuthFailure =
-      ev.code === 4001 ||
-      (ev.code === 1006 && everConnected === false);
-    if (looksLikeAuthFailure) {
-      console.warn(`[WS] Connection rejected (code ${ev.code}); requesting login`);
-      clearStoredAuth();
-      window.dispatchEvent(new CustomEvent(AUTH_REQUIRED_EVENT));
+    // Auth rejection: the server returns 4001 after accepting the upgrade, or
+    // (behind a proxy that authenticates at the HTTP layer) rejects the upgrade
+    // with 401, which the browser surfaces as 1006 (abnormal close, no message).
+    // 4001 is unambiguous — bounce to login immediately. A pre-open 1006 is NOT:
+    // it's equally the symptom of a server still starting up or a transient
+    // blip, so retry with backoff and only treat persistent pre-open 1006s as an
+    // auth failure (otherwise a slow-starting server wipes valid credentials).
+    if (ev.code === 4001) {
+      requestLogin(ev.code);
       return;
+    }
+    if (ev.code === 1006 && everConnected === false) {
+      preOpenFailures += 1;
+      if (preOpenFailures >= MAX_PREOPEN_RETRIES) {
+        requestLogin(ev.code);
+        return;
+      }
     }
     console.log(`[WS] Disconnected (code ${ev.code}), reconnecting in ${reconnectDelay / 1000}s...`);
     reconnectTimer = setTimeout(connect, reconnectDelay);
@@ -129,9 +147,24 @@ export function disconnect(): void {
     reconnectTimer = null;
   }
   if (socket) {
+    // Detach handlers BEFORE closing so the imminent (async) onclose can't
+    // reschedule a reconnect and resurrect the connection we just tore down —
+    // or, on a logout-then-relogin, null out a freshly-created socket.
+    socket.onopen = null;
+    socket.onmessage = null;
+    socket.onerror = null;
+    socket.onclose = null;
     socket.close();
     socket = null;
   }
+  // Reset per-session state so a later connect() starts fresh: a genuine auth
+  // failure on the next first-open is detectable again (everConnected /
+  // preOpenFailures), backoff is restored, and stale queued commands from this
+  // session aren't replayed onto AV hardware (sendQueue).
+  everConnected = false;
+  preOpenFailures = 0;
+  reconnectDelay = 2000;
+  sendQueue = [];
 }
 
 export function onMessage(handler: MessageHandler): () => void {
