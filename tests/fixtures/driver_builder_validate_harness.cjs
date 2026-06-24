@@ -417,4 +417,79 @@ const errorsOf = (issues) => issues.filter((i) => i.severity === "error");
   };
 }
 
+// --- Discovery hints validation (H-121 / H-122 / M-170) ------------------
+const discIssues = (issues) => issues.filter((i) => i.section === "discovery");
+
+{
+  // H-121: a disallowed open port (8080 et al) is flagged as an error, not
+  // silently saved to fail at load.
+  const issues = discIssues(validate(baseDraft("tcp", {}, { discovery: { port_open: [8080] } })));
+  results.h121_disallowed_port_8080_error = {
+    pass: issues.length === 1 && issues[0].severity === "error" &&
+      issues[0].field === "port_open" && /8080/.test(issues[0].message),
+    detail: issues,
+  };
+}
+{
+  // A vendor-specific port is fine.
+  const issues = discIssues(validate(baseDraft("tcp", {}, { discovery: { port_open: [4352] } })));
+  results.h121_vendor_port_ok = { pass: issues.length === 0, detail: issues };
+}
+{
+  // H-122: a probe declaring two matchers is an error (runtime allows one).
+  const issues = discIssues(
+    validate(baseDraft("tcp", {}, {
+      discovery: { tcp_probe: { port: 1234, expect: "A", expect_hex: "AA55" } },
+    })),
+  );
+  results.h122_probe_two_matchers_error = {
+    pass: issues.length === 1 && issues[0].severity === "error" &&
+      issues[0].field === "tcp_probe" && /only one matcher/.test(issues[0].message),
+    detail: issues,
+  };
+}
+{
+  // A probe with exactly one matcher is fine.
+  const issues = discIssues(
+    validate(baseDraft("tcp", {}, {
+      discovery: { tcp_probe: { port: 1234, expect: "NovaStar" } },
+    })),
+  );
+  results.h122_probe_one_matcher_ok = { pass: issues.length === 0, detail: issues };
+}
+{
+  // M-170: a blank string row (OUI here) is flagged with a field anchor.
+  const issues = discIssues(validate(baseDraft("tcp", {}, { discovery: { oui: ["00:11:22", ""] } })));
+  results.m170_blank_oui_error = {
+    pass: issues.length === 1 && issues[0].severity === "error" &&
+      issues[0].field === "oui" && /blank/.test(issues[0].message),
+    detail: issues,
+  };
+}
+{
+  // M-170: a blank mDNS fingerprint (object form, empty service) is flagged.
+  const issues = discIssues(
+    validate(baseDraft("tcp", {}, { discovery: { mdns: [{ service: "" }] } })),
+  );
+  results.m170_blank_mdns_service_error = {
+    pass: issues.length === 1 && issues[0].field === "mdns" && /blank/.test(issues[0].message),
+    detail: issues,
+  };
+}
+{
+  // Fully-populated discovery hints produce no discovery issues.
+  const issues = discIssues(
+    validate(baseDraft("tcp", {}, {
+      discovery: {
+        oui: ["00:11:22"],
+        hostname: ["acme-*"],
+        mdns: [{ service: "_acme._tcp.local." }],
+        tcp_probe: { port: 4352, expect: "ACME" },
+        port_open: [4352],
+      },
+    })),
+  );
+  results.discovery_clean_no_issues = { pass: issues.length === 0, detail: issues };
+}
+
 process.stdout.write(JSON.stringify(results));

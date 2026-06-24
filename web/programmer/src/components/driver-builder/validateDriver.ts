@@ -42,6 +42,13 @@ const BASELINE_CONFIG_KEYS = new Set([
 const ID_RE = /^[a-z][a-z0-9_]*$/;
 const PARAM_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 const PLACEHOLDER_RE = /\{(\w+)\}/g;
+
+// Mirror of DISALLOWED_OPEN_PORTS in server/discovery/hints.py — a port_open
+// hint on one of these matches every web/SSH host, so the runtime rejects it.
+// Exported so the Discovery editor shows the rule inline at authoring time.
+export const DISALLOWED_OPEN_PORTS: ReadonlySet<number> = new Set([
+  22, 80, 443, 8000, 8080, 8443, 8888,
+]);
 // Child type ids and per-child field ids share the device state-key
 // namespace, so they follow the same lowercase-identifier rule.
 const CHILD_ID_RE = /^[a-z][a-z0-9_]*$/;
@@ -562,7 +569,84 @@ export function validateDriver(
     }
   }
 
+  // ── Discovery hints (mirror server/discovery/hints.py rules so the user
+  //    sees them here, not as an opaque 422 at save) ──────────────────────
+  validateDiscovery(draft, issues);
+
   return issues;
+}
+
+/** A discovery list entry is blank if it's an empty string, or an object whose
+ *  primary identifying field is empty/whitespace. */
+function hasBlankEntry(arr: unknown[] | undefined, primaryKey?: string): boolean {
+  return (arr ?? []).some((e) => {
+    if (typeof e === "string") return e.trim() === "";
+    if (e && typeof e === "object" && primaryKey) {
+      const v = (e as Record<string, unknown>)[primaryKey];
+      return typeof v === "string" && v.trim() === "";
+    }
+    return false;
+  });
+}
+
+function validateDiscovery(
+  draft: DriverDefinition,
+  issues: ValidationIssue[],
+): void {
+  const disc = draft.discovery;
+  if (!disc) return;
+
+  // Disallowed open ports — match every web/SSH host, rejected at runtime.
+  for (const port of disc.port_open ?? []) {
+    if (DISALLOWED_OPEN_PORTS.has(port)) {
+      issues.push({
+        severity: "error",
+        section: "discovery",
+        field: "port_open",
+        message: `Port ${port} is too common to identify a device — it matches every web/SSH host. Remove it.`,
+      });
+    }
+  }
+
+  // Blank rows the runtime rejects (added-but-not-filled).
+  const blankChecks: [unknown[] | undefined, string | undefined, string, string][] = [
+    [disc.oui, undefined, "oui", "OUI list"],
+    [disc.hostname, undefined, "hostname", "Hostname list"],
+    [disc.manufacturer_alias, undefined, "manufacturer_alias", "Manufacturer alias list"],
+    [disc.mdns, "service", "mdns", "mDNS fingerprint"],
+    [disc.ssdp, "device_type", "ssdp", "SSDP fingerprint"],
+    [disc.amx_ddp, "make", "amx_ddp", "AMX DDP fingerprint"],
+  ];
+  for (const [arr, primaryKey, field, label] of blankChecks) {
+    if (hasBlankEntry(arr, primaryKey)) {
+      issues.push({
+        severity: "error",
+        section: "discovery",
+        field,
+        message: `${label} has a blank entry — fill it in or remove the row.`,
+      });
+    }
+  }
+
+  // A probe may declare at most one response matcher (runtime: exactly one of
+  // expect / expect_regex / expect_hex; more than one is rejected).
+  for (const [field, probe] of [
+    ["tcp_probe", disc.tcp_probe],
+    ["udp_probe", disc.udp_probe],
+  ] as const) {
+    if (!probe) continue;
+    const declared = (["expect", "expect_regex", "expect_hex"] as const).filter(
+      (k) => probe[k] !== undefined && probe[k] !== "",
+    );
+    if (declared.length > 1) {
+      issues.push({
+        severity: "error",
+        section: "discovery",
+        field,
+        message: `A ${field === "tcp_probe" ? "TCP" : "UDP"} probe can declare only one matcher — pick one of substring, regex, or hex prefix (found ${declared.join(", ")}).`,
+      });
+    }
+  }
 }
 
 /** Issues for one command/setting-write whose shape doesn't match the

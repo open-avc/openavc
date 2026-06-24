@@ -10,10 +10,9 @@ import type {
   DriverDiscoveryPython,
   DriverDiscoverySsdpFingerprint,
 } from "../../api/types";
-
-// Mirror of DISALLOWED_OPEN_PORTS in server/discovery/hints.py — surfaced
-// here so the rule shows at authoring time, not as a load-time error.
-const DISALLOWED_OPEN_PORTS: ReadonlySet<number> = new Set([22, 80, 443]);
+// Single source of truth for the disallowed-open-ports rule (mirrors
+// server/discovery/hints.py), shared with the driver validator.
+import { DISALLOWED_OPEN_PORTS } from "./validateDriver";
 
 // Style tokens.
 const SECTION: React.CSSProperties = {
@@ -443,24 +442,38 @@ function ProbeBlock({
     else if (sendMode === "hex") onChange({ ...rest, send_hex: val });
   };
 
-  const expectField = (
-    label: string,
-    key: "expect" | "expect_regex" | "expect_hex",
-    placeholder: string,
-  ) => (
-    <div style={ROW}>
-      <span style={FIELD_W}>{label}</span>
-      <input
-        type="text"
-        placeholder={placeholder}
-        value={probe[key] ?? ""}
-        onChange={(e) =>
-          onChange({ ...probe, [key]: e.target.value || undefined })
-        }
-        style={MONO}
-      />
-    </div>
-  );
+  // The runtime accepts exactly one response matcher per probe (hints.py:
+  // _parse_response_match rejects more than one). Model it as a single mode +
+  // value rather than three independent inputs, mirroring the Send selector
+  // above, so an author can never declare two.
+  const expectMode: "none" | "expect" | "expect_regex" | "expect_hex" =
+    probe.expect !== undefined
+      ? "expect"
+      : probe.expect_regex !== undefined
+        ? "expect_regex"
+        : probe.expect_hex !== undefined
+          ? "expect_hex"
+          : "none";
+
+  const setExpectMode = (next: typeof expectMode) => {
+    const carry = probe.expect ?? probe.expect_regex ?? probe.expect_hex ?? "";
+    const { expect: _e, expect_regex: _r, expect_hex: _h, ...rest } = probe;
+    if (next === "none") onChange(rest);
+    else onChange({ ...rest, [next]: carry });
+  };
+
+  const setExpect = (val: string) => {
+    if (expectMode === "none") return;
+    const { expect: _e, expect_regex: _r, expect_hex: _h, ...rest } = probe;
+    onChange({ ...rest, [expectMode]: val });
+  };
+
+  const expectPlaceholder =
+    expectMode === "expect_regex"
+      ? "^NS-([A-Z0-9]+)"
+      : expectMode === "expect_hex"
+        ? "AA55"
+        : "NovaStar";
 
   return (
     <div>
@@ -515,15 +528,33 @@ function ProbeBlock({
           )}
         </div>
 
-        {expectField("Expect (substring)", "expect", "NovaStar")}
-        {expectField("Expect (regex)", "expect_regex", "^NS-([A-Z0-9]+)")}
-        {expectField("Expect (hex prefix)", "expect_hex", "AA55")}
+        <div style={ROW}>
+          <span style={FIELD_W}>Expect</span>
+          <select
+            value={expectMode}
+            onChange={(e) => setExpectMode(e.target.value as typeof expectMode)}
+          >
+            <option value="none">none</option>
+            <option value="expect">substring</option>
+            <option value="expect_regex">regex</option>
+            <option value="expect_hex">hex prefix</option>
+          </select>
+          {expectMode !== "none" && (
+            <input
+              type="text"
+              placeholder={expectPlaceholder}
+              value={probe[expectMode] ?? ""}
+              onChange={(e) => setExpect(e.target.value)}
+              style={MONO}
+            />
+          )}
+        </div>
         <div style={HELP}>
-          Combine matchers as needed — they all AND together.
-          {kind === "udp" && " UDP probes need at least one matcher."}
+          Pick exactly one matcher — substring, regex, or hex prefix.
+          {kind === "udp" && " UDP probes need a matcher."}
           {kind === "tcp" &&
             sendMode !== "none" &&
-            " TCP probes that send bytes also need at least one matcher."}
+            " TCP probes that send bytes also need a matcher."}
         </div>
 
         <div style={ROW}>
@@ -674,8 +705,9 @@ function HintsSection({
       <div style={HELP}>
         Vendor-specific TCP/UDP ports the device exposes (e.g.{" "}
         <code>4352</code> for PJLink, <code>17567</code> for Lightware
-        LW3). Ports <code>22</code>, <code>80</code>, <code>443</code>{" "}
-        are rejected — they would match every web/SSH host on the LAN.
+        LW3). Common web/SSH and admin-UI ports (
+        <code>{[...DISALLOWED_OPEN_PORTS].sort((a, b) => a - b).join(", ")}</code>)
+        are rejected — they would match nearly every host on the LAN.
       </div>
 
       <label style={LABEL}>Manufacturer aliases</label>
@@ -914,8 +946,10 @@ function PortList({
     const n = parseInt(raw, 10);
     if (!Number.isFinite(n) || String(n) !== raw.trim()) return "not a number";
     if (n < 1 || n > 65535) return "out of range";
-    if (DISALLOWED_OPEN_PORTS.has(n))
-      return "too generic (22, 80, 443 disallowed)";
+    if (DISALLOWED_OPEN_PORTS.has(n)) {
+      const disallowed = [...DISALLOWED_OPEN_PORTS].sort((a, b) => a - b).join("/");
+      return `too generic (${disallowed} disallowed)`;
+    }
     return null;
   };
 

@@ -526,9 +526,9 @@ export interface DriverDiscoveryProbe {
   // connect-only TCP probe (UDP probes must include one).
   send_ascii?: string;
   send_hex?: string;
-  // expect / expect_regex / expect_hex are AND-ed when more than one
-  // is set. UDP probes require at least one matcher; TCP probes that
-  // send bytes also need one.
+  // Exactly one of expect / expect_regex / expect_hex — the runtime rejects
+  // a probe that declares more than one. UDP probes require a matcher; TCP
+  // probes that send bytes also need one.
   expect?: string;
   expect_regex?: string;
   expect_hex?: string;

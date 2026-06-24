@@ -96,6 +96,13 @@ SCENARIOS = [
     "m152_placeholder_string_ok_int64_fraction_error",
     "m152_helper_matrix",
     "route_precedence_matches_runtime",
+    "h121_disallowed_port_8080_error",
+    "h121_vendor_port_ok",
+    "h122_probe_two_matchers_error",
+    "h122_probe_one_matcher_ok",
+    "m170_blank_oui_error",
+    "m170_blank_mdns_service_error",
+    "discovery_clean_no_issues",
 ]
 
 
