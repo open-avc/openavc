@@ -59,6 +59,8 @@ Set the **Line ending** once (CR, LF, or CRLF). It is added to every command, so
 
 To enter a value when you fire a command, put a placeholder in curly braces. `VOL {level}` creates a command that asks for a level and sends `VOL 42`.
 
+Commands are sent as text, but you can include raw bytes with `\xHH` escapes: `\x1B` sends the ESC byte (0x1B), `\xFF` sends 0xFF, and `\r` `\n` `\t` send carriage return, line feed, and tab. This covers text protocols and fixed binary commands. Protocols that need a value computed from the message (a checksum, CRC, or length prefix) aren't a fit for a Generic device. Build a driver for those.
+
 For HTTP devices, a command is a method, a path, and an optional JSON body instead of a single string.
 
 **Pasting a list**: click **Paste** and enter one command per line as `Label = string to send`. This fills the table quickly when you're copying a handful of commands out of a manual.

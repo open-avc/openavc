@@ -638,6 +638,11 @@ export function InlineProtocolEditor({
                         value={r.send}
                         onChange={(e) => setCommand(r.key, { send: e.target.value })}
                         placeholder="PWR ON   (use {level} for a value)"
+                        title={
+                          "Sent as text; the line ending is added automatically. " +
+                          "Use {name} for a value to fill in when sending. For a raw " +
+                          "byte use \\xHH (e.g. \\x1B for ESC); \\r \\n \\t also work."
+                        }
                         style={{ ...inputStyle, fontFamily: "var(--font-mono)" }}
                       />
                     </div>
@@ -692,6 +697,15 @@ export function InlineProtocolEditor({
             <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
               added to each command and used to split replies
             </span>
+          </div>
+        )}
+
+        {!isHttp && (
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: "var(--space-sm)" }}>
+            Commands are sent as text. To include a raw byte, use{" "}
+            <code>{"\\xHH"}</code> (e.g. <code>{"\\x1B"}</code> for ESC, <code>{"\\xFF"}</code>{" "}
+            for 0xFF); <code>{"\\r \\n \\t"}</code> also work. (For protocols that need a
+            computed checksum or CRC, build a driver instead.)
           </div>
         )}
       </div>
