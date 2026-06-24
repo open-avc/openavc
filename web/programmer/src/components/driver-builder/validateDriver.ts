@@ -53,6 +53,11 @@ export const DISALLOWED_OPEN_PORTS: ReadonlySet<number> = new Set([
 // namespace, so they follow the same lowercase-identifier rule.
 const CHILD_ID_RE = /^[a-z][a-z0-9_]*$/;
 
+// Mirror of the runtime's LengthPrefixFrameParser (server/transport/
+// frame_parsers.py): the length header must be 1, 2, or 4 bytes. Any other
+// size raises a ValueError when the parser is built at device connect.
+const FRAME_HEADER_SIZES: ReadonlySet<number> = new Set([1, 2, 4]);
+
 // ── Transport ↔ command-shape routing ──────────────────────────────────
 // The runtime routes each command/setting-write by SHAPE, not by the
 // driver's transport (configurable.py): anything with an `address` goes to
@@ -569,11 +574,76 @@ export function validateDriver(
     }
   }
 
+  // ── Frame parser (binary protocols) — mirror driver_loader.py's
+  //    validate_driver_definition so a bad header_size/length shows in the
+  //    Connection tab at author time, not as a ValueError raised in connect()
+  //    that wedges the device in a permanent reconnect loop. ───────────────
+  validateFrameParser(draft, issues);
+
   // ── Discovery hints (mirror server/discovery/hints.py rules so the user
   //    sees them here, not as an opaque 422 at save) ──────────────────────
   validateDiscovery(draft, issues);
 
   return issues;
+}
+
+/** Mirror server/drivers/driver_loader.py's frame_parser load-time checks.
+ *  The Frame Parser editor's own inputs constrain new drivers, but an
+ *  imported or hand-edited .avcdriver can still carry a header_size the
+ *  LengthPrefixFrameParser rejects (only 1/2/4) or a non-positive fixed
+ *  length the FixedLengthFrameParser rejects — both raise at connect, so
+ *  surface them as Connection errors before save. */
+function validateFrameParser(
+  draft: DriverDefinition,
+  issues: ValidationIssue[],
+): void {
+  const fp = draft.frame_parser;
+  if (!fp) return;
+  const type = fp.type;
+  if (type === "length_prefix") {
+    const headerSize = (fp.header_size as number | undefined) ?? 2;
+    if (!FRAME_HEADER_SIZES.has(headerSize)) {
+      issues.push({
+        severity: "error",
+        section: "connection",
+        field: "frame_parser.header_size",
+        message: `Frame parser header size must be 1, 2, or 4 bytes (got ${String(headerSize)}). The device would fail to connect.`,
+      });
+    }
+    const offset = fp.header_offset;
+    if (offset !== undefined && !Number.isInteger(offset)) {
+      issues.push({
+        severity: "error",
+        section: "connection",
+        field: "frame_parser.header_offset",
+        message: `Frame parser header offset must be a whole number (got ${String(offset)}).`,
+      });
+    }
+  } else if (type === "fixed_length") {
+    const length = (fp.length as number | undefined) ?? 1;
+    if (!Number.isInteger(length) || length <= 0) {
+      issues.push({
+        severity: "error",
+        section: "connection",
+        field: "frame_parser.length",
+        message: `Frame parser frame length must be a positive whole number (got ${String(length)}). The device would fail to connect.`,
+      });
+    }
+  } else if (type) {
+    issues.push({
+      severity: "error",
+      section: "connection",
+      field: "frame_parser.type",
+      message: `Frame parser type "${String(type)}" isn't supported — use length-prefix or fixed-length.`,
+    });
+  } else {
+    issues.push({
+      severity: "error",
+      section: "connection",
+      field: "frame_parser.type",
+      message: "Frame parser is enabled but has no type set.",
+    });
+  }
 }
 
 /** A discovery list entry is blank if it's an empty string, or an object whose

@@ -492,4 +492,74 @@ const discIssues = (issues) => issues.filter((i) => i.section === "discovery");
   results.discovery_clean_no_issues = { pass: issues.length === 0, detail: issues };
 }
 
+// --- Frame parser validation (H-123 / L-102) -----------------------------
+// Mirrors server/drivers/driver_loader.py: header_size must be 1/2/4 and a
+// fixed length must be a positive integer, else the parser raises at connect.
+const fpIssues = (issues) =>
+  issues.filter((i) => i.field && i.field.startsWith("frame_parser"));
+
+{
+  // H-123: a length-prefix header_size the runtime rejects (only 1/2/4) — an
+  // imported/hand-edited driver could carry 3, which raises at connect.
+  const issues = fpIssues(
+    validate(baseDraft("tcp", {}, { frame_parser: { type: "length_prefix", header_size: 3 } })),
+  );
+  results.h123_header_size_3_error = {
+    pass:
+      issues.length === 1 &&
+      issues[0].severity === "error" &&
+      issues[0].section === "connection" &&
+      issues[0].field === "frame_parser.header_size" &&
+      /1, 2, or 4/.test(issues[0].message),
+    detail: issues,
+  };
+}
+{
+  // A supported header_size (4) is clean.
+  const issues = fpIssues(
+    validate(baseDraft("tcp", {}, { frame_parser: { type: "length_prefix", header_size: 4, header_offset: -4 } })),
+  );
+  results.h123_header_size_4_negoffset_ok = { pass: issues.length === 0, detail: issues };
+}
+{
+  // L-102: a non-positive fixed length saves silently in older builders and
+  // raises ValueError at connect — flag it as a Connection error.
+  const issues = fpIssues(
+    validate(baseDraft("tcp", {}, { frame_parser: { type: "fixed_length", length: -5 } })),
+  );
+  results.l102_fixed_negative_length_error = {
+    pass:
+      issues.length === 1 &&
+      issues[0].severity === "error" &&
+      issues[0].field === "frame_parser.length" &&
+      /positive whole number/.test(issues[0].message),
+    detail: issues,
+  };
+}
+{
+  // A positive fixed length is clean.
+  const issues = fpIssues(
+    validate(baseDraft("tcp", {}, { frame_parser: { type: "fixed_length", length: 8 } })),
+  );
+  results.l102_fixed_length_ok = { pass: issues.length === 0, detail: issues };
+}
+{
+  // An unknown frame_parser type is rejected (matches the loader's message).
+  const issues = fpIssues(
+    validate(baseDraft("tcp", {}, { frame_parser: { type: "sliding_window" } })),
+  );
+  results.frame_parser_unknown_type_error = {
+    pass:
+      issues.length === 1 &&
+      issues[0].field === "frame_parser.type" &&
+      /isn't supported/.test(issues[0].message),
+    detail: issues,
+  };
+}
+{
+  // No frame_parser block (the common case) produces no frame_parser issues.
+  const issues = fpIssues(validate(baseDraft("tcp", {})));
+  results.frame_parser_absent_no_issues = { pass: issues.length === 0, detail: issues };
+}
+
 process.stdout.write(JSON.stringify(results));

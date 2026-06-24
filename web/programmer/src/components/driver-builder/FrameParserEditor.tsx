@@ -186,9 +186,13 @@ export function FrameParserEditor({ draft, onUpdate }: FrameParserEditorProps) {
               <input
                 type="number"
                 value={(fp.length as number | undefined) ?? 1}
-                onChange={(e) =>
-                  update({ length: parseInt(e.target.value) || 1 })
-                }
+                onChange={(e) => {
+                  // The runtime FixedLengthFrameParser rejects length <= 0, so
+                  // floor at 1 — `min={1}` only constrains the spinner, not a
+                  // typed-in negative (which would save and break at connect).
+                  const n = parseInt(e.target.value, 10);
+                  update({ length: Number.isFinite(n) && n > 0 ? n : 1 });
+                }}
                 min={1}
                 style={{ width: 160 }}
               />

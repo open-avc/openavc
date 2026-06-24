@@ -103,6 +103,12 @@ SCENARIOS = [
     "m170_blank_oui_error",
     "m170_blank_mdns_service_error",
     "discovery_clean_no_issues",
+    "h123_header_size_3_error",
+    "h123_header_size_4_negoffset_ok",
+    "l102_fixed_negative_length_error",
+    "l102_fixed_length_ok",
+    "frame_parser_unknown_type_error",
+    "frame_parser_absent_no_issues",
 ]
 
 
