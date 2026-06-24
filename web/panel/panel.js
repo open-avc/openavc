@@ -2925,7 +2925,11 @@ class PanelApp {
 
         const mode = element.clock_mode || 'time';
         const defaultFormats = { time: 'h:mm A', date: 'MMM D, YYYY', datetime: 'MMM D, YYYY h:mm A', countdown: 'HH:mm:ss', elapsed: 'HH:mm:ss', meeting: 'mm:ss' };
-        const format = element.format || defaultFormats[mode] || 'h:mm A';
+        // "12" / "24" are documented shorthands for 12- and 24-hour time, not
+        // literal token strings; map them before the token replacer runs.
+        const formatShortcuts = { '12': 'h:mm A', '24': 'HH:mm' };
+        const rawFormat = element.format || defaultFormats[mode] || 'h:mm A';
+        const format = formatShortcuts[rawFormat] || rawFormat;
         const timezone = element.timezone || undefined;
         const durationMin = element.duration_minutes || 60;
 
