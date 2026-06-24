@@ -190,7 +190,7 @@ class PeerInfo:
     connected: bool = False
     discovered_at: float = field(default_factory=time)
     last_seen: float = field(default_factory=time)
-    source: str = "mdns"  # "mdns", "manual", "inbound"
+    source: str = "discovered"  # "discovered", "manual", "inbound"
     scheme: str = "http"  # set to "https" when the peer advertises TLS
 
 
@@ -234,7 +234,7 @@ class ISCManager:
     Inter-System Communication manager.
 
     Manages the full lifecycle of peer discovery and communication:
-    1. Registers this instance on the LAN via mDNS (if zeroconf is available)
+    1. Announces this instance on the LAN via UDP broadcast beacons (port 19872)
     2. Discovers other OpenAVC instances automatically
     3. Establishes WebSocket connections to peers
     4. Shares configured state keys with connected peers
@@ -310,7 +310,7 @@ class ISCManager:
     # ------------------------------------------------------------------
 
     async def start(self) -> None:
-        """Start ISC: register mDNS, begin discovery, connect to manual peers."""
+        """Start ISC: begin UDP-beacon discovery, connect to manual peers."""
         if self._running:
             return
         self._running = True
@@ -434,7 +434,7 @@ class ISCManager:
         # — both manual and discovered. Existing sockets still hold the old
         # key on both sides; new handshakes will use the new key. Manual
         # peers are re-scheduled below; discovered peers will be re-found
-        # via mDNS / UDP discovery.
+        # via UDP discovery.
         auth_key_changed = old_auth_key != auth_key
         if auth_key_changed:
             for peer_id in list(self._connections.keys()):

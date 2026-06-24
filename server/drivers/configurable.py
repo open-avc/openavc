@@ -1,13 +1,13 @@
 """
-OpenAVC ConfigurableDriver — interprets JSON driver definitions at runtime.
+OpenAVC ConfigurableDriver — interprets YAML driver definitions at runtime.
 
-This enables creating device drivers without writing Python code. A JSON
-driver definition specifies transport, commands, response parsing, and
+This enables creating device drivers without writing Python code. A YAML
+(.avcdriver) definition specifies transport, commands, response parsing, and
 polling — the ConfigurableDriver reads this at runtime and produces the
 same behavior as a hand-coded Python driver.
 
 Usage:
-    driver_def = load_json("extron_switcher.json")
+    driver_def = load_yaml("extron_switcher.avcdriver")
     DriverClass = create_configurable_driver_class(driver_def)
     register_driver(DriverClass)
 """
@@ -120,7 +120,7 @@ def _build_commands_meta(commands_def: dict[str, Any]) -> dict[str, Any]:
 
 class ConfigurableDriver(BaseDriver):
     """
-    A driver that interprets a JSON driver definition at runtime.
+    A driver that interprets a YAML (.avcdriver) definition at runtime.
 
     The definition dict must contain:
         - id, name, manufacturer, category, transport
