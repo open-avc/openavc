@@ -16,6 +16,7 @@ from typing import Any
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from server.api._engine import get_engine_optional
+from server.api._engine import set_engine as _shared_set_engine
 from server.api.auth import check_ws_auth, get_ws_auth_subprotocol
 from server.api.error_messages import friendly_error
 from server.utils.log_buffer import get_log_buffer, LogEntry
@@ -24,9 +25,20 @@ from server.utils.logger import get_logger
 router = APIRouter()
 log = get_logger(__name__)
 
-# The engine lives in a single shared slot in server.api._engine (set by
-# main.py via rest.set_engine). This handler reads it through
-# get_engine_optional() so there's no second slot to keep in sync.
+# The engine lives in a single shared slot in server.api._engine. This handler
+# reads it through get_engine_optional() rather than holding its own reference,
+# so there's no second slot that could fall out of sync with the REST one.
+
+
+def set_engine(engine) -> None:
+    """Wire the engine into the single shared slot in server.api._engine.
+
+    Kept as a module-level entry point so callers that wire ws.py directly
+    (tests) still work, but it targets the one shared slot — not a ws-local
+    copy — so the REST and WebSocket views can't desync.
+    """
+    _shared_set_engine(engine)
+
 
 # Per-client log subscriptions: ws -> (sub_id, task)
 _log_subscriptions: dict[int, tuple[str, asyncio.Task]] = {}
