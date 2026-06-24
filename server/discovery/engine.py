@@ -615,6 +615,7 @@ class DiscoveryEngine:
         ssdp_task: asyncio.Task | None = None
         amx_ddp_task: asyncio.Task | None = None
         snmp_task: asyncio.Task | None = None
+        snmp_scanner: SNMPScanner | None = None
 
         try:
             mdns_task = asyncio.create_task(mdns_scanner.start(duration=600.0))
@@ -860,7 +861,7 @@ class DiscoveryEngine:
             await amx_ddp_scanner.stop()
 
             await self._collect_passive_results(mdns_task, ssdp_task, amx_ddp_task)
-            await self._collect_snmp_results(snmp_task)
+            await self._collect_snmp_results(snmp_task, snmp_scanner)
 
             # Surface listener environment failures (multicast join failed
             # on every interface, socket unavailable, ...) as scan warnings
@@ -1053,7 +1054,11 @@ class DiscoveryEngine:
             log.debug("%s task failed", label, exc_info=True)
             return {}
 
-    async def _collect_snmp_results(self, snmp_task: asyncio.Task | None) -> None:
+    async def _collect_snmp_results(
+        self,
+        snmp_task: asyncio.Task | None,
+        snmp_scanner: "SNMPScanner | None" = None,
+    ) -> None:
         """Wait for SNMP scan and merge results."""
         if snmp_task is None:
             return
@@ -1075,6 +1080,17 @@ class DiscoveryEngine:
                 snmp_results = snmp_task.result()
             except Exception:  # Catch-all: task.result() re-raises whatever the task raised
                 log.debug("SNMP task failed", exc_info=True)
+        elif snmp_scanner is not None:
+            # Overran the 5s window and got cancelled. The scanner populates
+            # its results incrementally, so every device it identified before
+            # the cutoff is still available — merge those rather than dropping
+            # all SNMP enrichment on a large/slow subnet.
+            snmp_results = snmp_scanner.results
+            if snmp_results:
+                log.info(
+                    "SNMP scan overran the collect window; merging %d partial result(s)",
+                    len(snmp_results),
+                )
 
         for ip, snmp_info in snmp_results.items():
             device = self._get_or_create(ip)
