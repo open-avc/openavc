@@ -240,8 +240,9 @@ The installer also creates the data directory at `/Library/Application Support/O
 and seeds the default project.
 
 The menu-bar app shows server status and device count and provides quick links
-to the Programmer IDE and Panel, an update check, and start/stop/restart
-controls (which prompt for your password, since the server runs as root).
+to the Programmer IDE and Panel, an update check, start/stop/restart controls,
+and an **Uninstall OpenAVC** item (all of which prompt for your password, since
+the server runs as root).
 
 To control the service manually from Terminal:
 
@@ -258,6 +259,27 @@ sudo launchctl bootstrap system /Library/LaunchDaemons/com.openavc.server.plist
 Updates and rollback work the same as on Windows and Linux: the server downloads
 the new build, and on restart the daemon's wrapper swaps the app bundle in place
 (keeping the previous version for one-step rollback).
+
+### Uninstalling on macOS
+
+Because OpenAVC runs as a background service, dragging the app to the Trash is
+not enough on its own. Use one of these:
+
+- **Menu bar:** click the OpenAVC menu-bar icon and choose **Uninstall OpenAVC**,
+  then enter your password. This stops the service and the menu-bar app, removes
+  the application, and keeps your projects and settings.
+- **Terminal:** run the bundled uninstaller.
+
+```bash
+# Keep your projects and settings
+sudo bash /Applications/OpenAVC.app/Contents/Resources/macos-uninstall.sh
+
+# Remove everything, including projects, settings, and logs
+sudo bash /Applications/OpenAVC.app/Contents/Resources/macos-uninstall.sh --purge
+```
+
+Your projects and settings live in `/Library/Application Support/OpenAVC`. They
+are kept unless you pass `--purge`, so reinstalling picks up where you left off.
 
 ## Docker
 

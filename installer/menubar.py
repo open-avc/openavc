@@ -40,6 +40,9 @@ SERVICE_LABEL = "com.openavc.server"
 DATA_DIR = Path("/Library/Application Support/OpenAVC")
 SYSTEM_JSON = DATA_DIR / "system.json"
 DAEMON_PLIST = "/Library/LaunchDaemons/com.openavc.server.plist"
+# Uninstaller shipped inside the app bundle. The menu item runs it elevated so
+# users don't have to find a Terminal command to remove the background service.
+UNINSTALL_SCRIPT = "/Applications/OpenAVC.app/Contents/Resources/macos-uninstall.sh"
 # Per-user marker: the IDE is auto-opened once, the first time the menu bar runs
 # for this user (i.e. right after install). It lives in the user's home, not the
 # root-owned system data dir, so the menu bar (running as the user) can create
@@ -146,6 +149,8 @@ class OpenAVCMenuBar(rumps.App):
                 rumps.MenuItem("Restart", callback=lambda _: _service_command("restart")),
             ]),
             None,
+            rumps.MenuItem("Uninstall OpenAVC...", callback=self._uninstall),
+            None,
         ]
         rumps.Timer(self._poll, POLL_INTERVAL).start()
 
@@ -195,6 +200,35 @@ class OpenAVCMenuBar(rumps.App):
     def _check_updates(self, _) -> None:
         _api_get("/api/system/updates/check", self._cfg, timeout=15)
         webbrowser.open(f"{self._base}/programmer#/updates")
+
+    def _uninstall(self, _) -> None:
+        """Fully remove OpenAVC: stop the server LaunchDaemon and this menu-bar
+        agent, delete the app + plists, and forget the install receipt. Projects
+        and settings are kept. Elevates via the macOS auth dialog (the daemon and
+        plists are root-owned)."""
+        ok = rumps.alert(
+            title="Uninstall OpenAVC?",
+            message=(
+                "This stops the OpenAVC background service and this menu-bar app, "
+                "then removes the application. Your projects and settings are kept "
+                "in /Library/Application Support/OpenAVC.\n\n"
+                "You can reinstall any time to pick up where you left off."
+            ),
+            ok="Uninstall",
+            cancel="Cancel",
+        )
+        if not ok:
+            return
+        # Run detached (nohup ... &) so the uninstaller survives this agent being
+        # stopped partway through. The elevated process is reparented to launchd,
+        # so it finishes even after we quit below.
+        cmd = f"nohup bash '{UNINSTALL_SCRIPT}' >/tmp/openavc-uninstall.log 2>&1 &"
+        script = f'do shell script "{cmd}" with administrator privileges'
+        try:
+            subprocess.run(["osascript", "-e", script], capture_output=True, timeout=120)
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            return
+        rumps.quit_application()
 
 
 def main():

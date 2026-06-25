@@ -78,7 +78,15 @@ cp installer/openavc-macos-run.sh "$APP/Contents/MacOS/openavc-macos-run.sh"
 chmod 755 "$APP/Contents/MacOS/openavc-macos-run.sh"
 cp installer/com.openavc.server.plist "$APP/Contents/Resources/com.openavc.server.plist"
 cp installer/com.openavc.menubar.plist "$APP/Contents/Resources/com.openavc.menubar.plist"
-[ -f installer/openavc.icns ] && cp installer/openavc.icns "$APP/Contents/Resources/openavc.icns"
+# Bundle the uninstaller so the menu-bar "Uninstall OpenAVC..." item (and a
+# manual `sudo bash` run) can fully remove the services, app, and receipt.
+cp installer/macos-uninstall.sh "$APP/Contents/Resources/macos-uninstall.sh"
+chmod 755 "$APP/Contents/Resources/macos-uninstall.sh"
+if [ -f installer/openavc.icns ]; then
+    cp installer/openavc.icns "$APP/Contents/Resources/openavc.icns"
+else
+    echo "WARNING: installer/openavc.icns missing — app will show the generic bundle icon"
+fi
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -91,6 +99,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleVersion</key><string>$VERSION</string>
     <key>CFBundleShortVersionString</key><string>$VERSION</string>
     <key>CFBundleExecutable</key><string>openavc-macos-run.sh</string>
+    <key>CFBundleIconFile</key><string>openavc.icns</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>LSMinimumSystemVersion</key><string>11.0</string>
     <key>LSBackgroundOnly</key><true/>
