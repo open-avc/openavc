@@ -554,6 +554,35 @@ def test_serial_bridge_binding_rewrites_to_passthrough(
     assert cfg["bridge_port"] == "serial:1"
 
 
+def test_serial_bridge_host_from_device_config(
+    engine_with_project, fake_bridge_driver, fake_serial_device_driver
+):
+    """The bridge's host may live in its device.config (an imported or template
+    project) rather than the connections table. Resolution must merge the same
+    layers every device's connection uses — driver defaults < device.config <
+    connections table — not read the connections table alone."""
+    engine = engine_with_project
+    bridge = DeviceConfig(
+        id="bridge1", driver="fake_bridge_test", name="Bridge",
+        config={"host": "192.0.2.55"},
+    )
+    downstream = DeviceConfig(
+        id="disp1", driver="fake_serial_display_test", name="Display", config={}
+    )
+    engine.project.devices.extend([bridge, downstream])
+    # No connections["bridge1"] host entry — the host is only in device.config.
+    engine.project.connections["disp1"] = {
+        "bridge": "bridge1",
+        "bridge_port": "serial:1",
+        "baudrate": 9600,
+    }
+
+    cfg = engine.resolved_device_config(downstream)["config"]
+    assert cfg["transport"] == "tcp"
+    assert cfg["host"] == "192.0.2.55"   # resolved from the bridge's device.config
+    assert cfg["port"] == 4999
+
+
 def test_bridge_unknown_device_leaves_binding_unresolved(
     engine_with_project, fake_serial_device_driver
 ):

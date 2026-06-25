@@ -759,7 +759,21 @@ class Engine:
 
         passthrough_port = port_def.get("passthrough_port")
         if port_def.get("kind") == "serial" and passthrough_port:
-            bridge_host = self.project.connections.get(bridge_id, {}).get("host")
+            # Resolve the bridge's own host the same layered way every device's
+            # connection is (driver defaults < device.config < connections
+            # table). Reading the connections table alone misses a host that
+            # comes from a driver default or sits in the bridge's device.config
+            # (e.g. an imported or template project) — which would leave the
+            # binding unresolved and the downstream device wrongly offline.
+            from server.core.device_manager import get_driver_default_config
+
+            bridge_cfg = getattr(bridge_dev, "config", None) or {}
+            bridge_conn = self.project.connections.get(bridge_id, {})
+            bridge_host = {
+                **get_driver_default_config(bridge_dev.driver),
+                **bridge_cfg,
+                **bridge_conn,
+            }.get("host")
             if not bridge_host:
                 log.warning(
                     "Bridge '%s' has no host configured — leaving the serial "
