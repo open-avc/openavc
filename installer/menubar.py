@@ -219,16 +219,32 @@ class OpenAVCMenuBar(rumps.App):
         )
         if not ok:
             return
-        # Run detached (nohup ... &) so the uninstaller survives this agent being
-        # stopped partway through. The elevated process is reparented to launchd,
-        # so it finishes even after we quit below.
-        cmd = f"nohup bash '{UNINSTALL_SCRIPT}' >/tmp/openavc-uninstall.log 2>&1 &"
-        script = f'do shell script "{cmd}" with administrator privileges'
+        # Run the bundled uninstaller synchronously and elevated — the same
+        # `do shell script ... with administrator privileges` pattern the Start/
+        # Stop/Restart items use. (An earlier `nohup ... &` attempt failed: the
+        # elevated context has no controlling terminal, so nohup aborted with
+        # "can't detach from console" and the script never ran.) The script does
+        # all its removal before stopping this menu-bar agent as its last step,
+        # so the work is complete even if that final step tears us down.
+        script = f"do shell script \"bash '{UNINSTALL_SCRIPT}'\" with administrator privileges"
         try:
             subprocess.run(["osascript", "-e", script], capture_output=True, timeout=120)
         except (FileNotFoundError, subprocess.TimeoutExpired):
-            return
-        rumps.quit_application()
+            pass
+        # Confirm it actually ran before quitting: a removed daemon plist means
+        # success. This avoids quitting when the user cancelled the password
+        # prompt, and still works if our process was torn down at the end.
+        if not os.path.exists(DAEMON_PLIST):
+            rumps.quit_application()
+        else:
+            rumps.alert(
+                title="Uninstall did not complete",
+                message=(
+                    "OpenAVC was not removed (you may have cancelled the password "
+                    "prompt). Try again, or run the uninstaller from Terminal:\n\n"
+                    f"sudo bash {UNINSTALL_SCRIPT}"
+                ),
+            )
 
 
 def main():

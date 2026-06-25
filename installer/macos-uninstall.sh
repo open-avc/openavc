@@ -26,15 +26,13 @@ AGENT_PLIST="/Library/LaunchAgents/com.openavc.menubar.plist"
 echo "Stopping the OpenAVC server..."
 launchctl bootout system/com.openavc.server 2>/dev/null || true
 
-# Stop the menu-bar agent in the logged-in user's GUI session, and clear that
-# user's first-run marker so a later reinstall opens the IDE again.
+# Identify the logged-in GUI user and clear its first-run marker so a later
+# reinstall opens the IDE again. (Stopping the menu-bar agent itself is the LAST
+# step below: when this script is launched FROM that menu-bar app, booting the
+# agent out tears down the caller, so every other removal must finish first.)
 CONSOLE_UID="$(stat -f %u /dev/console 2>/dev/null)"
 CONSOLE_USER="$(stat -f %Su /dev/console 2>/dev/null)"
-if [ -n "${CONSOLE_UID:-}" ] && [ "$CONSOLE_UID" != "0" ]; then
-    echo "Stopping the menu-bar app..."
-    launchctl bootout "gui/$CONSOLE_UID/com.openavc.menubar" 2>/dev/null || true
-    [ -n "${CONSOLE_USER:-}" ] && rm -f "/Users/$CONSOLE_USER/Library/Application Support/OpenAVC/.ide-autoopened" 2>/dev/null || true
-fi
+[ -n "${CONSOLE_USER:-}" ] && rm -f "/Users/$CONSOLE_USER/Library/Application Support/OpenAVC/.ide-autoopened" 2>/dev/null || true
 
 echo "Removing launch services..."
 rm -f "$DAEMON_PLIST" "$AGENT_PLIST"
@@ -53,6 +51,14 @@ if [ "$PURGE" = "1" ]; then
 else
     echo "Kept your projects and settings in: $DATA_DIR"
     echo "(re-run with --purge to remove those too)"
+fi
+
+# LAST: stop the running menu-bar agent. Its plist is already gone (above), so it
+# will not return at login; this just closes the currently-running app. Done last
+# because a menu-triggered run is a child of this very app.
+if [ -n "${CONSOLE_UID:-}" ] && [ "$CONSOLE_UID" != "0" ]; then
+    echo "Stopping the menu-bar app..."
+    launchctl bootout "gui/$CONSOLE_UID/com.openavc.menubar" 2>/dev/null || true
 fi
 
 echo "Done. OpenAVC has been uninstalled."
