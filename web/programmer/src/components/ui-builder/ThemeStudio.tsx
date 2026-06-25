@@ -4,7 +4,7 @@ import {
   X, Copy, Trash2, Save, Upload, Download, RotateCcw, AlertTriangle, Check, FilePlus, Minus,
 } from "lucide-react";
 import {
-  getTheme, createTheme, updateTheme, deleteTheme, importTheme,
+  getTheme, createTheme, updateTheme, deleteTheme, importTheme, getTunnelPrefix,
   type ThemeDefinition, type ThemeSummary,
 } from "../../api/restClient";
 import type { ProjectConfig, UIPage, UIElement } from "../../api/types";
@@ -647,7 +647,7 @@ function StudioPreview({
           <iframe
             key={pageId}
             ref={iframeRef}
-            src={`/panel?page=${encodeURIComponent(pageId)}&edit=1`}
+            src={`${getTunnelPrefix()}/panel?page=${encodeURIComponent(pageId)}&edit=1`}
             onLoad={handleLoad}
             title="Theme preview"
             style={{

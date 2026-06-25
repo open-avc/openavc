@@ -5,6 +5,7 @@ import { useUIBuilderStore } from "../../store/uiBuilderStore";
 import { useProjectStore } from "../../store/projectStore";
 import { CanvasElement } from "./CanvasElement";
 import { moveElementInPage, findOutOfBoundsIds } from "./uiBuilderHelpers";
+import { getTunnelPrefix } from "../../api/restClient";
 
 /** Check if two grid areas overlap. */
 function areasOverlap(a: GridArea, b: GridArea): boolean {
@@ -187,9 +188,10 @@ export function Canvas({
     ? (pageType === "sidebar" ? screenHeight : (page.overlay?.height ?? 300))
     : screenHeight;
 
+  const tunnelPrefix = getTunnelPrefix();
   const iframeSrc = previewMode
-    ? `/panel?page=${encodeURIComponent(page.id)}`
-    : `/panel?page=${encodeURIComponent(page.id)}&edit=1`;
+    ? `${tunnelPrefix}/panel?page=${encodeURIComponent(page.id)}`
+    : `${tunnelPrefix}/panel?page=${encodeURIComponent(page.id)}&edit=1`;
 
   // dnd-kit reads the bounding rect of the element carrying data-canvas-grid for drop math.
   // In edit mode we attach it to the overlay grid; in preview mode there's no drop target.
