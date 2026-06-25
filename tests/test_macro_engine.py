@@ -342,3 +342,98 @@ async def test_ui_navigate_without_broadcast_does_not_crash(macro_engine):
     }])
     # Should complete without raising
     await macro_engine.execute("go")
+
+
+# --- $trigger.<field>: macros can read the firing trigger's context ---
+
+
+async def test_trigger_ref_resolves_in_state_set(macro_engine, core):
+    """$trigger.<field> in a state.set value reads the event payload."""
+    state, _ = core
+    macro_engine.load_macros([{
+        "id": "m",
+        "name": "M",
+        "steps": [{"action": "state.set", "key": "var.last", "value": "$trigger.data"}],
+    }])
+    await macro_engine.execute("m", context={"event": "device.response.x", "data": "POWER_ON"})
+    assert state.get("var.last") == "POWER_ON"
+
+
+async def test_trigger_ref_resolves_in_device_params(macro_engine):
+    """$trigger.<field> in device.command params reads the trigger context."""
+    macro_engine.load_macros([{
+        "id": "m",
+        "name": "M",
+        "steps": [{
+            "action": "device.command", "device": "proj1", "command": "set_input",
+            "params": {"input": "$trigger.new_value"},
+        }],
+    }])
+    await macro_engine.execute(
+        "m", context={"key": "var.src", "old_value": "HDMI1", "new_value": "HDMI2"}
+    )
+    macro_engine.devices.send_command.assert_called_once_with(
+        "proj1", "set_input", {"input": "HDMI2"}
+    )
+
+
+async def test_trigger_ref_is_none_without_context(macro_engine, core):
+    """Run directly (no trigger context) -> $trigger.* resolves to None."""
+    state, _ = core
+    macro_engine.load_macros([{
+        "id": "m",
+        "name": "M",
+        "steps": [{"action": "state.set", "key": "var.last", "value": "$trigger.data"}],
+    }])
+    await macro_engine.execute("m")  # no context
+    assert state.get("var.last") is None
+
+
+async def test_trigger_ref_does_not_shadow_state_refs(macro_engine, core):
+    """A normal $var.* / $device.* ref still resolves from state even when a
+    trigger context is present (only the trigger.* namespace reads context)."""
+    state, _ = core
+    state.set("var.src", "HDMI3", source="test")
+    macro_engine.load_macros([{
+        "id": "m",
+        "name": "M",
+        "steps": [{"action": "state.set", "key": "var.copy", "value": "$var.src"}],
+    }])
+    await macro_engine.execute("m", context={"data": "ignored"})
+    assert state.get("var.copy") == "HDMI3"
+
+
+async def test_conditional_branches_on_trigger_field(macro_engine, core):
+    """A conditional step can branch on a trigger.<field> key."""
+    state, _ = core
+    macro_engine.load_macros([{
+        "id": "m",
+        "name": "M",
+        "steps": [{
+            "action": "conditional",
+            "condition": {"key": "trigger.data", "operator": "eq", "value": "ON"},
+            "then_steps": [{"action": "state.set", "key": "var.out", "value": "matched"}],
+            "else_steps": [{"action": "state.set", "key": "var.out", "value": "no_match"}],
+        }],
+    }])
+    await macro_engine.execute("m", context={"data": "ON"})
+    assert state.get("var.out") == "matched"
+    await macro_engine.execute("m", context={"data": "OFF"})
+    assert state.get("var.out") == "no_match"
+
+
+async def test_skip_if_honors_trigger_field(macro_engine, core):
+    """A step's skip_if guard can reference a trigger.<field> key."""
+    state, _ = core
+    macro_engine.load_macros([{
+        "id": "m",
+        "name": "M",
+        "steps": [{
+            "action": "state.set", "key": "var.ran", "value": True,
+            "skip_if": {"key": "trigger.event", "operator": "eq", "value": "skip.me"},
+        }],
+    }])
+    await macro_engine.execute("m", context={"event": "skip.me"})
+    assert state.get("var.ran") is None  # step skipped
+    await macro_engine.execute("m", context={"event": "other"})
+    assert state.get("var.ran") is True  # step ran

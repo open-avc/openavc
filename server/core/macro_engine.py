@@ -401,24 +401,49 @@ class MacroEngine:
                     ) from e
                 # Continue to next step (don't halt the macro)
 
-    def _evaluate_condition(self, condition: dict[str, Any]) -> bool:
-        """Evaluate a step condition against current state."""
+    def _condition_actual(
+        self, key: str, context: dict[str, Any] | None = None
+    ) -> Any:
+        """Read a condition's left-hand value. A ``trigger.<field>`` key reads
+        from the firing trigger's context (event payload / state-change
+        snapshot); any other key reads from the state store."""
+        if key.startswith("trigger."):
+            return (context or {}).get(key[len("trigger."):])
+        return self.state.get(key)
+
+    def _evaluate_condition(
+        self, condition: dict[str, Any], context: dict[str, Any] | None = None
+    ) -> bool:
+        """Evaluate a step condition. The condition ``key`` may be a state key
+        or ``trigger.<field>`` (resolved from the firing trigger's context)."""
         key = condition.get("key", "")
         op = condition.get("operator", "eq")
         target = condition.get("value")
-        actual = self.state.get(key)
+        actual = self._condition_actual(key, context)
         return eval_operator(op, actual, target)
 
-    def _resolve_value(self, value: Any) -> Any:
-        """Resolve a $state_key reference to its current value."""
+    def _resolve_value(self, value: Any, context: dict[str, Any] | None = None) -> Any:
+        """Resolve a $-reference to its current value.
+
+        ``$trigger.<field>`` reads from the firing trigger's context — the event
+        payload or state-change snapshot passed into ``execute()`` — so a
+        triggered macro can act on what arrived/changed (e.g. ``$trigger.data``
+        for an event payload field, ``$trigger.new_value`` for a state change).
+        Any other ``$<state_key>`` reads from the state store as before. When a
+        macro runs directly (no trigger context), ``$trigger.*`` resolves to None.
+        """
         if isinstance(value, str) and value.startswith("$"):
-            state_key = value[1:]
-            return self.state.get(state_key)
+            ref = value[1:]
+            if ref.startswith("trigger."):
+                return (context or {}).get(ref[len("trigger."):])
+            return self.state.get(ref)
         return value
 
-    def _resolve_params(self, params: dict[str, Any]) -> dict[str, Any]:
-        """Resolve $state_key references in parameter values."""
-        return {k: self._resolve_value(v) for k, v in params.items()}
+    def _resolve_params(
+        self, params: dict[str, Any], context: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Resolve $-references in parameter values."""
+        return {k: self._resolve_value(v, context) for k, v in params.items()}
 
     def _step_error_detail(self, step: dict[str, Any], index: int, total: int) -> str:
         """Build a descriptive error context string for a failed macro step."""
@@ -495,7 +520,7 @@ class MacroEngine:
 
         # Step-level skip_if guard
         skip_if = step.get("skip_if")
-        if skip_if and self._evaluate_condition(skip_if):
+        if skip_if and self._evaluate_condition(skip_if, context):
             log.debug(f"  Macro step skipped (skip_if): {action}")
             return
 
@@ -510,14 +535,14 @@ class MacroEngine:
         if action == "device.command":
             device_id = step.get("device", "")
             command = step.get("command", "")
-            params = self._resolve_params(step.get("params") or {})
+            params = self._resolve_params(step.get("params") or {}, context)
             log.debug(f"  Macro step: {device_id}.{command}({params})")
             await self.devices.send_command(device_id, command, params)
 
         elif action == "group.command":
             group_id = step.get("group", "")
             command = step.get("command", "")
-            params = self._resolve_params(step.get("params") or {})
+            params = self._resolve_params(step.get("params") or {}, context)
             device_ids = self._groups.get(group_id)
             if device_ids is None:
                 raise ValueError(f"Device group '{group_id}' not found. Check that the group exists in your project.")
@@ -573,7 +598,7 @@ class MacroEngine:
 
         elif action == "state.set":
             key = step.get("key", "")
-            value = self._resolve_value(step.get("value"))
+            value = self._resolve_value(step.get("value"), context)
             log.debug(f"  Macro step: state.set {key} = {value!r}")
             self.state.set(key, value, source="macro")
 
@@ -599,7 +624,7 @@ class MacroEngine:
                     f"Conditional nesting depth limit ({self._max_conditional_depth}) exceeded"
                 )
 
-            result = self._evaluate_condition(condition)
+            result = self._evaluate_condition(condition, context)
 
             # Emit conditional evaluation result
             if macro_id:
@@ -613,7 +638,7 @@ class MacroEngine:
                         "condition_key": condition.get("key", ""),
                         "condition_operator": condition.get("operator", "eq"),
                         "condition_value": condition.get("value"),
-                        "actual_value": self.state.get(condition.get("key", "")),
+                        "actual_value": self._condition_actual(condition.get("key", ""), context),
                         "status": "evaluated",
                     },
                 )
@@ -664,7 +689,7 @@ class MacroEngine:
             if plugin_action is None:
                 raise ValueError(f"Unknown macro action: '{action}'")
             handler, plugin_id, _label = plugin_action
-            params = self._resolve_params(step.get("params") or {})
+            params = self._resolve_params(step.get("params") or {}, context)
             log.debug(f"  Macro step: plugin action '{action}' ({plugin_id}) {params}")
             await handler(params, context)
 

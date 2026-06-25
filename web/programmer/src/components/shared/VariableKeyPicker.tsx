@@ -15,11 +15,27 @@ interface VariableKeyPickerProps {
   onChange: (key: string) => void;
   /** Show device state keys in addition to project variables */
   showDeviceState?: boolean;
+  /** Also offer $trigger.<field> refs (the event payload / state-change
+   *  snapshot of the trigger that fired the macro). Only meaningful in macro
+   *  step/condition editors, where the macro may be run by a trigger. */
+  showTriggerContext?: boolean;
   /** Placeholder text */
   placeholder?: string;
   /** Style override for the outer container */
   style?: React.CSSProperties;
 }
+
+/** $trigger.<field> refs a macro can read when it is fired by a trigger. The
+ *  available fields depend on the trigger type (event vs state-change); the
+ *  picker shows the full set and the group note explains the constraint. */
+const TRIGGER_CONTEXT_KEYS: { key: string; label: string }[] = [
+  { key: "trigger.event", label: "event — the event name (event triggers)" },
+  { key: "trigger.data", label: "data — received/parsed payload (event triggers)" },
+  { key: "trigger.raw", label: "raw — raw bytes payload (event triggers)" },
+  { key: "trigger.new_value", label: "new_value — the new value (state-change triggers)" },
+  { key: "trigger.old_value", label: "old_value — the previous value (state-change triggers)" },
+  { key: "trigger.key", label: "key — the state key that changed (state-change triggers)" },
+];
 
 interface KeyEntry {
   key: string;
@@ -35,6 +51,7 @@ export function VariableKeyPicker({
   value,
   onChange,
   showDeviceState = true,
+  showTriggerContext = false,
   placeholder = "Select state key...",
   style,
 }: VariableKeyPickerProps) {
@@ -166,8 +183,22 @@ export function VariableKeyPicker({
       }
     }
 
+    // Trigger context refs ($trigger.<field>) — only where a value may be run
+    // by a trigger (macro step / condition editors), gated by the prop.
+    if (showTriggerContext) {
+      for (const t of TRIGGER_CONTEXT_KEYS) {
+        entries.push({
+          key: t.key,
+          label: t.label,
+          group: "trigger",
+          groupDesc:
+            "The event or state change that fired this macro. Only resolves when the macro is run by a trigger.",
+        });
+      }
+    }
+
     return entries;
-  }, [variables, devices, pages, liveState, showDeviceState]);
+  }, [variables, devices, pages, liveState, showDeviceState, showTriggerContext]);
 
   // Filter entries by search
   const filteredEntries = useMemo(() => {
@@ -193,6 +224,8 @@ export function VariableKeyPicker({
           label = "System";
         } else if (e.group.startsWith("ui:")) {
           label = `UI: ${e.deviceName}`;
+        } else if (e.group === "trigger") {
+          label = "Trigger event";
         }
         map.set(e.group, { label, desc: e.groupDesc, entries: [] });
       }

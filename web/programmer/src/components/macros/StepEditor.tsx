@@ -312,6 +312,7 @@ function DeviceCommandEditor({
                     value={String(currentVal).slice(1)}
                     onChange={(key) => handleParamChange(paramKey, `$${key}`)}
                     showDeviceState
+                    showTriggerContext
                     placeholder="Select state key..."
                     style={{ flex: 1 }}
                   />
@@ -533,6 +534,7 @@ function GroupCommandEditor({
                       value={String(currentVal).slice(1)}
                       onChange={(key) => handleParamChange(paramKey, `$${key}`)}
                       showDeviceState
+                      showTriggerContext
                       placeholder="Select state key..."
                       style={{ flex: 1 }}
                     />
@@ -633,6 +635,7 @@ function StateSetEditor({
                 value={String(step.value).slice(1)}
                 onChange={(key) => onChange({ value: `$${key}` })}
                 showDeviceState
+                showTriggerContext
                 placeholder="Select state key..."
                 style={{ flex: 1 }}
               />
@@ -1044,6 +1047,7 @@ function ConditionalEditor({
         <ConditionEditor
           condition={condition}
           onChange={(c) => onChange({ ...step, condition: c })}
+          showTriggerContext
         />
       </div>
 
@@ -1403,6 +1407,7 @@ function PluginParamField({
         value={String(value).slice(1)}
         onChange={(key) => onChange(`$${key}`)}
         showDeviceState
+        showTriggerContext
         placeholder="Select state key..."
         style={{ flex: 1 }}
       />
@@ -1662,6 +1667,7 @@ function StepGuards({ step, onChange }: { step: MacroStep; onChange: (patch: Par
           <ConditionEditor
             condition={step.skip_if!}
             onChange={(c) => onChange({ skip_if: c })}
+            showTriggerContext
           />
         </div>
       )}

@@ -135,6 +135,17 @@ For example, a volume slider on the touch panel writes to `var.volume_level`. A 
 
 Dynamic references also work on the **Set Variable** step's value field. This lets you copy one variable to another at runtime.
 
+### Reading the trigger that fired the macro
+
+When a macro is run by a trigger, it can read what fired it through the **Trigger event** group in the dynamic-value picker:
+
+- For an **event** trigger: `$trigger.event` (the event name) and `$trigger.data` / `$trigger.raw` (the payload, for example the bytes a device sent back).
+- For a **state change** trigger: `$trigger.new_value`, `$trigger.old_value`, and `$trigger.key` (which state key changed).
+
+For example, a trigger that fires when a device sends an unsolicited message can run a macro that stores the received text with a **Set Variable** step set to `$trigger.data`, or branches on it in an **If** step (condition key `trigger.data`). This makes "when this arrives, do that" automations possible without writing a script.
+
+These references only resolve when the macro is run by a trigger. If you run the same macro directly (from a button, the API, or another macro), `$trigger.*` reads as empty.
+
 ## Cancel Groups
 
 When two macros should not run at the same time (like System On and System Off), assign them to the same **cancel group**. When a macro with a cancel group starts, any other running macro in the same group is cancelled first.

@@ -1266,3 +1266,61 @@ async def test_cooldown_backward_clock_after_restart_does_not_wedge(
     # New code: negative elapsed is treated as cooldown elapsed -> fires.
     assert fire_count == 1
     await trigger_engine.stop()
+
+
+# --- Trigger context flows into the fired macro as $trigger.<field> ---
+
+
+async def test_event_payload_reaches_macro(trigger_engine, macro_engine, core):
+    """An event-triggered macro can read the event payload via $trigger.<field>."""
+    state, events = core
+    macro_engine.load_macros([{
+        "id": "test_macro",
+        "name": "Test",
+        "steps": [{"action": "state.set", "key": "var.seen", "value": "$trigger.data"}],
+    }])
+    trigger_engine.load_triggers([{
+        "id": "test_macro",
+        "name": "Test",
+        "triggers": [{
+            "id": "trg_event",
+            "type": "event",
+            "enabled": True,
+            "event_pattern": "device.response.proj1",
+        }],
+    }])
+    await trigger_engine.start()
+
+    await events.emit("device.response.proj1", {"data": "PWR=ON", "raw": b"PWR=ON\r"})
+    await asyncio.sleep(0.1)
+
+    assert state.get("var.seen") == "PWR=ON"
+    await trigger_engine.stop()
+
+
+async def test_state_change_value_reaches_macro(trigger_engine, macro_engine, core):
+    """A state-change-triggered macro can read the new value via $trigger.new_value."""
+    state, events = core
+    macro_engine.load_macros([{
+        "id": "test_macro",
+        "name": "Test",
+        "steps": [{"action": "state.set", "key": "var.mirror", "value": "$trigger.new_value"}],
+    }])
+    trigger_engine.load_triggers([{
+        "id": "test_macro",
+        "name": "Test",
+        "triggers": [{
+            "id": "trg_state",
+            "type": "state_change",
+            "enabled": True,
+            "state_key": "var.source",
+            "state_operator": "any",
+        }],
+    }])
+    await trigger_engine.start()
+
+    state.set("var.source", "HDMI2", source="test")
+    await asyncio.sleep(0.1)
+
+    assert state.get("var.mirror") == "HDMI2"
+    await trigger_engine.stop()

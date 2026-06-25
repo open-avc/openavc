@@ -20,9 +20,13 @@ const NO_VALUE_OPS = new Set(["truthy", "falsy"]);
 interface ConditionEditorProps {
   condition: StepCondition;
   onChange: (updated: StepCondition) => void;
+  /** Offer $trigger.<field> refs as condition keys. Set only where the
+   *  condition is evaluated with a firing trigger's context (a macro's
+   *  conditional / skip_if), not for wait_until or trigger guard conditions. */
+  showTriggerContext?: boolean;
 }
 
-export function ConditionEditor({ condition, onChange }: ConditionEditorProps) {
+export function ConditionEditor({ condition, onChange, showTriggerContext = false }: ConditionEditorProps) {
   const needsValue = !NO_VALUE_OPS.has(condition.operator);
   const [showHelp, setShowHelp] = useState(false);
   const liveValue = useConnectionStore((s) => s.liveState[condition.key]);
@@ -35,6 +39,7 @@ export function ConditionEditor({ condition, onChange }: ConditionEditorProps) {
           value={condition.key}
           onChange={(key) => onChange({ ...condition, key })}
           showDeviceState
+          showTriggerContext={showTriggerContext}
           placeholder="State key..."
           style={{ flex: 2, minWidth: 140 }}
         />

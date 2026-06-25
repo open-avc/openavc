@@ -680,7 +680,10 @@ class TriggerEngine:
         )
 
         try:
-            await self.macros.execute(macro_id)
+            # Pass the trigger context (event payload / state-change snapshot)
+            # so the macro can resolve $trigger.<field> refs and branch on what
+            # fired it. Direct/REST/script runs pass no context (refs -> None).
+            await self.macros.execute(macro_id, context=context)
         except Exception:  # Catch-all: isolates macro execution errors from trigger pipeline
             log.exception(f"Trigger {trigger_id} macro execution failed")
         finally:
