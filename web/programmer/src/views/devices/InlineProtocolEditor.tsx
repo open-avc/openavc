@@ -188,7 +188,7 @@ function buildResponses(rows: ResponseRow[]): unknown[] {
       out.push({
         mode: "regex",
         pattern: r.pattern,
-        group: r.group || 1,
+        group: r.group ?? 1,
         state: r.state,
         type: r.type || "string",
       });
