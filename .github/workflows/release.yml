@@ -193,6 +193,11 @@ jobs:
     env:
       VERSION: ${{ needs.version.outputs.version }}
       SIGNING_ENABLED: ${{ secrets.APPLE_TEAM_ID }}
+      # The Apple Silicon runner (macos-14, ~7 GB) sizes Node's heap lower than
+      # the 16 GB Linux/Windows runners, so the Vite production build of the
+      # Programmer UI hit the ~2 GB default ceiling and aborted (OOM, exit 134).
+      # Give Node room; this fits comfortably in the runner's memory.
+      NODE_OPTIONS: --max-old-space-size=4096
     steps:
       - uses: actions/checkout@v4
 
