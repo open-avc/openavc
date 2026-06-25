@@ -225,3 +225,36 @@ async def test_send_and_wait_wakes_on_disconnect():
         await waiter
     assert loop.time() - start < 2.0
     await transport.close()
+
+
+# --- Response-queue overflow does not tear down the connection ---
+
+
+async def test_response_queue_overflow_does_not_disconnect():
+    """A burst of >100 framed responses while a send_and_wait waiter is active
+    must not let QueueFull escape the reader loop and disconnect the device
+    (the same overflow guard the TCP transport has).
+
+    _deliver_message is the only writer into the response queue, so exercising
+    it directly is faithful: pre-fix the 101st put_nowait raises QueueFull;
+    post-fix the overflow frame is dropped and the earliest frames (likely the
+    real response) are kept.
+    """
+    disconnected = []
+    transport = await SerialTransport.create(
+        "SIM:test", baudrate=9600,
+        on_data=lambda d: None,
+        on_disconnect=lambda: disconnected.append(True),
+        delimiter=b"\r",
+    )
+    transport._waiting_for_response = True
+
+    # maxsize is 100; deliver 150. Must not raise and must not disconnect.
+    for i in range(150):
+        transport._deliver_message(f"frame{i}".encode())
+
+    assert transport.connected
+    assert not disconnected
+    # Drop-newest on overflow: the earliest frame is preserved for the waiter.
+    assert transport._response_queue.get_nowait() == b"frame0"
+    await transport.close()

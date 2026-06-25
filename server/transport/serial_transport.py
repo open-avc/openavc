@@ -341,7 +341,15 @@ class SerialTransport:
         log.debug(f"[{self._name}] RX: {self._format_data(data)}")
 
         if self._waiting_for_response:
-            self._response_queue.put_nowait(data)
+            try:
+                self._response_queue.put_nowait(data)
+            except asyncio.QueueFull:
+                # A burst of >100 frames arrived while a send_and_wait waiter is
+                # active (chatty/misbehaving gear, or a slow consumer). Keep the
+                # earliest frames — the real response is most likely among them —
+                # and drop this overflow frame. Letting QueueFull escape here
+                # would unwind the reader loop and wrongly disconnect the device.
+                log.debug(f"[{self._name}] response queue full — dropping overflow RX frame")
 
         try:
             result = self._on_data(data)
