@@ -562,4 +562,106 @@ const fpIssues = (issues) =>
   results.frame_parser_absent_no_issues = { pass: issues.length === 0, detail: issues };
 }
 
+// --- State variable labels / types (M-172) -------------------------------
+// driver_loader.py hard-requires a label on every top-level state variable
+// and rejects an unknown type; the builder's free-text inputs let either go
+// bad, surfacing only as an unanchored save-time 422.
+const stateVarIssues = (issues) =>
+  issues.filter((i) => i.field && i.field.startsWith("state_variables"));
+
+{
+  const issues = stateVarIssues(
+    validate(baseDraft("tcp", {}, { state_variables: { volume: { type: "number", label: "" } } })),
+  );
+  results.m172_state_var_no_label_error = {
+    pass:
+      issues.length === 1 &&
+      issues[0].severity === "error" &&
+      issues[0].section === "behavior" &&
+      issues[0].field === "state_variables.volume" &&
+      /needs a label/.test(issues[0].message),
+    detail: issues,
+  };
+}
+{
+  const issues = stateVarIssues(
+    validate(baseDraft("tcp", {}, { state_variables: { volume: { type: "number", label: "Volume" } } })),
+  );
+  results.m172_state_var_with_label_ok = { pass: issues.length === 0, detail: issues };
+}
+{
+  const issues = stateVarIssues(
+    validate(baseDraft("tcp", {}, { state_variables: { mode: { type: "widget", label: "Mode" } } })),
+  );
+  results.m172_state_var_unknown_type_error = {
+    pass: issues.length === 1 && /unknown type/.test(issues[0].message),
+    detail: issues,
+  };
+}
+
+// --- Command wire format + response structure (M-173 / H-124) ------------
+// driver_loader.py rejects a command with no send/path-method/address and a
+// response that is neither a valid OSC address (leading '/') nor a text
+// pattern. The raw-transport blank-send case slips past the shape check.
+const wireIssues = (issues) => issues.filter((i) => /nothing to send/.test(i.message));
+const responseIssues = (issues) => issues.filter((i) => /^Response \d/.test(i.message));
+
+{
+  // A tcp command whose send was left blank (the builder's seed) does nothing
+  // and is rejected at load — flag it, anchored to the command.
+  const hits = wireIssues(
+    validate(baseDraft("tcp", { ping: { label: "Ping", send: "", params: {} } })),
+  );
+  results.m173_command_no_wire_format_error = {
+    pass: hits.length === 1 && hits[0].severity === "error" && hits[0].command === "ping",
+    detail: hits,
+  };
+}
+{
+  // A tcp command with a real send string is clean.
+  const hits = wireIssues(
+    validate(baseDraft("tcp", { ping: { label: "Ping", send: "PING\\r", params: {} } })),
+  );
+  results.m173_command_with_send_ok = { pass: hits.length === 0, detail: hits };
+}
+{
+  // A response with neither address nor pattern/match has nothing to match.
+  const issues = responseIssues(
+    validate(baseDraft("tcp", {}, { responses: [{ mappings: [] }] })),
+  );
+  results.m173_response_no_pattern_error = {
+    pass: issues.length === 1 && issues[0].severity === "error" && /no pattern to match/.test(issues[0].message),
+    detail: issues,
+  };
+}
+{
+  // OSC response address missing the leading '/' (runtime hard rule).
+  const issues = responseIssues(
+    validate(baseDraft("osc", {}, { responses: [{ address: "main/vol" }] })),
+  );
+  results.m173_response_osc_address_no_slash_error = {
+    pass: issues.length === 1 && /must start with/.test(issues[0].message),
+    detail: issues,
+  };
+}
+{
+  // H-124: an OSC-address response left on a non-OSC transport never matches.
+  const issues = responseIssues(
+    validate(baseDraft("tcp", {}, { responses: [{ address: "/main/vol" }] })),
+  );
+  results.h124_response_osc_address_on_tcp_error = {
+    pass: issues.length === 1 && /transport is TCP/.test(issues[0].message),
+    detail: issues,
+  };
+}
+{
+  // A normal text response with a pattern is clean.
+  const issues = responseIssues(
+    validate(baseDraft("tcp", {}, {
+      responses: [{ pattern: "PWR=(\\d)", mappings: [{ group: 1, state: "power" }] }],
+    })),
+  );
+  results.m173_response_with_pattern_ok = { pass: issues.length === 0, detail: issues };
+}
+
 process.stdout.write(JSON.stringify(results));

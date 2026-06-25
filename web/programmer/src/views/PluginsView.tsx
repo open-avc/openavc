@@ -14,6 +14,7 @@ import { SchemaFormRenderer } from "../components/plugins/PluginConfigForm";
 import { CollapsibleSection } from "../components/driver-builder/CollapsibleSection";
 import { BrowsePlugins } from "../components/plugins/BrowsePlugins";
 import { MarkdownContent } from "../components/ai/MarkdownContent";
+import { isPluginIncompatible } from "./pluginsView.helpers";
 
 // ──── Helpers ────
 
@@ -26,8 +27,20 @@ function formatBytes(bytes: number): string {
 
 // ──── Status Dot ────
 
-function PluginStatusDot({ status, size = 10 }: { status: string; size?: number }) {
-  const isTriangle = status === "missing" || status === "incompatible";
+function PluginStatusDot({
+  status,
+  incompatible = false,
+  size = 10,
+}: {
+  status: string;
+  incompatible?: boolean;
+  size?: number;
+}) {
+  // `incompatible` is derived from the backend's truthful `compatible` flag by
+  // the caller; a plugin can be incompatible without its status literally
+  // being "incompatible" (it's only set so for started project plugins).
+  const isIncompat = incompatible || status === "incompatible";
+  const isTriangle = status === "missing" || isIncompat;
   const color =
     status === "running"
       ? "var(--color-success)"
@@ -35,7 +48,7 @@ function PluginStatusDot({ status, size = 10 }: { status: string; size?: number 
         ? "var(--color-error)"
         : status === "missing"
           ? "var(--color-warning, #f59e0b)"
-          : status === "incompatible"
+          : isIncompat
             ? "#f97316"
             : "var(--text-muted)";
 
@@ -46,7 +59,7 @@ function PluginStatusDot({ status, size = 10 }: { status: string; size?: number 
         ? "Error"
         : status === "missing"
           ? "Not installed"
-          : status === "incompatible"
+          : isIncompat
             ? "Incompatible platform"
             : "Stopped";
 
@@ -94,10 +107,11 @@ function PluginListItem({
   selected: boolean;
   onClick: () => void;
 }) {
+  const incompatible = isPluginIncompatible(plugin);
   const suffix =
     plugin.status === "missing"
       ? " (not installed)"
-      : plugin.status === "incompatible"
+      : incompatible
         ? " (incompatible)"
         : "";
 
@@ -118,7 +132,7 @@ function PluginListItem({
         opacity: plugin.status === "running" ? 1 : 0.6,
       }}
     >
-      <PluginStatusDot status={plugin.status} />
+      <PluginStatusDot status={plugin.status} incompatible={incompatible} />
       <div style={{ minWidth: 0, flex: 1 }}>
         <div
           style={{
@@ -134,7 +148,7 @@ function PluginListItem({
           style={{
             fontSize: "var(--font-size-sm)",
             color:
-              plugin.status === "missing" || plugin.status === "incompatible"
+              plugin.status === "missing" || incompatible
                 ? "var(--color-warning, #f59e0b)"
                 : "var(--text-muted)",
           }}
@@ -152,7 +166,7 @@ function PluginListItem({
 function MissingPluginBanner({ plugin }: { plugin: PluginInfo }) {
   const navigateTo = useNavigationStore((s) => s.navigateTo);
   const isMissing = plugin.status === "missing";
-  const isIncompat = plugin.status === "incompatible";
+  const isIncompat = isPluginIncompatible(plugin);
 
   if (!isMissing && !isIncompat) return null;
 
@@ -279,10 +293,16 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
     [plugin.plugin_id, updateConfig]
   );
 
+  // Cancel any pending debounced config save when this panel unmounts — which
+  // now includes switching plugins, since PluginDetail is keyed by plugin_id.
+  // Without it, a write the user navigated away from still fires later,
+  // persisting abandoned config and restarting the plugin.
+  useEffect(() => () => clearTimeout(saveTimer.current), []);
+
   const info = detailInfo ?? plugin;
   const isRunning = info.status === "running";
   const isMissing = info.status === "missing";
-  const isIncompat = info.status === "incompatible";
+  const isIncompat = isPluginIncompatible(info);
 
   // A running plugin can contribute its own full-page view for its control
   // surface (e.g. a Stream Deck view). When it does, that view is the one
@@ -881,7 +901,7 @@ export function PluginsView() {
 
         {/* Right: Detail or Empty */}
         {selected ? (
-          <PluginDetail plugin={selected} />
+          <PluginDetail key={selected.plugin_id} plugin={selected} />
         ) : (
           <div
             style={{

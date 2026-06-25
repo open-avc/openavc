@@ -58,6 +58,17 @@ const CHILD_ID_RE = /^[a-z][a-z0-9_]*$/;
 // size raises a ValueError when the parser is built at device connect.
 const FRAME_HEADER_SIZES: ReadonlySet<number> = new Set([1, 2, 4]);
 
+// State-variable types the runtime accepts (driver_loader.py validate_driver_
+// definition). A non-empty value outside this set is rejected at load.
+const STATE_VAR_TYPES: ReadonlySet<string> = new Set([
+  "string",
+  "integer",
+  "number",
+  "boolean",
+  "enum",
+  "float",
+]);
+
 // ── Transport ↔ command-shape routing ──────────────────────────────────
 // The runtime routes each command/setting-write by SHAPE, not by the
 // driver's transport (configurable.py): anything with an `address` goes to
@@ -399,6 +410,30 @@ export function validateDriver(
     }
   }
 
+  // ── Top-level state variables: the runtime hard-requires a label on every
+  //    one (driver_loader.py) and rejects an unknown type. A cleared label or
+  //    bad type otherwise only surfaces as an unanchored save-time 422, so
+  //    flag it inline in the Behavior tab where the editor lives. ───────────
+  for (const [varName, varDef] of Object.entries(draft.state_variables ?? {})) {
+    if (!varDef || typeof varDef !== "object") continue;
+    if (!varDef.label?.trim()) {
+      issues.push({
+        severity: "error",
+        section: "behavior",
+        field: `state_variables.${varName}`,
+        message: `State variable "${varName}" needs a label — the runtime rejects a state variable with no label.`,
+      });
+    }
+    if (varDef.type && !STATE_VAR_TYPES.has(varDef.type)) {
+      issues.push({
+        severity: "error",
+        section: "behavior",
+        field: `state_variables.${varName}`,
+        message: `State variable "${varName}" has unknown type "${varDef.type}" — use string, integer, number, boolean, enum, or float.`,
+      });
+    }
+  }
+
   // ── Commands: param-name legality + placeholder coverage ─────────────
   const configKeys = new Set([
     ...Object.keys(draft.config_schema ?? {}),
@@ -469,6 +504,28 @@ export function validateDriver(
       }
     }
 
+    // Every command needs SOME wire format — the runtime loader rejects a
+    // command with no send/string, no path/method, and no address. For OSC
+    // and HTTP transports the shape check below already reports the missing
+    // address / method-path, so only the raw-transport case (a tcp/serial/udp
+    // command whose send was left blank — the builder seeds `send: ""`) slips
+    // through; flag it here so it doesn't save as a no-op that 422s at load.
+    const cmdRecord = cmd as unknown as Record<string, unknown>;
+    if (
+      commandRoute(cmd) === "raw" &&
+      draft.transport !== "osc" &&
+      draft.transport !== "http" &&
+      !hasContent(cmdRecord.send) &&
+      !hasContent(cmdRecord.string)
+    ) {
+      issues.push({
+        severity: "error",
+        section: "behavior",
+        command: cmdName,
+        message: `Command "${cmdName}" has nothing to send — set the ${(draft.transport || "tcp").toUpperCase()} send string.`,
+      });
+    }
+
     // Transport ↔ shape consistency. The runtime routes by shape and its
     // senders refuse a transport mismatch, so a stale shape (usually left
     // behind by a transport switch in an older builder, an import, or
@@ -526,6 +583,39 @@ export function validateDriver(
       });
     }
   }
+
+  // ── Responses: mirror the runtime's structural rules (driver_loader.py).
+  //    A response is OSC (an `address`) or text (a `pattern`/`match`); the
+  //    builder's free-text fields let either go malformed, and nothing else
+  //    in this validator looks at responses, so a bad one only shows as a
+  //    save-time 422. An `address` response is OSC-only — flag one left on a
+  //    non-OSC transport (it would never match), and require the '/'-rooted
+  //    path the runtime demands. ────────────────────────────────────────────
+  (draft.responses ?? []).forEach((resp, i) => {
+    const label = `Response ${i + 1}`;
+    const tn = (draft.transport || "tcp").toUpperCase();
+    if (resp.address !== undefined) {
+      if (draft.transport && draft.transport !== "osc") {
+        issues.push({
+          severity: "error",
+          section: "behavior",
+          message: `${label} has an OSC address but the driver transport is ${tn}. The runtime reads an address response as OSC, so it never matches on a non-OSC transport — remove the address or set the transport to OSC.`,
+        });
+      } else if (!resp.address.trim().startsWith("/")) {
+        issues.push({
+          severity: "error",
+          section: "behavior",
+          message: `${label} OSC address must start with "/" (e.g. /main/volume).`,
+        });
+      }
+    } else if (!resp.pattern?.trim() && !resp.match?.trim()) {
+      issues.push({
+        severity: "error",
+        section: "behavior",
+        message: `${label} has no pattern to match — add a match pattern, or an OSC address for an OSC driver.`,
+      });
+    }
+  });
 
   // ── Auth login handshake ─────────────────────────────────────────────
   // Mirror the runtime's load-time rules (validate_driver_definition in

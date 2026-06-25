@@ -109,6 +109,15 @@ SCENARIOS = [
     "l102_fixed_length_ok",
     "frame_parser_unknown_type_error",
     "frame_parser_absent_no_issues",
+    "m172_state_var_no_label_error",
+    "m172_state_var_with_label_ok",
+    "m172_state_var_unknown_type_error",
+    "m173_command_no_wire_format_error",
+    "m173_command_with_send_ok",
+    "m173_response_no_pattern_error",
+    "m173_response_osc_address_no_slash_error",
+    "h124_response_osc_address_on_tcp_error",
+    "m173_response_with_pattern_ok",
 ]
 
 
