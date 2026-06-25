@@ -282,6 +282,79 @@ class TestSystemConfig:
         assert cfg.get("network", "http_port") == 8080
 
 
+class TestSaveExcludesEnvOverrides:
+    """save() persists only the file layer (defaults + file + UI changes), not
+    env overrides. An env-provided value — secrets especially — must never get
+    baked into system.json, where it would leak to disk and silently persist
+    after the env var is unset."""
+
+    def test_env_secret_not_written_to_disk(self, tmp_path):
+        cfg = SystemConfig()
+        cfg._data_dir = tmp_path
+        cfg._file_path = tmp_path / "system.json"
+
+        with patch.dict(os.environ, {"OPENAVC_API_KEY": "secret-from-env"}):
+            cfg.load()
+            # Effective runtime view reflects the env override...
+            assert cfg.get("auth", "api_key") == "secret-from-env"
+            cfg.save()
+
+        # ...but the secret must not have landed on disk.
+        saved = json.loads(cfg._file_path.read_text())
+        assert saved["auth"]["api_key"] == ""
+
+    def test_env_override_not_written_for_nonsecret(self, tmp_path):
+        # Same rule for a plain (non-secret) env override like the port.
+        system_json = tmp_path / "system.json"
+        system_json.write_text(json.dumps({"network": {"http_port": 9090}}))
+        cfg = SystemConfig()
+        cfg._data_dir = tmp_path
+        cfg._file_path = system_json
+
+        with patch.dict(os.environ, {"OPENAVC_PORT": "7070"}):
+            cfg.load()
+            assert cfg.get("network", "http_port") == 7070  # env wins at runtime
+            cfg.save()
+
+        saved = json.loads(system_json.read_text())
+        # The file keeps its own value, not the transient env one.
+        assert saved["network"]["http_port"] == 9090
+
+    def test_ui_change_persists_with_env_active(self, tmp_path):
+        # A deliberate set() of a different key must persist, while the active
+        # env secret still stays out of the file.
+        cfg = SystemConfig()
+        cfg._data_dir = tmp_path
+        cfg._file_path = tmp_path / "system.json"
+
+        with patch.dict(os.environ, {"OPENAVC_API_KEY": "secret-from-env"}):
+            cfg.load()
+            cfg.set("network", "http_port", 5555)
+            cfg.save()
+
+        saved = json.loads(cfg._file_path.read_text())
+        assert saved["network"]["http_port"] == 5555
+        assert saved["auth"]["api_key"] == ""
+
+    def test_env_value_does_not_persist_after_unset(self, tmp_path):
+        # Save with env active, then reload WITHOUT the env var: the runtime
+        # value must fall back to the file/default, not the previously-injected
+        # env secret. This is the "silently persists" half of the bug.
+        cfg = SystemConfig()
+        cfg._data_dir = tmp_path
+        cfg._file_path = tmp_path / "system.json"
+
+        with patch.dict(os.environ, {"OPENAVC_API_KEY": "secret-from-env"}):
+            cfg.load()
+            cfg.save()
+
+        cfg2 = SystemConfig()
+        cfg2._data_dir = tmp_path
+        cfg2._file_path = tmp_path / "system.json"
+        cfg2.load()  # env var no longer set
+        assert cfg2.get("auth", "api_key") == ""
+
+
 class TestSingleton:
     def test_get_system_config_returns_same_instance(self):
         reset_system_config()

@@ -474,6 +474,12 @@ class SystemConfig:
 
     def __init__(self):
         self._data: dict[str, Any] = {}
+        # Persisted layer: defaults + system.json, WITHOUT env overrides. This
+        # is what save() writes back. Kept separate from self._data (the
+        # effective runtime view, which has env overrides layered on top) so an
+        # env-provided value — including secrets like OPENAVC_API_KEY or
+        # OPENAVC_PROGRAMMER_PASSWORD — never gets baked into system.json.
+        self._file_data: dict[str, Any] = {}
         self._data_dir: Path = get_data_dir()
         self._log_dir: Path = get_log_dir()
         self._file_path: Path = self._data_dir / "system.json"
@@ -524,7 +530,13 @@ class SystemConfig:
         else:
             log.info("No system.json found at %s (using defaults, will create on first save)", self._file_path)
 
-        # Layer: environment variable overrides
+        # Snapshot the persisted layer (defaults + file) BEFORE env overrides
+        # are applied. save() serializes this, so env-injected values — secrets
+        # included — stay out of system.json. set() keeps it in sync with
+        # deliberate UI changes.
+        self._file_data = copy.deepcopy(self._data)
+
+        # Layer: environment variable overrides (runtime view only)
         for (section, key), (env_var, target_type) in ENV_OVERRIDES.items():
             raw = os.environ.get(env_var)
             if raw is not None:
@@ -535,7 +547,17 @@ class SystemConfig:
         self._loaded = True
 
     def save(self) -> None:
-        """Write the current config (minus env overrides) to system.json.
+        """Write the persisted config layer (defaults + file + UI changes,
+        minus env overrides) to system.json.
+
+        Env overrides are deliberately excluded. They're supplied fresh each
+        boot and are the source of truth at runtime, but baking them into
+        system.json would (1) leak env-provided secrets — OPENAVC_API_KEY,
+        OPENAVC_PROGRAMMER_PASSWORD, OPENAVC_PANEL_LOCK_CODE — into a plaintext
+        file the operator never chose to hold them, and (2) make a one-off env
+        value silently persist after the env var is unset, overriding the
+        "env is source of truth" model. ``self._file_data`` holds exactly the
+        pre-env layer; set() keeps it in sync with deliberate changes.
 
         Atomic write (temp file + os.replace), mirroring state_persister. A
         crash or power loss mid-write can't leave a truncated system.json,
@@ -546,7 +568,7 @@ class SystemConfig:
         tmp_path = None
         try:
             self._data_dir.mkdir(parents=True, exist_ok=True)
-            content = json.dumps(self._data, indent=4) + "\n"
+            content = json.dumps(self._file_data, indent=4) + "\n"
             fd, tmp_path = tempfile.mkstemp(
                 dir=str(self._data_dir),
                 suffix=".tmp",
@@ -586,10 +608,19 @@ class SystemConfig:
         return dict(self._data.get(name, {}))
 
     def set(self, section: str, key: str, value: Any) -> None:
-        """Set a config value (in memory only, call save() to persist)."""
+        """Set a config value (in memory only, call save() to persist).
+
+        Updates both the effective runtime view (self._data) and the persisted
+        layer (self._file_data) so a deliberate change survives save() even
+        though env overrides are otherwise stripped from what's written. See
+        save() for why the two layers are kept apart.
+        """
         if section not in self._data:
             self._data[section] = {}
         self._data[section][key] = value
+        if section not in self._file_data:
+            self._file_data[section] = {}
+        self._file_data[section][key] = value
 
     def to_dict(self) -> dict[str, Any]:
         """Return the full config as a dict."""
