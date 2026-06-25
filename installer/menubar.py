@@ -25,6 +25,8 @@ import json
 import os
 import subprocess
 import ssl
+import threading
+import time
 import webbrowser
 from pathlib import Path
 from urllib.error import URLError
@@ -38,6 +40,11 @@ SERVICE_LABEL = "com.openavc.server"
 DATA_DIR = Path("/Library/Application Support/OpenAVC")
 SYSTEM_JSON = DATA_DIR / "system.json"
 DAEMON_PLIST = "/Library/LaunchDaemons/com.openavc.server.plist"
+# Per-user marker: the IDE is auto-opened once, the first time the menu bar runs
+# for this user (i.e. right after install). It lives in the user's home, not the
+# root-owned system data dir, so the menu bar (running as the user) can create
+# it. Removing it makes the next launch auto-open again (the uninstall does).
+FIRST_RUN_MARKER = Path.home() / "Library" / "Application Support" / "OpenAVC" / ".ide-autoopened"
 
 
 def _get_server_config() -> dict:
@@ -141,6 +148,28 @@ class OpenAVCMenuBar(rumps.App):
             None,
         ]
         rumps.Timer(self._poll, POLL_INTERVAL).start()
+
+        # First launch after install: open the IDE once, in the user's default
+        # browser. Done here (user context) rather than in the installer's root
+        # postinstall, which would force Safari regardless of the default.
+        if not FIRST_RUN_MARKER.exists():
+            threading.Thread(target=self._first_run_open, daemon=True).start()
+
+    def _first_run_open(self) -> None:
+        """Wait for the server's socket to come up, then open the Programmer and
+        write the first-run marker. Polls /api/startup-status (200 the instant
+        uvicorn binds, even mid-boot) so the browser lands on the startup splash
+        without waiting for full engine init."""
+        for _ in range(120):  # up to ~2 min for the daemon to start
+            if _api_get("/api/startup-status", self._cfg, timeout=1) is not None:
+                break
+            time.sleep(1)
+        webbrowser.open(f"{self._base}/programmer")
+        try:
+            FIRST_RUN_MARKER.parent.mkdir(parents=True, exist_ok=True)
+            FIRST_RUN_MARKER.write_text("")
+        except OSError:
+            pass
 
     def _poll(self, _timer) -> None:
         health = _api_get("/api/health", self._cfg)

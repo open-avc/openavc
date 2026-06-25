@@ -43,19 +43,10 @@ CONSOLE_UID="$(stat -f %u /dev/console 2>/dev/null)"
 if [ -n "${CONSOLE_UID:-}" ] && [ "$CONSOLE_UID" != "0" ]; then
     launchctl bootout "gui/$CONSOLE_UID/com.openavc.menubar" 2>/dev/null || true
     launchctl bootstrap "gui/$CONSOLE_UID" "$AGENT_PLIST" 2>/dev/null || true
-    # Wait only until the HTTP socket is up, then open the browser — NOT until
-    # the engine is fully ready. /api/startup-status is the one endpoint the
-    # StartupSplashMiddleware serves during boot (200 the instant uvicorn binds,
-    # while /api/health and other /api/* return 503 until the engine finishes).
-    # As soon as it answers, the browser lands on the "Starting up..." splash,
-    # which polls and auto-reloads when ready. This avoids both the "can't
-    # connect" gap and a long wait for engine init. Bounded so a stuck server
-    # can't hang the installer.
-    for _ in $(seq 1 30); do
-        curl -sf -m 1 http://127.0.0.1:8080/api/startup-status >/dev/null 2>&1 && break
-        sleep 1
-    done
-    launchctl asuser "$CONSOLE_UID" open "http://localhost:8080/programmer" 2>/dev/null || true
+    # The browser is NOT opened here. The menu-bar app opens the Programmer on
+    # its first launch, waiting for the server first. It runs as the user, so it
+    # honors the default browser; opening from this root context would force
+    # Safari regardless of the user's choice.
 fi
 
 exit 0
