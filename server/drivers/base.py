@@ -18,6 +18,7 @@ connect() as before.
 from __future__ import annotations
 
 import asyncio
+import re
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -28,6 +29,15 @@ from server.transport.frame_parsers import FrameParser
 from server.utils.logger import get_logger
 
 log = get_logger(__name__)
+
+# String child local IDs are embedded directly in a flat state key
+# (device.<id>.<type>.<local_id>.<prop>) and matched by fnmatch glob
+# subscriptions, so they're restricted to this charset — no dots (the key
+# separator), whitespace, or glob metacharacters. A driver that keys children
+# by a device-native name (a Q-SYS Code Name, an MQTT topic leaf) must
+# sanitize to this set and keep the original in the child's `label`.
+_CHILD_STRING_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+_CHILD_STRING_ID_MAX_LEN = 128
 
 
 class BaseDriver(ABC):
@@ -67,8 +77,17 @@ class BaseDriver(ABC):
         # truthy) used by poll_children to detect a child that was
         # deregistered+re-registered mid-poll (its state was reset) so a stale
         # write doesn't clobber the reset (ABA guard).
-        self._children: dict[str, dict[int, int]] = {}
+        self._children: dict[str, dict[int | str, int]] = {}
         self._child_register_seq = 0
+        # Per-child dynamic state-variable schemas, for child types declared
+        # `dynamic: true`. {(child_type, local_id): {prop: var_def}}. Populated
+        # at register_child when a `schema=` is supplied, and consulted by
+        # _effective_child_schema so a dynamic type's controls can be discovered
+        # at runtime (e.g. a Q-SYS component's controls, an MQTT topic's fields)
+        # instead of declared statically up-front. Empty for static child types.
+        self._child_schemas: dict[
+            tuple[str, int | str], dict[str, dict[str, Any]]
+        ] = {}
         # Set by the platform only for the duration of a run_setup_action call;
         # backs request_config_update / request_reconnect. None at all other times.
         self._setup_context: Any = None
@@ -1017,30 +1036,72 @@ class BaseDriver(ABC):
             )
         return types[child_type]
 
-    def _effective_child_schema(self, child_type: str) -> dict[str, dict[str, Any]]:
+    def _effective_child_schema(
+        self, child_type: str, local_id: int | str | None = None,
+    ) -> dict[str, dict[str, Any]]:
         """Schema for one child instance's state variables, with the
         platform-managed `online` and `label` keys injected if the driver
         didn't already declare them.
+
+        For a child type declared ``dynamic: true``, a per-child schema
+        supplied at ``register_child(schema=...)`` takes precedence when
+        ``local_id`` is given; otherwise the type-level ``state_variables``
+        (which may be empty for a dynamic type) is used.
         """
-        declared = dict(self._child_type_def(child_type).get("state_variables", {}))
+        type_def = self._child_type_def(child_type)
+        declared: dict[str, dict[str, Any]] | None = None
+        if type_def.get("dynamic") and local_id is not None:
+            declared = self._child_schemas.get((child_type, local_id))
+        if declared is None:
+            declared = dict(type_def.get("state_variables", {}))
+        else:
+            declared = dict(declared)
         declared.setdefault("online", {"type": "boolean"})
         declared.setdefault("label", {"type": "string"})
         return declared
 
-    def _format_child_id(self, child_type: str, local_id: int) -> str:
+    def _format_child_id(self, child_type: str, local_id: int | str) -> str:
         """Validate ``local_id`` against the declared id_format and return
-        its string form (zero-padded to ``id_format.pad_width``).
+        its string form.
 
-        v1 only supports integer local IDs. ``local_id`` must lie inside
-        [id_format.min, id_format.max] (defaults: min=1, max=unbounded).
+        Two id kinds are supported:
+          * ``integer`` (default) — zero-padded to ``id_format.pad_width``;
+            must lie inside [id_format.min (default 1), id_format.max
+            (optional, unbounded)].
+          * ``string`` — used verbatim; must be non-empty, match
+            ``[A-Za-z0-9_-]`` only (so it's safe in a flat state key and in
+            glob subscriptions), and be at most ``id_format.max_length``
+            (default 128) characters. For devices that key children by a
+            native name (Q-SYS Code Name, MQTT topic), sanitize to this set
+            and keep the original in the child's ``label``.
         """
         type_def = self._child_type_def(child_type)
         id_format = type_def.get("id_format", {})
         id_kind = id_format.get("type", "integer")
+
+        if id_kind == "string":
+            if not isinstance(local_id, str):
+                raise TypeError(
+                    f"Child {child_type} local_id must be str (id_format.type "
+                    f"is 'string'), got {type(local_id).__name__}: {local_id!r}"
+                )
+            if not _CHILD_STRING_ID_RE.match(local_id):
+                raise ValueError(
+                    f"Child {child_type} local_id {local_id!r} is not a valid "
+                    f"string id (allowed characters: letters, digits, '_', '-')"
+                )
+            max_len = id_format.get("max_length", _CHILD_STRING_ID_MAX_LEN)
+            if max_len and len(local_id) > max_len:
+                raise ValueError(
+                    f"Child {child_type} local_id {local_id!r} exceeds "
+                    f"id_format.max_length {max_len}"
+                )
+            return local_id
+
         if id_kind != "integer":
             raise ValueError(
                 f"Child type {child_type!r} id_format.type {id_kind!r} not "
-                f"supported (only 'integer' is supported in v1)"
+                f"supported (only 'integer' and 'string' are supported)"
             )
         # bool is a subclass of int in Python; reject it so that
         # register_child("encoder", True) doesn't silently land at ID 1.
@@ -1062,20 +1123,26 @@ class BaseDriver(ABC):
         pad = id_format.get("pad_width", 0)
         return f"{local_id:0{pad}d}" if pad else str(local_id)
 
-    def _child_state_key(self, child_type: str, local_id: int, prop: str) -> str:
+    def _child_state_key(
+        self, child_type: str, local_id: int | str, prop: str,
+    ) -> str:
         padded = self._format_child_id(child_type, local_id)
         return f"device.{self.device_id}.{child_type}.{padded}.{prop}"
 
-    def _child_state_prefix(self, child_type: str, local_id: int) -> str:
+    def _child_state_prefix(self, child_type: str, local_id: int | str) -> str:
         padded = self._format_child_id(child_type, local_id)
         return f"device.{self.device_id}.{child_type}.{padded}"
 
-    def _validate_child_prop(self, child_type: str, prop: str) -> None:
-        schema = self._effective_child_schema(child_type)
+    def _validate_child_prop(
+        self, child_type: str, local_id: int | str, prop: str,
+    ) -> None:
+        schema = self._effective_child_schema(child_type, local_id)
         if prop not in schema:
             raise ValueError(
                 f"Child {child_type} property {prop!r} not declared in "
                 f"child_entity_types[{child_type!r}].state_variables"
+                + (" (or this child's dynamic schema)"
+                   if self._child_type_def(child_type).get("dynamic") else "")
             )
 
     @staticmethod
@@ -1099,8 +1166,9 @@ class BaseDriver(ABC):
     def register_child(
         self,
         child_type: str,
-        local_id: int,
+        local_id: int | str,
         initial_state: dict[str, Any] | None = None,
+        schema: dict[str, dict[str, Any]] | None = None,
     ) -> None:
         """Tell the platform a child entity exists. Creates its state keys
         in one atomic batch.
@@ -1108,13 +1176,43 @@ class BaseDriver(ABC):
         Subsequent calls with the same (child_type, local_id) are a silent
         no-op so drivers can call this opportunistically from a poll loop
         without re-initializing state. To overwrite a child's state, use
-        ``set_child_state`` / ``set_child_state_batch`` instead.
+        ``set_child_state`` / ``set_child_state_batch`` instead; to change a
+        dynamic child's schema, ``deregister_child`` then register again.
 
         ``initial_state`` overrides per-prop defaults. The platform-managed
         ``online`` key defaults to True if not specified in ``initial_state``.
         Unknown props in ``initial_state`` raise ValueError.
+
+        ``schema`` supplies a per-child state-variable map for child types
+        declared ``dynamic: true`` — used when the child's controls are
+        discovered at runtime (a Q-SYS component's controls, an MQTT topic's
+        fields) rather than declared statically. Each value is a var-def dict
+        (``{"type": "number"|"boolean"|"integer"|"string"|"enum", "label":
+        ..., ...}``), the same shape as a static ``state_variables`` entry.
+        Passing ``schema`` for a non-dynamic type raises ValueError.
         """
         self._format_child_id(child_type, local_id)   # validates id range
+
+        type_def = self._child_type_def(child_type)
+        if schema is not None:
+            if not type_def.get("dynamic"):
+                raise ValueError(
+                    f"Child type {child_type!r} is not declared "
+                    f"`dynamic: true`; a per-child schema is only allowed for "
+                    f"dynamic child types"
+                )
+            if not isinstance(schema, dict):
+                raise TypeError(
+                    f"Child {child_type} schema must be a dict, got "
+                    f"{type(schema).__name__}"
+                )
+            for prop, var_def in schema.items():
+                if not isinstance(var_def, dict):
+                    raise TypeError(
+                        f"Child {child_type} schema property {prop!r} must map "
+                        f"to a var-def dict, got {type(var_def).__name__}"
+                    )
+
         bucket = self._children.setdefault(child_type, {})
         if local_id in bucket:
             return  # idempotent — already registered
@@ -1124,22 +1222,30 @@ class BaseDriver(ABC):
         self._child_register_seq += 1
         bucket[local_id] = self._child_register_seq
 
-        schema = self._effective_child_schema(child_type)
+        # Store the per-child dynamic schema before computing the effective
+        # schema so validation + defaults below use the discovered controls.
+        if schema is not None:
+            self._child_schemas[(child_type, local_id)] = dict(schema)
+
+        eff_schema = self._effective_child_schema(child_type, local_id)
         overrides = dict(initial_state or {})
 
         # Reject unknown props up-front so the driver sees the error before
         # we touch the state store.
         for prop in overrides:
-            if prop not in schema:
-                # Roll back the registration record so a retry can succeed
-                # after the driver fixes the call.
+            if prop not in eff_schema:
+                # Roll back the registration record (and any stored schema) so
+                # a retry can succeed after the driver fixes the call.
                 del bucket[local_id]
                 if not bucket:
                     del self._children[child_type]
+                self._child_schemas.pop((child_type, local_id), None)
                 raise ValueError(
                     f"Child {child_type} initial_state property {prop!r} "
                     f"not declared in child_entity_types[{child_type!r}]"
                     f".state_variables"
+                    + (" (or this child's dynamic schema)"
+                       if type_def.get("dynamic") else "")
                 )
 
         # Project-side label: if the project file has a ChildEntityConfig
@@ -1151,7 +1257,7 @@ class BaseDriver(ABC):
         project_label = project_entry.get("label", "") if project_entry else ""
 
         updates: dict[str, Any] = {}
-        for prop, var_def in schema.items():
+        for prop, var_def in eff_schema.items():
             if prop == "online":
                 value = overrides.get("online", True)
             elif prop == "label":
@@ -1164,7 +1270,7 @@ class BaseDriver(ABC):
 
         self.state.set_batch(updates, source=f"device.{self.device_id}")
 
-    def deregister_child(self, child_type: str, local_id: int) -> None:
+    def deregister_child(self, child_type: str, local_id: int | str) -> None:
         """Remove a child entity and delete all of its state keys.
 
         Silent no-op if the child isn't registered (so drivers can call this
@@ -1187,8 +1293,11 @@ class BaseDriver(ABC):
         del bucket[local_id]
         if not bucket:
             del self._children[child_type]
+        # Drop any per-child dynamic schema so a later re-register can supply
+        # a fresh one (e.g. after the device's topology changed).
+        self._child_schemas.pop((child_type, local_id), None)
 
-    def list_children(self, child_type: str) -> list[int]:
+    def list_children(self, child_type: str) -> list[int | str]:
         """Local IDs of currently-registered children of ``child_type``,
         in insertion order. Returns an empty list if none are registered or
         the type is unknown to the platform tracker.
@@ -1199,16 +1308,16 @@ class BaseDriver(ABC):
         return list(bucket.keys())
 
     def set_child_state(
-        self, child_type: str, local_id: int, prop: str, value: Any
+        self, child_type: str, local_id: int | str, prop: str, value: Any
     ) -> None:
         """Set one state key on a child entity, validated against its
-        declared schema.
+        declared (or, for dynamic types, per-child) schema.
 
-        Raises ValueError if ``prop`` is not in the child type's
-        ``state_variables`` (the synthetic ``online`` key is always allowed).
+        Raises ValueError if ``prop`` is not in the child's effective schema
+        (the synthetic ``online`` / ``label`` keys are always allowed).
         """
-        self._validate_child_prop(child_type, prop)
-        schema = self._effective_child_schema(child_type)
+        self._validate_child_prop(child_type, local_id, prop)
+        schema = self._effective_child_schema(child_type, local_id)
         self._warn_on_type_mismatch(
             f"{child_type}.{self._format_child_id(child_type, local_id)}.{prop}",
             value,
@@ -1221,7 +1330,7 @@ class BaseDriver(ABC):
         )
 
     def set_child_state_batch(
-        self, child_type: str, local_id: int, updates: dict[str, Any]
+        self, child_type: str, local_id: int | str, updates: dict[str, Any]
     ) -> None:
         """Atomically set several state keys on one child entity.
 
@@ -1229,7 +1338,7 @@ class BaseDriver(ABC):
         bad prop causes the entire batch to abort.
         """
         for prop in updates:
-            self._validate_child_prop(child_type, prop)
+            self._validate_child_prop(child_type, local_id, prop)
         namespaced = {
             self._child_state_key(child_type, local_id, prop): v
             for prop, v in updates.items()
@@ -1237,7 +1346,7 @@ class BaseDriver(ABC):
         self.state.set_batch(namespaced, source=f"device.{self.device_id}")
 
     def set_children_state_batch(
-        self, updates: list[tuple[str, int, dict[str, Any]]]
+        self, updates: list[tuple[str, int | str, dict[str, Any]]]
     ) -> None:
         """Atomically set state keys across many children in one transaction.
 
@@ -1246,9 +1355,9 @@ class BaseDriver(ABC):
         Use this for poll responses that touch dozens or hundreds of children
         at once.
         """
-        for child_type, _local_id, child_updates in updates:
+        for child_type, local_id, child_updates in updates:
             for prop in child_updates:
-                self._validate_child_prop(child_type, prop)
+                self._validate_child_prop(child_type, local_id, prop)
         namespaced: dict[str, Any] = {}
         for child_type, local_id, child_updates in updates:
             for prop, value in child_updates.items():
@@ -1266,6 +1375,12 @@ class BaseDriver(ABC):
         Returns ``{}`` if the driver doesn't declare ``child_entity_types``.
         Used by the REST API and IDE to expose the per-type schema to
         clients without leaking driver-private helpers.
+
+        For a ``dynamic: true`` type, ``state_variables`` here is the
+        type-level schema (often just the platform-managed ``online`` /
+        ``label``); each child's discovered controls are exposed per-instance
+        via :meth:`get_child_schema` and the children listing, since they vary
+        from one child to the next.
         """
         raw = self.DRIVER_INFO.get("child_entity_types", {})
         result: dict[str, dict[str, Any]] = {}
@@ -1275,20 +1390,42 @@ class BaseDriver(ABC):
             result[ctype] = merged_def
         return result
 
-    def format_child_id(self, child_type: str, local_id: int) -> str:
+    def get_child_schema(
+        self, child_type: str, local_id: int | str,
+    ) -> dict[str, dict[str, Any]]:
+        """Effective per-child state-variable schema (with ``online`` /
+        ``label`` injected). For a ``dynamic: true`` type this reflects the
+        schema supplied at ``register_child(schema=...)``; for a static type
+        it's the declared type schema. Used by the REST API to render
+        heterogeneous (dynamic) children, where each instance has its own
+        control set.
+        """
+        return self._effective_child_schema(child_type, local_id)
+
+    def is_child_type_dynamic(self, child_type: str) -> bool:
+        """True if ``child_type`` is declared ``dynamic: true`` (its children
+        carry per-instance schemas). False for unknown or static types.
+        """
+        return bool(
+            self.DRIVER_INFO.get("child_entity_types", {})
+            .get(child_type, {})
+            .get("dynamic")
+        )
+
+    def format_child_id(self, child_type: str, local_id: int | str) -> str:
         """Validate ``local_id`` against the declared id_format and return
         its padded string form. Public wrapper around the internal helper.
         """
         return self._format_child_id(child_type, local_id)
 
-    def is_child_registered(self, child_type: str, local_id: int) -> bool:
+    def is_child_registered(self, child_type: str, local_id: int | str) -> bool:
         """True if ``register_child(child_type, local_id)`` has been called
         and ``deregister_child`` hasn't been called since.
         """
         return local_id in self._children.get(child_type, {})
 
     def get_child_state(
-        self, child_type: str, local_id: int,
+        self, child_type: str, local_id: int | str,
     ) -> dict[str, Any]:
         """Return the live state for one registered child as
         ``{property: value}``. Returns an empty dict if the child isn't

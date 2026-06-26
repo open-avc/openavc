@@ -830,6 +830,7 @@ export interface DeviceInfo {
 
 export interface ChildEntityStateVarDef {
   type: string;
+  label?: string;
   values?: string[];
   min?: number;
   max?: number;
@@ -838,10 +839,13 @@ export interface ChildEntityStateVarDef {
 }
 
 export interface ChildEntityIdFormat {
+  // "integer" (numbered children, zero-padded) or "string" (children keyed
+  // by a device-native name, e.g. a Q-SYS Code Name).
   type: string;
   min?: number;
   max?: number;
   pad_width?: number;
+  max_length?: number;
 }
 
 export interface ChildEntityTypeSchema {
@@ -851,15 +855,23 @@ export interface ChildEntityTypeSchema {
   state_variables: Record<string, ChildEntityStateVarDef>;
   summary_fields?: string[];
   label_field?: string;
+  // When true, each child of this type carries its own discovered control
+  // set (see ChildEntityEntry.schema); the type-level state_variables above
+  // hold only the platform-managed online/label.
+  dynamic?: boolean;
 }
 
 export interface ChildEntityEntry {
-  local_id: number;
+  // Integer for numbered children, string for name-keyed children.
+  local_id: number | string;
   local_id_padded: string;
   label: string;
   config: Record<string, unknown>;
   registered: boolean;
   state: Record<string, unknown>;
+  // Present only for dynamic child types: this child's own state-variable
+  // schema (its discovered controls + platform online/label).
+  schema?: Record<string, ChildEntityStateVarDef>;
 }
 
 export interface ChildEntitiesListResponse {

@@ -555,3 +555,219 @@ def test_register_child_project_entries_for_other_types_ignored():
     })
     drv.register_child("encoder", 5)
     assert drv.state.get("device.ctrl1.encoder.005.label") == ""
+
+
+# ---------------------------------------------------------------------------
+# String local IDs + dynamic per-child schemas
+#
+# These exercise the two generic child-entity capabilities used by any
+# runtime-discovered device whose sub-units are named (not numbered) and whose
+# per-unit control set is only known at connect time. The fixture below is an
+# invented DSP — no real product — with a `component` type (string id,
+# dynamic per-child schema) and a `named_control` type (string id, static
+# schema), mirroring how such a device's topology is auto-imported.
+# ---------------------------------------------------------------------------
+
+
+class _AcmeDspDriver(BaseDriver):
+    """Invented DSP fixture: string-keyed, dynamically-schema'd children."""
+
+    DRIVER_INFO: dict[str, Any] = {
+        "id": "acme_dsp",
+        "name": "Acme DSP",
+        "transport": "tcp",
+        "state_variables": {},
+        "commands": {},
+        "child_entity_types": {
+            "component": {
+                "label": "Component",
+                "label_plural": "Components",
+                "dynamic": True,
+                "id_format": {"type": "string"},
+                # No fixed state_variables — each component publishes its own
+                # control set at register_child(schema=...).
+                "summary_fields": ["label", "kind"],
+            },
+            "named_control": {
+                "label": "Named Control",
+                "id_format": {"type": "string", "max_length": 64},
+                "state_variables": {
+                    "value": {"type": "number"},
+                    "string": {"type": "string"},
+                },
+            },
+        },
+    }
+
+    async def send_command(self, command: str, params: dict | None = None) -> Any:
+        return None
+
+
+def _make_dsp(device_id: str = "dsp1") -> _AcmeDspDriver:
+    return _AcmeDspDriver(
+        device_id=device_id, config={}, state=StateStore(), events=EventBus(),
+    )
+
+
+def test_string_local_id_static_type_creates_keys():
+    drv = _make_dsp()
+    drv.register_child("named_control", "Volume", initial_state={"value": -12.0})
+    assert drv.state.get("device.dsp1.named_control.Volume.value") == -12.0
+    assert drv.state.get("device.dsp1.named_control.Volume.string") == ""
+    assert drv.state.get("device.dsp1.named_control.Volume.online") is True
+    assert drv.list_children("named_control") == ["Volume"]
+    assert drv.is_child_registered("named_control", "Volume") is True
+    assert drv.get_child_state("named_control", "Volume")["value"] == -12.0
+
+
+def test_string_local_id_rejects_unsafe_and_wrong_type():
+    drv = _make_dsp()
+    # Dot would collide with the state-key separator.
+    with pytest.raises(ValueError):
+        drv.register_child("named_control", "Room.Volume")
+    # Whitespace / glob metacharacters are rejected.
+    with pytest.raises(ValueError):
+        drv.register_child("named_control", "Main Gain")
+    with pytest.raises(ValueError):
+        drv.register_child("named_control", "gain*")
+    # Empty is rejected.
+    with pytest.raises(ValueError):
+        drv.register_child("named_control", "")
+    # Over max_length (64) is rejected.
+    with pytest.raises(ValueError):
+        drv.register_child("named_control", "x" * 65)
+    # An integer where a string id is declared is a TypeError.
+    with pytest.raises(TypeError):
+        drv.register_child("named_control", 5)
+
+
+def test_integer_type_rejects_string_id():
+    """A static integer-id driver still rejects a string id (no regression
+    from adding string support)."""
+    drv = _make_driver()
+    with pytest.raises(TypeError):
+        drv.register_child("encoder", "five")
+
+
+def test_dynamic_child_schema_per_instance():
+    """Two components of the same dynamic type carry different control sets;
+    each validates against its own schema."""
+    drv = _make_dsp()
+    drv.register_child(
+        "component", "PgmGain",
+        schema={
+            "gain": {"type": "number", "label": "Gain (dB)"},
+            "mute": {"type": "boolean"},
+        },
+        initial_state={"gain": -6.0, "label": "Program Gain"},
+    )
+    drv.register_child(
+        "component", "PgmRouter",
+        schema={"select_1": {"type": "integer"}},
+    )
+
+    # PgmGain's discovered controls exist; the platform `online`/`label` too.
+    assert drv.state.get("device.dsp1.component.PgmGain.gain") == -6.0
+    assert drv.state.get("device.dsp1.component.PgmGain.mute") is False
+    assert drv.state.get("device.dsp1.component.PgmGain.label") == "Program Gain"
+    assert drv.state.get("device.dsp1.component.PgmGain.online") is True
+    assert drv.state.get("device.dsp1.component.PgmRouter.select_1") == 0
+
+    # Each child validates against ITS OWN schema.
+    drv.set_child_state("component", "PgmGain", "gain", -3.0)
+    assert drv.state.get("device.dsp1.component.PgmGain.gain") == -3.0
+    # PgmGain has no `select_1`; PgmRouter has no `gain`.
+    with pytest.raises(ValueError):
+        drv.set_child_state("component", "PgmGain", "select_1", 2)
+    with pytest.raises(ValueError):
+        drv.set_child_state("component", "PgmRouter", "gain", -3.0)
+
+
+def test_dynamic_child_schema_exposed_via_get_child_schema():
+    drv = _make_dsp()
+    drv.register_child(
+        "component", "PgmGain",
+        schema={"gain": {"type": "number"}, "mute": {"type": "boolean"}},
+    )
+    schema = drv.get_child_schema("component", "PgmGain")
+    assert "gain" in schema and "mute" in schema
+    # Platform-managed keys injected into the effective schema.
+    assert "online" in schema and "label" in schema
+    # The type is reported dynamic; the type-level schema carries no controls.
+    types = drv.get_child_entity_types()
+    assert types["component"]["dynamic"] is True
+    assert set(types["component"]["state_variables"]) == {"online", "label"}
+    assert drv.is_child_type_dynamic("component") is True
+    assert drv.is_child_type_dynamic("named_control") is False
+
+
+def test_schema_arg_rejected_on_static_type():
+    drv = _make_dsp()
+    with pytest.raises(ValueError):
+        drv.register_child(
+            "named_control", "Volume",
+            schema={"value": {"type": "number"}},
+        )
+
+
+def test_dynamic_initial_state_unknown_prop_rolls_back_schema():
+    """A bad initial_state prop rolls back the registration AND the stored
+    per-child schema, so a corrected retry succeeds."""
+    drv = _make_dsp()
+    with pytest.raises(ValueError):
+        drv.register_child(
+            "component", "PgmGain",
+            schema={"gain": {"type": "number"}},
+            initial_state={"nonexistent": 1},
+        )
+    assert drv.is_child_registered("component", "PgmGain") is False
+    # Stored schema was cleaned up — a retry with a different schema works.
+    drv.register_child(
+        "component", "PgmGain",
+        schema={"mute": {"type": "boolean"}},
+    )
+    assert "mute" in drv.get_child_schema("component", "PgmGain")
+    assert "gain" not in drv.get_child_schema("component", "PgmGain")
+
+
+def test_deregister_dynamic_child_drops_schema():
+    """Deregistering a dynamic child clears its stored schema so a later
+    re-register can publish a fresh one (topology changed on the device)."""
+    drv = _make_dsp()
+    drv.register_child(
+        "component", "Blk",
+        schema={"gain": {"type": "number"}},
+    )
+    drv.deregister_child("component", "Blk")
+    assert drv.state.get("device.dsp1.component.Blk.gain") is None
+    # Re-register with a different control set.
+    drv.register_child(
+        "component", "Blk",
+        schema={"position": {"type": "number"}, "label2": {"type": "string"}},
+    )
+    schema = drv.get_child_schema("component", "Blk")
+    assert "position" in schema
+    assert "gain" not in schema
+
+
+def test_dynamic_child_set_batch_validates_per_instance():
+    drv = _make_dsp()
+    drv.register_child(
+        "component", "Mix",
+        schema={
+            "in_1_gain": {"type": "number"},
+            "out_1_mute": {"type": "boolean"},
+        },
+    )
+    drv.set_child_state_batch(
+        "component", "Mix",
+        {"in_1_gain": -10.0, "out_1_mute": True},
+    )
+    assert drv.state.get("device.dsp1.component.Mix.in_1_gain") == -10.0
+    assert drv.state.get("device.dsp1.component.Mix.out_1_mute") is True
+    # A batch with any unknown prop aborts entirely.
+    with pytest.raises(ValueError):
+        drv.set_child_state_batch(
+            "component", "Mix",
+            {"in_1_gain": 0.0, "bogus": 1},
+        )

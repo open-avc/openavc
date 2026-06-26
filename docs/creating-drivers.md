@@ -570,15 +570,33 @@ child_entity_types:
 ```
 
 - `label` / `label_plural`: Human-readable names shown in the IDE.
-- `id_format`: How the controller addresses this sub-unit. `type` is `integer` (the only supported kind today). `min`/`max` bound the valid range; `pad_width` zero-pads the ID when it appears in state keys.
+- `id_format`: How the controller addresses this sub-unit.
+  - `type: integer` (default): numbered sub-units. `min`/`max` bound the valid range; `pad_width` zero-pads the ID when it appears in state keys.
+  - `type: string`: sub-units keyed by a device-native **name** instead of a number (a Q-SYS component Code Name, an MQTT topic leaf, a zone name). The name must be `[A-Za-z0-9_-]` only (so it's safe in a state key and in glob subscriptions) and at most `max_length` characters (default 128). Sanitize the device's native name to that charset and keep the original in the child's `label`.
 - `state_variables`: Same shape as device `state_variables` (types: `string`, `integer`, `number`, `float`, `boolean`, `enum`). The platform always adds a boolean `online` and a string `label` per child, so you don't declare those. Each variable may carry an optional `cloud_priority`:
   - `high` — relayed to the cloud at the fast top-level cadence (for latency-sensitive fields like routing or mute).
   - `low` — relayed at the slow verbose cadence (for chatty per-IO state).
   - omitted — the default per-child cadence.
 - `summary_fields`: Which fields show as columns in the Child Entities list (the rest stay in the expanded per-child view).
 - `label_field`: Which field carries the controller's own name for the unit. The user's friendly label is separate and lives in the project file.
+- `dynamic: true`: Mark a type **dynamic** when each sub-unit's control set is only known at connect time and **differs between sibling units** — e.g. a DSP whose components are user-built (a gain has gain/mute, a custom block has whatever the designer named). Leave `state_variables` empty (or with only the fields every child shares); each child publishes its own schema when you register it (see below). The IDE renders each dynamic child's discovered controls in its expanded row. Dynamic types are a **Python-driver** capability (a YAML driver can't enumerate children at runtime).
 
-Python drivers declare the same block in `DRIVER_INFO` and register instances at runtime with `self.register_child(type, local_id, initial_state=...)`, update them with `set_child_state` / `set_children_state_batch`, and remove them with `deregister_child`. See the BaseDriver child-entity API for details.
+Python drivers declare the same block in `DRIVER_INFO` and register instances at runtime with `self.register_child(type, local_id, initial_state=...)`, update them with `set_child_state` / `set_children_state_batch`, and remove them with `deregister_child`. For a **dynamic** type, pass the discovered control schema when registering:
+
+```python
+# Each component discovered over the wire publishes its own controls.
+self.register_child(
+    "component", "PgmGain",                       # string local_id (sanitized Code Name)
+    schema={
+        "gain": {"type": "number", "label": "Gain (dB)"},
+        "mute": {"type": "boolean", "label": "Mute"},
+    },
+    initial_state={"gain": -6.0, "label": "Program Gain"},
+)
+self.set_child_state("component", "PgmGain", "gain", -3.0)   # validated against THIS child's schema
+```
+
+Each dynamic child's schema is validated independently, so `PgmGain` (gain/mute) and a sibling `PgmRouter` (select_1…) reject each other's props. To change a child's control set after the device topology changes, `deregister_child` then register again with the new schema. See the BaseDriver child-entity API for details.
 
 #### Exposing a previewable video stream
 

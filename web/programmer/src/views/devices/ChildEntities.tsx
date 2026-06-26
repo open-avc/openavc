@@ -404,10 +404,12 @@ function ChildEntityList({
   entries: ChildEntityEntry[];
 }) {
   const liveState = useConnectionStore((s) => s.liveState);
-  const [expanded, setExpanded] = useState<Set<number>>(new Set());
-  const [editing, setEditing] = useState<{ id: number; value: string } | null>(null);
-  const [savingId, setSavingId] = useState<number | null>(null);
-  const [labelOverrides, setLabelOverrides] = useState<Record<number, string>>({});
+  // local_id is a number for numbered children, a string for name-keyed
+  // (dynamic / string-id) children — so all row-keyed UI state is widened.
+  const [expanded, setExpanded] = useState<Set<number | string>>(new Set());
+  const [editing, setEditing] = useState<{ id: number | string; value: string } | null>(null);
+  const [savingId, setSavingId] = useState<number | string | null>(null);
+  const [labelOverrides, setLabelOverrides] = useState<Record<string, string>>({});
 
   // Reset row-level UI state when the active tab changes.
   useEffect(() => {
@@ -475,7 +477,7 @@ function ChildEntityList({
     virtualizer.measure();
   }, [expanded, virtualizer]);
 
-  const toggleExpand = useCallback((localId: number) => {
+  const toggleExpand = useCallback((localId: number | string) => {
     setExpanded((prev) => {
       const next = new Set(prev);
       if (next.has(localId)) next.delete(localId);
@@ -717,7 +719,10 @@ function ChildEntityList({
                       }}
                     >
                       <tbody>
-                        {Object.entries(schema.state_variables).map(
+                        {/* Dynamic children carry their own discovered control
+                            set in entry.schema; static children fall back to
+                            the type-level schema (same for every sibling). */}
+                        {Object.entries(entry.schema ?? schema.state_variables).map(
                           ([prop, _def]) => (
                             <tr
                               key={prop}

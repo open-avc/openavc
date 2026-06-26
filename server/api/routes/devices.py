@@ -650,7 +650,7 @@ def _project_child_entry(
 
 
 def _build_child_entry(
-    driver: Any, project_device: Any, child_type: str, local_id: int,
+    driver: Any, project_device: Any, child_type: str, local_id: int | str,
 ) -> dict[str, Any]:
     """Build the response shape for one registered child.
 
@@ -658,10 +658,16 @@ def _build_child_entry(
     project-owned label + config. ``label`` in the top-level response is
     the project-canonical value; the same key inside ``state`` is the
     runtime mirror (synced on register_child / PATCH).
+
+    For a ``dynamic: true`` child type, each child's control set is
+    discovered at runtime and differs between siblings, so the per-child
+    ``schema`` is included alongside ``state`` for the IDE to render typed
+    rows. Static types omit it (the per-type schema in ``child_entity_types``
+    already covers every child of that type).
     """
     padded = driver.format_child_id(child_type, local_id)
     project_entry = _project_child_entry(project_device, child_type, padded)
-    return {
+    entry: dict[str, Any] = {
         "local_id": local_id,
         "local_id_padded": padded,
         "label": project_entry["label"],
@@ -669,6 +675,32 @@ def _build_child_entry(
         "registered": True,
         "state": driver.get_child_state(child_type, local_id),
     }
+    if driver.is_child_type_dynamic(child_type):
+        entry["schema"] = driver.get_child_schema(child_type, local_id)
+    return entry
+
+
+def _coerce_local_id(
+    types: dict[str, Any], child_type: str, raw: str,
+) -> int | str:
+    """Coerce a path-component ``local_id`` to the kind the child type
+    declares. String-id types take the value verbatim; integer-id types
+    parse it to ``int`` (a non-integer reads as 404 — same 'not found'
+    semantics as an out-of-range id).
+    """
+    id_kind = (
+        types.get(child_type, {}).get("id_format", {}).get("type", "integer")
+    )
+    if id_kind == "string":
+        return raw
+    try:
+        return int(raw)
+    except (ValueError, TypeError):
+        raise HTTPException(
+            status_code=404,
+            detail=f"Invalid integer local_id {raw!r} for child type "
+                   f"'{child_type}'",
+        ) from None
 
 
 def _ensure_driver_for_children(engine: Any, device_id: str):
@@ -763,7 +795,7 @@ async def list_child_entities_by_type(
 
 @router.get("/devices/{device_id}/children/{child_type}/{local_id}")
 async def get_child_entity(
-    device_id: str, child_type: str, local_id: int,
+    device_id: str, child_type: str, local_id: str,
 ) -> dict[str, Any]:
     """Return one registered child's full state + project metadata."""
     driver, project_device = _ensure_driver_for_children(
@@ -776,6 +808,7 @@ async def get_child_entity(
             detail=f"Driver '{driver.DRIVER_INFO.get('id', '?')}' does not "
                    f"declare child type '{child_type}'",
         )
+    local_id = _coerce_local_id(types, child_type, local_id)
     try:
         # Validate range up-front so an out-of-range path component reads
         # as 404 instead of falling through to "not registered".
@@ -796,7 +829,7 @@ async def get_child_entity(
 async def update_child_entity(
     device_id: str,
     child_type: str,
-    local_id: int,
+    local_id: str,
     body: ChildEntityPatchRequest,
 ) -> dict[str, Any]:
     """Update a child's user label and/or freeform config.
@@ -822,6 +855,7 @@ async def update_child_entity(
             detail=f"Driver '{driver.DRIVER_INFO.get('id', '?')}' does not "
                    f"declare child type '{child_type}'",
         )
+    local_id = _coerce_local_id(types, child_type, local_id)
     try:
         padded = driver.format_child_id(child_type, local_id)
     except (ValueError, TypeError) as e:

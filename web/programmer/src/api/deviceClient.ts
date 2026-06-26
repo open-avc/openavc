@@ -187,21 +187,26 @@ export async function listChildEntitiesByType(
 export async function getChildEntity(
   deviceId: string,
   childType: string,
-  localId: number,
+  localId: number | string,
 ): Promise<ChildEntityDetailResponse> {
-  return request(`/devices/${deviceId}/children/${childType}/${localId}`);
+  return request(
+    `/devices/${deviceId}/children/${childType}/${encodeURIComponent(localId)}`,
+  );
 }
 
 export async function patchChildEntity(
   deviceId: string,
   childType: string,
-  localId: number,
+  localId: number | string,
   patch: { label?: string; config?: Record<string, unknown> },
 ): Promise<ChildEntityDetailResponse> {
-  return request(`/devices/${deviceId}/children/${childType}/${localId}`, {
-    method: "PATCH",
-    body: JSON.stringify(patch),
-  });
+  return request(
+    `/devices/${deviceId}/children/${childType}/${encodeURIComponent(localId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    },
+  );
 }
 
 export async function refreshChildEntities(

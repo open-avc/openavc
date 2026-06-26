@@ -470,3 +470,120 @@ def test_refresh_unknown_device_returns_404(child_client):
     c, _engine, _driver, _cfg = child_client
     resp = c.post("/api/devices/no_such/children/refresh")
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Dynamic + string-id children over REST
+#
+# Mirrors how a runtime-discovered device (invented DSP, no real product)
+# exposes string-keyed components whose control set is published per-instance.
+# ---------------------------------------------------------------------------
+
+
+class _DynamicDspDriver(BaseDriver):
+    DRIVER_INFO: dict[str, Any] = {
+        "id": "dyn_dsp",
+        "name": "Dynamic DSP",
+        "transport": "tcp",
+        "state_variables": {},
+        "commands": {},
+        "child_entity_types": {
+            "component": {
+                "label": "Component",
+                "dynamic": True,
+                "id_format": {"type": "string"},
+                "summary_fields": ["label", "kind"],
+            },
+        },
+    }
+
+    async def send_command(self, command: str, params: dict | None = None) -> Any:
+        return None
+
+
+@pytest.fixture
+def dsp_client(tmp_path):
+    state = StateStore()
+    events = EventBus()
+    state.set_event_bus(events)
+    driver = _DynamicDspDriver(
+        device_id="dsp1", config={}, state=state, events=events,
+    )
+    driver.set_state("connected", True)
+    # Discover one component with a per-instance schema.
+    driver.register_child(
+        "component", "PgmGain",
+        schema={"gain": {"type": "number"}, "mute": {"type": "boolean"}},
+        initial_state={"gain": -6.0},
+    )
+
+    engine = MagicMock()
+    engine.state = state
+    engine.events = events
+    engine.macros = MacroEngine(state, events, MagicMock())
+    engine.triggers = MagicMock()
+    engine.triggers.list_triggers.return_value = []
+    engine.scripts = MagicMock()
+    engine.plugin_loader = MagicMock()
+    engine.isc = None
+    engine._running = True
+    engine._ws_clients = []
+    engine.get_status.return_value = {"version": "0.0.0-test"}
+    engine.devices = MagicMock()
+    engine.devices.get_driver = MagicMock(return_value=driver)
+    device_cfg = DeviceConfig(
+        id="dsp1", driver="dyn_dsp", name="DSP 1", config={},
+    )
+    engine.project = MagicMock()
+    engine.project.devices = [device_cfg]
+    engine.project_path = str(tmp_path / "project.avc")
+    engine.project_dir = tmp_path
+
+    rest.set_engine(engine)
+    ws.set_engine(engine)
+    try:
+        yield TestClient(app), engine, driver, device_cfg
+    finally:
+        rest.set_engine(None)
+        ws.set_engine(None)
+
+
+def test_list_dynamic_children_carries_per_child_schema(dsp_client):
+    c, _engine, _driver, _cfg = dsp_client
+    resp = c.get("/api/devices/dsp1/children")
+    assert resp.status_code == 200
+    body = resp.json()
+    # Type is reported dynamic; type-level schema only has platform keys.
+    assert body["child_entity_types"]["component"]["dynamic"] is True
+    entry = body["children"]["component"][0]
+    assert entry["local_id"] == "PgmGain"
+    assert entry["local_id_padded"] == "PgmGain"
+    assert entry["state"]["gain"] == -6.0
+    # The per-child schema rides alongside the state for the IDE to type rows.
+    assert entry["schema"]["gain"]["type"] == "number"
+    assert entry["schema"]["mute"]["type"] == "boolean"
+
+
+def test_get_dynamic_child_by_string_id(dsp_client):
+    c, _engine, _driver, _cfg = dsp_client
+    resp = c.get("/api/devices/dsp1/children/component/PgmGain")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["local_id"] == "PgmGain"
+    assert body["state"]["gain"] == -6.0
+    assert "schema" in body
+    # An unregistered string id reads as 404.
+    assert c.get("/api/devices/dsp1/children/component/Nope").status_code == 404
+
+
+def test_patch_dynamic_child_string_id_persists_label(dsp_client):
+    c, _engine, driver, cfg = dsp_client
+    with patch("server.core.project_loader.save_project"):
+        resp = c.patch(
+            "/api/devices/dsp1/children/component/PgmGain",
+            json={"label": "Program Gain"},
+        )
+    assert resp.status_code == 200
+    # Persisted to project (keyed by the verbatim string id) and mirrored live.
+    assert cfg.child_entities["component"]["PgmGain"].label == "Program Gain"
+    assert driver.get_child_state("component", "PgmGain")["label"] == "Program Gain"
