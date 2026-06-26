@@ -545,7 +545,11 @@ function ChildEntityList({
         ref={parentRef}
         data-testid="child-virtual-scroller"
         style={{
-          height: LIST_HEIGHT,
+          // Grow with the content (the inner div is sized to the virtualizer's
+          // total height) but cap at LIST_HEIGHT and scroll past it — so a few
+          // children no longer leave a tall empty box, and many get a scrollbar
+          // instead of being clipped. Matches the search-results list above.
+          maxHeight: LIST_HEIGHT,
           overflow: "auto",
           background: "var(--bg-surface)",
           borderRadius: "var(--border-radius)",
