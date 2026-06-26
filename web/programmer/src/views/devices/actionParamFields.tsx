@@ -1,4 +1,5 @@
-import type { ActionParam } from "../../api/types";
+import type { ActionParam, DriverParamDef } from "../../api/types";
+import { ParamInput } from "../../components/shared/ParamInput";
 
 /** Default string value to seed a param field with. */
 export function defaultFor(def: ActionParam): string {
@@ -65,17 +66,19 @@ export function ActionParamFields({
   params,
   values,
   onChange,
+  deviceId,
 }: {
   params: Record<string, ActionParam>;
   values: Record<string, string>;
   onChange: (name: string, value: string) => void;
+  /** Enables child_id dropdowns for action params that reference a child type. */
+  deviceId?: string;
 }) {
   return (
     <>
       {Object.keys(params).map((name) => {
         const def = params[name];
         const label = def.label || name;
-        const type = def.type || "string";
         const current = values[name] ?? "";
         return (
           <div key={name} style={{ marginBottom: "var(--space-md)" }}>
@@ -90,50 +93,14 @@ export function ActionParamFields({
               {label}
               {def.required && <span style={{ color: "var(--color-error)" }}> *</span>}
             </label>
-            {type === "enum" && def.values ? (
-              <select
-                value={current}
-                onChange={(e) => onChange(name, e.target.value)}
-                style={{ width: "100%" }}
-              >
-                {!def.required && <option value="">(none)</option>}
-                {def.values.map((v) => (
-                  <option key={v} value={v}>
-                    {v}
-                  </option>
-                ))}
-              </select>
-            ) : type === "boolean" ? (
-              <select
-                value={current || "false"}
-                onChange={(e) => onChange(name, e.target.value)}
-                style={{ width: "100%" }}
-              >
-                <option value="true">Yes</option>
-                <option value="false">No</option>
-              </select>
-            ) : (
-              <input
-                type={
-                  def.secret || type === "password"
-                    ? "password"
-                    : type === "integer" || type === "number"
-                      ? "number"
-                      : "text"
-                }
-                autoComplete="new-password"
-                value={current}
-                min={def.min}
-                max={def.max}
-                onChange={(e) => onChange(name, e.target.value)}
-                placeholder={
-                  def.min !== undefined && def.max !== undefined
-                    ? `${def.min}-${def.max}`
-                    : name
-                }
-                style={{ width: "100%" }}
-              />
-            )}
+            <ParamInput
+              def={def as Partial<DriverParamDef>}
+              value={current}
+              onChange={(val) => onChange(name, val)}
+              deviceId={deviceId}
+              placeholder={name}
+              style={{ width: "100%" }}
+            />
             {def.help && (
               <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
                 {def.help}

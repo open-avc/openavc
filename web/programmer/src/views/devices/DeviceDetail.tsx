@@ -6,7 +6,8 @@ import { useProjectStore } from "../../store/projectStore";
 import { useConnectionStore } from "../../store/connectionStore";
 import { useLogStore } from "../../store/logStore";
 import * as api from "../../api/restClient";
-import type { BridgePort, ChildEntityEntry, DeviceConfig, DeviceInfo, DeviceSettingValue } from "../../api/types";
+import type { BridgePort, DeviceConfig, DeviceInfo, DeviceSettingValue, DriverParamDef } from "../../api/types";
+import { ParamInput } from "../../components/shared/ParamInput";
 import { DevicePanelSlot, ContextActionRenderer } from "../../components/plugins/PluginExtensions";
 import { findDeviceReferences, validateSettingValue } from "./deviceUtils";
 import { ChildEntities } from "./ChildEntities";
@@ -162,41 +163,9 @@ export function DeviceDetail({
   const commands = deviceInfo?.commands ?? {};
   const commandNames = Object.keys(commands);
 
-  // child_id params render a dropdown of the device's live children (the
-  // runtime contract for that param type) instead of a hand-typed integer.
-  // Fetched fresh whenever such a command is selected — children register
-  // dynamically as the driver discovers them.
-  const [childOptions, setChildOptions] = useState<
-    Record<string, ChildEntityEntry[]>
-  >({});
-  useEffect(() => {
-    const pdefs = (
-      deviceInfo?.commands?.[selectedCommand] as Record<string, unknown> | undefined
-    )?.params as Record<string, Record<string, unknown>> | undefined;
-    const types = new Set<string>();
-    for (const d of Object.values(pdefs ?? {})) {
-      if (String(d?.type ?? "") === "child_id" && d?.child_type) {
-        types.add(String(d.child_type));
-      }
-    }
-    if (types.size === 0) return;
-    let cancelled = false;
-    (async () => {
-      for (const ct of types) {
-        try {
-          const resp = await api.listChildEntitiesByType(deviceId, ct);
-          if (!cancelled) {
-            setChildOptions((prev) => ({ ...prev, [ct]: resp.children }));
-          }
-        } catch {
-          if (!cancelled) setChildOptions((prev) => ({ ...prev, [ct]: [] }));
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedCommand, deviceId, deviceInfo]);
+  // child_id params render a dropdown of the device's live children — the
+  // shared ParamInput fetches them per-field (children register dynamically as
+  // the driver discovers them).
 
   const handleSendCommand = useCallback(async () => {
     if (!selectedCommand) return;
@@ -800,13 +769,8 @@ export function DeviceDetail({
                 <div style={{ marginBottom: "var(--space-md)" }}>
                   {paramKeys.map((paramName) => {
                     const pDef = (commands[selectedCommand] as Record<string, unknown>)?.params as Record<string, Record<string, unknown>> | undefined;
-                    const def = pDef?.[paramName];
-                    const paramHelp = def?.help as string | undefined;
-                    const paramType = String(def?.type ?? "string");
-                    const paramValues = def?.values as string[] | undefined;
-                    const paramMin = def?.min as number | undefined;
-                    const paramMax = def?.max as number | undefined;
-                    const required = def?.required === true;
+                    const def = (pDef?.[paramName] ?? {}) as Partial<DriverParamDef>;
+                    const paramHelp = def.help ?? def.description;
                     const current = commandParams[paramName] ?? "";
                     const setParam = (val: string) =>
                       setCommandParams((p) => ({ ...p, [paramName]: val }));
@@ -827,89 +791,14 @@ export function DeviceDetail({
                       >
                         {paramName}
                       </label>
-                      {paramType === "enum" && paramValues ? (
-                        <select
-                          value={current}
-                          onChange={(e) => setParam(e.target.value)}
-                          style={{ flex: 1 }}
-                        >
-                          {!required && <option value="">(none)</option>}
-                          {paramValues.map((v) => (
-                            <option key={v} value={v}>{v}</option>
-                          ))}
-                        </select>
-                      ) : paramType === "boolean" ? (
-                        <select
-                          value={current || "false"}
-                          onChange={(e) => setParam(e.target.value)}
-                          style={{ flex: 1 }}
-                        >
-                          <option value="true">Yes</option>
-                          <option value="false">No</option>
-                        </select>
-                      ) : paramType === "child_id" ? (
-                        (() => {
-                          // Dropdown of the device's registered children of
-                          // the declared type — hand-typing the integer id
-                          // risks routing/deleting the wrong sub-unit.
-                          const ct = String(def?.child_type ?? "");
-                          const opts = childOptions[ct];
-                          const registered = (opts ?? []).filter(
-                            (c) => c.registered,
-                          );
-                          return (
-                            <div style={{ flex: 1 }}>
-                              <select
-                                value={current}
-                                onChange={(e) => setParam(e.target.value)}
-                                style={{ width: "100%" }}
-                              >
-                                <option value="">
-                                  {opts === undefined
-                                    ? "Loading children..."
-                                    : `(select ${ct || "child"})`}
-                                </option>
-                                {registered.map((c) => (
-                                  <option
-                                    key={c.local_id}
-                                    value={String(c.local_id)}
-                                  >
-                                    {c.label
-                                      ? `${c.label} (${c.local_id})`
-                                      : `${ct} ${c.local_id}`}
-                                  </option>
-                                ))}
-                              </select>
-                              {opts !== undefined && registered.length === 0 && (
-                                <div
-                                  style={{
-                                    fontSize: 11,
-                                    color: "var(--text-muted)",
-                                    marginTop: 2,
-                                  }}
-                                >
-                                  No registered {ct || "child"} entries on this
-                                  device yet — see the Child Entities tab.
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })()
-                      ) : (
-                        <input
-                          type={paramType === "integer" || paramType === "number" ? "number" : "text"}
-                          value={current}
-                          min={paramMin}
-                          max={paramMax}
-                          onChange={(e) => setParam(e.target.value)}
-                          placeholder={
-                            paramMin !== undefined && paramMax !== undefined
-                              ? `${paramMin}-${paramMax}`
-                              : paramName
-                          }
-                          style={{ flex: 1 }}
-                        />
-                      )}
+                      <ParamInput
+                        def={def}
+                        value={current}
+                        onChange={setParam}
+                        deviceId={deviceId}
+                        placeholder={paramName}
+                        style={{ flex: 1 }}
+                      />
                       </div>
                       {paramHelp && (
                         <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2, marginLeft: 120 }}>

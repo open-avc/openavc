@@ -170,6 +170,7 @@ export function QuickActions({
       {dialogAction && (
         <ActionParamDialog
           action={dialogAction}
+          deviceId={deviceId}
           running={running === dialogAction.id}
           onCancel={() => setDialogAction(null)}
           onRun={(params) => invoke(dialogAction, params)}
@@ -192,11 +193,13 @@ export function QuickActions({
 
 function ActionParamDialog({
   action,
+  deviceId,
   running,
   onCancel,
   onRun,
 }: {
   action: DeviceAction;
+  deviceId: string;
   running: boolean;
   onCancel: () => void;
   onRun: (params: Record<string, unknown>) => void;
@@ -226,6 +229,7 @@ function ActionParamDialog({
           params={action.params}
           values={values}
           onChange={(name, val) => setValues((v) => ({ ...v, [name]: val }))}
+          deviceId={deviceId}
         />
       </div>
       <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-sm)" }}>

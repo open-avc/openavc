@@ -128,6 +128,7 @@ export function SetupActionWizard({
                 params={action.params}
                 values={values}
                 onChange={(name, val) => setValues((v) => ({ ...v, [name]: val }))}
+                deviceId={deviceId}
               />
             </div>
           )}

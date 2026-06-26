@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Info } from "lucide-react";
-import type { ProjectConfig, DeviceInfo } from "../../../api/types";
+import type { ProjectConfig, DeviceInfo, DriverParamDef } from "../../../api/types";
+import { ParamInput } from "../../shared/ParamInput";
 import { useConnectionStore } from "../../../store/connectionStore";
 import * as api from "../../../api/restClient";
 
@@ -246,7 +247,6 @@ function DeviceCommandConfig({
             const paramHelp = paramDef.help as string | undefined;
             const paramRequired = paramDef.required as boolean | undefined;
             const paramDefault = paramDef.default;
-            const paramValues = paramDef.values as string[] | undefined;
             return (
               <div key={param} style={{ marginBottom: 6 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 2 }}>
@@ -271,39 +271,21 @@ function DeviceCommandConfig({
                   )}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
-                  {paramValues && paramValues.length > 0 ? (
-                    <select
-                      value={String(currentParams[param] ?? "")}
-                      onChange={(e) =>
-                        onChange({
-                          action: "device.command",
-                          device: selectedDevice,
-                          command: selectedCommand,
-                          params: { ...currentParams, [param]: e.target.value },
-                        })
-                      }
-                      style={{ flex: 1, padding: "3px 6px", fontSize: "var(--font-size-sm)" }}
-                    >
-                      <option value="">Select...</option>
-                      {paramValues.map((v) => (
-                        <option key={v} value={v}>{v}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      value={String(currentParams[param] ?? "")}
-                      onChange={(e) =>
-                        onChange({
-                          action: "device.command",
-                          device: selectedDevice,
-                          command: selectedCommand,
-                          params: { ...currentParams, [param]: e.target.value },
-                        })
-                      }
-                      placeholder={paramHelp || `Enter ${param}...`}
-                      style={{ flex: 1, padding: "3px 6px", fontSize: "var(--font-size-sm)" }}
-                    />
-                  )}
+                  <ParamInput
+                    def={paramDef as Partial<DriverParamDef>}
+                    value={String(currentParams[param] ?? "")}
+                    onChange={(val) =>
+                      onChange({
+                        action: "device.command",
+                        device: selectedDevice,
+                        command: selectedCommand,
+                        params: { ...currentParams, [param]: val },
+                      })
+                    }
+                    deviceId={selectedDevice}
+                    placeholder={paramHelp || `Enter ${param}...`}
+                    style={{ flex: 1 }}
+                  />
                   {/* Dynamic value template buttons */}
                   <button
                     onClick={() =>

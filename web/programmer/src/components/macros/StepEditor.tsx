@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import type { MacroStep, MacroConfig, DeviceConfig, DeviceInfo } from "../../api/types";
+import type { MacroStep, MacroConfig, DeviceConfig, DeviceInfo, DriverParamDef } from "../../api/types";
+import { ParamInput } from "../shared/ParamInput";
 import { useProjectStore } from "../../store/projectStore";
 import type { StepPathSegment } from "../../store/logStore";
 import { VariableKeyPicker } from "../shared/VariableKeyPicker";
@@ -306,64 +307,16 @@ function DeviceCommandEditor({
                   {paramKey}
                   {paramDef?.required && <span style={{ color: "#ef4444" }}> *</span>}
                 </label>
-                {isDynamic ? (
-                  /* Dynamic mode: state key picker */
-                  <VariableKeyPicker
-                    value={String(currentVal).slice(1)}
-                    onChange={(key) => handleParamChange(paramKey, `$${key}`)}
-                    showDeviceState
-                    showTriggerContext
-                    placeholder="Select state key..."
-                    style={{ flex: 1 }}
-                  />
-                ) : paramDef?.type === "enum" && Array.isArray(paramDef.values) ? (
-                  <select
-                    value={String(currentVal)}
-                    onChange={(e) => handleParamChange(paramKey, e.target.value)}
-                    style={inputStyle}
-                  >
-                    <option value="">Select {paramKey}...</option>
-                    {paramDef.values.map((v: string) => (
-                      <option key={v} value={v}>
-                        {v}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    type={paramDef?.type === "integer" ? "number" : "text"}
-                    value={String(currentVal)}
-                    onChange={(e) => handleParamChange(paramKey, e.target.value)}
-                    placeholder={paramDef?.type ?? "text"}
-                    style={inputStyle}
-                  />
-                )}
-                {/* Dynamic toggle */}
-                <button
-                  onClick={() => {
-                    if (isDynamic) {
-                      handleParamChange(paramKey, "");
-                    } else {
-                      handleParamChange(paramKey, "$var.");
-                    }
-                  }}
-                  title={isDynamic ? "Switch to static value" : "Use dynamic value from state variable"}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    padding: "3px 6px",
-                    borderRadius: "var(--border-radius)",
-                    border: `1px solid ${isDynamic ? "var(--accent)" : "var(--border-color)"}`,
-                    background: isDynamic ? "rgba(138,180,147,0.15)" : "transparent",
-                    color: isDynamic ? "var(--accent)" : "var(--text-muted)",
-                    fontSize: 11,
-                    cursor: "pointer",
-                    flexShrink: 0,
-                    fontFamily: "var(--font-mono)",
-                  }}
-                >
-                  $
-                </button>
+                <ParamInput
+                  def={(paramDef ?? {}) as Partial<DriverParamDef>}
+                  value={String(currentVal)}
+                  onChange={(val) => handleParamChange(paramKey, val)}
+                  deviceId={step.device}
+                  allowDynamic
+                  showTriggerContext
+                  placeholder={paramDef?.type ?? "text"}
+                  style={{ flex: 1 }}
+                />
                 </div>
                 {isDynamic && (
                   <div style={{ fontSize: 11, color: "var(--accent)", marginTop: 2, marginLeft: 78 }}>
