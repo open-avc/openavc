@@ -95,10 +95,16 @@ SCENARIOS = [
     # M-176 — globMatch escapes regex metacharacters.
     "m176_metachar_no_crash",
     "m176_no_redos",
-    "m176_wildcard_segment",
+    # Backlog 67 — globMatch mirrors the runtime fnmatch semantics.
+    "fn_star_spans_dots",
+    "fn_question_single_char",
+    "fn_char_class",
+    "fn_unbalanced_bracket_no_throw",
     # L-103 — wildcard matches device-only candidate keys.
     "l103_wildcard_matches_device_keys",
     "l103_wildcard_segment_scoped",
+    # Backlog 67 item 2 — var.* wildcard matches the project's variables.
+    "varmap_wildcard_matches_vars",
 ]
 
 

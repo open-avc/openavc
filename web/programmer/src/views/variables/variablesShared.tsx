@@ -3,7 +3,7 @@ import { ChevronRight, ExternalLink, X, Zap, Layout, FileCode } from "lucide-rea
 import { useNavigationStore, type FocusTarget } from "../../store/navigationStore";
 import type { ProjectConfig, ScriptReference } from "../../api/types";
 import type { ViewId } from "../../components/layout/Sidebar";
-import { scanBindingForVars, scanBindingForAllKeys, collectWildcardMatches } from "./variablesShared.helpers";
+import { scanBindingForVars, scanBindingForAllKeys, collectWildcardMatches, hasGlobChars } from "./variablesShared.helpers";
 
 // ==========================================================================
 // Shared types
@@ -177,16 +177,24 @@ export function buildUsageMap(project: ProjectConfig, scriptRefs: ScriptReferenc
     }
   }
 
-  // Script references
+  // Script references — var.* keys. A wildcard reference (e.g. var.*) matches
+  // against the project's variables, mirroring how the runtime subscribes.
+  const varKeys = project.variables.map((v) => `var.${v.id}`);
   for (const ref of scriptRefs) {
     if (!ref.key.startsWith("var.")) continue;
-    const varId = ref.key.slice(4);
     const usageLabel = ref.usage_type === "subscribe" ? "@on_state_change" : ref.usage_type === "write" ? "state.set" : "state.get";
-    addUsage(varId, {
+    const entry: VariableUsage = {
       type: "script", icon: FileCode, label: ref.script_name,
       detail: `line ${ref.line} — ${usageLabel}`,
       nav: { view: "scripts", focus: { type: "script", id: ref.script_id, detail: `line:${ref.line}` } },
-    });
+    };
+    if (hasGlobChars(ref.key)) {
+      for (const matchKey of collectWildcardMatches(ref.key, varKeys)) {
+        addUsage(matchKey.slice(4), entry);
+      }
+    } else {
+      addUsage(ref.key.slice(4), entry);
+    }
   }
 
   return map;
@@ -303,7 +311,7 @@ export function buildStateUsageMap(project: ProjectConfig, scriptRefs: ScriptRef
       detail: `line ${ref.line} — ${usageLabel}`,
       nav: scriptNav,
     };
-    if (ref.key.includes("*")) {
+    if (hasGlobChars(ref.key)) {
       // Wildcard pattern — annotate every matching key, including device-only
       // keys that macros/UI never referenced (seeded via knownKeys).
       const candidates = new Set<string>([...map.keys(), ...knownKeys]);

@@ -129,11 +129,41 @@ results.m176_no_redos = (() => {
   return { pass: value === false && elapsed < 1000, detail: { value, elapsed } };
 })();
 
-// Wildcard semantics preserved: "*" still spans exactly one path segment.
-results.m176_wildcard_segment = (() => {
-  const a = V.globMatch("device.*.power", "device.proj.power");
+// --- §67: globMatch mirrors the runtime's fnmatch semantics ----------------
+
+// "*" spans dots (like the runtime's fnmatch), so a script subscribing to
+// "device.*" covers multi-segment device keys the IDE used to miss.
+results.fn_star_spans_dots = (() => {
+  const a = V.globMatch("device.*", "device.proj.power");
   const b = V.globMatch("device.*.power", "device.proj.sub.power");
+  const c = V.globMatch("device.*", "var.x");
+  return { pass: a === true && b === true && c === false, detail: { a, b, c } };
+})();
+
+// "?" matches exactly one character.
+results.fn_question_single_char = (() => {
+  const a = V.globMatch("var.a?c", "var.abc");
+  const b = V.globMatch("var.a?c", "var.abbc");
   return { pass: a === true && b === false, detail: { a, b } };
+})();
+
+// "[...]" is a character class, including negation.
+results.fn_char_class = (() => {
+  const a = V.globMatch("var.zone[12]", "var.zone1");
+  const b = V.globMatch("var.zone[12]", "var.zone3");
+  const neg = V.globMatch("var.zone[!12]", "var.zone3");
+  return { pass: a === true && b === false && neg === true, detail: { a, b, neg } };
+})();
+
+// An unbalanced "[" is treated literally and never throws.
+results.fn_unbalanced_bracket_no_throw = (() => {
+  try {
+    const a = V.globMatch("var.a[b*", "var.a[bzzz");
+    const miss = V.globMatch("var.a[b*", "var.zzz");
+    return { pass: a === true && miss === false, detail: { a, miss } };
+  } catch (e) {
+    return { pass: false, detail: `threw: ${e}` };
+  }
 })();
 
 // --- L-103: wildcard matches device-only candidate keys --------------------
@@ -141,8 +171,7 @@ results.m176_wildcard_segment = (() => {
 // A script subscribing to one device's properties ("device.proj.*") must
 // annotate that device's state keys even when no macro/UI references them — the
 // L-103 fix matches the wildcard against the known device-key set, not just the
-// macro/UI-seeded keys. ("*" spans a single path segment, mirroring the existing
-// matcher; the device props here are single-segment, the common case.)
+// macro/UI-seeded keys.
 results.l103_wildcard_matches_device_keys = (() => {
   const hits = V.collectWildcardMatches("device.proj.*", [
     "device.proj.power",
@@ -166,6 +195,18 @@ results.l103_wildcard_segment_scoped = (() => {
     "device.amp.volume",
   ]);
   return { pass: hits.length === 1 && hits[0] === "device.proj.power", detail: hits };
+})();
+
+// --- §67 item 2: a var.* wildcard matches the project's variables ----------
+results.varmap_wildcard_matches_vars = (() => {
+  const hits = V.collectWildcardMatches("var.*", ["var.vol", "var.scene", "device.amp.mute"]);
+  return {
+    pass:
+      hits.includes("var.vol") &&
+      hits.includes("var.scene") &&
+      !hits.includes("device.amp.mute"),
+    detail: hits,
+  };
 })();
 
 process.stdout.write(JSON.stringify(results));

@@ -2,21 +2,64 @@
 // Extracted from variablesShared.tsx so the binding-scan + glob logic can be
 // unit-tested without React/lucide. See tests/test_variables_shared_helpers.py.
 
+// Characters that make a pattern a glob, mirroring the runtime state store's
+// _GLOB_CHARS (server/core/state_store.py). A pattern without any of these is an
+// exact-match key.
+const GLOB_CHARS = /[*?[]/;
+
+export function hasGlobChars(s: string): boolean {
+  return GLOB_CHARS.test(s);
+}
+
 /**
- * Glob matcher for state-key patterns like "device.*.power". A "*" matches one
- * path segment (no dots). The pattern is fully regex-escaped first, so a
- * script-derived key carrying regex metacharacters (parentheses, +, brackets,
- * etc.) can never crash the view with a SyntaxError or hang it via ReDoS — only
- * "*" is treated as special.
+ * Glob matcher for state-key patterns, mirroring the runtime's Python `fnmatch`
+ * (server/core/state_store.py, server/core/event_bus.py) so the IDE "Used By"
+ * cross-reference reports exactly what the runtime subscribes to: "*" matches any
+ * run of characters INCLUDING dots, "?" matches one character, and "[...]" is a
+ * character class. Every other character is matched literally, so a script-derived
+ * key carrying regex metacharacters can never crash the view (SyntaxError) or hang
+ * it (ReDoS).
  */
 export function globMatch(pattern: string, key: string): boolean {
   if (pattern === key) return true;
-  if (!pattern.includes("*")) return false;
-  // Escape every regex metacharacter, then turn the (now-escaped) "*" back into
-  // a single-segment wildcard.
-  const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const regex = new RegExp("^" + escaped.replace(/\\\*/g, "[^.]+") + "$");
-  return regex.test(key);
+  if (!hasGlobChars(pattern)) return false;
+  return fnmatchToRegExp(pattern).test(key);
+}
+
+/** Translate a glob pattern to an anchored RegExp the way Python's
+ *  fnmatch.translate does (see globMatch). Every pattern yields a valid regex —
+ *  an unbalanced "[" is treated as a literal — so this can never throw. */
+function fnmatchToRegExp(pattern: string): RegExp {
+  let res = "";
+  let i = 0;
+  const n = pattern.length;
+  while (i < n) {
+    const c = pattern[i++];
+    if (c === "*") {
+      while (i < n && pattern[i] === "*") i++; // collapse runs of "*"
+      res += ".*";
+    } else if (c === "?") {
+      res += ".";
+    } else if (c === "[") {
+      let j = i;
+      if (j < n && (pattern[j] === "!" || pattern[j] === "^")) j++;
+      if (j < n && pattern[j] === "]") j++;
+      while (j < n && pattern[j] !== "]") j++;
+      if (j >= n) {
+        res += "\\["; // no closing "]" — treat "[" as a literal
+      } else {
+        let stuff = pattern.slice(i, j).replace(/\\/g, "\\\\");
+        let cls = "";
+        if (stuff[0] === "!") { cls = "^"; stuff = stuff.slice(1); }
+        else if (stuff[0] === "^") { cls = "\\^"; stuff = stuff.slice(1); }
+        res += "[" + cls + stuff + "]";
+        i = j + 1;
+      }
+    } else {
+      res += c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+  }
+  return new RegExp("^" + res + "$", "s");
 }
 
 /**
