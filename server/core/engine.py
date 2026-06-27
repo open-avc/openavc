@@ -1378,16 +1378,15 @@ class Engine:
             self._var_validation_subs.append(sub_id)
 
     def _register_ui_bindings(self) -> None:
-        """Walk all UI elements and log their bindings for debugging."""
+        """Walk all UI elements and log their interaction bindings for debugging."""
         if not self.project:
             return
         count = 0
         for page in self.project.ui.pages:
             for element in page.elements:
-                if element.bindings:
-                    for event_type in ("press", "release", "change", "select"):
-                        if event_type in element.bindings:
-                            count += 1
+                do = element.bindings.get("do") if element.bindings else None
+                if isinstance(do, dict):
+                    count += sum(1 for actions in do.values() if actions)
         log.info(f"Registered {count} UI binding(s)")
 
     # --- WebSocket Management ---

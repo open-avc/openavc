@@ -1836,8 +1836,8 @@ class PanelApp {
         const lockedOutputs = new Set();
         const mutedOutputs = new Set();
 
-        // Presets bar (if presets defined in bindings)
-        const presets = element.bindings?.presets || [];
+        // Presets bar (if presets defined in matrix config)
+        const presets = element.matrix_config?.presets || [];
         if (presets.length > 0) {
             const presetBar = document.createElement('div');
             presetBar.className = 'matrix-presets';

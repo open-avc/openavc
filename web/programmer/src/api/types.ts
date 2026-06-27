@@ -209,6 +209,7 @@ export interface UIElement {
     audio_follow_video?: boolean;
     show_lock?: boolean;
     show_mute?: boolean;
+    presets?: { name: string; macro?: string }[];
   };
   matrix_style?: string;
   // Plugin element

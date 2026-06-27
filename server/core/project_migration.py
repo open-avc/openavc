@@ -208,13 +208,6 @@ def _migrate_bindings_0_6_to_0_7(bindings: dict) -> dict:
     if bindings.get("visible_when") is not None:
         show["visible_when"] = bindings["visible_when"]
 
-    # Matrix preset buttons (a list of {name, macro}) were stored under
-    # bindings.presets in v0.6.0. They are matrix element configuration rather
-    # than a show/do binding, so they are carried over unchanged for now; a
-    # later pass relocates them to matrix_config alongside the other matrix
-    # settings. Preserve them so migrated projects keep their preset bar.
-    presets = bindings.get("presets")
-
     # do.<interaction> — normalize a single action object to a one-item list.
     for slot in _ACTION_SLOTS_0_7:
         if slot not in bindings:
@@ -234,12 +227,34 @@ def _migrate_bindings_0_6_to_0_7(bindings: dict) -> dict:
         out["show"] = show
     if do:
         out["do"] = do
-    if isinstance(presets, list) and presets:
-        out["presets"] = presets
-    # The orphan `meter` slot (never wired to an editor or runtime) is dropped;
-    # every other v0.6.0 binding key is mapped above (action slots, the show
-    # sources) or carried over (matrix presets).
+    # The matrix preset bar (`presets`) is relocated to the element's
+    # matrix_config by the element-level caller, so it is intentionally not
+    # carried on `bindings` here. The orphan `meter` slot (never wired to an
+    # editor or runtime) is dropped; every other v0.6.0 binding key is mapped
+    # above (action slots, the show sources).
     return out
+
+
+def _migrate_element_bindings_0_6_to_0_7(el: dict) -> None:
+    """Rewrite one element's bindings to the v0.7.0 ``show`` / ``do`` shape in
+    place and relocate any matrix preset bar to ``matrix_config.presets``.
+
+    The preset bar (`bindings.presets`, a list of ``{name, macro}``) is matrix
+    element configuration rather than a show/do binding, so its principled home
+    is ``matrix_config`` beside ``input_count`` / ``route_key_pattern``. Moving
+    it leaves ``bindings`` as exactly ``{show, do}``.
+    """
+    bindings = el.get("bindings")
+    if not isinstance(bindings, dict):
+        return
+    presets = bindings.get("presets")
+    el["bindings"] = _migrate_bindings_0_6_to_0_7(bindings)
+    if isinstance(presets, list) and presets:
+        cfg = el.get("matrix_config")
+        if not isinstance(cfg, dict):
+            cfg = {}
+            el["matrix_config"] = cfg
+        cfg["presets"] = presets
 
 
 def migrate_0_6_to_0_7(data: dict) -> dict:
@@ -248,7 +263,8 @@ def migrate_0_6_to_0_7(data: dict) -> dict:
     - Rewrite UI element bindings from the ad-hoc per-control slot set into the
       unified ``show`` / ``do`` model. Applies to page elements and
       master_elements alike. Two-way collapses to ``show.value.write_back``
-      (writable ``var.*`` keys only); the orphan ``meter`` slot is dropped.
+      (writable ``var.*`` keys only); the orphan ``meter`` slot is dropped; the
+      matrix preset bar moves to ``matrix_config.presets``.
     - Bump version.
     """
     ui = data.get("ui")
@@ -257,11 +273,11 @@ def migrate_0_6_to_0_7(data: dict) -> dict:
             if not isinstance(page, dict):
                 continue
             for el in page.get("elements", []):
-                if isinstance(el, dict) and isinstance(el.get("bindings"), dict):
-                    el["bindings"] = _migrate_bindings_0_6_to_0_7(el["bindings"])
+                if isinstance(el, dict):
+                    _migrate_element_bindings_0_6_to_0_7(el)
         for mel in ui.get("master_elements", []):
-            if isinstance(mel, dict) and isinstance(mel.get("bindings"), dict):
-                mel["bindings"] = _migrate_bindings_0_6_to_0_7(mel["bindings"])
+            if isinstance(mel, dict):
+                _migrate_element_bindings_0_6_to_0_7(mel)
 
     data["openavc_version"] = "0.7.0"
     return data

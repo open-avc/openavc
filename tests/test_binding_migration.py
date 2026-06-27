@@ -125,21 +125,46 @@ def test_empty_action_slot_dropped():
     assert "do" not in out
 
 
-def test_matrix_presets_carried_over():
+def _wrap_matrix(bindings: dict, matrix_config: dict | None = None) -> dict:
+    """A minimal v0.6.0 project carrying one matrix element."""
+    el: dict = {"id": "mx", "type": "matrix", "bindings": bindings}
+    if matrix_config is not None:
+        el["matrix_config"] = matrix_config
+    return {
+        "openavc_version": "0.6.0", "project": {"name": "t"},
+        "ui": {"pages": [{"id": "p1", "elements": [el]}]},
+    }
+
+
+def test_matrix_presets_relocated_to_matrix_config():
     # Matrix preset buttons (a list of {name, macro}) are element config, not a
-    # show/do binding; they are preserved so a migrated matrix keeps its bar.
+    # show/do binding; they relocate to matrix_config.presets so a migrated
+    # matrix keeps its bar and `bindings` stays exactly {show, do}.
     presets = [{"name": "All HDMI 1", "macro": "m_all_1"}, {"name": "Off", "macro": "m_off"}]
-    out = _migrate_bindings_0_6_to_0_7({
+    data = _wrap_matrix({
         "route": [{"action": "device.command", "device": "m", "command": "route", "params": {}}],
         "presets": presets,
     })
-    assert out["presets"] == presets
-    assert "route" in out["do"]
+    el = migrate_0_6_to_0_7(data)["ui"]["pages"][0]["elements"][0]
+    assert el["matrix_config"]["presets"] == presets
+    assert "presets" not in el["bindings"]
+    assert "route" in el["bindings"]["do"]
+
+
+def test_matrix_presets_merge_into_existing_matrix_config():
+    # Relocation preserves any other matrix_config settings already present.
+    presets = [{"name": "Off", "macro": "m_off"}]
+    data = _wrap_matrix({"presets": presets}, matrix_config={"input_count": 8})
+    cfg = migrate_0_6_to_0_7(data)["ui"]["pages"][0]["elements"][0]["matrix_config"]
+    assert cfg["input_count"] == 8
+    assert cfg["presets"] == presets
 
 
 def test_empty_presets_dropped():
-    out = _migrate_bindings_0_6_to_0_7({"presets": []})
-    assert "presets" not in out
+    # An empty preset list is not relocated and creates no matrix_config.
+    el = migrate_0_6_to_0_7(_wrap_matrix({"presets": []}))["ui"]["pages"][0]["elements"][0]
+    assert "matrix_config" not in el
+    assert el["bindings"] == {}
 
 
 # --- whole-project / chain ----------------------------------------------

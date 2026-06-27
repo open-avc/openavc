@@ -915,9 +915,9 @@ export function BasicProperties({
           />
 
           <MatrixPresetsEditor
-            presets={(element.bindings as Record<string, unknown>)?.presets as MatrixPreset[] || []}
+            presets={element.matrix_config?.presets as MatrixPreset[] || []}
             macros={macros}
-            onChange={(presets) => onChange({ bindings: { ...element.bindings, presets: presets.length > 0 ? presets : undefined } })}
+            onChange={(presets) => onChange({ matrix_config: { ...element.matrix_config, presets: presets.length > 0 ? presets : undefined } })}
           />
 
           <SubSection label="Matrix Appearance" />
