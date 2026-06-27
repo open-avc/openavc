@@ -319,10 +319,15 @@ export function VariableKeyPicker({
             const spaceAbove = rect.top;
             const minDropdownHeight = 250;
             const flipUp = spaceBelow < minDropdownHeight && spaceAbove > spaceBelow;
+            // Clamp the dropdown into the viewport so it isn't clipped at the
+            // right edge — it can be 320px wide while the trigger sits in a
+            // narrow right-docked panel (e.g. the UI Builder properties pane).
+            const width = Math.max(rect.width, 320);
+            const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
             setDropdownPos({
               top: flipUp ? 0 : rect.bottom + 2,
-              left: rect.left,
-              width: Math.max(rect.width, 320),
+              left,
+              width,
               flipUp,
             });
           }
