@@ -566,17 +566,27 @@ def validate_python_driver(driver_path: Path) -> ValidationResult:
         )
 
     # Check command coverage: every command in DRIVER_INFO should be
-    # handleable by the simulator. For Python sims we check the source
-    # for method names or command string references.
+    # handleable by the simulator. For Python sims we can't prove the
+    # protocol dispatch statically, but we can at least flag sims that
+    # never mention any command names at all.
     sim_source = sim_path.read_text(encoding="utf-8")
     driver_commands = driver_info.get("commands", {})
+    missing_commands: list[str] = []
     for cmd_name in driver_commands:
         # Check if the command name appears in the simulator source
         if cmd_name not in sim_source and f'"{cmd_name}"' not in sim_source:
-            # For Python sims, commands are handled by handle_command() which
-            # processes binary/protocol data, not command names. This is just
-            # a soft check.
-            pass  # Python sims handle commands at the protocol level
+            missing_commands.append(cmd_name)
+
+    if missing_commands:
+        preview = ", ".join(repr(name) for name in missing_commands[:5])
+        if len(missing_commands) > 5:
+            preview += f", … (+{len(missing_commands) - 5} more)"
+        result.warning(
+            "command_coverage",
+            "Python simulator source does not mention these DRIVER_INFO "
+            f"commands: {preview}. The simulator may still handle them at "
+            "the protocol level, but this is worth checking."
+        )
 
     return result
 

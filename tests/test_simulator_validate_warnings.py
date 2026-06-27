@@ -1,4 +1,4 @@
-"""Tests for state-coverage validator message severity (A33).
+"""Tests for simulator validator message severity.
 
 The validator used to warn "X not in simulator initial_state — auto-gen
 default may not be appropriate" with severity=warning. The supporting
@@ -10,9 +10,15 @@ had a problem to fix when they didn't.
 
 The fix: surface the auto-gen default as `info` (not `warning`) and
 update the text to read like a heads-up, not a complaint.
+
+This file also covers the Python-simulator command-coverage warning, which
+used to be a silent no-op.
 """
 
+from pathlib import Path
+
 from simulator.validate import ValidationResult, _check_state_coverage
+from simulator.validate import validate_python_driver
 
 
 def _result() -> ValidationResult:
@@ -64,3 +70,46 @@ def test_info_issues_do_not_make_result_fail():
     assert not r.errors
     assert not r.warnings
     assert len(r.infos) == 1
+
+
+def _write(path: Path, content: str) -> Path:
+    path.write_text(content, encoding="utf-8")
+    return path
+
+
+def test_python_simulator_without_command_names_gets_a_warning(tmp_path):
+    """A Python simulator that never mentions driver command names should
+    surface a warning instead of passing silently.
+    """
+    driver = _write(
+        tmp_path / "sample.py",
+        "DRIVER_INFO = {\n"
+        "    'id': 'sample',\n"
+        "    'name': 'Sample',\n"
+        "    'transport': 'tcp',\n"
+        "    'state_variables': {},\n"
+        "    'commands': {\n"
+        "        'power_on': {'label': 'Power On', 'send': 'PWR ON'},\n"
+        "        'power_off': {'label': 'Power Off', 'send': 'PWR OFF'},\n"
+        "    },\n"
+        "}\n",
+    )
+    _write(
+        tmp_path / "sample_sim.py",
+        "class SampleSimulator:\n"
+        "    SIMULATOR_INFO = {\n"
+        "        'driver_id': 'sample',\n"
+        "        'name': 'Sample Simulator',\n"
+        "        'transport': 'tcp',\n"
+        "        'initial_state': {},\n"
+        "    }\n\n"
+        "    def handle_command(self, data):\n"
+        "        return None\n",
+    )
+
+    result = validate_python_driver(driver)
+
+    assert result.passed
+    assert not result.errors
+    assert any(issue.check == 'command_coverage' for issue in result.warnings)
+    assert 'power_on' in result.warnings[0].message or 'power_off' in result.warnings[0].message
