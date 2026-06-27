@@ -10,6 +10,7 @@ from server.core.project_migration import (
     migrate_0_3_to_0_4,
     migrate_0_4_to_0_5,
     migrate_0_5_to_0_6,
+    migrate_0_6_to_0_7,
     migrate_project,
 )
 
@@ -333,7 +334,8 @@ class TestFullMigrationChain:
 
     def test_current_version_not_migrated(self):
         data = make_v05_project()
-        data = migrate_0_5_to_0_6(data)  # Now at CURRENT_VERSION (0.6.0)
+        data = migrate_0_5_to_0_6(data)
+        data = migrate_0_6_to_0_7(data)  # Now at CURRENT_VERSION (0.7.0)
         result, migrated = migrate_project(copy.deepcopy(data))
 
         assert migrated is False

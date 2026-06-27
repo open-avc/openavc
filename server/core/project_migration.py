@@ -9,7 +9,7 @@ from server.utils.logger import get_logger
 
 log = get_logger(__name__)
 
-CURRENT_VERSION = "0.6.0"
+CURRENT_VERSION = "0.7.0"
 
 # Connection-related config fields that belong in the connections table.
 # Names match what BaseDriver reads at runtime (server/drivers/base.py):
@@ -147,6 +147,117 @@ def migrate_0_5_to_0_6(data: dict) -> dict:
     return data
 
 
+# UI element binding slots that held ordered action lists in v0.6.0; these
+# move under ``do``. Matrix sends one ui.route event that ws.py demuxes into
+# route/audio_route/mute_route/audio_mute_route by flags; all four are
+# author-time slots and migrate the same way.
+_ACTION_SLOTS_0_7 = (
+    "press", "release", "hold", "change", "submit", "select",
+    "route", "audio_route", "mute_route", "audio_mute_route",
+)
+
+
+def _migrate_bindings_0_6_to_0_7(bindings: dict) -> dict:
+    """Rewrite one element's v0.6.0 binding slots into the v0.7.0
+    ``show`` / ``do`` shape.
+
+    ``show`` = what the element reflects from state (value / items / look /
+    visible_when); ``do`` = action lists keyed by interaction. The two-way
+    shortcut becomes ``show.value.write_back`` and is kept **only** for writable
+    ``var.*`` keys: a v0.6.0 ``variable`` bound to a ``device.*`` key never
+    reached the device (it wrote the state mirror, overwritten on the next
+    poll), so it degrades to a read-only value (an interactive control reading a
+    device key needs a command to drive it, which validation surfaces).
+    """
+    if not isinstance(bindings, dict):
+        return bindings
+
+    show: dict = {}
+    do: dict = {}
+
+    # show.value — the thing the control IS. Order matters: a `variable`
+    # (two-way read source) overrides a plain `value`, mirroring the panel's
+    # `bindings.variable || bindings.value`. `text` is the label's value.
+    if isinstance(bindings.get("value"), dict):
+        show["value"] = bindings["value"]
+    if isinstance(bindings.get("text"), dict):
+        show["value"] = bindings["text"]
+    if isinstance(bindings.get("variable"), dict):
+        key = bindings["variable"].get("key", "")
+        value: dict = {"source": "state", "key": key}
+        if isinstance(key, str) and key.startswith("var."):
+            value["write_back"] = True
+        show["value"] = value
+    # A list's value is its current selection (was the `selected` two-way slot).
+    if isinstance(bindings.get("selected"), dict):
+        sel_key = bindings["selected"].get("key", "")
+        show["value"] = {"source": "state", "key": sel_key, "write_back": True}
+
+    # show.items — list row population.
+    if isinstance(bindings.get("items"), dict):
+        show["items"] = bindings["items"]
+
+    # show.look — state-driven appearance (feedback / LED color map / select
+    # per-option style). Inner shape is carried verbatim; runtime branches on it.
+    if isinstance(bindings.get("feedback"), dict):
+        show["look"] = bindings["feedback"]
+    if isinstance(bindings.get("color"), dict):
+        show["look"] = bindings["color"]
+
+    # show.visible_when — unchanged condition shape.
+    if bindings.get("visible_when") is not None:
+        show["visible_when"] = bindings["visible_when"]
+
+    # do.<interaction> — normalize a single action object to a one-item list.
+    for slot in _ACTION_SLOTS_0_7:
+        if slot not in bindings:
+            continue
+        raw = bindings[slot]
+        if isinstance(raw, list):
+            actions = [a for a in raw if isinstance(a, dict)]
+        elif isinstance(raw, dict) and raw:
+            actions = [raw]
+        else:
+            actions = []
+        if actions:
+            do[slot] = actions
+
+    out: dict = {}
+    if show:
+        out["show"] = show
+    if do:
+        out["do"] = do
+    # The orphan `meter` slot (never wired to an editor or runtime) and any
+    # other legacy key are intentionally dropped — v0.6.0 binding keys are a
+    # closed set, all handled above.
+    return out
+
+
+def migrate_0_6_to_0_7(data: dict) -> dict:
+    """
+    Migrate from 0.6.0 to 0.7.0:
+    - Rewrite UI element bindings from the ad-hoc per-control slot set into the
+      unified ``show`` / ``do`` model. Applies to page elements and
+      master_elements alike. Two-way collapses to ``show.value.write_back``
+      (writable ``var.*`` keys only); the orphan ``meter`` slot is dropped.
+    - Bump version.
+    """
+    ui = data.get("ui")
+    if isinstance(ui, dict):
+        for page in ui.get("pages", []):
+            if not isinstance(page, dict):
+                continue
+            for el in page.get("elements", []):
+                if isinstance(el, dict) and isinstance(el.get("bindings"), dict):
+                    el["bindings"] = _migrate_bindings_0_6_to_0_7(el["bindings"])
+        for mel in ui.get("master_elements", []):
+            if isinstance(mel, dict) and isinstance(mel.get("bindings"), dict):
+                mel["bindings"] = _migrate_bindings_0_6_to_0_7(mel["bindings"])
+
+    data["openavc_version"] = "0.7.0"
+    return data
+
+
 # Ordered list of migrations: (source_version, target_version, transform_fn)
 MIGRATIONS = [
     ("0.1.0", "0.2.0", migrate_0_1_to_0_2),
@@ -154,6 +265,7 @@ MIGRATIONS = [
     ("0.3.0", "0.4.0", migrate_0_3_to_0_4),
     ("0.4.0", "0.5.0", migrate_0_4_to_0_5),
     ("0.5.0", "0.6.0", migrate_0_5_to_0_6),
+    ("0.6.0", "0.7.0", migrate_0_6_to_0_7),
 ]
 
 
