@@ -22,6 +22,7 @@ from simulator.validate import validate_python_driver
 
 
 def _result() -> ValidationResult:
+    """Build a minimal validator result for the unit tests."""
     return ValidationResult(driver_path="x", driver_id="x", driver_type="yaml")
 
 
@@ -73,6 +74,7 @@ def test_info_issues_do_not_make_result_fail():
 
 
 def _write(path: Path, content: str) -> Path:
+    """Write a temporary file for the validator regression test."""
     path.write_text(content, encoding="utf-8")
     return path
 
@@ -113,3 +115,38 @@ def test_python_simulator_without_command_names_gets_a_warning(tmp_path):
     assert not result.errors
     assert any(issue.check == 'command_coverage' for issue in result.warnings)
     assert 'power_on' in result.warnings[0].message or 'power_off' in result.warnings[0].message
+
+
+def test_python_simulator_prefix_only_mentions_still_warn(tmp_path):
+    """A prefix like `power` must not count as `power_on` coverage."""
+    driver = _write(
+        tmp_path / "sample.py",
+        "DRIVER_INFO = {\n"
+        "    'id': 'sample',\n"
+        "    'name': 'Sample',\n"
+        "    'transport': 'tcp',\n"
+        "    'state_variables': {},\n"
+        "    'commands': {\n"
+        "        'power_on': {'label': 'Power On', 'send': 'PWR ON'},\n"
+        "    },\n"
+        "}\n",
+    )
+    _write(
+        tmp_path / "sample_sim.py",
+        "class SampleSimulator:\n"
+        "    SIMULATOR_INFO = {\n"
+        "        'driver_id': 'sample',\n"
+        "        'name': 'Sample Simulator',\n"
+        "        'transport': 'tcp',\n"
+        "        'initial_state': {},\n"
+        "    }\n\n"
+        "    def handle_command(self, data):\n"
+        "        power = None\n"
+        "        return power\n",
+    )
+
+    result = validate_python_driver(driver)
+
+    assert result.passed
+    assert not result.errors
+    assert any(issue.check == 'command_coverage' for issue in result.warnings)

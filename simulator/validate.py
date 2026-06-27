@@ -568,23 +568,24 @@ def validate_python_driver(driver_path: Path) -> ValidationResult:
     # Check command coverage: every command in DRIVER_INFO should be
     # handleable by the simulator. For Python sims we can't prove the
     # protocol dispatch statically, but we can at least flag sims that
-    # never mention any command names at all.
+    # never mention any command names exactly.
     sim_source = sim_path.read_text(encoding="utf-8")
     driver_commands = driver_info.get("commands", {})
-    missing_commands: list[str] = []
+    exact_mentions: set[str] = set()
     for cmd_name in driver_commands:
-        # Check if the command name appears in the simulator source
-        if cmd_name not in sim_source and f'"{cmd_name}"' not in sim_source:
-            missing_commands.append(cmd_name)
+        # Look for the command name as a standalone token so prefixes like
+        # ``power`` do not accidentally satisfy ``power_on``.
+        if re.search(rf"(?<![A-Za-z0-9_]){re.escape(cmd_name)}(?![A-Za-z0-9_])", sim_source):
+            exact_mentions.add(cmd_name)
 
-    if missing_commands:
-        preview = ", ".join(repr(name) for name in missing_commands[:5])
-        if len(missing_commands) > 5:
-            preview += f", … (+{len(missing_commands) - 5} more)"
+    if not exact_mentions and driver_commands:
+        preview = ", ".join(repr(name) for name in list(driver_commands)[:5])
+        if len(driver_commands) > 5:
+            preview += f", … (+{len(driver_commands) - 5} more)"
         result.warning(
             "command_coverage",
-            "Python simulator source does not mention these DRIVER_INFO "
-            f"commands: {preview}. The simulator may still handle them at "
+            "Python simulator source does not mention any DRIVER_INFO "
+            f"commands exactly: {preview}. The simulator may still handle them at "
             "the protocol level, but this is worth checking."
         )
 
