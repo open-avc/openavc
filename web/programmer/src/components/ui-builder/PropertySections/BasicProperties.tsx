@@ -689,16 +689,20 @@ export function BasicProperties({
               </FieldRow>
               <FieldRow label="State Key">
                 <input
-                  value={(element.bindings as Record<string, unknown>)?.value
-                    ? ((element.bindings as Record<string, { key?: string }>)?.value?.key || "")
-                    : (element.start_key || "")}
+                  value={((element.bindings as { show?: { value?: { key?: string } } })?.show?.value?.key)
+                    || (element.start_key || "")}
                   onChange={(e) => {
                     const key = e.target.value;
+                    const bindings = (element.bindings || {}) as Record<string, unknown>;
+                    const show = (bindings.show || {}) as Record<string, unknown>;
                     if (key) {
-                      onChange({ bindings: { ...element.bindings, value: { key } }, target_time: undefined });
+                      onChange({ bindings: { ...bindings, show: { ...show, value: { source: "state", key } } }, target_time: undefined });
                     } else {
-                      const { value: _v, ...rest } = element.bindings as Record<string, unknown>;
-                      onChange({ bindings: rest, start_key: undefined });
+                      const { value: _v, ...restShow } = show;
+                      const nextBindings: Record<string, unknown> = { ...bindings };
+                      if (Object.keys(restShow).length > 0) nextBindings.show = restShow;
+                      else delete nextBindings.show;
+                      onChange({ bindings: nextBindings, start_key: undefined });
                     }
                   }}
                   placeholder="var.countdown_target"
@@ -863,7 +867,7 @@ export function BasicProperties({
             />
             <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Route audio with video</span>
           </FieldRow>
-          {element.matrix_config?.audio_follow_video && !(element.bindings as Record<string, unknown>)?.audio_route && (
+          {element.matrix_config?.audio_follow_video && !((element.bindings as { do?: Record<string, unknown> })?.do?.audio_route) && (
             <div style={{ fontSize: 10, color: "var(--color-warning)", padding: "0 0 0 76px", fontStyle: "italic" }}>
               Add an Audio Route binding in the Bindings tab to send the audio route command.
             </div>
@@ -889,12 +893,12 @@ export function BasicProperties({
             />
             <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Mute buttons per output</span>
           </FieldRow>
-          {element.matrix_config?.show_mute !== false && !(element.bindings as Record<string, unknown>)?.mute_route && (
+          {element.matrix_config?.show_mute !== false && !((element.bindings as { do?: Record<string, unknown> })?.do?.mute_route) && (
             <div style={{ fontSize: 10, color: "var(--color-warning)", padding: "0 0 0 76px", fontStyle: "italic" }}>
               Add a Mute Route binding in the Bindings tab to wire the mute buttons to a command.
             </div>
           )}
-          {element.matrix_config?.show_mute !== false && element.matrix_config?.audio_follow_video && !(element.bindings as Record<string, unknown>)?.audio_mute_route && (
+          {element.matrix_config?.show_mute !== false && element.matrix_config?.audio_follow_video && !((element.bindings as { do?: Record<string, unknown> })?.do?.audio_mute_route) && (
             <div style={{ fontSize: 10, color: "var(--color-warning)", padding: "0 0 0 76px", fontStyle: "italic" }}>
               Add an Audio Mute Route binding in the Bindings tab so the mute button also mutes audio.
             </div>
@@ -1749,7 +1753,7 @@ interface TintSourceStripProps {
 }
 
 function TintSourceStrip({ element, onChange }: TintSourceStripProps) {
-  const fb = (element.bindings?.feedback ?? null) as
+  const fb = ((element.bindings as { show?: { look?: unknown } })?.show?.look ?? null) as
     | {
         states?: Record<string, { bg_color?: string }>;
         style_active?: { bg_color?: string };
@@ -1778,17 +1782,22 @@ function TintSourceStrip({ element, onChange }: TintSourceStripProps) {
   }
 
   const createDefaultBinding = () => {
+    const bindings = (element.bindings || {}) as Record<string, unknown>;
+    const show = (bindings.show || {}) as Record<string, unknown>;
     onChange({
       bindings: {
-        ...(element.bindings || {}),
-        feedback: {
-          source: "state",
-          key: "",
-          states: {
-            off: { bg_color: fallback },
-            on: { bg_color: "#2196F3" },
+        ...bindings,
+        show: {
+          ...show,
+          look: {
+            source: "state",
+            key: "",
+            states: {
+              off: { bg_color: fallback },
+              on: { bg_color: "#2196F3" },
+            },
+            default_state: "off",
           },
-          default_state: "off",
         },
       },
     });
@@ -1841,7 +1850,7 @@ function TintSourceStrip({ element, onChange }: TintSourceStripProps) {
           Image tints with the button's background. Add state colors so the image reacts to a state change.
         </div>
       )}
-      {hasBinding && fb?.states && Object.keys(fb.states).length > 0 && !(element.bindings?.feedback as { key?: string })?.key && (
+      {hasBinding && fb?.states && Object.keys(fb.states).length > 0 && !((element.bindings as { show?: { look?: { key?: string } } })?.show?.look)?.key && (
         <div style={{ fontSize: 10, color: "var(--warning, #ff9800)", lineHeight: 1.4 }}>
           Pick a state key in the Bindings panel to wire this up.
         </div>

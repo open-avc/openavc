@@ -71,28 +71,97 @@ export const ELEMENT_TYPES: ElementTypeInfo[] = [
   { type: "camera_preset", label: "Camera Preset", category: "navigation", description: "Button to recall a PTZ camera preset position" },
 ];
 
-// --- Binding slots per element type ---
+// --- Binding capability descriptor per element type ---
+//
+// Every control's bindings are grouped into two buckets the integrator reasons
+// about directly: SHOWS (what the control reflects from live state) and DOES
+// (what happens when it's touched). This descriptor drives BindingProperties:
+// which Value / Items / Appearance cards a control gets under SHOWS, and which
+// interaction action-lists it gets under DOES. The "Visible when…" card is
+// universal (every element can be conditionally shown) and is therefore not
+// listed here — BindingProperties always renders it.
 
-export const BINDING_SLOTS: Record<string, string[]> = {
-  button: ["press", "release", "hold", "feedback"],
-  label: ["text"],
-  slider: ["variable", "change", "value"],
-  fader: ["value", "change"],
-  status_led: ["color"],
-  page_nav: [],
-  select: ["variable", "change", "value"],
-  text_input: ["variable", "change", "value"],
-  camera_preset: ["press", "feedback"],
-  image: [],
-  spacer: [],
-  gauge: ["value"],
-  level_meter: ["value"],
-  group: [],
-  clock: [],
-  keypad: ["submit"],
-  matrix: ["route", "audio_route", "mute_route", "audio_mute_route"],
-  list: ["items", "selected", "select"],
-  plugin: [],
+export type ValueEditorKind = "slider" | "text";
+export type LookEditorKind = "feedback" | "color" | "select_feedback";
+export type InteractionEditorKind = "actions" | "select_change";
+
+export interface ValueCapability {
+  /** Which editor draws the Value source. `slider` = a state-key picker (the
+   *  control's numeric/selection value); `text` = the label text editor. */
+  editor: ValueEditorKind;
+  /** Heading for the Value card (e.g. "Selected item" for lists). */
+  label?: string;
+  /** The control can drive its value back out — shows the device-aware LINK
+   *  (two-way) switch. False for read-only displays (gauge, level meter). */
+  link?: boolean;
+}
+
+export interface DoesCapability {
+  /** The `do.<interaction>` key this action list is stored under. */
+  interaction: string;
+  /** Heading shown above the action list. */
+  label: string;
+  editor: InteractionEditorKind;
+}
+
+export interface BindingCapability {
+  /** SHOWS → Value card. */
+  value?: ValueCapability;
+  /** SHOWS → Items card (list row population). */
+  items?: boolean;
+  /** SHOWS → Appearance card (state-driven look). */
+  look?: LookEditorKind;
+  /** DOES → one action list per interaction. */
+  does?: DoesCapability[];
+  /** Buttons drive DOES through the unified ButtonBindingEditor (behavior mode +
+   *  press/hold/release) rather than a plain action list. */
+  buttonStyle?: boolean;
+}
+
+export const BINDING_CAPABILITIES: Record<string, BindingCapability> = {
+  button: { look: "feedback", buttonStyle: true },
+  camera_preset: {
+    look: "feedback",
+    does: [{ interaction: "press", label: "On press", editor: "actions" }],
+  },
+  label: { value: { editor: "text", label: "Text" } },
+  slider: {
+    value: { editor: "slider", link: true },
+    does: [{ interaction: "change", label: "On change", editor: "actions" }],
+  },
+  fader: {
+    value: { editor: "slider", link: true },
+    does: [{ interaction: "change", label: "On change", editor: "actions" }],
+  },
+  select: {
+    value: { editor: "slider", link: true },
+    look: "select_feedback",
+    does: [{ interaction: "change", label: "On change", editor: "select_change" }],
+  },
+  text_input: {
+    value: { editor: "slider", link: true },
+    does: [{ interaction: "change", label: "On change", editor: "actions" }],
+  },
+  status_led: { look: "color" },
+  gauge: { value: { editor: "slider", link: false } },
+  level_meter: { value: { editor: "slider", link: false } },
+  keypad: {
+    does: [{ interaction: "submit", label: "On submit", editor: "actions" }],
+  },
+  list: {
+    value: { editor: "slider", label: "Selected item", link: true },
+    items: true,
+    does: [{ interaction: "select", label: "On row tap", editor: "actions" }],
+  },
+  matrix: {
+    does: [
+      { interaction: "route", label: "Video route", editor: "actions" },
+      { interaction: "audio_route", label: "Audio route", editor: "actions" },
+      { interaction: "mute_route", label: "Mute", editor: "actions" },
+      { interaction: "audio_mute_route", label: "Audio mute", editor: "actions" },
+    ],
+  },
+  // page_nav / image / spacer / group / clock / plugin: "Visible when…" only.
 };
 
 // --- Screen presets ---
@@ -464,20 +533,26 @@ export function addPage(
   return [...pages, newPage];
 }
 
-/** The binding slots that hold action lists (press-class slots). Authored as
- *  arrays of action objects; legacy projects may carry a single object. */
-const ACTION_SLOTS = ["press", "release", "hold", "change", "submit"] as const;
+/** The `do.<interaction>` keys that hold action lists. Authored as arrays of
+ *  action objects; legacy projects may carry a single object. Matrix sends one
+ *  ui.route event the server demuxes into the four route slots — all four are
+ *  author-time interactions. */
+const ACTION_SLOTS = [
+  "press", "release", "hold", "change", "submit", "select",
+  "route", "audio_route", "mute_route", "audio_mute_route",
+] as const;
 
 /**
- * Normalize an action-list binding slot to an array of action objects.
- * Slots are authored as arrays (multiple actions per press); legacy projects
- * may still carry a single action object — the panel runtime accepts both.
+ * Normalize one `do.<interaction>` entry to an array of action objects.
+ * Interactions are authored as arrays (multiple actions per touch); legacy
+ * projects may still carry a single action object — the panel runtime accepts
+ * both. Pass the element's `do` map (`bindings.do`), not the whole bindings.
  */
 export function slotActions(
-  bindings: Record<string, unknown> | undefined,
+  doMap: Record<string, unknown> | undefined,
   slot: string,
 ): Record<string, unknown>[] {
-  const raw = bindings?.[slot];
+  const raw = doMap?.[slot];
   if (!raw || typeof raw !== "object") return [];
   if (Array.isArray(raw)) {
     return raw.filter((a) => a && typeof a === "object") as Record<string, unknown>[];
@@ -486,34 +561,38 @@ export function slotActions(
   return Object.keys(obj).length > 0 ? [obj] : [];
 }
 
-/** Remove navigate actions targeting a deleted page from every action slot. */
+/** Remove navigate actions targeting a deleted page from every `do.<interaction>`
+ *  action list. */
 function scrubNavigateActions(el: UIElement, pageId: string): UIElement {
   const bindings = el.bindings as Record<string, unknown> | undefined;
-  if (!bindings) return el;
+  const doMap = bindings?.do as Record<string, unknown> | undefined;
+  if (!doMap) return el;
   const isDeadNavigate = (a: unknown) =>
     !!a && typeof a === "object" &&
     (a as Record<string, unknown>).action === "navigate" &&
     (a as Record<string, unknown>).page === pageId;
 
   let changed = false;
-  const next: Record<string, unknown> = { ...bindings };
+  const nextDo: Record<string, unknown> = { ...doMap };
   for (const slot of ACTION_SLOTS) {
-    const raw = next[slot];
+    const raw = nextDo[slot];
     if (!raw || typeof raw !== "object") continue;
     if (Array.isArray(raw)) {
       const filtered = raw.filter((a) => !isDeadNavigate(a));
       if (filtered.length !== raw.length) {
         changed = true;
-        if (filtered.length > 0) next[slot] = filtered;
-        else delete next[slot];
+        if (filtered.length > 0) nextDo[slot] = filtered;
+        else delete nextDo[slot];
       }
     } else if (isDeadNavigate(raw)) {
       // Legacy single-object binding
       changed = true;
-      delete next[slot];
+      delete nextDo[slot];
     }
   }
-  return changed ? { ...el, bindings: next as UIElement["bindings"] } : el;
+  return changed
+    ? { ...el, bindings: { ...bindings, do: nextDo } as UIElement["bindings"] }
+    : el;
 }
 
 export function removePage(pages: UIPage[], pageId: string): UIPage[] {
@@ -1281,13 +1360,15 @@ export function validateProject(project: ProjectConfig): ValidationIssue[] {
   const checkElement = (el: UIElement, pageId: string, pageName: string) => {
     const loc = `${pageName} > ${el.id}`;
     const bindings = (el.bindings || {}) as Record<string, unknown>;
+    const show = (bindings.show || {}) as Record<string, unknown>;
+    const doMap = (bindings.do || {}) as Record<string, unknown>;
 
     // page_nav target
     if (el.type === "page_nav" && el.target_page && !pageIds.has(el.target_page)) {
       issues.push({ severity: "error", message: `Target page "${el.target_page}" does not exist`, location: loc, pageId, elementId: el.id });
     }
 
-    // One action checker for every action slot. Recurses into value_map
+    // One action checker for every interaction. Recurses into value_map
     // per-option actions the same way the engine executes them.
     const checkAction = (b: Record<string, unknown>, slotLoc: string) => {
       if (b.action === "navigate" && b.page && !pageIds.has(b.page as string)) {
@@ -1308,29 +1389,45 @@ export function validateProject(project: ProjectConfig): ValidationIssue[] {
       }
     };
 
-    // Action slots hold ARRAYS of actions (legacy single objects are
-    // normalized by slotActions) — check every action in each slot.
+    // DOES — each interaction holds an array of actions (legacy single objects
+    // are normalized by slotActions). Check every action in each interaction.
     for (const slot of ACTION_SLOTS) {
-      for (const b of slotActions(bindings, slot)) {
+      for (const b of slotActions(doMap, slot)) {
         checkAction(b, `${loc} > ${slot}`);
       }
     }
 
-    // variable/value bindings
-    for (const slot of ["variable", "value", "text", "color", "items", "selected"]) {
-      const b = bindings[slot] as Record<string, unknown> | undefined;
-      if (!b || !b.key) continue;
-      const key = b.key as string;
-      if (key.startsWith("device.")) {
+    // SHOWS → value / look device references
+    const valueBinding = show.value as Record<string, unknown> | undefined;
+    const lookBinding = show.look as Record<string, unknown> | undefined;
+    for (const [b, label] of [[valueBinding, "value"], [lookBinding, "appearance"]] as const) {
+      const key = b?.key as string | undefined;
+      if (key?.startsWith("device.")) {
         const deviceId = key.split(".")[1];
         if (!deviceIds.has(deviceId)) {
-          issues.push({ severity: "warning", message: `State key references unknown device "${deviceId}"`, location: `${loc} > ${slot}`, pageId, elementId: el.id });
+          issues.push({ severity: "warning", message: `State key references unknown device "${deviceId}"`, location: `${loc} > ${label}`, pageId, elementId: el.id });
         }
       }
     }
 
-    // visible_when conditions
-    const vw = bindings.visible_when as Record<string, unknown> | undefined;
+    // A control whose Value reads a device key but never sends a command can't
+    // actually drive that device — the drag/selection updates only the local
+    // mirror, overwritten on the next poll. Two-way to a device must go through
+    // a command (do.<interaction> device.command with $value), never a state
+    // write. Display-only controls reading device state are fine.
+    const cap = BINDING_CAPABILITIES[el.type];
+    const valueKey = valueBinding?.key as string | undefined;
+    if (cap?.value?.link && valueKey?.startsWith("device.")) {
+      const hasCommand = (cap.does ?? []).some((d) =>
+        slotActions(doMap, d.interaction).some((a) => a.action === "device.command"),
+      );
+      if (!hasCommand) {
+        issues.push({ severity: "warning", message: `This control shows a device value but has no command to change it — add a command so touching it reaches the device`, location: `${loc} > value`, pageId, elementId: el.id });
+      }
+    }
+
+    // SHOWS → visible_when conditions
+    const vw = show.visible_when as Record<string, unknown> | undefined;
     if (vw) {
       const conditions = (vw.all || vw.any || [vw]) as Array<{ key?: string }>;
       for (const c of conditions) {
@@ -1343,14 +1440,13 @@ export function validateProject(project: ProjectConfig): ValidationIssue[] {
       }
     }
 
-    // Unbound interactive elements
-    if (["button", "slider", "fader", "select", "text_input", "keypad"].includes(el.type)) {
-      const hasBinding = Object.keys(bindings).some((k) => {
-        const v = bindings[k];
-        return v && typeof v === "object" && Object.keys(v).length > 0;
-      });
-      if (!hasBinding) {
-        issues.push({ severity: "warning", message: `Interactive element has no bindings`, location: loc, pageId, elementId: el.id });
+    // Unbound interactive elements — an interactive control with no DOES action
+    // and no two-way value does nothing when touched.
+    if (["button", "slider", "fader", "select", "text_input", "keypad", "matrix", "list"].includes(el.type)) {
+      const hasDoAction = ACTION_SLOTS.some((slot) => slotActions(doMap, slot).length > 0);
+      const hasTwoWayValue = !!valueBinding?.write_back;
+      if (!hasDoAction && !hasTwoWayValue) {
+        issues.push({ severity: "warning", message: `Interactive element has no action`, location: loc, pageId, elementId: el.id });
       }
     }
   };

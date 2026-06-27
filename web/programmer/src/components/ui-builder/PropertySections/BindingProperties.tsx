@@ -1,21 +1,17 @@
-import { useState } from "react";
-import { Play, AlertTriangle, HelpCircle } from "lucide-react";
-import type { UIElement } from "../../../api/types";
-import type { ProjectConfig } from "../../../api/types";
-import { BINDING_SLOTS } from "../uiBuilderHelpers";
-import { ButtonBindingEditor } from "../../shared/ButtonBindingEditor";
-import type { ButtonBindings } from "../../shared/ButtonBindingEditor";
+import type { ReactNode } from "react";
+import { AlertTriangle } from "lucide-react";
+import type { UIElement, ProjectConfig } from "../../../api/types";
+import { BINDING_CAPABILITIES, type BindingCapability } from "../uiBuilderHelpers";
+import { ButtonBindingEditor, type ButtonBindings } from "../../shared/ButtonBindingEditor";
 import { PressBindingEditor } from "../BindingEditor/PressBindingEditor";
 import { TextBindingEditor } from "../BindingEditor/TextBindingEditor";
 import { FeedbackBindingEditor } from "../BindingEditor/FeedbackBindingEditor";
 import { ColorBindingEditor } from "../BindingEditor/ColorBindingEditor";
-import { SliderBindingEditor } from "../BindingEditor/SliderBindingEditor";
 import { SelectChangeEditor } from "../BindingEditor/SelectChangeEditor";
 import { SelectFeedbackEditor } from "../BindingEditor/SelectFeedbackEditor";
-import { VariableBindingEditor } from "../BindingEditor/VariableBindingEditor";
 import { VariableKeyPicker } from "../../shared/VariableKeyPicker";
-import * as api from "../../../api/restClient";
-import { showSuccess, showError } from "../../../store/toastStore";
+import { ConditionGroupEditor, type ConditionGroup } from "../../shared/ConditionGroupEditor";
+import { useConnectionStore } from "../../../store/connectionStore";
 
 interface BindingPropertiesProps {
   element: UIElement;
@@ -23,10 +19,11 @@ interface BindingPropertiesProps {
   onChange: (patch: Partial<UIElement>) => void;
 }
 
-// The UI-event tokens each binding slot can deliver, surfaced as the "This
-// control" group in a command param's "$" picker. The runtime resolves these
-// from the firing event (engine._execute_action): $value (scaled), $input /
-// $output (matrix route), $output / $mute (mute route).
+// The UI-event tokens each interaction delivers, surfaced as the "This control"
+// group in a command param's "$" picker (the Phase 4 unified resolver). The
+// runtime resolves these from the firing event: $value (scaled), $input /
+// $output (matrix route), $output / $mute (mute route). Plain press/release/hold
+// carry no value, so they offer no token.
 const VALUE_TOKEN = [
   { key: "value", label: "value — the value the user just touched (slider position, select choice, etc.)" },
 ];
@@ -38,10 +35,7 @@ const MUTE_TOKENS = [
   { key: "output", label: "output — the muted output number" },
   { key: "mute", label: "mute — true when muting, false when unmuting" },
 ];
-const EVENT_TOKENS_BY_SLOT: Record<string, { key: string; label: string }[]> = {
-  // Slots whose UI event delivers the touched value. press/release/hold are
-  // plain taps that carry no value, so they offer no "This control" token.
-  value: VALUE_TOKEN,
+const EVENT_TOKENS_BY_INTERACTION: Record<string, { key: string; label: string }[]> = {
   change: VALUE_TOKEN,
   submit: VALUE_TOKEN,
   select: VALUE_TOKEN,
@@ -51,590 +45,491 @@ const EVENT_TOKENS_BY_SLOT: Record<string, { key: string; label: string }[]> = {
   audio_mute_route: MUTE_TOKENS,
 };
 
-export function BindingProperties({
-  element,
-  project,
-  onChange,
-}: BindingPropertiesProps) {
-  const [editingSlot, setEditingSlot] = useState<string | null>(null);
-  const slots = BINDING_SLOTS[element.type] || [];
+const INTERACTION_HELP: Record<string, string> = {
+  press: "Runs when the element is tapped.",
+  change: "Runs when the value changes. Use $value in command parameters for the new value.",
+  submit: "Runs when the keypad value is submitted. Use $value for the entered digits.",
+  select: "Runs when a list row is tapped. Use $value for the row's value.",
+  route: "Runs when a crosspoint is selected. Use $input and $output.",
+  audio_route: "Audio-follow-video route. Use $input and $output.",
+  mute_route: "Runs when an output's mute is toggled. Use $output and $mute.",
+  audio_mute_route: "Audio mute when audio-follow-video is on. Use $output and $mute.",
+};
 
-  if (slots.length === 0) {
-    return (
-      <div
-        style={{
-          fontSize: "var(--font-size-sm)",
-          color: "var(--text-muted)",
-          padding: "var(--space-sm)",
-        }}
-      >
-        No bindings available for this element type.
-      </div>
-    );
-  }
-
-  // Buttons use the shared ButtonBindingEditor
-  if (element.type === "button") {
-    const btnBindings: ButtonBindings = {
-      press: element.bindings.press as Record<string, unknown>[] | undefined,
-      release: element.bindings.release as Record<string, unknown>[] | undefined,
-      hold: element.bindings.hold as Record<string, unknown>[] | undefined,
-      feedback: element.bindings.feedback as Record<string, unknown> | undefined,
-    };
-    return (
-      <ButtonBindingEditor
-        bindings={btnBindings}
-        project={project}
-        onBindingsChange={(newBindings) => {
-          const merged = { ...element.bindings };
-          for (const [slot, val] of Object.entries(newBindings)) {
-            if (val) {
-              merged[slot] = val;
-            } else {
-              delete merged[slot];
-            }
-          }
-          // Clean removed slots
-          for (const slot of ["press", "release", "hold", "feedback"]) {
-            if (!(slot in newBindings)) {
-              delete merged[slot];
-            }
-          }
-          onChange({ bindings: merged });
-        }}
-        showRelease={true}
-        showLabel={false}
-      />
-    );
-  }
-
-  const handleBindingChange = (slot: string, value: unknown) => {
-    const newBindings = { ...element.bindings };
-    if (value === null || value === undefined) {
-      delete newBindings[slot];
-    } else {
-      newBindings[slot] = value;
-    }
-    onChange({ bindings: newBindings });
-  };
-
-  const summarizeAction = (b: Record<string, unknown>): string => {
-    if (b.action === "macro") return `Macro: ${b.macro}`;
-    if (b.action === "device.command") return `${b.device}.${b.command}`;
-    if (b.action === "state.set") return `Set ${b.key}`;
-    if (b.action === "navigate") return `Go to ${b.page}`;
-    return String(b.action || "Configured");
-  };
-
-  const getSlotSummary = (slot: string): string => {
-    const binding = element.bindings[slot];
-    if (!binding) return "Not configured";
-
-    switch (slot) {
-      case "variable": {
-        const b = binding as Record<string, unknown>;
-        return b.key ? String(b.key) : "Not configured";
-      }
-      case "press":
-      case "release":
-      case "hold":
-      case "change":
-      case "submit":
-      case "route":
-      case "audio_route":
-      case "mute_route":
-      case "audio_mute_route":
-      case "select": {
-        const arr = binding as Record<string, unknown>[];
-        if (!Array.isArray(arr) || arr.length === 0) return "Not configured";
-        const first = summarizeAction(arr[0]);
-        return arr.length > 1 ? `${first} +${arr.length - 1} more` : first;
-      }
-      case "items": {
-        const b = binding as Record<string, unknown>;
-        return b.key_pattern ? String(b.key_pattern) : "Not configured";
-      }
-      case "meter":
-      case "feedback":
-      case "text":
-      case "selected":
-      case "color":
-      case "value": {
-        const b = binding as Record<string, unknown>;
-        return b.key ? `State: ${b.key}` : "Not configured";
-      }
-      default:
-        return "Configured";
-    }
-  };
-
-  const renderEditor = (slot: string) => {
-    switch (slot) {
-      case "variable": {
-        const binding = element.bindings[slot] as Record<string, unknown> | undefined;
-        return (
-          <VariableBindingEditor
-            value={binding || null}
-            onChange={(v) => handleBindingChange(slot, v)}
-            onClear={() => handleBindingChange(slot, null)}
-          />
-        );
-      }
-      case "press":
-      case "release":
-      case "hold": {
-        const actions = (element.bindings[slot] as Record<string, unknown>[] | undefined) ?? [];
-        return (
-          <PressBindingEditor
-            value={actions}
-            project={project}
-            onChange={(v) => handleBindingChange(slot, v)}
-            onClear={() => handleBindingChange(slot, null)}
-            eventTokens={EVENT_TOKENS_BY_SLOT[slot]}
-          />
-        );
-      }
-      case "change": {
-        const changeBinding = element.bindings[slot];
-        if (element.type === "select") {
-          return (
-            <SelectChangeEditor
-              value={(changeBinding as Record<string, unknown>) || null}
-              project={project}
-              options={element.options ?? []}
-              onChange={(v) => handleBindingChange(slot, v)}
-              onClear={() => handleBindingChange(slot, null)}
-              eventTokens={EVENT_TOKENS_BY_SLOT[slot]}
-            />
-          );
-        }
-        const changeActions = (changeBinding as Record<string, unknown>[] | undefined) ?? [];
-        return (
-          <div>
-            <PressBindingEditor
-              value={changeActions}
-              project={project}
-              onChange={(v) => handleBindingChange(slot, v)}
-              onClear={() => handleBindingChange(slot, null)}
-              forChangeBinding
-              eventTokens={EVENT_TOKENS_BY_SLOT[slot]}
-            />
-            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4, fontStyle: "italic" }}>
-              Use <strong>$value</strong> in command parameters to reference the new value.
-            </div>
-          </div>
-        );
-      }
-      case "text": {
-        const binding = element.bindings[slot] as Record<string, unknown> | undefined;
-        return (
-          <TextBindingEditor
-            value={binding || null}
-            project={project}
-            onChange={(v) => handleBindingChange(slot, v)}
-            onClear={() => handleBindingChange(slot, null)}
-          />
-        );
-      }
-      case "feedback": {
-        const binding = element.bindings[slot] as Record<string, unknown> | undefined;
-        if (element.type === "select") {
-          return (
-            <SelectFeedbackEditor
-              value={binding || null}
-              options={element.options ?? []}
-              onChange={(v) => handleBindingChange(slot, v)}
-              onClear={() => handleBindingChange(slot, null)}
-            />
-          );
-        }
-        return (
-          <FeedbackBindingEditor
-            value={binding || null}
-            onChange={(v) => handleBindingChange(slot, v)}
-            onClear={() => handleBindingChange(slot, null)}
-            showImageField={element.type === "button"}
-          />
-        );
-      }
-      case "color": {
-        const binding = element.bindings[slot] as Record<string, unknown> | undefined;
-        return (
-          <ColorBindingEditor
-            value={binding || null}
-            onChange={(v) => handleBindingChange(slot, v)}
-            onClear={() => handleBindingChange(slot, null)}
-          />
-        );
-      }
-      case "value": {
-        const binding = element.bindings[slot] as Record<string, unknown> | undefined;
-        return (
-          <SliderBindingEditor
-            value={binding || null}
-            project={project}
-            onChange={(v) => handleBindingChange(slot, v)}
-            onClear={() => handleBindingChange(slot, null)}
-            eventTokens={EVENT_TOKENS_BY_SLOT[slot]}
-          />
-        );
-      }
-      case "submit":
-      case "select": {
-        const slotActions = (element.bindings[slot] as Record<string, unknown>[] | undefined) ?? [];
-        return (
-          <div>
-            <PressBindingEditor
-              value={slotActions}
-              project={project}
-              onChange={(v) => handleBindingChange(slot, v)}
-              onClear={() => handleBindingChange(slot, null)}
-              eventTokens={EVENT_TOKENS_BY_SLOT[slot]}
-            />
-            {slot === "submit" && (
-              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4, fontStyle: "italic" }}>
-                Use $value in command parameters to reference the submitted value.
-              </div>
-            )}
-            {slot === "select" && (
-              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4, fontStyle: "italic" }}>
-                Action triggered when a list item is selected. Use $value for the selected item's value.
-              </div>
-            )}
-          </div>
-        );
-      }
-      case "route":
-      case "audio_route": {
-        const routeActions = (element.bindings[slot] as Record<string, unknown>[] | undefined) ?? [];
-        return (
-          <div>
-            <PressBindingEditor
-              value={routeActions}
-              project={project}
-              onChange={(v) => handleBindingChange(slot, v)}
-              onClear={() => handleBindingChange(slot, null)}
-              eventTokens={EVENT_TOKENS_BY_SLOT[slot]}
-            />
-            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4, fontStyle: "italic" }}>
-              Use $input and $output in command parameters to reference the routed input/output numbers.
-            </div>
-          </div>
-        );
-      }
-      case "mute_route":
-      case "audio_mute_route": {
-        const muteActions = (element.bindings[slot] as Record<string, unknown>[] | undefined) ?? [];
-        return (
-          <div>
-            <PressBindingEditor
-              value={muteActions}
-              project={project}
-              onChange={(v) => handleBindingChange(slot, v)}
-              onClear={() => handleBindingChange(slot, null)}
-              eventTokens={EVENT_TOKENS_BY_SLOT[slot]}
-            />
-            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4, fontStyle: "italic" }}>
-              Use $output and $mute in command parameters. $mute is true when muting, false when unmuting.
-            </div>
-          </div>
-        );
-      }
-      case "selected": {
-        const binding = element.bindings[slot] as Record<string, unknown> | undefined;
-        return (
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>Selected Item Key</div>
-            <VariableKeyPicker
-              value={String(binding?.key || "")}
-              onChange={(key) => handleBindingChange(slot, { source: "state", key })}
-              placeholder="Select state key..."
-            />
-            <div style={{ fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}>
-              Two-way binding: when the user selects a list item, this key is updated.
-              When the key changes externally, the list selection follows.
-            </div>
-            {binding && (
-              <button
-                onClick={() => handleBindingChange(slot, null)}
-                style={{ fontSize: 11, color: "var(--color-danger)", background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: 0 }}
-              >
-                Remove Binding
-              </button>
-            )}
-          </div>
-        );
-      }
-      case "items": {
-        const binding = element.bindings[slot] as Record<string, unknown> | undefined;
-        return (
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>Key Pattern</div>
-            <input
-              value={String(binding?.key_pattern || "")}
-              onChange={(e) => handleBindingChange(slot, { ...binding, source: "state", key_pattern: e.target.value })}
-              placeholder="device.matrix.input_*_name"
-              style={{ fontSize: 12, padding: "4px 6px" }}
-            />
-            <div style={{ fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}>
-              State key pattern to populate list items dynamically. Use * as wildcard.
-            </div>
-            {binding && (
-              <button
-                onClick={() => handleBindingChange(slot, null)}
-                style={{ fontSize: 11, color: "var(--color-danger)", background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: 0 }}
-              >
-                Remove Binding
-              </button>
-            )}
-          </div>
-        );
-      }
-      default:
-        return null;
-    }
-  };
-
-  const slotLabel: Record<string, string> = {
-    audio_route: "Audio Route",
-    mute_route: "Mute Route",
-    audio_mute_route: "Audio Mute Route",
-  };
-
-  const slotHelp: Record<string, string> = {
-    press: "Action to perform when the element is pressed or clicked.",
-    release: "Action to perform when the element is released (after press).",
-    hold: "Action that repeats while the element is held down.",
-    feedback: "Changes the element's appearance based on a state value (e.g., green when on, red when off).",
-    text: "Displays a live state value as the element's text content.",
-    color: "Changes the element's color based on a state value.",
-    value: "Binds a slider's value to a state key for two-way control.",
-    change: "Action to perform when the element's value changes (select, slider).",
-    variable: "Binds the element to a project variable for two-way state sync.",
-    submit: "Action to perform when the keypad value is submitted.",
-    route: "Action to perform when a matrix crosspoint is selected (video / primary route).",
-    audio_route: "Action to perform when audio-follow-video is enabled and a route is made. Use $input and $output.",
-    mute_route: "Action to perform when an output's mute button is toggled. Use $output and $mute (bool).",
-    audio_mute_route: "Action to perform when audio-follow-video is enabled and an output's mute button is toggled. Use $output and $mute.",
-    items: "Bind list items to a state key pattern for dynamic population.",
-    select: "Action to perform when a list item is selected.",
-    selected: "State key that tracks the currently selected item in the list.",
-  };
+export function BindingProperties({ element, project, onChange }: BindingPropertiesProps) {
+  const bindings = (element.bindings || {}) as Record<string, unknown>;
+  const show = (bindings.show || {}) as Record<string, unknown>;
+  const doMap = (bindings.do || {}) as Record<string, unknown>;
+  const cap: BindingCapability = BINDING_CAPABILITIES[element.type] || {};
 
   const deviceIds = new Set(project.devices.map((d) => d.id));
   const macroIds = new Set(project.macros.map((m) => m.id));
   const pageIds = new Set(project.ui.pages.map((p) => p.id));
 
-  const getActionDangling = (action: Record<string, unknown>): string | null => {
-    if (action.action === "device.command" && action.device && !deviceIds.has(action.device as string))
-      return `Device "${action.device}" not found`;
-    if (action.action === "macro" && action.macro && !macroIds.has(action.macro as string))
-      return `Macro "${action.macro}" not found`;
-    if (action.action === "navigate" && action.page && !pageIds.has(action.page as string))
-      return `Page "${action.page}" not found`;
+  const commit = (nextShow: Record<string, unknown>, nextDo: Record<string, unknown>) => {
+    const next: Record<string, unknown> = { ...bindings };
+    if (Object.keys(nextShow).length > 0) next.show = nextShow;
+    else delete next.show;
+    if (Object.keys(nextDo).length > 0) next.do = nextDo;
+    else delete next.do;
+    onChange({ bindings: next as UIElement["bindings"] });
+  };
+
+  const setShowKey = (key: string, value: unknown) => {
+    const nextShow = { ...show };
+    if (value === null || value === undefined) delete nextShow[key];
+    else nextShow[key] = value;
+    commit(nextShow, doMap);
+  };
+
+  const setDoKey = (interaction: string, actions: Record<string, unknown>[] | null) => {
+    const nextDo = { ...doMap };
+    if (!actions || actions.length === 0) delete nextDo[interaction];
+    else nextDo[interaction] = actions;
+    commit(show, nextDo);
+  };
+
+  // --- status helpers (inline broken/incomplete badges, matching the old panel) ---
+  const actionDangling = (a: Record<string, unknown>): string | null => {
+    if (a.action === "device.command" && a.device && !deviceIds.has(a.device as string)) return `Device "${a.device}" not found`;
+    if (a.action === "macro" && a.macro && !macroIds.has(a.macro as string)) return `Macro "${a.macro}" not found`;
+    if (a.action === "navigate" && a.page && !pageIds.has(a.page as string)) return `Page "${a.page}" not found`;
+    return null;
+  };
+  const actionIncomplete = (a: Record<string, unknown>): boolean => {
+    if (a.action === "device.command") return !a.device || !a.command;
+    if (a.action === "macro") return !a.macro;
+    if (a.action === "state.set") return !a.key;
+    if (a.action === "navigate") return !a.page;
+    if (a.action === "value_map") return !a.map || Object.keys(a.map as object).length === 0;
+    return !a.action;
+  };
+  const actionsStatus = (raw: unknown): CardStatus | null => {
+    const actions = Array.isArray(raw) ? raw : raw && typeof raw === "object" ? [raw] : [];
+    for (const a of actions as Record<string, unknown>[]) {
+      const d = actionDangling(a);
+      if (d) return { kind: "broken", text: d };
+    }
+    if ((actions as Record<string, unknown>[]).some(actionIncomplete)) return { kind: "incomplete", text: "Incomplete" };
+    return null;
+  };
+  const keyStatus = (binding: Record<string, unknown> | undefined): CardStatus | null => {
+    const key = binding?.key as string | undefined;
+    if (key?.startsWith("device.")) {
+      const deviceId = key.split(".")[1];
+      if (!deviceIds.has(deviceId)) return { kind: "broken", text: `Device "${deviceId}" not found` };
+    }
     return null;
   };
 
-  const getSlotDangling = (slot: string): string | null => {
-    const binding = element.bindings[slot];
-    if (!binding) return null;
-    if (["press", "release", "hold", "change", "submit", "route", "audio_route", "mute_route", "audio_mute_route", "select"].includes(slot)) {
-      const actions = Array.isArray(binding) ? binding : [binding];
-      for (const a of actions as Record<string, unknown>[]) {
-        const d = getActionDangling(a);
-        if (d) return d;
-      }
-    }
-    if (["variable", "value", "text", "feedback", "color", "selected"].includes(slot)) {
-      const key = (binding as Record<string, unknown>).key as string | undefined;
-      if (key?.startsWith("device.")) {
-        const deviceId = key.split(".")[1];
-        if (!deviceIds.has(deviceId)) return `Device "${deviceId}" not found`;
-      }
-    }
-    return null;
-  };
+  // --- SHOWS cards ---
+  const showCards: ReactNode[] = [];
 
-  const isActionIncomplete = (action: Record<string, unknown>): boolean => {
-    if (action.action === "device.command") return !action.device || !action.command;
-    if (action.action === "macro") return !action.macro;
-    if (action.action === "state.set") return !action.key;
-    if (action.action === "navigate") return !action.page;
-    return !action.action;
-  };
-
-  const isBindingIncomplete = (slot: string, binding: Record<string, unknown> | Record<string, unknown>[] | undefined): boolean => {
-    if (!binding) return false;
-    if (slot === "press" || slot === "release" || slot === "hold" || slot === "change" || slot === "submit" || slot === "route" || slot === "audio_route" || slot === "mute_route" || slot === "audio_mute_route" || slot === "select") {
-      const actions = Array.isArray(binding) ? binding : [binding];
-      return actions.some(isActionIncomplete);
+  if (cap.value) {
+    const valueBinding = (show.value as Record<string, unknown>) || null;
+    if (cap.value.editor === "text") {
+      showCards.push(
+        <Card key="value" title={cap.value.label || "Text"} status={keyStatus(valueBinding ?? undefined)}>
+          <TextBindingEditor
+            value={valueBinding}
+            project={project}
+            onChange={(v) => setShowKey("value", v)}
+            onClear={() => setShowKey("value", null)}
+          />
+        </Card>,
+      );
+    } else {
+      const primary = cap.does?.[0]?.interaction;
+      const addDeviceCommand = () => {
+        const key = String(valueBinding?.key || "");
+        if (!primary) return;
+        const deviceId = key.split(".")[1] || "";
+        const existing = (doMap[primary] as Record<string, unknown>[] | undefined) ?? [];
+        setDoKey(primary, [...existing, { action: "device.command", device: deviceId, command: "", params: {} }]);
+      };
+      const hasDeviceCommand = !!primary && ((doMap[primary] as Record<string, unknown>[] | undefined) ?? [])
+        .some((a) => a?.action === "device.command");
+      showCards.push(
+        <Card key="value" title={cap.value.label || "Value"} status={keyStatus(valueBinding ?? undefined)}>
+          <ValueSourceEditor
+            binding={valueBinding}
+            link={!!cap.value.link}
+            hasDeviceCommand={hasDeviceCommand}
+            onChange={(v) => setShowKey("value", v)}
+            onAddCommand={addDeviceCommand}
+          />
+        </Card>,
+      );
     }
-    if (slot === "feedback") return !(binding as Record<string, unknown>).key;
-    if (slot === "text") return !(binding as Record<string, unknown>).key;
-    if (slot === "variable") return !(binding as Record<string, unknown>).key;
-    if (slot === "selected") return !(binding as Record<string, unknown>).key;
-    if (slot === "items") return !(binding as Record<string, unknown>).key_pattern;
-    return false;
-  };
+  }
 
-  const testAction = async (binding: Record<string, unknown>) => {
-    try {
-      if (binding.action === "device.command" && binding.device && binding.command) {
-        await api.sendCommand(String(binding.device), String(binding.command), (binding.params as Record<string, unknown>) ?? {});
-        showSuccess("Command sent");
-      } else if (binding.action === "macro" && binding.macro) {
-        await api.executeMacro(String(binding.macro));
-        showSuccess("Macro triggered");
+  if (cap.items) {
+    const itemsBinding = (show.items as Record<string, unknown>) || undefined;
+    showCards.push(
+      <Card key="items" title="Items" help="Populate list rows dynamically from a state key pattern (use * as a wildcard).">
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <input
+            value={String(itemsBinding?.key_pattern || "")}
+            onChange={(e) => setShowKey("items", e.target.value ? { source: "state", key_pattern: e.target.value } : null)}
+            placeholder="device.matrix.input_*_name"
+            style={inputStyle}
+          />
+          <div style={hintStyle}>Leave blank to use the static items configured under Basic.</div>
+        </div>
+      </Card>,
+    );
+  }
+
+  if (cap.look) {
+    const lookBinding = (show.look as Record<string, unknown>) || null;
+    let body: ReactNode;
+    if (cap.look === "color") {
+      body = (
+        <ColorBindingEditor value={lookBinding} onChange={(v) => setShowKey("look", v)} onClear={() => setShowKey("look", null)} />
+      );
+    } else if (cap.look === "select_feedback") {
+      body = (
+        <SelectFeedbackEditor
+          value={lookBinding}
+          options={element.options ?? []}
+          onChange={(v) => setShowKey("look", v)}
+          onClear={() => setShowKey("look", null)}
+        />
+      );
+    } else {
+      body = (
+        <FeedbackBindingEditor
+          value={lookBinding}
+          onChange={(v) => setShowKey("look", v)}
+          onClear={() => setShowKey("look", null)}
+          showImageField={element.type === "button"}
+          showConditionalLabel={element.type === "button"}
+        />
+      );
+    }
+    showCards.push(
+      <Card key="look" title="Appearance" help="Change the element's look based on a state value." status={keyStatus(lookBinding ?? undefined)}>
+        {body}
+      </Card>,
+    );
+  }
+
+  // Visible-when is universal — every element gets the card.
+  const visibleWhen = (show.visible_when as ConditionGroup) || undefined;
+  showCards.push(
+    <Card key="visible_when" title="Visible when…">
+      <VisibleWhenEditor value={visibleWhen} onChange={(g) => setShowKey("visible_when", g)} />
+    </Card>,
+  );
+
+  // --- DOES cards ---
+  const doesCards: ReactNode[] = [];
+
+  if (cap.buttonStyle) {
+    const btnBindings: ButtonBindings = {
+      press: doMap.press as Record<string, unknown>[] | undefined,
+      release: doMap.release as Record<string, unknown>[] | undefined,
+      hold: doMap.hold as Record<string, unknown>[] | undefined,
+    };
+    doesCards.push(
+      <ButtonBindingEditor
+        key="button"
+        bindings={btnBindings}
+        project={project}
+        showRelease
+        showLabel={false}
+        showFeedback={false}
+        onBindingsChange={(nb) => {
+          const nextDo = { ...doMap };
+          for (const slot of ["press", "release", "hold"] as const) {
+            if (nb[slot]) nextDo[slot] = nb[slot] as Record<string, unknown>[];
+            else delete nextDo[slot];
+          }
+          commit(show, nextDo);
+        }}
+      />,
+    );
+  } else {
+    for (const interaction of cap.does ?? []) {
+      const actions = (doMap[interaction.interaction] as Record<string, unknown>[] | undefined) ?? [];
+      const tokens = EVENT_TOKENS_BY_INTERACTION[interaction.interaction];
+      let body: ReactNode;
+      if (interaction.editor === "select_change") {
+        const single = (doMap[interaction.interaction] as Record<string, unknown> | undefined) ?? null;
+        body = (
+          <SelectChangeEditor
+            value={Array.isArray(single) ? (single[0] as Record<string, unknown>) ?? null : single}
+            project={project}
+            options={element.options ?? []}
+            onChange={(v) => setDoKey(interaction.interaction, v ? [v] : null)}
+            onClear={() => setDoKey(interaction.interaction, null)}
+            eventTokens={tokens}
+          />
+        );
       } else {
-        showError("Cannot test this action type inline");
+        body = (
+          <PressBindingEditor
+            value={actions}
+            project={project}
+            onChange={(v) => setDoKey(interaction.interaction, v)}
+            onClear={() => setDoKey(interaction.interaction, null)}
+            forChangeBinding={interaction.interaction === "change"}
+            eventTokens={tokens}
+          />
+        );
       }
-    } catch (e) {
-      showError(`Test failed: ${e}`);
+      doesCards.push(
+        <Card
+          key={interaction.interaction}
+          title={interaction.label}
+          help={INTERACTION_HELP[interaction.interaction]}
+          status={actionsStatus(doMap[interaction.interaction])}
+        >
+          {body}
+        </Card>,
+      );
     }
-  };
+  }
 
-  // 4.1: Detect unbound interactive elements
-  const interactiveSlots: Record<string, string> = {
-    button: "press",
-    slider: "change",
-    fader: "change",
-    select: "change",
-    text_input: "change",
-    keypad: "submit",
-    camera_preset: "press",
-    matrix: "route",
-  };
-  const primarySlot = interactiveSlots[element.type];
-  const hasPrimaryBinding = primarySlot ? !!element.bindings[primarySlot] : true;
-  const hasVariableBinding = !!element.bindings.variable;
-  const isUnbound = primarySlot && !hasPrimaryBinding && !hasVariableBinding;
+  // Interactive control with nothing wired — nudge the user.
+  const hasAnyAction = (cap.does ?? []).some((d) => {
+    const v = doMap[d.interaction];
+    return Array.isArray(v) ? v.length > 0 : !!v;
+  }) || (cap.buttonStyle && !!doMap.press);
+  const hasTwoWay = !!(show.value as Record<string, unknown> | undefined)?.write_back;
+  const isInteractive = !!cap.buttonStyle || (cap.does?.length ?? 0) > 0;
+  const showUnboundWarning = isInteractive && !hasAnyAction && !hasTwoWay;
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: "var(--space-sm)",
-      }}
-    >
-      {/* Unbound element warning */}
-      {isUnbound && (
-        <div
-          style={{
-            display: "flex", alignItems: "center", gap: "var(--space-sm)",
-            padding: "var(--space-sm)", borderRadius: "var(--border-radius)",
-            background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.25)",
-            fontSize: 12, color: "#d97706", lineHeight: 1.4,
-          }}
-        >
-          <AlertTriangle size={14} style={{ flexShrink: 0 }} />
-          <span>
-            This {element.type} has no action.{" "}
-            <span
-              onClick={() => setEditingSlot(primarySlot)}
-              style={{ textDecoration: "underline", cursor: "pointer", fontWeight: 500 }}
-            >
-              Add a {primarySlot} binding
-            </span>{" "}
-            to make it interactive.
-          </span>
-        </div>
-      )}
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
+      <Bucket label="Shows" hint="What this control reflects from live state.">
+        {showCards}
+      </Bucket>
 
-      {slots.map((slot) => {
-        const isEditing = editingSlot === slot;
-        const hasBinding = !!element.bindings[slot];
-        const binding = element.bindings[slot] as Record<string, unknown> | undefined;
-        const isTestable = (slot === "press" || slot === "release" || slot === "hold" || slot === "change" || slot === "submit" || slot === "route" || slot === "audio_route" || slot === "mute_route" || slot === "audio_mute_route" || slot === "select") && hasBinding;
-        const incomplete = hasBinding && isBindingIncomplete(slot, binding);
-        const dangling = hasBinding ? getSlotDangling(slot) : null;
-
-        return (
-          <div
-            key={slot}
-            style={{
-              border: dangling ? "1px solid var(--color-error)" : "1px solid var(--border-color)",
-              borderRadius: "var(--border-radius)",
-              overflow: "hidden",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", background: "var(--bg-surface)" }}>
-              <button
-                onClick={() => setEditingSlot(isEditing ? null : slot)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  flex: 1,
-                  padding: "6px 10px",
-                  fontSize: "var(--font-size-sm)",
-                  background: "transparent",
-                  textAlign: "left",
-                }}
-              >
-                <span style={{ fontWeight: 500, textTransform: "capitalize", display: "flex", alignItems: "center", gap: 4 }}>
-                  {slotLabel[slot] ?? slot}
-                  {slotHelp[slot] && (
-                    <span title={slotHelp[slot]}>
-                      <HelpCircle size={12} style={{ color: "var(--text-muted)", opacity: 0.6 }} />
-                    </span>
-                  )}
-                </span>
-                <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                  {dangling ? (
-                    <>
-                      <span title={dangling}>
-                        <AlertTriangle size={12} style={{ color: "var(--color-error)" }} />
-                      </span>
-                      <span style={{ fontSize: 11, color: "var(--color-error)" }}>Broken</span>
-                    </>
-                  ) : incomplete ? (
-                    <>
-                      <span title="Incomplete binding">
-                        <AlertTriangle size={12} style={{ color: "var(--color-warning)" }} />
-                      </span>
-                      <span style={{ fontSize: 11, color: "var(--color-warning)" }}>Incomplete</span>
-                    </>
-                  ) : (
-                    <span
-                      style={{
-                        fontSize: 11,
-                        color: hasBinding ? "var(--accent)" : "var(--text-muted)",
-                      }}
-                    >
-                      {getSlotSummary(slot)}
-                    </span>
-                  )}
-                </span>
-              </button>
-              {isTestable && binding && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); testAction(binding); }}
-                  title="Test this action"
-                  style={{
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    padding: "4px 6px", background: "transparent", border: "none",
-                    cursor: "pointer", color: "var(--accent)", flexShrink: 0,
-                  }}
-                >
-                  <Play size={12} />
-                </button>
-              )}
+      {(cap.buttonStyle || (cap.does?.length ?? 0) > 0) && (
+        <Bucket label="Does" hint="What happens when the user touches this control.">
+          {showUnboundWarning && (
+            <div style={warnBoxStyle}>
+              <AlertTriangle size={14} style={{ flexShrink: 0 }} />
+              <span>This {element.type} has no action yet, so touching it does nothing.</span>
             </div>
-            {isEditing && (
-              <div
-                style={{
-                  padding: "var(--space-sm)",
-                  background: "var(--bg-base)",
-                  borderTop: "1px solid var(--border-color)",
-                }}
-              >
-                {renderEditor(slot)}
-              </div>
-            )}
-          </div>
-        );
-      })}
+          )}
+          {doesCards}
+        </Bucket>
+      )}
     </div>
   );
 }
+
+// --- Value source picker with the device-aware LINK (two-way) switch ---
+
+function ValueSourceEditor({
+  binding,
+  link,
+  hasDeviceCommand,
+  onChange,
+  onAddCommand,
+}: {
+  binding: Record<string, unknown> | null;
+  link: boolean;
+  hasDeviceCommand: boolean;
+  onChange: (value: Record<string, unknown> | null) => void;
+  onAddCommand: () => void;
+}) {
+  const key = String(binding?.key || "");
+  const liveValue = useConnectionStore((s) => (key ? s.liveState[key] : undefined));
+  const isVar = key.startsWith("var.");
+  const isDevice = key.startsWith("device.");
+  const writeBack = !!binding?.write_back;
+
+  const setKey = (newKey: string) => {
+    if (!newKey) {
+      onChange(null);
+      return;
+    }
+    const v: Record<string, unknown> = { source: "state", key: newKey };
+    // write_back (LINK) is only valid for a writable var.* key; a device key
+    // drives the hardware through a command instead, so it never carries it.
+    if (writeBack && newKey.startsWith("var.")) v.write_back = true;
+    onChange(v);
+  };
+
+  const setWriteBack = (on: boolean) => {
+    const v = { ...(binding || {}) };
+    if (on) v.write_back = true;
+    else delete v.write_back;
+    onChange(v);
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+      <VariableKeyPicker value={key} onChange={setKey} placeholder="Select state key..." />
+      {key && liveValue !== undefined && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 8px", background: "var(--bg-surface)", borderRadius: 4, fontSize: 11 }}>
+          <span style={{ color: "var(--text-muted)" }}>Current value:</span>
+          <span style={{ fontWeight: 500 }}>{String(liveValue)}</span>
+        </div>
+      )}
+
+      {link && key && isVar && (
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-secondary)", cursor: "pointer" }}>
+          <input type="checkbox" checked={writeBack} onChange={(e) => setWriteBack(e.target.checked)} />
+          Two-way (this control can change it)
+        </label>
+      )}
+
+      {link && key && isDevice && (
+        hasDeviceCommand ? (
+          <div style={{ ...hintStyle, color: "var(--accent)", fontStyle: "normal" }}>
+            ✓ Touching this control sends a command (configured under Does).
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={hintStyle}>
+              A device value is read-only here. To let this control change the device, add a command
+              that uses <strong>$value</strong>.
+            </div>
+            <button onClick={onAddCommand} style={linkBtnStyle}>+ Add a change command</button>
+          </div>
+        )
+      )}
+
+      {binding && (
+        <button onClick={() => onChange(null)} style={clearBtnStyle}>Remove Binding</button>
+      )}
+    </div>
+  );
+}
+
+// --- Visible-when card body (universal conditional visibility) ---
+
+function VisibleWhenEditor({
+  value,
+  onChange,
+}: {
+  value: ConditionGroup | undefined;
+  onChange: (group: ConditionGroup | undefined) => void;
+}) {
+  const hasCondition = value != null;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-secondary)", cursor: "pointer" }}>
+        <input
+          type="checkbox"
+          checked={hasCondition}
+          onChange={(e) => onChange(e.target.checked ? { key: "", operator: "truthy" } : undefined)}
+        />
+        Show only when…
+      </label>
+      {hasCondition && (
+        <div style={{ marginLeft: 20 }}>
+          <ConditionGroupEditor
+            value={value}
+            onChange={onChange}
+            required
+            anyHint="Element is visible when any condition is true."
+            allHint="Element is visible when all conditions are true."
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- Layout primitives ---
+
+interface CardStatus {
+  kind: "broken" | "incomplete";
+  text: string;
+}
+
+function Bucket({ label, hint, children }: { label: string; hint: string; children: ReactNode }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+      <div>
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.6px", textTransform: "uppercase", color: "var(--accent)" }}>
+          {label}
+        </div>
+        <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{hint}</div>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function Card({ title, help, status, children }: { title: string; help?: string; status?: CardStatus | null; children: ReactNode }) {
+  return (
+    <div
+      style={{
+        border: `1px solid ${status?.kind === "broken" ? "var(--color-error)" : "var(--border-color)"}`,
+        borderRadius: "var(--border-radius)",
+        overflow: "hidden",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, padding: "6px 10px", background: "var(--bg-surface)" }}>
+        <span style={{ fontSize: "var(--font-size-sm)", fontWeight: 600 }}>{title}</span>
+        {status && (
+          <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: status.kind === "broken" ? "var(--color-error)" : "var(--color-warning)" }}>
+            <AlertTriangle size={12} />
+            {status.kind === "broken" ? "Broken" : "Incomplete"}
+          </span>
+        )}
+      </div>
+      <div style={{ padding: "var(--space-sm)", background: "var(--bg-base)", borderTop: "1px solid var(--border-color)" }}>
+        {help && <div style={{ ...hintStyle, marginBottom: 6 }}>{help}</div>}
+        {children}
+      </div>
+    </div>
+  );
+}
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "4px 6px",
+  fontSize: "var(--font-size-sm)",
+};
+
+const hintStyle: React.CSSProperties = {
+  fontSize: 11,
+  color: "var(--text-muted)",
+  lineHeight: 1.4,
+  fontStyle: "italic",
+};
+
+const clearBtnStyle: React.CSSProperties = {
+  padding: "4px 8px",
+  borderRadius: "var(--border-radius)",
+  fontSize: "var(--font-size-sm)",
+  color: "var(--color-error)",
+  background: "transparent",
+  border: "1px solid var(--border-color)",
+  alignSelf: "flex-start",
+  cursor: "pointer",
+};
+
+const linkBtnStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 4,
+  padding: "5px 10px",
+  borderRadius: "var(--border-radius)",
+  border: "1px dashed var(--border-color)",
+  background: "transparent",
+  color: "var(--text-muted)",
+  fontSize: 12,
+  cursor: "pointer",
+};
+
+const warnBoxStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "var(--space-sm)",
+  padding: "var(--space-sm)",
+  borderRadius: "var(--border-radius)",
+  background: "rgba(245,158,11,0.1)",
+  border: "1px solid rgba(245,158,11,0.25)",
+  fontSize: 12,
+  color: "#d97706",
+  lineHeight: 1.4,
+};

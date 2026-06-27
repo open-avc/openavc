@@ -6,7 +6,6 @@ import { BasicProperties } from "./PropertySections/BasicProperties";
 import { LayoutProperties } from "./PropertySections/LayoutProperties";
 import { StyleProperties } from "./PropertySections/StyleProperties";
 import { BindingProperties } from "./PropertySections/BindingProperties";
-import { VisibilityProperties } from "./PropertySections/VisibilityProperties";
 import { AssetPicker } from "./AssetPicker";
 
 interface ThemeSummary {
@@ -289,13 +288,6 @@ export function PropertiesPanel({
           onChange={handleChange}
         />
       </Section>
-
-      <Section title="Visibility">
-        <VisibilityProperties
-          element={element}
-          onChange={handleChange}
-        />
-      </Section>
     </div>
   );
 }
@@ -410,13 +402,6 @@ function MasterElementProperties({
         <BindingProperties
           element={masterElement}
           project={project}
-          onChange={handleElementChange}
-        />
-      </Section>
-
-      <Section title="Visibility">
-        <VisibilityProperties
-          element={masterElement}
           onChange={handleElementChange}
         />
       </Section>

@@ -74,12 +74,20 @@ function asActionList(binding: unknown): Record<string, any>[] {
   return [];
 }
 
+// Every do.<interaction> that holds an action list (matches the runtime).
+const DO_INTERACTIONS = [
+  "press", "release", "hold", "change", "submit", "select",
+  "route", "audio_route", "mute_route", "audio_mute_route",
+];
+
 /** Scan an element's bindings for var.* references. */
 export function scanBindingForVars(
   bindings: Record<string, unknown>,
   onFound: (varId: string, detail: string) => void,
 ) {
   if (!bindings) return;
+  const show = (bindings.show || {}) as Record<string, any>;
+  const doMap = (bindings.do || {}) as Record<string, any>;
 
   const checkKey = (obj: any, context: string) => {
     if (!obj || typeof obj !== "object") return;
@@ -89,12 +97,11 @@ export function scanBindingForVars(
     }
   };
 
-  if (bindings.variable) checkKey(bindings.variable, "Two-way variable binding");
-  if (bindings.text) checkKey(bindings.text, "Text display binding");
-  if (bindings.feedback) checkKey(bindings.feedback, "Feedback/color binding");
+  checkKey(show.value, "Value source");
+  checkKey(show.look, "Appearance binding");
 
-  for (const eventType of ["press", "release", "change"]) {
-    for (const action of asActionList(bindings[eventType])) {
+  for (const eventType of DO_INTERACTIONS) {
+    for (const action of asActionList(doMap[eventType])) {
       if (action.action === "state.set" && typeof action.key === "string" && action.key.startsWith("var.")) {
         onFound(action.key.slice(4), `${eventType} → Set Variable`);
       }
@@ -108,8 +115,6 @@ export function scanBindingForVars(
       }
     }
   }
-
-  if (bindings.value) checkKey(bindings.value, "Slider value source");
 }
 
 /** Scan an element's bindings for ALL state key references (not just var.*). */
@@ -118,6 +123,8 @@ export function scanBindingForAllKeys(
   onFound: (key: string, detail: string) => void,
 ) {
   if (!bindings) return;
+  const show = (bindings.show || {}) as Record<string, any>;
+  const doMap = (bindings.do || {}) as Record<string, any>;
 
   const checkKey = (obj: any, context: string) => {
     if (!obj || typeof obj !== "object") return;
@@ -125,13 +132,11 @@ export function scanBindingForAllKeys(
     if (key) onFound(key, context);
   };
 
-  if (bindings.variable) checkKey(bindings.variable, "Two-way binding");
-  if (bindings.text) checkKey(bindings.text, "Text display binding");
-  if (bindings.feedback) checkKey(bindings.feedback, "Feedback binding");
-  if (bindings.color) checkKey(bindings.color, "Color binding");
+  checkKey(show.value, "Value source");
+  checkKey(show.look, "Appearance binding");
 
-  for (const eventType of ["press", "release", "change"]) {
-    for (const action of asActionList(bindings[eventType])) {
+  for (const eventType of DO_INTERACTIONS) {
+    for (const action of asActionList(doMap[eventType])) {
       if (action.action === "state.set" && typeof action.key === "string") {
         onFound(action.key, `${eventType} → Set state`);
       }
@@ -145,8 +150,6 @@ export function scanBindingForAllKeys(
       }
     }
   }
-
-  if (bindings.value) checkKey(bindings.value, "Slider value source");
 }
 
 /**
