@@ -688,11 +688,10 @@ export function BasicProperties({
                 />
               </FieldRow>
               <FieldRow label="State Key">
-                <input
+                <VariableKeyPicker
                   value={((element.bindings as { show?: { value?: { key?: string } } })?.show?.value?.key)
                     || (element.start_key || "")}
-                  onChange={(e) => {
-                    const key = e.target.value;
+                  onChange={(key) => {
                     const bindings = (element.bindings || {}) as Record<string, unknown>;
                     const show = (bindings.show || {}) as Record<string, unknown>;
                     if (key) {
@@ -705,8 +704,9 @@ export function BasicProperties({
                       onChange({ bindings: nextBindings, start_key: undefined });
                     }
                   }}
-                  placeholder="var.countdown_target"
-                  style={{ flex: 1, fontSize: 11 }}
+                  showDeviceState
+                  placeholder="Select a state key (ISO datetime)..."
+                  style={{ flex: 1 }}
                 />
               </FieldRow>
               <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
@@ -717,11 +717,12 @@ export function BasicProperties({
           {element.clock_mode === "elapsed" && (
             <>
               <FieldRow label="Start Key">
-                <input
+                <VariableKeyPicker
                   value={element.start_key || ""}
-                  onChange={(e) => onChange({ start_key: e.target.value || undefined })}
-                  placeholder="var.meeting_started"
-                  style={{ flex: 1, fontSize: 11 }}
+                  onChange={(key) => onChange({ start_key: key || undefined })}
+                  showDeviceState
+                  placeholder="Select a state key (ISO datetime)..."
+                  style={{ flex: 1 }}
                 />
               </FieldRow>
               <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>

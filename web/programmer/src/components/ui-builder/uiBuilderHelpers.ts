@@ -561,6 +561,27 @@ export function slotActions(
   return Object.keys(obj).length > 0 ? [obj] : [];
 }
 
+/** True when any action in the list issues a `device.command` — including the
+ *  per-option actions inside a `value_map` (how a `select` drives a device:
+ *  each chosen option maps to its own command). The engine and the AI validator
+ *  treat a value_map's branches the same way, so the editor's "does this control
+ *  reach the device?" check must look inside the map too, or a correct
+ *  source-selector dropdown looks unwired. */
+export function actionsCommandDevice(actions: Record<string, unknown>[]): boolean {
+  const isDeviceCommand = (a: unknown) =>
+    !!a && typeof a === "object" && (a as Record<string, unknown>).action === "device.command";
+  return actions.some((a) => {
+    if (isDeviceCommand(a)) return true;
+    if (a.action === "value_map" && a.map && typeof a.map === "object") {
+      return Object.values(a.map as Record<string, unknown>).some((mapped) => {
+        const subs = Array.isArray(mapped) ? mapped : [mapped];
+        return subs.some(isDeviceCommand);
+      });
+    }
+    return false;
+  });
+}
+
 /** Remove navigate actions targeting a deleted page from every `do.<interaction>`
  *  action list. */
 function scrubNavigateActions(el: UIElement, pageId: string): UIElement {
@@ -1419,7 +1440,7 @@ export function validateProject(project: ProjectConfig): ValidationIssue[] {
     const valueKey = valueBinding?.key as string | undefined;
     if (cap?.value?.link && valueKey?.startsWith("device.")) {
       const hasCommand = (cap.does ?? []).some((d) =>
-        slotActions(doMap, d.interaction).some((a) => a.action === "device.command"),
+        actionsCommandDevice(slotActions(doMap, d.interaction)),
       );
       if (!hasCommand) {
         issues.push({ severity: "warning", message: `This control shows a device value but has no command to change it — add a command so touching it reaches the device`, location: `${loc} > value`, pageId, elementId: el.id });

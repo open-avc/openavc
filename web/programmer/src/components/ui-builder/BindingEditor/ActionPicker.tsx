@@ -322,20 +322,21 @@ function StateSetConfig({
   return (
     <>
       <div>
-        <label style={labelStyle}>State Key</label>
-        <input
+        <label style={labelStyle}>Variable to set</label>
+        <VariableKeyPicker
           value={String(value?.key || "")}
-          onChange={(e) =>
+          onChange={(key) =>
             onChange({
               action: "state.set",
-              key: e.target.value,
+              key,
               ...(useElementValue
                 ? { value_from: "element" }
                 : { value: value?.value }),
             })
           }
-          placeholder="var.my_variable"
-          style={{ flex: 1, padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
+          showDeviceState={false}
+          placeholder="Select or create a variable..."
+          style={{ width: "100%" }}
         />
       </div>
 

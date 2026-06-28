@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { AlertTriangle } from "lucide-react";
 import type { UIElement, ProjectConfig } from "../../../api/types";
-import { BINDING_CAPABILITIES, type BindingCapability } from "../uiBuilderHelpers";
+import { BINDING_CAPABILITIES, type BindingCapability, slotActions, actionsCommandDevice } from "../uiBuilderHelpers";
 import { ButtonBindingEditor, type ButtonBindings } from "../../shared/ButtonBindingEditor";
 import { PressBindingEditor } from "../BindingEditor/PressBindingEditor";
 import { TextBindingEditor } from "../BindingEditor/TextBindingEditor";
@@ -140,21 +140,25 @@ export function BindingProperties({ element, project, onChange }: BindingPropert
       );
     } else {
       const primary = cap.does?.[0]?.interaction;
+      // A select drives its device through the per-option value_map in its
+      // "On change" editor, not a single appended command — so for it we point
+      // at that editor instead of offering an "add a command" button (which the
+      // value_map editor would overwrite).
+      const valueMapDriven = cap.does?.[0]?.editor === "select_change";
       const addDeviceCommand = () => {
         const key = String(valueBinding?.key || "");
         if (!primary) return;
         const deviceId = key.split(".")[1] || "";
-        const existing = (doMap[primary] as Record<string, unknown>[] | undefined) ?? [];
-        setDoKey(primary, [...existing, { action: "device.command", device: deviceId, command: "", params: {} }]);
+        setDoKey(primary, [...slotActions(doMap, primary), { action: "device.command", device: deviceId, command: "", params: {} }]);
       };
-      const hasDeviceCommand = !!primary && ((doMap[primary] as Record<string, unknown>[] | undefined) ?? [])
-        .some((a) => a?.action === "device.command");
+      const hasDeviceCommand = !!primary && actionsCommandDevice(slotActions(doMap, primary));
       showCards.push(
         <Card key="value" title={cap.value.label || "Value"} status={keyStatus(valueBinding ?? undefined)}>
           <ValueSourceEditor
             binding={valueBinding}
             link={!!cap.value.link}
             hasDeviceCommand={hasDeviceCommand}
+            valueMapDriven={valueMapDriven}
             onChange={(v) => setShowKey("value", v)}
             onAddCommand={addDeviceCommand}
           />
@@ -295,7 +299,7 @@ export function BindingProperties({ element, project, onChange }: BindingPropert
   const hasAnyAction = (cap.does ?? []).some((d) => {
     const v = doMap[d.interaction];
     return Array.isArray(v) ? v.length > 0 : !!v;
-  }) || (cap.buttonStyle && !!doMap.press);
+  }) || (cap.buttonStyle && (!!doMap.press || !!doMap.release || !!doMap.hold));
   const hasTwoWay = !!(show.value as Record<string, unknown> | undefined)?.write_back;
   const isInteractive = !!cap.buttonStyle || (cap.does?.length ?? 0) > 0;
   const showUnboundWarning = isInteractive && !hasAnyAction && !hasTwoWay;
@@ -327,12 +331,14 @@ function ValueSourceEditor({
   binding,
   link,
   hasDeviceCommand,
+  valueMapDriven,
   onChange,
   onAddCommand,
 }: {
   binding: Record<string, unknown> | null;
   link: boolean;
   hasDeviceCommand: boolean;
+  valueMapDriven?: boolean;
   onChange: (value: Record<string, unknown> | null) => void;
   onAddCommand: () => void;
 }) {
@@ -382,6 +388,11 @@ function ValueSourceEditor({
         hasDeviceCommand ? (
           <div style={{ ...hintStyle, color: "var(--accent)", fontStyle: "normal" }}>
             ✓ Touching this control sends a command (configured under Does).
+          </div>
+        ) : valueMapDriven ? (
+          <div style={hintStyle}>
+            A device value is read-only here. Choose what each option sends in the
+            <strong> On change</strong> card below — each option can run its own command.
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
