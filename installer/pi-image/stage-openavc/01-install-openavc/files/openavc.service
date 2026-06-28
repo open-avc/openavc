@@ -20,6 +20,10 @@ Environment=OPENAVC_ALLOW_ANONYMOUS=false
 
 # Security hardening
 NoNewPrivileges=true
+# CAP_NET_RAW lets discovery's ICMP ping sweep open an ICMP/raw socket under
+# the unprivileged `openavc` user; NoNewPrivileges strips /bin/ping's file
+# capability at exec, so without this scans silently return zero live hosts.
+AmbientCapabilities=CAP_NET_RAW
 ProtectSystem=strict
 # driver_repo and plugin_repo live under /var/lib/openavc now (covered by
 # the data-dir entry). The legacy /opt/openavc/{driver,plugin}_repo paths

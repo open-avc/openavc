@@ -215,6 +215,7 @@ Environment=OPENAVC_LOG_DIR=/var/log/openavc
 Environment=OPENAVC_PROJECT=/var/lib/openavc/projects/default/project.avc
 Environment=OPENAVC_BIND=0.0.0.0
 NoNewPrivileges=true
+AmbientCapabilities=CAP_NET_RAW
 ProtectSystem=strict
 ReadWritePaths=/var/lib/openavc /var/log/openavc -/opt/openavc/driver_repo -/opt/openavc/plugin_repo
 ProtectHome=true
@@ -230,6 +231,17 @@ Enable and start the service:
 sudo systemctl enable openavc
 sudo systemctl start openavc
 ```
+
+**Why the unit grants `CAP_NET_RAW`:** device discovery's ICMP ping sweep
+needs to open an ICMP/raw socket to find live hosts. The service runs as the
+unprivileged `openavc` user, and `NoNewPrivileges=true` strips the file
+capability from `/bin/ping` when it execs — so the sweep can only send echo
+requests if the process holds `CAP_NET_RAW` directly. The installer's unit
+grants it (scoped to OpenAVC alone). If you hand-write your own unit, keep
+this line: without it the kernel's default `ping_group_range` excludes the
+service's group and scans silently return zero devices. (LXC containers and
+minimal hosts hit the same wall — this one line fixes them all, with no
+host-wide sysctl change.)
 
 ## macOS Service
 

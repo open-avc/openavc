@@ -402,6 +402,24 @@ setup_data_dir() {
     ok "Data directory ready"
 }
 
+# The shipped unit grants ambient CAP_NET_RAW so the unprivileged service can
+# run discovery's ICMP ping sweep. systemd refuses to start a unit whose
+# AmbientCapabilities aren't in the bounding set, so on the rare host that has
+# dropped CAP_NET_RAW (a container started with the capability stripped) the
+# line would make OpenAVC unbootable. Detect that and neutralize the line
+# instead — the server still starts; only the active ping sweep is limited
+# (passive mDNS/SSDP discovery and manual device entry are unaffected).
+host_has_cap_net_raw() {
+    # CAP_NET_RAW is capability number 13. /proc/self/status CapBnd holds the
+    # bounding-set mask in hex; test bit 13. If we can't read it (no /proc),
+    # assume present — every systemd host exposes it, so this only triggers on
+    # a genuinely capability-stripped environment.
+    local capbnd
+    capbnd=$(awk '/^CapBnd:/ {print $2}' /proc/self/status 2>/dev/null) || return 0
+    [ -n "$capbnd" ] || return 0
+    (( (0x$capbnd >> 13) & 1 ))
+}
+
 install_service() {
     info "Installing systemd service..."
 
@@ -432,6 +450,9 @@ Environment=OPENAVC_PROJECT=/var/lib/openavc/projects/default/project.avc
 Environment=OPENAVC_BIND=0.0.0.0
 Environment=OPENAVC_ALLOW_ANONYMOUS=false
 NoNewPrivileges=true
+# CAP_NET_RAW lets the discovery ping sweep open an ICMP/raw socket under the
+# unprivileged user; NoNewPrivileges strips /bin/ping's file cap at exec.
+AmbientCapabilities=CAP_NET_RAW
 ProtectSystem=strict
 ReadWritePaths=/var/lib/openavc /var/log/openavc -/opt/openavc/driver_repo -/opt/openavc/plugin_repo
 ProtectHome=true
@@ -440,6 +461,13 @@ PrivateTmp=true
 [Install]
 WantedBy=multi-user.target
 UNIT
+    fi
+
+    if ! host_has_cap_net_raw; then
+        warn "CAP_NET_RAW is not in this host's capability bounding set (a container started with it dropped)."
+        warn "Disabling it in the service so OpenAVC still starts. The discovery ping sweep will be limited;"
+        warn "passive discovery (mDNS/SSDP) and adding devices by IP still work."
+        sed -i 's/^AmbientCapabilities=CAP_NET_RAW.*/# AmbientCapabilities=CAP_NET_RAW  (disabled by installer: CAP_NET_RAW unavailable here)/' "$service_file"
     fi
 
     systemctl daemon-reload

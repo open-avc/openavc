@@ -29,6 +29,14 @@ Environment=OPENAVC_SERVICE_MANAGED=1
 
 # Security hardening
 NoNewPrivileges=true
+# Device discovery's ICMP ping sweep has to open an ICMP/raw socket. The
+# service runs as the unprivileged `openavc` user, and NoNewPrivileges=true
+# strips the file capability from /bin/ping at exec — so the only way the
+# sweep can send echo requests is an ambient CAP_NET_RAW granted directly to
+# this process (scoped to OpenAVC alone). Without it, the kernel's default
+# ping_group_range excludes the service's gid and scans silently return zero
+# live hosts.
+AmbientCapabilities=CAP_NET_RAW
 ProtectSystem=strict
 # driver_repo and plugin_repo live under /var/lib/openavc now (covered by
 # the data-dir entry). The legacy /opt/openavc/{driver,plugin}_repo paths

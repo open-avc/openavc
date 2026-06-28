@@ -154,7 +154,7 @@ OpenAVC includes a network discovery feature to help AV integrators find devices
 
 During a discovery scan, OpenAVC will:
 
-1. **Ping sweep** the local subnet(s) using ICMP echo requests. The server sends these through an ICMP socket where the OS allows it (unprivileged ICMP on most Linux distributions, raw socket when running as a privileged service) and falls back to the system `ping` command otherwise. Firewalls on the AV VLAN must permit ICMP echo request/reply for discovery to see hosts; a host that drops echo can still be found by the mDNS / SSDP listeners or driver probes, but will not be port-scanned.
+1. **Ping sweep** the local subnet(s) using ICMP echo requests. The server sends these through an ICMP socket: the packaged Linux service and Docker image are granted the `CAP_NET_RAW` capability so they can open a raw ICMP socket, other environments use an unprivileged ICMP datagram socket where the OS allows it, and it falls back to the system `ping` command otherwise. Firewalls on the AV VLAN must permit ICMP echo request/reply for discovery to see hosts; a host that drops echo can still be found by the mDNS / SSDP listeners or driver probes, but will not be port-scanned.
 2. **TCP port scan** responding hosts on the AV ports listed above
 3. **SNMP query** (v2c, community string `public`, read-only) on port 161
 4. **mDNS / DNS-SD query** on multicast group 224.0.0.251:5353
