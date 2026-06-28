@@ -2,6 +2,7 @@ import { useState } from "react";
 import { HelpCircle } from "lucide-react";
 import type { StepCondition } from "../../api/types";
 import { useConnectionStore } from "../../store/connectionStore";
+import { useProjectStore } from "../../store/projectStore";
 import { VariableKeyPicker } from "../shared/VariableKeyPicker";
 
 const OPERATORS = [
@@ -31,6 +32,14 @@ export function ConditionEditor({ condition, onChange, showTriggerContext = fals
   const [showHelp, setShowHelp] = useState(false);
   const liveValue = useConnectionStore((s) => s.liveState[condition.key]);
   const selectedOp = OPERATORS.find((o) => o.value === condition.operator);
+  // When the key is a boolean variable, offer a true/false picker for the
+  // comparison value instead of a free-text box (matches the trigger editors
+  // and the Set Variable step).
+  const variables = useProjectStore((s) => s.project?.variables) ?? [];
+  const boundVar = condition.key?.startsWith("var.")
+    ? variables.find((v) => `var.${v.id}` === condition.key)
+    : undefined;
+  const isBoolKey = boundVar?.type === "boolean";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
@@ -53,18 +62,30 @@ export function ConditionEditor({ condition, onChange, showTriggerContext = fals
           ))}
         </select>
         {needsValue && (
-          <input
-            value={condition.value != null ? String(condition.value) : ""}
-            onChange={(e) => {
-              let v: unknown = e.target.value;
-              if (v === "true") v = true;
-              else if (v === "false") v = false;
-              else if (v !== "" && !isNaN(Number(v))) v = Number(v);
-              onChange({ ...condition, value: v });
-            }}
-            placeholder="Value"
-            style={{ ...inputStyle, flex: 1, minWidth: 80 }}
-          />
+          isBoolKey ? (
+            <select
+              value={condition.value === true ? "true" : condition.value === false ? "false" : ""}
+              onChange={(e) => onChange({ ...condition, value: e.target.value === "true" })}
+              style={{ ...selectStyle, flex: 1, minWidth: 80 }}
+            >
+              <option value="">Select...</option>
+              <option value="true">true</option>
+              <option value="false">false</option>
+            </select>
+          ) : (
+            <input
+              value={condition.value != null ? String(condition.value) : ""}
+              onChange={(e) => {
+                let v: unknown = e.target.value;
+                if (v === "true") v = true;
+                else if (v === "false") v = false;
+                else if (v !== "" && !isNaN(Number(v))) v = Number(v);
+                onChange({ ...condition, value: v });
+              }}
+              placeholder="Value"
+              style={{ ...inputStyle, flex: 1, minWidth: 80 }}
+            />
+          )
         )}
         <span
           onClick={() => setShowHelp(!showHelp)}

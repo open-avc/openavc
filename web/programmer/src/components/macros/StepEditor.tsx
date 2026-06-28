@@ -484,56 +484,17 @@ function GroupCommandEditor({
                     {paramDef?.label ?? paramKey}
                     {paramDef?.required && <span style={{ color: "#ef4444" }}> *</span>}
                   </label>
-                  {isDynamic ? (
-                    <VariableKeyPicker
-                      value={String(currentVal).slice(1)}
-                      onChange={(key) => handleParamChange(paramKey, `$${key}`)}
-                      showDeviceState
-                      showTriggerContext
-                      placeholder="Select state key..."
-                      style={{ flex: 1 }}
-                    />
-                  ) : paramDef?.type === "enum" && Array.isArray(paramDef.values) ? (
-                    <select
-                      value={String(currentVal)}
-                      onChange={(e) => handleParamChange(paramKey, e.target.value)}
-                      style={inputStyle}
-                    >
-                      <option value="">Select {paramKey}...</option>
-                      {paramDef.values.map((v: string) => (
-                        <option key={v} value={v}>{v}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      value={String(currentVal)}
-                      onChange={(e) => handleParamChange(paramKey, e.target.value)}
-                      placeholder={paramDef?.type === "number" ? "0" : ""}
-                      style={inputStyle}
-                    />
-                  )}
-                  <button
-                    onClick={() => {
-                      if (isDynamic) handleParamChange(paramKey, "");
-                      else handleParamChange(paramKey, "$var.");
-                    }}
-                    title={isDynamic ? "Switch to static value" : "Use dynamic value from state variable"}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      padding: "3px 6px",
-                      borderRadius: "var(--border-radius)",
-                      border: `1px solid ${isDynamic ? "var(--accent)" : "var(--border-color)"}`,
-                      background: isDynamic ? "rgba(138,180,147,0.15)" : "transparent",
-                      color: isDynamic ? "var(--accent)" : "var(--text-muted)",
-                      fontSize: 11,
-                      cursor: "pointer",
-                      flexShrink: 0,
-                      fontFamily: "var(--font-mono)",
-                    }}
-                  >
-                    $
-                  </button>
+                  <ParamInput
+                    def={(paramDef ?? {}) as Partial<DriverParamDef>}
+                    value={String(currentVal)}
+                    onChange={(val) => handleParamChange(paramKey, val)}
+                    values={step.params as Record<string, unknown> | undefined}
+                    params={paramSchema as Record<string, Partial<DriverParamDef>>}
+                    allowDynamic
+                    showTriggerContext
+                    placeholder={paramDef?.type ?? "text"}
+                    style={{ flex: 1 }}
+                  />
                 </div>
                 {isDynamic && (
                   <div style={{ fontSize: 11, color: "var(--accent)", marginTop: 2, marginLeft: 78 }}>
