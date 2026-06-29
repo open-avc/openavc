@@ -19,6 +19,9 @@ packaging==24.2              # Apache-2.0/BSD-2 - version parsing (plugin/driver
 # HTTP client (for HTTP transport + driver installs)
 httpx==0.28.1                # BSD-3-Clause
 
+# MQTT client (for MQTT transport — pub/sub devices, BMS/IoT bridges)
+gmqtt==0.7.0                 # MIT - pure Python, asyncio-native
+
 # Scheduling
 croniter==6.2.2              # MIT
 

@@ -73,6 +73,12 @@ _AUTH_SIGS = (
     "unable to authenticate",
     "401 unauthorized",
     "403 forbidden",
+    # MQTT CONNACK rejections (rc 4 / rc 5). Checked before the generic
+    # "connection refused" bucket so wrong broker credentials read as auth.
+    "not authorized",
+    "not authorised",
+    "bad username or password",
+    "bad user name or password",
 )
 
 # Port closed / service off.

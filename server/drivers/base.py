@@ -394,6 +394,36 @@ class BaseDriver(ABC):
                 inter_command_delay=self.config.get("inter_command_delay", 0.0),
                 name=self.device_id,
             )
+        elif transport_type == "mqtt":
+            from server.transport.mqtt import MQTTTransport
+
+            host = self.config.get("host", "")
+            port = int(self.config.get("port", 1883) or 1883)
+
+            # Pub/sub, not a byte stream: inbound messages arrive topic-tagged
+            # via on_mqtt_message (subscribe in _post_connect). TLS vocabulary
+            # matches the tcp/http branches (`ssl`, `verify_ssl`); MQTT also
+            # accepts a client certificate for devices that require one.
+            self.transport = await MQTTTransport.create(
+                host=host,
+                port=port,
+                client_id=self.config.get("client_id") or None,
+                username=self.config.get("username") or None,
+                password=self.config.get("password") or None,
+                use_tls=bool(
+                    self.config.get("ssl", self.config.get("use_tls", False))
+                ),
+                verify_ssl=bool(self.config.get("verify_ssl", True)),
+                client_cert=self.config.get("client_cert") or None,
+                client_key=self.config.get("client_key") or None,
+                ca_cert=self.config.get("ca_cert") or None,
+                ciphers=self.config.get("ciphers") or None,
+                keepalive=int(self.config.get("keepalive", 60) or 60),
+                protocol_version=str(self.config.get("mqtt_version", "3.1.1")),
+                on_message=self.on_mqtt_message,
+                on_disconnect=self._handle_transport_disconnect,
+                name=self.device_id,
+            )
         else:
             raise ValueError(f"Unsupported transport type: {transport_type}")
 
@@ -599,6 +629,16 @@ class BaseDriver(ABC):
 
         Override in the driver to implement protocol-specific parsing.
         Default: no-op.
+        """
+
+    async def on_mqtt_message(self, topic: str, payload: bytes) -> None:
+        """
+        Called by the MQTT transport when a message arrives on a subscribed
+        topic. The pub/sub analogue of on_data_received — topic-aware because
+        MQTT routing is topic-based, not a single byte stream.
+
+        Override in MQTT drivers to parse inbound messages. Subscribe to the
+        topics you care about in _post_connect(). Default: no-op.
         """
 
     async def poll(self) -> None:

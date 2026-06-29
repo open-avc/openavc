@@ -69,6 +69,25 @@ def test_auth_failed_password_authentication_failed():
     assert fault.code == AUTH_FAILED
 
 
+def test_auth_failed_mqtt_connack_not_authorized():
+    # MQTT CONNACK rc 5. The string also contains "connection refused", so this
+    # guards that the auth check wins over the refused bucket (order matters).
+    fault = classify_connection_fault(
+        last_error="connection refused: not authorized", exc=None,
+        host="10.0.0.5", port=36669, transport="mqtt",
+    )
+    assert fault.code == AUTH_FAILED
+
+
+def test_auth_failed_mqtt_connack_bad_credentials():
+    # MQTT CONNACK rc 4.
+    fault = classify_connection_fault(
+        last_error="connection refused: bad username or password", exc=None,
+        host="10.0.0.5", port=36669, transport="mqtt",
+    )
+    assert fault.code == AUTH_FAILED
+
+
 # --- connection_refused ----------------------------------------------------
 
 def test_connection_refused_ssh_stderr():

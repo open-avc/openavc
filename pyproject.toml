@@ -19,6 +19,7 @@ dependencies = [
     "pyyaml==6.0.3",             # MIT - YAML parsing
     "packaging==24.2",           # Apache-2.0/BSD-2 - version parsing (plugin/driver min-version gates)
     "httpx==0.28.1",             # BSD-3 - Async HTTP client (for HTTP transport)
+    "gmqtt==0.7.0",              # MIT - Async MQTT client (for MQTT transport; pure Python, asyncio-native)
     "certifi==2026.6.17",        # MPL-2.0 (CA data) - CA bundle for stdlib ssl on the frozen macOS app (already pulled in by httpx); see server/main.py
     "croniter==6.2.2",           # MIT - Cron expression parser (pure Python)
     "defusedxml==0.7.1",         # PSF - Safe XML parsing (prevents XXE/billion laughs)

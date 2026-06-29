@@ -222,6 +222,19 @@ hiddenimports = [
     'anyio._backends._asyncio',
     'sniffio',
     'certifi',
+    # gmqtt (MQTT transport) — imported lazily inside the transport, so list
+    # every submodule so the frozen build bundles the whole client.
+    'gmqtt',
+    'gmqtt.client',
+    'gmqtt.mqtt',
+    'gmqtt.mqtt.connection',
+    'gmqtt.mqtt.constants',
+    'gmqtt.mqtt.handler',
+    'gmqtt.mqtt.package',
+    'gmqtt.mqtt.property',
+    'gmqtt.mqtt.protocol',
+    'gmqtt.mqtt.utils',
+    'gmqtt.storage',
 ]
 
 # Excludes: things we don't need in the bundle
