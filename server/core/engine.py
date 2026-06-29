@@ -398,19 +398,44 @@ class Engine:
         )
 
     async def _confirm_startup_after_delay(self) -> None:
-        """Clear pending-update marker after 60 seconds of stable running."""
+        """Clear the pending-update marker after 60 seconds of stable running.
+
+        The marker is always cleared once we've stayed up 60s (so the rollback
+        attempts counter can't trip on a later restart), but only an update that
+        actually changed the running version is logged as a success. A marker
+        that survived a *failed* apply (e.g. the helper aborted, version
+        unchanged) must not log "confirmed successful" against the target it
+        never reached.
+        """
         try:
             await asyncio.sleep(60)
             from server.system_config import get_system_config
             from server.updater.rollback import read_pending_marker, clear_pending_marker
+            from server.version import __version__
             data_dir = get_system_config().data_dir
             marker = read_pending_marker(data_dir)
             if marker:
                 clear_pending_marker(data_dir)
-                log.info(
-                    "Update confirmed successful after 60s (v%s -> v%s)",
-                    marker.get("from_version"), marker.get("to_version"),
+                from_version = marker.get("from_version", "")
+                to_version = marker.get("to_version", "")
+                # Mirror UpdateManager._load_history: the update applied if the
+                # running version reached the target, or simply moved off the
+                # version we started from (handles release-tag/pyproject skew).
+                applied = (
+                    (bool(to_version) and __version__ == to_version)
+                    or (bool(from_version) and __version__ != from_version)
                 )
+                if applied:
+                    log.info(
+                        "Update confirmed successful after 60s (v%s -> v%s)",
+                        from_version, __version__,
+                    )
+                else:
+                    log.warning(
+                        "Update to v%s did not take effect (still running v%s); "
+                        "cleared stale pending-update marker",
+                        to_version, __version__,
+                    )
         except asyncio.CancelledError:
             pass
 

@@ -476,8 +476,10 @@ UNIT
 }
 
 configure_firewall() {
-    # ufw (Ubuntu/Debian)
-    if command -v ufw &>/dev/null && ufw status | grep -q "active"; then
+    # ufw (Ubuntu/Debian). Match "Status: active" specifically — a bare "active"
+    # grep also matches "Status: inactive", which would open the port (and log
+    # success) on a host whose firewall is actually off.
+    if command -v ufw &>/dev/null && ufw status | grep -q "Status: active"; then
         info "Configuring ufw firewall..."
         ufw allow "$HTTP_PORT/tcp" comment "OpenAVC" >/dev/null 2>&1
         ok "Firewall: port $HTTP_PORT opened (ufw)"
@@ -494,6 +496,24 @@ configure_firewall() {
     fi
 
     warn "No active firewall detected (ufw or firewalld). Port $HTTP_PORT may already be accessible."
+}
+
+# Remove the legacy /opt/openavc/{driver,plugin}_repo dirs once they're drained.
+# These predate user content moving to the data dir. The runtime migration
+# (server/system_config.migrate_legacy_repos) empties them on first start, but
+# leaves the empty dir behind — and the service unit keeps it writable via
+# ReadWritePaths, which makes systemd bind-mount it. An in-app update then fails
+# (EBUSY) trying to mv that mountpoint. Re-running the installer is the escape
+# path for such boxes, so drop the empty dirs here. Only remove them when empty
+# (rmdir refuses non-empty); a box with un-drained content keeps them until the
+# next server start drains them, then a later installer run clears them.
+cleanup_legacy_repos() {
+    local dir
+    for dir in "$INSTALL_DIR/driver_repo" "$INSTALL_DIR/plugin_repo"; do
+        if [ -d "$dir" ] && rmdir "$dir" 2>/dev/null; then
+            info "Removed drained legacy repo dir: $dir"
+        fi
+    done
 }
 
 start_service() {
@@ -533,6 +553,7 @@ main() {
     install_files
     create_venv
     setup_data_dir
+    cleanup_legacy_repos
     install_service
     configure_firewall
     start_service

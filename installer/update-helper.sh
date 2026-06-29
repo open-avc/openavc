@@ -29,6 +29,14 @@ PYTHON="${PYTHON:-/usr/bin/python3}"
 # guard below makes their absence a no-op for clean post-migration installs.
 PRESERVE_DIRS=(venv driver_repo plugin_repo)
 
+# The subset of PRESERVE_DIRS that systemd may bind-mount via ReadWritePaths
+# under ProtectSystem=strict (the legacy pre-data_dir repo locations). A bind
+# mount turns them into mountpoints, so the mv/rm of the atomic swap below
+# fails with EBUSY ("Device or resource busy"). prepare_legacy_repos() detaches
+# the mount and drops the dir once it's drained so it never reappears as an
+# EBUSY source. venv is never a mountpoint and is always preserved.
+LEGACY_REPO_DIRS=(driver_repo plugin_repo)
+
 # Sanity-check that a candidate install directory has the minimum set of
 # files needed to actually start the service. Used before promoting
 # $APP_DIR.previous on rollback so a partial cp -a (interrupted, disk
@@ -39,6 +47,42 @@ is_app_dir_valid() {
     [ -f "$dir/pyproject.toml" ] && \
     [ -d "$dir/server" ] && \
     [ -f "$dir/venv/bin/python3" ]
+}
+
+# True if $1 is a mount point. Reads /proc/self/mountinfo (always present under
+# systemd) rather than the `mountpoint` binary, which minimal images may lack.
+# Field 5 of each mountinfo line is the mount point path.
+is_mountpoint() {
+    awk -v t="$1" '$5 == t { found = 1 } END { exit !found }' \
+        /proc/self/mountinfo 2>/dev/null
+}
+
+# Detach any self-bind-mount on the legacy repo dirs and remove them if drained,
+# so the atomic swap below can mv/rm $APP_DIR without hitting EBUSY on a
+# mountpoint. systemd implements ReadWritePaths by bind-mounting each path onto
+# itself inside the unit's mount namespace; renaming or removing a mountpoint
+# fails with EBUSY. The umount is namespace-local (root via the unit's `+`
+# ExecStartPre) and does not affect the host or the next start — the `-` prefix
+# on the ReadWritePaths entries means a missing dir is simply skipped. Safe
+# no-op on fresh installs (dirs absent) and on unmounted dirs.
+prepare_legacy_repos() {
+    local dir sub
+    for sub in "${LEGACY_REPO_DIRS[@]}"; do
+        dir="$APP_DIR/$sub"
+        [ -d "$dir" ] || continue
+        if is_mountpoint "$dir"; then
+            umount "$dir" 2>/dev/null || umount -l "$dir" 2>/dev/null || \
+                echo "$LOG_TAG: could not detach bind mount on $dir"
+        fi
+        # Empty means a prior migrate_legacy_repos already drained it into
+        # $DATA_DIR — remove it for good so it stops recurring as an EBUSY
+        # source and the install reaches the no-bind-mount end state. Non-empty
+        # dirs are left for the runtime migration to drain and are carried
+        # across the swap by the PRESERVE_DIRS loop.
+        if [ -d "$dir" ] && [ -z "$(ls -A "$dir" 2>/dev/null)" ]; then
+            rmdir "$dir" 2>/dev/null && echo "$LOG_TAG: removed drained legacy $sub"
+        fi
+    done
 }
 
 handle_update() {
@@ -60,6 +104,10 @@ handle_update() {
     fi
 
     echo "$LOG_TAG: applying update to v$TO_VER from $ARTIFACT"
+
+    # Detach/clean up the legacy repo bind mounts before any snapshot or swap so
+    # the mv/rm steps below don't fail with EBUSY on a mountpoint.
+    prepare_legacy_repos
 
     PREVIOUS="$APP_DIR.previous"
     STAGING="$APP_DIR.new"
@@ -150,6 +198,12 @@ handle_update() {
         return
     fi
 
+    # The swap removed and recreated $APP_DIR, so this shell's working directory
+    # (the unit's WorkingDirectory=$APP_DIR) now points at a deleted inode. Move
+    # to / so the venv rebuild, chown, and the re-exec below don't emit
+    # "getcwd: cannot access parent directories" warnings.
+    cd / 2>/dev/null || true
+
     # 6. Self-update: replace this script with the version from the new release
     if [ -f "$APP_DIR/installer/update-helper.sh" ]; then
         cp "$APP_DIR/installer/update-helper.sh" "$APP_DIR/update-helper.sh"
@@ -169,6 +223,19 @@ handle_update() {
 
     rm -f "$UPDATE_FILE"
     echo "$LOG_TAG: update to v$TO_VER applied successfully"
+
+    # Re-exec the freshly-installed helper (step 6) so any newer post-update
+    # logic it carries — notably sync_unit below — runs in THIS update cycle
+    # instead of one update later. UPDATE_FILE is already gone, so the re-exec'd
+    # helper skips handle_update and proceeds straight to sync_unit. The env
+    # guard prevents an exec loop. (A box still on a pre-this-change helper has
+    # no re-exec, so its unit sync lands on the next start after the update —
+    # the irreducible one-update bootstrap lag.)
+    if [ -z "${OPENAVC_HELPER_REEXEC:-}" ] && [ -x "$APP_DIR/update-helper.sh" ]; then
+        export OPENAVC_HELPER_REEXEC=1
+        echo "$LOG_TAG: re-exec'ing updated helper to finish post-update steps"
+        exec "$APP_DIR/update-helper.sh" "$DATA_DIR" "$APP_DIR"
+    fi
 }
 
 handle_rollback() {
@@ -213,11 +280,90 @@ handle_rollback() {
     echo "$LOG_TAG: rollback complete"
 }
 
-# Main — process instructions if present, then always exit 0
+# Mirror of install.sh install_service: CAP_NET_RAW is capability bit 13; test
+# it in the bounding set from /proc/self/status. Returns success (cap present)
+# if it can't read the mask — every normal systemd host has CAP_NET_RAW; this
+# only reports absence on a genuinely capability-stripped container.
+host_has_cap_net_raw() {
+    local capbnd
+    capbnd=$(awk '/^CapBnd:/ {print $2}' /proc/self/status 2>/dev/null) || return 0
+    [ -n "$capbnd" ] || return 0
+    (( (0x$capbnd >> 13) & 1 ))
+}
+
+# Keep the active systemd unit in sync with the one shipped in the release.
+# The in-app update swaps $APP_DIR but never rewrites
+# /etc/systemd/system/openavc.service, so unit changes (hardening, env vars, the
+# AmbientCapabilities=CAP_NET_RAW that discovery's ping sweep needs) otherwise
+# never deploy via update — only via an install.sh re-run. Idempotent: acts only
+# when the effective desired unit differs from the active one, so it's a cheap
+# no-op on every normal start and self-heals a stale unit after a reboot.
+#
+# A daemon-reload during ExecStartPre does NOT re-apply to the already-parsed
+# current job, so a changed unit is activated by a deferred one-shot restart.
+# That restart is scheduled past the 60s post-update confirm window
+# (server/core/engine._confirm_startup_after_delay) on purpose: a sub-60s second
+# start would be counted as a failed-start retry by the rollback attempts
+# counter and trip an automatic rollback of a perfectly good update.
+sync_unit() {
+    local src="$APP_DIR/installer/openavc.service"
+    local dst="/etc/systemd/system/openavc.service"
+    [ -f "$src" ] || return 0
+    command -v systemctl >/dev/null 2>&1 || return 0
+
+    # Build the effective desired unit: the shipped file, with the cap line
+    # neutralized on hosts whose bounding set lacks CAP_NET_RAW. This mirrors
+    # install.sh exactly so the comparison below stays stable on such hosts
+    # (otherwise the active neutralized unit would forever differ from the
+    # shipped one and restart every boot).
+    local desired
+    desired=$(mktemp 2>/dev/null) || return 0
+    if ! cp "$src" "$desired" 2>/dev/null; then
+        rm -f "$desired"
+        return 0
+    fi
+    if ! host_has_cap_net_raw; then
+        sed -i 's/^AmbientCapabilities=CAP_NET_RAW.*/# AmbientCapabilities=CAP_NET_RAW  (disabled: CAP_NET_RAW unavailable here)/' "$desired"
+    fi
+
+    if [ -f "$dst" ] && cmp -s "$desired" "$dst"; then
+        rm -f "$desired"
+        return 0  # already in sync — nothing to do
+    fi
+
+    echo "$LOG_TAG: systemd unit changed — refreshing $dst"
+    if ! cp "$desired" "$dst" 2>/dev/null; then
+        echo "$LOG_TAG: failed to write $dst (service continues on the old unit)"
+        rm -f "$desired"
+        return 0
+    fi
+    rm -f "$desired"
+    chmod 644 "$dst" 2>/dev/null || true
+    systemctl daemon-reload 2>/dev/null || true
+
+    # Activate the new unit with a deferred restart (>60s, see above). If the
+    # timer is lost before it fires (e.g. a reboot first), the next start's
+    # sync_unit re-detects the diff and reschedules, so the unit still converges.
+    if command -v systemd-run >/dev/null 2>&1; then
+        if systemd-run --on-active=90 --timer-property=AccuracySec=1s \
+                systemctl restart openavc.service >/dev/null 2>&1; then
+            echo "$LOG_TAG: scheduled service restart (~90s) to apply the new unit"
+        else
+            echo "$LOG_TAG: could not schedule unit-refresh restart; new unit applies on next restart"
+        fi
+    else
+        echo "$LOG_TAG: systemd-run unavailable; new unit applies on next restart"
+    fi
+}
+
+# Main — process instructions if present, sync the unit, then always exit 0.
+# handle_update may exec the freshly-installed helper; in that case sync_unit
+# runs from the re-exec'd process instead (UPDATE_FILE already consumed).
 if [ -f "$UPDATE_FILE" ]; then
     handle_update
 fi
 if [ -f "$ROLLBACK_FILE" ]; then
     handle_rollback
 fi
+sync_unit
 exit 0
