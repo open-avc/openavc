@@ -777,7 +777,15 @@ class UpdateManager:
         self.clear_staged_update()
 
         self._set_state("system.update_status", "applying")
-        success = perform_rollback(self._data_dir)
+        # Pass the versions explicitly: a manual rollback runs after the
+        # pending-update marker is cleared, so perform_rollback can't recover
+        # them from it. We're abandoning the running version (to_version) and
+        # restoring the previous one (from_version, the rollback target).
+        success = perform_rollback(
+            self._data_dir,
+            from_version=target_version or "unknown",
+            to_version=__version__,
+        )
 
         if success:
             self._add_history_entry(

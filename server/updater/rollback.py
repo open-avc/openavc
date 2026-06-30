@@ -225,17 +225,30 @@ def can_rollback(app_dir: Path) -> bool:
     return previous.is_dir()
 
 
-def perform_rollback(data_dir: Path) -> bool:
+def perform_rollback(
+    data_dir: Path,
+    from_version: str | None = None,
+    to_version: str | None = None,
+) -> bool:
     """Restore the previous version of OpenAVC.
 
     Called automatically when the server crashes after an update (attempts >= 2),
     or manually via the REST API.
 
+    ``from_version``/``to_version`` are used as given when the caller supplies
+    them (the manual API path knows both directly). Otherwise they fall back to
+    the pending-update marker, which is the source for the automatic path. The
+    marker is gone by the time a manual rollback runs (it's cleared once an
+    update is confirmed), so without the override both would read "unknown".
+
     Returns True if rollback was initiated, False if no previous version available.
     """
-    marker = read_pending_marker(data_dir)
-    from_version = marker.get("from_version", "unknown") if marker else "unknown"
-    to_version = marker.get("to_version", "unknown") if marker else "unknown"
+    if from_version is None or to_version is None:
+        marker = read_pending_marker(data_dir)
+        if from_version is None:
+            from_version = marker.get("from_version", "unknown") if marker else "unknown"
+        if to_version is None:
+            to_version = marker.get("to_version", "unknown") if marker else "unknown"
 
     if sys.platform == "win32":
         return _rollback_windows(data_dir, from_version, to_version)
