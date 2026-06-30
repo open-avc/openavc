@@ -330,6 +330,25 @@ services:
     volumes: ["room-102-data:/data"]
 ```
 
+## First Boot (Raspberry Pi Image)
+
+The Raspberry Pi image is ready to run the moment it boots. There is nothing to install and no terminal to open. The flow from a freshly flashed card to a working device is:
+
+1. **Flash and boot.** Write the `openavc-<version>-pi.img.xz` image to an SD card, insert it, connect an HDMI display and a network cable, and power on. The first boot runs a one-time setup (creating the data directory and starting the service), so allow an extra minute before the device is ready.
+
+2. **Read the device's address off the screen.** With no project loaded yet, the HDMI display shows the **setup screen**: the device's IP address, the Programmer and Panel URLs, and what to do next. The IP also prints on the HDMI text console during boot, so you can find the device even without a display manager. On networks with mDNS, the device is also reachable at `http://openavc.local:8080`.
+
+3. **Open the Programmer and create a password.** Browse to `http://openavc.local:8080/programmer` (or the IP from the screen) from a computer on the same network. Because shipped devices are closed by default, the first visit shows a **Create admin password** screen. Set a password here. This claims the device, and the same password becomes the operating-system login for the `openavc` user (see [Raspberry Pi: OS login and SSH](#raspberry-pi-os-login-and-ssh)).
+
+4. **Build your project.** Add devices, design the panel, and save. As soon as the project has panel content, the on-device display switches from the setup screen to the Panel UI on its own. You never have to touch the device to finish setup.
+
+What ships locked down on a fresh image:
+
+- **No usable OS password, and SSH off.** The `openavc` account is locked until you set the admin password in step 3, and `sshd` does not start. Enable SSH later from **Settings > Security** if you need remote console access.
+- **The admin surface is closed.** Until you complete step 3, the Programmer and REST API require the credential you are about to set. The Panel UI is always open, so end users never see a login.
+
+To set the IP, hostname, or WiFi without attaching a keyboard, see [Changing the device's network settings](#changing-the-devices-network-settings). To force the display back to the setup screen while a project is running, open `/setup?stay=1`.
+
 ## Touchscreen Kiosk Setup
 
 For dedicated touchscreen displays, enable kiosk mode in system.json:
