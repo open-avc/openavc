@@ -19,15 +19,18 @@ ROLLBACK_FILE="$DATA_DIR/apply-rollback"
 LOG_TAG="update-helper"
 PYTHON="${PYTHON:-/usr/bin/python3}"
 
-# Directories inside $APP_DIR that hold runtime/user-installed content and
-# must survive every swap (the release tarball never ships these). venv is
-# a Python virtual environment built at install time. driver_repo and
-# plugin_repo are legacy locations from before user-installed content moved
-# to $DATA_DIR — we still preserve them across the swap so the runtime
-# migration in server/system_config.migrate_legacy_repos can drain them
-# into $DATA_DIR on the first start of the new release. The `[ -e ]`
-# guard below makes their absence a no-op for clean post-migration installs.
-PRESERVE_DIRS=(venv driver_repo plugin_repo)
+# Directories inside $APP_DIR that hold content the release tarball never ships
+# and that must survive every swap. venv is a Python virtual environment built
+# at install time. driver_repo and plugin_repo are legacy locations from before
+# user-installed content moved to $DATA_DIR — we still preserve them across the
+# swap so the runtime migration in server/system_config.migrate_legacy_repos can
+# drain them into $DATA_DIR on the first start of the new release. scripts holds
+# launchers placed by the appliance image build (the kiosk/setup display, the
+# first-boot and boot-info helpers); they live here but aren't in the tarball, so
+# without preserving them an in-app update would wipe the on-screen display until
+# the next re-flash. The `[ -e ]` guard below makes any of these absent (a clean
+# generic install that never had them) a no-op.
+PRESERVE_DIRS=(venv driver_repo plugin_repo scripts)
 
 # The subset of PRESERVE_DIRS that systemd may bind-mount via ReadWritePaths
 # under ProtectSystem=strict (the legacy pre-data_dir repo locations). A bind
