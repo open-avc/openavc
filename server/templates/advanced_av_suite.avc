@@ -1,5 +1,5 @@
 {
-    "openavc_version": "0.1.0",
+    "openavc_version": "0.7.0",
     "project": {
         "id": "advanced_av_suite",
         "name": "Advanced AV Suite",
@@ -12,56 +12,45 @@
             "id": "display1",
             "driver": "pjlink_class1",
             "name": "Main Display",
-            "config": {
-                "host": "192.168.1.100",
-                "port": 4352
-            }
+            "config": {},
+            "child_entities": {}
         },
         {
             "id": "display2",
             "driver": "pjlink_class1",
             "name": "Confidence Monitor",
-            "config": {
-                "host": "192.168.1.101",
-                "port": 4352
-            }
+            "config": {},
+            "child_entities": {}
         },
         {
             "id": "switcher1",
             "driver": "generic_tcp",
             "name": "Matrix Switcher",
-            "config": {
-                "host": "192.168.1.110",
-                "port": 23
-            }
+            "config": {},
+            "child_entities": {}
         },
         {
             "id": "dsp1",
             "driver": "generic_tcp",
             "name": "DSP",
-            "config": {
-                "host": "192.168.1.120",
-                "port": 23
-            }
+            "config": {},
+            "child_entities": {}
         },
         {
             "id": "camera1",
             "driver": "generic_tcp",
             "name": "PTZ Camera",
-            "config": {
-                "host": "192.168.1.130",
-                "port": 5678
-            }
+            "config": {},
+            "child_entities": {}
         },
         {
             "id": "sensor1",
             "driver": "generic_tcp",
             "name": "Occupancy Sensor",
             "config": {
-                "host": "192.168.1.140",
-                "port": 80,
                 "transport": "http"
-            }
+            },
+            "child_entities": {}
         }
     ],
     "variables": [
@@ -233,9 +222,11 @@
                             "text_align": "center"
                         },
                         "bindings": {
-                            "text": {
-                                "key": "var.display_status",
-                                "format": "{value}"
+                            "show": {
+                                "value": {
+                                    "key": "var.display_status",
+                                    "format": "{value}"
+                                }
                             }
                         }
                     },
@@ -250,23 +241,27 @@
                             "row_span": 1
                         },
                         "bindings": {
-                            "press": [
-                                {
-                                    "action": "macro",
-                                    "macro": "system_on"
+                            "show": {
+                                "look": {
+                                    "key": "var.system_power",
+                                    "condition": {
+                                        "equals": "on"
+                                    },
+                                    "style_active": {
+                                        "bg_color": "#4CAF50"
+                                    },
+                                    "style_inactive": {
+                                        "bg_color": "#424242"
+                                    }
                                 }
-                            ],
-                            "feedback": {
-                                "key": "var.system_power",
-                                "condition": {
-                                    "equals": "on"
-                                },
-                                "style_active": {
-                                    "bg_color": "#4CAF50"
-                                },
-                                "style_inactive": {
-                                    "bg_color": "#424242"
-                                }
+                            },
+                            "do": {
+                                "press": [
+                                    {
+                                        "action": "macro",
+                                        "macro": "system_on"
+                                    }
+                                ]
                             }
                         }
                     },
@@ -281,23 +276,27 @@
                             "row_span": 1
                         },
                         "bindings": {
-                            "press": [
-                                {
-                                    "action": "macro",
-                                    "macro": "system_off"
+                            "show": {
+                                "look": {
+                                    "key": "var.system_power",
+                                    "condition": {
+                                        "equals": "off"
+                                    },
+                                    "style_active": {
+                                        "bg_color": "#F44336"
+                                    },
+                                    "style_inactive": {
+                                        "bg_color": "#424242"
+                                    }
                                 }
-                            ],
-                            "feedback": {
-                                "key": "var.system_power",
-                                "condition": {
-                                    "equals": "off"
-                                },
-                                "style_active": {
-                                    "bg_color": "#F44336"
-                                },
-                                "style_inactive": {
-                                    "bg_color": "#424242"
-                                }
+                            },
+                            "do": {
+                                "press": [
+                                    {
+                                        "action": "macro",
+                                        "macro": "system_off"
+                                    }
+                                ]
                             }
                         }
                     },
@@ -312,26 +311,30 @@
                             "row_span": 1
                         },
                         "bindings": {
-                            "press": [
-                                {
-                                    "action": "event.emit",
-                                    "event": "custom.select_source",
-                                    "payload": {
-                                        "source": "laptop"
+                            "show": {
+                                "look": {
+                                    "key": "var.current_source",
+                                    "condition": {
+                                        "equals": "laptop"
+                                    },
+                                    "style_active": {
+                                        "bg_color": "#00BCD4"
+                                    },
+                                    "style_inactive": {
+                                        "bg_color": "#424242"
                                     }
                                 }
-                            ],
-                            "feedback": {
-                                "key": "var.current_source",
-                                "condition": {
-                                    "equals": "laptop"
-                                },
-                                "style_active": {
-                                    "bg_color": "#00BCD4"
-                                },
-                                "style_inactive": {
-                                    "bg_color": "#424242"
-                                }
+                            },
+                            "do": {
+                                "press": [
+                                    {
+                                        "action": "event.emit",
+                                        "event": "custom.select_source",
+                                        "payload": {
+                                            "source": "laptop"
+                                        }
+                                    }
+                                ]
                             }
                         }
                     },
@@ -346,26 +349,30 @@
                             "row_span": 1
                         },
                         "bindings": {
-                            "press": [
-                                {
-                                    "action": "event.emit",
-                                    "event": "custom.select_source",
-                                    "payload": {
-                                        "source": "wireless"
+                            "show": {
+                                "look": {
+                                    "key": "var.current_source",
+                                    "condition": {
+                                        "equals": "wireless"
+                                    },
+                                    "style_active": {
+                                        "bg_color": "#00BCD4"
+                                    },
+                                    "style_inactive": {
+                                        "bg_color": "#424242"
                                     }
                                 }
-                            ],
-                            "feedback": {
-                                "key": "var.current_source",
-                                "condition": {
-                                    "equals": "wireless"
-                                },
-                                "style_active": {
-                                    "bg_color": "#00BCD4"
-                                },
-                                "style_inactive": {
-                                    "bg_color": "#424242"
-                                }
+                            },
+                            "do": {
+                                "press": [
+                                    {
+                                        "action": "event.emit",
+                                        "event": "custom.select_source",
+                                        "payload": {
+                                            "source": "wireless"
+                                        }
+                                    }
+                                ]
                             }
                         }
                     },
@@ -380,26 +387,30 @@
                             "row_span": 1
                         },
                         "bindings": {
-                            "press": [
-                                {
-                                    "action": "event.emit",
-                                    "event": "custom.select_source",
-                                    "payload": {
-                                        "source": "bluray"
+                            "show": {
+                                "look": {
+                                    "key": "var.current_source",
+                                    "condition": {
+                                        "equals": "bluray"
+                                    },
+                                    "style_active": {
+                                        "bg_color": "#00BCD4"
+                                    },
+                                    "style_inactive": {
+                                        "bg_color": "#424242"
                                     }
                                 }
-                            ],
-                            "feedback": {
-                                "key": "var.current_source",
-                                "condition": {
-                                    "equals": "bluray"
-                                },
-                                "style_active": {
-                                    "bg_color": "#00BCD4"
-                                },
-                                "style_inactive": {
-                                    "bg_color": "#424242"
-                                }
+                            },
+                            "do": {
+                                "press": [
+                                    {
+                                        "action": "event.emit",
+                                        "event": "custom.select_source",
+                                        "payload": {
+                                            "source": "bluray"
+                                        }
+                                    }
+                                ]
                             }
                         }
                     },
@@ -417,8 +428,12 @@
                             "row_span": 1
                         },
                         "bindings": {
-                            "variable": {
-                                "key": "var.volume"
+                            "show": {
+                                "value": {
+                                    "source": "state",
+                                    "key": "var.volume",
+                                    "write_back": true
+                                }
                             }
                         }
                     },
@@ -433,25 +448,29 @@
                             "row_span": 1
                         },
                         "bindings": {
-                            "press": [
-                                {
-                                    "action": "event.emit",
-                                    "event": "custom.toggle_mic_mute"
+                            "show": {
+                                "look": {
+                                    "key": "var.mic_mute",
+                                    "condition": {
+                                        "equals": true
+                                    },
+                                    "style_active": {
+                                        "bg_color": "#F44336",
+                                        "label": "Mic MUTED"
+                                    },
+                                    "style_inactive": {
+                                        "bg_color": "#4CAF50",
+                                        "label": "Mic Live"
+                                    }
                                 }
-                            ],
-                            "feedback": {
-                                "key": "var.mic_mute",
-                                "condition": {
-                                    "equals": true
-                                },
-                                "style_active": {
-                                    "bg_color": "#F44336",
-                                    "label": "Mic MUTED"
-                                },
-                                "style_inactive": {
-                                    "bg_color": "#4CAF50",
-                                    "label": "Mic Live"
-                                }
+                            },
+                            "do": {
+                                "press": [
+                                    {
+                                        "action": "event.emit",
+                                        "event": "custom.toggle_mic_mute"
+                                    }
+                                ]
                             }
                         }
                     },
@@ -465,13 +484,15 @@
                             "row_span": 1
                         },
                         "bindings": {
-                            "color": {
-                                "key": "var.room_occupied",
-                                "map": {
-                                    "true": "#4CAF50",
-                                    "false": "#9E9E9E"
-                                },
-                                "default": "#9E9E9E"
+                            "show": {
+                                "look": {
+                                    "key": "var.room_occupied",
+                                    "map": {
+                                        "true": "#4CAF50",
+                                        "false": "#9E9E9E"
+                                    },
+                                    "default": "#9E9E9E"
+                                }
                             }
                         }
                     },
@@ -489,13 +510,15 @@
                             "font_size": 12
                         },
                         "bindings": {
-                            "text": {
-                                "key": "var.room_occupied",
-                                "condition": {
-                                    "equals": true
-                                },
-                                "text_true": "Room Occupied",
-                                "text_false": "Room Empty"
+                            "show": {
+                                "value": {
+                                    "key": "var.room_occupied",
+                                    "condition": {
+                                        "equals": true
+                                    },
+                                    "text_true": "Room Occupied",
+                                    "text_false": "Room Empty"
+                                }
                             }
                         }
                     },
@@ -514,13 +537,15 @@
                             "text_color": "#FF9800"
                         },
                         "bindings": {
-                            "text": {
-                                "key": "var.auto_shutdown_warning",
-                                "condition": {
-                                    "equals": true
-                                },
-                                "text_true": "Auto-shutdown in 5 minutes...",
-                                "text_false": ""
+                            "show": {
+                                "value": {
+                                    "key": "var.auto_shutdown_warning",
+                                    "condition": {
+                                        "equals": true
+                                    },
+                                    "text_true": "Auto-shutdown in 5 minutes...",
+                                    "text_false": ""
+                                }
                             }
                         }
                     },
@@ -561,15 +586,21 @@
                             "row_span": 1
                         },
                         "bindings": {
-                            "variable": {
-                                "key": "var.mode"
-                            },
-                            "change": [
-                                {
-                                    "action": "event.emit",
-                                    "event": "custom.mode_change"
+                            "show": {
+                                "value": {
+                                    "source": "state",
+                                    "key": "var.mode",
+                                    "write_back": true
                                 }
-                            ]
+                            },
+                            "do": {
+                                "change": [
+                                    {
+                                        "action": "event.emit",
+                                        "event": "custom.mode_change"
+                                    }
+                                ]
+                            }
                         }
                     }
                 ]
@@ -609,16 +640,18 @@
                             "row_span": 1
                         },
                         "bindings": {
-                            "press": [
-                                {
-                                    "action": "device.command",
-                                    "device": "camera1",
-                                    "command": "recall_preset",
-                                    "params": {
-                                        "preset": 1
+                            "do": {
+                                "press": [
+                                    {
+                                        "action": "device.command",
+                                        "device": "camera1",
+                                        "command": "recall_preset",
+                                        "params": {
+                                            "preset": 1
+                                        }
                                     }
-                                }
-                            ]
+                                ]
+                            }
                         }
                     },
                     {
@@ -633,16 +666,18 @@
                             "row_span": 1
                         },
                         "bindings": {
-                            "press": [
-                                {
-                                    "action": "device.command",
-                                    "device": "camera1",
-                                    "command": "recall_preset",
-                                    "params": {
-                                        "preset": 2
+                            "do": {
+                                "press": [
+                                    {
+                                        "action": "device.command",
+                                        "device": "camera1",
+                                        "command": "recall_preset",
+                                        "params": {
+                                            "preset": 2
+                                        }
                                     }
-                                }
-                            ]
+                                ]
+                            }
                         }
                     },
                     {
@@ -657,16 +692,18 @@
                             "row_span": 1
                         },
                         "bindings": {
-                            "press": [
-                                {
-                                    "action": "device.command",
-                                    "device": "camera1",
-                                    "command": "recall_preset",
-                                    "params": {
-                                        "preset": 3
+                            "do": {
+                                "press": [
+                                    {
+                                        "action": "device.command",
+                                        "device": "camera1",
+                                        "command": "recall_preset",
+                                        "params": {
+                                            "preset": 3
+                                        }
                                     }
-                                }
-                            ]
+                                ]
+                            }
                         }
                     },
                     {
@@ -681,16 +718,18 @@
                             "row_span": 1
                         },
                         "bindings": {
-                            "press": [
-                                {
-                                    "action": "device.command",
-                                    "device": "camera1",
-                                    "command": "recall_preset",
-                                    "params": {
-                                        "preset": 4
+                            "do": {
+                                "press": [
+                                    {
+                                        "action": "device.command",
+                                        "device": "camera1",
+                                        "command": "recall_preset",
+                                        "params": {
+                                            "preset": 4
+                                        }
                                     }
-                                }
-                            ]
+                                ]
+                            }
                         }
                     },
                     {
@@ -720,5 +759,35 @@
     "isc": {
         "shared_state": [],
         "auth_key": ""
-    }
+    },
+    "connections": {
+        "display1": {
+            "host": "192.168.1.100",
+            "port": 4352
+        },
+        "display2": {
+            "host": "192.168.1.101",
+            "port": 4352
+        },
+        "switcher1": {
+            "host": "192.168.1.110",
+            "port": 23
+        },
+        "dsp1": {
+            "host": "192.168.1.120",
+            "port": 23
+        },
+        "camera1": {
+            "host": "192.168.1.130",
+            "port": 5678
+        },
+        "sensor1": {
+            "host": "192.168.1.140",
+            "port": 80
+        }
+    },
+    "driver_dependencies": [],
+    "plugins": {},
+    "plugin_dependencies": [],
+    "device_groups": []
 }

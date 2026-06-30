@@ -1,5 +1,5 @@
 {
-    "openavc_version": "0.1.0",
+    "openavc_version": "0.7.0",
     "project": {
         "id": "simple_projector",
         "name": "Simple Projector",
@@ -12,10 +12,8 @@
             "id": "projector1",
             "driver": "pjlink_class1",
             "name": "Projector",
-            "config": {
-                "host": "192.168.1.100",
-                "port": 4352
-            }
+            "config": {},
+            "child_entities": {}
         }
     ],
     "variables": [
@@ -103,24 +101,28 @@
                             "bg_color": "#4CAF50"
                         },
                         "bindings": {
-                            "press": [
-                                {
-                                    "action": "macro",
-                                    "macro": "system_on"
+                            "show": {
+                                "look": {
+                                    "key": "var.system_power",
+                                    "condition": {
+                                        "equals": "on"
+                                    },
+                                    "style_active": {
+                                        "bg_color": "#4CAF50",
+                                        "text_color": "#fff"
+                                    },
+                                    "style_inactive": {
+                                        "bg_color": "#424242"
+                                    }
                                 }
-                            ],
-                            "feedback": {
-                                "key": "var.system_power",
-                                "condition": {
-                                    "equals": "on"
-                                },
-                                "style_active": {
-                                    "bg_color": "#4CAF50",
-                                    "text_color": "#fff"
-                                },
-                                "style_inactive": {
-                                    "bg_color": "#424242"
-                                }
+                            },
+                            "do": {
+                                "press": [
+                                    {
+                                        "action": "macro",
+                                        "macro": "system_on"
+                                    }
+                                ]
                             }
                         }
                     },
@@ -138,24 +140,28 @@
                             "bg_color": "#F44336"
                         },
                         "bindings": {
-                            "press": [
-                                {
-                                    "action": "macro",
-                                    "macro": "system_off"
+                            "show": {
+                                "look": {
+                                    "key": "var.system_power",
+                                    "condition": {
+                                        "equals": "off"
+                                    },
+                                    "style_active": {
+                                        "bg_color": "#F44336",
+                                        "text_color": "#fff"
+                                    },
+                                    "style_inactive": {
+                                        "bg_color": "#424242"
+                                    }
                                 }
-                            ],
-                            "feedback": {
-                                "key": "var.system_power",
-                                "condition": {
-                                    "equals": "off"
-                                },
-                                "style_active": {
-                                    "bg_color": "#F44336",
-                                    "text_color": "#fff"
-                                },
-                                "style_inactive": {
-                                    "bg_color": "#424242"
-                                }
+                            },
+                            "do": {
+                                "press": [
+                                    {
+                                        "action": "macro",
+                                        "macro": "system_off"
+                                    }
+                                ]
                             }
                         }
                     },
@@ -169,13 +175,15 @@
                             "row_span": 1
                         },
                         "bindings": {
-                            "color": {
-                                "key": "var.system_power",
-                                "map": {
-                                    "on": "#4CAF50",
-                                    "off": "#F44336"
-                                },
-                                "default": "#9E9E9E"
+                            "show": {
+                                "look": {
+                                    "key": "var.system_power",
+                                    "map": {
+                                        "on": "#4CAF50",
+                                        "off": "#F44336"
+                                    },
+                                    "default": "#9E9E9E"
+                                }
                             }
                         }
                     }
@@ -187,5 +195,15 @@
     "isc": {
         "shared_state": [],
         "auth_key": ""
-    }
+    },
+    "connections": {
+        "projector1": {
+            "host": "192.168.1.100",
+            "port": 4352
+        }
+    },
+    "driver_dependencies": [],
+    "plugins": {},
+    "plugin_dependencies": [],
+    "device_groups": []
 }

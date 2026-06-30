@@ -1,5 +1,5 @@
 {
-    "openavc_version": "0.1.0",
+    "openavc_version": "0.7.0",
     "project": {
         "id": "conference_room",
         "name": "Conference Room",
@@ -12,28 +12,22 @@
             "id": "projector1",
             "driver": "pjlink_class1",
             "name": "Projector",
-            "config": {
-                "host": "192.168.1.100",
-                "port": 4352
-            }
+            "config": {},
+            "child_entities": {}
         },
         {
             "id": "dsp1",
             "driver": "generic_tcp",
             "name": "DSP",
-            "config": {
-                "host": "192.168.1.101",
-                "port": 23
-            }
+            "config": {},
+            "child_entities": {}
         },
         {
             "id": "camera1",
             "driver": "generic_tcp",
             "name": "PTZ Camera",
-            "config": {
-                "host": "192.168.1.102",
-                "port": 5678
-            }
+            "config": {},
+            "child_entities": {}
         }
     ],
     "variables": [
@@ -174,23 +168,27 @@
                             "row_span": 1
                         },
                         "bindings": {
-                            "press": [
-                                {
-                                    "action": "macro",
-                                    "macro": "system_on"
+                            "show": {
+                                "look": {
+                                    "key": "var.system_power",
+                                    "condition": {
+                                        "equals": "on"
+                                    },
+                                    "style_active": {
+                                        "bg_color": "#4CAF50"
+                                    },
+                                    "style_inactive": {
+                                        "bg_color": "#424242"
+                                    }
                                 }
-                            ],
-                            "feedback": {
-                                "key": "var.system_power",
-                                "condition": {
-                                    "equals": "on"
-                                },
-                                "style_active": {
-                                    "bg_color": "#4CAF50"
-                                },
-                                "style_inactive": {
-                                    "bg_color": "#424242"
-                                }
+                            },
+                            "do": {
+                                "press": [
+                                    {
+                                        "action": "macro",
+                                        "macro": "system_on"
+                                    }
+                                ]
                             }
                         }
                     },
@@ -205,23 +203,27 @@
                             "row_span": 1
                         },
                         "bindings": {
-                            "press": [
-                                {
-                                    "action": "macro",
-                                    "macro": "system_off"
+                            "show": {
+                                "look": {
+                                    "key": "var.system_power",
+                                    "condition": {
+                                        "equals": "off"
+                                    },
+                                    "style_active": {
+                                        "bg_color": "#F44336"
+                                    },
+                                    "style_inactive": {
+                                        "bg_color": "#424242"
+                                    }
                                 }
-                            ],
-                            "feedback": {
-                                "key": "var.system_power",
-                                "condition": {
-                                    "equals": "off"
-                                },
-                                "style_active": {
-                                    "bg_color": "#F44336"
-                                },
-                                "style_inactive": {
-                                    "bg_color": "#424242"
-                                }
+                            },
+                            "do": {
+                                "press": [
+                                    {
+                                        "action": "macro",
+                                        "macro": "system_off"
+                                    }
+                                ]
                             }
                         }
                     },
@@ -236,23 +238,27 @@
                             "row_span": 1
                         },
                         "bindings": {
-                            "press": [
-                                {
-                                    "action": "macro",
-                                    "macro": "select_laptop"
+                            "show": {
+                                "look": {
+                                    "key": "var.current_source",
+                                    "condition": {
+                                        "equals": "laptop"
+                                    },
+                                    "style_active": {
+                                        "bg_color": "#2196F3"
+                                    },
+                                    "style_inactive": {
+                                        "bg_color": "#424242"
+                                    }
                                 }
-                            ],
-                            "feedback": {
-                                "key": "var.current_source",
-                                "condition": {
-                                    "equals": "laptop"
-                                },
-                                "style_active": {
-                                    "bg_color": "#2196F3"
-                                },
-                                "style_inactive": {
-                                    "bg_color": "#424242"
-                                }
+                            },
+                            "do": {
+                                "press": [
+                                    {
+                                        "action": "macro",
+                                        "macro": "select_laptop"
+                                    }
+                                ]
                             }
                         }
                     },
@@ -267,23 +273,27 @@
                             "row_span": 1
                         },
                         "bindings": {
-                            "press": [
-                                {
-                                    "action": "macro",
-                                    "macro": "select_wireless"
+                            "show": {
+                                "look": {
+                                    "key": "var.current_source",
+                                    "condition": {
+                                        "equals": "wireless"
+                                    },
+                                    "style_active": {
+                                        "bg_color": "#2196F3"
+                                    },
+                                    "style_inactive": {
+                                        "bg_color": "#424242"
+                                    }
                                 }
-                            ],
-                            "feedback": {
-                                "key": "var.current_source",
-                                "condition": {
-                                    "equals": "wireless"
-                                },
-                                "style_active": {
-                                    "bg_color": "#2196F3"
-                                },
-                                "style_inactive": {
-                                    "bg_color": "#424242"
-                                }
+                            },
+                            "do": {
+                                "press": [
+                                    {
+                                        "action": "macro",
+                                        "macro": "select_wireless"
+                                    }
+                                ]
                             }
                         }
                     },
@@ -301,8 +311,12 @@
                             "row_span": 1
                         },
                         "bindings": {
-                            "variable": {
-                                "key": "var.volume"
+                            "show": {
+                                "value": {
+                                    "source": "state",
+                                    "key": "var.volume",
+                                    "write_back": true
+                                }
                             }
                         }
                     },
@@ -321,9 +335,11 @@
                             "text_align": "center"
                         },
                         "bindings": {
-                            "text": {
-                                "key": "var.projector_status",
-                                "format": "Projector: {value}"
+                            "show": {
+                                "value": {
+                                    "key": "var.projector_status",
+                                    "format": "Projector: {value}"
+                                }
                             }
                         }
                     },
@@ -376,16 +392,18 @@
                             "row_span": 1
                         },
                         "bindings": {
-                            "press": [
-                                {
-                                    "action": "device.command",
-                                    "device": "camera1",
-                                    "command": "recall_preset",
-                                    "params": {
-                                        "preset": 1
+                            "do": {
+                                "press": [
+                                    {
+                                        "action": "device.command",
+                                        "device": "camera1",
+                                        "command": "recall_preset",
+                                        "params": {
+                                            "preset": 1
+                                        }
                                     }
-                                }
-                            ]
+                                ]
+                            }
                         }
                     },
                     {
@@ -400,16 +418,18 @@
                             "row_span": 1
                         },
                         "bindings": {
-                            "press": [
-                                {
-                                    "action": "device.command",
-                                    "device": "camera1",
-                                    "command": "recall_preset",
-                                    "params": {
-                                        "preset": 2
+                            "do": {
+                                "press": [
+                                    {
+                                        "action": "device.command",
+                                        "device": "camera1",
+                                        "command": "recall_preset",
+                                        "params": {
+                                            "preset": 2
+                                        }
                                     }
-                                }
-                            ]
+                                ]
+                            }
                         }
                     },
                     {
@@ -439,5 +459,23 @@
     "isc": {
         "shared_state": [],
         "auth_key": ""
-    }
+    },
+    "connections": {
+        "projector1": {
+            "host": "192.168.1.100",
+            "port": 4352
+        },
+        "dsp1": {
+            "host": "192.168.1.101",
+            "port": 23
+        },
+        "camera1": {
+            "host": "192.168.1.102",
+            "port": 5678
+        }
+    },
+    "driver_dependencies": [],
+    "plugins": {},
+    "plugin_dependencies": [],
+    "device_groups": []
 }

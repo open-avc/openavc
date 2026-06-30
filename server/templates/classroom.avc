@@ -1,5 +1,5 @@
 {
-    "openavc_version": "0.1.0",
+    "openavc_version": "0.7.0",
     "project": {
         "id": "classroom",
         "name": "Classroom",
@@ -12,19 +12,15 @@
             "id": "display1",
             "driver": "pjlink_class1",
             "name": "Display",
-            "config": {
-                "host": "192.168.1.100",
-                "port": 4352
-            }
+            "config": {},
+            "child_entities": {}
         },
         {
             "id": "doccam1",
             "driver": "generic_tcp",
             "name": "Document Camera",
-            "config": {
-                "host": "192.168.1.103",
-                "port": 23
-            }
+            "config": {},
+            "child_entities": {}
         }
     ],
     "variables": [
@@ -152,25 +148,29 @@
                             "font_size": 20
                         },
                         "bindings": {
-                            "press": [
-                                {
-                                    "action": "macro",
-                                    "macro": "system_on"
+                            "show": {
+                                "look": {
+                                    "key": "var.system_power",
+                                    "condition": {
+                                        "equals": "on"
+                                    },
+                                    "style_active": {
+                                        "bg_color": "#4CAF50",
+                                        "label": "System On"
+                                    },
+                                    "style_inactive": {
+                                        "bg_color": "#424242",
+                                        "label": "Start Class"
+                                    }
                                 }
-                            ],
-                            "feedback": {
-                                "key": "var.system_power",
-                                "condition": {
-                                    "equals": "on"
-                                },
-                                "style_active": {
-                                    "bg_color": "#4CAF50",
-                                    "label": "System On"
-                                },
-                                "style_inactive": {
-                                    "bg_color": "#424242",
-                                    "label": "Start Class"
-                                }
+                            },
+                            "do": {
+                                "press": [
+                                    {
+                                        "action": "macro",
+                                        "macro": "system_on"
+                                    }
+                                ]
                             }
                         }
                     },
@@ -189,12 +189,14 @@
                             "font_size": 20
                         },
                         "bindings": {
-                            "press": [
-                                {
-                                    "action": "macro",
-                                    "macro": "system_off"
-                                }
-                            ]
+                            "do": {
+                                "press": [
+                                    {
+                                        "action": "macro",
+                                        "macro": "system_off"
+                                    }
+                                ]
+                            }
                         }
                     },
                     {
@@ -208,23 +210,27 @@
                             "row_span": 1
                         },
                         "bindings": {
-                            "press": [
-                                {
-                                    "action": "macro",
-                                    "macro": "select_pc"
+                            "show": {
+                                "look": {
+                                    "key": "var.current_source",
+                                    "condition": {
+                                        "equals": "pc"
+                                    },
+                                    "style_active": {
+                                        "bg_color": "#FF9800"
+                                    },
+                                    "style_inactive": {
+                                        "bg_color": "#424242"
+                                    }
                                 }
-                            ],
-                            "feedback": {
-                                "key": "var.current_source",
-                                "condition": {
-                                    "equals": "pc"
-                                },
-                                "style_active": {
-                                    "bg_color": "#FF9800"
-                                },
-                                "style_inactive": {
-                                    "bg_color": "#424242"
-                                }
+                            },
+                            "do": {
+                                "press": [
+                                    {
+                                        "action": "macro",
+                                        "macro": "select_pc"
+                                    }
+                                ]
                             }
                         }
                     },
@@ -239,23 +245,27 @@
                             "row_span": 1
                         },
                         "bindings": {
-                            "press": [
-                                {
-                                    "action": "macro",
-                                    "macro": "select_doccam"
+                            "show": {
+                                "look": {
+                                    "key": "var.current_source",
+                                    "condition": {
+                                        "equals": "doccam"
+                                    },
+                                    "style_active": {
+                                        "bg_color": "#FF9800"
+                                    },
+                                    "style_inactive": {
+                                        "bg_color": "#424242"
+                                    }
                                 }
-                            ],
-                            "feedback": {
-                                "key": "var.current_source",
-                                "condition": {
-                                    "equals": "doccam"
-                                },
-                                "style_active": {
-                                    "bg_color": "#FF9800"
-                                },
-                                "style_inactive": {
-                                    "bg_color": "#424242"
-                                }
+                            },
+                            "do": {
+                                "press": [
+                                    {
+                                        "action": "macro",
+                                        "macro": "select_doccam"
+                                    }
+                                ]
                             }
                         }
                     },
@@ -274,13 +284,15 @@
                             "text_align": "center"
                         },
                         "bindings": {
-                            "text": {
-                                "key": "var.system_power",
-                                "condition": {
-                                    "equals": "on"
-                                },
-                                "text_true": "Select a source above, or press 'End Class' when done",
-                                "text_false": "Press 'Start Class' to turn on the display"
+                            "show": {
+                                "value": {
+                                    "key": "var.system_power",
+                                    "condition": {
+                                        "equals": "on"
+                                    },
+                                    "text_true": "Select a source above, or press 'End Class' when done",
+                                    "text_false": "Press 'Start Class' to turn on the display"
+                                }
                             }
                         }
                     }
@@ -292,5 +304,19 @@
     "isc": {
         "shared_state": [],
         "auth_key": ""
-    }
+    },
+    "connections": {
+        "display1": {
+            "host": "192.168.1.100",
+            "port": 4352
+        },
+        "doccam1": {
+            "host": "192.168.1.103",
+            "port": 23
+        }
+    },
+    "driver_dependencies": [],
+    "plugins": {},
+    "plugin_dependencies": [],
+    "device_groups": []
 }
