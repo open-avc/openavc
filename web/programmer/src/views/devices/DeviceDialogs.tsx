@@ -1026,7 +1026,7 @@ export function AddDeviceDialog({
         </div>
 
 
-        {(serialCapable || visibleConfigKeys.length > 0) && (
+        {(serialCapable || driverIrCapable(driverInfo) || visibleConfigKeys.length > 0) && (
           <div style={{ marginBottom: "var(--space-md)" }}>
             <div
               style={{
@@ -1331,7 +1331,7 @@ export function EditDeviceDialog({
         </div>
 
 
-        {(serialCapable || visibleConfigKeys.length > 0) && (
+        {(serialCapable || driverIrCapable(driverInfo) || visibleConfigKeys.length > 0) && (
           <div style={{ marginBottom: "var(--space-md)" }}>
             <div
               style={{
