@@ -112,9 +112,16 @@ if [ -n "${APPLE_TEAM_ID:-}" ] && [ -n "${APPLE_APP_SIGNING_IDENTITY:-}" ]; then
     echo "[3/5] Code-signing app (hardened runtime)"
     ENT="$ROOT/installer/macos-entitlements.plist"
     # Nested Mach-O first, then the two main executables, then the bundle.
-    find "$APP/Contents/Resources" -type f \( -name "*.dylib" -o -name "*.so" \) -print0 |
+    # Match by file *type*, not extension: PyInstaller bundles the Python runtime
+    # as Python.framework/Versions/3.12/Python — a Mach-O binary with no
+    # extension — which an *.dylib/*.so glob misses. An unsigned nested binary
+    # fails notarization ("signature invalid / no secure timestamp"), so detect
+    # Mach-O with `file` and sign everything that is one.
+    find "$APP/Contents/Resources" -type f -print0 |
         while IFS= read -r -d '' lib; do
-            codesign --force --timestamp --options runtime --sign "$APPLE_APP_SIGNING_IDENTITY" "$lib"
+            case "$(file -b "$lib")" in
+                *Mach-O*) codesign --force --timestamp --options runtime --sign "$APPLE_APP_SIGNING_IDENTITY" "$lib" ;;
+            esac
         done
     codesign --force --timestamp --options runtime --entitlements "$ENT" \
         --sign "$APPLE_APP_SIGNING_IDENTITY" "$APP/Contents/Resources/server/openavc-server"
