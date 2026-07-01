@@ -54,7 +54,7 @@ Open the device and find the **IR Codes** section. There are several ways to add
 - **Learn from the remote.** Click **Learn**, point the original remote at the bridge's learning window, and press a button. OpenAVC captures the code; give it a name (Power On) and save. Turn on continuous capture to walk through a whole remote quickly, naming each button as you press it.
 - **Paste a Pronto code.** Many remote-code sites publish codes in Pronto hex. Paste one in and name it.
 - **Type a raw code.** If you have a Global Cache `sendir` string, paste that; OpenAVC converts it.
-- **Search a code database** *(coming soon).* Look up your brand and device, pick a function, and OpenAVC fetches that one code.
+- **Search a code database.** Click **Search database**, look up your brand and device in a large online library of remote codes, and pick a function. OpenAVC fetches that one code and converts it to a Pronto code you can test and save. It reaches the internet only while you are searching, and only for the code you choose. The library is *irdb* by Simon Peter and contributors, used under permission. A small number of codes use formats OpenAVC cannot convert yet; those are marked, and you can still learn them from the physical remote.
 
 Each code has a **Test** button that fires it through the bridge right now, so you can confirm the emitter is aimed correctly and the code works before you save it. You can rename, reorder, and delete codes at any time. A ready-made IR driver comes with its codes already filled in, and you can add your own on top.
 

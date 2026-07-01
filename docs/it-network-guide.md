@@ -178,6 +178,7 @@ The following features require outbound internet access if enabled:
 |-------------|------|----------|---------|-----------------|
 | `api.github.com` | 443 | HTTPS | Check for software updates | Yes (`updates.check_enabled: false`) |
 | `github.com` | 443 | HTTPS | Download updates and community drivers | Yes (manual install alternative) |
+| `cdn.jsdelivr.net` | 443 | HTTPS | IR code database search (only while searching in the IR Codes editor) | Yes (feature is only used on demand) |
 | `cloud.openavc.com` | 443 | WSS | Cloud management platform (see below) | Yes (disabled by default) |
 
 If your network policy blocks outbound HTTPS, all local functionality is unaffected. Update checks will fail silently, and the cloud agent (if enabled) will retry with exponential backoff up to a 5-minute interval, then remain dormant until connectivity is restored.

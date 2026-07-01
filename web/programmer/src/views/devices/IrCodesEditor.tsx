@@ -16,6 +16,7 @@ import {
 import { useProjectStore } from "../../store/projectStore";
 import * as api from "../../api/restClient";
 import { IrLearnSession, type IrLearnMode } from "../../api/irLearn";
+import { IrDbSearch } from "./IrDbSearch";
 
 // An IR device's code-set is a map name -> {label, pronto, repeat} stored in
 // device.config.ir_codes. Each code becomes a device command that emits through
@@ -165,6 +166,9 @@ export function IrCodesEditor({
   // Per-row test-emit feedback.
   const [testStatus, setTestStatus] = useState<Record<string, string>>({});
 
+  // Database search UI.
+  const [searchOpen, setSearchOpen] = useState(false);
+
   // Learn session UI.
   const [learnOpen, setLearnOpen] = useState(false);
   const [learnMode, setLearnMode] = useState<IrLearnMode>("auto");
@@ -181,6 +185,7 @@ export function IrCodesEditor({
     setSaved(false);
     setSaveError(null);
     setEditKey(null);
+    setSearchOpen(false);
     closeLearn();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deviceId]);
@@ -320,6 +325,7 @@ export function IrCodesEditor({
     (mode: IrLearnMode, targetKey: string | null) => {
       if (!canBridge) return;
       sessionRef.current?.close();
+      setSearchOpen(false);
       setLearnOpen(true);
       setLearnMode(mode);
       setLearnErr(null);
@@ -363,6 +369,15 @@ export function IrCodesEditor({
     setCaptures([]);
     setLearnErr(null);
     setLearnStatus("");
+  };
+
+  // ── database search ──────────────────────────────────────────────────────
+  const addFromSearch = (label: string, pronto: string) => {
+    setRows((rs) => [
+      ...rs,
+      { key: nextKey(), name: label, label, pronto, repeat: 1 },
+    ]);
+    markDirty();
   };
 
   const addCaptureAsRow = (cap: Capture) => {
@@ -476,13 +491,28 @@ export function IrCodesEditor({
           <Radio size={14} /> Learn from remote
         </button>
         <button
-          style={{ ...iconBtn, opacity: 0.5, cursor: "default" }}
-          disabled
-          title="Coming soon: search an online IR code database (IRDB) by brand and device"
+          style={iconBtn}
+          onClick={() => {
+            closeLearn();
+            setSearchOpen((v) => !v);
+          }}
+          title="Search an online IR code database by brand and device"
         >
-          <Search size={14} /> Search database (coming)
+          <Search size={14} /> Search database
         </button>
       </div>
+
+      {/* Database search panel */}
+      {searchOpen && (
+        <IrDbSearch
+          canBridge={canBridge}
+          connected={connected}
+          bridgeId={bridgeId}
+          bridgePort={bridgePort}
+          onPick={addFromSearch}
+          onClose={() => setSearchOpen(false)}
+        />
+      )}
 
       {/* Learn panel */}
       {learnOpen && (

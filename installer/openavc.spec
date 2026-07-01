@@ -109,6 +109,8 @@ hiddenimports = [
     'server.transport.mqtt',
     'server.transport.frame_parsers',
     'server.transport.binary_helpers',
+    'server.transport.ir_codec',
+    'server.transport.ir_render',
     'server.drivers.base',
     'server.drivers.actions',
     'server.drivers.configurable',

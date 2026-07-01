@@ -61,6 +61,49 @@ export async function irImport(
   });
 }
 
+// --- IR code database (IRDB) search ---
+
+export interface IrDbFunction {
+  name: string;
+  protocol: string;
+  device: number;
+  subdevice: number;
+  function: number;
+  supported: boolean;
+  pronto: string | null;
+  error: string | null;
+}
+
+export interface IrDbDevice {
+  brand: string;
+  type: string;
+  device: number;
+  subdevice: number;
+  path: string;
+}
+
+interface IrDbMeta {
+  notice: string;
+  homepage: string;
+  issues: string;
+}
+
+export async function irDbBrands(): Promise<{ brands: string[] } & IrDbMeta> {
+  return request(`/ir-db/brands`);
+}
+
+export async function irDbDevices(
+  brand: string
+): Promise<{ brand: string; devices: IrDbDevice[] } & IrDbMeta> {
+  return request(`/ir-db/devices?brand=${encodeURIComponent(brand)}`);
+}
+
+export async function irDbFunctions(
+  path: string
+): Promise<{ path: string; functions: IrDbFunction[] } & IrDbMeta> {
+  return request(`/ir-db/functions?path=${encodeURIComponent(path)}`);
+}
+
 export async function invokeDeviceAction(
   deviceId: string,
   actionId: string,

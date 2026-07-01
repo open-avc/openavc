@@ -12,6 +12,7 @@ from server.api.auth import require_programmer_auth
 
 from server.api.routes import devices as _devices_routes
 from server.api.routes import drivers as _drivers_routes
+from server.api.routes import ir_db as _ir_db_routes
 from server.api.routes import macros as _macros_routes
 from server.api.routes import project as _project_routes
 from server.api.routes import scripts as _scripts_routes
@@ -46,6 +47,7 @@ router.include_router(_macros_routes.router)
 router.include_router(_scripts_routes.router)
 router.include_router(_devices_routes.router)
 router.include_router(_drivers_routes.router)
+router.include_router(_ir_db_routes.router)
 router.include_router(_project_routes.router)
 router.include_router(_system_routes.router)
 
