@@ -21,6 +21,17 @@ class RawSendRequest(BaseModel):
     data: str
 
 
+class IREmitRequest(BaseModel):
+    """Body for ``POST /api/devices/{bridge_id}/ir-emit`` — the bridge card's
+    raw IR-emit diagnostic. Fires an arbitrary Pronto code out one of the
+    bridge's emitter ports, independent of any device's code-set. ``port`` is
+    the bridge port id (e.g. ``ir:1``); ``repeat`` is the emit repeat count."""
+
+    port: str
+    pronto: str
+    repeat: int = 1
+
+
 class ActionInvokeRequest(BaseModel):
     """Body for ``POST /api/devices/{id}/actions/{action_id}``.
 

@@ -52,7 +52,7 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse
 
 from server import config
-from server.api import rest, ws, isc_ws, discovery as discovery_api, plugins as plugins_api, assets as assets_api, themes as themes_api, ai_proxy as ai_proxy_api
+from server.api import rest, ws, isc_ws, discovery as discovery_api, plugins as plugins_api, assets as assets_api, themes as themes_api, ai_proxy as ai_proxy_api, ir_learn_ws
 from server.api.routes import network as network_routes
 from server.api.routes import pair as pair_routes
 from server.api.routes import setup as setup_routes
@@ -262,6 +262,7 @@ discovery_api.set_app_engine(engine)
 app.include_router(rest.open_router)
 app.include_router(rest.router)
 app.include_router(ws.router)
+app.include_router(ir_learn_ws.router)
 app.include_router(isc_ws.router)
 app.include_router(discovery_api.router)
 app.include_router(plugins_api.open_router)

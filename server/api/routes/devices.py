@@ -14,6 +14,7 @@ from server.api.models import (
     DeviceSettingRequest,
     DeviceUpdateRequest,
     InstallMissingDriversRequest,
+    IREmitRequest,
     PendingSettingsRequest,
     RawSendRequest,
 )
@@ -478,6 +479,41 @@ async def send_raw(device_id: str, body: RawSendRequest) -> dict[str, Any]:
         raise _api_error(
             500, f"Failed to send raw data to device '{device_id}'", e
         )
+
+
+@router.post("/devices/{bridge_id}/ir-emit")
+async def ir_emit(bridge_id: str, body: IREmitRequest) -> dict[str, Any]:
+    """Emit an arbitrary Pronto code out one of a bridge's IR ports (diagnostic).
+
+    Backs the bridge card's raw IR-emit test — it fires a code without a
+    downstream IR device, e.g. to verify an emitter or test a just-learned code
+    before saving it. Routes through the same vendor-neutral bridge_emit path a
+    device command uses; the bridge driver converts the Pronto to its wire form.
+    """
+    engine = _get_engine()
+    bridge = engine.devices.get_driver(bridge_id)
+    if bridge is None or not getattr(bridge, "is_bridge", False):
+        raise _api_error(
+            404, f"Bridge '{bridge_id}' not found or is not a bridge",
+            ValueError(bridge_id),
+        )
+    if not getattr(bridge, "_connected", False):
+        raise _api_error(
+            503, f"Bridge '{bridge_id}' is offline", ConnectionError(bridge_id)
+        )
+    try:
+        result = await bridge.bridge_emit(
+            body.port, "ir", {"pronto": body.pronto, "repeat": body.repeat}
+        )
+        return {"success": True, "result": result}
+    except NotImplementedError as e:
+        raise _api_error(422, f"Bridge '{bridge_id}' does not emit IR", e)
+    except ConnectionError as e:
+        raise _api_error(503, f"Bridge '{bridge_id}' is offline", e)
+    except ValueError as e:
+        raise _api_error(400, str(e), e)
+    except Exception as e:
+        raise _api_error(500, f"Failed to emit IR through '{bridge_id}'", e)
 
 
 # --- Device Actions (Quick Action strip) ---
