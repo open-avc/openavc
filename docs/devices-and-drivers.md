@@ -52,6 +52,7 @@ The Generic devices are:
 - **Generic TCP Device**: any networked device with a text protocol.
 - **Generic Serial Device**: any RS-232/RS-485 device, directly on a serial port or [through a bridge](connecting-through-a-bridge.md).
 - **Generic HTTP/REST Device**: any device with an HTTP API.
+- **IR Device**: anything driven by an infrared remote (a TV, cable box, or AVR), through an IR bridge. Instead of commands and responses, you build a set of IR codes: learn them from the remote, paste Pronto hex, or search a database. See [Connecting Devices Through a Bridge](connecting-through-a-bridge.md#controlling-an-ir-device-through-a-bridge).
 
 After adding a Generic device, open it and find the **Commands & Responses** section.
 

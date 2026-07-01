@@ -421,7 +421,7 @@ The tables below document each field in detail.
 |-------|----------|-------------|
 | `id` | Yes | Unique driver identifier. Lowercase, underscores. |
 | `name` | Yes | Human-readable display name. |
-| `transport` | Yes | `"tcp"`, `"serial"`, `"http"`, `"udp"`, or `"osc"`. |
+| `transport` | Yes | `"tcp"`, `"serial"`, `"http"`, `"udp"`, `"osc"`, or `"bridge"` (an IR device that emits through a bridge; see IR devices below). |
 | `manufacturer` | No | Manufacturer name. Default: `"Generic"`. |
 | `category` | No | One of: `projector`, `display`, `switcher`, `scaler`, `audio`, `camera`, `lighting`, `relay`, `utility`, `other`. |
 | `version` | No | Semantic version. Default: `"1.0.0"`. |
@@ -1399,6 +1399,28 @@ bridge:
 ```
 
 A downstream device binds to a bridge from its own Connection settings (choose `Through a bridge`, then pick the bridge and port). For a serial port, the platform routes the downstream over the bridge's pass-through with no extra code. Pushing baud and parity to the hardware needs a Python driver that overrides `prepare_bridge_port` (see Method 3). The Global Cache iTach IP2SL driver in the community library is a complete example.
+
+### IR devices and IR bridges
+
+An **IR device** is controlled by an infrared remote through an IR bridge. It has no address of its own, so it uses `transport: bridge` and sets `ir_codes: true`. Its commands are a code-set: a map of named codes stored as vendor-neutral **Pronto hex** plus a per-command repeat. Each code becomes a device command, so panel buttons and macros bind to it normally.
+
+The built-in **IR Device** (`generic_ir`) is authored per-device in the device page's **IR Codes** editor (learn from a remote, paste Pronto, type a raw code, or search a database). To publish a ready-made code-set as a community driver, use the same shape and ship the codes in `default_config.ir_codes`:
+
+```yaml
+id: brandx_tv_ir
+name: BrandX TV (IR)
+manufacturer: BrandX
+category: display
+transport: bridge         # no address of its own; emits through a bridge
+ir_codes: true            # shows the IR Codes editor; codes become commands
+default_config:
+  ir_codes:
+    power_on: { label: "Power On",    pronto: "0000 006D 0000 0022 ...", repeat: 1 }
+    vol_up:   { label: "Volume Up",   pronto: "0000 006D 0000 0022 ...", repeat: 2 }
+    hdmi1:    { label: "Input HDMI1", pronto: "0000 006D 0000 0022 ...", repeat: 1 }
+```
+
+An **IR bridge** declares `kind: ir` ports. Unlike a serial port, an IR port has no transparent pipe, so it needs a Python driver that emits and (optionally) learns: override `bridge_emit` to convert a Pronto code to the hardware's wire format and send it, and the `bridge_learn_*` methods plus `can_learn` to capture codes from a remote. Use `server.transport.ir_codec` for the Pronto step. The Global Cache iTach IP2IR driver is a complete example.
 
 ## Method 3: Python Driver
 
