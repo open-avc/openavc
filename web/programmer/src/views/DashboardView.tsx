@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Cpu, Zap, Cloud, FileCode, AlertTriangle, Clock, ArrowRight, ArrowUpCircle, Monitor, Copy, Check, ExternalLink, QrCode } from "lucide-react";
+import { Cpu, Zap, Cloud, FileCode, AlertTriangle, Clock, ArrowRight, ArrowUpCircle, Monitor, Copy, Check, ExternalLink, QrCode, Printer } from "lucide-react";
 import qrcode from "qrcode-generator";
 import { ViewContainer } from "../components/layout/ViewContainer";
 import { DeviceStatusDot } from "../components/shared/DeviceStatusDot";
@@ -9,6 +9,7 @@ import { useConnectionStore } from "../store/connectionStore";
 import { useLogStore } from "../store/logStore";
 import { useNavigationStore } from "../store/navigationStore";
 import { StatusCardSlot } from "../components/plugins/PluginExtensions";
+import { showError } from "../store/toastStore";
 import * as api from "../api/restClient";
 import type { CloudStatus } from "../api/restClient";
 
@@ -39,13 +40,123 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-function QRCodeDialog({ url, onClose }: { url: string; onClose: () => void }) {
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+// Full-page, print-ready poster: big headline + big QR + subtle OpenAVC branding
+// and a faint sage "signal ripple" motif in opposite corners. Rendered into a
+// standalone window so none of the IDE's styling bleeds into the printout.
+function buildPosterHtml({ qrSvg, url, roomName, logoSrc }: { qrSvg: string; url: string; roomName: string; logoSrc: string }): string {
+  const room = roomName.trim() ? escapeHtml(roomName.trim()) : "this room";
+  const safeUrl = escapeHtml(url);
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scan to control ${room}</title>
+<style>
+  :root { --sage: #8AB493; --sage-deep: #4a7d5c; --ink: #23302a; --muted: #6a7b70; }
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  html, body { margin: 0; padding: 0; height: 100%; background: #fff; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ink);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; min-height: 100vh; position: relative; overflow: hidden;
+    padding: 18mm 16mm;
+  }
+  .accent { position: fixed; width: 92mm; height: 92mm; opacity: 0.12; pointer-events: none; z-index: 0; }
+  .accent svg { width: 100%; height: 100%; display: block; }
+  .accent-tl { top: -30mm; left: -30mm; }
+  .accent-br { bottom: -30mm; right: -30mm; }
+  .content { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; }
+  .brand { height: 8mm; width: auto; opacity: 0.75; margin-bottom: 13mm; }
+  .headline { font-size: 30pt; font-weight: 700; line-height: 1.22; margin: 0; letter-spacing: -0.01em; }
+  .headline .room { color: var(--sage-deep); }
+  .qr-wrap { margin: 12mm 0 8mm; padding: 6mm; background: #fff; border: 1px solid #e6ece8; border-radius: 4mm; }
+  .qr { width: 92mm; height: 92mm; }
+  .qr svg { width: 100%; height: 100%; display: block; }
+  .steps { font-size: 13pt; color: var(--muted); line-height: 1.7; margin: 0; }
+  .steps b { color: var(--ink); font-weight: 600; }
+  .url { margin-top: 6mm; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+         font-size: 12pt; color: var(--sage-deep); word-break: break-all; }
+  @page { margin: 12mm; }
+</style>
+</head>
+<body>
+  <div class="accent accent-tl" aria-hidden="true">
+    <svg viewBox="0 0 200 200"><g fill="none" stroke="#8AB493" stroke-width="7">
+      <circle cx="0" cy="0" r="55"/><circle cx="0" cy="0" r="100"/><circle cx="0" cy="0" r="145"/><circle cx="0" cy="0" r="190"/>
+    </g></svg>
+  </div>
+  <div class="accent accent-br" aria-hidden="true">
+    <svg viewBox="0 0 200 200"><g fill="none" stroke="#4a7d5c" stroke-width="7">
+      <circle cx="200" cy="200" r="55"/><circle cx="200" cy="200" r="100"/><circle cx="200" cy="200" r="145"/><circle cx="200" cy="200" r="190"/>
+    </g></svg>
+  </div>
+  <div class="content">
+    <img id="brand-logo" class="brand" src="${logoSrc}" alt="OpenAVC">
+    <h1 class="headline">To control <span class="room">${room}</span>,<br>scan this QR code</h1>
+    <div class="qr-wrap"><div class="qr">${qrSvg}</div></div>
+    <p class="steps"><b>1.</b> Open your phone or tablet camera &nbsp;&nbsp; <b>2.</b> Tap the link that appears</p>
+    <div class="url">${safeUrl}</div>
+  </div>
+  <script>
+    (function () {
+      function go() { try { window.focus(); window.print(); } catch (e) {} }
+      var img = document.getElementById('brand-logo');
+      if (!img || img.complete) { setTimeout(go, 120); return; }
+      img.addEventListener('load', function () { setTimeout(go, 80); });
+      img.addEventListener('error', function () { setTimeout(go, 80); });
+    })();
+  </script>
+</body>
+</html>`;
+}
+
+function QRCodeDialog({ url, roomName, onClose }: { url: string; roomName: string; onClose: () => void }) {
   const svgMarkup = useMemo(() => {
     const qr = qrcode(0, "M");
     qr.addData(url);
     qr.make();
     return qr.createSvgTag({ cellSize: 8, margin: 2, scalable: true });
   }, [url]);
+
+  const handlePrint = useCallback(async () => {
+    // Inline the logo as a data URI so the standalone print window is fully
+    // self-contained (no dependence on cross-window asset loading/timing).
+    let logoSrc = new URL(`${import.meta.env.BASE_URL}logo-wide.png`, document.baseURI).href;
+    try {
+      const resp = await fetch(logoSrc);
+      if (resp.ok) {
+        const blob = await resp.blob();
+        logoSrc = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = () => reject(new Error("logo read failed"));
+          reader.readAsDataURL(blob);
+        });
+      }
+    } catch {
+      /* fall back to the resolved URL */
+    }
+
+    const posterHtml = buildPosterHtml({ qrSvg: svgMarkup, url, roomName, logoSrc });
+    const win = window.open("", "_blank");
+    if (!win) {
+      showError("Couldn't open the print view. Allow pop-ups for this site, then try again.");
+      return;
+    }
+    win.document.open();
+    win.document.write(posterHtml);
+    win.document.close();
+  }, [svgMarkup, url, roomName]);
 
   return (
     <Dialog title="Scan to connect" onClose={onClose}>
@@ -84,29 +195,50 @@ function QRCodeDialog({ url, onClose }: { url: string; onClose: () => void }) {
             iOS dedicated panel setup
           </a>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          style={{
-            marginTop: "var(--space-sm)",
-            padding: "var(--space-sm) var(--space-lg)",
-            background: "var(--accent-bg)",
-            color: "#fff",
-            border: "none",
-            borderRadius: "var(--border-radius)",
-            cursor: "pointer",
-            fontSize: "var(--font-size-sm)",
-            fontWeight: 500,
-          }}
-        >
-          Close
-        </button>
+        <div style={{ display: "flex", gap: "var(--space-sm)", marginTop: "var(--space-sm)" }}>
+          <button
+            type="button"
+            onClick={handlePrint}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "var(--space-xs)",
+              padding: "var(--space-sm) var(--space-lg)",
+              background: "var(--accent-bg)",
+              color: "#fff",
+              border: "none",
+              borderRadius: "var(--border-radius)",
+              cursor: "pointer",
+              fontSize: "var(--font-size-sm)",
+              fontWeight: 500,
+            }}
+          >
+            <Printer size={14} />
+            Print sign
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              padding: "var(--space-sm) var(--space-lg)",
+              background: "var(--bg-hover)",
+              color: "var(--text-primary)",
+              border: "1px solid var(--border-color)",
+              borderRadius: "var(--border-radius)",
+              cursor: "pointer",
+              fontSize: "var(--font-size-sm)",
+              fontWeight: 500,
+            }}
+          >
+            Close
+          </button>
+        </div>
       </div>
     </Dialog>
   );
 }
 
-function PanelAccessCard({ systemStatus }: { systemStatus: Record<string, unknown> | null }) {
+function PanelAccessCard({ systemStatus, roomName }: { systemStatus: Record<string, unknown> | null; roomName: string }) {
   const [qrOpen, setQrOpen] = useState(false);
   if (!systemStatus) return null;
 
@@ -234,7 +366,7 @@ function PanelAccessCard({ systemStatus }: { systemStatus: Record<string, unknow
           </div>
         )}
       </div>
-      {qrOpen && pairUrl && <QRCodeDialog url={pairUrl} onClose={() => setQrOpen(false)} />}
+      {qrOpen && pairUrl && <QRCodeDialog url={pairUrl} roomName={roomName} onClose={() => setQrOpen(false)} />}
     </div>
   );
 }
@@ -570,7 +702,7 @@ export function DashboardView() {
         {/* Right sidebar */}
         <div>
           {/* Panel Access */}
-          <PanelAccessCard systemStatus={systemStatus} />
+          <PanelAccessCard systemStatus={systemStatus} roomName={String(project.project.name ?? "")} />
 
           {/* Tracked Variables */}
           {trackedVars.length > 0 && (
