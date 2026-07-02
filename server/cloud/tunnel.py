@@ -38,7 +38,10 @@ class TunnelConnection:
     # _handle_ws_open after the local connection is established (A48).
     pending_ws_opens: dict[str, list[dict]] = field(default_factory=dict)
     recv_task: asyncio.Task | None = None
-    _forward_tasks: list[asyncio.Task] = field(default_factory=list)
+    # Both task sets self-prune via add_done_callback(discard) so a long-lived
+    # tunnel doesn't accumulate one dead Task per connection/request.
+    _forward_tasks: set[asyncio.Task] = field(default_factory=set)
+    _data_tasks: set[asyncio.Task] = field(default_factory=set)
 
 
 class TunnelHandler:
@@ -187,10 +190,24 @@ class TunnelHandler:
             except asyncio.CancelledError:
                 pass
 
-        # Cancel forward tasks
-        for task in conn._forward_tasks:
-            if not task.done():
-                task.cancel()
+        # Cancel in-flight data-message handlers BEFORE tearing down the
+        # connection maps: an http_request/ws_open handler still awaiting its
+        # local connect would otherwise complete after this close and
+        # re-populate local_ws_connections / spawn a forwarder for a tunnel
+        # that no longer exists.
+        data_tasks = [t for t in conn._data_tasks if not t.done()]
+        for task in data_tasks:
+            task.cancel()
+        if data_tasks:
+            await asyncio.gather(*data_tasks, return_exceptions=True)
+
+        # Cancel forward tasks (awaited so their cleanup finishes before the
+        # sockets they reference are closed below)
+        forward_tasks = [t for t in conn._forward_tasks if not t.done()]
+        for task in forward_tasks:
+            task.cancel()
+        if forward_tasks:
+            await asyncio.gather(*forward_tasks, return_exceptions=True)
 
         # Close all local WS connections
         for ws_id, ws in list(conn.local_ws_connections.items()):
@@ -227,7 +244,6 @@ class TunnelHandler:
 
                 if msg_type == "http_request":
                     task = asyncio.create_task(self._handle_http_request(conn, msg))
-                    conn._data_tasks = getattr(conn, '_data_tasks', set())
                     conn._data_tasks.add(task)
                     task.add_done_callback(conn._data_tasks.discard)
                 elif msg_type == "ws_open":
@@ -238,7 +254,6 @@ class TunnelHandler:
                     if ws_id:
                         conn.pending_ws_opens.setdefault(ws_id, [])
                     task = asyncio.create_task(self._handle_ws_open(conn, msg))
-                    conn._data_tasks = getattr(conn, '_data_tasks', set())
                     conn._data_tasks.add(task)
                     task.add_done_callback(conn._data_tasks.discard)
                 elif msg_type == "ws_frame":
@@ -383,6 +398,18 @@ class TunnelHandler:
                 additional_headers=additional_headers or None,
                 ssl=ssl_ctx,
             )
+
+            # The tunnel may have been closed while we awaited the connect.
+            # Registering now would put a live socket and a forwarder on a
+            # conn nothing will ever clean up again.
+            if self._tunnels.get(conn.tunnel_id) is not conn:
+                conn.pending_ws_opens.pop(ws_id, None)
+                try:
+                    await local_ws.close()
+                except (ConnectionClosed, OSError):
+                    pass
+                return
+
             conn.local_ws_connections[ws_id] = local_ws
 
             # Drain any frames / close that arrived during the connect (A48).
@@ -405,7 +432,8 @@ class TunnelHandler:
 
             # Start forwarding local → cloud
             task = asyncio.create_task(self._forward_local_ws(conn, ws_id, local_ws))
-            conn._forward_tasks.append(task)
+            conn._forward_tasks.add(task)
+            task.add_done_callback(conn._forward_tasks.discard)
 
         except (ConnectionClosed, OSError, InvalidURI, InvalidHandshake) as e:
             log.warning(f"Tunnel {conn.tunnel_id}: WS open to {url} failed: {e}")

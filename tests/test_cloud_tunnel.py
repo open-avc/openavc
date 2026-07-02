@@ -541,3 +541,157 @@ async def test_ws_open_failure_drops_queued_frames(tunnel_handler, mock_agent):
     assert sent == {"type": "ws_close", "id": "ws-bad"}
 
     await tunnel_handler.stop()
+
+
+# ===========================================================================
+# Tunnel close must cancel in-flight data-message handlers, and a ws_open
+# that outlives the close must not re-populate the dead tunnel. Forward
+# tasks self-prune so a long-lived tunnel doesn't grow one dead Task per
+# WS connection.
+# ===========================================================================
+
+
+class _StubLocalWS:
+    """Local WS stub: records close, yields zero frames to the forwarder."""
+
+    def __init__(self):
+        self.closed = False
+
+    async def send(self, data):
+        pass
+
+    async def close(self):
+        self.closed = True
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        raise StopAsyncIteration
+
+
+class _ScriptedDataWS:
+    """Data WS stub: hands out scripted messages, then blocks until cancelled."""
+
+    def __init__(self, messages):
+        self._messages = list(messages)
+
+    async def recv(self):
+        if self._messages:
+            return self._messages.pop(0)
+        await asyncio.Event().wait()
+
+    async def send(self, data):
+        pass
+
+    async def close(self):
+        pass
+
+
+@pytest.mark.asyncio
+async def test_close_tunnel_cancels_inflight_ws_open(tunnel_handler, mock_agent):
+    """Closing a tunnel while a ws_open handler is still awaiting its local
+    connect must cancel that handler — it must not complete later and
+    register a socket + forwarder on the closed tunnel."""
+    from server.cloud.tunnel import TunnelConnection
+    from unittest.mock import patch
+
+    conn = TunnelConnection(
+        tunnel_id="t-race-close", target_port=8080,
+        data_ws=_ScriptedDataWS([json.dumps({
+            "type": "ws_open", "id": "ws-1", "path": "/ws", "headers": {},
+        })]),
+    )
+    tunnel_handler._tunnels["t-race-close"] = conn
+
+    gate = asyncio.Event()
+    local_ws = _StubLocalWS()
+
+    async def slow_connect(*args, **kwargs):
+        await gate.wait()
+        return local_ws
+
+    with patch("server.cloud.tunnel.websockets.connect", new=slow_connect):
+        conn.recv_task = asyncio.create_task(
+            tunnel_handler._data_receive_loop(conn)
+        )
+        # Let the receive loop spawn the ws_open handler, which parks at
+        # the gated connect.
+        for _ in range(3):
+            await asyncio.sleep(0)
+        assert len(conn._data_tasks) == 1
+        pending = next(iter(conn._data_tasks))
+
+        await tunnel_handler._close_tunnel("t-race-close")
+        assert pending.cancelled()
+
+        # Even if the connect had been about to resolve, nothing may
+        # re-populate the closed tunnel.
+        gate.set()
+        for _ in range(3):
+            await asyncio.sleep(0)
+
+    assert conn.local_ws_connections == {}
+    assert not conn._forward_tasks
+
+
+@pytest.mark.asyncio
+async def test_ws_open_completing_after_close_does_not_register(tunnel_handler, mock_agent):
+    """A ws_open handler whose connect resolves after the tunnel was removed
+    closes the fresh socket and registers nothing (liveness re-check)."""
+    from server.cloud.tunnel import TunnelConnection
+    from unittest.mock import patch
+
+    conn = TunnelConnection(tunnel_id="t-late", target_port=8080, data_ws=AsyncMock())
+    tunnel_handler._tunnels["t-late"] = conn
+
+    gate = asyncio.Event()
+    local_ws = _StubLocalWS()
+
+    async def slow_connect(*args, **kwargs):
+        await gate.wait()
+        return local_ws
+
+    with patch("server.cloud.tunnel.websockets.connect", new=slow_connect):
+        conn.pending_ws_opens["ws-9"] = []
+        handler_task = asyncio.create_task(tunnel_handler._handle_ws_open(conn, {
+            "type": "ws_open", "id": "ws-9", "path": "/ws", "headers": {},
+        }))
+        await asyncio.sleep(0)
+
+        # Tunnel goes away while the handler is parked at the connect.
+        tunnel_handler._tunnels.pop("t-late")
+        gate.set()
+        await handler_task
+
+    assert local_ws.closed
+    assert conn.local_ws_connections == {}
+    assert not conn._forward_tasks
+    assert "ws-9" not in conn.pending_ws_opens
+
+
+@pytest.mark.asyncio
+async def test_forward_tasks_self_prune(tunnel_handler, mock_agent):
+    """Finished forwarders drop out of _forward_tasks instead of accumulating
+    for the tunnel's lifetime."""
+    from server.cloud.tunnel import TunnelConnection
+    from unittest.mock import patch, AsyncMock as _AsyncMock
+
+    conn = TunnelConnection(tunnel_id="t-churn", target_port=8080, data_ws=AsyncMock())
+    tunnel_handler._tunnels["t-churn"] = conn
+
+    with patch(
+        "server.cloud.tunnel.websockets.connect",
+        new=_AsyncMock(side_effect=lambda *a, **k: _StubLocalWS()),
+    ):
+        for i in range(3):
+            await tunnel_handler._handle_ws_open(conn, {
+                "type": "ws_open", "id": f"ws-{i}", "path": "/ws", "headers": {},
+            })
+    # Let the (immediately-exhausted) forwarders finish.
+    for _ in range(5):
+        await asyncio.sleep(0)
+
+    assert len(conn._forward_tasks) == 0
+
+    await tunnel_handler.stop()
