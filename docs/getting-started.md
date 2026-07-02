@@ -226,7 +226,7 @@ In the Device View, select the projector and use the command testing panel. Choo
 
 Navigate to http://localhost:8080/panel in another tab. This is what end users see on a touchscreen. Press the buttons and watch commands flow through the system.
 
-**Accessing from a tablet or phone:** By default, the server only accepts connections from the local machine (except for Windows Installer and Docker, which accept network connections out of the box). To open the panel on another device:
+**Accessing from a tablet or phone:** The packaged installs — Windows Installer, macOS Installer, Docker, and the Linux Install Script — accept network connections out of the box, so the panel URL works from any device on the same network. Only an install from source starts bound to the local machine. To open it up on a source install:
 
 1. Go to **Settings** in the Programmer IDE sidebar
 2. Change the **bind address** to `0.0.0.0`

@@ -167,7 +167,7 @@ You can also read and modify system configuration through the REST API:
 - `GET /api/system/config` returns the current configuration (sensitive fields redacted)
 - `PATCH /api/system/config` updates individual sections and saves to disk
 
-> **Bind address security:** The default bind address is `127.0.0.1` (localhost only) for Linux and from-source installations. The Windows installer and Docker pre-configure `0.0.0.0` (network-accessible) since these deployments typically serve touch panels on other devices. To allow network access, set `bind_address` to `0.0.0.0` in system.json or via the `OPENAVC_BIND` environment variable. When bound to `0.0.0.0` without authentication configured, the server logs a prominent warning at startup.
+> **Bind address security:** The packaged installs — Windows installer, macOS installer, Docker, and the Linux install script — pre-configure `0.0.0.0` (network-accessible) since these deployments typically serve touch panels on other devices. A from-source installation defaults to `127.0.0.1` (localhost only); to allow network access, set `bind_address` to `0.0.0.0` in system.json or via the `OPENAVC_BIND` environment variable. To force localhost-only on a packaged install, set `OPENAVC_BIND=127.0.0.1` instead. When bound to `0.0.0.0` without authentication configured, the server logs a prominent warning at startup.
 
 ## Updates
 
@@ -516,7 +516,7 @@ If you front OpenAVC with nginx, Caddy, or another reverse proxy that terminates
 - Communication is HTTP by default, suitable for isolated AV VLANs.
 - HTTPS is available as a built-in opt-in (see the HTTPS section above). Auto-generated self-signed cert by default, or supply your own cert/key for environments with an internal CA. Reverse-proxy TLS is still supported for deployments that prefer it.
 - ISC (inter-system communication) uses a shared auth key for system-to-system traffic, and switches to `wss://` automatically when peers advertise HTTPS.
-- The default bind address is localhost only. Change to `0.0.0.0` in system.json when you need network access.
+- Packaged installs bind to all interfaces (`0.0.0.0`) so panels on other devices can connect; set a Programmer password (the first-run prompt) or an API key on any networked deployment. A from-source install binds to localhost only until you change it.
 
 ## See Also
 

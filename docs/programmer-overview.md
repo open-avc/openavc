@@ -115,7 +115,7 @@ This tab is essential for debugging bindings and triggers. If a button feedback 
 
 The Settings view configures the server itself: networking, authentication, and logging. Changes here are saved to `system.json` in the data directory and persist across restarts and updates.
 
-- **Bind address**: controls whether OpenAVC accepts connections from other devices on the network. Default is `127.0.0.1` (localhost only). Change to `0.0.0.0` to allow access from tablets, phones, and other computers.
+- **Bind address**: controls whether OpenAVC accepts connections from other devices on the network. `0.0.0.0` allows access from tablets, phones, and other computers; `127.0.0.1` restricts to this machine only. The packaged installs (Windows, macOS, Docker, Linux install script) come set to `0.0.0.0`; an install from source starts at `127.0.0.1`.
 - **Port**: HTTP port (default 8080)
 - **Programmer password**: protects the Programmer IDE and API when the server is network-accessible
 - **API key**: for third-party integrations connecting via REST or WebSocket
