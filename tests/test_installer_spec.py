@@ -71,3 +71,35 @@ def test_all_function_level_transport_imports_are_declared():
     assert not missing, (
         f"openavc.spec is missing transport hidden imports used in source: {missing}"
     )
+
+
+def _data_dests() -> set[str]:
+    """Extract the bundle-destination strings from the `datas = [...]` list.
+
+    Same plain-text approach as `_hidden_imports` — the spec isn't importable
+    outside PyInstaller.
+    """
+    src = SPEC_PATH.read_text(encoding="utf-8")
+    m = re.search(r"^datas\s*=\s*\[(.*?)\n\]", src, re.DOTALL | re.MULTILINE)
+    assert m, "Could not locate datas list in openavc.spec"
+    return set(re.findall(r",\s*['\"]([^'\"]+)['\"]\)", m.group(1)))
+
+
+def test_resource_dirs_are_bundled():
+    """Every resource directory the frozen runtime resolves under APP_DIR
+    (sys._MEIPASS) must be in the spec's datas, or the feature it backs goes
+    silently missing on Windows/macOS installs while Docker/Pi/Linux (which
+    copy server/ wholesale) keep it. server/templates is the case that bit:
+    project_library.ensure_starter_projects silently no-ops without it, so
+    installed builds had an empty starter-project library.
+    """
+    dests = _data_dests()
+    required = {
+        "server/templates",
+        "server/drivers/definitions",
+        "themes",
+        "web/panel",
+        "projects/default",
+    }
+    missing = required - dests
+    assert not missing, f"openavc.spec datas is missing resource dirs: {missing}"

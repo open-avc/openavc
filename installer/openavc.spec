@@ -28,6 +28,11 @@ datas = [
     (str(PROJECT_ROOT / 'simulator'), 'simulator'),
     # Driver definitions (built-in YAML drivers)
     (str(PROJECT_ROOT / 'server' / 'drivers' / 'definitions'), 'server/drivers/definitions'),
+    # Built-in starter project templates (project_library.ensure_starter_projects
+    # seeds the project library from here on first run; it silently skips when
+    # the directory is missing, so leaving this out ships an empty starter
+    # library with no error)
+    (str(PROJECT_ROOT / 'server' / 'templates'), 'server/templates'),
     # Note: driver_repo and plugin_repo are no longer bundled into _internal/.
     # Both live under the persistent data directory now (see system_config.py)
     # so user-installed community drivers and plugins survive uninstalls and
