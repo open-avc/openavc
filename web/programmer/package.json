@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build && node -e \"require('fs').copyFileSync('node_modules/lucide-static/sprite.svg','../panel/icons.svg')\"",
+    "build": "node scripts/build-icons.mjs && tsc && vite build",
     "preview": "vite preview"
   },
   "dependencies": {

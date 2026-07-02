@@ -1,96 +1,10 @@
 import { useState, useMemo } from "react";
 import { X } from "lucide-react";
 import * as LucideIcons from "lucide-react";
-
-// AV-relevant icon categories
-const ICON_CATEGORIES: Record<string, string[]> = {
-  "Power & System": [
-    "power", "power-off", "plug", "zap", "shield", "lock", "unlock", "settings",
-    "settings-2", "cog", "wrench", "toggle-left", "toggle-right",
-  ],
-  "Audio": [
-    "volume", "volume-1", "volume-2", "volume-x", "mic", "mic-off", "headphones",
-    "speaker", "music", "music-2", "music-3", "audio-lines",
-  ],
-  "Video": [
-    "monitor", "tv", "tv-2", "projector", "camera", "video", "video-off", "film",
-    "screen-share", "screen-share-off", "airplay", "cast", "presentation",
-  ],
-  "Playback": [
-    "play", "pause", "square", "skip-forward", "skip-back", "rewind",
-    "fast-forward", "repeat", "repeat-1", "shuffle", "circle-play",
-    "circle-pause", "circle-stop",
-  ],
-  "Navigation": [
-    "arrow-up", "arrow-down", "arrow-left", "arrow-right",
-    "chevron-up", "chevron-down", "chevron-left", "chevron-right",
-    "chevrons-up", "chevrons-down", "chevrons-left", "chevrons-right",
-    "home", "menu", "grid-3x3", "layout-grid", "maximize", "minimize",
-    "move", "corner-up-left", "corner-up-right",
-  ],
-  "Lighting": [
-    "sun", "moon", "lamp", "lamp-desk", "lamp-floor", "lightbulb",
-    "sunrise", "sunset", "eye", "eye-off", "sun-dim",
-  ],
-  "Communication": [
-    "phone", "phone-off", "phone-call", "wifi", "wifi-off", "bluetooth",
-    "radio", "signal", "satellite", "globe",
-  ],
-  "Climate": [
-    "thermometer", "thermometer-sun", "thermometer-snowflake",
-    "fan", "wind", "cloud", "droplets", "snowflake",
-  ],
-  "Security": [
-    "shield", "shield-check", "key", "scan", "fingerprint",
-    "alarm-clock", "siren", "lock", "unlock", "camera",
-  ],
-  "General": [
-    "check", "x", "alert-triangle", "info", "help-circle", "clock",
-    "calendar", "bell", "bell-off", "bookmark", "star", "heart",
-    "thumbs-up", "thumbs-down", "plus", "minus", "hash",
-    "circle", "square", "triangle", "diamond",
-  ],
-};
-
-// Build a flat list of all icon names from lucide-react.
-// lucide-react exports an `icons` map (Record<PascalCase, Component>).
-// Individual icon exports are forwardRef objects (typeof "object", not "function"),
-// so we use the `icons` map which is the canonical enumeration.
-function getAllIconNames(): string[] {
-  const iconsMap = (LucideIcons as Record<string, unknown>).icons as Record<string, unknown> | undefined;
-  if (iconsMap && typeof iconsMap === "object") {
-    return Object.keys(iconsMap)
-      .map((key) =>
-        key
-          .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
-          .replace(/([A-Z])([A-Z][a-z])/g, "$1-$2")
-          .toLowerCase(),
-      )
-      .sort();
-  }
-  // Fallback: iterate all exports, accept functions and objects (forwardRef)
-  const names: string[] = [];
-  for (const key of Object.keys(LucideIcons)) {
-    if (key === "default" || key === "createLucideIcon" || key === "icons") continue;
-    const val = (LucideIcons as Record<string, unknown>)[key];
-    if (!val || (typeof val !== "function" && typeof val !== "object")) continue;
-    const kebab = key
-      .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
-      .replace(/([A-Z])([A-Z][a-z])/g, "$1-$2")
-      .toLowerCase();
-    names.push(kebab);
-  }
-  return names.sort();
-}
-
-const ALL_ICONS = getAllIconNames();
+import { ICON_CATEGORIES, ALL_ICONS, kebabToPascal } from "./iconPickerHelpers";
 
 function getIconComponent(kebabName: string): React.ComponentType<{ size?: number; color?: string }> | null {
-  // Convert kebab-case to PascalCase
-  const pascal = kebabName
-    .split("-")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join("");
+  const pascal = kebabToPascal(kebabName);
   // Try the icons map first, then named exports
   const iconsMap = (LucideIcons as Record<string, unknown>).icons as Record<string, unknown> | undefined;
   const comp = iconsMap?.[pascal] ?? (LucideIcons as Record<string, unknown>)[pascal];
