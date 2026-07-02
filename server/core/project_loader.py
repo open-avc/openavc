@@ -255,6 +255,8 @@ class UIElement(_ForwardCompatModel):
     output_min: float | None = None  # device-side minimum (for range scaling)
     output_max: float | None = None  # device-side maximum (for range scaling)
     scale_to_full: bool | None = None  # True: scale display to fill track; False: show dead space
+    response: str | None = None  # slider/fader taper: "linear" (default) or "logarithmic"
+    response_db_range: float | None = None  # logarithmic taper: dB span of the throw (default 60)
     target_page: str | None = None
     options: list[dict[str, Any]] | None = None
     placeholder: str | None = None

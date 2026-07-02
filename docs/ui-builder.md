@@ -127,6 +127,23 @@ When you bind a slider or fader's Value to a device state variable that has `min
 - With Scale to Full **on**: dragging to the top of the slider sends 80. The slider looks and feels like a standard 0-100 control.
 - With Scale to Full **off**: the slider stops at the 80 mark. Dragging past 80 has no effect, and the unused range is visually apparent.
 
+#### Response curve (sliders and faders)
+
+The **Response** property sets how the handle's travel maps to the value, so an audio control can behave like a real console fader.
+
+| Response | Behavior |
+|----------|----------|
+| **Linear** (default) | The value moves proportionally with the handle. Half travel is halfway between min and max. Right for anything already measured in decibels, and for non-audio controls like brightness or shade position. |
+| **Logarithmic (audio)** | The travel is spread evenly across decibels, so equal moves of the handle are equal steps in loudness. Right when the control drives a plain level number (a 0-100 or 0.0-1.0 gain), where a linear handle would cram all the audible change into the top of the throw. |
+
+Which one to pick comes down to what the device expects. If it already speaks in dB, use **Linear** (decibels are the logarithm already). If it takes a raw level, use **Logarithmic** so the fader feels natural.
+
+When you choose Logarithmic, one extra field appears:
+
+- **Curve (dB):** how many decibels the throw spans. A larger number gives finer control near the bottom of the fader. Leave it at the default of 60 for a typical audio taper.
+
+The Response setting only changes how the control feels. The value sent to the device (after any output range scaling) is unchanged, so it is safe to switch between Linear and Logarithmic at any time.
+
 ### Shows: Appearance
 
 The **Appearance** card changes an element's look based on a state value. This is how buttons light up to show the current selection, the equivalent of feedback joins in Crestron, and how status LEDs map state to color.

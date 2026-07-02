@@ -153,6 +153,8 @@ export interface UIElement {
   output_min?: number;
   output_max?: number;
   scale_to_full?: boolean;
+  response?: string; // slider/fader taper: "linear" | "logarithmic"
+  response_db_range?: number; // logarithmic taper: dB span of the throw
   target_page?: string;
   options?: UIElementOption[];
   placeholder?: string;

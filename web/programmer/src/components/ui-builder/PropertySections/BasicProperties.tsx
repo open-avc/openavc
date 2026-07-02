@@ -343,6 +343,7 @@ export function BasicProperties({
               Hide output limit from end user
             </label>
           </FieldRow>
+          <ResponseCurveFields element={element} onChange={onChange} />
         </>
       )}
 
@@ -636,6 +637,7 @@ export function BasicProperties({
               Hide output limit from end user
             </label>
           </FieldRow>
+          <ResponseCurveFields element={element} onChange={onChange} />
         </>
       )}
 
@@ -1437,6 +1439,60 @@ function SubSection({ label }: { label: string }) {
     >
       {label}
     </div>
+  );
+}
+
+/**
+ * Response curve fields shared by the slider and fader property panels. Linear
+ * moves the value proportionally with the travel; Logarithmic tapers the travel
+ * so it feels like a real audio fader (equal travel = equal loudness step). The
+ * dB-range field is the one "advanced" number — how many decibels the throw
+ * spans — and only shows once Logarithmic is chosen, so the common case stays a
+ * single dropdown. This is a panel feel setting only; the value sent to the
+ * device is unchanged.
+ */
+function ResponseCurveFields({
+  element,
+  onChange,
+}: {
+  element: UIElement;
+  onChange: (patch: Partial<UIElement>) => void;
+}) {
+  const isLog = element.response === "logarithmic";
+  return (
+    <>
+      <SubSection label="Response" />
+      <FieldRow label="Response">
+        <select
+          value={element.response || "linear"}
+          onChange={(e) => onChange({ response: e.target.value })}
+          style={{ flex: 1 }}
+        >
+          <option value="linear">Linear</option>
+          <option value="logarithmic">Logarithmic (audio)</option>
+        </select>
+      </FieldRow>
+      {isLog && (
+        <>
+          <FieldRow label="Curve (dB)">
+            <input
+              type="number"
+              value={element.response_db_range ?? 60}
+              onChange={(e) =>
+                onChange({ response_db_range: e.target.value === "" ? undefined : Number(e.target.value) })
+              }
+              min={6}
+              max={120}
+              step={1}
+              style={{ flex: 1 }}
+            />
+          </FieldRow>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: -2, marginBottom: 4 }}>
+            Decibels the throw spans. Larger gives finer control near the bottom. Leave at 60 for a typical audio taper.
+          </div>
+        </>
+      )}
+    </>
   );
 }
 

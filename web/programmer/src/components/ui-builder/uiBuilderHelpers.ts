@@ -240,6 +240,7 @@ export function createDefaultElement(
         output_min: 0,
         output_max: 1,
         scale_to_full: true,
+        response: "linear",
         grid_area: { col, row, col_span: 4, row_span: 1 },
       };
     case "page_nav":
@@ -318,6 +319,7 @@ export function createDefaultElement(
         output_min: 0,
         output_max: 1,
         scale_to_full: true,
+        response: "linear",
         orientation: "vertical",
         grid_area: { col, row, col_span: 2, row_span: 5 },
         style: { show_value: true, show_scale: true },

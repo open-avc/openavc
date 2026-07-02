@@ -1300,29 +1300,57 @@ class PanelApp {
         input.type = 'range';
         const sliderMin = element.min ?? 0;
         const sliderMax = element.max ?? 100;
-        input.min = sliderMin;
-        input.max = sliderMax;
-        input.step = element.step ?? 1;
+        const sliderStep = element.step ?? 1;
+        const sSpan = sliderMax - sliderMin;
+        const sResponse = element.response || 'linear';
+        const sResponseDbRange = element.response_db_range != null ? Number(element.response_db_range) : 60;
         input.setAttribute('aria-label', element.label || element.id);
         const sOutputMin = element.output_min;
         const sOutputMax = element.output_max;
         const sHasOutputRange = sOutputMin != null && sOutputMax != null;
         const sScaleToFull = element.scale_to_full !== false;
 
-        // Set initial value from state if binding exists, else use min
+        // The native range input runs in a normalized POSITION domain (0..STEPS)
+        // rather than the display-value domain, because a native thumb is always
+        // linear in its own value — representing travel directly is the only way
+        // to taper the feel. For a linear response STEPS equals the value-step
+        // count, so position maps 1:1 to a value step and behaviour is unchanged.
+        const rawSteps = sliderStep > 0 ? Math.round(sSpan / sliderStep) : 0;
+        const STEPS = sResponse === 'logarithmic' ? Math.max(rawSteps, 200) : Math.max(rawSteps, 1);
+        input.min = 0;
+        input.max = STEPS;
+        input.step = 1;
+
+        // position (0..STEPS) -> display value (curved, snapped to step, clamped)
+        const posToValue = (pos) => {
+            const travel = STEPS > 0 ? pos / STEPS : 0;
+            let v = sliderMin + this._responseCurve(travel, sResponse, sResponseDbRange) * sSpan;
+            if (sliderStep > 0) v = Math.round(v / sliderStep) * sliderStep;
+            v = Math.max(sliderMin, Math.min(sliderMax, v));
+            if (sHasOutputRange && !sScaleToFull) v = Math.max(sOutputMin, Math.min(sOutputMax, v));
+            return v;
+        };
+        // display value -> position (0..STEPS)
+        const valueToPos = (v) => {
+            const vf = sSpan !== 0 ? (v - sliderMin) / sSpan : 0;
+            const travel = this._responseCurveInverse(vf, sResponse, sResponseDbRange);
+            return Math.max(0, Math.min(STEPS, Math.round(travel * STEPS)));
+        };
+        const fmtValue = (v) => (sliderStep < 1 ? parseFloat(v).toFixed(1) : String(v));
+
+        // Set initial position from state if binding exists, else from min
         const sliderBinding = element.bindings?.show?.value;
         const initialRaw = sliderBinding?.key ? this.state[sliderBinding.key] : undefined;
         if (initialRaw !== undefined && initialRaw !== null) {
-            input.value = this._reverseScale(Number(initialRaw), sliderMin, sliderMax, sOutputMin, sOutputMax, sScaleToFull);
+            const dv = this._reverseScale(Number(initialRaw), sliderMin, sliderMax, sOutputMin, sOutputMax, sScaleToFull);
+            input.value = valueToPos(dv);
         } else {
-            input.value = sliderMin;
+            input.value = valueToPos(sliderMin);
         }
 
-        // Update fill from current value
+        // Update fill from current travel position
         const updateFill = () => {
-            const min = parseFloat(input.min);
-            const max = parseFloat(input.max);
-            const pct = max > min ? ((parseFloat(input.value) - min) / (max - min)) * 100 : 0;
+            const pct = STEPS > 0 ? (parseFloat(input.value) / STEPS) * 100 : 0;
             if (isVertical) {
                 fill.style.height = pct + '%';
             } else {
@@ -1334,33 +1362,37 @@ class PanelApp {
         // Value display element
         let valueDisplay = null;
         const showValue = element.style?.show_value === true;
-        if (showValue) {
-            valueDisplay = document.createElement('div');
-            valueDisplay.className = 'slider-value';
-            const step = element.step ?? 1;
-            valueDisplay.textContent = step < 1 ? parseFloat(input.value).toFixed(1) : input.value;
+        {
+            const v0 = posToValue(parseFloat(input.value));
+            input.setAttribute('aria-valuetext', fmtValue(v0));
+            if (showValue) {
+                valueDisplay = document.createElement('div');
+                valueDisplay.className = 'slider-value';
+                valueDisplay.textContent = fmtValue(v0);
+            }
         }
 
         // Debounced change handler
         let changeTimeout = null;
         input.addEventListener('input', () => {
-            // Clamp to output range when not scaling (dead space mode)
+            // Dead-space mode: clamp travel so the thumb can't enter the region
+            // past the device's output limit (mirrors the value clamp above).
             if (sHasOutputRange && !sScaleToFull) {
-                let v = parseFloat(input.value);
-                v = Math.max(sOutputMin, Math.min(sOutputMax, v));
-                input.value = v;
+                const loPos = valueToPos(sOutputMin);
+                const hiPos = valueToPos(sOutputMax);
+                const p = parseFloat(input.value);
+                input.value = Math.max(Math.min(loPos, hiPos), Math.min(Math.max(loPos, hiPos), p));
             }
             updateFill();
-            if (valueDisplay) {
-                const step = element.step ?? 1;
-                valueDisplay.textContent = step < 1 ? parseFloat(input.value).toFixed(1) : input.value;
-            }
+            const v = posToValue(parseFloat(input.value));
+            input.setAttribute('aria-valuetext', fmtValue(v));
+            if (valueDisplay) valueDisplay.textContent = fmtValue(v);
             if (changeTimeout) clearTimeout(changeTimeout);
             changeTimeout = setTimeout(() => {
                 this.send({
                     type: 'ui.change',
                     element_id: element.id,
-                    value: parseFloat(input.value),
+                    value: v,
                 });
             }, 100);
             this.debounceTimers.push(changeTimeout);
@@ -1395,6 +1427,9 @@ class PanelApp {
                 outputMin: sOutputMin,
                 outputMax: sOutputMax,
                 scaleToFull: sScaleToFull,
+                steps: STEPS,
+                valueToPos,
+                fmtValue,
             });
         }
 
@@ -2596,6 +2631,8 @@ class PanelApp {
         const outputMax = element.output_max;
         const hasOutputRange = outputMin != null && outputMax != null;
         const scaleToFull = element.scale_to_full !== false;
+        const response = element.response || 'linear';
+        const responseDbRange = element.response_db_range != null ? Number(element.response_db_range) : 60;
         // Merge theme element_defaults for consistency with other renderers,
         // even though show_value/show_scale aren't currently theme-editable
         // — keeps the pattern uniform if those flags become themable later.
@@ -2626,7 +2663,7 @@ class PanelApp {
             for (const m of marks) {
                 const mark = document.createElement('div');
                 mark.className = 'fader-mark';
-                const frac = (m - min) / (max - min);
+                const frac = this._responseCurveInverse((m - min) / (max - min), response, responseDbRange);
                 if (isHorizontal) mark.style.left = `${frac * 100}%`;
                 else mark.style.bottom = `${frac * 100}%`;
                 mark.textContent = m.toString();
@@ -2643,10 +2680,12 @@ class PanelApp {
         track.className = 'fader-track';
         trackWrap.appendChild(track);
 
-        // Dead space overlay when output range is clamped and not scaled to full
+        // Dead space overlay when output range is clamped and not scaled to full.
+        // Position it through the response curve so it lines up with where the
+        // handle actually stops on a logarithmic fader (identity for linear).
         if (hasOutputRange && !scaleToFull) {
-            const maxFrac = (outputMax - min) / (max - min);
-            const minFrac = (outputMin - min) / (max - min);
+            const maxFrac = this._responseCurveInverse((outputMax - min) / (max - min), response, responseDbRange);
+            const minFrac = this._responseCurveInverse((outputMin - min) / (max - min), response, responseDbRange);
             if (maxFrac < 1) {
                 const dead = document.createElement('div');
                 dead.className = 'fader-dead-space';
@@ -2695,7 +2734,7 @@ class PanelApp {
             }
         }
         currentValue = Math.max(min, Math.min(max, currentValue));
-        const initFrac = (currentValue - min) / (max - min);
+        const initFrac = this._responseCurveInverse((currentValue - min) / (max - min), response, responseDbRange);
         if (isHorizontal) handle.style.left = `${initFrac * 100}%`;
         else handle.style.bottom = `${initFrac * 100}%`;
         if (valueDisplay) valueDisplay.textContent = `${Math.round(currentValue * 10) / 10} ${unit}`;
@@ -2714,7 +2753,7 @@ class PanelApp {
                 const clientY = e.touches ? e.touches[0].clientY : e.clientY;
                 frac = 1 - Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
             }
-            let val = min + frac * (max - min);
+            let val = min + this._responseCurve(frac, response, responseDbRange) * (max - min);
             // Clamp to output range when not scaling (dead space mode)
             if (hasOutputRange && !scaleToFull) {
                 val = Math.max(outputMin, Math.min(outputMax, val));
@@ -2723,7 +2762,7 @@ class PanelApp {
         };
 
         const updateFader = (val) => {
-            const frac = (val - min) / (max - min);
+            const frac = this._responseCurveInverse((val - min) / (max - min), response, responseDbRange);
             if (isHorizontal) handle.style.left = `${frac * 100}%`;
             else handle.style.bottom = `${frac * 100}%`;
             handle.setAttribute('aria-valuenow', String(Math.round(val * 10) / 10));
@@ -2815,7 +2854,7 @@ class PanelApp {
                 element: el,
                 elementDef: element,
                 binding: valueBinding,
-                _fader: { handle, valueDisplay, min, max, unit, horizontal: isHorizontal, outputMin, outputMax, scaleToFull },
+                _fader: { handle, valueDisplay, min, max, unit, horizontal: isHorizontal, outputMin, outputMax, scaleToFull, response, responseDbRange },
             });
         }
 
@@ -2829,6 +2868,33 @@ class PanelApp {
         if (outputRange === 0) return displayMin;
         const frac = (deviceValue - outputMin) / outputRange;
         return displayMin + frac * (displayMax - displayMin);
+    }
+
+    // Response curve for faders/sliders. Maps physical travel (0..1, bottom to
+    // top) to a normalized value fraction (0..1). Linear is the identity.
+    // Logarithmic makes the travel linear in decibels so the control feels like
+    // a real audio fader — equal travel is an equal loudness step — instead of
+    // cramming all the audible change into the top of the throw. `dbRange` is
+    // how many dB the throw spans (larger = finer control down low). This is
+    // purely a feel transform: the value handed to the device is unchanged, so
+    // it lives entirely on the panel and the server never sees the curve.
+    _responseCurve(travelFrac, response, dbRange) {
+        if (response !== 'logarithmic') return travelFrac;
+        const D = dbRange > 0 ? dbRange : 60;
+        const denom = Math.pow(10, D / 20) - 1;
+        if (denom <= 0) return travelFrac;
+        return (Math.pow(10, (D * travelFrac) / 20) - 1) / denom;
+    }
+
+    // Inverse of _responseCurve: normalized value fraction (0..1) -> travel (0..1).
+    // Used to place the handle/thumb (and scale marks) for a known value.
+    _responseCurveInverse(valueFrac, response, dbRange) {
+        if (response !== 'logarithmic') return valueFrac;
+        const D = dbRange > 0 ? dbRange : 60;
+        const denom = Math.pow(10, D / 20) - 1;
+        if (denom <= 0) return valueFrac;
+        const vf = Math.max(0, Math.min(1, valueFrac));
+        return (20 / D) * Math.log10(vf * denom + 1);
     }
 
     _faderScaleMarks(min, max) {
@@ -2853,7 +2919,7 @@ class PanelApp {
         const raw = this.state[b.binding.key];
         if (b._lastFaderRaw === raw) return;
         b._lastFaderRaw = raw;
-        const { handle, valueDisplay, min, max, unit, horizontal, outputMin, outputMax, scaleToFull } = b._fader;
+        const { handle, valueDisplay, min, max, unit, horizontal, outputMin, outputMax, scaleToFull, response, responseDbRange } = b._fader;
         // Don't fight the operator while they're dragging the handle.
         if (handle._dragging) return;
         const span = max - min;
@@ -2866,7 +2932,7 @@ class PanelApp {
             return;
         }
         const value = Math.max(min, Math.min(max, this._reverseScale(Number(raw), min, max, outputMin, outputMax, scaleToFull)));
-        const frac = span > 0 ? (value - min) / span : 0;
+        const frac = span > 0 ? this._responseCurveInverse((value - min) / span, response, responseDbRange) : 0;
         if (horizontal) handle.style.left = `${frac * 100}%`;
         else handle.style.bottom = `${frac * 100}%`;
         if (valueDisplay) valueDisplay.textContent = `${Math.round(value * 10) / 10} ${unit}`;
@@ -3959,7 +4025,7 @@ class PanelApp {
     }
 
     evaluateSliderValue(b) {
-        const { element, binding, fill, valueDisplay, isVertical, outputMin, outputMax, scaleToFull } = b;
+        const { element, elementDef, binding, fill, valueDisplay, isVertical, outputMin, outputMax, scaleToFull, steps, valueToPos, fmtValue } = b;
         // Don't yank the thumb out from under an operator who is actively
         // dragging it (or has it focused) when a device echo / another panel's
         // change arrives mid-gesture.
@@ -3967,30 +4033,29 @@ class PanelApp {
         const rawValue = this.state[binding.key];
         if (b._lastSliderRaw === rawValue) return;
         b._lastSliderRaw = rawValue;
-        const min = parseFloat(element.min);
-        const max = parseFloat(element.max);
+        // The input runs in the position domain (0..steps); display min/max come
+        // from the element definition, not the input's own min/max.
+        const min = parseFloat(elementDef.min ?? 0);
+        const max = parseFloat(elementDef.max ?? 100);
         const setFill = (pct) => {
             if (!fill) return;
             if (isVertical) fill.style.height = pct + '%';
             else fill.style.width = pct + '%';
         };
         if (rawValue === undefined || rawValue === null) {
-            // Bound key deleted — return the slider to its minimum.
-            element.value = min;
+            // Bound key deleted — return the slider to its minimum (bottom).
+            element.value = valueToPos(min);
+            element.setAttribute('aria-valuetext', fmtValue(min));
             setFill(0);
-            if (valueDisplay) {
-                const step = parseFloat(element.step) || 1;
-                valueDisplay.textContent = step < 1 ? min.toFixed(1) : String(Math.round(min));
-            }
+            if (valueDisplay) valueDisplay.textContent = fmtValue(min);
             return;
         }
         const displayValue = this._reverseScale(Number(rawValue), min, max, outputMin, outputMax, scaleToFull);
-        element.value = displayValue;
-        setFill(max > min ? ((displayValue - min) / (max - min)) * 100 : 0);
-        if (valueDisplay) {
-            const step = parseFloat(element.step) || 1;
-            valueDisplay.textContent = step < 1 ? parseFloat(displayValue).toFixed(1) : String(Math.round(displayValue));
-        }
+        const pos = valueToPos(displayValue);
+        element.value = pos;
+        element.setAttribute('aria-valuetext', fmtValue(displayValue));
+        setFill(steps > 0 ? (pos / steps) * 100 : 0);
+        if (valueDisplay) valueDisplay.textContent = fmtValue(displayValue);
     }
 
     evaluateSelectValue(b) {
