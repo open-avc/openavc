@@ -21,7 +21,7 @@ from server.api.models import (
 )
 from server.core.project_loader import ChildEntityConfig, DeviceConfig, save_project_async
 from server.core.project_migration import CONNECTION_FIELDS
-from server.drivers.base import CommandParamError
+from server.drivers.base import CommandParamError, DeviceSettingValueError
 
 router = APIRouter()
 
@@ -637,6 +637,10 @@ async def set_device_setting(
     try:
         await engine.devices.set_device_setting(device_id, setting_key, body.value)
         return {"success": True, "device_id": device_id, "key": setting_key, "value": body.value}
+    except DeviceSettingValueError as e:
+        # A bad value (out of range / wrong type / not a declared option) —
+        # surface the actionable message, not a misleading "not found".
+        raise _api_error(400, str(e), e)
     except ValueError as e:
         raise _api_error(404, f"Device '{device_id}' or setting '{setting_key}' not found", e)
     except ConnectionError as e:
@@ -658,6 +662,8 @@ async def store_pending_settings(
 
     try:
         await engine.devices.store_pending_settings(device_id, body.settings)
+    except DeviceSettingValueError as e:
+        raise _api_error(400, str(e), e)
     except ValueError as e:
         raise _api_error(404, f"Device '{device_id}' not found", e)
 

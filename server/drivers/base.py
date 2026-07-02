@@ -37,7 +37,13 @@ from server.utils.logger import get_logger
 
 # Re-exported for drivers: raise ConnectionFaultError(msg, code=...) instead of
 # wording a plain ConnectionError to hit the classifier's signature tables.
-__all__ = ["BaseDriver", "CommandParamError", "ConnectionFaultError"]
+__all__ = [
+    "BaseDriver",
+    "CommandParamError",
+    "ConnectionFaultError",
+    "DeviceSettingValueError",
+    "validate_device_setting_value",
+]
 
 log = get_logger(__name__)
 
@@ -51,6 +57,112 @@ class CommandParamError(ValueError):
     Subclasses ValueError so existing ``except ValueError`` handlers still
     catch it. The message is user-facing and actionable — surface it verbatim.
     """
+
+
+class DeviceSettingValueError(ValueError):
+    """A device-setting value failed the setting's declared validation
+    (wrong type, out of min/max range, not one of the declared values, or
+    a regex mismatch).
+
+    The min/max/values/regex on a ``device_settings`` entry used to be
+    enforced only by the IDE's editor; the runtime is the source of truth
+    (a script, macro, cloud command, or raw REST call can send anything —
+    and an unchecked value can even transmit a literal ``{value:d}``
+    placeholder to the device when a format spec fails). Same 400-mapping
+    rationale as CommandParamError.
+    """
+
+
+def validate_device_setting_value(key: str, sdef: Any, value: Any) -> Any:
+    """Validate + coerce one device-setting write against its declared schema.
+
+    Returns the coerced value; raises :class:`DeviceSettingValueError` with a
+    user-facing message. Mirrors the IDE editor's rules so no caller can push
+    past them: boolean → a real bool (tolerant of "true"/"false"/0/1 for REST
+    callers), integer/number → numeric honoring ``min``/``max``, declared
+    ``values`` → membership (settings are persisted device config — there is
+    no forgiving-free-text rationale like command pickers), string → trimmed,
+    full-matching ``regex`` when declared (``pattern`` accepted as an alias —
+    command params use that spelling and the mix-up was a silent no-op).
+    """
+    if not isinstance(sdef, dict):
+        return value
+    if value is None:
+        raise DeviceSettingValueError(f"'{key}': a value is required")
+    stype = sdef.get("type", "string")
+
+    if stype == "boolean":
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)) and value in (0, 1):
+            return bool(value)
+        if isinstance(value, str):
+            v = value.strip().lower()
+            if v in ("true", "1", "yes", "on"):
+                return True
+            if v in ("false", "0", "no", "off"):
+                return False
+        raise DeviceSettingValueError(
+            f"'{key}' must be true or false, got {value!r}"
+        )
+
+    if stype in ("integer", "number", "float"):
+        num: float | int | None = None
+        if isinstance(value, bool):
+            num = None
+        elif isinstance(value, (int, float)):
+            num = value
+        elif isinstance(value, str):
+            try:
+                num = float(value.strip())
+            except ValueError:
+                num = None
+        if num is not None and stype == "integer":
+            if float(num).is_integer():
+                num = int(num)
+            else:
+                num = None
+        if num is None:
+            kind = "whole number" if stype == "integer" else "number"
+            raise DeviceSettingValueError(
+                f"'{key}' must be a {kind}, got {value!r}"
+            )
+        mn, mx = sdef.get("min"), sdef.get("max")
+        if isinstance(mn, (int, float)) and num < mn:
+            raise DeviceSettingValueError(
+                f"'{key}' must be at least {mn}, got {num:g}"
+            )
+        if isinstance(mx, (int, float)) and num > mx:
+            raise DeviceSettingValueError(
+                f"'{key}' must be at most {mx}, got {num:g}"
+            )
+        return num
+
+    sval = str(value).strip() if not isinstance(value, str) else value.strip()
+
+    values = sdef.get("values")
+    if isinstance(values, list) and values:
+        allowed = [str(v) for v in values]
+        if sval not in allowed:
+            raise DeviceSettingValueError(
+                f"'{key}' must be one of: {', '.join(allowed)} — got {value!r}"
+            )
+        return sval
+
+    regex = sdef.get("regex") or sdef.get("pattern")
+    if regex and sval != "":
+        try:
+            matched = re.fullmatch(regex, sval) is not None
+        except re.error:
+            # A malformed declared regex shouldn't block writes; load-time
+            # validation owns rejecting it.
+            matched = True
+        if not matched:
+            raise DeviceSettingValueError(
+                f"'{key}' value {sval!r} does not match the required format "
+                f"({regex})"
+            )
+    return sval
 
 
 # String child local IDs are embedded directly in a flat state key
@@ -1463,7 +1575,22 @@ class BaseDriver(ABC):
 
         bucket = self._children.setdefault(child_type, {})
         if local_id in bucket:
-            return  # idempotent — already registered
+            # Idempotent — already registered. But a DIFFERENT per-child
+            # schema arriving under the same id is the signature of a
+            # sanitized-id collision (two device-native names mapping to one
+            # local id) or a schema change without deregister_child() — both
+            # otherwise invisible (the second child just never appears).
+            if schema is not None and dict(schema) != self._child_schemas.get(
+                (child_type, local_id)
+            ):
+                log.warning(
+                    f"[{self.device_id}] register_child({child_type!r}, "
+                    f"{local_id!r}) ignored: id already registered with a "
+                    f"different schema — likely an id collision after "
+                    f"sanitization, or a schema change without "
+                    f"deregister_child() first"
+                )
+            return
         # Stamp a fresh registration epoch. A deregister+re-register (which
         # resets the child's state) bumps it, so poll_children can tell a
         # re-registered child from the one it snapshotted (ABA guard).
@@ -1563,7 +1690,17 @@ class BaseDriver(ABC):
 
         Raises ValueError if ``prop`` is not in the child's effective schema
         (the synthetic ``online`` / ``label`` keys are always allowed).
+        Writes to an unregistered child are skipped with a warning — they
+        used to create orphan state keys visible in Live State and binding
+        pickers but absent from the children listing.
         """
+        if not self.is_child_registered(child_type, local_id):
+            log.warning(
+                f"[{self.device_id}] set_child_state for unregistered child "
+                f"{child_type}/{local_id} (prop {prop!r}) skipped — call "
+                f"register_child first"
+            )
+            return
         self._validate_child_prop(child_type, local_id, prop)
         schema = self._effective_child_schema(child_type, local_id)
         self._warn_on_type_mismatch(
@@ -1583,8 +1720,16 @@ class BaseDriver(ABC):
         """Atomically set several state keys on one child entity.
 
         Validates every prop in ``updates`` before any write, so a single
-        bad prop causes the entire batch to abort.
+        bad prop causes the entire batch to abort. Unregistered children are
+        skipped with a warning (see set_child_state).
         """
+        if not self.is_child_registered(child_type, local_id):
+            log.warning(
+                f"[{self.device_id}] set_child_state_batch for unregistered "
+                f"child {child_type}/{local_id} skipped — call register_child "
+                f"first"
+            )
+            return
         for prop in updates:
             self._validate_child_prop(child_type, local_id, prop)
         namespaced = {
@@ -1601,13 +1746,24 @@ class BaseDriver(ABC):
         Each entry is ``(child_type, local_id, {prop: value, ...})``. Listeners
         and the cloud relay see the complete delta, not a half-applied state.
         Use this for poll responses that touch dozens or hundreds of children
-        at once.
+        at once. Entries for unregistered children are skipped with a warning
+        (see set_child_state); the rest of the batch still applies.
         """
+        live: list[tuple[str, int | str, dict[str, Any]]] = []
         for child_type, local_id, child_updates in updates:
+            if not self.is_child_registered(child_type, local_id):
+                log.warning(
+                    f"[{self.device_id}] set_children_state_batch entry for "
+                    f"unregistered child {child_type}/{local_id} skipped — "
+                    f"call register_child first"
+                )
+                continue
+            live.append((child_type, local_id, child_updates))
+        for child_type, local_id, child_updates in live:
             for prop in child_updates:
                 self._validate_child_prop(child_type, local_id, prop)
         namespaced: dict[str, Any] = {}
-        for child_type, local_id, child_updates in updates:
+        for child_type, local_id, child_updates in live:
             for prop, value in child_updates.items():
                 namespaced[self._child_state_key(child_type, local_id, prop)] = value
         if namespaced:

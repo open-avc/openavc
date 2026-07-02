@@ -14,6 +14,11 @@ import asyncio
 from typing import Any, TYPE_CHECKING
 
 from server.core.connection_fault import classify_connection_fault, typed_fault_from_exc
+from server.drivers.base import (
+    CommandParamError,
+    DeviceSettingValueError,
+    validate_device_setting_value,
+)
 from server.core.event_bus import EventBus
 from server.core.state_store import StateStore
 from server.utils.logger import get_logger
@@ -423,6 +428,7 @@ class DeviceManager:
         if not driver.get_state("connected"):
             raise ConnectionError(f"Device '{device_id}' is not connected")
         try:
+            params = self._coerce_child_id_params(driver, command, params)
             return await driver.send_command(command, params)
         except Exception as exc:
             await self.events.emit(
@@ -430,6 +436,52 @@ class DeviceManager:
                 {"device_id": device_id, "error": str(exc)},
             )
             raise
+
+    @staticmethod
+    def _coerce_child_id_params(
+        driver: BaseDriver, command: str, params: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
+        """Coerce ``child_id`` param values to the child type's declared id
+        type before they reach the driver.
+
+        The UI, macros, and REST supply the id as a string (often the padded
+        form, e.g. "003"); an integer-id child type needs an int. Drivers
+        used to hand-convert each param — now the platform does it, so a
+        driver can pass ``params["outlet"]`` straight to the child API
+        (``int(int)`` keeps hand-converting drivers working). String-id
+        types pass through untouched.
+        """
+        if not params:
+            return params
+        info = getattr(driver, "DRIVER_INFO", {}) or {}
+        cmd_def = (info.get("commands") or {}).get(command)
+        if not isinstance(cmd_def, dict):
+            return params
+        pdefs = cmd_def.get("params")
+        if not isinstance(pdefs, dict):
+            return params
+        child_types = info.get("child_entity_types") or {}
+        out = dict(params)
+        for name, pdef in pdefs.items():
+            if not isinstance(pdef, dict) or pdef.get("type") != "child_id":
+                continue
+            value = out.get(name)
+            if value is None or isinstance(value, bool):
+                continue
+            type_def = child_types.get(pdef.get("child_type"))
+            id_format = (type_def or {}).get("id_format") or {}
+            if id_format.get("type", "integer") != "integer":
+                continue
+            if isinstance(value, int):
+                continue
+            try:
+                out[name] = int(str(value).strip())
+            except ValueError:
+                raise CommandParamError(
+                    f"'{command}': '{name}' must be a child id number, "
+                    f"got {value!r}"
+                ) from None
+        return out
 
     def get_device_info(self, device_id: str) -> dict[str, Any]:
         """Return device metadata, status, and capabilities."""
@@ -615,6 +667,12 @@ class DeviceManager:
         if key not in settings:
             raise ValueError(f"Unknown device setting '{key}' for device '{device_id}'")
 
+        # Runtime value gate — the IDE editor's min/max/values/regex checks
+        # are an authoring aid; scripts, macros, cloud, and raw REST bypass
+        # them, so the write is validated (and coerced to the declared type)
+        # here regardless of caller.
+        value = validate_device_setting_value(key, settings[key], value)
+
         return await driver.set_device_setting(key, value)
 
     def get_driver(self, device_id: str) -> BaseDriver | None:
@@ -754,6 +812,21 @@ class DeviceManager:
                 log.info(f"[{device_id}] Applied pending setting '{key}' = {value!r}")
             except Exception as e:
                 log.warning(f"[{device_id}] Failed to apply pending setting '{key}': {e}")
+                # Surface the failure beyond the server log — the key stays
+                # queued and is retried on the next connect, but silently
+                # retrying forever hid real problems (a firmware that
+                # rejects the value, a bad queued write).
+                try:
+                    await self.events.emit(
+                        f"device.error.{device_id}",
+                        {
+                            "device_id": device_id,
+                            "error": f"Pending setting '{key}' failed to apply: {e}",
+                            "source": "pending_settings",
+                        },
+                    )
+                except Exception:
+                    log.exception(f"[{device_id}] Failed to emit device.error")
 
         if applied_keys:
             # Clear applied settings from pending
@@ -773,10 +846,28 @@ class DeviceManager:
     async def store_pending_settings(
         self, device_id: str, settings: dict[str, Any]
     ) -> None:
-        """Store pending settings for a device (will be applied on next connect)."""
+        """Store pending settings for a device (will be applied on next connect).
+
+        Validated at intake when the driver is available: a typo'd key or an
+        out-of-range value used to sit in the queue and fail on every
+        reconnect with only a warn log. Orphaned devices (driver not
+        installed) store as-is — there's no schema to check against yet.
+        """
         config = self._device_configs.get(device_id)
         if config is None:
             raise ValueError(f"Device '{device_id}' not found")
+
+        driver = self._devices.get(device_id)
+        if driver is not None:
+            defs = driver.DRIVER_INFO.get("device_settings", {})
+            validated: dict[str, Any] = {}
+            for key, value in settings.items():
+                if key not in defs:
+                    raise DeviceSettingValueError(
+                        f"Unknown device setting '{key}' for device '{device_id}'"
+                    )
+                validated[key] = validate_device_setting_value(key, defs[key], value)
+            settings = validated
 
         if "pending_settings" not in config:
             config["pending_settings"] = {}

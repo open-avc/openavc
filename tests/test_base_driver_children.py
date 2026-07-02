@@ -771,3 +771,64 @@ def test_dynamic_child_set_batch_validates_per_instance():
             "component", "Mix",
             {"in_1_gain": 0.0, "bogus": 1},
         )
+
+
+# ---------------------------------------------------------------------------
+# Guardrails: unregistered-child writes + collision warning
+# ---------------------------------------------------------------------------
+
+
+def test_set_child_state_on_unregistered_child_is_skipped(caplog):
+    """A write to an unregistered child used to create orphan state keys —
+    visible in Live State and binding pickers but absent from GET /children."""
+    drv = _make_driver()
+    with caplog.at_level("WARNING"):
+        drv.set_child_state("encoder", 99, "name", "Ghost")
+    assert drv.state.get("device.ctrl1.encoder.099.name") is None
+    assert "unregistered child" in caplog.text
+
+
+def test_set_child_state_batch_on_unregistered_child_is_skipped(caplog):
+    drv = _make_driver()
+    with caplog.at_level("WARNING"):
+        drv.set_child_state_batch("encoder", 99, {"name": "Ghost", "ip": "10.0.0.9"})
+    assert drv.state.get("device.ctrl1.encoder.099.name") is None
+    assert "unregistered" in caplog.text
+
+
+def test_children_batch_skips_unregistered_entries_applies_rest(caplog):
+    drv = _make_driver()
+    drv.register_child("encoder", 1)
+    with caplog.at_level("WARNING"):
+        drv.set_children_state_batch([
+            ("encoder", 1, {"name": "Live"}),
+            ("encoder", 42, {"name": "Ghost"}),
+        ])
+    assert drv.state.get("device.ctrl1.encoder.001.name") == "Live"
+    assert drv.state.get("device.ctrl1.encoder.042.name") is None
+    assert "unregistered" in caplog.text
+
+
+def test_reregister_same_id_with_different_schema_warns(caplog):
+    """Two device-native names that sanitize to the same local id collide —
+    the second register is an idempotent no-op, which was silent (one
+    component just never appeared in the Children panel)."""
+    drv = _make_dsp()
+    drv.register_child(
+        "component", "Main_Gain",
+        schema={"gain": {"type": "number"}},
+    )
+    with caplog.at_level("WARNING"):
+        drv.register_child(
+            "component", "Main_Gain",
+            schema={"mute": {"type": "boolean"}},
+        )
+    assert "different schema" in caplog.text
+    # Same schema again is a clean idempotent no-op — no warning.
+    caplog.clear()
+    with caplog.at_level("WARNING"):
+        drv.register_child(
+            "component", "Main_Gain",
+            schema={"gain": {"type": "number"}},
+        )
+    assert "different schema" not in caplog.text

@@ -567,3 +567,96 @@ def test_build_osc_args_drops_unsupported_tag():
     """Runtime defense: an unsupported tag yields no arg (no crash) rather than
     a wrongly-typed one — the loader is the primary guard, this is backstop."""
     assert ConfigurableDriver._build_osc_args([{"type": "b", "value": "x"}], {}) == []
+
+
+# ── Device-settings + child-schema load-time validation (guardrails) ─────────
+
+
+def test_validator_rejects_setting_with_unknown_state_key():
+    """A typo'd state_key used to load fine and show '(not set)' forever."""
+    errs = validate_driver_definition(_base_def(
+        state_variables={"brightness": {"type": "integer", "label": "Brightness"}},
+        device_settings={
+            "brightness": {
+                "type": "integer", "label": "Brightness",
+                "state_key": "brightnes",  # typo
+                "write": {"send": "BRT {value}\r"},
+            },
+        },
+    ))
+    assert any("state_key 'brightnes'" in e for e in errs), errs
+
+
+def test_validator_rejects_setting_without_write_block():
+    errs = validate_driver_definition(_base_def(
+        state_variables={"volume": {"type": "integer", "label": "Volume"}},
+        device_settings={
+            "volume": {"type": "integer", "label": "Volume", "state_key": "volume"},
+        },
+    ))
+    assert any("missing 'write'" in e for e in errs), errs
+
+
+def test_validator_rejects_setting_min_greater_than_max():
+    errs = validate_driver_definition(_base_def(
+        state_variables={"volume": {"type": "integer", "label": "Volume"}},
+        device_settings={
+            "volume": {
+                "type": "integer", "label": "Volume", "state_key": "volume",
+                "min": 100, "max": 0, "write": {"send": "VOL {value}\r"},
+            },
+        },
+    ))
+    assert any("min (100) is greater than max (0)" in e for e in errs), errs
+
+
+def test_validator_accepts_well_formed_setting():
+    errs = validate_driver_definition(_base_def(
+        state_variables={"volume": {"type": "integer", "label": "Volume"}},
+        device_settings={
+            "volume": {
+                "type": "integer", "label": "Volume", "state_key": "volume",
+                "min": 0, "max": 100, "write": {"send": "VOL {value}\r"},
+            },
+        },
+    ))
+    assert errs == [], errs
+
+
+def test_validator_rejects_malformed_child_schema():
+    """id_format / cloud_priority mistakes used to fail at connect() (a
+    confusing device-offline) or silently fall to the default tier."""
+    errs = validate_driver_definition(_base_def(
+        child_entity_types={
+            "zone": {
+                "label": "Zone",
+                "id_format": {"type": "uuid", "min": 5, "max": 1, "pad_width": 0},
+                "state_variables": {
+                    "level": {"type": "loudness"},
+                    "mute": {"type": "boolean", "cloud_priority": "medium"},
+                },
+            },
+        },
+    ))
+    text = "\n".join(errs)
+    assert "unknown type 'uuid'" in text, errs
+    assert "min (5) is greater than max (1)" in text, errs
+    assert "pad_width must be a positive integer" in text, errs
+    assert "unknown type 'loudness'" in text, errs
+    assert "cloud_priority" in text, errs
+
+
+def test_validator_accepts_well_formed_child_schema():
+    errs = validate_driver_definition(_base_def(
+        child_entity_types={
+            "zone": {
+                "label": "Zone",
+                "id_format": {"type": "integer", "min": 1, "max": 8, "pad_width": 2},
+                "state_variables": {
+                    "level": {"type": "number", "cloud_priority": "low"},
+                    "mute": {"type": "boolean", "cloud_priority": "high"},
+                },
+            },
+        },
+    ))
+    assert errs == [], errs

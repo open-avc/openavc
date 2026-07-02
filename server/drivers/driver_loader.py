@@ -296,19 +296,48 @@ def validate_driver_definition(driver_def: dict[str, Any]) -> list[str]:
             f"Command '{cmd_name}'", cmd_def.get("params"), errors,
         )
 
-    # OSC device-setting writes share the same arg encoder — validate their arg
-    # types too so a bad tag fails at load, not at write time.
+    # Device settings: each entry must be writable (a `write:` block — the
+    # runtime raises NotImplementedError without one) and its state_key must
+    # name a declared state variable. A typo'd state_key used to load fine
+    # and just show "(not set)" forever while writes silently fired.
+    declared_vars = driver_def.get("state_variables")
+    declared_vars = declared_vars if isinstance(declared_vars, dict) else {}
+    valid_setting_types = {"string", "integer", "number", "boolean", "enum", "float"}
     device_settings = driver_def.get("device_settings")
-    if isinstance(device_settings, dict):
+    if device_settings is not None and not isinstance(device_settings, dict):
+        errors.append("device_settings: must be a mapping")
+    elif isinstance(device_settings, dict):
         for setting_name, setting_def in device_settings.items():
+            where = f"Device setting '{setting_name}'"
             if not isinstance(setting_def, dict):
+                errors.append(f"{where}: must be a mapping")
                 continue
-            write = setting_def.get("write")
-            if isinstance(write, dict) and write.get("address") is not None:
-                _validate_osc_args(
-                    f"Device setting '{setting_name}' write",
-                    write.get("args"), errors,
+            stype = setting_def.get("type", "")
+            if stype and stype not in valid_setting_types:
+                errors.append(f"{where}: unknown type '{stype}'")
+            state_key = setting_def.get("state_key", setting_name)
+            if state_key not in declared_vars:
+                errors.append(
+                    f"{where}: state_key '{state_key}' is not a declared "
+                    f"state variable — the setting would never read back"
                 )
+            mn, mx = setting_def.get("min"), setting_def.get("max")
+            if (
+                isinstance(mn, (int, float)) and isinstance(mx, (int, float))
+                and not isinstance(mn, bool) and not isinstance(mx, bool)
+                and mn > mx
+            ):
+                errors.append(f"{where}: min ({mn}) is greater than max ({mx})")
+            write = setting_def.get("write")
+            if not isinstance(write, dict):
+                errors.append(
+                    f"{where}: missing 'write' block (send / path / address) — "
+                    f"a device setting must be writable"
+                )
+            elif write.get("address") is not None:
+                # OSC writes share the command arg encoder — validate their
+                # arg types too so a bad tag fails at load, not write time.
+                _validate_osc_args(f"{where} write", write.get("args"), errors)
 
     # Validate the Phase 6 ``discovery:`` block. Templates (generic_*)
     # are exempt — they don't participate in discovery. Phase 8 dropped
@@ -448,7 +477,7 @@ def validate_driver_definition(driver_def: dict[str, Any]) -> list[str]:
     if child_types and not isinstance(child_types, dict):
         errors.append("child_entity_types: must be a mapping")
     elif isinstance(child_types, dict):
-        for child_type in child_types:
+        for child_type, type_def in child_types.items():
             if not isinstance(child_type, str) or not child_type:
                 errors.append(f"child_entity_types: type name {child_type!r} must be a non-empty string")
                 continue
@@ -462,6 +491,68 @@ def validate_driver_definition(driver_def: dict[str, Any]) -> list[str]:
                     f"child_entity_types: type name '{child_type}' must not contain "
                     f"glob metacharacters ({', '.join(bad)}) — they break state-change dispatch"
                 )
+            # Deep-validate the schema so a malformed declaration fails at
+            # load with a clear message — not at connect() (a bad id_format
+            # used to surface as a confusing device-offline) or silently
+            # (an invalid cloud_priority just fell to the default tier).
+            where = f"child_entity_types.{child_type}"
+            if not isinstance(type_def, dict):
+                errors.append(f"{where}: must be a mapping")
+                continue
+            id_format = type_def.get("id_format")
+            if id_format is not None:
+                if not isinstance(id_format, dict):
+                    errors.append(f"{where}.id_format: must be a mapping")
+                else:
+                    id_type = id_format.get("type", "integer")
+                    if id_type not in ("integer", "string"):
+                        errors.append(
+                            f"{where}.id_format: unknown type '{id_type}' "
+                            f"(expected 'integer' or 'string')"
+                        )
+                    mn, mx = id_format.get("min"), id_format.get("max")
+                    for label, val in (("min", mn), ("max", mx)):
+                        if val is not None and (
+                            isinstance(val, bool) or not isinstance(val, int)
+                        ):
+                            errors.append(
+                                f"{where}.id_format: {label} must be an integer "
+                                f"(got {val!r})"
+                            )
+                    if isinstance(mn, int) and isinstance(mx, int) and mn > mx:
+                        errors.append(
+                            f"{where}.id_format: min ({mn}) is greater than max ({mx})"
+                        )
+                    pad = id_format.get("pad_width")
+                    if pad is not None and (
+                        isinstance(pad, bool) or not isinstance(pad, int) or pad < 1
+                    ):
+                        errors.append(
+                            f"{where}.id_format: pad_width must be a positive "
+                            f"integer (got {pad!r})"
+                        )
+            child_vars = type_def.get("state_variables")
+            if child_vars is not None and not isinstance(child_vars, dict):
+                errors.append(f"{where}.state_variables: must be a mapping")
+            elif isinstance(child_vars, dict):
+                for var_name, var_def in child_vars.items():
+                    if not isinstance(var_def, dict):
+                        errors.append(
+                            f"{where}.state_variables.{var_name}: must be a mapping"
+                        )
+                        continue
+                    vt = var_def.get("type", "")
+                    if vt and vt not in valid_types:
+                        errors.append(
+                            f"{where}.state_variables.{var_name}: unknown type '{vt}'"
+                        )
+                    cp = var_def.get("cloud_priority")
+                    if cp is not None and cp not in ("low", "high"):
+                        errors.append(
+                            f"{where}.state_variables.{var_name}: cloud_priority "
+                            f"must be 'low' or 'high' (got {cp!r}); omit it for "
+                            f"the default cadence"
+                        )
 
     return errors
 
@@ -686,8 +777,82 @@ def load_python_driver_file(filepath: Path) -> type | None:
 
     if driver_class is None:
         log.warning(f"No BaseDriver subclass with DRIVER_INFO found in {filepath}")
+    else:
+        _warn_python_driver_info_issues(driver_class)
 
     return driver_class
+
+
+def _warn_python_driver_info_issues(driver_class: type) -> None:
+    """Structural sanity warnings for a Python driver's DRIVER_INFO.
+
+    Warn-only, never rejects: Python drivers may populate ``commands`` /
+    state at runtime (the Q-SYS pattern), so cross-references against the
+    class-level dict can false-positive — but STRUCTURE is static, and a
+    malformed entry used to be silently skipped by the action resolver (the
+    button just never appears) or fail at first write. YAML drivers get the
+    equivalent as hard load errors via validate_driver_definition.
+    """
+    from server.drivers.base import BaseDriver
+
+    info = getattr(driver_class, "DRIVER_INFO", {}) or {}
+    driver_id = info.get("id", driver_class.__name__)
+    issues: list[str] = []
+
+    qa = info.get("quick_actions")
+    if qa is not None and (
+        not isinstance(qa, list) or any(not isinstance(x, str) for x in qa)
+    ):
+        issues.append("quick_actions must be a list of command-id strings")
+
+    actions = info.get("actions")
+    declares_setup = False
+    if actions is not None and not isinstance(actions, list):
+        issues.append("actions must be a list")
+    elif isinstance(actions, list):
+        for i, entry in enumerate(actions):
+            if not isinstance(entry, dict) or not entry.get("id"):
+                issues.append(
+                    f"actions[{i}] must be a mapping with an 'id' "
+                    f"(the resolver silently drops it otherwise)"
+                )
+                continue
+            kind = entry.get("kind", "command")
+            if kind not in ("command", "setup"):
+                issues.append(
+                    f"actions[{i}] ('{entry.get('id')}'): unknown kind {kind!r}"
+                )
+            elif kind == "setup":
+                declares_setup = True
+            availability = entry.get("availability", "online")
+            if availability not in ("online", "offline", "always"):
+                issues.append(
+                    f"actions[{i}] ('{entry.get('id')}'): unknown availability "
+                    f"{availability!r}"
+                )
+    if declares_setup and driver_class.run_setup_action is BaseDriver.run_setup_action:
+        issues.append(
+            "declares a kind:'setup' action but does not override "
+            "run_setup_action — the wizard will 501 on launch"
+        )
+
+    settings = info.get("device_settings")
+    if settings is not None and not isinstance(settings, dict):
+        issues.append("device_settings must be a mapping")
+    elif isinstance(settings, dict):
+        for key, sdef in settings.items():
+            if not isinstance(sdef, dict):
+                issues.append(f"device_settings['{key}'] must be a mapping")
+        if settings and (
+            driver_class.set_device_setting is BaseDriver.set_device_setting
+        ):
+            issues.append(
+                "declares device_settings but does not override "
+                "set_device_setting — every write will 501"
+            )
+
+    for msg in issues:
+        log.warning(f"Python driver '{driver_id}': {msg}")
 
 
 def load_python_drivers(directories: Sequence[Path | str]) -> int:
