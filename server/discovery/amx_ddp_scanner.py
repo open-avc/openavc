@@ -148,12 +148,21 @@ def parse_ddp_beacon(data: bytes, sender_ip: str) -> DDPBeacon | None:
     return DDPBeacon(ip=sender_ip, raw=raw, fields=fields)
 
 
+# Flood guard: a hostile peer on the multicast VLAN can emit beacons cycling
+# spoofed source addresses, and every distinct source costs a results entry
+# for the whole scan window plus a DiscoveredDevice + WebSocket fan-out
+# downstream. No real site has anywhere near this many AMX beacon sources;
+# past the cap, new sources are dropped (already-seen ones keep updating).
+MAX_BEACON_SOURCES = 512
+
+
 class AMXDDPScanner:
     """Passive listener for AMX DDP multicast beacons.
 
     Listens for the entire scan window, accumulating beacons keyed by
     sender IP. The most-recently-seen beacon wins on duplicate IPs;
-    devices typically emit identical beacons every 30-60s.
+    devices typically emit identical beacons every 30-60s. Distinct
+    sources are capped at MAX_BEACON_SOURCES per scan window.
     """
 
     def __init__(self, control_ip: str = "") -> None:
@@ -162,6 +171,7 @@ class AMXDDPScanner:
         self._running = False
         self._results: dict[str, DDPBeacon] = {}
         self._control_ip = control_ip
+        self._cap_warned = False
         # Environment failure that kept the listener from working at all —
         # surfaced as a scan warning (see MDNSScanner.env_error).
         self.env_error: str | None = None
@@ -174,6 +184,7 @@ class AMXDDPScanner:
         """Listen on the DDP multicast group for ``duration`` seconds."""
         self._results.clear()
         self._running = True
+        self._cap_warned = False
         self.env_error = None
 
         try:
@@ -223,13 +234,27 @@ class AMXDDPScanner:
                     log.debug("AMX DDP socket error during listen", exc_info=True)
                 break
 
-            beacon = parse_ddp_beacon(data, addr[0])
-            if beacon:
-                self._results[addr[0]] = beacon
-                log.debug(
-                    "DDP beacon from %s: %s %s",
-                    addr[0], beacon.make, beacon.model,
+            self._handle_datagram(data, addr[0])
+
+    def _handle_datagram(self, data: bytes, sender_ip: str) -> None:
+        """Parse one datagram and record the beacon, subject to the cap."""
+        beacon = parse_ddp_beacon(data, sender_ip)
+        if not beacon:
+            return
+        if sender_ip not in self._results and len(self._results) >= MAX_BEACON_SOURCES:
+            if not self._cap_warned:
+                self._cap_warned = True
+                log.warning(
+                    "AMX DDP listener hit the %d distinct-source cap; "
+                    "ignoring new sources for the rest of the scan window",
+                    MAX_BEACON_SOURCES,
                 )
+            return
+        self._results[sender_ip] = beacon
+        log.debug(
+            "DDP beacon from %s: %s %s",
+            sender_ip, beacon.make, beacon.model,
+        )
 
     def _close_socket(self) -> None:
         if self._sock is not None:

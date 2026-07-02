@@ -12,6 +12,7 @@ import pytest
 from server.discovery.amx_ddp_scanner import (
     AMXDDPScanner,
     DDPBeacon,
+    MAX_BEACON_SOURCES,
     parse_ddp_beacon,
 )
 from server.discovery.result import SignalTier
@@ -217,3 +218,39 @@ class TestParserRobustness:
         assert b is not None
         assert b.config_url == "http://example.com/path?x=1"
         assert b.revision == "1.0"
+
+
+class TestSourceCap:
+    """The listener caps distinct sender IPs per scan window (flood guard).
+
+    A hostile peer on the multicast VLAN can cycle spoofed source addresses;
+    without the cap every distinct source became a permanent results entry
+    for the whole scan window plus a DiscoveredDevice and WebSocket fan-out
+    downstream.
+    """
+
+    def _beacon_bytes(self, n: int) -> bytes:
+        return f"AMXB<-Make=Acme><-Model=Widget-{n}>".encode()
+
+    def test_distinct_sources_capped(self):
+        scanner = AMXDDPScanner()
+        for n in range(MAX_BEACON_SOURCES + 50):
+            scanner._handle_datagram(self._beacon_bytes(n), f"10.{(n >> 16) & 255}.{(n >> 8) & 255}.{n & 255}")
+        assert len(scanner.results) == MAX_BEACON_SOURCES
+
+    def test_known_source_still_updates_past_cap(self):
+        scanner = AMXDDPScanner()
+        for n in range(MAX_BEACON_SOURCES + 50):
+            scanner._handle_datagram(self._beacon_bytes(n), f"10.{(n >> 16) & 255}.{(n >> 8) & 255}.{n & 255}")
+        # 10.0.0.0 was the first source in; a fresh beacon from it must still
+        # be accepted (most-recent-wins) even though the cap has tripped.
+        scanner._handle_datagram(b"AMXB<-Make=Acme><-Model=Updated>", "10.0.0.0")
+        assert scanner.results["10.0.0.0"].model == "Updated"
+
+    def test_cap_logs_once_per_window(self, caplog):
+        scanner = AMXDDPScanner()
+        with caplog.at_level("WARNING"):
+            for n in range(MAX_BEACON_SOURCES + 10):
+                scanner._handle_datagram(self._beacon_bytes(n), f"10.{(n >> 16) & 255}.{(n >> 8) & 255}.{n & 255}")
+        hits = [r for r in caplog.records if "distinct-source cap" in r.message]
+        assert len(hits) == 1
