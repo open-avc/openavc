@@ -53,6 +53,7 @@ import {
   getMacroCallees,
   detectCircularDependency,
 } from "./macroHelpers";
+import { getStepIds, applyStepReorder, adjustExpandedAfterMove } from "./stepDndHelpers";
 import {
   usePluginMacroActions,
   findPluginAction,
@@ -505,38 +506,20 @@ export function MacroEditor({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
+  // One id space for everything sortable: SortableContext items, the ids
+  // the step rows register, and the React keys all read from stepIds.
   const stepIdMapRef = useRef(new WeakMap<object, string>());
   const stepIdCounterRef = useRef(0);
-  const stepIds = macro.steps.map((step) => {
-    let id = stepIdMapRef.current.get(step);
-    if (!id) {
-      id = `step-${stepIdCounterRef.current++}`;
-      stepIdMapRef.current.set(step, id);
-    }
-    return id;
-  });
+  const stepIds = getStepIds(macro.steps, stepIdMapRef.current, stepIdCounterRef);
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIndex = stepIds.indexOf(String(active.id));
-    const newIndex = stepIds.indexOf(String(over.id));
-    if (oldIndex === -1 || newIndex === -1) return;
-    const steps = [...macro.steps];
-    const [moved] = steps.splice(oldIndex, 1);
-    steps.splice(newIndex, 0, moved);
-    onUpdate({ ...macro, steps });
-    // Update expanded step to follow the moved item
-    if (expandedStep === oldIndex) {
-      setExpandedStep(newIndex);
-    } else if (expandedStep !== null) {
-      // Adjust expanded index if it shifted due to the move
-      if (oldIndex < expandedStep && newIndex >= expandedStep) {
-        setExpandedStep(expandedStep - 1);
-      } else if (oldIndex > expandedStep && newIndex <= expandedStep) {
-        setExpandedStep(expandedStep + 1);
-      }
-    }
+    if (!over) return;
+    const result = applyStepReorder(macro.steps, stepIds, String(active.id), String(over.id));
+    if (!result) return;
+    onUpdate({ ...macro, steps: result.steps });
+    // Keep the expanded step pointing at the same step after the move
+    setExpandedStep(adjustExpandedAfterMove(expandedStep, result.oldIndex, result.newIndex));
   };
 
   return (
@@ -768,8 +751,8 @@ export function MacroEditor({
               <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
                 {macro.steps.map((step, i) => (
                   <SortableStepItem
-                    key={`step-${i}`}
-                    id={`step-${i}`}
+                    key={stepIds[i]}
+                    id={stepIds[i]}
                     step={step}
                     index={i}
                     isFirst={i === 0}
