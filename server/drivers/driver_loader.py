@@ -19,6 +19,7 @@ import ast
 import importlib.util
 import inspect
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -263,6 +264,12 @@ def validate_driver_definition(driver_def: dict[str, Any]) -> list[str]:
             "default_config.ir_codes / the device config)"
         )
 
+    # Raw maps used by child_set / instances / each_child validation below.
+    _raw_child_types = driver_def.get("child_entity_types")
+    child_types_map: dict[str, Any] = (
+        _raw_child_types if isinstance(_raw_child_types, dict) else {}
+    )
+
     # Validate response patterns compile and don't have catastrophic backtracking
     responses = driver_def.get("responses", [])
     if not isinstance(responses, list):
@@ -277,6 +284,10 @@ def validate_driver_definition(driver_def: dict[str, Any]) -> list[str]:
             addr = resp["address"]
             if not isinstance(addr, str) or not addr.startswith("/"):
                 errors.append(f"Response {i}: OSC address must start with '/'")
+            if resp.get("child_set") is not None:
+                errors.append(
+                    f"Response {i}: child_set is not supported on OSC responses"
+                )
             continue
 
         pattern = resp.get("pattern", "") or resp.get("match", "")
@@ -286,6 +297,83 @@ def validate_driver_definition(driver_def: dict[str, Any]) -> list[str]:
             err = _regex_redos_error(f"Response {i}", pattern)
             if err:
                 errors.append(err)
+
+        # Validate child_set (route captures into child-entity state). A
+        # misdeclared entry would silently never write child state, so
+        # enforce the shape + capture-ref bounds at load time.
+        child_set = resp.get("child_set")
+        if child_set is None:
+            continue
+        if resp.get("json"):
+            errors.append(
+                f"Response {i}: child_set is not supported on json responses"
+            )
+            continue
+        if not isinstance(child_set, list) or not child_set:
+            errors.append(f"Response {i}: child_set must be a non-empty list")
+            continue
+        # Capture-group count, when the raw pattern compiles cleanly (it may
+        # contain {config} placeholders substituted at runtime — skip the
+        # bound check then).
+        ngroups: int | None = None
+        if isinstance(pattern, str) and pattern:
+            try:
+                ngroups = re.compile(pattern).groups
+            except re.error:
+                ngroups = None
+
+        def _check_group_ref(where: str, ref: str) -> None:
+            try:
+                group = int(ref[1:])
+            except ValueError:
+                errors.append(
+                    f"{where}: {ref!r} is not a numeric capture ref ($1, $2, ...)"
+                )
+                return
+            if group < 1:
+                errors.append(f"{where}: capture ref must be $1 or higher")
+            elif ngroups is not None and group > ngroups:
+                errors.append(
+                    f"{where}: capture ref ${group} exceeds the pattern's "
+                    f"{ngroups} group(s)"
+                )
+
+        for j, entry in enumerate(child_set):
+            where = f"Response {i}: child_set[{j}]"
+            if not isinstance(entry, dict):
+                errors.append(f"{where}: must be a mapping")
+                continue
+            ctype = entry.get("type")
+            if not isinstance(ctype, str) or ctype not in child_types_map:
+                errors.append(
+                    f"{where}: type {ctype!r} is not a declared child_entity_type"
+                )
+                continue
+            tdef = child_types_map.get(ctype)
+            tdef = tdef if isinstance(tdef, dict) else {}
+            cvars = tdef.get("state_variables")
+            cvars = cvars if isinstance(cvars, dict) else {}
+            cid = entry.get("id")
+            if cid is None:
+                errors.append(
+                    f"{where}: missing 'id' (a capture ref like $1, or a literal)"
+                )
+            elif isinstance(cid, str) and cid.startswith("$"):
+                _check_group_ref(f"{where}: id", cid)
+            state_map = entry.get("state")
+            if not isinstance(state_map, dict) or not state_map:
+                errors.append(
+                    f"{where}: missing 'state' mapping (prop -> $N or literal)"
+                )
+                continue
+            for prop, expr in state_map.items():
+                if prop not in cvars:
+                    errors.append(
+                        f"{where}: state prop '{prop}' is not declared in "
+                        f"child_entity_types.{ctype}.state_variables"
+                    )
+                if isinstance(expr, str) and expr.startswith("$"):
+                    _check_group_ref(f"{where}: state '{prop}'", expr)
 
     # Validate commands structure
     commands = driver_def.get("commands", {})
@@ -622,6 +710,134 @@ def validate_driver_definition(driver_def: dict[str, Any]) -> list[str]:
                             f"must be 'low' or 'high' (got {cp!r}); omit it for "
                             f"the default cadence"
                         )
+
+            # Validate the optional `instances:` roster block (declarative
+            # children). A misdeclared block would silently register nothing
+            # — the exact "declared types, empty panel" failure it replaces.
+            instances = type_def.get("instances")
+            if instances is not None:
+                if not isinstance(instances, dict):
+                    errors.append(f"{where}.instances: must be a mapping")
+                else:
+                    config_fields = set()
+                    for src in ("config_schema", "default_config"):
+                        block = driver_def.get(src)
+                        if isinstance(block, dict):
+                            config_fields.update(block.keys())
+                    id_fmt = type_def.get("id_format")
+                    id_fmt = id_fmt if isinstance(id_fmt, dict) else {}
+                    id_type = id_fmt.get("type", "integer")
+                    sources = [
+                        k for k in ("count", "count_from", "ids_from")
+                        if k in instances
+                    ]
+                    if len(sources) != 1:
+                        errors.append(
+                            f"{where}.instances: declare exactly one of "
+                            f"'count', 'count_from', 'ids_from'"
+                        )
+                    elif sources[0] == "count":
+                        count = instances["count"]
+                        if (
+                            isinstance(count, bool)
+                            or not isinstance(count, int)
+                            or count < 1
+                        ):
+                            errors.append(
+                                f"{where}.instances: count must be an "
+                                f"integer >= 1 (got {count!r})"
+                            )
+                        else:
+                            mx = id_fmt.get("max")
+                            if (
+                                isinstance(mx, int)
+                                and not isinstance(mx, bool)
+                                and count > mx
+                            ):
+                                errors.append(
+                                    f"{where}.instances: count ({count}) "
+                                    f"exceeds id_format.max ({mx})"
+                                )
+                        if id_type == "string":
+                            errors.append(
+                                f"{where}.instances: 'count' requires integer "
+                                f"ids (id_format.type is 'string' — use "
+                                f"'ids_from')"
+                            )
+                    else:
+                        src_key = sources[0]
+                        field = instances[src_key]
+                        if not isinstance(field, str) or not field:
+                            errors.append(
+                                f"{where}.instances: {src_key} must name a "
+                                f"config field"
+                            )
+                        elif field not in config_fields:
+                            errors.append(
+                                f"{where}.instances: {src_key} '{field}' is "
+                                f"not a declared config field (config_schema "
+                                f"/ default_config)"
+                            )
+                        if src_key == "count_from" and id_type == "string":
+                            errors.append(
+                                f"{where}.instances: 'count_from' requires "
+                                f"integer ids (id_format.type is 'string' — "
+                                f"use 'ids_from')"
+                            )
+                    label = instances.get("label")
+                    if label is not None and not isinstance(label, str):
+                        errors.append(
+                            f"{where}.instances: label must be a string"
+                        )
+
+    # Validate each_child entries in polling.queries and on_connect (per-child
+    # query templates). A bad entry would silently poll nothing.
+    def _validate_each_child(name: str, entries: Any, allow_osc_dict: bool) -> None:
+        if not isinstance(entries, list):
+            return
+        for i, q in enumerate(entries):
+            if not isinstance(q, dict):
+                continue
+            if "each_child" not in q:
+                if allow_osc_dict and "address" in q:
+                    continue  # OSC on_connect {address, args} form
+                errors.append(
+                    f"{name}[{i}]: mapping entries must be "
+                    f"{{each_child, send}}"
+                    + (" or {address, args}" if allow_osc_dict else "")
+                )
+                continue
+            ec = q.get("each_child")
+            if not isinstance(ec, str) or ec not in child_types_map:
+                errors.append(
+                    f"{name}[{i}]: each_child type {ec!r} is not a declared "
+                    f"child_entity_type"
+                )
+            elif not isinstance(
+                (child_types_map.get(ec) or {}).get("instances")
+                if isinstance(child_types_map.get(ec), dict) else None,
+                dict,
+            ):
+                errors.append(
+                    f"{name}[{i}]: each_child type '{ec}' declares no "
+                    f"instances: block — nothing would ever be polled"
+                )
+            send = q.get("send")
+            if not isinstance(send, str) or not send:
+                errors.append(f"{name}[{i}]: missing 'send' template")
+            elif "{child_id}" not in send:
+                errors.append(
+                    f"{name}[{i}]: 'send' must contain {{child_id}}"
+                )
+
+    polling_def = driver_def.get("polling")
+    if isinstance(polling_def, dict):
+        _validate_each_child(
+            "polling.queries", polling_def.get("queries"), allow_osc_dict=False
+        )
+    _validate_each_child(
+        "on_connect", driver_def.get("on_connect"), allow_osc_dict=True
+    )
 
     return errors
 

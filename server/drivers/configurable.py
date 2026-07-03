@@ -161,8 +161,11 @@ class ConfigurableDriver(BaseDriver):
 
         # Pre-compile response patterns — two separate lists:
         # 1. Regex patterns for TCP/serial/UDP/HTTP responses
+        #    (each with flat state mappings + compiled child_set entries)
         # 2. OSC address patterns for OSC responses
-        self._compiled_responses: list[tuple[re.Pattern[str], list[dict[str, Any]]]] = []
+        self._compiled_responses: list[
+            tuple[re.Pattern[str], list[dict[str, Any]], list[dict[str, Any]]]
+        ] = []
         self._osc_responses: list[tuple[str, list[dict[str, Any]]]] = []
         # JSON-body responses: each entry is a list of {state, key, type, map}
         # mappings applied together from one parsed JSON object (multi-field).
@@ -279,12 +282,99 @@ class ConfigurableDriver(BaseDriver):
                                 "type": var_type,
                             })
 
-                self._compiled_responses.append((pattern, mappings))
+                child_mappings = self._compile_child_set(resp)
+                self._compiled_responses.append((pattern, mappings, child_mappings))
             except re.error as e:
                 log.warning(
                     f"[{self.device_id}] Invalid response pattern "
                     f"'{resp.get('match', resp.get('pattern', ''))}': {e}"
                 )
+
+    def _compile_child_set(self, resp: dict[str, Any]) -> list[dict[str, Any]]:
+        """Compile a response entry's ``child_set:`` list — route regex
+        captures into child-entity state. Each entry is
+        ``{type, id: $N | literal, state: {prop: $N | literal | {group/value/map/type}}}``.
+        Value coercion uses the child type's declared ``state_variables``,
+        mirroring the flat ``set:`` shorthand (static values coerce too).
+        Malformed entries are skipped with a warning; the loader validates
+        the same shape up-front so a catalog driver never gets here wrong.
+        """
+        raw = resp.get("child_set")
+        if not isinstance(raw, list):
+            return []
+        child_types = self._definition.get("child_entity_types") or {}
+        compiled: list[dict[str, Any]] = []
+        for entry in raw:
+            if not isinstance(entry, dict):
+                continue
+            ctype = entry.get("type")
+            tdef = child_types.get(ctype)
+            if not isinstance(tdef, dict):
+                log.warning(
+                    f"[{self.device_id}] child_set: unknown child type "
+                    f"{ctype!r}; skipping entry"
+                )
+                continue
+            cvars = tdef.get("state_variables") or {}
+            cid = entry.get("id")
+            idspec: tuple[str, Any]
+            if isinstance(cid, str) and cid.startswith("$"):
+                try:
+                    idspec = ("group", int(cid[1:]))
+                except ValueError:
+                    log.warning(
+                        f"[{self.device_id}] child_set: id {cid!r} is not a "
+                        f"numeric capture ref ($1, $2, ...); skipping entry"
+                    )
+                    continue
+            elif cid is not None:
+                idspec = ("literal", cid)
+            else:
+                log.warning(
+                    f"[{self.device_id}] child_set: missing 'id'; skipping entry"
+                )
+                continue
+            state_map = entry.get("state")
+            if not isinstance(state_map, dict):
+                continue
+            props: list[dict[str, Any]] = []
+            for prop, expr in state_map.items():
+                var_def = cvars.get(prop, {})
+                var_type = (
+                    var_def.get("type", "string")
+                    if isinstance(var_def, dict)
+                    else "string"
+                )
+                if isinstance(expr, dict):
+                    pm: dict[str, Any] = {"prop": prop, "type": expr.get("type", var_type)}
+                    if "group" in expr:
+                        try:
+                            pm["group"] = int(expr["group"])
+                        except (TypeError, ValueError):
+                            continue
+                    elif "value" in expr:
+                        pm["value"] = expr["value"]
+                    else:
+                        continue
+                    if isinstance(expr.get("map"), dict):
+                        pm["map"] = expr["map"]
+                    props.append(pm)
+                elif isinstance(expr, str) and expr.startswith("$"):
+                    try:
+                        group = int(expr[1:])
+                    except ValueError:
+                        log.warning(
+                            f"[{self.device_id}] child_set: state '{prop}' ref "
+                            f"{expr!r} is not a numeric capture ref; skipping"
+                        )
+                        continue
+                    props.append({"prop": prop, "group": group, "type": var_type})
+                else:
+                    # Static value — coerce by declared type like flat set:.
+                    props.append({"prop": prop, "value": expr, "type": var_type})
+            if props:
+                compiled.append({"type": ctype, "id": idspec, "props": props})
+        return compiled
 
     def _merge_config_protocol(self) -> None:
         """Merge device-config-authored ``commands`` / ``responses`` /
@@ -457,6 +547,16 @@ class ConfigurableDriver(BaseDriver):
             # to restore, permanently disabling polling after one bad attempt.
             self.config["poll_interval"] = saved_poll_interval
 
+        # Declarative child rosters (`instances:` blocks): register/reconcile
+        # before on_connect and polling so routed responses land on
+        # registered children from the first query.
+        try:
+            self._register_declared_children()
+        except Exception:
+            log.exception(
+                f"[{self.device_id}] Failed to register declared children"
+            )
+
         on_connect = self._definition.get("on_connect", [])
         if on_connect and self.transport and self.transport.connected:
             transport_type = self._definition.get("transport")
@@ -466,6 +566,17 @@ class ConfigurableDriver(BaseDriver):
                 from server.transport.osc_codec import osc_encode_message
                 for item in on_connect:
                     try:
+                        if isinstance(item, dict) and "each_child" in item:
+                            for expanded in self._expand_query(item):
+                                address = (
+                                    self._safe_substitute(expanded, self.config)
+                                    if "{" in expanded
+                                    else expanded
+                                )
+                                await self.transport.send(osc_encode_message(address))
+                                if delay:
+                                    await asyncio.sleep(delay)
+                            continue
                         if isinstance(item, str):
                             address = self._safe_substitute(item, self.config) if "{" in item else item
                             data = osc_encode_message(address)
@@ -503,12 +614,13 @@ class ConfigurableDriver(BaseDriver):
                         log.warning(f"[{self.device_id}] OSC initial query failed: {e}")
             else:
                 for raw in on_connect:
-                    try:
-                        await self._dispatch_query(raw)
-                        if delay:
-                            await asyncio.sleep(delay)
-                    except Exception as e:
-                        log.warning(f"[{self.device_id}] on_connect command failed: {e}")
+                    for query in self._expand_query(raw):
+                        try:
+                            await self._dispatch_query(query)
+                            if delay:
+                                await asyncio.sleep(delay)
+                        except Exception as e:
+                            log.warning(f"[{self.device_id}] on_connect command failed: {e}")
 
         if saved_poll_interval > 0:
             await self.start_polling(saved_poll_interval)
@@ -541,6 +653,169 @@ class ConfigurableDriver(BaseDriver):
         else:  # tcp / serial
             formatted = self._safe_substitute(query, self.config) if "{" in query else query
             await self.transport.send(_safe_encode_escapes(formatted))
+
+    def _expand_query(self, query: Any) -> list[str]:
+        """Expand one polling/on_connect entry. Strings pass through
+        unchanged; an ``{each_child: <type>, send: <template>}`` dict yields
+        one query per registered child of that type with ``{child_id}``
+        substituted (the unpadded local id). Anything else is skipped with a
+        warning.
+        """
+        if isinstance(query, str):
+            return [query]
+        if isinstance(query, dict) and "each_child" in query:
+            ctype = query.get("each_child")
+            template = query.get("send")
+            if not isinstance(ctype, str) or not isinstance(template, str) or not template:
+                log.warning(
+                    f"[{self.device_id}] each_child query needs 'each_child' "
+                    f"+ 'send'; skipping"
+                )
+                return []
+            return [
+                template.replace("{child_id}", str(local_id))
+                for local_id in self.list_children(ctype)
+            ]
+        log.warning(
+            f"[{self.device_id}] Unrecognized query entry {query!r}; skipping"
+        )
+        return []
+
+    def _coerce_child_local_id(self, child_type: str, raw: Any) -> int | str | None:
+        """Coerce a routed child id (regex capture or literal) to the type's
+        declared ``id_format`` — int for integer ids, stripped string
+        otherwise. Returns None when it can't be coerced."""
+        child_types = self._definition.get("child_entity_types") or {}
+        tdef = child_types.get(child_type) or {}
+        id_format = tdef.get("id_format") or {}
+        if id_format.get("type", "integer") == "integer":
+            if isinstance(raw, bool):
+                return None
+            if isinstance(raw, int):
+                return raw
+            try:
+                return int(str(raw).strip())
+            except (TypeError, ValueError):
+                return None
+        text = str(raw).strip()
+        return text or None
+
+    def _resolve_instance_ids(
+        self, ctype: str, tdef: dict[str, Any], inst: dict[str, Any]
+    ) -> list[int | str] | None:
+        """Resolve an ``instances:`` block to the wanted local-id list.
+        ``count`` = fixed ids 1..N; ``count_from`` = an integer config field;
+        ``ids_from`` = a comma-separated config field (sparse / string ids).
+        Returns None when the declaration can't be resolved (warned)."""
+        id_format = tdef.get("id_format") or {}
+        id_type = id_format.get("type", "integer")
+        if "count" in inst or "count_from" in inst:
+            if id_type != "integer":
+                log.warning(
+                    f"[{self.device_id}] instances: count/count_from require "
+                    f"integer ids ({ctype} declares string ids — use ids_from)"
+                )
+                return None
+            if "count" in inst:
+                raw = inst["count"]
+            else:
+                raw = self.config.get(inst.get("count_from"), "")
+            try:
+                n = int(str(raw).strip())
+            except (TypeError, ValueError):
+                log.warning(
+                    f"[{self.device_id}] instances: {ctype} count {raw!r} is "
+                    f"not an integer"
+                )
+                return None
+            if n < 0:
+                return None
+            return list(range(1, n + 1))
+        field = inst.get("ids_from")
+        if not isinstance(field, str) or not field:
+            return None
+        raw_list = str(self.config.get(field, "") or "")
+        ids: list[int | str] = []
+        for token in raw_list.split(","):
+            token = token.strip()
+            if not token:
+                continue
+            if id_type == "integer":
+                try:
+                    ids.append(int(token))
+                except ValueError:
+                    log.warning(
+                        f"[{self.device_id}] instances: {ctype} id {token!r} "
+                        f"from '{field}' is not an integer; skipping"
+                    )
+            else:
+                ids.append(token)
+        return ids
+
+    def _register_declared_children(self) -> dict[str, int]:
+        """Register/reconcile children declared via an ``instances:`` block on
+        a ``child_entity_types`` entry. Reconcile is config-want-set: register
+        the wanted ids, deregister anything registered but no longer wanted.
+        Idempotent per connect (re-registering an existing child is a no-op).
+        An ``instances.label`` template seeds the initial label, but never
+        overrides a label the user set in the project."""
+        counts: dict[str, int] = {}
+        child_types = self._definition.get("child_entity_types") or {}
+        for ctype, tdef in child_types.items():
+            if not isinstance(tdef, dict):
+                continue
+            inst = tdef.get("instances")
+            if not isinstance(inst, dict):
+                continue
+            ids = self._resolve_instance_ids(ctype, tdef, inst)
+            if ids is None:
+                continue
+            wanted = set(ids)
+            for local_id in list(self.list_children(ctype)):
+                if local_id not in wanted:
+                    self.deregister_child(ctype, local_id)
+            label_template = inst.get("label")
+            registered = 0
+            for local_id in ids:
+                initial: dict[str, Any] | None = None
+                if isinstance(label_template, str) and label_template:
+                    try:
+                        padded = self._format_child_id(ctype, local_id)
+                    except (TypeError, ValueError):
+                        padded = None
+                    project_entry = (
+                        self._project_child_entities.get(ctype, {}).get(padded)
+                        if padded is not None
+                        else None
+                    )
+                    if not (project_entry and project_entry.get("label")):
+                        initial = {
+                            "label": label_template.replace("{id}", str(local_id))
+                        }
+                try:
+                    self.register_child(ctype, local_id, initial_state=initial)
+                    registered += 1
+                except (TypeError, ValueError) as e:
+                    log.warning(
+                        f"[{self.device_id}] instances: could not register "
+                        f"{ctype} {local_id!r}: {e}"
+                    )
+            counts[ctype] = registered
+        return counts
+
+    async def refresh_children(self) -> dict[str, int]:
+        """Re-derive declared child rosters from config (the IDE's "Refresh
+        from Device" button). Only meaningful when at least one child type
+        declares ``instances:``; otherwise defer to BaseDriver (raises
+        NotImplementedError so the API reports refresh as unsupported)."""
+        child_types = self._definition.get("child_entity_types") or {}
+        has_instances = any(
+            isinstance(tdef, dict) and isinstance(tdef.get("instances"), dict)
+            for tdef in child_types.values()
+        )
+        if not has_instances:
+            return await super().refresh_children()
+        return self._register_declared_children()
 
     async def _post_connect(self) -> None:
         """Run the declarative `auth:` login handshake before BaseDriver
@@ -1193,7 +1468,7 @@ class ConfigurableDriver(BaseDriver):
         if self._json_responses and self._apply_json_responses(text):
             return
 
-        for pattern, mappings in self._compiled_responses:
+        for pattern, mappings, child_mappings in self._compiled_responses:
             match = pattern.search(text)
             if match:
                 for mapping in mappings:
@@ -1244,12 +1519,69 @@ class ConfigurableDriver(BaseDriver):
 
                     self.set_state(state_key, coerced)
 
+                if child_mappings:
+                    self._apply_child_mappings(match, child_mappings)
+
                 log.debug(
                     f"[{self.device_id}] Response matched: {pattern.pattern}"
                 )
                 return  # Stop at first match
 
         log.debug(f"[{self.device_id}] Unmatched response: {text!r}")
+
+    def _apply_child_mappings(
+        self, match: re.Match[str], child_mappings: list[dict[str, Any]]
+    ) -> None:
+        """Route a matched response's captures into child-entity state
+        (``child_set:``). Each entry resolves its child id (capture ref or
+        literal), coerces each prop by the child schema's declared type, and
+        applies one ``set_child_state_batch`` per child. Unregistered ids are
+        skipped quietly — devices legitimately answer for ports beyond a
+        user-configured roster."""
+        for cm in child_mappings:
+            ctype = cm["type"]
+            id_kind, id_val = cm["id"]
+            if id_kind == "group":
+                try:
+                    raw_id = match.group(id_val)
+                except (IndexError, re.error):
+                    continue
+                if raw_id is None:
+                    continue
+            else:
+                raw_id = id_val
+            local_id = self._coerce_child_local_id(ctype, raw_id)
+            if local_id is None:
+                continue
+            if not self.is_child_registered(ctype, local_id):
+                log.debug(
+                    f"[{self.device_id}] child_set: {ctype} {local_id!r} not "
+                    f"registered — skipping"
+                )
+                continue
+            updates: dict[str, Any] = {}
+            for pm in cm["props"]:
+                value_type = pm.get("type", "string")
+                if "value" in pm:
+                    updates[pm["prop"]] = self._coerce_value(
+                        str(pm["value"]), value_type
+                    )
+                    continue
+                try:
+                    raw_value = match.group(pm.get("group", 0))
+                except (IndexError, re.error):
+                    continue
+                if raw_value is None:
+                    continue
+                value_map = pm.get("map")
+                if value_map and raw_value in value_map:
+                    updates[pm["prop"]] = self._coerce_value(
+                        str(value_map[raw_value]), value_type
+                    )
+                else:
+                    updates[pm["prop"]] = self._coerce_value(raw_value, value_type)
+            if updates:
+                self.set_child_state_batch(ctype, local_id, updates)
 
     async def _handle_osc_response(self, data: bytes) -> None:
         """Decode incoming OSC data and match against address-based responses."""
@@ -1618,48 +1950,50 @@ class ConfigurableDriver(BaseDriver):
         transport_type = self._definition.get("transport")
         is_osc = transport_type == "osc"
 
-        for query in queries:
-            try:
-                if is_osc:
-                    commands = self._definition.get("commands", {})
-                    if query in commands:
-                        await self.send_command(query)
-                    else:
-                        from server.transport.osc_codec import osc_encode_message
-                        address = self._safe_substitute(query, self.config) if "{" in query else query
-                        msg = osc_encode_message(address)
-                        await self.transport.send(msg)
-                else:
-                    # HTTP/UDP resolve command names (so the response is matched);
-                    # TCP/serial send the raw string. Shared with on_connect via
-                    # _dispatch_query so the two paths can't drift apart.
-                    await self._dispatch_query(query)
-            except (ConnectionError, TimeoutError, OSError):
-                # Transport-level failure: propagate so BaseDriver._poll_loop's
-                # missed-poll watchdog counts it and can eventually mark the
-                # device disconnected. Swallowing this is what let HTTP/OSC/UDP
-                # devices report connected while unreachable. (HTTP connect
-                # errors arrive here as builtin ConnectionError — http_client
-                # translates httpx.ConnectError before it propagates.)
-                log.warning(f"[{self.device_id}] Poll query failed (transport)")
-                raise
-            except _HTTP_TRANSPORT_ERRORS as exc:
-                # httpx timeout / status / other transport errors are also
-                # transport-level for the watchdog — re-raise, don't swallow.
-                log.warning(f"[{self.device_id}] Poll query failed (HTTP): {exc}")
-                raise
-            except Exception as exc:  # Template substitution, encoding, parse errors
-                # Protocol-level: the device answered but the query/response was
-                # malformed. Surface device.error, don't penalize the watchdog,
-                # and continue to the next query.
-                log.exception(f"[{self.device_id}] Poll query error")
+        for raw_query in queries:
+            # each_child entries expand to one query per registered child.
+            for query in self._expand_query(raw_query):
                 try:
-                    await self.events.emit(
-                        f"device.error.{self.device_id}",
-                        {"device_id": self.device_id, "error": str(exc)},
-                    )
-                except Exception:
-                    log.exception(f"[{self.device_id}] Failed to emit device.error")
+                    if is_osc:
+                        commands = self._definition.get("commands", {})
+                        if query in commands:
+                            await self.send_command(query)
+                        else:
+                            from server.transport.osc_codec import osc_encode_message
+                            address = self._safe_substitute(query, self.config) if "{" in query else query
+                            msg = osc_encode_message(address)
+                            await self.transport.send(msg)
+                    else:
+                        # HTTP/UDP resolve command names (so the response is matched);
+                        # TCP/serial send the raw string. Shared with on_connect via
+                        # _dispatch_query so the two paths can't drift apart.
+                        await self._dispatch_query(query)
+                except (ConnectionError, TimeoutError, OSError):
+                    # Transport-level failure: propagate so BaseDriver._poll_loop's
+                    # missed-poll watchdog counts it and can eventually mark the
+                    # device disconnected. Swallowing this is what let HTTP/OSC/UDP
+                    # devices report connected while unreachable. (HTTP connect
+                    # errors arrive here as builtin ConnectionError — http_client
+                    # translates httpx.ConnectError before it propagates.)
+                    log.warning(f"[{self.device_id}] Poll query failed (transport)")
+                    raise
+                except _HTTP_TRANSPORT_ERRORS as exc:
+                    # httpx timeout / status / other transport errors are also
+                    # transport-level for the watchdog — re-raise, don't swallow.
+                    log.warning(f"[{self.device_id}] Poll query failed (HTTP): {exc}")
+                    raise
+                except Exception as exc:  # Template substitution, encoding, parse errors
+                    # Protocol-level: the device answered but the query/response was
+                    # malformed. Surface device.error, don't penalize the watchdog,
+                    # and continue to the next query.
+                    log.exception(f"[{self.device_id}] Poll query error")
+                    try:
+                        await self.events.emit(
+                            f"device.error.{self.device_id}",
+                            {"device_id": self.device_id, "error": str(exc)},
+                        )
+                    except Exception:
+                        log.exception(f"[{self.device_id}] Failed to emit device.error")
 
     def _create_frame_parser(self) -> FrameParser | None:
         """Check definition for frame parser config."""

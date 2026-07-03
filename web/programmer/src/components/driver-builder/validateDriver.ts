@@ -408,6 +408,55 @@ export function validateDriver(
         message: `Child type "${typeName}" name field "${typeDef.label_field}" isn't a declared state field.`,
       });
     }
+
+    // Instances roster (mirror driver_loader.py): exactly one source; count
+    // sane; *_from must name a declared config field. A bad block would
+    // silently register nothing at runtime.
+    const inst = typeDef.instances;
+    if (inst) {
+      const configFields = new Set([
+        ...Object.keys(draft.config_schema ?? {}),
+        ...Object.keys(draft.default_config ?? {}),
+      ]);
+      const sources = (["count", "count_from", "ids_from"] as const).filter(
+        (k) => inst[k] !== undefined,
+      );
+      if (sources.length !== 1) {
+        issues.push({
+          severity: "error",
+          section: "behavior",
+          field: `child_entity_types.${typeName}.instances`,
+          message: `Child type "${typeName}" instances must declare exactly one of a fixed count, a count config field, or an ID-list config field.`,
+        });
+      } else if (sources[0] === "count") {
+        const count = inst.count as number;
+        if (!Number.isInteger(count) || count < 1) {
+          issues.push({
+            severity: "error",
+            section: "behavior",
+            field: `child_entity_types.${typeName}.instances`,
+            message: `Child type "${typeName}" instances count must be a whole number of at least 1.`,
+          });
+        } else if (typeof idf.max === "number" && count > idf.max) {
+          issues.push({
+            severity: "error",
+            section: "behavior",
+            field: `child_entity_types.${typeName}.instances`,
+            message: `Child type "${typeName}" instances count (${count}) exceeds id_format.max (${idf.max}).`,
+          });
+        }
+      } else {
+        const fieldName = inst[sources[0]] as string;
+        if (!fieldName || !configFields.has(fieldName)) {
+          issues.push({
+            severity: "error",
+            section: "behavior",
+            field: `child_entity_types.${typeName}.instances`,
+            message: `Child type "${typeName}" instances reads config field "${fieldName || "(none)"}", which isn't declared in the driver's config.`,
+          });
+        }
+      }
+    }
   }
 
   // ── Top-level state variables: the runtime hard-requires a label on every
@@ -615,7 +664,157 @@ export function validateDriver(
         message: `${label} has no pattern to match — add a match pattern, or an OSC address for an OSC driver.`,
       });
     }
+
+    // child_set routing (mirror driver_loader.py): declared type, declared
+    // props, in-range capture refs, not on OSC/json responses.
+    const childSet = resp.child_set;
+    if (childSet !== undefined) {
+      if (resp.address !== undefined) {
+        issues.push({
+          severity: "error",
+          section: "behavior",
+          message: `${label}: child entity routing isn't supported on OSC responses.`,
+        });
+        return;
+      }
+      if ((resp as { json?: boolean }).json) {
+        issues.push({
+          severity: "error",
+          section: "behavior",
+          message: `${label}: child entity routing isn't supported on JSON responses.`,
+        });
+        return;
+      }
+      if (!Array.isArray(childSet) || childSet.length === 0) {
+        issues.push({
+          severity: "error",
+          section: "behavior",
+          message: `${label}: child_set must contain at least one routing entry.`,
+        });
+        return;
+      }
+      // Count the pattern's capture groups when it compiles cleanly (it may
+      // contain {config} placeholders substituted at runtime — skip then).
+      const patternText = resp.pattern ?? resp.match ?? "";
+      let ngroups: number | null = null;
+      try {
+        ngroups = new RegExp(patternText + "|").exec("")!.length - 1;
+      } catch {
+        ngroups = null;
+      }
+      const checkRef = (where: string, ref: string) => {
+        const group = parseInt(ref.slice(1), 10);
+        if (!Number.isInteger(group) || group < 1) {
+          issues.push({
+            severity: "error",
+            section: "behavior",
+            message: `${label}: ${where} capture reference "${ref}" must be $1, $2, ...`,
+          });
+        } else if (ngroups !== null && group > ngroups) {
+          issues.push({
+            severity: "error",
+            section: "behavior",
+            message: `${label}: ${where} capture reference $${group} exceeds the pattern's ${ngroups} capture group${ngroups === 1 ? "" : "s"}.`,
+          });
+        }
+      };
+      childSet.forEach((entry, j) => {
+        const eLabel = `routing entry ${j + 1}`;
+        if (!entry.type || !childTypeNames.has(entry.type)) {
+          issues.push({
+            severity: "error",
+            section: "behavior",
+            message: `${label}: ${eLabel} routes to child type "${entry.type || "(none)"}", which isn't declared.`,
+          });
+          return;
+        }
+        if (entry.id === undefined || entry.id === null || entry.id === "") {
+          issues.push({
+            severity: "error",
+            section: "behavior",
+            message: `${label}: ${eLabel} needs an ID — a capture reference like $1, or a literal child ID.`,
+          });
+        } else if (typeof entry.id === "string" && entry.id.startsWith("$")) {
+          checkRef(`${eLabel} ID`, entry.id);
+        }
+        const props = new Set(
+          Object.keys(childTypes[entry.type]?.state_variables ?? {}),
+        );
+        const stateMap = entry.state ?? {};
+        if (Object.keys(stateMap).length === 0) {
+          issues.push({
+            severity: "error",
+            section: "behavior",
+            message: `${label}: ${eLabel} maps no properties — add at least one.`,
+          });
+        }
+        for (const [prop, expr] of Object.entries(stateMap)) {
+          if (!props.has(prop)) {
+            issues.push({
+              severity: "error",
+              section: "behavior",
+              message: `${label}: ${eLabel} maps "${prop}", which isn't a declared field of child type "${entry.type}".`,
+            });
+          }
+          if (typeof expr === "string" && expr.startsWith("$")) {
+            checkRef(`${eLabel} value for "${prop}"`, expr);
+          }
+        }
+      });
+    }
   });
+
+  // ── Per-child query templates (each_child) in polling.queries/on_connect:
+  //    mirror driver_loader.py so a bad entry shows here, not as a 422. ────
+  const checkEachChildEntries = (
+    fieldName: string,
+    entries: unknown[] | undefined,
+    allowOscDict: boolean,
+  ) => {
+    (entries ?? []).forEach((q, i) => {
+      if (typeof q !== "object" || q === null) return;
+      const entry = q as Record<string, unknown>;
+      if (!("each_child" in entry)) {
+        if (allowOscDict && "address" in entry) return;
+        issues.push({
+          severity: "error",
+          section: "behavior",
+          message: `${fieldName} entry ${i + 1}: unrecognized entry — expected a query string or a per-child template.`,
+        });
+        return;
+      }
+      const ctype = entry.each_child;
+      if (typeof ctype !== "string" || !childTypeNames.has(ctype)) {
+        issues.push({
+          severity: "error",
+          section: "behavior",
+          message: `${fieldName} entry ${i + 1}: per-child type "${String(ctype)}" isn't a declared child type.`,
+        });
+      } else if (!childTypes[ctype]?.instances) {
+        issues.push({
+          severity: "error",
+          section: "behavior",
+          message: `${fieldName} entry ${i + 1}: child type "${ctype}" has no Instances rule, so a per-child query would never send anything.`,
+        });
+      }
+      const send = entry.send;
+      if (typeof send !== "string" || !send) {
+        issues.push({
+          severity: "error",
+          section: "behavior",
+          message: `${fieldName} entry ${i + 1}: per-child query needs a send template.`,
+        });
+      } else if (!send.includes("{child_id}")) {
+        issues.push({
+          severity: "error",
+          section: "behavior",
+          message: `${fieldName} entry ${i + 1}: the send template must contain {child_id} so each child gets its own query.`,
+        });
+      }
+    });
+  };
+  checkEachChildEntries("Poll query", draft.polling?.queries, false);
+  checkEachChildEntries("on_connect", draft.on_connect, true);
 
   // ── Auth login handshake ─────────────────────────────────────────────
   // Mirror the runtime's load-time rules (validate_driver_definition in

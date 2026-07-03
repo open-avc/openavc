@@ -109,18 +109,20 @@ export function ChildEntityTypesEditor({
       <div
         style={{
           fontSize: "var(--font-size-sm)",
-          color: "var(--warning, #b58900)",
+          color: "var(--text-muted)",
           border: "1px solid var(--border-color)",
           borderRadius: "var(--radius-sm)",
           padding: "var(--space-sm) var(--space-md)",
           marginBottom: "var(--space-md)",
         }}
       >
-        Registering child instances currently requires a Python driver — a
-        YAML driver can declare types here, but nothing creates children at
-        runtime, so the device&apos;s Child Entities panel will stay empty.
-        Declare types in YAML only if you plan to convert the driver to
-        Python (or as forward-declaration for when YAML support lands).
+        To create children at runtime, give each type an <b>Instances</b> rule
+        below — a fixed count, or a config field the installer fills in. The
+        driver registers them on connect; response rules route per-child
+        values with <code>child_set</code>, and polling can send one query per
+        child with <code>each child</code>. A type without an Instances rule
+        stays declaration-only (children are then created only by a Python
+        driver&apos;s <code>register_child</code>).
       </div>
 
       {typeNames.length === 0 && (
@@ -216,6 +218,17 @@ export function ChildEntityTypesEditor({
                 />
                 <IdFormatSection
                   type={t}
+                  onUpdate={(partial) => updateType(name, partial)}
+                />
+                <InstancesSection
+                  name={name}
+                  type={t}
+                  configFields={Array.from(
+                    new Set([
+                      ...Object.keys(draft.config_schema ?? {}),
+                      ...Object.keys(draft.default_config ?? {}),
+                    ]),
+                  )}
                   onUpdate={(partial) => updateType(name, partial)}
                 />
                 <StateVarsSection
@@ -412,6 +425,188 @@ function IdFormatSection({
         IDs are integers in <code>[min, max]</code>. Pad width zero-pads the
         local id when rendered in state keys — e.g. pad_width 3 renders
         encoder 5 as <code>005</code>. v1 only supports integer IDs.
+      </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Instances (declarative roster — count / count_from / ids_from + label)
+// ──────────────────────────────────────────────────────────────────────────
+function InstancesSection({
+  name,
+  type,
+  configFields,
+  onUpdate,
+}: {
+  name: string;
+  type: DriverChildEntityType;
+  configFields: string[];
+  onUpdate: (partial: Partial<DriverChildEntityType>) => void;
+}) {
+  const inst = type.instances;
+  const source: "none" | "count" | "count_from" | "ids_from" =
+    inst == null
+      ? "none"
+      : inst.count !== undefined
+        ? "count"
+        : inst.count_from !== undefined
+          ? "count_from"
+          : inst.ids_from !== undefined
+            ? "ids_from"
+            : "none";
+
+  const keepLabel = inst?.label ? { label: inst.label } : {};
+
+  const setSource = (next: string) => {
+    if (next === "none") {
+      onUpdate({ instances: undefined });
+    } else if (next === "count") {
+      onUpdate({ instances: { count: 2, ...keepLabel } });
+    } else if (next === "count_from") {
+      onUpdate({ instances: { count_from: configFields[0] ?? "", ...keepLabel } });
+    } else {
+      onUpdate({ instances: { ids_from: configFields[0] ?? "", ...keepLabel } });
+    }
+  };
+
+  const fieldSelect = (
+    key: "count_from" | "ids_from",
+    value: string,
+  ) => (
+    <select
+      data-testid={`child-instances-${key}-${name}`}
+      value={value}
+      onChange={(e) =>
+        onUpdate({ instances: { [key]: e.target.value, ...keepLabel } })
+      }
+      style={{ width: "100%", fontSize: "var(--font-size-sm)" }}
+    >
+      {!configFields.includes(value) && <option value={value}>{value || "—"}</option>}
+      {configFields.map((f) => (
+        <option key={f} value={f}>
+          {f}
+        </option>
+      ))}
+    </select>
+  );
+
+  return (
+    <div
+      style={{
+        border: "1px solid var(--border-color)",
+        borderRadius: "var(--border-radius)",
+        padding: "var(--space-sm) var(--space-md)",
+      }}
+      data-testid={`child-instances-${name}`}
+    >
+      <div
+        style={{
+          fontSize: "var(--font-size-sm)",
+          fontWeight: 600,
+          marginBottom: "var(--space-xs)",
+        }}
+      >
+        Instances
+      </div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr 1fr",
+          gap: "var(--space-sm)",
+          alignItems: "end",
+        }}
+      >
+        <div>
+          <span style={{ ...labelStyle, fontSize: "11px" }}>Create from</span>
+          <select
+            data-testid={`child-instances-source-${name}`}
+            value={source}
+            onChange={(e) => setSource(e.target.value)}
+            style={{ width: "100%", fontSize: "var(--font-size-sm)" }}
+          >
+            <option value="none">Not created by this driver</option>
+            <option value="count">Fixed count</option>
+            <option value="count_from">Config field (how many)</option>
+            <option value="ids_from">Config field (list of IDs)</option>
+          </select>
+        </div>
+        {source === "count" && (
+          <div>
+            <span style={{ ...labelStyle, fontSize: "11px" }}>Count</span>
+            <input
+              data-testid={`child-instances-count-${name}`}
+              type="number"
+              min={1}
+              value={inst?.count ?? ""}
+              onChange={(e) => {
+                const n = parseInt(e.target.value, 10);
+                onUpdate({
+                  instances: {
+                    count: Number.isFinite(n) ? n : 1,
+                    ...keepLabel,
+                  },
+                });
+              }}
+              style={{ width: "100%", fontSize: "var(--font-size-sm)" }}
+            />
+          </div>
+        )}
+        {source === "count_from" && (
+          <div>
+            <span style={{ ...labelStyle, fontSize: "11px" }}>Config field</span>
+            {fieldSelect("count_from", inst?.count_from ?? "")}
+          </div>
+        )}
+        {source === "ids_from" && (
+          <div>
+            <span style={{ ...labelStyle, fontSize: "11px" }}>Config field</span>
+            {fieldSelect("ids_from", inst?.ids_from ?? "")}
+          </div>
+        )}
+        {source !== "none" && (
+          <div>
+            <span style={{ ...labelStyle, fontSize: "11px" }}>
+              Label template
+            </span>
+            <input
+              data-testid={`child-instances-label-${name}`}
+              value={inst?.label ?? ""}
+              onChange={(e) => {
+                const label = e.target.value;
+                const base = { ...(inst ?? {}) };
+                if (label) base.label = label;
+                else delete base.label;
+                onUpdate({ instances: base });
+              }}
+              placeholder={`${type.label || "Item"} {id}`}
+              style={{ width: "100%", fontSize: "var(--font-size-sm)" }}
+            />
+          </div>
+        )}
+      </div>
+      <div style={helpStyle}>
+        {source === "none" ? (
+          <>
+            No children are created at runtime. Pick a source to register
+            them automatically on connect.
+          </>
+        ) : source === "count" ? (
+          <>Registers IDs 1..count on connect.</>
+        ) : source === "count_from" ? (
+          <>
+            Reads an integer from the named config field and registers IDs
+            1..N — lets one driver cover different frame sizes.
+          </>
+        ) : (
+          <>
+            Reads a comma-separated list from the named config field (e.g.{" "}
+            <code>1,2,4</code>) — for sparse or installer-chosen IDs.
+          </>
+        )}{" "}
+        The label template seeds each child&apos;s display name (
+        <code>{"{id}"}</code> inserts the ID); a name set in the project
+        always wins.
       </div>
     </div>
   );

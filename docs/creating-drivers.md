@@ -590,7 +590,57 @@ child_entity_types:
   - omitted — the default per-child cadence.
 - `summary_fields`: Which fields show as columns in the Child Entities list (the rest stay in the expanded per-child view).
 - `label_field`: Which field carries the controller's own name for the unit. The user's friendly label is separate and lives in the project file.
-- `dynamic: true`: Mark a type **dynamic** when each sub-unit's control set is only known at connect time and **differs between sibling units** — e.g. a DSP whose components are user-built (a gain has gain/mute, a custom block has whatever the designer named). Leave `state_variables` empty (or with only the fields every child shares); each child publishes its own schema when you register it (see below). The IDE renders each dynamic child's discovered controls in its expanded row. Dynamic types are a **Python-driver** capability (a YAML driver can't enumerate children at runtime).
+- `dynamic: true`: Mark a type **dynamic** when each sub-unit's control set is only known at connect time and **differs between sibling units** — e.g. a DSP whose components are user-built (a gain has gain/mute, a custom block has whatever the designer named). Leave `state_variables` empty (or with only the fields every child shares); each child publishes its own schema when you register it (see below). The IDE renders each dynamic child's discovered controls in its expanded row. Dynamic types are a **Python-driver** capability (a YAML `instances:` roster is fixed or config-driven; enumerating sub-units from the device at runtime needs Python).
+- `instances`: Makes the type real at runtime for **YAML drivers** — see the next section. Without it, a YAML declaration is types-only and children are created only by a Python driver's `register_child`.
+
+##### Declarative children in YAML (`instances`, `child_set`, `each_child`)
+
+A YAML driver creates children by adding an `instances:` rule to the type declaration. The driver registers them right after connecting (and after any `auth:` handshake), so routed responses always have children to land on. Exactly one roster source:
+
+```yaml
+child_entity_types:
+  output:
+    label: Output
+    id_format: { type: integer, min: 1, max: 16, pad_width: 2 }
+    state_variables:
+      input:  { type: integer, label: Routed Input, cloud_priority: high }
+      volume: { type: integer, label: Volume (dB) }
+    instances:
+      count: 6                 # fixed: registers IDs 1..6
+      # count_from: output_count   # or: an integer config field (frame size varies by model)
+      # ids_from: zone_ids         # or: a comma-separated config field ("1,2,4" — sparse IDs)
+      label: "Output {id}"     # optional initial label; a user's project label always wins
+```
+
+Route response captures into child state with `child_set:` on a response entry. `id` is a capture reference (`$1`) or a literal; each state value is a capture reference or a literal, coerced by the child property's declared type:
+
+```yaml
+responses:
+  # The device echoes which output a value belongs to — capture it as the ID:
+  - match: 'Out(\d+) In(\d+)'
+    child_set:
+      - { type: output, id: $1, state: { input: $2 } }
+  # A combined status line reports several children at fixed positions —
+  # one entry per child with literal IDs:
+  - match: '^x(\d+)AVx1,\s*x(\d+)AVx2$'
+    child_set:
+      - { type: output, id: 1, state: { input: $1 } }
+      - { type: output, id: 2, state: { input: $2 } }
+```
+
+A response entry can carry `set:` (flat state) and `child_set:` together; first-match-wins dispatch is unchanged. A routed ID that isn't registered is skipped quietly — devices legitimately answer for ports beyond a configured roster. `child_set` works on regex responses (TCP, serial, UDP, HTTP text); it is not supported on OSC or `json:` responses.
+
+Poll each child with an `each_child:` entry in `polling.queries` (also allowed in `on_connect`). It expands to one query per registered child, substituting `{child_id}` with the unpadded local ID:
+
+```yaml
+polling:
+  interval: 10
+  queries:
+    - "PWR?\r"                                  # sent once
+    - { each_child: output, send: "?VOUT{child_id}\r" }   # sent once per output
+```
+
+Per-child **writes** need nothing new — declare a command with a `child_id` parameter (see `commands`) and the platform validates and substitutes the ID. Per-child values that the device persists (a zone volume, an output mute) are modeled as child state variables plus a `child_id` command, not as `device_settings` — a device setting's `state_key` is flat and can't address a child. The IDE's per-child "Refresh from Device" re-derives the roster from config automatically.
 
 Python drivers declare the same block in `DRIVER_INFO` and register instances at runtime with `self.register_child(type, local_id, initial_state=...)`, update them with `set_child_state` / `set_children_state_batch`, and remove them with `deregister_child`. For a **dynamic** type, pass the discovered control schema when registering:
 

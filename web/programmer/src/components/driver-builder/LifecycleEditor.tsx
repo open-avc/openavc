@@ -1,9 +1,15 @@
 import { Plus, Trash2 } from "lucide-react";
-import type { DriverDefinition } from "../../api/types";
+import type { DriverDefinition, DriverEachChildQuery } from "../../api/types";
 
 interface LifecycleEditorProps {
   draft: DriverDefinition;
   onUpdate: (partial: Partial<DriverDefinition>) => void;
+}
+
+type ConnectStep = string | DriverEachChildQuery | Record<string, unknown>;
+
+function isEachChild(step: ConnectStep): step is DriverEachChildQuery {
+  return typeof step === "object" && step !== null && "each_child" in step;
 }
 
 /**
@@ -19,9 +25,10 @@ interface LifecycleEditorProps {
  *   - Christie:      "(SST+CONF?)\r", "(SST+VERS?)\r"
  */
 export function LifecycleEditor({ draft, onUpdate }: LifecycleEditorProps) {
-  const items = draft.on_connect ?? [];
+  const items = (draft.on_connect ?? []) as ConnectStep[];
+  const childTypeNames = Object.keys(draft.child_entity_types ?? {});
 
-  const update = (next: string[]) => {
+  const update = (next: ConnectStep[]) => {
     // Drop the field entirely when the list is empty so we don't write
     // `on_connect: []` into YAML for drivers that don't need it.
     onUpdate({ on_connect: next.length ? next : undefined });
@@ -29,7 +36,7 @@ export function LifecycleEditor({ draft, onUpdate }: LifecycleEditorProps) {
 
   const addItem = () => update([...items, ""]);
   const removeItem = (i: number) => update(items.filter((_, idx) => idx !== i));
-  const updateItem = (i: number, value: string) => {
+  const updateItem = (i: number, value: ConnectStep) => {
     const next = [...items];
     next[i] = value;
     update(next);
@@ -106,46 +113,89 @@ export function LifecycleEditor({ draft, onUpdate }: LifecycleEditorProps) {
         </div>
       )}
 
-      {items.map((item, i) => (
-        <div
-          key={i}
-          style={{
-            display: "flex",
-            gap: "var(--space-sm)",
-            marginBottom: "var(--space-xs)",
-            alignItems: "center",
-          }}
-        >
-          <span
+      {items.map((item, i) => {
+        const eachChild = isEachChild(item);
+        // A non-each_child object step (an OSC {address, args} entry) has no
+        // inline editor — show it read-only rather than corrupting it.
+        const isOpaque = typeof item !== "string" && !eachChild;
+        return (
+          <div
+            key={i}
             style={{
-              fontSize: "11px",
-              color: "var(--text-muted)",
-              fontFamily: "var(--font-mono)",
-              width: 24,
-              textAlign: "right",
+              display: "flex",
+              gap: "var(--space-sm)",
+              marginBottom: "var(--space-xs)",
+              alignItems: "center",
             }}
           >
-            {i + 1}.
-          </span>
-          <input
-            value={item}
-            onChange={(e) => updateItem(i, e.target.value)}
-            placeholder={placeholder}
-            style={{
-              flex: 1,
-              fontFamily: "var(--font-mono)",
-              fontSize: "var(--font-size-sm)",
-            }}
-          />
-          <button
-            onClick={() => removeItem(i)}
-            style={{ padding: "2px", color: "var(--text-muted)" }}
-            title="Remove"
-          >
-            <Trash2 size={14} />
-          </button>
-        </div>
-      ))}
+            <span
+              style={{
+                fontSize: "11px",
+                color: "var(--text-muted)",
+                fontFamily: "var(--font-mono)",
+                width: 24,
+                textAlign: "right",
+              }}
+            >
+              {i + 1}.
+            </span>
+            {childTypeNames.length > 0 && !isOpaque && (
+              <select
+                value={eachChild ? item.each_child : ""}
+                onChange={(e) => {
+                  const t = e.target.value;
+                  if (!t) {
+                    updateItem(i, eachChild ? item.send : (item as string));
+                  } else {
+                    const send = eachChild ? item.send : (item as string) || "";
+                    updateItem(i, { each_child: t, send });
+                  }
+                }}
+                title="Send once, or once per registered child of a type"
+                style={{ width: 130, fontSize: "var(--font-size-sm)" }}
+              >
+                <option value="">Once</option>
+                {childTypeNames.map((t) => (
+                  <option key={t} value={t}>
+                    Per {draft.child_entity_types?.[t]?.label || t}
+                  </option>
+                ))}
+              </select>
+            )}
+            <input
+              value={
+                isOpaque
+                  ? JSON.stringify(item)
+                  : eachChild
+                    ? item.send
+                    : (item as string)
+              }
+              disabled={isOpaque}
+              onChange={(e) =>
+                updateItem(
+                  i,
+                  eachChild
+                    ? { each_child: item.each_child, send: e.target.value }
+                    : e.target.value,
+                )
+              }
+              placeholder={eachChild ? "e.g., ?VOUT{child_id}\\r" : placeholder}
+              style={{
+                flex: 1,
+                fontFamily: "var(--font-mono)",
+                fontSize: "var(--font-size-sm)",
+              }}
+            />
+            <button
+              onClick={() => removeItem(i)}
+              style={{ padding: "2px", color: "var(--text-muted)" }}
+              title="Remove"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+        );
+      })}
 
       <button
         onClick={addItem}

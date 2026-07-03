@@ -1,6 +1,12 @@
 import { useState } from "react";
 import { Plus, Trash2, ChevronDown, ChevronRight } from "lucide-react";
-import type { DriverDefinition, DriverResponseDef, DriverResponseMapping } from "../../api/types";
+import type {
+  DriverChildEntityType,
+  DriverChildSetEntry,
+  DriverDefinition,
+  DriverResponseDef,
+  DriverResponseMapping,
+} from "../../api/types";
 
 function _ordinal(n: number): string {
   if (n === 1) return "1st";
@@ -56,15 +62,25 @@ function canUseSetShorthand(mappings: DriverResponseMapping[]): boolean {
 }
 
 /** Build a response def, preserving the original form (set: shorthand or
- *  mappings:) of the loaded response when the new mappings still fit. */
+ *  mappings:) of the loaded response when the new mappings still fit.
+ *  `child_set` rides along untouched — rebuilding from a pattern/mapping
+ *  edit must never drop the child routing. */
 function buildResponse(
   pattern: string,
   mappings: DriverResponseMapping[],
   original: DriverResponseDef,
 ): DriverResponseDef {
-  // OSC responses always use mappings + address.
+  const childSet = original.child_set?.length
+    ? { child_set: original.child_set }
+    : {};
+  // OSC responses always use mappings + address (no child_set — the loader
+  // rejects it there).
   if (original.address !== undefined) {
     return { address: pattern, mappings };
+  }
+  // A child_set-only response keeps its YAML clean: no empty mappings key.
+  if (mappings.length === 0 && original.mappings === undefined && original.set === undefined) {
+    return { match: pattern, ...childSet };
   }
   // Choose set: shorthand when (a) the original used it AND (b) the
   // current mapping shape still fits the shorthand. Otherwise fall back
@@ -79,9 +95,9 @@ function buildResponse(
         set[m.state] = `$${m.group}`;
       }
     }
-    return { match: pattern, set };
+    return { match: pattern, set, ...childSet };
   }
-  return { match: pattern, mappings };
+  return { match: pattern, mappings, ...childSet };
 }
 
 interface ResponseBuilderProps {
@@ -361,6 +377,22 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
           >
             + Add Mapping
           </button>
+          {draft.transport !== "osc" &&
+            Object.keys(draft.child_entity_types ?? {}).length > 0 && (
+              <ChildSetEditor
+                entries={resp.child_set ?? []}
+                childTypes={draft.child_entity_types ?? {}}
+                onChange={(entries) => {
+                  const rebuilt = buildResponse(pattern, mappings, resp);
+                  if (entries.length) {
+                    rebuilt.child_set = entries;
+                  } else {
+                    delete rebuilt.child_set;
+                  }
+                  updateResponse(i, rebuilt);
+                }}
+              />
+            )}
         </div>
         );
       })}
@@ -383,6 +415,222 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
   );
 }
 
+
+/** Route captures into child-entity state: one row per child_set entry —
+ *  pick the child type, say which capture (or literal) is the child ID, and
+ *  map child properties to captures or literals. Only offered when the
+ *  driver declares child_entity_types. */
+function ChildSetEditor({
+  entries,
+  childTypes,
+  onChange,
+}: {
+  entries: DriverChildSetEntry[];
+  childTypes: Record<string, DriverChildEntityType>;
+  onChange: (entries: DriverChildSetEntry[]) => void;
+}) {
+  const [open, setOpen] = useState(entries.length > 0);
+  const typeNames = Object.keys(childTypes);
+
+  const updateEntry = (idx: number, updated: DriverChildSetEntry) => {
+    const next = [...entries];
+    next[idx] = updated;
+    onChange(next);
+  };
+
+  const addEntry = () => {
+    onChange([
+      ...entries,
+      { type: typeNames[0] ?? "", id: "$1", state: {} },
+    ]);
+    setOpen(true);
+  };
+
+  if (!open && entries.length === 0) {
+    return (
+      <div>
+        <button
+          onClick={addEntry}
+          style={{
+            fontSize: "var(--font-size-sm)",
+            color: "var(--accent)",
+            padding: "var(--space-xs) 0",
+            display: "block",
+          }}
+        >
+          + Route to Child Entities
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        marginTop: "var(--space-sm)",
+        padding: "var(--space-sm)",
+        background: "var(--bg-hover)",
+        borderRadius: "var(--border-radius)",
+      }}
+      data-testid="child-set-editor"
+    >
+      <div
+        style={{
+          fontSize: "var(--font-size-sm)",
+          color: "var(--text-secondary)",
+          marginBottom: "var(--space-xs)",
+        }}
+      >
+        Route captured values into child entities:
+      </div>
+      {entries.map((entry, idx) => {
+        const props = Object.keys(
+          childTypes[entry.type]?.state_variables ?? {},
+        );
+        const stateEntries = Object.entries(entry.state ?? {});
+        return (
+          <div
+            key={idx}
+            style={{
+              border: "1px solid var(--border-color)",
+              borderRadius: "var(--border-radius)",
+              padding: "var(--space-xs) var(--space-sm)",
+              marginBottom: "var(--space-xs)",
+              background: "var(--bg-surface)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                gap: "var(--space-sm)",
+                alignItems: "center",
+                marginBottom: "var(--space-xs)",
+              }}
+            >
+              <select
+                value={entry.type}
+                onChange={(e) =>
+                  updateEntry(idx, { ...entry, type: e.target.value, state: {} })
+                }
+                style={{ fontSize: "var(--font-size-sm)" }}
+              >
+                {typeNames.map((t) => (
+                  <option key={t} value={t}>
+                    {childTypes[t]?.label || t}
+                  </option>
+                ))}
+              </select>
+              <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                ID from
+              </span>
+              <input
+                value={String(entry.id ?? "")}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  const asInt = /^\d+$/.test(raw) ? parseInt(raw, 10) : raw;
+                  updateEntry(idx, { ...entry, id: asInt });
+                }}
+                placeholder="$1 or a number"
+                title="Which capture group holds the child ID ($1, $2, ...) — or a literal ID when the pattern is specific to one child"
+                style={{
+                  width: 90,
+                  fontFamily: "var(--font-mono)",
+                  fontSize: "var(--font-size-sm)",
+                }}
+              />
+              <span style={{ flex: 1 }} />
+              <button
+                onClick={() => onChange(entries.filter((_, j) => j !== idx))}
+                style={{ padding: "2px", color: "var(--text-muted)" }}
+              >
+                <Trash2 size={12} />
+              </button>
+            </div>
+            {stateEntries.map(([prop, expr], si) => (
+              <div
+                key={si}
+                style={{
+                  display: "flex",
+                  gap: "var(--space-sm)",
+                  alignItems: "center",
+                  marginBottom: 2,
+                }}
+              >
+                <select
+                  value={prop}
+                  onChange={(e) => {
+                    const nextState: Record<string, unknown> = {};
+                    for (const [k, v] of stateEntries) {
+                      nextState[k === prop ? e.target.value : k] = v;
+                    }
+                    updateEntry(idx, { ...entry, state: nextState });
+                  }}
+                  style={{ flex: 1, fontSize: "var(--font-size-sm)" }}
+                >
+                  <option value="">Select property...</option>
+                  {props.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
+                <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                  =
+                </span>
+                <input
+                  value={String(expr ?? "")}
+                  onChange={(e) => {
+                    const nextState = { ...entry.state, [prop]: e.target.value };
+                    updateEntry(idx, { ...entry, state: nextState });
+                  }}
+                  placeholder="$2 or literal"
+                  title="A capture group ($2) or a literal value; coerced by the property's declared type"
+                  style={{
+                    width: 110,
+                    fontFamily: "var(--font-mono)",
+                    fontSize: "var(--font-size-sm)",
+                  }}
+                />
+                <button
+                  onClick={() => {
+                    const nextState = { ...entry.state };
+                    delete nextState[prop];
+                    updateEntry(idx, { ...entry, state: nextState });
+                  }}
+                  style={{ padding: "2px", color: "var(--text-muted)" }}
+                >
+                  <Trash2 size={10} />
+                </button>
+              </div>
+            ))}
+            <button
+              onClick={() => {
+                const unused = props.find((p) => !(p in (entry.state ?? {})));
+                updateEntry(idx, {
+                  ...entry,
+                  state: { ...entry.state, [unused ?? ""]: "$2" },
+                });
+              }}
+              style={{ fontSize: "11px", color: "var(--accent)", padding: "2px 0" }}
+            >
+              + Property
+            </button>
+          </div>
+        );
+      })}
+      <button
+        onClick={addEntry}
+        style={{
+          fontSize: "var(--font-size-sm)",
+          color: "var(--accent)",
+          padding: "var(--space-xs) 0",
+        }}
+      >
+        + Route to Child Entities
+      </button>
+    </div>
+  );
+}
 
 function ValueMapEditor({
   mapping,

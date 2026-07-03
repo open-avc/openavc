@@ -539,6 +539,24 @@ export interface DriverResponseDef {
   //   set: { mute: "true" }       — static string
   //   set: { signal: true }       — static boolean
   set?: Record<string, unknown>;
+  // Route captures into child-entity state (declarative children):
+  //   child_set: [{ type: "output", id: "$1", state: { input: "$2" } }]
+  // `id` is a capture ref ($N) or a literal; state values are capture refs
+  // or statics, coerced by the child prop's declared type.
+  child_set?: DriverChildSetEntry[];
+}
+
+export interface DriverChildSetEntry {
+  type: string;
+  id: string | number;
+  state: Record<string, unknown>;
+}
+
+/** Per-child query template for polling.queries / on_connect: expands to one
+ *  query per registered child with `{child_id}` substituted. */
+export interface DriverEachChildQuery {
+  each_child: string;
+  send: string;
 }
 
 // Driver ``discovery:`` block. Schema reference:
@@ -689,6 +707,18 @@ export interface DriverChildIdFormat {
   pad_width?: number;
 }
 
+/** Declarative child roster (YAML drivers). Exactly one of count /
+ *  count_from / ids_from. `count` = fixed ids 1..N; `count_from` names an
+ *  integer config field; `ids_from` names a comma-separated config field
+ *  (sparse ids). `label` is an initial-label template — `{id}` substitutes
+ *  the local id; a user-set project label always wins. */
+export interface DriverChildInstances {
+  count?: number;
+  count_from?: string;
+  ids_from?: string;
+  label?: string;
+}
+
 export interface DriverChildEntityType {
   label?: string;
   label_plural?: string;
@@ -698,6 +728,9 @@ export interface DriverChildEntityType {
   /** Which declared state variable carries the controller-owned name
    *  (distinct from the user-set ``label`` injected by the platform). */
   label_field?: string;
+  /** Declarative roster — makes the type real at runtime for YAML drivers.
+   *  Without it, only a Python driver's register_child() creates children. */
+  instances?: DriverChildInstances;
 }
 
 export interface DriverDefinition {
@@ -719,7 +752,7 @@ export interface DriverDefinition {
   child_entity_types?: Record<string, DriverChildEntityType>;
   commands: Record<string, DriverCommandDef>;
   responses: DriverResponseDef[];
-  polling: { interval?: number; queries?: string[] };
+  polling: { interval?: number; queries?: (string | DriverEachChildQuery)[] };
   frame_parser?: { type: string; [key: string]: unknown } | null;
   discovery?: DriverDiscoveryConfig;
   device_settings?: Record<string, DriverDeviceSettingDef>;
@@ -739,7 +772,7 @@ export interface DriverDefinition {
   // Sequence of wire strings sent immediately after connect (and after any
   // auth handshake completes). Used for verbose-mode toggles, GET ALL, push
   // subscriptions. The runtime substitutes config-key placeholders.
-  on_connect?: string[];
+  on_connect?: (string | DriverEachChildQuery | Record<string, unknown>)[];
   // Login handshake the runtime performs after raw connect. Today only
   // type='telnet_login' is implemented (prompt-driven Telnet/SSH banner
   // login). Username/password come from device config keys named here.

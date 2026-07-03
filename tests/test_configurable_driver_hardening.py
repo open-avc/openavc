@@ -205,7 +205,7 @@ def test_set_shorthand_skips_non_numeric_reference():
         },
     }
     drv = _make_driver(definition)
-    _pattern, mappings = drv._compiled_responses[0]
+    _pattern, mappings, _child_mappings = drv._compiled_responses[0]
     states = {m["state"] for m in mappings}
     assert "good" in states
     assert "bad" not in states  # the typo'd reference produced no mapping
