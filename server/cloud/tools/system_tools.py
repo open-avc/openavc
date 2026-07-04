@@ -10,20 +10,124 @@ from server.utils.paths import safe_path_within
 log = get_logger(__name__)
 
 
+def _coerce_number(
+    value: Any, *, default: float, lo: float, hi: float, integer: bool = False
+) -> float | int | None:
+    """Clamp a tool-supplied number to [lo, hi]; None when it isn't numeric.
+
+    AI callers plausibly send numbers as strings ("60") or floats where an
+    int is meant; coerce those instead of surfacing an opaque TypeError
+    from a comparison or slice.
+    """
+    if value is None:
+        value = default
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if number != number:  # NaN never clamps meaningfully
+        return None
+    number = max(lo, min(number, hi))
+    return int(number) if integer else number
+
+
+# Config keys whose string values are treated as secrets and scrubbed from
+# log text before it leaves for the cloud (see _collect_secret_values).
+_SECRET_KEY_HINTS = (
+    "password",
+    "passphrase",
+    "secret",
+    "token",
+    "api_key",
+    "community",
+    "auth_key",
+    "system_key",
+    "lock_code",
+)
+
+
+def _looks_secret(key: str) -> bool:
+    lowered = key.lower()
+    return any(hint in lowered for hint in _SECRET_KEY_HINTS)
+
+
+def _redact_log_message(message: str, secrets: set[str]) -> str:
+    for secret in secrets:
+        if secret in message:
+            message = message.replace(secret, "***")
+    return message
+
+
 class SystemToolsMixin:
     """Logs, discovery, themes, assets, ISC, and async waiting tools."""
+
+    def _collect_secret_values(self) -> set[str]:
+        """Every secret string the runtime knows about.
+
+        Device/connection/plugin configs and the system config carry the
+        credentials that transports put on the wire; at DEBUG those wire
+        payloads land in the log buffer verbatim. Scrubbing the known
+        VALUES (rather than pattern-guessing over free text) removes them
+        from anything shipped to the cloud without mangling the rest of
+        the line. Values shorter than 4 chars are skipped so a trivial
+        substring can't blank unrelated text.
+        """
+        secrets: set[str] = set()
+
+        def harvest(mapping: Any) -> None:
+            if not isinstance(mapping, dict):
+                return
+            for key, value in mapping.items():
+                if isinstance(value, str) and len(value) >= 4 and _looks_secret(str(key)):
+                    secrets.add(value)
+
+        engine = self._get_engine()
+        if engine and engine.project:
+            for device in engine.project.devices:
+                harvest(getattr(device, "config", None))
+            for conn in (engine.project.connections or {}).values():
+                harvest(conn)
+            plugins = getattr(engine.project, "plugins", None) or {}
+            for plugin_cfg in plugins.values():
+                harvest(plugin_cfg)
+                if isinstance(plugin_cfg, dict):
+                    harvest(plugin_cfg.get("config"))
+
+        try:
+            from server.system_config import get_system_config
+
+            data = get_system_config().to_dict()
+            for section in ("auth", "cloud", "isc"):
+                harvest(data.get(section))
+        except Exception:
+            log.debug("Could not read system config for log redaction", exc_info=True)
+
+        return secrets
 
     async def _get_logs(self, input: dict) -> Any:
         import time
         from server.utils.log_buffer import get_log_buffer
 
-        count = input.get("count", 100)
+        count = _coerce_number(
+            input.get("count", 100), default=100, lo=1, hi=500, integer=True
+        )
+        if count is None:
+            return {"error": "count must be a number of entries (1-500)"}
         category = input.get("category", "")
         level = input.get("level", "")
         search = input.get("search", "")
         since_seconds = input.get("since_seconds")
+        if since_seconds is not None:
+            since_seconds = _coerce_number(
+                since_seconds, default=0, lo=0, hi=10**9
+            )
+            if since_seconds is None:
+                return {"error": "since_seconds must be a number of seconds"}
 
-        entries = get_log_buffer().get_recent(count)
+        # Filter the WHOLE buffer first, then return the newest `count`
+        # matches — slicing first made a category/level/search/since query
+        # see only the newest `count` entries and miss older matches.
+        entries = get_log_buffer().get_recent(1_000_000)
         if category:
             entries = [e for e in entries if e.get("category") == category]
         if level:
@@ -35,6 +139,17 @@ class SystemToolsMixin:
         if since_seconds is not None:
             cutoff = time.time() - since_seconds
             entries = [e for e in entries if e.get("timestamp", 0) >= cutoff]
+        entries = entries[-count:]
+
+        # This result ships to the cloud AI (and its stored conversation
+        # history): scrub known credential values from the message text —
+        # transport TX/RX lines at DEBUG carry them verbatim.
+        secrets = self._collect_secret_values()
+        if secrets:
+            for entry in entries:
+                message = entry.get("message", "")
+                if isinstance(message, str):
+                    entry["message"] = _redact_log_message(message, secrets)
         return entries
 
     async def _wait(self, input: dict) -> Any:
@@ -43,8 +158,9 @@ class SystemToolsMixin:
         Use this when an async operation (discovery scan, device connection test,
         etc.) needs time to complete. Avoids burning tool rounds on rapid polling.
         """
-        seconds = input.get("seconds", 30)
-        seconds = max(1, min(seconds, 120))  # Clamp to 1-120
+        seconds = _coerce_number(input.get("seconds", 30), default=30, lo=1, hi=120)
+        if seconds is None:
+            return {"error": "seconds must be a number between 1 and 120"}
         reason = input.get("reason", "")
 
         log.info(f"AI wait: {seconds}s (reason: {reason or 'none'})")
@@ -60,9 +176,20 @@ class SystemToolsMixin:
         if discovery_engine is None:
             return {"error": "Discovery engine not available"}
 
+        # Validate before start_scan: a bad value would otherwise kill the
+        # scan AFTER this tool reported it running (the engine's runner
+        # catches the error and still marks the scan complete), and a bare
+        # string subnets value would be iterated character by character.
         subnets = input.get("subnets")
+        if subnets is not None and (
+            not isinstance(subnets, list)
+            or not all(isinstance(s, str) for s in subnets)
+        ):
+            return {"error": 'subnets must be a list of CIDR strings (e.g. ["192.168.1.0/24"])'}
         snmp_enabled = input.get("snmp_enabled", True)
-        timeout = input.get("timeout", 120.0)
+        timeout = _coerce_number(input.get("timeout", 120.0), default=120.0, lo=10, hi=600)
+        if timeout is None:
+            return {"error": "timeout must be a number of seconds"}
 
         discovery_engine.config["snmp_enabled"] = snmp_enabled
 
