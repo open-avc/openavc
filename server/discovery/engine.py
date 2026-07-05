@@ -760,12 +760,24 @@ class DiscoveryEngine:
                         device.evidence_log.append(evidence_oui(mac, vendor=oui_vendor))
 
                     if info:
-                        # fill_only: OUI names the NIC vendor, which is
-                        # often not the device vendor, and on a re-scan
-                        # identity fields carried from the previous scan
-                        # would otherwise lose to a longer IEEE registrant
-                        # string. Enrich empty fields; never overwrite.
-                        merge_device_info(device, info, "arp", fill_only=True)
+                        # Split the merge by trust. manufacturer/category
+                        # come from the OUI registry, which names the NIC
+                        # vendor (often not the device vendor) — those only
+                        # fill fields nothing else populated. mac/hostname/
+                        # device_name are this scan's own ARP / reverse-DNS
+                        # / NetBIOS reads and keep the standard merge rule,
+                        # so a re-scan can refresh a renamed or reassigned
+                        # host instead of showing the previous occupant
+                        # forever.
+                        oui_info = {
+                            k: info.pop(k)
+                            for k in ("manufacturer", "category")
+                            if k in info
+                        }
+                        if info:
+                            merge_device_info(device, info, "arp")
+                        if oui_info:
+                            merge_device_info(device, oui_info, "arp", fill_only=True)
                         await self._emit_device_update(device, "arp_harvest")
 
             # --- Phase 5: Port Scan ---

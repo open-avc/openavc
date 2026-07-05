@@ -374,6 +374,54 @@ class TestMergePriority:
         assert d.manufacturer == "Barco"       # NIC vendor didn't clobber
         assert d.category == "projector"
 
+    async def test_rescan_refreshes_hostname_but_not_oui_vendor(self):
+        # Identity carried over from a previous scan must not pin the
+        # phase-4 fields forever: this scan's own reverse-DNS/NetBIOS
+        # reads refresh hostname/device_name (a renamed or reassigned
+        # host updates on re-scan), while the OUI registrant still only
+        # fills what nothing else populated.
+        engine = DiscoveryEngine()
+        dev = engine._get_or_create("10.77.0.61")
+        dev.hostname = "old-projector"        # carried from a prior scan
+        dev.manufacturer = "Barco"            # SSDP self-reported
+        dev.category = "projector"
+
+        mdns_cls, ssdp_cls, amx_cls, snmp_cls = _hanging_scanner_mocks()
+        mdns_cls.return_value.start = AsyncMock(return_value={})
+        ssdp_cls.return_value.scan = AsyncMock(return_value={})
+        amx_cls.return_value.start = AsyncMock(return_value={})
+        snmp_cls.return_value.scan_devices = AsyncMock(return_value={})
+
+        with patch("server.discovery.engine.ping_sweep",
+                   new_callable=AsyncMock, return_value=["10.77.0.61"]), \
+             patch("server.discovery.engine.harvest_arp_table",
+                   new_callable=AsyncMock,
+                   return_value={"10.77.0.61": "AA:BB:CC:DD:EE:FF"}), \
+             patch("server.discovery.engine.netbios_sweep",
+                   new_callable=AsyncMock, return_value={}), \
+             patch("server.discovery.engine.scan_host_ports",
+                   new_callable=AsyncMock, return_value=[]), \
+             patch("server.discovery.engine.grab_banners",
+                   new_callable=AsyncMock, return_value={}), \
+             patch("server.discovery.engine._resolve_hostnames",
+                   new_callable=AsyncMock,
+                   return_value={"10.77.0.61": "projector-b.example.edu"}), \
+             patch.object(engine.community_index, "get_drivers",
+                          new_callable=AsyncMock, return_value=[]), \
+             patch.object(engine.oui_db, "lookup",
+                          return_value=("ASUSTek COMPUTER INC.", "networking")), \
+             patch("server.discovery.engine.MDNSScanner", mdns_cls), \
+             patch("server.discovery.engine.SSDPScanner", ssdp_cls), \
+             patch("server.discovery.engine.AMXDDPScanner", amx_cls), \
+             patch("server.discovery.engine.SNMPScanner", snmp_cls):
+            await engine._scan_pipeline_inner(["10.77.0.0/24"])
+
+        d = engine.results["10.77.0.61"]
+        assert d.hostname == "projector-b.example.edu"  # refreshed this scan
+        assert d.mac == "AA:BB:CC:DD:EE:FF"
+        assert d.manufacturer == "Barco"                # OUI still fill-only
+        assert d.category == "projector"
+
 
 # --- L-069 / L-070: total_hosts_scanned accuracy + malformed-CIDR safety ----
 
