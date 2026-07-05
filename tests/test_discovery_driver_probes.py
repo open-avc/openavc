@@ -739,18 +739,24 @@ class TestCompanionLoader:
         with caplog.at_level(logging.WARNING, logger="discovery.companion"):
             await run_companion("hang", probes["hang"], ctx)
         elapsed = time.monotonic() - t0
-        assert 0.4 <= elapsed <= 1.5, f"timeout not enforced: {elapsed:.2f}"
+        # The hang sleeps 60s; the cap is 0.5s. The upper bound only
+        # needs to sit far below 60 while absorbing CI runner overhead.
+        assert 0.4 <= elapsed <= 4.0, f"timeout not enforced: {elapsed:.2f}"
         assert any("exceeded" in r.message for r in caplog.records)
 
 
 # A deliberately WRONG companion: parks its thread in C-level blocking
 # sleep (stands in for a sync socket.recv()/connect() with no timeout),
-# which no asyncio cancellation can interrupt.
+# which no asyncio cancellation can interrupt. The sleep is much longer
+# than any elapsed-time bound asserted below, so a loaded CI runner's
+# scheduling noise can't blur the pass/fail line: the isolated path
+# returns in a few seconds, the broken (inline) path takes the full
+# sleep. The daemon worker thread outlives the test harmlessly.
 _BLOCKING_COMPANION = '''
 import time
 
 async def probe(ctx):
-    time.sleep(6.0)
+    time.sleep(20.0)
 '''
 
 
@@ -802,9 +808,13 @@ class TestCompanionThreadIsolation:
         finally:
             ticker_task.cancel()
 
-        # Inline execution would park the loop in time.sleep(6) —
-        # returning only after the full sleep, with the ticker starved.
-        assert elapsed < 4.5, (
+        # Isolated execution abandons the worker at cap+grace (~2.5s);
+        # inline execution would park the loop in time.sleep(20),
+        # returning only after the full sleep with the ticker starved.
+        # The bound sits far from both: wide enough that a slow CI
+        # runner's overhead can't trip it (4.5s flaked at 5.59s on a
+        # loaded runner), far below the 20s broken path.
+        assert elapsed < 10.0, (
             f"blocking companion stalled run_companion for {elapsed:.2f}s"
         )
         assert ticks >= 5, (
