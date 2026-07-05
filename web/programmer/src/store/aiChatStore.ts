@@ -4,6 +4,14 @@
 
 import { create } from "zustand";
 import * as cloud from "../api/cloudClient";
+import { friendlyAIError } from "../api/aiErrors";
+
+// Optimistic message ids. Date.now() alone collides when two sends land in
+// the same millisecond (the pre-send project snapshot await leaves a window
+// where a second Enter isn't blocked) — a collision makes both assistant
+// bubbles receive the same stream deltas. The counter keeps every id unique.
+let localIdCounter = 0;
+const localMessageId = (prefix: string) => `${prefix}_${Date.now()}_${++localIdCounter}`;
 
 export interface LiveToolCall {
   id: string;
@@ -105,7 +113,7 @@ export const useAIChatStore = create<AIChatStore>((set, get) => ({
       const conversations = await cloud.listConversations();
       set({ conversations, loading: false });
     } catch (e) {
-      set({ error: String(e), loading: false });
+      set({ error: friendlyAIError(e, "Couldn't load conversations."), loading: false });
     }
   },
 
@@ -136,7 +144,7 @@ export const useAIChatStore = create<AIChatStore>((set, get) => ({
       });
       set({ messages, loading: false });
     } catch (e) {
-      set({ error: String(e), loading: false });
+      set({ error: friendlyAIError(e, "Couldn't load this conversation."), loading: false });
     }
   },
 
@@ -155,16 +163,19 @@ export const useAIChatStore = create<AIChatStore>((set, get) => ({
           : {}),
       });
     } catch (e) {
-      set({ error: String(e) });
+      set({ error: friendlyAIError(e, "Couldn't delete the conversation.") });
     }
   },
 
   sendMessage: (text: string, systemId?: string, snapshot?: unknown) => {
-    const { activeConversationId: convId } = get();
+    const { activeConversationId: convId, sending } = get();
+    // A second send fired during the pre-send snapshot await would race the
+    // first (the input only disables once sending flips); drop it here.
+    if (sending) return;
 
     // Add user message optimistically
     const userMsg: Message = {
-      id: `temp_${Date.now()}`,
+      id: localMessageId("temp"),
       role: "user",
       content: text,
       createdAt: new Date().toISOString(),
@@ -172,7 +183,7 @@ export const useAIChatStore = create<AIChatStore>((set, get) => ({
 
     // Add placeholder assistant message for streaming
     const assistantMsg: Message = {
-      id: `stream_${Date.now()}`,
+      id: localMessageId("stream"),
       role: "assistant",
       content: "",
       createdAt: new Date().toISOString(),
@@ -318,11 +329,14 @@ export const useAIChatStore = create<AIChatStore>((set, get) => ({
         },
 
         onError: (message) => {
-          // Remove the placeholder messages
+          // Remove the placeholder messages and the undo entry pushed for
+          // this send — a phantom entry inflates the "Revert all N" count
+          // and points at a message that never landed.
           set((s) => ({
             messages: s.messages.filter(
               (m) => m.id !== userMsg.id && m.id !== assistantId
             ),
+            undoStack: s.undoStack.filter((e) => e.messageId !== assistantId),
             error: message,
             sending: false,
             streamingAbort: null,
@@ -378,9 +392,7 @@ export const useAIChatStore = create<AIChatStore>((set, get) => ({
 
     const entry = undoStack[idx];
     try {
-      const { saveProject, reloadProject } = await import("../api/restClient");
-      await saveProject(entry.snapshot as Parameters<typeof saveProject>[0]);
-      await reloadProject();
+      await restoreSnapshot(entry.snapshot);
       // Remove this entry and all after it from the stack
       // Remove the user+assistant message pair and everything after
       set((s) => ({
@@ -396,7 +408,7 @@ export const useAIChatStore = create<AIChatStore>((set, get) => ({
         error: null,
       }));
     } catch (e) {
-      set({ error: `Undo failed: ${e}` });
+      set({ error: `Undo failed: ${e instanceof Error ? e.message : e}` });
     }
   },
 
@@ -406,12 +418,33 @@ export const useAIChatStore = create<AIChatStore>((set, get) => ({
 
     const oldest = undoStack[0];
     try {
-      const { saveProject, reloadProject } = await import("../api/restClient");
-      await saveProject(oldest.snapshot as Parameters<typeof saveProject>[0]);
-      await reloadProject();
+      await restoreSnapshot(oldest.snapshot);
       set({ undoStack: [], messages: [], suggestions: [], error: null });
     } catch (e) {
-      set({ error: `Revert failed: ${e}` });
+      set({ error: `Revert failed: ${e instanceof Error ? e.message : e}` });
     }
   },
 }));
+
+/**
+ * Write an undo snapshot back as the live project and bring every editor
+ * surface along. The save carries the server's current ETag (fetched just
+ * before the write — the editor's own ETag can be stale, since the WS
+ * project.reloaded refetch is suppressed while dirty) so a concurrent edit
+ * from another session 409s instead of being clobbered. The project store
+ * force-reloads after, so the Project editor doesn't keep showing the
+ * pre-undo project with a stale ETag — which made the next manual save 409
+ * and left the divergence in place silently.
+ */
+async function restoreSnapshot(snapshot: unknown): Promise<void> {
+  const { getProject, saveProject, reloadProject } = await import("../api/restClient");
+  const { useProjectStore } = await import("./projectStore");
+  const current = (await getProject()) as { _etag?: string };
+  // Snapshots come from getProject(), which embeds the transport-level
+  // _etag marker — don't let it leak into the saved project body.
+  const body = { ...(snapshot as Record<string, unknown>) };
+  delete body._etag;
+  await saveProject(body as unknown as Parameters<typeof saveProject>[0], current._etag);
+  await reloadProject();
+  await useProjectStore.getState().forceReload();
+}
