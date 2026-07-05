@@ -89,9 +89,14 @@ class SystemToolsMixin:
                 harvest(conn)
             plugins = getattr(engine.project, "plugins", None) or {}
             for plugin_cfg in plugins.values():
-                harvest(plugin_cfg)
+                # Project plugin entries are PluginConfig models whose
+                # secrets live in .config; raw dicts appear in tests and
+                # forward-compat paths.
                 if isinstance(plugin_cfg, dict):
+                    harvest(plugin_cfg)
                     harvest(plugin_cfg.get("config"))
+                else:
+                    harvest(getattr(plugin_cfg, "config", None))
 
         try:
             from server.system_config import get_system_config

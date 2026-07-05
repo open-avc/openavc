@@ -89,6 +89,32 @@ async def test_get_logs_redacts_known_secrets(monkeypatch):
     assert any("hunter22" in e.message for e in buffer._entries)
 
 
+async def test_get_logs_redacts_plugin_config_secrets(monkeypatch):
+    # Plugin entries in a loaded project are PluginConfig models, not dicts —
+    # the harvest must read .config off the model, or plugin credentials in
+    # DEBUG transport lines ship to the cloud unscrubbed.
+    from server.core.project_loader import PluginConfig
+
+    project = SimpleNamespace(
+        devices=[],
+        connections={},
+        plugins={
+            "mqtt_bridge": PluginConfig(
+                enabled=True, config={"api_token": "tok-9f8e7d6c"}
+            ),
+        },
+    )
+    _install_buffer(
+        monkeypatch,
+        [_entry("TX: AUTH tok-9f8e7d6c", level="DEBUG"), _entry("poll ok")],
+    )
+
+    result = await _Handler(SimpleNamespace(project=project))._get_logs({"count": 10})
+    messages = [e["message"] for e in result]
+    assert "TX: AUTH ***" in messages
+    assert not any("tok-9f8e7d6c" in m for m in messages)
+
+
 async def test_get_logs_coerces_string_numbers(monkeypatch):
     entries = [_entry("old line", age_seconds=3600)]
     entries += [_entry(f"line {i}") for i in range(5)]
