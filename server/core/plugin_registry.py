@@ -33,6 +33,10 @@ class PluginRegistry:
         # unmounted on stop. Route teardown is handled by the loader's
         # router hooks, not registry.cleanup().
         self.http_router = None
+        # FastAPI APIRouter registered via api.register_guest_router().
+        # Mounted under /api/plugins/<id>/guest/* with NO platform auth —
+        # the plugin gates these routes itself. Same lifecycle as http_router.
+        self.guest_router = None
 
     def track_state_subscription(self, sub_id: str) -> None:
         self.state_subscriptions.append(sub_id)

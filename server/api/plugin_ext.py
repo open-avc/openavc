@@ -140,7 +140,35 @@ def mount_plugin_router(app, plugin_id: str, router) -> None:
 
 def unmount_plugin_router(app, plugin_id: str) -> None:
     """Remove all routes previously mounted under this plugin's ``/ext`` prefix."""
-    prefix = _ext_prefix(plugin_id)
+    _unmount_prefix(app, plugin_id, _ext_prefix(plugin_id))
+
+
+def _guest_prefix(plugin_id: str) -> str:
+    return f"/api/plugins/{plugin_id}/guest"
+
+
+def mount_plugin_guest_router(app, plugin_id: str, router) -> None:
+    """Mount a plugin's guest APIRouter under ``/api/plugins/{id}/guest/*``.
+
+    Idempotent, like :func:`mount_plugin_router`. Deliberately mounted with
+    **no** auth dependency: guest routes serve devices that have no OpenAVC
+    login (a guest laptop, an unattended receiver box), the same posture as
+    the platform's own open routes (``/pair``, ``/setup``). The plugin gates
+    these routes itself; registration requires the ``guest_endpoints``
+    capability, checked in ``PluginAPI.register_guest_router``.
+    """
+    prefix = _guest_prefix(plugin_id)
+    unmount_plugin_guest_router(app, plugin_id)
+    app.include_router(router, prefix=prefix)
+    log.info("Mounted plugin '%s' guest HTTP router at %s/*", plugin_id, prefix)
+
+
+def unmount_plugin_guest_router(app, plugin_id: str) -> None:
+    """Remove all routes previously mounted under this plugin's ``/guest`` prefix."""
+    _unmount_prefix(app, plugin_id, _guest_prefix(plugin_id))
+
+
+def _unmount_prefix(app, plugin_id: str, prefix: str) -> None:
     routes = app.router.routes
     keep = [r for r in routes if not getattr(r, "path", "").startswith(prefix)]
     removed = len(routes) - len(keep)

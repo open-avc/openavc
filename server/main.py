@@ -251,12 +251,20 @@ assets_api.set_engine(engine)
 themes_api.set_engine(engine)
 ai_proxy_api.set_engine(engine)
 
-# Let plugins mount HTTP routers under /api/plugins/<id>/ext/* at runtime.
-# The loader calls these when such a plugin starts/stops; the app lives here.
-from server.api.plugin_ext import mount_plugin_router, unmount_plugin_router
+# Let plugins mount HTTP routers under /api/plugins/<id>/ext/* (authed) and
+# /api/plugins/<id>/guest/* (open, plugin-gated) at runtime. The loader calls
+# these when such a plugin starts/stops; the app lives here.
+from server.api.plugin_ext import (
+    mount_plugin_guest_router,
+    mount_plugin_router,
+    unmount_plugin_guest_router,
+    unmount_plugin_router,
+)
 engine.plugin_loader.set_router_hooks(
     lambda plugin_id, router: mount_plugin_router(app, plugin_id, router),
     lambda plugin_id: unmount_plugin_router(app, plugin_id),
+    lambda plugin_id, router: mount_plugin_guest_router(app, plugin_id, router),
+    lambda plugin_id: unmount_plugin_guest_router(app, plugin_id),
 )
 
 # Wire discovery engine

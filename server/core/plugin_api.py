@@ -321,6 +321,35 @@ class PluginAPI:
             )
         self._registry.http_router = router
 
+    def register_guest_router(self, router) -> None:
+        """Mount a FastAPI ``APIRouter`` under ``/api/plugins/<id>/guest/*``.
+
+        Requires: guest_endpoints.
+
+        Unlike ``register_router``, these routes carry **no platform
+        authentication** — they are reachable by any device that can reach
+        the OpenAVC HTTP port, including on a claimed instance. Use them for
+        surfaces that must work without an OpenAVC login (a guest's own
+        laptop, an unattended receiver box). The plugin is responsible for
+        gating every guest route itself (a shared key, a PIN exchange, or an
+        explicit decision to serve openly) and should return 401 for a bad
+        credential — the platform's rate limiter counts 401 responses toward
+        its brute-force throttle.
+
+        Call this from ``start()``; the engine mounts the router after the
+        plugin starts and removes it on stop. Routes are defined relative to
+        the mount point, same as ``register_router``.
+        """
+        self._require("guest_endpoints")
+        from fastapi import APIRouter
+
+        if not isinstance(router, APIRouter):
+            raise TypeError(
+                "register_guest_router expects a fastapi.APIRouter, "
+                f"got {type(router).__name__}"
+            )
+        self._registry.guest_router = router
+
     async def proxy_to(
         self, url: str, request, *, timeout: float = 30.0, allow_internal: bool = False
     ):
