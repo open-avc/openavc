@@ -36,7 +36,7 @@ def __getattr__(name):
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
-# Open router — no auth required (status, templates)
+# Open router — no auth required (status, health, setup/auth bootstrap)
 open_router = APIRouter(prefix="/api")
 # Protected router — requires programmer auth when configured
 router = APIRouter(prefix="/api", dependencies=[Depends(require_programmer_auth)])

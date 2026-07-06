@@ -91,12 +91,16 @@ System-level configuration controls the server itself: networking, authenticatio
     "network": {
         "http_port": 8080,
         "bind_address": "127.0.0.1",
-        "control_interface": ""
+        "control_interface": "",
+        "trust_forwarded_for": false,
+        "backend_module": ""
     },
     "auth": {
+        "programmer_username": "",
         "programmer_password": "",
         "api_key": "",
-        "panel_lock_code": ""
+        "panel_lock_code": "",
+        "allow_anonymous": "auto"
     },
     "isc": {
         "enabled": true,
@@ -127,6 +131,9 @@ System-level configuration controls the server itself: networking, authenticatio
         "target_url": "http://localhost:8080/panel",
         "cursor_visible": false
     },
+    "discovery": {
+        "advertise": true
+    },
     "tls": {
         "enabled": false,
         "port": 8443,
@@ -138,6 +145,14 @@ System-level configuration controls the server itself: networking, authenticatio
 }
 ```
 
+A few keys deserve a note:
+
+- `auth.allow_anonymous` controls whether an instance with no credentials serves the Programmer IDE openly. The default `"auto"` means a from-source development checkout runs open, while every packaged install (Windows, macOS, Linux, Docker, Pi) requires the first-run setup screen to set an admin password before the IDE is reachable. Set `true` or `false` to force either behavior.
+- `auth.programmer_username` is optional. When empty, any username is accepted with the correct password. Set it to require a specific username at the login prompt.
+- `discovery.advertise` controls the mDNS advertisement that lets panel apps find this server on the network. Set to `false` to hide the server from discovery (devices then connect by IP address).
+- `network.trust_forwarded_for` should be `true` only when OpenAVC runs behind a reverse proxy that sets `X-Forwarded-For`, so per-client rate limiting sees the real client address.
+- `network.backend_module` is reserved for specialized deployments that supply their own host-network configuration backend. Leave it empty.
+
 **Configuration priority:** Environment variables override system.json values. This lets Docker and CI environments inject config without modifying the file.
 
 | system.json path | Environment Variable | Default |
@@ -145,9 +160,12 @@ System-level configuration controls the server itself: networking, authenticatio
 | `network.http_port` | `OPENAVC_PORT` | `8080` |
 | `network.bind_address` | `OPENAVC_BIND` | `127.0.0.1` |
 | `network.control_interface` | `OPENAVC_CONTROL_INTERFACE` | `""` |
+| `network.trust_forwarded_for` | `OPENAVC_TRUST_FORWARDED_FOR` | `false` |
+| `auth.programmer_username` | `OPENAVC_PROGRAMMER_USERNAME` | `""` |
 | `auth.programmer_password` | `OPENAVC_PROGRAMMER_PASSWORD` | `""` |
 | `auth.api_key` | `OPENAVC_API_KEY` | `""` |
 | `auth.panel_lock_code` | `OPENAVC_PANEL_LOCK_CODE` | `""` |
+| `auth.allow_anonymous` | `OPENAVC_ALLOW_ANONYMOUS` | `auto` |
 | `logging.level` | `OPENAVC_LOG_LEVEL` | `info` |
 | `updates.check_enabled` | `OPENAVC_UPDATE_CHECK` | `true` |
 | `updates.channel` | `OPENAVC_UPDATE_CHANNEL` | `stable` |
@@ -155,6 +173,7 @@ System-level configuration controls the server itself: networking, authenticatio
 | `cloud.endpoint` | `OPENAVC_CLOUD_ENDPOINT` | `wss://cloud.openavc.com/agent/v1` |
 | `cloud.system_key` | `OPENAVC_CLOUD_SYSTEM_KEY` | `""` |
 | `cloud.system_id` | `OPENAVC_CLOUD_SYSTEM_ID` | `""` |
+| `discovery.advertise` | `OPENAVC_MDNS_ADVERTISE` | `true` |
 | `tls.enabled` | `OPENAVC_TLS_ENABLED` | `false` |
 | `tls.port` | `OPENAVC_TLS_PORT` | `8443` |
 | `tls.auto_generate` | `OPENAVC_TLS_AUTO_GENERATE` | `true` |
@@ -411,7 +430,7 @@ This applies only to the Pi appliance image. A generic Linux `install.sh` host r
 
 ## Authentication
 
-Authentication is optional. When the server is only accessible locally (bind address `127.0.0.1`), no credentials are needed. When the server is accessible on the network (`0.0.0.0`), you should set at least a programmer password to prevent unauthorized changes to your project.
+Packaged installs (Windows, macOS, Linux, Docker, Pi) start unclaimed: the first person to open the Programmer IDE sees a setup screen that sets the admin password, so a shipped controller is never left open on the network. A from-source development checkout runs open by default; set a programmer password before making it network-accessible (`0.0.0.0`). To run an instance intentionally open (for example behind your own SSO reverse proxy), set `auth.allow_anonymous` to `true` and restrict reachability at the proxy.
 
 The Panel UI is never password-protected. End users can always open the touch panel without logging in.
 
@@ -419,7 +438,7 @@ The Panel UI is never password-protected. End users can always open the touch pa
 
 | Setting | Environment Variable | When to use it |
 |---------|---------------------|----------------|
-| `auth.programmer_password` | `OPENAVC_PROGRAMMER_PASSWORD` | **Set this when the server is network-accessible** and you want to prevent other people on the network from opening the Programmer IDE and modifying your project. The browser will prompt for a password. This is for humans logging in via a browser. |
+| `auth.programmer_password` | `OPENAVC_PROGRAMMER_PASSWORD` | **Set this when the server is network-accessible** and you want to prevent other people on the network from opening the Programmer IDE and modifying your project. The browser will prompt for a password. This is for humans logging in via a browser. Optionally set `auth.programmer_username` (`OPENAVC_PROGRAMMER_USERNAME`) to require a specific username; when it is unset, any username is accepted with the correct password. |
 | `auth.api_key` | `OPENAVC_API_KEY` | **Set this if you have third-party integrations** (control scripts, middleware, or external software) that connect to the OpenAVC REST API or WebSocket. Provide the key to those systems via the `X-API-Key` header. Not needed unless you are building custom integrations. |
 | `auth.panel_lock_code` | `OPENAVC_PANEL_LOCK_CODE` | **Set this if the panel runs on a public-facing display** and you want to prevent users from navigating away from the touch panel UI. |
 
@@ -428,10 +447,10 @@ You do not need to set both programmer password and API key. Either one protects
 ### What gets protected
 
 When at least one credential is configured:
-- `/api/status`, `/api/health`, and `/api/library` remain open (no auth)
-- All other REST endpoints require HTTP Basic or `X-API-Key`
-- The `/programmer` static files require HTTP Basic credentials
-- Panel WebSocket connections remain open; programmer WebSocket connections require a `?token=` query param or `X-API-Key` header
+- `/api/status` and `/api/health` remain open (no auth), along with the bootstrap endpoints the login and setup screens need (`/api/auth/required`, `/api/startup-status`, `/api/setup/status`, `/api/cloud/status`) and the CA certificate download at `/api/certificate`
+- All other REST endpoints, including `/api/library`, require HTTP Basic or `X-API-Key`
+- The `/programmer` static files are served without credentials; the IDE shows a login screen, and every API call it makes requires credentials
+- Panel WebSocket connections remain open but are restricted to touch-panel interactions; programmer WebSocket connections authenticate via the `X-API-Key` header, the browser's cached HTTP Basic credentials, or an `auth.`-prefixed WebSocket subprotocol token
 - The Panel UI at `/panel` is always accessible (it's a touch screen, not a config tool)
 
 ## HTTPS
@@ -504,12 +523,20 @@ If you front OpenAVC with nginx, Caddy, or another reverse proxy that terminates
 ```json
 {
     "status": "healthy",
-    "version": "0.5.2",
+    "version": "0.22.0",
     "uptime_seconds": 3600.5,
-    "devices": { "total": 5, "connected": 4, "error": 1 },
+    "devices": {
+        "total": 5,
+        "connected": 4,
+        "disconnected": 1,
+        "orphaned": 0,
+        "disabled": 0
+    },
     "cloud": { "connected": true }
 }
 ```
+
+The device counts add up to `total`: `connected` and `disconnected` cover enabled devices, `orphaned` counts devices whose driver is not installed, and `disabled` counts devices turned off in the project.
 
 ## Security Notes
 
