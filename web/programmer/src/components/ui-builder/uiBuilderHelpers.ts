@@ -647,13 +647,16 @@ export function removePageAndScrubRefs(
 } {
   const newPages = removePage(pages, pageId);
 
-  // Scrub master_elements.pages arrays that reference this page
+  // Scrub master_elements.pages arrays that reference this page. Returns the
+  // ORIGINAL array when nothing referenced the page — callers identity-check
+  // the result to snapshot only the sections a delete actually changes.
   const newMasters = masterElements.map((m) => {
     if (m.pages === "*" || !Array.isArray(m.pages)) return m;
     const filtered = (m.pages as string[]).filter((pid) => pid !== pageId);
     if (filtered.length === m.pages.length) return m;
     return { ...m, pages: filtered.length > 0 ? filtered : "*" };
   });
+  const mastersChanged = newMasters.some((m, i) => m !== masterElements[i]);
 
   // Scrub trigger conditions that match on the deleted page
   const newMacros = macros.map((macro) => {
@@ -672,8 +675,46 @@ export function removePageAndScrubRefs(
     });
     return changed ? { ...macro, triggers: newTriggers } : macro;
   });
+  const macrosChanged = newMacros.some((m, i) => m !== macros[i]);
 
-  return { pages: newPages, masterElements: newMasters, macros: newMacros };
+  return {
+    pages: newPages,
+    masterElements: mastersChanged ? newMasters : masterElements,
+    macros: macrosChanged ? newMacros : macros,
+  };
+}
+
+/** Clamp every element's grid_area into the given grid bounds, with the same
+ *  rules the layout inspector and canvas resize use (position clamps into
+ *  range first, then the span shrinks to fit). Used when the page grid gets
+ *  smaller so elements can't silently fall off the live panel. Returns the
+ *  ORIGINAL array when every element already fits — callers identity-check
+ *  the result. */
+export function clampElementsToGrid(
+  elements: UIElement[],
+  columns: number,
+  rows: number,
+): UIElement[] {
+  let changed = false;
+  const next = elements.map((el) => {
+    const a = el.grid_area;
+    if (!a) return el;
+    const col = Math.max(1, Math.min(columns, a.col));
+    const row = Math.max(1, Math.min(rows, a.row));
+    const col_span = Math.max(1, Math.min(columns - col + 1, a.col_span));
+    const row_span = Math.max(1, Math.min(rows - row + 1, a.row_span));
+    if (
+      col === a.col &&
+      row === a.row &&
+      col_span === a.col_span &&
+      row_span === a.row_span
+    ) {
+      return el;
+    }
+    changed = true;
+    return { ...el, grid_area: { ...a, col, row, col_span, row_span } };
+  });
+  return changed ? next : elements;
 }
 
 export function renamePage(

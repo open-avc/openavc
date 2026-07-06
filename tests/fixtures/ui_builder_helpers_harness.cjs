@@ -420,4 +420,80 @@ const AREA = { col: 1, row: 1, col_span: 2, row_span: 1 };
   };
 }
 
+// --- M-231: grid shrink clamps element areas instead of stranding them ---
+{
+  // 12x8 grid shrinking to 6x4: the out-of-bounds element is pulled inside
+  // (position clamps into range, span shrinks to fit — the inspector's
+  // rules); the in-bounds element keeps its identity.
+  try {
+    const els = [
+      { id: "a", grid_area: { col: 5, row: 5, col_span: 4, row_span: 2 } },
+      { id: "b", grid_area: { col: 1, row: 1, col_span: 2, row_span: 2 } },
+    ];
+    const r = H.clampElementsToGrid(els, 6, 4);
+    results.m231_shrink_clamps_out_of_bounds = {
+      pass:
+        eq(r[0].grid_area, { col: 5, row: 4, col_span: 2, row_span: 1 }) &&
+        r[1] === els[1],
+      detail: r,
+    };
+  } catch (e) {
+    results.m231_shrink_clamps_out_of_bounds = { pass: false, detail: String(e) };
+  }
+}
+{
+  // Everything already fits -> the SAME array back (identity), so callers can
+  // cheaply detect "nothing to clamp" (and undo diffs stay minimal).
+  try {
+    const els = [{ id: "a", grid_area: { col: 1, row: 1, col_span: 3, row_span: 2 } }];
+    const r = H.clampElementsToGrid(els, 12, 8);
+    results.m231_identity_when_fits = { pass: r === els, detail: { same: r === els } };
+  } catch (e) {
+    results.m231_identity_when_fits = { pass: false, detail: String(e) };
+  }
+}
+{
+  // Wider than the whole new grid -> the span itself shrinks (an origin-only
+  // clamp could never bring a full-width element back in bounds).
+  try {
+    const els = [{ id: "w", grid_area: { col: 1, row: 1, col_span: 12, row_span: 1 } }];
+    const r = H.clampElementsToGrid(els, 8, 8);
+    results.m231_span_shrinks_to_grid = {
+      pass: eq(r[0].grid_area, { col: 1, row: 1, col_span: 8, row_span: 1 }),
+      detail: r,
+    };
+  } catch (e) {
+    results.m231_span_shrinks_to_grid = { pass: false, detail: String(e) };
+  }
+}
+
+// --- L-142: page-delete scrub returns the ORIGINAL arrays when untouched ---
+{
+  // Nothing references the deleted page -> both arrays come back by
+  // identity, so the changed-only undo snapshot actually skips them (the
+  // old .map() always allocated, making the caller's !== guard dead code).
+  const pages = [{ id: "p1", elements: [] }, { id: "p2", elements: [] }];
+  const masters = [{ id: "m1", pages: "*", grid_area: { col: 1, row: 1, col_span: 1, row_span: 1 } }];
+  const macros = [{ id: "mac1", triggers: [{ conditions: [{ key: "var.x", value: "1" }] }] }];
+  const r = H.removePageAndScrubRefs(pages, "p2", masters, macros);
+  results.l142_scrub_identity_when_untouched = {
+    pass: r.masterElements === masters && r.macros === macros,
+    detail: { mastersSame: r.masterElements === masters, macrosSame: r.macros === macros },
+  };
+}
+{
+  // References exist -> new scrubbed arrays (the guard must still detect
+  // real changes).
+  const pages = [{ id: "p1", elements: [] }, { id: "p2", elements: [] }];
+  const masters = [{ id: "m1", pages: ["p1", "p2"] }];
+  const macros = [{ id: "mac1", triggers: [{ conditions: [{ key: "system.current_page", value: "p2" }] }] }];
+  const r = H.removePageAndScrubRefs(pages, "p2", masters, macros);
+  results.l142_scrub_new_when_changed = {
+    pass:
+      r.masterElements !== masters && eq(r.masterElements[0].pages, ["p1"]) &&
+      r.macros !== macros && eq(r.macros[0].triggers[0].conditions, []),
+    detail: r,
+  };
+}
+
 process.stdout.write(JSON.stringify(results));

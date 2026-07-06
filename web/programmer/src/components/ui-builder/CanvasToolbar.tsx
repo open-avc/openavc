@@ -38,6 +38,7 @@ import {
   SCREEN_PRESETS,
   addPage,
   removePageAndScrubRefs,
+  clampElementsToGrid,
   renamePage,
   reorderPage,
   duplicatePage,
@@ -93,6 +94,10 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate }: CanvasToolb
   const addMenuRef = useRef<HTMLDivElement>(null);
   const gridUndoPushed = useRef(false);
   const gridUndoTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  // Clear the grid-undo batching timer on unmount (it only resets a ref, so
+  // firing late is harmless — but the timer itself must not outlive us).
+  useEffect(() => () => clearTimeout(gridUndoTimer.current), []);
 
   // Close add menu on click outside
   useEffect(() => {
@@ -203,16 +208,21 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate }: CanvasToolb
     const nextPageId = pages.find((p) => p.id !== pageId)?.id;
     const idleClobbered = project.ui.settings?.idle_page === pageId;
 
+    // Single references for the scrub inputs — the changed-only snapshot
+    // below relies on identity, and a fresh `|| []` per comparison would
+    // never match what the scrub returned.
+    const masterElements = project.ui.master_elements || [];
+    const projectMacros = project.macros || [];
     const result = removePageAndScrubRefs(
       project.ui.pages,
       pageId,
-      project.ui.master_elements || [],
-      project.macros || [],
+      masterElements,
+      projectMacros,
     );
     const snapshot: Record<string, unknown> = { pages: project.ui.pages };
     if (idleClobbered) snapshot.settings = project.ui.settings;
-    if (result.masterElements !== (project.ui.master_elements || [])) snapshot.master_elements = project.ui.master_elements || [];
-    if (result.macros !== (project.macros || [])) snapshot.macros = project.macros || [];
+    if (result.masterElements !== masterElements) snapshot.master_elements = masterElements;
+    if (result.macros !== projectMacros) snapshot.macros = projectMacros;
     pushUndo(snapshot, `Delete page "${pageName}"`);
 
     const settings = idleClobbered
@@ -770,15 +780,22 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate }: CanvasToolb
         const currentPage = pages.find((p) => p.id === selectedPageId);
         if (!currentPage || !project) return null;
         const handleGridChange = (patch: Record<string, number>) => {
-          const updatedPages = project.ui.pages.map((p) =>
-            p.id === currentPage.id
-              ? {
-                  ...p,
-                  grid: { ...p.grid, ...("columns" in patch || "rows" in patch ? patch : {}) },
-                  ...("grid_gap" in patch ? { grid_gap: patch.grid_gap } : {}),
-                }
-              : p
-          );
+          const sizeChanged = "columns" in patch || "rows" in patch;
+          const updatedPages = project.ui.pages.map((p) => {
+            if (p.id !== currentPage.id) return p;
+            const grid = { ...p.grid, ...(sizeChanged ? patch : {}) };
+            return {
+              ...p,
+              grid,
+              // Shrinking the grid must not strand elements out of bounds —
+              // they'd still hold a grid_area but render off the live panel.
+              // Same clamp rules as the layout inspector; a no-op on grow.
+              elements: sizeChanged
+                ? clampElementsToGrid(p.elements, grid.columns, grid.rows)
+                : p.elements,
+              ...("grid_gap" in patch ? { grid_gap: patch.grid_gap } : {}),
+            };
+          });
           if (!gridUndoPushed.current) {
             pushUndo({ pages: project.ui.pages }, "Edit grid");
             gridUndoPushed.current = true;

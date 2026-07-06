@@ -98,6 +98,11 @@ SCENARIOS = [
     "m144_promote_no_collision_keeps_id",
     "l087_value_map_recursion",
     "l088_out_of_bounds_ids",
+    "m231_shrink_clamps_out_of_bounds",
+    "m231_identity_when_fits",
+    "m231_span_shrinks_to_grid",
+    "l142_scrub_identity_when_untouched",
+    "l142_scrub_new_when_changed",
 ]
 
 
