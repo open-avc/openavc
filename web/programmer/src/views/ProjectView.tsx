@@ -15,6 +15,7 @@ import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import { Dialog } from "../components/shared/Dialog";
 import { AssetBrowser, type AssetFilter } from "../components/assets/AssetBrowser";
 import { VideoStreamsSection } from "../components/video-streams/VideoStreamsSection";
+import { PresentSection } from "../components/present/PresentSection";
 import { useProjectStore } from "../store/projectStore";
 import * as api from "../api/restClient";
 import type { LibraryProject } from "../api/types";
@@ -586,6 +587,9 @@ export function ProjectView() {
 
       {/* Video Streams (only when the Video Panel plugin is enabled for this project) */}
       {project?.plugins?.video_panel?.enabled && <VideoStreamsSection />}
+
+      {/* Present rooms (only when the Present plugin is enabled for this project) */}
+      {project?.plugins?.present?.enabled && <PresentSection />}
 
       {/* Backups */}
       <div style={{ marginTop: "var(--space-2xl)", maxWidth: 600 }}>
