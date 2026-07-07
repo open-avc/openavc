@@ -53,7 +53,7 @@ OpenAVC runs on an existing server, VM, or Docker host. It controls AV equipment
 
 **Port 8080** is the only port that must be accessible for a standard single-room deployment when HTTPS is off (the default). This is configurable via the `OPENAVC_PORT` environment variable or `system.json`.
 
-**Port 8443** is opened when HTTPS is enabled. When both listeners are running, the HTTP listener on 8080 returns a 301/308 redirect to the HTTPS URL — so existing bookmarks and panel devices keep working without reconfiguration. If you disable the redirect listener (Settings > Security), only port 8443 is open. Port 8443 is configurable via `OPENAVC_TLS_PORT` or `tls.port` in `system.json`.
+**Port 8443** is opened when HTTPS is enabled. When both listeners are running, the HTTP listener on 8080 returns a temporary (302/307) redirect to the HTTPS URL — so existing bookmarks and panel devices keep working without reconfiguration, and nothing is cached that would break access if HTTPS is later disabled. If you disable the redirect listener (Settings > Security), only port 8443 is open. Port 8443 is configurable via `OPENAVC_TLS_PORT` or `tls.port` in `system.json`.
 
 **Port 19500** is used by the device simulator during development and testing. It is only active when the simulator is running. It does not need to be accessible from other machines.
 
@@ -232,7 +232,7 @@ When authentication is enabled:
 
 OpenAVC defaults to plain HTTP because most deployments live on an isolated AV VLAN. HTTPS is available as a built-in opt-in via **Settings > Security** in the Programmer IDE, or by setting `OPENAVC_TLS_ENABLED=true` (or `tls.enabled: true` in `system.json`) and restarting the server.
 
-When enabled, the server runs the HTTPS listener on port 8443 (TLS 1.2 and 1.3, RSA-2048 server keys) and keeps a tiny HTTP listener on port 8080 that 301/308-redirects to the HTTPS URL so existing clients keep working.
+When enabled, the server runs the HTTPS listener on port 8443 (TLS 1.2 and 1.3, RSA-2048 server keys) and keeps a tiny HTTP listener on port 8080 that redirects to the HTTPS URL (temporary 302/307, so no browser caches a permanent redirect that would outlive a later decision to turn HTTPS back off) and existing clients keep working.
 
 Two cert modes are supported:
 
