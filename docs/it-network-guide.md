@@ -49,6 +49,7 @@ OpenAVC runs on an existing server, VM, or Docker host. It controls AV equipment
 | **19500** | TCP (HTTP) | Device Simulator UI (development/testing only) | No |
 | **19872** | UDP | ISC auto-discovery (multi-instance setups only) | No |
 | **8189** | UDP | WebRTC media for the Video Panel plugin (live camera/RTSP streams on the panel) | Only when the Video Panel plugin is installed and a panel is viewing a stream |
+| **8190** | UDP | WebRTC media for the Present plugin (wireless presentation) | Only when the Present plugin is installed and someone is presenting or a display is connected |
 | **22** | TCP (SSH) | Remote console login — Raspberry Pi appliance image only | No — ships disabled; operator-enabled in Settings > Security |
 
 **Port 8080** is the only port that must be accessible for a standard single-room deployment when HTTPS is off (the default). This is configurable via the `OPENAVC_PORT` environment variable or `system.json`.
@@ -63,6 +64,8 @@ OpenAVC runs on an existing server, VM, or Docker host. It controls AV equipment
 
 The Video Panel plugin can also show the built-in preview stream of an AV-over-IP encoder (for example a TurtleAV Chazy encoder), which appears on the panel automatically once its controller is connected. These preview streams usually live on the AV/video network, which is commonly a separate VLAN from the control network. The OpenAVC **host** fetches the preview and passes it to the panel over the host's normal web port, so no extra inbound port is needed on the panel side. What is required is that the OpenAVC host can route to the encoder's video network. A host with a second network interface on the AV fabric is the typical arrangement. The panel browser never connects to the video network directly.
 
+**Port 8190** is opened only when the optional Present plugin (wireless presentation) is installed. Present carries video over WebRTC in both directions: a presenter's laptop sends its screen-share media to UDP 8190 on the OpenAVC host, and the devices driving the space's displays receive video from the same port. As with the Video Panel port, same-subnet traffic usually works without changes; if presenters or display devices are on a different VLAN or subnet — presenters on a guest wireless network is the common case — allow inbound UDP 8190 to the OpenAVC host from those networks. The signaling and the join pages ride the normal web ports (8080/8443); no other port is involved. The port is only active while the plugin is running, and it is never opened if the plugin is not installed.
+
 The application itself does not listen on any other ports by default: no SNMP agent, no embedded database port, and no proprietary discovery protocol that accepts inbound connections. The Raspberry Pi appliance image can optionally run an SSH server (port 22) for remote console access, but it ships **disabled** — an operator turns it on in Settings > Security when it is needed (see [Raspberry Pi appliance](#raspberry-pi-appliance-login-and-ssh) below).
 
 ### Who can access the web interface
@@ -71,6 +74,8 @@ OpenAVC separates two surfaces with different access rules:
 
 - **The room panel** (`/panel`) — the end-user touch interface — is **always open**. Wall tablets and shared room displays reach it without a login, as an AV panel should.
 - **The Programmer (configuration interface) and the control/admin API** require an **admin credential**.
+
+**Wireless presentation guest pages (Present plugin).** When the optional Present plugin is installed, it adds two login-free pages on the standard web ports: the guest connect page (`/present`), where a presenter enters the rotating join code shown on the space's displays, and the display pages that drive each screen, each gated by a long per-display key carried in its URL. Neither grants any access to the configuration interface or the API. Wrong join codes are rate-limited, the code rotates between presentation sessions, and a display's key can be regenerated to revoke its link. Screen sharing additionally requires HTTPS to be enabled on the instance, because browsers only permit screen capture on a secure page. These pages exist only while the plugin is installed and running.
 
 **Secure by default.** Packaged deployments (Windows installer, Linux `install.sh`, Docker, Raspberry Pi image) listen on all network interfaces so panels can reach them, but they ship with **no credential and refuse admin access until one is set**. The first time someone opens the Programmer, OpenAVC presents a one-time "create admin password" screen. Until that is done, the configuration interface and control API return HTTP 401; only the panel and health/status endpoints respond. There is no default password and no open admin surface on a shipped box.
 
