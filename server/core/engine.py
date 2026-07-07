@@ -217,6 +217,7 @@ class Engine:
 
         # Load project — with corruption recovery
         self.project = self._load_project_safe()
+        self.state.set("system.project_name", self.project.project.name, source="system")
 
         # Load project-level drivers (community drivers installed via IDE)
         self._load_project_drivers()
@@ -741,6 +742,7 @@ class Engine:
         # count from the initial start (now fixed) doesn't linger in the store
         # and cloud relay.
         self.state.set("system.startup_errors", 0, source="system")
+        self.state.set("system.project_name", self.project.project.name, source="system")
 
         # Push new UI definition to all connected panels
         await self.broadcast_ws({
