@@ -8,7 +8,7 @@ import { showError, showSuccess } from "../../store/toastStore";
 import { useProjectStore } from "../../store/projectStore";
 import { getTlsStatus } from "../../api/systemClient";
 import * as presentApi from "../../api/presentClient";
-import type { PresentDisplay, PresentStatus } from "../../api/presentClient";
+import type { HostOutputs, PresentDisplay, PresentStatus } from "../../api/presentClient";
 
 // The Present plugin's management panel, rendered on its detail page in the
 // Plugins view: the connect address guests type (with an HTTPS warning when
@@ -123,6 +123,35 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+// The local-window status chip on a display row. Running is quiet ("On
+// <output>"); the waiting/error states are what the integrator needs to see.
+function localStateChip(d: PresentDisplay): { text: string; warn: boolean } | null {
+  if (!d.local_output) return null;
+  switch (d.local_state) {
+    case "waiting_for_output":
+      return { text: "Output not connected", warn: true };
+    case "waiting_for_signin":
+      return { text: "Waiting for Windows sign-in", warn: true };
+    case "error":
+      return { text: "Window error — see System Log", warn: true };
+    case "unsupported":
+      return { text: "Not supported on this server", warn: true };
+    case "starting":
+      return { text: "Opening window…", warn: false };
+    case "running":
+      return { text: `On ${d.local_output_name || "this server"}`, warn: false };
+    default:
+      return null;
+  }
+}
+
+function outputOptionLabel(o: presentApi.HostOutput, currentDisplayId: string | null): string {
+  let label = `${o.name} — ${o.width}x${o.height}`;
+  if (o.primary) label += " (primary)";
+  if (o.in_use_by && o.in_use_by !== currentDisplayId) label += ` — in use by ${o.in_use_by}`;
+  return label;
+}
+
 function DisplayForm({
   display,
   onClose,
@@ -136,16 +165,42 @@ function DisplayForm({
   const [displayId, setDisplayId] = useState(display?.id ?? "");
   const [idTouched, setIdTouched] = useState(!!display);
   const [kind, setKind] = useState(display?.kind ?? "browser");
+  const [localOutput, setLocalOutput] = useState(display?.local_output ?? "");
+  // null = still loading; the picker renders once the answer is in.
+  const [hostOutputs, setHostOutputs] = useState<HostOutputs | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // This server's video outputs, for the "show it from this server" picker.
+  // Fetched fresh per form open so a just-plugged output appears.
+  useEffect(() => {
+    presentApi
+      .getOutputs()
+      .then(setHostOutputs)
+      .catch(() => setHostOutputs({ supported: false, reason: "", outputs: [] }));
+  }, []);
 
   const effectiveId = (idTouched ? displayId : slugify(label)).trim();
   const valid = label.trim() && effectiveId;
+
+  // Non-primary outputs first: the primary is usually the console/panel
+  // screen, so the natural pick sits at the top of the list.
+  const pickableOutputs = [...(hostOutputs?.outputs ?? [])].sort(
+    (a, b) => Number(a.primary) - Number(b.primary),
+  );
+  const selectedOutput = pickableOutputs.find((o) => o.id === localOutput);
+  const selectedMissing = !!localOutput && !selectedOutput;
 
   async function save() {
     if (!valid) return;
     setSaving(true);
     try {
-      const payload = { label: label.trim(), display_id: effectiveId, kind };
+      const payload = {
+        label: label.trim(),
+        display_id: effectiveId,
+        kind,
+        // Always sent: "" clears. A stream display never keeps one.
+        local_output: kind === "browser" ? localOutput : "",
+      };
       if (display) await presentApi.updateDisplay(display.id, payload);
       else await presentApi.createDisplay(payload);
       showSuccess(display ? "Display updated." : "Display added.");
@@ -191,6 +246,49 @@ function DisplayForm({
             publishes RTSP and SRT addresses for a decoder to pull. Expect
             about a second of latency; use a browser display where latency
             matters most.
+          </p>
+        )}
+        {kind === "browser" && hostOutputs && (hostOutputs.supported || localOutput) && (
+          <Field label="Show on this server's output">
+            <select
+              style={{ ...inputStyle, cursor: "pointer" }}
+              value={localOutput}
+              onChange={(e) => setLocalOutput(e.target.value)}
+            >
+              <option value="">Not shown from this server</option>
+              {pickableOutputs.map((o) => (
+                <option
+                  key={o.id}
+                  value={o.id}
+                  disabled={!!o.in_use_by && o.in_use_by !== display?.id}
+                >
+                  {outputOptionLabel(o, display?.id ?? null)}
+                </option>
+              ))}
+              {selectedMissing && (
+                <option value={localOutput}>
+                  {(display?.local_output_name || "Configured output") + " (not connected)"}
+                </option>
+              )}
+            </select>
+          </Field>
+        )}
+        {kind === "browser" && hostOutputs && !hostOutputs.supported && hostOutputs.reason && (
+          <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--text-muted)", lineHeight: 1.5 }}>
+            This display can&apos;t be shown from this server: {hostOutputs.reason}
+          </p>
+        )}
+        {kind === "browser" && selectedOutput?.primary && (
+          <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-warning, #b26a00)", lineHeight: 1.5 }}>
+            That is this server&apos;s primary screen — usually the console or
+            panel display. Present will cover it whenever this display is on.
+          </p>
+        )}
+        {kind === "browser" && selectedMissing && (
+          <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-warning, #b26a00)", lineHeight: 1.5 }}>
+            The configured output isn&apos;t connected right now. The window
+            opens automatically when it returns, or pick a connected output
+            above.
           </p>
         )}
         {display && effectiveId !== display.id && (
@@ -508,6 +606,26 @@ export function PresentManagementPanel({ running }: { running: boolean }) {
                 >
                   {d.output_state === "live" ? `Live: ${d.showing}` : "Idle"}
                 </span>
+                {(() => {
+                  const chip = localStateChip(d);
+                  if (!chip) return null;
+                  return (
+                    <span
+                      title="This display's fullscreen window on this server"
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 600,
+                        flexShrink: 0,
+                        padding: "2px 8px",
+                        borderRadius: 999,
+                        border: `1px solid ${chip.warn ? "var(--color-warning, #b26a00)" : "var(--border-color)"}`,
+                        color: chip.warn ? "var(--color-warning, #b26a00)" : "var(--text-muted)",
+                      }}
+                    >
+                      {chip.text}
+                    </span>
+                  );
+                })()}
                 <SourceSelect display={d} status={status} onRouted={() => refresh(true)} />
                 {d.kind !== "stream" && (
                   <button
@@ -593,14 +711,17 @@ export function PresentManagementPanel({ running }: { running: boolean }) {
 
       <p style={{ marginTop: "var(--space-md)", fontSize: "var(--font-size-sm)", color: "var(--text-muted)", lineHeight: 1.5 }}>
         A browser display has a link to open, full screen, in a browser on
-        the device driving that screen. A stream display instead shows RTSP
-        and SRT addresses for a hardware decoder to pull. Both carry a
-        secret (the link&apos;s key, the address&apos;s stream key) — treat
-        them like passwords; the key button issues new ones. Source picks
-        what a display shows: Auto follows the active presenter; pinning a
-        presenter holds their screen there. If the connect address above
-        isn&apos;t reachable from guests&apos; laptops (multiple networks,
-        VLANs), set Join Address in the plugin&apos;s configuration below.
+        the device driving that screen — or, when this server has a video
+        output at the display, pick that output in the display&apos;s
+        settings and the server opens the window itself. A stream display
+        instead shows RTSP and SRT addresses for a hardware decoder to pull.
+        Both carry a secret (the link&apos;s key, the address&apos;s stream
+        key) — treat them like passwords; the key button issues new ones.
+        Source picks what a display shows: Auto follows the active
+        presenter; pinning a presenter holds their screen there. If the
+        connect address above isn&apos;t reachable from guests&apos; laptops
+        (multiple networks, VLANs), set Join Address in the plugin&apos;s
+        configuration below.
       </p>
 
       {editing && (

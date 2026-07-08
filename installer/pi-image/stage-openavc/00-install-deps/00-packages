@@ -3,6 +3,7 @@ python3-venv
 python3-pip
 chromium
 unclutter
+wlr-randr
 avahi-daemon
 avahi-utils
 curl

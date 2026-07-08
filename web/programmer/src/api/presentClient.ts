@@ -12,11 +12,34 @@ export interface PresentDisplay {
   source: string; // routing assignment: "auto" or a pinned presenter
   showing: string; // who it is actually showing ("" = the connect card)
   output_state: string; // idle | live
+  // Browser displays only ("" = not shown from this server):
+  local_output?: string; // id of this server's video output showing it
+  // Present only when local_output is set:
+  local_state?: string; // starting | running | waiting_for_output | waiting_for_signin | error | unsupported | stopped
+  local_output_name?: string; // human name of that output ("" when unknown)
+  local_output_connected?: boolean;
   // Stream displays only:
   stream_path?: string; // sidecar path with the stream key baked in (out/<id>-<key>)
   rtsp_port?: number;
   srt_port?: number;
   encoder_state?: string; // stopped | starting | idle | live | error
+}
+
+export interface HostOutput {
+  id: string; // stable output identity (Windows device path / connector name)
+  name: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  primary: boolean;
+  in_use_by: string; // display id already claiming this output ("" = free)
+}
+
+export interface HostOutputs {
+  supported: boolean; // false: this host can't show a local display (reason says why)
+  reason: string;
+  outputs: HostOutput[];
 }
 
 export interface PresentPresenter {
@@ -46,6 +69,7 @@ export interface DisplayInput {
   label: string;
   display_id?: string;
   kind?: string; // "browser" | "stream"
+  local_output?: string; // "" clears; omit to keep the current assignment
 }
 
 const EXT = "/plugins/present/ext";
@@ -56,6 +80,10 @@ export function getStatus(): Promise<PresentStatus> {
 
 export function listDisplays(): Promise<PresentDisplay[]> {
   return request<PresentDisplay[]>(`${EXT}/displays`);
+}
+
+export function getOutputs(): Promise<HostOutputs> {
+  return request<HostOutputs>(`${EXT}/outputs`);
 }
 
 export function createDisplay(data: DisplayInput): Promise<PresentDisplay> {
