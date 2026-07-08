@@ -716,10 +716,20 @@ async def _run_tls() -> None:
     )
     # uvicorn builds the SSLContext from the cert/key when the config loads;
     # load it here so we can harden the built context directly (Server.serve()
-    # then reuses it rather than rebuilding).
+    # then reuses it rather than rebuilding) and attach the SNI callback:
+    # names on the cloud-issued cert get that cert, everything else —
+    # including all bare-IP HTTPS, which sends no SNI — keeps the self-signed
+    # leaf. The callback is installed even with no cloud cert on disk (empty
+    # holder = no-op) so a first enrollment while running takes effect
+    # without a restart.
     main_config.load()
     if main_config.ssl is not None:
         _harden_tls_context(main_config.ssl)
+        if config.TLS_CLOUD_CERT:
+            tls_module.load_cloud_cert(get_system_config().data_dir)
+        main_config.ssl.sni_callback = tls_module.make_sni_callback(
+            tls_module.cloud_cert_holder()
+        )
     main_server = uvicorn.Server(main_config)
     tasks: list[asyncio.Task] = [asyncio.create_task(main_server.serve())]
 

@@ -44,3 +44,55 @@ async def wait_for_condition(
             return
         await asyncio.sleep(interval)
     raise TimeoutError(f"{message} within {timeout}s")
+
+
+def make_cloud_cert_pem(
+    label: str,
+    zone: str,
+    *,
+    expired: bool = False,
+    dns_sans: list[str] | None = None,
+) -> tuple[bytes, bytes]:
+    """Build a cloud-style wildcard cert + key PEM pair for TLS tests.
+
+    Self-signed stand-in for a cloud-issued certificate: SANs default to
+    exactly ``{*.label.zone, label.zone}``, overridable via ``dns_sans``.
+    Returns ``(cert_pem, key_pem)`` bytes.
+    """
+    import datetime as dt
+
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.x509.oid import NameOID
+
+    if dns_sans is None:
+        dns_sans = [f"*.{label}.{zone}", f"{label}.{zone}"]
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    now = dt.datetime.now(dt.timezone.utc)
+    not_after = now - dt.timedelta(days=1) if expired else now + dt.timedelta(days=60)
+    subject = x509.Name(
+        [x509.NameAttribute(NameOID.COMMON_NAME, f"{label}.{zone}")]
+    )
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(subject)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - dt.timedelta(days=90 if expired else 0, minutes=5))
+        .not_valid_after(not_after)
+        .add_extension(
+            x509.SubjectAlternativeName([x509.DNSName(n) for n in dns_sans]),
+            critical=False,
+        )
+        .sign(key, hashes.SHA256())
+    )
+    cert_pem = cert.public_bytes(serialization.Encoding.PEM)
+    key_pem = key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.TraditionalOpenSSL,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+    return cert_pem, key_pem

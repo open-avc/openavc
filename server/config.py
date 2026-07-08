@@ -62,6 +62,7 @@ TLS_AUTO_GENERATE: bool = _cfg.get("tls", "auto_generate")
 TLS_CERT_FILE: str = _cfg.get("tls", "cert_file")
 TLS_KEY_FILE: str = _cfg.get("tls", "key_file")
 TLS_REDIRECT_HTTP: bool = _cfg.get("tls", "redirect_http")
+TLS_CLOUD_CERT: bool = _cfg.get("tls", "cloud_cert")
 
 # Logging
 LOG_LEVEL: str = _cfg.get("logging", "level", "info")

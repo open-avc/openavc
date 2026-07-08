@@ -6,6 +6,8 @@ This module handles:
 - Auto-generating a self-signed CA + leaf cert pair on first start.
 - Loading user-provided certs and validating them up-front.
 - Reading cert info for the /api/system/tls-status endpoint.
+- The cloud-issued trusted certificate: atomic install, SNI-based dual
+  serving next to the self-signed pair, and hot swap on renewal.
 
 The TLS-off code path of the server never imports this module — it is only
 touched when ``config.TLS_ENABLED`` is True.
@@ -19,6 +21,7 @@ import ipaddress
 import logging
 import os
 import socket
+import ssl
 import stat
 from dataclasses import dataclass
 from pathlib import Path
@@ -457,3 +460,271 @@ def _load_or_generate_auto(data_dir: Path, bind_address: str) -> tuple[Path, Pat
 
     paths = generate_self_signed(data_dir, hostnames=hostnames, ips=ips)
     return paths.cert_path, paths.key_path
+
+
+# ---------------------------------------------------------------------------
+# Cloud-issued trusted certificate (SNI dual-serve)
+# ---------------------------------------------------------------------------
+#
+# The cloud enrollment flow installs a publicly-trusted wildcard cert for the
+# instance's `*.<label>.<zone>` hostname. It is served *in addition to* the
+# self-signed pair: the listener's default SSLContext stays self-signed, and a
+# per-handshake SNI callback swaps in the cloud context only when the client
+# asked for one of the cloud cert's names. No-SNI clients (all bare-IP HTTPS)
+# never trigger the callback, so every existing path — pinned-CA panels,
+# /api/certificate downloads, provided-cert fleets — is untouched.
+
+_CLOUD_CERT_NAME = "cloud-cert.pem"
+_CLOUD_KEY_NAME = "cloud-key.pem"
+
+
+@dataclass(frozen=True)
+class CloudCertState:
+    """A loaded, validated cloud certificate ready to serve."""
+
+    context: ssl.SSLContext
+    exact_names: frozenset[str]  # non-wildcard DNS SANs, lowercased
+    wildcard_bases: frozenset[str]  # "<label>.<zone>" from "*.<label>.<zone>" SANs
+    hostname_suffix: str  # display/redirect base, e.g. "<label>.<zone>"
+    expires_at: _dt.datetime
+
+    def matches(self, server_name: str) -> bool:
+        """True if the SNI name is covered by this cert's SANs.
+
+        Wildcards match a single label only (`x.base`, never `a.b.base`),
+        mirroring how browsers validate the cert — serving it for a deeper
+        name would just move the failure from our redirect to the browser.
+        """
+        name = server_name.lower().rstrip(".")
+        if name in self.exact_names:
+            return True
+        head, _, rest = name.partition(".")
+        return bool(head) and head != "*" and rest in self.wildcard_bases
+
+
+class CloudCertHolder:
+    """Mutable slot the SNI callback reads on every handshake.
+
+    Replacing the state here is the hot-swap mechanism: the next handshake
+    serves the new certificate, no listener restart. The event loop owns all
+    reads and writes, so no locking is needed.
+    """
+
+    __slots__ = ("_state",)
+
+    def __init__(self) -> None:
+        self._state: CloudCertState | None = None
+
+    def get(self) -> CloudCertState | None:
+        return self._state
+
+    def set(self, state: CloudCertState) -> None:
+        self._state = state
+
+    def clear(self) -> None:
+        self._state = None
+
+
+_cloud_holder = CloudCertHolder()
+
+
+def cloud_cert_holder() -> CloudCertHolder:
+    """The process-wide holder the running TLS listener serves from."""
+    return _cloud_holder
+
+
+def cloud_cert_paths(data_dir: Path) -> tuple[Path, Path]:
+    """(cert, key) paths for the installed cloud certificate."""
+    tls_dir = data_dir / "tls"
+    return tls_dir / _CLOUD_CERT_NAME, tls_dir / _CLOUD_KEY_NAME
+
+
+def _build_cloud_state(cert_path: Path, key_path: Path) -> CloudCertState:
+    """Parse, validate, and load a cloud cert + key into a CloudCertState.
+
+    Raises :class:`TLSConfigError` on any problem: unreadable/unparseable
+    files, expired cert, no DNS names, or a key that doesn't match the cert.
+    """
+    try:
+        cert = _read_cert(cert_path)  # first PEM block = the leaf
+    except (ValueError, OSError) as exc:
+        raise TLSConfigError(f"Cloud certificate is unreadable: {exc}") from exc
+
+    now = _dt.datetime.now(_dt.timezone.utc)
+    if cert.not_valid_after_utc < now:
+        raise TLSConfigError(
+            f"Cloud certificate expired {cert.not_valid_after_utc.date().isoformat()}"
+        )
+
+    try:
+        san_ext = cert.extensions.get_extension_for_class(x509.SubjectAlternativeName)
+        dns_sans = [n.value for n in san_ext.value if isinstance(n, x509.DNSName)]
+    except x509.ExtensionNotFound:
+        dns_sans = []
+    exact_names: set[str] = set()
+    wildcard_bases: set[str] = set()
+    for san in dns_sans:
+        name = san.lower()
+        if name.startswith("*."):
+            wildcard_bases.add(name[2:])
+        else:
+            exact_names.add(name)
+    if not exact_names and not wildcard_bases:
+        raise TLSConfigError("Cloud certificate has no DNS names")
+
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    try:
+        # Loads the whole chain from the PEM (leaf + intermediates) and
+        # verifies the key pairs with the leaf.
+        context.load_cert_chain(certfile=str(cert_path), keyfile=str(key_path))
+    except (ssl.SSLError, OSError) as exc:
+        raise TLSConfigError(f"Cloud certificate/key rejected: {exc}") from exc
+
+    suffix = min(wildcard_bases) if wildcard_bases else min(exact_names)
+    return CloudCertState(
+        context=context,
+        exact_names=frozenset(exact_names),
+        wildcard_bases=frozenset(wildcard_bases),
+        hostname_suffix=suffix,
+        expires_at=cert.not_valid_after_utc,
+    )
+
+
+def load_cloud_cert(data_dir: Path) -> CloudCertState | None:
+    """Load the installed cloud cert (if any) into the active holder.
+
+    Never raises: a missing, invalid, or expired cloud cert must never take
+    down the listener — it just means self-signed-only serving until the
+    agent installs a good one.
+    """
+    cert_path, key_path = cloud_cert_paths(data_dir)
+    if not cert_path.exists() or not key_path.exists():
+        _cloud_holder.clear()
+        return None
+    try:
+        state = _build_cloud_state(cert_path, key_path)
+    except TLSConfigError as exc:
+        log.warning("Cloud certificate not serving (self-signed only): %s", exc)
+        _cloud_holder.clear()
+        return None
+    _cloud_holder.set(state)
+    log.info(
+        "Cloud certificate active for *.%s (expires %s)",
+        state.hostname_suffix,
+        state.expires_at.date().isoformat(),
+    )
+    return state
+
+
+def _write_atomic(path: Path, data: bytes, *, private: bool = False) -> None:
+    """Write bytes to ``path`` via a same-directory temp file + os.replace."""
+    tmp = path.with_name(path.name + ".tmp")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+    # 0600 from birth on POSIX (Windows inherits the directory ACL).
+    fd = os.open(tmp, flags, 0o600 if private else 0o644)
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(data)
+            fh.flush()
+            os.fsync(fh.fileno())
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+    os.replace(tmp, path)
+
+
+def install_cloud_cert(
+    data_dir: Path, cert_pem: bytes | str, key_pem: bytes | str
+) -> CloudCertState:
+    """Install a cloud cert + key and start serving them immediately.
+
+    Validates first against temp copies, then atomically replaces the real
+    files and hot-swaps the holder — the next handshake serves the new cert.
+    Raises :class:`TLSConfigError` on invalid input, leaving any previously
+    installed files (and the currently served cert) untouched.
+    """
+    if isinstance(cert_pem, str):
+        cert_pem = cert_pem.encode("utf-8")
+    if isinstance(key_pem, str):
+        key_pem = key_pem.encode("utf-8")
+
+    cert_path, key_path = cloud_cert_paths(data_dir)
+    tls_dir = cert_path.parent
+    try:
+        tls_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise TLSConfigError(
+            f"Cannot install cloud certificate: {tls_dir} is not writable",
+            log_message=f"Cannot create {tls_dir}: {exc}",
+        ) from exc
+
+    check_cert = tls_dir / (_CLOUD_CERT_NAME + ".check")
+    check_key = tls_dir / (_CLOUD_KEY_NAME + ".check")
+    try:
+        _write_atomic(check_cert, cert_pem)
+        _write_atomic(check_key, key_pem, private=True)
+        state = _build_cloud_state(check_cert, check_key)
+        # Validated — move into place. If we die between the two replaces,
+        # the mismatched pair on disk fails load_cloud_cert() gracefully
+        # (self-signed only) and the next install repairs it.
+        _write_atomic(cert_path, cert_pem)
+        _write_atomic(key_path, key_pem, private=True)
+    finally:
+        check_cert.unlink(missing_ok=True)
+        check_key.unlink(missing_ok=True)
+
+    _cloud_holder.set(state)
+    log.info(
+        "Cloud certificate installed for *.%s (expires %s)",
+        state.hostname_suffix,
+        state.expires_at.date().isoformat(),
+    )
+    return state
+
+
+def remove_cloud_cert(data_dir: Path) -> None:
+    """Stop serving the cloud cert and delete its files (disable flow)."""
+    _cloud_holder.clear()
+    for path in cloud_cert_paths(data_dir):
+        try:
+            path.unlink(missing_ok=True)
+        except OSError as exc:
+            log.warning("Could not remove %s: %s", path, exc)
+
+
+def make_sni_callback(holder: CloudCertHolder):
+    """Build the per-handshake SNI callback for the TLS listener.
+
+    When the client's SNI matches the cloud cert's names, the handshake's
+    context is swapped to the cloud one; everything else — no SNI (bare-IP
+    HTTPS), other names, no/expired cloud cert — proceeds on the default
+    self-signed context. The callback must never raise: an exception here
+    aborts the handshake outright, so every failure path falls back to
+    serving the default cert instead.
+    """
+
+    def _sni_callback(
+        ssl_object: ssl.SSLObject, server_name: str | None, _context: ssl.SSLContext
+    ) -> None:
+        try:
+            if not server_name:
+                return None
+            state = holder.get()
+            if state is None:
+                return None
+            if state.expires_at < _dt.datetime.now(_dt.timezone.utc):
+                # Serve self-signed rather than an expired cert; the agent's
+                # renewal flow re-installs and re-populates the holder.
+                holder.clear()
+                log.warning(
+                    "Cloud certificate expired — serving self-signed only "
+                    "until a renewed certificate is installed"
+                )
+                return None
+            if state.matches(server_name):
+                ssl_object.context = state.context
+        except Exception:
+            log.exception("SNI callback failed; serving the default certificate")
+        return None
+
+    return _sni_callback

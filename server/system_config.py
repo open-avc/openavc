@@ -237,6 +237,9 @@ DEFAULTS: dict[str, Any] = {
         "cert_file": "",
         "key_file": "",
         "redirect_http": True,
+        # True once the cloud enrollment flow has installed a trusted
+        # certificate (served via SNI next to the self-signed pair).
+        "cloud_cert": False,
     },
 }
 
@@ -265,6 +268,7 @@ ENV_OVERRIDES: dict[tuple[str, str], tuple[str, type]] = {
     ("tls", "cert_file"): ("OPENAVC_TLS_CERT_FILE", str),
     ("tls", "key_file"): ("OPENAVC_TLS_KEY_FILE", str),
     ("tls", "redirect_http"): ("OPENAVC_TLS_REDIRECT_HTTP", bool),
+    ("tls", "cloud_cert"): ("OPENAVC_TLS_CLOUD_CERT", bool),
 }
 
 

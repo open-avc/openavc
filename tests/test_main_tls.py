@@ -20,17 +20,21 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import socket
+import ssl
 from pathlib import Path
 
 import httpx
 import pytest
 import uvicorn
+from cryptography import x509
+from cryptography.hazmat.primitives import serialization
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from server import tls
 from server.main import _build_redirect_app, _harden_tls_context
+from tests.helpers import make_cloud_cert_pem
 
 
 # ---------------------------------------------------------------------------
@@ -272,3 +276,92 @@ async def test_redirect_follows_through_to_https(cert_paths):
             # Confirm the request actually transitioned to HTTPS, not just
             # got served by the redirect listener returning 200 somehow.
             assert str(resp.url).startswith(f"https://127.0.0.1:{tls_port}/")
+
+
+# ---------------------------------------------------------------------------
+# Cloud cert: SNI dual-serve + hot swap through a real listener
+# ---------------------------------------------------------------------------
+
+
+def _pem_to_der(cert_pem: bytes) -> bytes:
+    return x509.load_pem_x509_certificate(cert_pem).public_bytes(
+        serialization.Encoding.DER
+    )
+
+
+async def _served_cert_der(port: int, server_hostname: str | None) -> bytes:
+    """Handshake with the listener and return the DER of the cert it served.
+
+    ``server_hostname=None`` connects by bare IP, which sends no SNI — the
+    same as every ``https://192.168.x.x`` client.
+    """
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    kwargs: dict = {"ssl": ctx}
+    if server_hostname is not None:
+        kwargs["server_hostname"] = server_hostname
+    _reader, writer = await asyncio.open_connection("127.0.0.1", port, **kwargs)
+    try:
+        return writer.get_extra_info("ssl_object").getpeercert(binary_form=True)
+    finally:
+        writer.close()
+        with contextlib.suppress(Exception):
+            await writer.wait_closed()
+
+
+@pytest.mark.asyncio
+async def test_sni_dual_serve_and_hot_swap(cert_paths, tmp_path):
+    """One listener, two certs: SNI on the cloud names gets the cloud cert,
+    everything else keeps the self-signed leaf; installing a renewal swaps
+    the served cert with no restart. Mirrors the _run_tls() wiring exactly
+    (Config.load() + sni_callback on config.ssl)."""
+    cert_path, key_path = cert_paths
+    label, zone = "ab12cd34ef56ab78", "i.certtest.invalid"
+    cloud1_pem, cloud1_key = make_cloud_cert_pem(label, zone)
+    tls.install_cloud_cert(tmp_path, cloud1_pem, cloud1_key)
+
+    try:
+        tls_port = _free_port()
+        config = uvicorn.Config(
+            _make_test_app(),
+            host="127.0.0.1",
+            port=tls_port,
+            ssl_certfile=str(cert_path),
+            ssl_keyfile=str(key_path),
+            log_level="warning",
+        )
+        config.load()
+        config.ssl.sni_callback = tls.make_sni_callback(tls.cloud_cert_holder())
+        server = uvicorn.Server(config)
+
+        self_signed_der = _pem_to_der(cert_path.read_bytes())
+        cloud1_der = _pem_to_der(cloud1_pem)
+
+        async with _running_server(server):
+            # Zone names (wildcard + bare label) get the cloud cert.
+            assert await _served_cert_der(tls_port, f"192-168-1-20.{label}.{zone}") == cloud1_der
+            assert await _served_cert_der(tls_port, f"{label}.{zone}") == cloud1_der
+            # Other SNI and no SNI (bare IP) keep the self-signed leaf.
+            assert await _served_cert_der(tls_port, "openavc.local") == self_signed_der
+            assert await _served_cert_der(tls_port, None) == self_signed_der
+
+            # Hot swap: install a renewal (fresh key, same names) — the next
+            # handshake serves it, no restart.
+            cloud2_pem, cloud2_key = make_cloud_cert_pem(label, zone)
+            tls.install_cloud_cert(tmp_path, cloud2_pem, cloud2_key)
+            cloud2_der = _pem_to_der(cloud2_pem)
+            assert cloud2_der != cloud1_der
+            assert await _served_cert_der(tls_port, f"a.{label}.{zone}") == cloud2_der
+            assert await _served_cert_der(tls_port, None) == self_signed_der
+
+            # HTTP still answers on both paths after the swap.
+            async with httpx.AsyncClient(verify=False) as client:
+                resp = await client.get(f"https://127.0.0.1:{tls_port}/api/health")
+                assert resp.status_code == 200
+
+            # Disable: remove the cert — zone names fall back to self-signed.
+            tls.remove_cloud_cert(tmp_path)
+            assert await _served_cert_der(tls_port, f"a.{label}.{zone}") == self_signed_der
+    finally:
+        tls.cloud_cert_holder().clear()
