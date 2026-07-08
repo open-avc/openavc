@@ -1,19 +1,42 @@
 """Tests for the HTTP -> HTTPS redirect listener helper in server.main.
 
 Covers the catch-all redirect handler (Phase 3 of the HTTPS plan): status
-codes, Location header construction, query-string preservation, and Host
-header fallback.
+codes, Location header construction, query-string preservation, Host
+header fallback, and the certified-hostname rewrite when a cloud-issued
+trusted certificate is active.
 """
 
 from __future__ import annotations
 
+import datetime as _dt
+import ssl
+
+import pytest
 from starlette.testclient import TestClient
 
+from server import tls
 from server.main import _build_redirect_app
+from tests.helpers import make_cloud_cert_pem
+
+LABEL = "ab12cd34ef56ab78"
+ZONE = "i.certtest.invalid"
+
+
+@pytest.fixture(autouse=True)
+def _clean_holder():
+    """Cloud state lives in a module-level holder — isolate every test."""
+    tls.cloud_cert_holder().clear()
+    yield
+    tls.cloud_cert_holder().clear()
 
 
 def _client(port: int = 8443) -> TestClient:
     return TestClient(_build_redirect_app(port))
+
+
+def _install_cloud_cert(tmp_path, **kwargs) -> None:
+    cert_pem, key_pem = make_cloud_cert_pem(LABEL, ZONE, **kwargs)
+    tls.install_cloud_cert(tmp_path, cert_pem, key_pem)
 
 
 def test_get_returns_302_with_https_url():
@@ -106,3 +129,114 @@ def test_custom_tls_port_in_redirect():
     client = TestClient(_build_redirect_app(9443))
     resp = client.get("/x", headers={"host": "h:8080"}, follow_redirects=False)
     assert resp.headers["location"] == "https://h:9443/x"
+
+
+# ---------------------------------------------------------------------------
+# Certified-hostname rewrite (cloud-issued trusted certificate active)
+# ---------------------------------------------------------------------------
+
+
+def test_ipv4_host_rewritten_to_certified_name(tmp_path):
+    _install_cloud_cert(tmp_path)
+    resp = _client().get(
+        "/present?room=3", headers={"host": "192.168.1.20:8080"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+    assert resp.headers["location"] == (
+        f"https://192-168-1-20.{LABEL}.{ZONE}:8443/present?room=3"
+    )
+    assert resp.headers.get("cache-control") == "no-store"
+
+
+def test_post_to_ipv4_host_keeps_307_with_certified_name(tmp_path):
+    _install_cloud_cert(tmp_path)
+    resp = _client().post(
+        "/api/x", headers={"host": "10.0.0.5"}, follow_redirects=False
+    )
+    assert resp.status_code == 307
+    assert resp.headers["location"] == f"https://10-0-0-5.{LABEL}.{ZONE}:8443/api/x"
+
+
+def test_hostname_host_not_rewritten(tmp_path):
+    _install_cloud_cert(tmp_path)
+    resp = _client().get(
+        "/x", headers={"host": "openavc.local:8080"}, follow_redirects=False
+    )
+    assert resp.headers["location"] == "https://openavc.local:8443/x"
+
+
+def test_ipv6_host_not_rewritten(tmp_path):
+    _install_cloud_cert(tmp_path)
+    resp = _client().get(
+        "/x", headers={"host": "[::1]:8080"}, follow_redirects=False
+    )
+    assert resp.headers["location"] == "https://[::1]:8443/x"
+
+
+def test_ipv4_host_without_cloud_cert_unchanged():
+    resp = _client().get(
+        "/x", headers={"host": "192.168.1.20:8080"}, follow_redirects=False
+    )
+    assert resp.headers["location"] == "https://192.168.1.20:8443/x"
+
+
+def test_expired_cloud_cert_reverts_to_bare_ip(tmp_path):
+    """An expired cert must not be redirected to — serve today's bare-IP
+    behavior instead (the SNI layer likewise falls back to self-signed)."""
+    cert_pem, key_pem = make_cloud_cert_pem(LABEL, ZONE)
+    state = tls.install_cloud_cert(tmp_path, cert_pem, key_pem)
+    expired = tls.CloudCertState(
+        context=state.context,
+        exact_names=state.exact_names,
+        wildcard_bases=state.wildcard_bases,
+        hostname_suffix=state.hostname_suffix,
+        expires_at=_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(days=1),
+    )
+    tls.cloud_cert_holder().set(expired)
+    resp = _client().get(
+        "/x", headers={"host": "192.168.1.20"}, follow_redirects=False
+    )
+    assert resp.headers["location"] == "https://192.168.1.20:8443/x"
+
+
+def test_cert_without_wildcard_for_name_not_rewritten(tmp_path):
+    """Defensive: if the cert wouldn't cover the encoded name, don't send
+    the client there (SNI would serve self-signed and the browser would
+    hard-fail the mismatched name)."""
+    exact_only = tls.CloudCertState(
+        context=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER),
+        exact_names=frozenset({f"{LABEL}.{ZONE}"}),
+        wildcard_bases=frozenset(),
+        hostname_suffix=f"{LABEL}.{ZONE}",
+        expires_at=_dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(days=30),
+    )
+    tls.cloud_cert_holder().set(exact_only)
+    resp = _client().get(
+        "/x", headers={"host": "192.168.1.20"}, follow_redirects=False
+    )
+    assert resp.headers["location"] == "https://192.168.1.20:8443/x"
+
+
+def test_enrollment_while_running_flips_redirect(tmp_path):
+    """The holder is read per request — installing a cert takes effect on
+    the very next redirect, and removal reverts it (no listener restart)."""
+    client = _client()
+    before = client.get(
+        "/x", headers={"host": "192.168.1.20"}, follow_redirects=False
+    )
+    assert before.headers["location"] == "https://192.168.1.20:8443/x"
+
+    _install_cloud_cert(tmp_path)
+    during = client.get(
+        "/x", headers={"host": "192.168.1.20"}, follow_redirects=False
+    )
+    assert during.headers["location"] == (
+        f"https://192-168-1-20.{LABEL}.{ZONE}:8443/x"
+    )
+
+    tls.remove_cloud_cert(tmp_path)
+    after = client.get(
+        "/x", headers={"host": "192.168.1.20"}, follow_redirects=False
+    )
+    assert after.headers["location"] == "https://192.168.1.20:8443/x"

@@ -622,24 +622,63 @@ def _build_redirect_app(tls_port: int):
     toggled off at runtime — a permanent redirect cached by the browser would
     keep forcing HTTPS even after HTTPS is disabled, leaving users locked out
     until they manually clear the browser cache. Cache-Control: no-store
-    belt-and-suspenders prevents any caching at all.
+    belt-and-suspenders prevents any caching at all (including of the
+    certified-hostname target below, which must not outlive the cert).
 
     The Host header drives the redirect target hostname so external clients
     (phones, other servers on the LAN) get redirected back to themselves, not
     to "localhost". Pathological Host values fall back to the request URL
     hostname.
+
+    When a cloud-issued trusted certificate is active and the client
+    addressed us by plain IPv4, the target hostname becomes the certified
+    name instead — the IP dash-encoded under the cert's wildcard
+    (192.168.1.20 -> 192-168-1-20.<label>.<zone>) — so the client lands on
+    HTTPS with no browser warning. The Host header is the reachability
+    proof: the client just reached that IP over HTTP, so the encoded name
+    resolves to an address known-good for this client. Everything else
+    (real hostnames, IPv6, no/expired cloud cert) keeps the bare-host
+    target and today's self-signed interstitial behavior.
     """
+    import datetime as _dt
+    import ipaddress as _ipaddress
+
     from starlette.applications import Starlette
     from starlette.responses import RedirectResponse
     from starlette.routing import Route
 
+    from server import tls as _tls
+
     _BAD_HOST_CHARS = (" ", "/", "\\", "@", "<", ">", "\"", "'")
+
+    def _certified_host(host: str) -> str | None:
+        """The certified hostname for an IPv4 Host, or None to leave as-is."""
+        state = _tls.cloud_cert_holder().get()
+        if state is None:
+            return None
+        if state.expires_at <= _dt.datetime.now(_dt.timezone.utc):
+            return None
+        try:
+            ip = _ipaddress.ip_address(host)
+        except ValueError:
+            return None
+        if ip.version != 4:
+            return None
+        name = f"{str(ip).replace('.', '-')}.{state.hostname_suffix}"
+        return name if state.matches(name) else None
 
     async def _handler(request: Request) -> RedirectResponse:
         host_header = request.headers.get("host", "")
-        host = host_header.split(":", 1)[0] if host_header else ""
+        if host_header.startswith("["):
+            # Bracketed IPv6 ("[::1]:8080") — splitting on ":" would mangle
+            # it; keep the brackets, URLs need them around IPv6 hosts.
+            end = host_header.find("]")
+            host = host_header[: end + 1] if end != -1 else ""
+        else:
+            host = host_header.split(":", 1)[0] if host_header else ""
         if not host or any(c in host for c in _BAD_HOST_CHARS):
             host = request.url.hostname or "localhost"
+        host = _certified_host(host) or host
         target = f"https://{host}:{tls_port}{request.url.path}"
         if request.url.query:
             target += f"?{request.url.query}"
