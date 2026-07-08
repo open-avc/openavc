@@ -605,19 +605,81 @@ async def download_ca_certificate():
     )
 
 
+def _cloud_cert_block(sys_cfg) -> dict[str, Any]:
+    """The trusted-certificate section of tls-status.
+
+    Merges three sources: the installed cert files (dates, names), the live
+    serving holder (is the SNI path actually answering), and the agent's
+    certificate manager (in-flight phase, typed errors, retry state).
+    """
+    from datetime import datetime, timezone
+
+    from server import tls as tls_module
+    from server.api._engine import get_engine_optional
+
+    engine = get_engine_optional()
+    agent = getattr(engine, "cloud_agent", None) if engine else None
+    manager = agent.cert_manager if agent else None
+
+    block: dict[str, Any] = {
+        "enabled": bool(sys_cfg.get("tls", "cloud_cert", False)),
+        "paired": agent is not None,
+        "available": bool(
+            agent and agent.connected and agent.has_capability("trusted_certs")
+        ),
+        "active": False,
+        "hostname_suffix": "",
+        "expires_at": None,
+        "renews_at": None,
+        "phase": "idle",
+        "last_error": "",
+        "last_error_detail": "",
+        "last_attempt_at": "",
+        "retry_pending": False,
+    }
+
+    holder_state = tls_module.cloud_cert_holder().get()
+    if holder_state is not None and holder_state.expires_at > datetime.now(timezone.utc):
+        block["active"] = True
+        block["hostname_suffix"] = holder_state.hostname_suffix
+
+    facts = tls_module.read_cloud_cert_facts(sys_cfg.data_dir)
+    if facts:
+        block["hostname_suffix"] = block["hostname_suffix"] or facts["hostname_suffix"]
+        block["expires_at"] = facts["expires_at"].isoformat()
+        block["renews_at"] = facts["renews_at"].isoformat()
+
+    if manager:
+        mgr = manager.get_status()
+        block["phase"] = mgr["phase"]
+        block["last_error"] = mgr["last_error"]
+        block["last_error_detail"] = mgr["last_error_detail"]
+        block["last_attempt_at"] = mgr["last_attempt_at"]
+        block["retry_pending"] = mgr["retry_pending"]
+        block["hostname_suffix"] = block["hostname_suffix"] or mgr["hostname_suffix"]
+
+    return block
+
+
 @router.get("/system/tls-status")
 async def get_tls_status() -> dict[str, Any]:
     """Surface current TLS state for the Programmer IDE's Security card.
 
     Shape:
       - TLS off: {"enabled": false}
-      - TLS on:  {enabled, port, redirect_http, mode, cert: {...}, [error]}
+      - TLS on:  {enabled, port, redirect_http, mode, cert: {...},
+                  cloud_cert: {...}, [error]}
 
     Cert dict contains: subject, issuer, expires_at (ISO 8601),
     days_until_expiry, fingerprint (sha256 hex), sans (list), warnings (list).
 
     Warnings may include: "expired", "expiring-soon", "hostname-mismatch".
     On cert-read failure, "error" is set at the top level and "cert" is null.
+
+    cloud_cert covers the cloud-issued trusted certificate: enabled (the
+    user opted in), paired/available (a cloud pairing exists / the session
+    offers the feature), active (currently served via SNI), hostname_suffix,
+    expires_at/renews_at, plus the issuance phase and last typed error.
 
     Reads live config (not the import-time constants) so the Security card's
     immediate re-fetch after a PATCH reflects the just-saved cert/mode rather
@@ -645,6 +707,7 @@ async def get_tls_status() -> dict[str, Any]:
         "redirect_http": sys_cfg.get("tls", "redirect_http"),
         "mode": mode,
         "cert": None,
+        "cloud_cert": _cloud_cert_block(sys_cfg),
     }
 
     if not cert_path.exists():
@@ -682,6 +745,75 @@ async def get_tls_status() -> dict[str, Any]:
         "warnings": warnings,
     }
     return status
+
+
+@router.post("/system/tls/cloud-cert/enable")
+async def enable_cloud_cert() -> dict[str, Any]:
+    """Enroll for a cloud-issued trusted certificate (or retry after a failure).
+
+    Requires HTTPS on and an active cloud pairing. Issuance runs
+    asynchronously over the cloud connection — poll /api/system/tls-status
+    for the result. Calling while already enabled is the manual early-retry
+    path, bypassing the daily failure backoff.
+    """
+    from server.api._engine import get_engine_optional
+    from server.system_config import get_system_config
+
+    sys_cfg = get_system_config()
+    if not sys_cfg.get("tls", "enabled"):
+        raise HTTPException(
+            status_code=400,
+            detail="Enable HTTPS first — the trusted certificate is served "
+                   "over the HTTPS listener.",
+        )
+
+    engine = get_engine_optional()
+    agent = getattr(engine, "cloud_agent", None) if engine else None
+    manager = agent.cert_manager if agent else None
+    if manager is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Pair this system with OpenAVC Cloud first — the "
+                   "certificate is issued through the cloud connection.",
+        )
+
+    started, reason = await manager.enable()
+    result: dict[str, Any] = {"enabled": True, "started": started}
+    if not started:
+        result["reason"] = reason
+        result["message"] = {
+            "busy": "A certificate request is already in progress.",
+            "not_connected": "Not connected to the cloud right now — "
+                             "enrollment will run automatically once the "
+                             "connection is back.",
+            "not_available": "The cloud connection does not offer trusted "
+                             "certificates.",
+        }.get(reason, reason)
+    return result
+
+
+@router.post("/system/tls/cloud-cert/disable")
+async def disable_cloud_cert() -> dict[str, Any]:
+    """Turn the trusted certificate off: stop serving it, delete the files,
+    and notify the cloud best-effort. Never blocked by cloud reachability
+    (works even after unpairing)."""
+    from server.api._engine import get_engine_optional
+    from server.system_config import get_system_config
+
+    engine = get_engine_optional()
+    agent = getattr(engine, "cloud_agent", None) if engine else None
+    manager = agent.cert_manager if agent else None
+    if manager is not None:
+        await manager.disable()
+    else:
+        # Not paired (anymore) — still clean up locally.
+        from server import tls as tls_module
+
+        sys_cfg = get_system_config()
+        sys_cfg.set("tls", "cloud_cert", False)
+        sys_cfg.save()
+        tls_module.remove_cloud_cert(sys_cfg.data_dir)
+    return {"enabled": False}
 
 
 _UPLOAD_MAX_BYTES = 100_000  # 100 KB — real cert+key combos are 5-20 KB even with chains

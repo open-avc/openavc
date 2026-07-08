@@ -477,6 +477,11 @@ def _load_or_generate_auto(data_dir: Path, bind_address: str) -> tuple[Path, Pat
 _CLOUD_CERT_NAME = "cloud-cert.pem"
 _CLOUD_KEY_NAME = "cloud-key.pem"
 
+# Renew when this fraction of the cert lifetime has elapsed — the same
+# proportion the cloud's renewal loop uses, so the agent's connect-time
+# self-check and the cloud's cert_renew_due nudges agree on "due".
+CLOUD_RENEWAL_FRACTION = 2 / 3
+
 
 @dataclass(frozen=True)
 class CloudCertState:
@@ -588,6 +593,36 @@ def _build_cloud_state(cert_path: Path, key_path: Path) -> CloudCertState:
         hostname_suffix=suffix,
         expires_at=cert.not_valid_after_utc,
     )
+
+
+def read_cloud_cert_facts(data_dir: Path) -> dict[str, Any] | None:
+    """Dates + names of the installed cloud cert, for status display.
+
+    Lighter than a full load (no SSLContext, no key-pair check) and never
+    raises — returns None when no readable cloud cert is installed.
+    """
+    cert_path, _key_path = cloud_cert_paths(data_dir)
+    if not cert_path.exists():
+        return None
+    try:
+        cert = _read_cert(cert_path)
+    except (ValueError, OSError):
+        return None
+    try:
+        san_ext = cert.extensions.get_extension_for_class(x509.SubjectAlternativeName)
+        dns_sans = [n.value.lower() for n in san_ext.value if isinstance(n, x509.DNSName)]
+    except x509.ExtensionNotFound:
+        dns_sans = []
+    wildcard_bases = sorted(n[2:] for n in dns_sans if n.startswith("*."))
+    exact_names = sorted(n for n in dns_sans if not n.startswith("*."))
+    not_before = cert.not_valid_before_utc
+    not_after = cert.not_valid_after_utc
+    return {
+        "hostname_suffix": (wildcard_bases or exact_names or [""])[0],
+        "expires_at": not_after,
+        "renews_at": not_before + (not_after - not_before) * CLOUD_RENEWAL_FRACTION,
+        "expired": not_after <= _dt.datetime.now(_dt.timezone.utc),
+    }
 
 
 def load_cloud_cert(data_dir: Path) -> CloudCertState | None:

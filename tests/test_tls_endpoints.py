@@ -395,3 +395,189 @@ def test_patch_system_config_allows_auto_mode(client, monkeypatch):
         json={"tls": {"enabled": True, "auto_generate": True}},
     )
     assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# cloud_cert block + /api/system/tls/cloud-cert endpoints
+# ---------------------------------------------------------------------------
+
+CLOUD_LABEL = "ab12cd34ef56ab78"
+CLOUD_ZONE = "i.certtest.invalid"
+
+
+@pytest.fixture(autouse=True)
+def _clean_cloud_holder():
+    """Cloud state lives in a module-level holder — isolate every test."""
+    tls_module.cloud_cert_holder().clear()
+    yield
+    tls_module.cloud_cert_holder().clear()
+
+
+@pytest.fixture
+def no_engine(monkeypatch):
+    """Force the shared engine slot empty regardless of test ordering."""
+    from server.api import _engine as engine_state
+    monkeypatch.setattr(engine_state, "_engine", None)
+
+
+class _FakeCertManager:
+    def __init__(self):
+        self.enable_calls = 0
+        self.disable_calls = 0
+        self.enable_result = (True, "")
+        self.status = {
+            "enabled": True,
+            "phase": "issuing",
+            "hostname_suffix": f"{CLOUD_LABEL}.{CLOUD_ZONE}",
+            "last_error": "acme_failed",
+            "last_error_detail": "boom",
+            "last_attempt_at": "2026-07-08T00:00:00+00:00",
+            "retry_pending": True,
+        }
+
+    def get_status(self):
+        return self.status
+
+    async def enable(self):
+        self.enable_calls += 1
+        return self.enable_result
+
+    async def disable(self):
+        self.disable_calls += 1
+
+
+@pytest.fixture
+def fake_engine(monkeypatch):
+    """A paired + connected engine/agent/cert-manager stand-in."""
+    from server.api import _engine as engine_state
+
+    class FakeAgent:
+        def __init__(self):
+            self.cert_manager = _FakeCertManager()
+            self.connected = True
+
+        def has_capability(self, capability):
+            return capability == "trusted_certs"
+
+    class FakeEngine:
+        def __init__(self):
+            self.cloud_agent = FakeAgent()
+
+    engine = FakeEngine()
+    monkeypatch.setattr(engine_state, "_engine", engine)
+    return engine
+
+
+def _install_cloud_cert(data_dir):
+    from tests.helpers import make_cloud_cert_pem
+
+    cert_pem, key_pem = make_cloud_cert_pem(CLOUD_LABEL, CLOUD_ZONE)
+    return tls_module.install_cloud_cert(data_dir, cert_pem, key_pem)
+
+
+def test_tls_status_cloud_cert_defaults(client, monkeypatch, tls_dir, no_engine):
+    _set_cfg(monkeypatch, "tls", enabled=True, auto_generate=True,
+             cert_file="", key_file="", cloud_cert=False)
+    _set_cfg(monkeypatch, "network", bind_address="127.0.0.1")
+    _generate_test_cert(tls_dir.parent)
+
+    body = client.get("/api/system/tls-status").json()
+    cc = body["cloud_cert"]
+    assert cc["enabled"] is False
+    assert cc["paired"] is False
+    assert cc["available"] is False
+    assert cc["active"] is False
+    assert cc["hostname_suffix"] == ""
+    assert cc["expires_at"] is None
+    assert cc["renews_at"] is None
+    assert cc["phase"] == "idle"
+    assert cc["last_error"] == ""
+
+
+def test_tls_status_cloud_cert_installed_and_active(client, monkeypatch, tls_dir, no_engine):
+    _set_cfg(monkeypatch, "tls", enabled=True, auto_generate=True,
+             cert_file="", key_file="", cloud_cert=True)
+    _set_cfg(monkeypatch, "network", bind_address="127.0.0.1")
+    _generate_test_cert(tls_dir.parent)
+    _install_cloud_cert(tls_dir.parent)
+
+    cc = client.get("/api/system/tls-status").json()["cloud_cert"]
+    assert cc["enabled"] is True
+    assert cc["active"] is True
+    assert cc["hostname_suffix"] == f"{CLOUD_LABEL}.{CLOUD_ZONE}"
+    assert cc["expires_at"] is not None
+    assert cc["renews_at"] is not None
+    assert cc["renews_at"] < cc["expires_at"]
+
+
+def test_tls_status_cloud_cert_surfaces_manager_state(client, monkeypatch, tls_dir, fake_engine):
+    _set_cfg(monkeypatch, "tls", enabled=True, auto_generate=True,
+             cert_file="", key_file="", cloud_cert=True)
+    _set_cfg(monkeypatch, "network", bind_address="127.0.0.1")
+    _generate_test_cert(tls_dir.parent)
+
+    cc = client.get("/api/system/tls-status").json()["cloud_cert"]
+    assert cc["paired"] is True
+    assert cc["available"] is True
+    assert cc["phase"] == "issuing"
+    assert cc["last_error"] == "acme_failed"
+    assert cc["last_error_detail"] == "boom"
+    assert cc["retry_pending"] is True
+    assert cc["hostname_suffix"] == f"{CLOUD_LABEL}.{CLOUD_ZONE}"
+
+
+def test_enable_cloud_cert_requires_tls(client, monkeypatch, fake_engine):
+    _set_cfg(monkeypatch, "tls", enabled=False)
+    resp = client.post("/api/system/tls/cloud-cert/enable")
+    assert resp.status_code == 400
+    assert "https" in resp.json()["detail"].lower()
+
+
+def test_enable_cloud_cert_requires_pairing(client, monkeypatch, no_engine):
+    _set_cfg(monkeypatch, "tls", enabled=True)
+    resp = client.post("/api/system/tls/cloud-cert/enable")
+    assert resp.status_code == 400
+    assert "pair" in resp.json()["detail"].lower()
+
+
+def test_enable_cloud_cert_starts_enrollment(client, monkeypatch, fake_engine):
+    _set_cfg(monkeypatch, "tls", enabled=True)
+    resp = client.post("/api/system/tls/cloud-cert/enable")
+    assert resp.status_code == 200
+    assert resp.json() == {"enabled": True, "started": True}
+    assert fake_engine.cloud_agent.cert_manager.enable_calls == 1
+
+
+def test_enable_cloud_cert_reports_not_connected(client, monkeypatch, fake_engine):
+    _set_cfg(monkeypatch, "tls", enabled=True)
+    fake_engine.cloud_agent.cert_manager.enable_result = (False, "not_connected")
+    body = client.post("/api/system/tls/cloud-cert/enable").json()
+    assert body["started"] is False
+    assert body["reason"] == "not_connected"
+    assert "automatically" in body["message"]
+
+
+def test_disable_cloud_cert_via_manager(client, fake_engine):
+    resp = client.post("/api/system/tls/cloud-cert/disable")
+    assert resp.status_code == 200
+    assert resp.json() == {"enabled": False}
+    assert fake_engine.cloud_agent.cert_manager.disable_calls == 1
+
+
+def test_disable_cloud_cert_without_pairing_cleans_up_locally(
+    client, monkeypatch, tls_dir, no_engine, tmp_path
+):
+    """Disable must work even after unpairing: flag off, files gone."""
+    from server.system_config import get_system_config
+
+    cfg = get_system_config()
+    monkeypatch.setattr(cfg, "_file_path", tmp_path / "system.json")
+    _set_cfg(monkeypatch, "tls", enabled=True, cloud_cert=True)
+    _install_cloud_cert(tls_dir.parent)
+
+    resp = client.post("/api/system/tls/cloud-cert/disable")
+    assert resp.status_code == 200
+    assert cfg.get("tls", "cloud_cert") is False
+    cert_path, key_path = tls_module.cloud_cert_paths(tls_dir.parent)
+    assert not cert_path.exists() and not key_path.exists()
+    assert tls_module.cloud_cert_holder().get() is None

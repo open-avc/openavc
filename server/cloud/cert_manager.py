@@ -49,11 +49,6 @@ RETRY_INTERVAL = 24 * 3600
 # soon rather than burning a day.
 BUSY_RETRY_INTERVAL = 300
 
-# Renew when 2/3 of the cert lifetime has elapsed — the same proportion the
-# cloud's renewal loop uses, so the connect-time self-check and the cloud's
-# cert_renew_due nudges agree on when a cert is due.
-RENEWAL_FRACTION = 2 / 3
-
 # The enrollment label/zone cross the cloud trust boundary and become both
 # CSR names and served hostnames — accept only plain lowercase DNS labels.
 _DNS_LABEL_RE = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
@@ -393,7 +388,7 @@ class CertificateManager:
         now = datetime.now(timezone.utc)
         if not_after <= now:
             return True, "installed certificate expired"
-        renew_at = not_before + (not_after - not_before) * RENEWAL_FRACTION
+        renew_at = not_before + (not_after - not_before) * tls.CLOUD_RENEWAL_FRACTION
         if now >= renew_at:
             return True, "renewal window open"
         return False, ""
