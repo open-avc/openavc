@@ -107,6 +107,13 @@ function srtUrl(display: PresentDisplay): string {
   return `srt://${window.location.hostname}:${display.srt_port ?? 8899}?streamid=read:${display.stream_path ?? ""}`;
 }
 
+// The join line is scheme-qualified when the instance runs HTTPS (the card
+// shows exactly what a guest should type); older/plain-HTTP forms are bare
+// host:port and open over http.
+function joinHref(joinUrl: string): string {
+  return /^https?:\/\//i.test(joinUrl) ? joinUrl : `http://${joinUrl}`;
+}
+
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div style={{ flex: 1, minWidth: 0 }}>
@@ -415,7 +422,7 @@ export function PresentManagementPanel({ running }: { running: boolean }) {
               <>
                 <CopyButton value={status.join_url} title="Copy connect address" />
                 <button
-                  onClick={() => window.open(`http://${status.join_url}`, "_blank", "noopener")}
+                  onClick={() => window.open(joinHref(status.join_url), "_blank", "noopener")}
                   title="Open connect page"
                   style={iconBtnStyle}
                 >
