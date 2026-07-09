@@ -448,6 +448,7 @@ class MDNSAdvertiser:
         instance_fqdn_lower = (
             f"{self._instance_name}.{SERVICE_TYPE}".rstrip(".").lower()
         )
+        hostname_fqdn_lower = f"{self._hostname}.local".lower()
 
         for name, qtype in questions:
             name_lower = name.rstrip(".").lower()
@@ -455,6 +456,15 @@ class MDNSAdvertiser:
                 asyncio.create_task(self._send_announcement())
                 return
             if name_lower == instance_fqdn_lower:
+                asyncio.create_task(self._send_announcement())
+                return
+            # Direct A query for "<hostname>.local" — what a device sends when
+            # someone types the hostname URL from the setup screen or Panel
+            # Access card. Hosts with a native mDNS responder (Windows, avahi)
+            # answer this themselves, but appliance deployments have no other
+            # responder, so answer it here. The full announcement carries the
+            # A record, which satisfies the question.
+            if qtype == DNS_TYPE_A and name_lower == hostname_fqdn_lower:
                 asyncio.create_task(self._send_announcement())
                 return
 

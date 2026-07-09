@@ -242,6 +242,26 @@ def test_enrollment_while_running_flips_redirect(tmp_path):
     assert after.headers["location"] == "https://192.168.1.20:8443/x"
 
 
+# --- _certified_host_for (shared by the redirect app and the startup banner) ---
+
+
+def test_certified_host_for_active_cert(tmp_path):
+    from server.main import _certified_host_for
+
+    _install_cloud_cert(tmp_path)
+    assert _certified_host_for("192.168.4.45") == f"192-168-4-45.{LABEL}.{ZONE}"
+    # Non-IPv4 hosts never get a certified name (localhost, hostnames, IPv6).
+    assert _certified_host_for("localhost") is None
+    assert _certified_host_for("openavc.local") is None
+    assert _certified_host_for("::1") is None
+
+
+def test_certified_host_for_without_cert():
+    from server.main import _certified_host_for
+
+    assert _certified_host_for("192.168.4.45") is None
+
+
 # --- Plain-HTTP mode (the port-80 convenience listener with HTTPS off) ---
 
 

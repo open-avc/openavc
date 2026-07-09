@@ -12,7 +12,7 @@ import { StatusCardSlot } from "../components/plugins/PluginExtensions";
 import { copyToClipboard } from "../components/shared/clipboard";
 import { showError } from "../store/toastStore";
 import * as api from "../api/restClient";
-import type { CloudStatus } from "../api/restClient";
+import type { CloudStatus, TlsStatus } from "../api/restClient";
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -253,32 +253,72 @@ function QRCodeDialog({ pairUrl, panelUrl, roomName, onClose }: { pairUrl: strin
   );
 }
 
-function PanelAccessCard({ systemStatus, roomName }: { systemStatus: Record<string, unknown> | null; roomName: string }) {
+function PanelAccessCard({ systemStatus, tlsStatus, roomName }: { systemStatus: Record<string, unknown> | null; tlsStatus: TlsStatus | null; roomName: string }) {
   const [qrOpen, setQrOpen] = useState(false);
   if (!systemStatus) return null;
 
   const localIp = String(systemStatus.local_ip ?? "");
   const hostname = String(systemStatus.hostname ?? "");
-  const port = Number(systemStatus.http_port ?? 8080);
+  const httpPort = Number(systemStatus.http_port ?? 8080);
+  const port80 = systemStatus.port80_active === true;
   const bindAddress = String(systemStatus.bind_address ?? "127.0.0.1");
 
   const isLocalOnly = bindAddress === "127.0.0.1" || bindAddress === "::1";
 
+  const tlsEnabled = tlsStatus?.enabled === true;
+  const tlsPort = Number(tlsStatus?.port ?? 8443);
+  const redirectHttp = tlsStatus?.redirect_http !== false;
+  const cloudCert = tlsStatus?.cloud_cert;
+  const certSuffix = cloudCert?.active && cloudCert.hostname_suffix ? cloudCert.hostname_suffix : "";
+
   // The address the browser is actually using is ground truth. On multi-homed
   // machines (VPN, virtual/second adapters) the server's auto-detected local_ip
-  // can be an interface panels can't reach, so prefer the current origin and
-  // only fall back to the detected IP on loopback (admin on the box itself).
+  // can be an interface panels can't reach, so prefer the current origin's IP
+  // and only fall back to the detected IP on loopback (admin on the box itself)
+  // or when the origin isn't an IPv4 (hostname or tunnel).
   const loc = window.location;
+  const ipv4Re = /^\d{1,3}(\.\d{1,3}){3}$/;
   const isLoopbackHost = loc.hostname === "localhost" || loc.hostname === "127.0.0.1"
     || loc.hostname === "::1" || loc.hostname === "[::1]";
-  const lanOrigin = isLoopbackHost
-    ? (localIp ? `${loc.protocol}//${localIp}${port === 80 ? "" : ":" + String(port)}` : "")
-    : loc.origin;
+  const lanIp = !isLoopbackHost && ipv4Re.test(loc.hostname) ? loc.hostname : localIp;
 
-  const panelUrl = lanOrigin && !isLocalOnly ? `${lanOrigin}/panel` : "";
-  const pairUrl = lanOrigin && !isLocalOnly ? `${lanOrigin}/pair` : "";
+  // Short typed form: the HTTP listener (port-less when the port-80 listener is
+  // up). With TLS on, the redirect listener upgrades it — to the certified name
+  // when a trusted cert is active — so this is both the easiest URL to type and
+  // the most durable one to encode in a QR/poster (it keeps landing right
+  // through cert enroll/lapse/renewal). Only TLS-on-without-redirect has no
+  // working http form.
+  const shortBase = lanIp
+    ? (tlsEnabled && !redirectHttp
+      ? `https://${lanIp}:${tlsPort}`
+      : `http://${lanIp}${port80 ? "" : `:${httpPort}`}`)
+    : "";
+
+  // Certified (green-lock) address: the browser-facing IPv4 dash-encoded under
+  // the trusted cert's wildcard — same derivation as the Settings card.
+  const certifiedBase = certSuffix && lanIp
+    ? `https://${lanIp.split(".").join("-")}.${certSuffix}:${tlsPort}`
+    : "";
+
+  // Primary display URL: certified when active; otherwise the browser's own
+  // origin when it's not loopback; otherwise scheme-and-port matched from the
+  // detected IP (never glue the page scheme onto the HTTP port).
+  const originBase = !isLoopbackHost
+    ? loc.origin
+    : (lanIp ? (tlsEnabled ? `https://${lanIp}:${tlsPort}` : `http://${lanIp}${port80 ? "" : `:${httpPort}`}`) : "");
+  const primaryBase = certifiedBase || originBase;
+
+  const panelUrl = primaryBase && !isLocalOnly ? `${primaryBase}/panel` : "";
+  const shortPanelUrl = shortBase && !isLocalOnly && shortBase !== primaryBase ? `${shortBase}/panel` : "";
+  const qrBase = shortBase || primaryBase;
+  const pairUrl = qrBase && !isLocalOnly ? `${qrBase}/pair` : "";
+  const qrPanelUrl = qrBase && !isLocalOnly ? `${qrBase}/panel` : "";
+  // Name-based fallback that survives IP changes. ".local" resolves via mDNS
+  // on phones and tablets (a bare machine name only resolves Windows-to-Windows).
   const hostnameUrl = hostname && hostname !== localIp && !isLocalOnly
-    ? `${loc.protocol}//${hostname}${port === 80 ? "" : ":" + String(port)}/panel`
+    ? (tlsEnabled && !redirectHttp
+      ? `https://${hostname}.local:${tlsPort}/panel`
+      : `http://${hostname}.local${port80 ? "" : `:${httpPort}`}/panel`)
     : "";
 
   const cardStyle: React.CSSProperties = {
@@ -331,7 +371,7 @@ function PanelAccessCard({ systemStatus, roomName }: { systemStatus: Record<stri
                 background: "var(--bg-elevated, var(--bg-hover))",
                 borderRadius: "var(--border-radius)",
                 padding: "var(--space-sm) var(--space-md)",
-                marginBottom: hostnameUrl ? "var(--space-xs)" : 0,
+                marginBottom: shortPanelUrl || hostnameUrl ? "var(--space-xs)" : 0,
               }}>
                 <code style={{ flex: 1, fontSize: 13, fontFamily: "var(--font-mono)", wordBreak: "break-all" }}>
                   {panelUrl}
@@ -347,6 +387,32 @@ function PanelAccessCard({ systemStatus, roomName }: { systemStatus: Record<stri
                   <ExternalLink size={14} />
                 </a>
               </div>
+            )}
+            {certifiedBase && panelUrl && (
+              <div style={{ color: "var(--color-success, var(--accent))", fontSize: 11, marginBottom: shortPanelUrl || hostnameUrl ? "var(--space-sm)" : 0 }}>
+                Trusted address — opens with no browser warnings.
+              </div>
+            )}
+            {shortPanelUrl && (
+              <>
+                <div style={{ color: "var(--text-muted)", fontSize: 11, marginBottom: 2 }}>
+                  Or type this short address — it forwards to the one above:
+                </div>
+                <div style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "var(--space-xs)",
+                  background: "var(--bg-elevated, var(--bg-hover))",
+                  borderRadius: "var(--border-radius)",
+                  padding: "var(--space-sm) var(--space-md)",
+                  marginBottom: hostnameUrl ? "var(--space-xs)" : 0,
+                }}>
+                  <code style={{ flex: 1, fontSize: 13, fontFamily: "var(--font-mono)", wordBreak: "break-all" }}>
+                    {shortPanelUrl}
+                  </code>
+                  <CopyButton text={shortPanelUrl} />
+                </div>
+              </>
             )}
             {hostnameUrl && hostname !== localIp && (
               <div style={{
@@ -388,7 +454,7 @@ function PanelAccessCard({ systemStatus, roomName }: { systemStatus: Record<stri
           </div>
         )}
       </div>
-      {qrOpen && pairUrl && panelUrl && <QRCodeDialog pairUrl={pairUrl} panelUrl={panelUrl} roomName={roomName} onClose={() => setQrOpen(false)} />}
+      {qrOpen && pairUrl && qrPanelUrl && <QRCodeDialog pairUrl={pairUrl} panelUrl={qrPanelUrl} roomName={roomName} onClose={() => setQrOpen(false)} />}
     </div>
   );
 }
@@ -398,6 +464,7 @@ export function DashboardView() {
   const liveState = useConnectionStore((s) => s.liveState);
   const [cloudStatus, setCloudStatus] = useState<CloudStatus | null>(null);
   const [systemStatus, setSystemStatus] = useState<Record<string, unknown> | null>(null);
+  const [tlsStatus, setTlsStatus] = useState<TlsStatus | null>(null);
   const [, setRefreshTick] = useState(0);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
@@ -405,6 +472,7 @@ export function DashboardView() {
     const fetchAll = () => {
       api.getSystemStatus().then(s => { setSystemStatus(s); setFetchError(null); }).catch(e => setFetchError(`Unable to reach server: ${e.message || e}`));
       api.getCloudStatus().then(s => setCloudStatus(s)).catch(() => {});
+      api.getTlsStatus().then(s => setTlsStatus(s)).catch(() => {});
       setRefreshTick(t => t + 1);
     };
     fetchAll();
@@ -724,7 +792,7 @@ export function DashboardView() {
         {/* Right sidebar */}
         <div>
           {/* Panel Access */}
-          <PanelAccessCard systemStatus={systemStatus} roomName={String(project.project.name ?? "")} />
+          <PanelAccessCard systemStatus={systemStatus} tlsStatus={tlsStatus} roomName={String(project.project.name ?? "")} />
 
           {/* Tracked Variables */}
           {trackedVars.length > 0 && (

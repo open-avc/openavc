@@ -51,7 +51,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse
 
-from server import config
+from server import config, runtime_flags
 from server.api import rest, ws, isc_ws, discovery as discovery_api, plugins as plugins_api, assets as assets_api, themes as themes_api, ai_proxy as ai_proxy_api, ir_learn_ws
 from server.api.routes import network as network_routes
 from server.api.routes import pair as pair_routes
@@ -196,6 +196,17 @@ async def _initialize_engine(app: FastAPI) -> None:
         log.info(f"  Panel UI:    {scheme}://localhost:{port}/panel")
         log.info(f"  Programmer:  {scheme}://localhost:{port}/programmer")
         log.info(f"  REST API:    {scheme}://localhost:{port}/api")
+        local_ip = str(engine.get_status().get("local_ip") or "")
+        if local_ip and local_ip != "127.0.0.1":
+            log.info(f"  LAN access:  {scheme}://{local_ip}:{port}/panel")
+            if runtime_flags.port80_active:
+                log.info(f"  Short URL:   http://{local_ip}/panel")
+            certified = _certified_host_for(local_ip) if config.TLS_ENABLED else None
+            if certified:
+                log.info(
+                    f"  Trusted URL: https://{certified}:{config.TLS_PORT}/panel"
+                    "  (no browser warnings)"
+                )
         if config.TLS_ENABLED and config.TLS_REDIRECT_HTTP:
             log.info(
                 f"  HTTP redirect: http://localhost:{config.HTTP_PORT} "
@@ -615,6 +626,33 @@ def _preflight_port(port: int, *, retries: int) -> "OSError | None":
     return last_err
 
 
+def _certified_host_for(host: str) -> str | None:
+    """The certified cloud-cert hostname for an IPv4 host, or None.
+
+    None when no cloud cert is active (or it has expired), the host isn't a
+    plain IPv4 address, or the encoded name wouldn't be covered by the cert's
+    SANs. Shared by the redirect listeners and the startup banner.
+    """
+    import datetime as _dt
+    import ipaddress as _ipaddress
+
+    from server import tls as _tls
+
+    state = _tls.cloud_cert_holder().get()
+    if state is None:
+        return None
+    if state.expires_at <= _dt.datetime.now(_dt.timezone.utc):
+        return None
+    try:
+        ip = _ipaddress.ip_address(host)
+    except ValueError:
+        return None
+    if ip.version != 4:
+        return None
+    name = f"{str(ip).replace('.', '-')}.{state.hostname_suffix}"
+    return name if state.matches(name) else None
+
+
 def _build_redirect_app(target_port: int, scheme: str = "https"):
     """Tiny Starlette app: catch-all that 302/307 redirects to {scheme}://...:target_port.
 
@@ -644,32 +682,11 @@ def _build_redirect_app(target_port: int, scheme: str = "https"):
     (real hostnames, IPv6, no/expired cloud cert) keeps the bare-host
     target and today's self-signed interstitial behavior.
     """
-    import datetime as _dt
-    import ipaddress as _ipaddress
-
     from starlette.applications import Starlette
     from starlette.responses import RedirectResponse
     from starlette.routing import Route
 
-    from server import tls as _tls
-
     _BAD_HOST_CHARS = (" ", "/", "\\", "@", "<", ">", "\"", "'")
-
-    def _certified_host(host: str) -> str | None:
-        """The certified hostname for an IPv4 Host, or None to leave as-is."""
-        state = _tls.cloud_cert_holder().get()
-        if state is None:
-            return None
-        if state.expires_at <= _dt.datetime.now(_dt.timezone.utc):
-            return None
-        try:
-            ip = _ipaddress.ip_address(host)
-        except ValueError:
-            return None
-        if ip.version != 4:
-            return None
-        name = f"{str(ip).replace('.', '-')}.{state.hostname_suffix}"
-        return name if state.matches(name) else None
 
     async def _handler(request: Request) -> RedirectResponse:
         host_header = request.headers.get("host", "")
@@ -685,7 +702,7 @@ def _build_redirect_app(target_port: int, scheme: str = "https"):
         if scheme == "https":
             # Certified names only make sense on the HTTPS target — on plain
             # HTTP there is no certificate to match.
-            host = _certified_host(host) or host
+            host = _certified_host_for(host) or host
         target = f"{scheme}://{host}:{target_port}{request.url.path}"
         if request.url.query:
             target += f"?{request.url.query}"
@@ -818,6 +835,8 @@ async def _run_tls() -> None:
         )
     main_server = uvicorn.Server(main_config)
     tasks: list[asyncio.Task] = [asyncio.create_task(main_server.serve())]
+    if config.TLS_PORT == 80:
+        runtime_flags.port80_active = True
 
     if config.TLS_REDIRECT_HTTP:
         redirect_server, redirect_err = _make_aux_redirect_server(
@@ -825,6 +844,8 @@ async def _run_tls() -> None:
         )
         if redirect_server is not None:
             tasks.append(asyncio.create_task(redirect_server.serve()))
+            if config.HTTP_PORT == 80:
+                runtime_flags.port80_active = True
         else:
             log.warning(
                 "HTTP redirect listener could not bind to port %d (%s); "
@@ -845,6 +866,7 @@ async def _run_tls() -> None:
         )
         if server80 is not None:
             tasks.append(asyncio.create_task(server80.serve()))
+            runtime_flags.port80_active = True
         else:
             log.warning(
                 "Port-80 redirect listener could not bind (%s); "
@@ -870,6 +892,8 @@ async def _run_http() -> None:
     )
     main_server = uvicorn.Server(main_config)
     tasks: list[asyncio.Task] = [asyncio.create_task(main_server.serve())]
+    if config.HTTP_PORT == 80:
+        runtime_flags.port80_active = True
 
     if config.HTTP_PORT != 80:
         server80, err80 = _make_aux_redirect_server(
@@ -877,6 +901,7 @@ async def _run_http() -> None:
         )
         if server80 is not None:
             tasks.append(asyncio.create_task(server80.serve()))
+            runtime_flags.port80_active = True
         else:
             log.warning(
                 "Port-80 redirect listener could not bind (%s); "
@@ -918,6 +943,8 @@ if __name__ == "__main__":
     elif config.PORT80_REDIRECT:
         asyncio.run(_run_http())
     else:
+        if config.HTTP_PORT == 80:
+            runtime_flags.port80_active = True
         uvicorn.run(
             "server.main:app",
             host=config.BIND_ADDRESS,

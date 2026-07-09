@@ -130,6 +130,80 @@ async def test_empty_project_has_no_panel_content(claimed, remote_client):
     assert body["project_name"] == "Setup Route Test"
 
 
+# --- URL selection for the displayed access URLs ---
+#
+# The setup screen's URL is typed by hand off a display, so it shows the
+# shortest form that lands right: plain http whenever the redirect listener
+# can upgrade it (to HTTPS, and to the certified hostname when a trusted
+# cert is active), port-less when the port-80 listener is up, and the direct
+# https URL only when TLS is on with the redirect listener disabled.
+
+from server import runtime_flags  # noqa: E402
+from server.api.routes import setup as setup_mod  # noqa: E402
+
+
+class _CfgStub:
+    def __init__(self, values):
+        self._values = values
+
+    def get(self, section, key, default=None):
+        return self._values.get((section, key), default)
+
+
+def _endpoint(monkeypatch, values, port80=False):
+    monkeypatch.setattr(setup_mod, "get_system_config", lambda: _CfgStub(values))
+    monkeypatch.setattr(runtime_flags, "port80_active", port80)
+    return setup_mod._effective_endpoint()
+
+
+def test_endpoint_plain_http(monkeypatch):
+    assert _endpoint(monkeypatch, {}) == ("http", 8080)
+
+
+def test_endpoint_honors_custom_http_port(monkeypatch):
+    values = {("network", "http_port"): 9090}
+    assert _endpoint(monkeypatch, values) == ("http", 9090)
+
+
+def test_endpoint_portless_when_port80_listener_up(monkeypatch):
+    assert _endpoint(monkeypatch, {}, port80=True) == ("http", 80)
+
+
+def test_endpoint_tls_with_redirect_shows_short_http(monkeypatch):
+    """With TLS on and the redirect listener up, the http form is shorter to
+    type and lands on HTTPS (certified when a cloud cert is active)."""
+    values = {("tls", "enabled"): True, ("tls", "port"): 8443}
+    assert _endpoint(monkeypatch, values) == ("http", 8080)
+
+
+def test_endpoint_tls_with_redirect_and_port80(monkeypatch):
+    values = {("tls", "enabled"): True}
+    assert _endpoint(monkeypatch, values, port80=True) == ("http", 80)
+
+
+def test_endpoint_tls_without_redirect_shows_https(monkeypatch):
+    """No redirect listener -> the http form is dead; show the real URL."""
+    values = {
+        ("tls", "enabled"): True,
+        ("tls", "redirect_http"): False,
+        ("tls", "port"): 9443,
+    }
+    assert _endpoint(monkeypatch, values) == ("https", 9443)
+
+
+def test_base_url_elides_default_ports():
+    assert setup_mod._base_url("http", "192.168.1.20", 80) == "http://192.168.1.20"
+    assert setup_mod._base_url("https", "192.168.1.20", 443) == "https://192.168.1.20"
+    assert setup_mod._base_url("http", "192.168.1.20", 8080) == "http://192.168.1.20:8080"
+
+
+async def test_api_status_reports_port80_flag(claimed):
+    """Display surfaces offer port-less URLs only when a listener really owns
+    port 80 — /api/status must always carry the flag (False here: no listener)."""
+    body = await _loopback_get("/api/status")
+    assert body["port80_active"] is False
+
+
 async def test_page_element_counts_as_panel_content(claimed, remote_client):
     project = dict(EMPTY_PROJECT)
     project["ui"] = {

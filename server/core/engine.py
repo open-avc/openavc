@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from server import config
+from server import config, runtime_flags
 from server.core.device_manager import DeviceManager
 from server.core.event_bus import EventBus
 from server.core.macro_engine import MacroEngine
@@ -1967,6 +1967,7 @@ class Engine:
             "isc_enabled": self.isc is not None,
             "cloud_enabled": self.cloud_agent is not None,
             "http_port": config.HTTP_PORT,
+            "port80_active": runtime_flags.port80_active,
         }
         if include_sensitive:
             local_ip, hostname = self._detect_network_info()

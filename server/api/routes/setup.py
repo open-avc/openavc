@@ -29,7 +29,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 from fastapi.security import HTTPBasicCredentials
 
-from server import host_control
+from server import host_control, runtime_flags
 from server.api._engine import _get_engine
 from server.api.auth import (
     _basic,
@@ -61,11 +61,23 @@ def _ssh_info() -> dict:
 
 
 def _effective_endpoint() -> tuple[str, int]:
-    """Return (protocol, port) the way the Pi kiosk script resolves them:
-    the HTTPS port when TLS is on, the HTTP port otherwise."""
+    """Return (protocol, port) for the URLs shown on the setup screen.
+
+    The setup screen's URL is read off a display and typed by hand, so prefer
+    the form that is shortest to type and lands best. When TLS is on, its
+    HTTP redirect listener upgrades a typed http URL to HTTPS — and to the
+    certified hostname when a trusted certificate is active — so the http
+    form is both shorter and lands with no browser warning whenever that is
+    possible. Only when the redirect listener is disabled is the direct HTTPS
+    URL the one to show. The port-80 listener (when actually bound — it is
+    best-effort) lets the URL drop the port entirely.
+    """
     cfg = get_system_config()
-    if bool(cfg.get("tls", "enabled", False)):
+    tls_on = bool(cfg.get("tls", "enabled", False))
+    if tls_on and not bool(cfg.get("tls", "redirect_http", True)):
         return "https", int(cfg.get("tls", "port", 8443))
+    if runtime_flags.port80_active:
+        return "http", 80
     return "http", int(cfg.get("network", "http_port", 8080))
 
 

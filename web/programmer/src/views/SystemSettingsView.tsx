@@ -1433,7 +1433,8 @@ export function SystemSettingsView() {
                       <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
                         Manual fallback if a device can't resolve the certified address (no internet,
                         or the router blocks it): <code>{certifiedFallbackUrl}</code> (shows the usual
-                        browser warning).
+                        browser warning — <code>localhost</code> and bare-IP addresses always use the
+                        self-signed certificate; only the certified address gets the trusted one).
                       </div>
                     )}
                     {cloudCert.expires_at && (
