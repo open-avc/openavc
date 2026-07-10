@@ -117,7 +117,7 @@ Sliders and faders support output range scaling for devices where the useful ran
 | **Output Max** | The maximum value sent to the device (default: same as slider max) |
 | **Scale to Full** | How the slider handles the limited range |
 
-When you bind a slider or fader's Value to a device property whose driver declares a range, the Value card offers to match the control to it: "This value has a defined range of -80 to 10 dB. Match this fader to it?" Clicking **Match range** sets the control's own **Min**, **Max**, **Step**, and **Unit** from the driver (where the driver declares them), so the control works in device units end to end. It never overwrites your numbers without asking -- dismiss the prompt to keep a custom range. Use **Output Min**/**Output Max** when you deliberately want the control to send a narrower range than it displays.
+When you bind a slider or fader's Value to a device property whose driver declares a range, the Value card offers to match the control to it: "This value has a defined range of -80 to 10 dB. Match this fader to it?" Clicking **Match range** sets the control's own **Min**, **Max**, **Step**, and **Unit** from the driver (where the driver declares them), so the control works in device units end to end. It never overwrites your numbers without asking -- dismiss the prompt to keep a custom range. The same **Match driver range** button also appears with the Min/Max fields in the Properties panel whenever the control's numbers differ from the bound property's declared range, so you can re-sync later without reopening Bindings. Use **Output Min**/**Output Max** when you deliberately want the control to send a narrower range than it displays.
 
 **Scale to Full** controls the slider's visual behavior:
 

@@ -8,6 +8,7 @@ import { InlineColorPicker } from "../../shared/InlineColorPicker";
 import { VariableKeyPicker } from "../../shared/VariableKeyPicker";
 import { parseStateOptionList } from "../../shared/paramOptions";
 import { MacroRefPicker, DeviceRefPicker } from "../../shared/RefPickers";
+import { MatchDriverRangeRow } from "../BindingEditor/DeviceValuePicker";
 import { panelElementFieldKind } from "./panelElementConfig";
 import { numOrUndefined, intOrUndefined } from "./numericField";
 import { usePluginStore } from "../../../store/pluginStore";
@@ -278,6 +279,7 @@ export function BasicProperties({
               step={0.1}
             />
           </FieldRow>
+          <MatchDriverRangeRow element={element} onElementPatch={onChange} />
           <FieldRow label="Orientation">
             <select
               value={element.orientation || "horizontal"}
@@ -435,6 +437,7 @@ export function BasicProperties({
           <FieldRow label="Unit">
             <input value={element.unit || ""} onChange={(e) => onChange({ unit: e.target.value })} placeholder="%, dB, etc." style={{ flex: 1 }} />
           </FieldRow>
+          <MatchDriverRangeRow element={element} onElementPatch={onChange} />
           <FieldRow label="Arc Angle">
             <input type="number" value={element.arc_angle ?? ""} onChange={(e) => onChange({ arc_angle: numOrUndefined(e.target.value) })} placeholder="240" min={90} max={360} style={{ flex: 1 }} />
           </FieldRow>
@@ -510,6 +513,7 @@ export function BasicProperties({
           <FieldRow label="Max">
             <input type="number" value={element.max ?? ""} onChange={(e) => onChange({ max: numOrUndefined(e.target.value) })} placeholder="0" style={{ flex: 1 }} />
           </FieldRow>
+          <MatchDriverRangeRow element={element} onElementPatch={onChange} />
           <FieldRow label="Orientation">
             <select value={element.orientation || "vertical"} onChange={(e) => onChange({ orientation: e.target.value })} style={{ flex: 1 }}>
               <option value="vertical">Vertical</option>
@@ -585,6 +589,7 @@ export function BasicProperties({
           <FieldRow label="Unit">
             <input value={element.unit || ""} onChange={(e) => onChange({ unit: e.target.value })} placeholder="%" style={{ flex: 1 }} />
           </FieldRow>
+          <MatchDriverRangeRow element={element} onElementPatch={onChange} />
           <FieldRow label="Orientation">
             <select value={element.orientation || "vertical"} onChange={(e) => onChange({ orientation: e.target.value })} style={{ flex: 1 }}>
               <option value="vertical">Vertical</option>

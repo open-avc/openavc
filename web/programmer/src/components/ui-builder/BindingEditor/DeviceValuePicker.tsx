@@ -471,6 +471,35 @@ function parseUnitFromLabel(label: string | undefined): string | undefined {
   return /^[A-Za-z%°]{1,5}$/.test(candidate) ? candidate : undefined;
 }
 
+/** What matching the control to the driver would set, and whether anything
+ *  actually differs. Null when the element has no range fields or the var
+ *  declares no numeric range. */
+export function driverRangeTarget(
+  element: UIElement,
+  varDef: DeviceStateVarDef,
+): { min: number; max: number; step?: number; unit?: string; differs: boolean } | null {
+  if (!RANGE_ELEMENTS.has(element.type)) return null;
+  if (typeof varDef.min !== "number" || typeof varDef.max !== "number") return null;
+  const unit = UNIT_ELEMENTS.has(element.type) ? parseUnitFromLabel(varDef.label) : undefined;
+  const step = STEP_ELEMENTS.has(element.type) ? varDef.step : undefined;
+  const differs =
+    element.min !== varDef.min ||
+    element.max !== varDef.max ||
+    (step !== undefined && element.step !== step) ||
+    (unit !== undefined && element.unit !== unit);
+  return { min: varDef.min, max: varDef.max, step, unit, differs };
+}
+
+function applyDriverRange(
+  target: { min: number; max: number; step?: number; unit?: string },
+  onElementPatch: (patch: Partial<UIElement>) => void,
+) {
+  const patch: Partial<UIElement> = { min: target.min, max: target.max };
+  if (target.step !== undefined) patch.step = target.step;
+  if (target.unit !== undefined) patch.unit = target.unit;
+  onElementPatch(patch);
+}
+
 function RangeMatchPrompt({
   element,
   varDef,
@@ -482,39 +511,81 @@ function RangeMatchPrompt({
 }) {
   const [dismissed, setDismissed] = useState(false);
 
-  if (dismissed || !RANGE_ELEMENTS.has(element.type)) return null;
-  if (typeof varDef.min !== "number" || typeof varDef.max !== "number") return null;
-
-  const unit = UNIT_ELEMENTS.has(element.type) ? parseUnitFromLabel(varDef.label) : undefined;
-  const step = STEP_ELEMENTS.has(element.type) ? varDef.step : undefined;
-
-  const rangeDiffers = element.min !== varDef.min || element.max !== varDef.max;
-  const extrasDiffer =
-    (step !== undefined && element.step !== step) ||
-    (unit !== undefined && element.unit !== unit);
-  if (!rangeDiffers && !extrasDiffer) return null;
-
-  const apply = () => {
-    const patch: Partial<UIElement> = { min: varDef.min, max: varDef.max };
-    if (step !== undefined) patch.step = step;
-    if (unit !== undefined) patch.unit = unit;
-    onElementPatch(patch);
-  };
+  const target = driverRangeTarget(element, varDef);
+  if (dismissed || !target || !target.differs) return null;
 
   return (
     <div style={helpBoxStyle}>
       <Info size={13} style={{ flexShrink: 0, marginTop: 1, color: "var(--accent)" }} />
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         <span>
-          This value has a defined range of {varDef.min} to {varDef.max}
-          {unit ? ` ${unit}` : ""}. Match this {element.type.replace(/_/g, " ")} to it?
+          This value has a defined range of {target.min} to {target.max}
+          {target.unit ? ` ${target.unit}` : ""}. Match this {element.type.replace(/_/g, " ")} to it?
         </span>
         <div style={{ display: "flex", gap: 6 }}>
-          <button type="button" onClick={apply} style={applyBtnStyle}>Match range</button>
+          <button type="button" onClick={() => applyDriverRange(target, onElementPatch)} style={applyBtnStyle}>
+            Match range
+          </button>
           <button type="button" onClick={() => setDismissed(true)} style={dismissBtnStyle}>Dismiss</button>
         </div>
       </div>
     </div>
+  );
+}
+
+/** Compact "Match driver range" affordance for the Basic section — visible
+ *  while the element's Value is bound to a device property with a declared
+ *  range and the element's numbers differ from it. The Bindings-card prompt
+ *  covers the moment of binding; this covers later edits to Min/Max without
+ *  a trip back into Bindings. */
+export function MatchDriverRangeRow({
+  element,
+  onElementPatch,
+}: {
+  element: UIElement;
+  onElementPatch: (patch: Partial<UIElement>) => void;
+}) {
+  const bindings = element.bindings as { show?: { value?: { key?: string } } } | undefined;
+  const key = String(bindings?.show?.value?.key || "");
+  const parts = key.startsWith("device.") ? key.split(".") : [];
+  const deviceId = parts[1] ?? "";
+  const suffix = parts.slice(2).join(".");
+  const [varDef, setVarDef] = useState<DeviceStateVarDef | null>(null);
+
+  useEffect(() => {
+    let stale = false;
+    if (!deviceId || !suffix) {
+      setVarDef(null);
+      return;
+    }
+    api.getDevice(deviceId)
+      .then((info) => {
+        if (stale) return;
+        const vars = (info.driver_info as { state_variables?: Record<string, DeviceStateVarDef> } | undefined)
+          ?.state_variables;
+        setVarDef(vars?.[suffix] ?? null);
+      })
+      .catch(() => {
+        if (!stale) setVarDef(null);
+      });
+    return () => {
+      stale = true;
+    };
+  }, [deviceId, suffix]);
+
+  const target = varDef ? driverRangeTarget(element, varDef) : null;
+  if (!target || !target.differs) return null;
+
+  return (
+    <button
+      type="button"
+      onClick={() => applyDriverRange(target, onElementPatch)}
+      title="Set Min/Max (and Step/Unit when the driver declares them) from the bound device property"
+      style={matchRowBtnStyle}
+    >
+      Match driver range ({target.min} to {target.max}
+      {target.unit ? ` ${target.unit}` : ""})
+    </button>
   );
 }
 
@@ -615,5 +686,19 @@ const dismissBtnStyle: React.CSSProperties = {
   color: "var(--text-muted)",
   fontSize: 11,
   border: "1px solid var(--border-color)",
+  cursor: "pointer",
+};
+
+const matchRowBtnStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: "100%",
+  padding: "4px 8px",
+  borderRadius: "var(--border-radius)",
+  border: "1px dashed var(--accent)",
+  background: "rgba(138,180,147,0.08)",
+  color: "var(--accent)",
+  fontSize: 11,
   cursor: "pointer",
 };

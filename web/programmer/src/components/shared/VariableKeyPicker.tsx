@@ -9,6 +9,41 @@ import { useProjectStore } from "../../store/projectStore";
 import { useConnectionStore } from "../../store/connectionStore";
 import { CopyButton } from "./CopyButton";
 import { showError } from "../../store/toastStore";
+import { getDevice } from "../../api/restClient";
+
+/** Session cache of device state-variable labels (deviceId -> suffix ->
+ *  friendly label), filled lazily the first time a picker opens. Display-only:
+ *  a missing or stale entry just means the row shows the raw suffix. Uses the
+ *  per-device endpoint because instance-building drivers only populate
+ *  state_variables on the live instance, not at class level. */
+const deviceVarLabelCache = new Map<string, Record<string, string>>();
+const labelFetchInflight = new Map<string, Promise<void>>();
+
+function fetchDeviceVarLabels(deviceId: string): Promise<void> {
+  if (deviceVarLabelCache.has(deviceId)) return Promise.resolve();
+  let p = labelFetchInflight.get(deviceId);
+  if (!p) {
+    p = getDevice(deviceId)
+      .then((info) => {
+        const vars =
+          (info.driver_info as { state_variables?: Record<string, { label?: string }> } | undefined)
+            ?.state_variables ?? {};
+        const labels: Record<string, string> = {};
+        for (const [k, v] of Object.entries(vars)) {
+          if (v?.label) labels[k] = v.label;
+        }
+        deviceVarLabelCache.set(deviceId, labels);
+      })
+      .catch(() => {
+        deviceVarLabelCache.set(deviceId, {});
+      })
+      .finally(() => {
+        labelFetchInflight.delete(deviceId);
+      });
+    labelFetchInflight.set(deviceId, p);
+  }
+  return p;
+}
 
 interface VariableKeyPickerProps {
   value: string;
@@ -119,6 +154,21 @@ export function VariableKeyPicker({
     }
   }, [open]);
 
+  // Resolve friendly device state-variable labels (lazily, first open only per
+  // device — see deviceVarLabelCache). The version bump re-runs the entries
+  // memo once labels arrive; rows fall back to the raw suffix meanwhile.
+  const [labelsVersion, setLabelsVersion] = useState(0);
+  useEffect(() => {
+    if (!open || !showDeviceState || devices.length === 0) return;
+    let stale = false;
+    Promise.all(devices.map((d) => fetchDeviceVarLabels(d.id))).then(() => {
+      if (!stale) setLabelsVersion((v) => v + 1);
+    });
+    return () => {
+      stale = true;
+    };
+  }, [open, showDeviceState, devices]);
+
   // Build grouped entries
   const allEntries = useMemo((): KeyEntry[] => {
     const entries: KeyEntry[] = [];
@@ -170,9 +220,12 @@ export function VariableKeyPicker({
         if (k.startsWith("device.")) {
           const parts = k.split(".");
           const deviceId = parts[1] ?? "";
+          const suffix = parts.slice(2).join(".");
           entries.push({
             key: k,
-            label: parts.slice(2).join("."),
+            // Friendly driver label when resolved; the full raw key still
+            // renders under it, so nothing is hidden.
+            label: deviceVarLabelCache.get(deviceId)?.[suffix] || suffix,
             group: `device:${deviceId}`,
             groupDesc: "Live hardware state reported by this device",
             deviceName: deviceNames[deviceId] || deviceId,
@@ -223,7 +276,9 @@ export function VariableKeyPicker({
     }
 
     return entries;
-  }, [variables, devices, pages, liveState, showDeviceState, showTriggerContext, eventContext]);
+    // labelsVersion re-runs this once lazily-fetched device labels land.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [variables, devices, pages, liveState, showDeviceState, showTriggerContext, eventContext, labelsVersion]);
 
   // Filter entries by search
   const filteredEntries = useMemo(() => {
