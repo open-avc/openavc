@@ -1,5 +1,6 @@
 """Tests for server.updater — update system components."""
 
+import os
 import zipfile
 from pathlib import Path
 from unittest.mock import AsyncMock, patch, MagicMock
@@ -381,6 +382,39 @@ class TestBackup:
         assert removed == 4
         remaining = list(backup_dir.glob("pre-update-*.zip"))
         assert len(remaining) == 3
+
+    def test_list_backups_newest_first_across_version_bump(self, tmp_path):
+        # v0.13.0 is chronologically newer than v0.9.0, but sorts *before* it
+        # lexicographically ('1' < '9'). A filename sort would report the older
+        # v0.9.0 as newest; an mtime sort must report v0.13.0 first.
+        backup_dir = tmp_path / "backups"
+        backup_dir.mkdir()
+        old = backup_dir / "pre-update-v0.9.0-20260101T000000Z.zip"
+        new = backup_dir / "pre-update-v0.13.0-20260601T000000Z.zip"
+        old.write_bytes(b"fake")
+        new.write_bytes(b"fake")
+        os.utime(old, (1_600_000_000, 1_600_000_000))
+        os.utime(new, (1_700_000_000, 1_700_000_000))
+
+        backups = list_backups(tmp_path)
+        assert "v0.13.0" in backups[0]["name"]
+
+    def test_cleanup_keeps_chronologically_newest_across_version_bump(self, tmp_path):
+        # keep=1 must retain the mtime-newest backup even when its version string
+        # sorts lexicographically below an older one.
+        backup_dir = tmp_path / "backups"
+        backup_dir.mkdir()
+        old = backup_dir / "pre-update-v0.9.0-20260101T000000Z.zip"
+        new = backup_dir / "pre-update-v0.13.0-20260601T000000Z.zip"
+        old.write_bytes(b"fake")
+        new.write_bytes(b"fake")
+        os.utime(old, (1_600_000_000, 1_600_000_000))
+        os.utime(new, (1_700_000_000, 1_700_000_000))
+
+        removed = cleanup_old_backups(tmp_path, keep=1)
+        assert removed == 1
+        assert new.exists()
+        assert not old.exists()
 
 
 # --- Rollback ---

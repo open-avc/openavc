@@ -142,14 +142,21 @@ def list_backups(data_dir: Path) -> list[dict]:
     if not backup_dir.exists():
         return []
 
+    # Sort by mtime (when the archive was written), not filename. Filenames embed
+    # the version, so a reverse-lexicographic sort orders "v0.9.0" ahead of the
+    # newer "v0.13.0" ('9' > '1'), which is not chronological across a version bump.
     backups = []
-    for path in sorted(backup_dir.glob("pre-update-*.zip"), reverse=True):
+    for path in sorted(
+        backup_dir.glob("pre-update-*.zip"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    ):
         stat = path.stat()
         backups.append({
             "name": path.name,
             "path": str(path),
             "size_bytes": stat.st_size,
-            "created_at": datetime.fromtimestamp(stat.st_ctime, tz=timezone.utc).isoformat(),
+            "created_at": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
         })
     return backups
 
@@ -163,7 +170,14 @@ def cleanup_old_backups(data_dir: Path, keep: int = 5) -> int:
     if not backup_dir.exists():
         return 0
 
-    backups = sorted(backup_dir.glob("pre-update-*.zip"), reverse=True)
+    # Keep the chronologically newest `keep` by mtime. Sorting by filename would
+    # order by embedded version string, so a newer "v0.13.0" backup could be evicted
+    # while an older "v0.9.0" one survives the cross-version lexicographic sort.
+    backups = sorted(
+        backup_dir.glob("pre-update-*.zip"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
     removed = 0
     for old_backup in backups[keep:]:
         try:
