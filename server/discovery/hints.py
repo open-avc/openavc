@@ -711,18 +711,47 @@ def _parse_python_probe(driver_id: str, raw: Any) -> PythonProbe:
 
 # Fields the parser recognizes at the top of the ``discovery:`` block.
 _KNOWN_DISCOVERY_KEYS: frozenset[str] = frozenset({
+    "requires",
     "mdns", "ssdp", "amx_ddp",
     "tcp_probe", "udp_probe", "python",
     "oui", "hostname", "port_open", "manufacturer_alias", "snmp_pen",
 })
 
 
+def _platform_version() -> str:
+    """The running platform version (a function so tests can patch it)."""
+    from server.version import __version__
+    return __version__
+
+
+def _version_tuple(version: str) -> tuple[int, ...] | None:
+    """Parse ``"0.23.0"`` into a comparable tuple (pre-release suffixes
+    after ``-``/``+`` are ignored). ``None`` when the string doesn't lead
+    with dotted integers — callers treat that conservatively.
+    """
+    core = re.split(r"[-+ ]", version.strip(), maxsplit=1)[0]
+    try:
+        return tuple(int(p) for p in core.split("."))
+    except ValueError:
+        return None
+
+
 def parse_driver_discovery(driver_info: dict[str, Any]) -> DiscoveryHint | None:
     """Parse one driver-registry entry into a ``DiscoveryHint``.
 
-    Returns ``None`` for template drivers (``generic_*``); otherwise a
+    Returns ``None`` for template drivers (``generic_*``) and for blocks
+    whose ``requires:`` names a newer platform than this one; otherwise a
     populated ``DiscoveryHint``. Raises ``DiscoveryHintError`` on
     structural problems.
+
+    ``requires: "<version>"`` is the discovery schema's compatibility
+    gate. The community catalog build stamps it onto any driver whose
+    block uses features an older parser would silently mis-read (rather
+    than reject) — e.g. SSDP description filters, which pre-0.23.0
+    parsers ignore, collapsing distinct filtered claims into colliding
+    unfiltered ones. A parser that predates the gate itself rejects the
+    unknown ``requires`` key, so either way the driver's hints skip
+    cleanly on old platforms and the rest of the catalog stays live.
 
     A driver with no fingerprints and no hints can still parse — it
     simply never participates in matching, which is logged as a
@@ -740,6 +769,25 @@ def parse_driver_discovery(driver_info: dict[str, Any]) -> DiscoveryHint | None:
         raise DiscoveryHintError(
             f"{driver_id}: 'discovery' must be a mapping, got {type(discovery).__name__}"
         )
+
+    # Check ``requires`` before the unknown-key sweep so a block that
+    # gates a future feature reads as "needs a newer platform", not as
+    # a structural error about the feature's (unknown) key.
+    requires = discovery.get("requires")
+    if requires is not None:
+        if not isinstance(requires, str) or not requires.strip():
+            raise DiscoveryHintError(
+                f"{driver_id}: discovery.requires must be a version string"
+            )
+        required_tup = _version_tuple(requires)
+        platform_tup = _version_tuple(_platform_version())
+        if required_tup is None or platform_tup is None or required_tup > platform_tup:
+            log.info(
+                "%s: discovery block requires platform %s (running %s); "
+                "skipping its hints",
+                driver_id, requires.strip(), _platform_version(),
+            )
+            return None
 
     unknown = set(discovery.keys()) - _KNOWN_DISCOVERY_KEYS
     if unknown:
@@ -907,63 +955,84 @@ def load_discovery_hints(registry: list[dict[str, Any]]) -> list[DiscoveryHint]:
 def build_signal_index(hints: list[DiscoveryHint]) -> SignalIndex:
     """Register every fingerprint and hint into a ``SignalIndex``.
 
-    Raises ``ValueError`` (from ``SignalIndex.add_rule``) if two
-    drivers declare a colliding fingerprint without distinguishing
-    filters.
+    A rule that collides with an already-registered one (see
+    ``SignalIndex.add_rule``) is dropped and logged; the rest of the
+    index survives. Earlier hints win, so with the engine's
+    installed-then-catalog ordering an installed driver's claim beats
+    a catalog entry's. Collisions are authoring errors that CI in the
+    drivers repo rejects — but a runtime index build must degrade by
+    one rule, not abort, or a single inconsistent catalog entry would
+    knock every catalog driver out of scans at once.
     """
     index = SignalIndex()
+    dropped = 0
+
+    def _add(rule: SignalRule) -> None:
+        nonlocal dropped
+        try:
+            index.add_rule(rule)
+        except ValueError as exc:
+            dropped += 1
+            log.error("Dropping colliding discovery rule: %s", exc)
+
     for hint in hints:
         for fp in hint.mdns:
-            index.add_rule(SignalRule.for_mdns(
+            _add(SignalRule.for_mdns(
                 hint.driver_id,
                 fp.service,
                 txt_match={k: v for k, v in fp.txt} or None,
                 generic=fp.cross_vendor,
             ))
         for fp in hint.ssdp:
-            index.add_rule(SignalRule.for_ssdp(
+            _add(SignalRule.for_ssdp(
                 hint.driver_id, fp.device_type,
                 txt_match={k: v for k, v in fp.fields} or None,
                 generic=fp.cross_vendor,
             ))
         for fp in hint.amx_ddp:
-            index.add_rule(SignalRule.for_amx_ddp(
+            _add(SignalRule.for_amx_ddp(
                 hint.driver_id, fp.make, fp.model_pattern,
                 generic=fp.cross_vendor,
             ))
 
         if hint.tcp_probe is not None:
             spec = hint.tcp_probe
-            index.add_rule(SignalRule.for_active_probe(
+            _add(SignalRule.for_active_probe(
                 hint.driver_id, spec.probe_id, generic=spec.cross_vendor,
             ))
         if hint.udp_probe is not None:
             spec = hint.udp_probe
-            index.add_rule(SignalRule.for_broadcast(
+            _add(SignalRule.for_broadcast(
                 hint.driver_id, spec.probe_id, generic=spec.cross_vendor,
             ))
         if hint.python_probe is not None:
             py = hint.python_probe
-            index.add_rule(SignalRule.for_broadcast(
+            _add(SignalRule.for_broadcast(
                 hint.driver_id, py.broadcast_probe_id, generic=py.cross_vendor,
             ))
-            index.add_rule(SignalRule.for_active_probe(
+            _add(SignalRule.for_active_probe(
                 hint.driver_id, py.active_probe_id, generic=py.cross_vendor,
             ))
 
         if hint.snmp_pen is not None:
-            index.add_rule(SignalRule.for_snmp_pen(hint.driver_id, hint.snmp_pen))
+            _add(SignalRule.for_snmp_pen(hint.driver_id, hint.snmp_pen))
         for prefix in hint.oui:
-            index.add_rule(SignalRule.for_oui(hint.driver_id, prefix))
+            _add(SignalRule.for_oui(hint.driver_id, prefix))
         for pattern in hint.hostname:
-            index.add_rule(SignalRule.for_hostname(hint.driver_id, pattern))
+            _add(SignalRule.for_hostname(hint.driver_id, pattern))
         for port in hint.port_open:
-            index.add_rule(SignalRule.for_open_port(hint.driver_id, port))
+            _add(SignalRule.for_open_port(hint.driver_id, port))
         for alias in hint.manufacturer_alias:
-            index.add_rule(SignalRule.for_vendor_string(hint.driver_id, alias))
+            _add(SignalRule.for_vendor_string(hint.driver_id, alias))
 
-    log.info(
-        "Built signal index covering %d driver(s)",
-        index.driver_count(),
-    )
+    if dropped:
+        log.error(
+            "Built signal index covering %d driver(s); dropped %d colliding rule(s)",
+            index.driver_count(), dropped,
+        )
+    else:
+        log.info(
+            "Built signal index covering %d driver(s)",
+            index.driver_count(),
+        )
     return index

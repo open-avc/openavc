@@ -1,8 +1,10 @@
 """Tests for the new-schema ``discovery:`` parser + signal-index builder.
 
 Validates that ``parse_driver_discovery`` accepts well-formed blocks
-in the new fingerprints + hints shape, rejects malformed ones, and
-that ``build_signal_index`` raises on fingerprint collisions.
+in the new fingerprints + hints shape, rejects malformed ones, honors
+the ``requires:`` platform gate, and that ``build_signal_index``
+isolates fingerprint collisions (drops the colliding rule, keeps the
+rest of the index).
 
 Schema reference: ``OpenAVC-Discovery-Spec.md`` §2 (workspace root).
 """
@@ -545,19 +547,122 @@ class TestTopLevelParser:
 
 
 # ---------------------------------------------------------------------------
+# The ``requires:`` platform gate
+# ---------------------------------------------------------------------------
+
+
+class TestRequiresGate:
+    """``discovery.requires`` — the catalog's schema-compatibility gate.
+
+    The catalog build stamps it onto blocks whose features an older
+    parser would silently mis-read. A platform at or above the named
+    version parses normally; an older one skips the driver's hints
+    cleanly (and a parser that predates the gate rejects the unknown
+    key — same per-driver skip either way).
+    """
+
+    def test_requires_at_platform_version_parses(self, monkeypatch):
+        monkeypatch.setattr(
+            "server.discovery.hints._platform_version", lambda: "0.23.0",
+        )
+        h = parse_driver_discovery(_drv(
+            "widget", requires="0.23.0", ssdp={
+                "device_type": "urn:foo:device:Fam:1", "model": "W-6",
+            },
+        ))
+        assert h is not None
+        assert dict(h.ssdp[0].fields) == {"model": "W-6"}
+
+    def test_requires_older_than_platform_parses(self, monkeypatch):
+        monkeypatch.setattr(
+            "server.discovery.hints._platform_version", lambda: "0.24.1",
+        )
+        h = parse_driver_discovery(_drv("widget", requires="0.23.0", oui=["00:0a:45"]))
+        assert h is not None
+        assert h.oui == ["00:0a:45"]
+
+    def test_requires_newer_than_platform_skips_cleanly(self, monkeypatch, caplog):
+        import logging
+        monkeypatch.setattr(
+            "server.discovery.hints._platform_version", lambda: "0.22.0",
+        )
+        with caplog.at_level(logging.INFO, logger="discovery.hints"):
+            h = parse_driver_discovery(_drv(
+                "widget", requires="0.23.0", ssdp={
+                    "device_type": "urn:foo:device:Fam:1", "model": "W-6",
+                },
+            ))
+        assert h is None
+        assert "requires platform 0.23.0" in caplog.text
+
+    def test_requires_gates_before_unknown_key_check(self, monkeypatch):
+        # A future catalog gates a feature this platform doesn't know.
+        # The gate must win: skip cleanly, not raise about the unknown key.
+        monkeypatch.setattr(
+            "server.discovery.hints._platform_version", lambda: "0.23.0",
+        )
+        h = parse_driver_discovery(_drv(
+            "widget", requires="0.99.0", future_fingerprint={"port": 1},
+        ))
+        assert h is None
+
+    def test_requires_skip_keeps_rest_of_registry_alive(self, monkeypatch):
+        # The per-driver skip is the whole point: one gated driver must
+        # not take the other drivers' hints down with it.
+        monkeypatch.setattr(
+            "server.discovery.hints._platform_version", lambda: "0.22.0",
+        )
+        registry = [
+            _drv("gated", requires="0.23.0", ssdp={
+                "device_type": "urn:foo:device:Fam:1", "model": "W-6",
+            }),
+            _drv("plain", mdns="_widget._tcp.local."),
+        ]
+        hints = load_discovery_hints(registry)
+        assert [h.driver_id for h in hints] == ["plain"]
+        idx = build_signal_index(hints)
+        assert idx.find_strong(KIND_MDNS, "_widget._tcp.local.") is not None
+
+    def test_unparseable_requires_skips_conservatively(self, monkeypatch):
+        monkeypatch.setattr(
+            "server.discovery.hints._platform_version", lambda: "0.23.0",
+        )
+        assert parse_driver_discovery(_drv("widget", requires="latest")) is None
+
+    def test_non_string_requires_rejected(self):
+        with pytest.raises(DiscoveryHintError, match="requires"):
+            parse_driver_discovery(_drv("widget", requires=23))
+
+    def test_two_part_requires_compares_correctly(self, monkeypatch):
+        monkeypatch.setattr(
+            "server.discovery.hints._platform_version", lambda: "0.23.0",
+        )
+        h = parse_driver_discovery(_drv("widget", requires="0.23", oui=["00:0a:45"]))
+        assert h is not None
+
+
+# ---------------------------------------------------------------------------
 # Signal-index builder
 # ---------------------------------------------------------------------------
 
 
 class TestSignalIndexBuilder:
-    def test_mdns_collision_raises(self):
+    def test_mdns_collision_drops_later_rule(self, caplog):
+        # Collisions are authoring errors (CI rejects them), but at
+        # runtime the index must degrade by one rule, not abort — the
+        # first claim wins and the collider is dropped with a log line.
+        import logging
         registry = [
             _drv("a", mdns="_widget._tcp.local."),
             _drv("b", mdns="_widget._tcp.local."),
         ]
         hints = load_discovery_hints(registry)
-        with pytest.raises(ValueError, match="Signal collision"):
-            build_signal_index(hints)
+        with caplog.at_level(logging.ERROR, logger="discovery.hints"):
+            idx = build_signal_index(hints)
+        rule = idx.find_strong(KIND_MDNS, "_widget._tcp.local.")
+        assert rule is not None and rule.driver_id == "a"
+        assert "Dropping colliding discovery rule" in caplog.text
+        assert "Signal collision" in caplog.text
 
     def test_mdns_txt_filter_disambiguates(self):
         registry = [
@@ -576,13 +681,17 @@ class TestSignalIndexBuilder:
         )
         assert rule is not None and rule.driver_id == "b"
 
-    def test_ssdp_collision_raises(self):
+    def test_ssdp_collision_drops_later_rule(self, caplog):
+        import logging
         registry = [
             _drv("a", ssdp="urn:foo:device:Bar:1"),
             _drv("b", ssdp="urn:foo:device:Bar:1"),
         ]
-        with pytest.raises(ValueError, match="Signal collision"):
-            build_signal_index(load_discovery_hints(registry))
+        with caplog.at_level(logging.ERROR, logger="discovery.hints"):
+            idx = build_signal_index(load_discovery_hints(registry))
+        rule = idx.find_strong(KIND_SSDP, "urn:foo:device:Bar:1")
+        assert rule is not None and rule.driver_id == "a"
+        assert "Dropping colliding discovery rule" in caplog.text
 
     def test_ssdp_shared_urn_split_by_model_filter(self):
         # A vendor family advertising one URN: each driver filters on the
@@ -610,7 +719,8 @@ class TestSignalIndexBuilder:
         # No description fields observed -> no filtered rule can match.
         assert idx.find_strong(KIND_SSDP, "urn:foo:device:AcmeFamily:1") is None
 
-    def test_ssdp_identical_model_filters_collide(self):
+    def test_ssdp_identical_model_filters_drop_later_rule(self, caplog):
+        import logging
         registry = [
             _drv("a", ssdp={
                 "device_type": "urn:foo:device:AcmeFamily:1",
@@ -621,10 +731,18 @@ class TestSignalIndexBuilder:
                 "model": "Widget-6",
             }),
         ]
-        with pytest.raises(ValueError, match="Signal collision"):
-            build_signal_index(load_discovery_hints(registry))
+        with caplog.at_level(logging.ERROR, logger="discovery.hints"):
+            idx = build_signal_index(load_discovery_hints(registry))
+        rule = idx.find_strong(
+            KIND_SSDP, "urn:foo:device:AcmeFamily:1", txt={"model": "Widget-6"},
+        )
+        assert rule is not None and rule.driver_id == "a"
+        assert "Dropping colliding discovery rule" in caplog.text
 
-    def test_ssdp_unfiltered_claim_cannot_shadow_filtered(self):
+    def test_ssdp_unfiltered_claim_dropped_not_shadowing_filtered(self, caplog):
+        # An unfiltered claim arriving after a filtered one would shadow
+        # it — the collider is dropped and the filtered claim survives.
+        import logging
         registry = [
             _drv("a", ssdp={
                 "device_type": "urn:foo:device:AcmeFamily:1",
@@ -632,8 +750,28 @@ class TestSignalIndexBuilder:
             }),
             _drv("b", ssdp="urn:foo:device:AcmeFamily:1"),
         ]
-        with pytest.raises(ValueError, match="Signal collision"):
-            build_signal_index(load_discovery_hints(registry))
+        with caplog.at_level(logging.ERROR, logger="discovery.hints"):
+            idx = build_signal_index(load_discovery_hints(registry))
+        rule = idx.find_strong(
+            KIND_SSDP, "urn:foo:device:AcmeFamily:1", txt={"model": "Widget-6"},
+        )
+        assert rule is not None and rule.driver_id == "a"
+        assert idx.find_strong(KIND_SSDP, "urn:foo:device:AcmeFamily:1") is None
+        assert "Dropping colliding discovery rule" in caplog.text
+
+    def test_collision_drops_one_rule_not_the_driver(self, caplog):
+        # The collider's OTHER rules stay live — isolation is per-rule.
+        import logging
+        registry = [
+            _drv("a", ssdp="urn:foo:device:Bar:1"),
+            _drv("b", ssdp="urn:foo:device:Bar:1", tcp_probe={
+                "port": 12345, "send_ascii": "x", "expect": "y",
+            }),
+        ]
+        with caplog.at_level(logging.ERROR, logger="discovery.hints"):
+            idx = build_signal_index(load_discovery_hints(registry))
+        probe = idx.find_strong(KIND_ACTIVE_PROBE, "custom_b_tcp")
+        assert probe is not None and probe.driver_id == "b"
 
     def test_amx_ddp_indexed(self):
         registry = [_drv("widget", amx_ddp={"make": "AcmeCorp"})]

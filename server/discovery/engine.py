@@ -360,9 +360,9 @@ class DiscoveryEngine:
         try:
             self.signal_index = build_signal_index(all_hints)
         except ValueError as exc:
-            # Strong-signal collisions abort the build. Fall back to an
-            # installed-only index so an inconsistent catalog can't break
-            # discovery on the device.
+            # build_signal_index isolates colliding rules itself (drops
+            # the rule, keeps the rest), so this only fires on something
+            # unexpected. Installed-only is the last line of defense.
             log.error("Discovery signal index rejected with catalog: %s; falling back to installed-only", exc)
             try:
                 self.signal_index = build_signal_index(installed_hints)
