@@ -33,6 +33,18 @@ class ReleaseInfo:
     assets: list[dict[str, str]] = field(default_factory=list)
 
 
+_SEMVER_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:-(.+))?$")
+
+
+def is_valid_semver(version_str: str) -> bool:
+    """Return True if the string parses as MAJOR.MINOR.PATCH (optional -prerelease).
+
+    Distinguishes a genuine parse (including a real "0.0.0") from a regex miss,
+    which ``parse_semver`` can't express through its (0, 0, 0, "") fallback.
+    """
+    return _SEMVER_RE.match(version_str.lstrip("v").strip()) is not None
+
+
 def parse_semver(version_str: str) -> tuple[int, int, int, str]:
     """Parse a semver string into (major, minor, patch, prerelease).
 
@@ -40,12 +52,41 @@ def parse_semver(version_str: str) -> tuple[int, int, int, str]:
     Returns (major, minor, patch, prerelease_suffix).
     """
     clean = version_str.lstrip("v").strip()
-    match = re.match(r"^(\d+)\.(\d+)\.(\d+)(?:-(.+))?$", clean)
+    match = _SEMVER_RE.match(clean)
     if not match:
         return (0, 0, 0, "")
     major, minor, patch = int(match.group(1)), int(match.group(2)), int(match.group(3))
     prerelease = match.group(4) or ""
     return (major, minor, patch, prerelease)
+
+
+def _is_numeric_identifier(ident: str) -> bool:
+    """A semver prerelease identifier is numeric only if it is all ASCII digits."""
+    return ident.isascii() and ident.isdigit()
+
+
+def _compare_prerelease(a_parts: list[str], b_parts: list[str]) -> int:
+    """Compare two dot-separated prerelease identifier lists per semver rule 11.4.
+
+    Returns 1 if `a` has higher precedence, -1 if lower, 0 if equal.
+    Numeric identifiers compare numerically; two alphanumerics compare by ASCII;
+    a numeric identifier always has LOWER precedence than an alphanumeric one; and
+    when all shared identifiers are equal, the longer list has higher precedence.
+    """
+    for a, b in zip(a_parts, b_parts):
+        a_num, b_num = _is_numeric_identifier(a), _is_numeric_identifier(b)
+        if a_num and b_num:
+            ai, bi = int(a), int(b)
+            if ai != bi:
+                return 1 if ai > bi else -1
+        elif a_num != b_num:
+            # Numeric identifiers have lower precedence than alphanumeric ones.
+            return -1 if a_num else 1
+        elif a != b:
+            return 1 if a > b else -1
+    if len(a_parts) != len(b_parts):
+        return 1 if len(a_parts) > len(b_parts) else -1
+    return 0
 
 
 def is_newer(candidate: str, current: str) -> bool:
@@ -70,19 +111,10 @@ def is_newer(candidate: str, current: str) -> bool:
         return False
     if not c_pre and r_pre:
         return True
-    # Both have prerelease or both stable: compare per semver spec
+    # Both have prerelease: compare identifier-by-identifier per semver rule 11.4.
     if c_pre and r_pre:
-        c_parts = c_pre.split(".")
-        r_parts = r_pre.split(".")
-        for cp, rp in zip(c_parts, r_parts):
-            try:
-                ci, ri = int(cp), int(rp)
-                if ci != ri:
-                    return ci > ri
-            except ValueError:
-                if cp != rp:
-                    return cp > rp
-        return len(c_parts) > len(r_parts)
+        return _compare_prerelease(c_pre.split("."), r_pre.split(".")) > 0
+    # Both stable and same version number.
     return False
 
 
@@ -143,6 +175,16 @@ class UpdateChecker:
                 continue
             tag = release.get("tag_name", "")
             if not tag:
+                continue
+            if not is_valid_semver(tag):
+                # parse_semver would silently treat this as 0.0.0 and skip it, hiding
+                # a release a human might consider valid. Surface it so a mistyped or
+                # non-standard tag is visible instead of a bare "No updates available".
+                log.warning(
+                    "Ignoring release with unparseable version tag %r "
+                    "(expected MAJOR.MINOR.PATCH); it will not be offered as an update",
+                    tag,
+                )
                 continue
             if not is_newer(tag, self.current_version):
                 continue

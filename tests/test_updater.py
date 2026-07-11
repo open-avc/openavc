@@ -1,5 +1,6 @@
 """Tests for server.updater — update system components."""
 
+import logging
 import os
 import zipfile
 from pathlib import Path
@@ -7,7 +8,7 @@ from unittest.mock import AsyncMock, patch, MagicMock
 
 import pytest
 
-from server.updater.checker import UpdateChecker, ReleaseInfo, parse_semver, is_newer
+from server.updater.checker import UpdateChecker, ReleaseInfo, parse_semver, is_newer, is_valid_semver
 from server.updater.platform import (
     DeploymentType,
     detect_deployment_type,
@@ -46,6 +47,14 @@ class TestParseSemver:
     def test_invalid(self):
         assert parse_semver("not-a-version") == (0, 0, 0, "")
 
+    def test_is_valid_semver_distinguishes_miss_from_zero(self):
+        # parse_semver returns (0,0,0,"") for both a real 0.0.0 and a regex miss;
+        # is_valid_semver tells them apart.
+        assert is_valid_semver("0.0.0") is True
+        assert is_valid_semver("v1.2.3-rc.2") is True
+        assert is_valid_semver("v0.13") is False
+        assert is_valid_semver("not-a-version") is False
+
 
 class TestIsNewer:
     def test_major_bump(self):
@@ -74,6 +83,22 @@ class TestIsNewer:
 
     def test_v_prefix_handled(self):
         assert is_newer("v1.1.0", "v1.0.0") is True
+
+    def test_alphanumeric_prerelease_outranks_numeric(self):
+        # Semver rule 11.4.3: a numeric identifier has LOWER precedence than an
+        # alphanumeric one at the same position. Raw string compare got this wrong
+        # ('-' < '9' in ASCII, so it reported the alphanumeric as older).
+        assert is_newer("1.0.0--a", "1.0.0-9") is True
+        assert is_newer("1.0.0-9", "1.0.0--a") is False
+
+    def test_numeric_prerelease_identifiers_compare_numerically(self):
+        # beta.10 > beta.9 even though "10" < "9" lexically.
+        assert is_newer("1.0.0-beta.10", "1.0.0-beta.9") is True
+
+    def test_longer_prerelease_outranks_shorter_when_prefix_equal(self):
+        # Semver rule 11.4.4: rc.1 has higher precedence than rc.
+        assert is_newer("1.0.0-rc.1", "1.0.0-rc") is True
+        assert is_newer("1.0.0-rc", "1.0.0-rc.1") is False
 
 
 # --- Update Checker ---
@@ -149,6 +174,37 @@ class TestUpdateChecker:
         assert result.version == "0.2.0"
         assert result.changelog == "New features!"
         assert len(result.assets) == 1
+
+    async def test_check_warns_on_unparseable_tag(self, checker, caplog):
+        # An unparseable tag (v0.13, missing patch) must not silently hide the
+        # valid newer release, and must be surfaced at WARNING.
+        releases = [
+            {
+                "tag_name": "v0.13",
+                "prerelease": False,
+                "draft": False,
+                "body": "Mistyped tag",
+                "published_at": "2026-04-01T00:00:00Z",
+                "assets": [],
+            },
+            {
+                "tag_name": "v0.2.0",
+                "prerelease": False,
+                "draft": False,
+                "body": "New features!",
+                "published_at": "2026-03-01T00:00:00Z",
+                "assets": [],
+            },
+        ]
+
+        with patch("server.updater.checker.httpx.AsyncClient") as mock_client:
+            mock_client.return_value = self._make_mock_client(releases)
+            with caplog.at_level(logging.WARNING, logger="server.updater.checker"):
+                result = await checker.check("stable")
+
+        assert result is not None
+        assert result.version == "0.2.0"
+        assert any("v0.13" in r.message and r.levelno == logging.WARNING for r in caplog.records)
 
     async def test_check_skips_prerelease_on_stable(self, checker):
         releases = [
