@@ -15,7 +15,9 @@ replies route back the same way. This is non-negotiable: the runner
 refuses to send if it can't bind.
 
 A shared ``RateLimiter`` caps custom probes at 10 sends/sec globally
-so a single scan can't flood the network with broadcasts. The runner
+so a single scan can't flood the network — the UDP broadcast runner
+acquires before each ``sendto`` and the TCP active runner before each
+connect, so both send paths honor the one global limit. The runner
 does not retry — a missed reply is silently a missed reply, which is
 the right behavior for a discovery probe.
 """
@@ -49,6 +51,14 @@ log = logging.getLogger("discovery.probe_runner")
 # exceed this get truncated; TCP responses past this byte count are
 # discarded. Real AV discovery responses fit easily in 4096 bytes.
 _MAX_RESPONSE_BYTES = 4096
+
+# Flood guard for the UDP broadcast probe. A hostile peer on the subnet can
+# answer a broadcast probe from spoofed source addresses, and every distinct
+# matching source costs a results entry -> a DiscoveredDevice -> a WebSocket
+# fan-out in phase 8. No real site answers a single probe from anywhere near
+# this many hosts; past the cap, new sources are dropped (already-seen ones
+# are deduped away anyway). Mirrors amx_ddp_scanner.MAX_BEACON_SOURCES.
+_MAX_PROBE_RESPONDERS = 512
 
 # Quiet-gap timeout for the TCP active-probe accumulation loop. A device
 # may send its identifying banner in a later TCP segment than the first
@@ -228,6 +238,7 @@ async def run_udp_broadcast_probe(
         return {}
 
     results: dict[str, Evidence] = {}
+    cap_warned = False
     loop = asyncio.get_event_loop()
     timeout_seconds = spec.timeout_ms / 1000.0
 
@@ -270,6 +281,19 @@ async def run_udp_broadcast_probe(
                 continue  # one evidence record per device per probe
             if not _matches(data, spec.response_match):
                 continue
+            if len(results) >= _MAX_PROBE_RESPONDERS:
+                # Flood guard: a spoofed-source responder storm would otherwise
+                # accumulate an unbounded results dict (each entry becomes a
+                # device + WS broadcast downstream). Drop new sources past the
+                # cap; keep listening so the already-matched set stays stable.
+                if not cap_warned:
+                    cap_warned = True
+                    log.warning(
+                        "probe_runner: %s hit the %d distinct-responder cap; "
+                        "ignoring new sources for the rest of this probe window",
+                        spec.probe_id, _MAX_PROBE_RESPONDERS,
+                    )
+                continue
 
             reserved, extracted = _apply_extract(data, spec.extract)
             # UDP txt is flat — every extracted field is a top-level key,
@@ -307,6 +331,7 @@ async def run_tcp_active_probe(
     target: str,
     source_ip: str,
     stagger_ms: float = 0.0,
+    rate_limiter: RateLimiter | None = None,
 ) -> Evidence | None:
     """Connect to ``target:spec.port``, send, read, match, extract.
 
@@ -318,15 +343,22 @@ async def run_tcp_active_probe(
     ``stagger_ms`` is a pre-connection delay (port_scanner pattern):
     the engine spreads a batch of probes by passing increasing
     stagger values so embedded AV devices aren't hit with a SYN
-    burst. The same ``RateLimiter`` used for UDP probes applies via
-    the engine layer for TCP — the schema's per-probe budget is
-    governed there.
+    burst. ``rate_limiter``, when supplied, is the same shared
+    ``RateLimiter`` the UDP probes use: this runner acquires a slot
+    from it immediately before connecting, so the documented global
+    10/sec send cap actually bounds the TCP SYN rate too (a batch of
+    matching hosts across many drivers can't burst past it).
     """
     if spec.kind != "tcp":
         raise ValueError(f"run_tcp_active_probe got non-tcp spec: {spec.kind!r}")
 
     if stagger_ms > 0:
         await asyncio.sleep(stagger_ms / 1000.0)
+
+    # Global send-rate cap: acquire a slot before the SYN so a scan with many
+    # TCP-probe drivers and many matching hosts stays under the shared limit.
+    if rate_limiter is not None:
+        await rate_limiter.acquire()
 
     timeout = spec.timeout_ms / 1000.0
     local_addr = (source_ip, 0) if source_ip else None

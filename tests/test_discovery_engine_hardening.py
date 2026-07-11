@@ -423,6 +423,48 @@ class TestMergePriority:
         assert d.category == "projector"
 
 
+# --- M-252: TCP active probes honor the shared send-rate limiter ------------
+
+
+class TestTcpProbeRateLimit:
+    """The engine documents a global 10/sec send cap for custom probes, but
+    only the UDP path used to receive the shared RateLimiter — the TCP path
+    fired connects via gather() with no limiter. The engine must pass the same
+    limiter to the TCP active probe."""
+
+    async def test_engine_hands_rate_limiter_to_tcp_probe(self):
+        from server.discovery.hints import parse_driver_discovery
+        from server.discovery.probe_runner import RateLimiter
+
+        engine = DiscoveryEngine()
+        hint = parse_driver_discovery({
+            "id": "acme_ctl", "name": "acme_ctl", "manufacturer": "Acme",
+            "category": "audio", "transport": "tcp",
+            "discovery": {"tcp_probe": {
+                "port": 4321, "send_ascii": "id\r\n",
+                "expect": "Acme", "timeout_ms": 500,
+            }},
+        })
+        engine.discovery_hints = [hint]
+        dev = engine._get_or_create("10.77.0.5")
+        dev.alive = True
+        dev.open_ports = [4321]  # matches the tcp_probe port
+
+        captured = {}
+
+        async def fake_probe(spec, *, target, source_ip,
+                             stagger_ms=0.0, rate_limiter=None):
+            captured["rate_limiter"] = rate_limiter
+            return None
+
+        with patch.object(engine_mod, "run_tcp_active_probe", fake_probe):
+            await engine._run_custom_probes(["10.77.0.0/24"], "10.77.0.1")
+
+        # Before the fix this was None (no limiter threaded through the TCP
+        # path); the shared cap only applied to UDP.
+        assert isinstance(captured.get("rate_limiter"), RateLimiter)
+
+
 # --- L-069 / L-070: total_hosts_scanned accuracy + malformed-CIDR safety ----
 
 

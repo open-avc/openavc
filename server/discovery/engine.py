@@ -1136,7 +1136,8 @@ class DiscoveryEngine:
           ``RateLimiter``.
         - **TCP probes** run against every host whose port-scan results
           include the spec's port, with a 20 ms stagger so the SYN burst
-          is spread.
+          is spread and sharing the same 10/sec ``RateLimiter`` as the
+          UDP probes so the global send cap bounds the connect rate too.
         - **Python companions** are invoked with a ``ProbeContext``
           carrying the engine's port-scan map so the companion can
           consume already-discovered hosts instead of re-iterating
@@ -1210,6 +1211,7 @@ class DiscoveryEngine:
                     target=target,
                     source_ip=control_ip,
                     stagger_ms=idx * 20.0,
+                    rate_limiter=rate_limiter,
                 )
                 return target, spec, ev
 

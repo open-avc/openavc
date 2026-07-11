@@ -26,6 +26,7 @@ import socket
 import ssl
 import threading
 import time
+from unittest.mock import patch
 
 import pytest
 
@@ -40,7 +41,9 @@ from server.discovery.hints import (
     build_signal_index,
     parse_driver_discovery,
 )
+from server.discovery import probe_runner as probe_runner_mod
 from server.discovery.probe_runner import (
+    _MAX_PROBE_RESPONDERS,
     RateLimiter,
     _apply_extract,
     _make_udp_socket,
@@ -562,6 +565,119 @@ class TestProbeRunnerIntegration:
         assert ev is None
         # Released on EOF / quiet gap, well under the 5s budget.
         assert elapsed < 4.0, f"runner hung past the quiet gap: {elapsed:.2f}s"
+
+
+# ---------------------------------------------------------------------------
+# Send-rate cap (M-252) + distinct-responder flood guard (M-253)
+# ---------------------------------------------------------------------------
+
+
+class _CountingRateLimiter(RateLimiter):
+    """RateLimiter that records how many slots were acquired."""
+
+    def __init__(self, rate_per_sec: float) -> None:
+        super().__init__(rate_per_sec)
+        self.acquired = 0
+
+    async def acquire(self) -> None:
+        self.acquired += 1
+        await super().acquire()
+
+
+class _FakeUDPSocket:
+    """Stand-in socket that replays a scripted list of (data, (ip, port))
+    datagrams so the UDP runner's recv loop can be driven with many distinct
+    spoofed source IPs (impossible to generate for real over loopback)."""
+
+    def __init__(self, packets):
+        self._packets = list(packets)
+        self.closed = False
+
+    def settimeout(self, _t):
+        pass
+
+    def sendto(self, data, _addr):
+        return len(data)
+
+    def recvfrom(self, _n):
+        if self._packets:
+            return self._packets.pop(0)
+        # Non-timeout OSError -> the runner's recv loop breaks out cleanly
+        # instead of busy-spinning until the probe budget elapses.
+        raise OSError("no more scripted datagrams")
+
+    def close(self):
+        self.closed = True
+
+
+class TestTcpProbeRateLimiting:
+    """M-252: the TCP active probe must honor the shared RateLimiter so the
+    documented global 10/sec send cap actually bounds the SYN rate."""
+
+    @pytest.mark.asyncio
+    async def test_tcp_probe_acquires_rate_limiter_before_connect(self):
+        port = _next_port()
+        _tcp_responder(port, b"pr Lightware FrameServer 2.7.3\n")
+        h = _make_hint("lightware_lw3", tcp_probe={
+            "port": port, "send_ascii": "GET /sys/version\r\n",
+            "expect": "Lightware",
+            "timeout_ms": 2000,
+        })
+        rl = _CountingRateLimiter(rate_per_sec=50)
+        ev = await run_tcp_active_probe(
+            h.tcp_probe, target="127.0.0.1",
+            source_ip="127.0.0.1", stagger_ms=0, rate_limiter=rl,
+        )
+        assert ev is not None
+        # The runner drew exactly one slot from the shared limiter for its SYN.
+        assert rl.acquired == 1
+
+    @pytest.mark.asyncio
+    async def test_tcp_probe_without_limiter_still_runs(self):
+        # A direct caller (no limiter) is still allowed — the param is optional.
+        port = _next_port()
+        _tcp_responder(port, b"pr Lightware FrameServer 2.7.3\n")
+        h = _make_hint("lightware_lw3", tcp_probe={
+            "port": port, "send_ascii": "x",
+            "expect": "Lightware", "timeout_ms": 2000,
+        })
+        ev = await run_tcp_active_probe(
+            h.tcp_probe, target="127.0.0.1", source_ip="127.0.0.1",
+        )
+        assert ev is not None
+
+
+class TestUdpProbeResponderCap:
+    """M-253: a spoofed-source responder storm must not grow the results dict
+    without bound — distinct matching senders are capped per probe window."""
+
+    @pytest.mark.asyncio
+    async def test_distinct_responders_capped(self, caplog):
+        # More matching datagrams than the cap, each from a distinct source IP.
+        overflow = 25
+        packets = [
+            (b"FAKE-VENDOR ok", (f"10.90.{n // 256}.{n % 256}", 4001))
+            for n in range(_MAX_PROBE_RESPONDERS + overflow)
+        ]
+        fake = _FakeUDPSocket(packets)
+        h = _make_hint("floody", udp_probe={
+            "port": 4001, "send_ascii": "WHOIS",
+            "expect": "FAKE-VENDOR", "timeout_ms": 2000,
+        })
+        rl = RateLimiter(rate_per_sec=1000)
+        with patch.object(
+            probe_runner_mod, "_make_udp_socket", return_value=fake,
+        ):
+            with caplog.at_level("WARNING"):
+                results = await run_udp_broadcast_probe(
+                    h.udp_probe, targets=["255.255.255.255"],
+                    source_ip="127.0.0.1", rate_limiter=rl,
+                )
+        assert len(results) == _MAX_PROBE_RESPONDERS
+        assert fake.closed
+        hits = [r for r in caplog.records if "distinct-responder cap" in r.message]
+        assert hits, "expected a one-time distinct-responder cap warning"
+        assert len(hits) == 1  # warned once, not per dropped datagram
 
 
 # ---------------------------------------------------------------------------
