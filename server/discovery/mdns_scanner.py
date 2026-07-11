@@ -83,11 +83,22 @@ def encode_dns_name(name: str) -> bytes:
     return result
 
 
-def decode_dns_name(data: bytes, offset: int) -> tuple[str, int]:
+def decode_dns_name(
+    data: bytes, offset: int, end: int | None = None
+) -> tuple[str, int]:
     """Decode a DNS wire format name, handling compression pointers.
 
     Returns (name_string, new_offset) where new_offset points past the name
     in the original data (after the compression pointer if one was used).
+
+    ``end`` bounds the initial (uncompressed) reading of the name's own
+    label bytes. Pass it when the name lives inside a resource record's
+    rdata window (``offset + rdlength``) so a short/forged rdlength can't
+    let the name bleed into the following record. Compression pointers
+    inside the name may still legally jump anywhere earlier in the
+    message, so the bound is only enforced until the first pointer is
+    followed. Callers decoding a record's own (self-delimiting) owner name
+    leave ``end`` unset.
     """
     labels: list[str] = []
     # return_offset tracks where to resume in the original data stream.
@@ -98,6 +109,10 @@ def decode_dns_name(data: bytes, offset: int) -> tuple[str, int]:
 
     for _ in range(max_jumps):
         if offset >= len(data):
+            break
+        # While still reading the name's own bytes (before any compression
+        # pointer), keep them inside the rdata window when one was given.
+        if end is not None and return_offset is None and offset >= end:
             break
 
         length = data[offset]
@@ -111,6 +126,8 @@ def decode_dns_name(data: bytes, offset: int) -> tuple[str, int]:
             # Compression pointer (2 bytes)
             if offset + 1 >= len(data):
                 break
+            if end is not None and return_offset is None and offset + 2 > end:
+                break  # Pointer straddles the rdata boundary — reject
             if return_offset is None:
                 # Save where to continue reading after this name
                 return_offset = offset + 2
@@ -124,6 +141,8 @@ def decode_dns_name(data: bytes, offset: int) -> tuple[str, int]:
             offset += 1
             if offset + length > len(data):
                 break
+            if end is not None and return_offset is None and offset + length > end:
+                break  # Label body spills past the rdata boundary — reject
             label = data[offset:offset + length].decode("utf-8", errors="replace")
             labels.append(label)
             offset += length
@@ -224,16 +243,20 @@ def parse_dns_packet(data: bytes) -> tuple[list[DNSRecord], list[DNSRecord]]:
             ttl=ttl, rdata=rdata,
         )
 
-        # Parse rdata based on type
+        # Parse rdata based on type. PTR/SRV target names must live inside
+        # this record's rdata window; bound the decode to offset+rdlength so
+        # a short/forged rdlength can't attribute the next record's name.
         if rtype == DNS_TYPE_A and rdlength == 4:
             record.ip = socket.inet_ntoa(rdata)
         elif rtype == DNS_TYPE_PTR:
-            record.target, _ = decode_dns_name(data, offset)
+            record.target, _ = decode_dns_name(data, offset, end=offset + rdlength)
         elif rtype == DNS_TYPE_SRV and rdlength >= 6:
             record.priority, record.weight, record.port = struct.unpack(
                 "!HHH", rdata[:6]
             )
-            record.target, _ = decode_dns_name(data, offset + 6)
+            record.target, _ = decode_dns_name(
+                data, offset + 6, end=offset + rdlength
+            )
         elif rtype == DNS_TYPE_TXT:
             record.txt = _parse_txt_rdata(rdata)
 
@@ -676,8 +699,21 @@ class MDNSScanner:
             del self._pending[key]
 
     def _close_socket(self) -> None:
-        """Safely close the multicast socket."""
+        """Safely close the multicast socket.
+
+        ``shutdown`` before ``close``: the listen loop runs ``recvfrom`` in
+        the default executor, and closing the socket from another thread
+        does not wake a thread blocked in ``recvfrom`` on Linux/Windows —
+        only ``shutdown`` does. Without it, a cancel/stop leaves that pool
+        thread parked until its socket timeout, briefly starving the shared
+        executor when many scanners cancel at once. ``shutdown`` raises on
+        an unconnected socket (harmless), so its error is ignored.
+        """
         if self._sock:
+            try:
+                self._sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
             try:
                 self._sock.close()
             except OSError:

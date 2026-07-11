@@ -263,6 +263,115 @@ class TestParseDNSPacket:
         assert len(records) == 2
 
 
+class TestRdataNameBoundary:
+    """PTR/SRV target names must stay inside the record's rdata window.
+
+    A short or forged rdlength must not let the target decode bleed into the
+    following record's name (memory-safe but wrong-result: a spoofed hostname
+    flows into pending state, the dedup key, and the catalog-growth UI).
+    """
+
+    def test_srv_rdlength_six_yields_no_target(self):
+        # SRV with rdlength == 6 carries priority/weight/port but NO target.
+        # The next record's owner name must not be attributed as the target.
+        header = struct.pack("!HHHHHH", 0, 0x8400, 0, 2, 0, 0)
+        srv_name = encode_dns_name("dev._svc._tcp.local.")
+        srv_rdata = struct.pack("!HHH", 0, 0, 8080)  # exactly 6 bytes, no target
+        srv_answer = (
+            srv_name
+            + struct.pack("!HHIH", DNS_TYPE_SRV, 1, 120, len(srv_rdata))
+            + srv_rdata
+        )
+        # A record immediately after — its name is the bleed target.
+        a_name = encode_dns_name("secret.attacker.local.")
+        a_answer = (
+            a_name
+            + struct.pack("!HHIH", DNS_TYPE_A, 1, 120, 4)
+            + socket.inet_aton("10.0.0.9")
+        )
+        data = header + srv_answer + a_answer
+        _, records = parse_dns_packet(data)
+        srv = records[0]
+        assert srv.rtype == DNS_TYPE_SRV
+        assert srv.port == 8080
+        assert not srv.target  # no bleed into "secret.attacker.local"
+
+    def test_ptr_target_clamped_to_rdlength(self):
+        # PTR rdata declares only a partial label (no terminating null inside
+        # the window); trailing bytes continue the name. Pre-clamp the decoder
+        # would read past rdlength and pick up "attack".
+        header = struct.pack("!HHHHHH", 0, 0x8400, 0, 1, 0, 0)
+        ptr_name = encode_dns_name("_svc._tcp.local.")
+        in_window = b"\x04host"       # label "host", no null terminator
+        trailer = b"\x06attack\x00"   # would extend the name if unclamped
+        ptr_answer = (
+            ptr_name
+            + struct.pack("!HHIH", DNS_TYPE_PTR, 1, 120, len(in_window))
+            + in_window
+            + trailer
+        )
+        data = header + ptr_answer
+        _, records = parse_dns_packet(data)
+        assert records[0].rtype == DNS_TYPE_PTR
+        assert "attack" not in (records[0].target or "")
+
+    def test_compressed_target_inside_rdata_still_resolves(self):
+        # A legitimate compression pointer inside the rdata window must still
+        # follow to the earlier name — the clamp only bounds the name's own
+        # bytes, not pointer targets.
+        header = struct.pack("!HHHHHH", 0, 0x8400, 0, 1, 0, 0)
+        # Owner name for the PTR record, placed at offset 12 (right after the
+        # header) so a pointer can reference the service-type suffix.
+        ptr_name = encode_dns_name("_svc._tcp.local.")  # starts at offset 12
+        # rdata: "Acme Widget" label + pointer to "_svc._tcp.local." at 12.
+        rdata = b"\x0bAcme Widget" + struct.pack("!H", 0xC000 | 12)
+        ptr_answer = (
+            ptr_name
+            + struct.pack("!HHIH", DNS_TYPE_PTR, 1, 120, len(rdata))
+            + rdata
+        )
+        data = header + ptr_answer
+        _, records = parse_dns_packet(data)
+        assert records[0].target == "Acme Widget._svc._tcp.local"
+
+
+class TestCloseSocketShutdown:
+    """_close_socket shuts the socket down before closing so a peer thread
+    blocked in recvfrom is unblocked promptly (close alone does not wake it)."""
+
+    def test_shutdown_precedes_close(self):
+        calls: list[tuple] = []
+
+        class _RecordingSocket:
+            def shutdown(self, how):
+                calls.append(("shutdown", how))
+
+            def close(self):
+                calls.append(("close",))
+
+        scanner = MDNSScanner()
+        scanner._sock = _RecordingSocket()
+        scanner._close_socket()
+        assert calls == [("shutdown", socket.SHUT_RDWR), ("close",)]
+        assert scanner._sock is None
+
+    def test_shutdown_error_on_unconnected_is_ignored(self):
+        closed: list[bool] = []
+
+        class _UnconnectedSocket:
+            def shutdown(self, how):
+                raise OSError("not connected")
+
+            def close(self):
+                closed.append(True)
+
+        scanner = MDNSScanner()
+        scanner._sock = _UnconnectedSocket()
+        scanner._close_socket()  # must not raise
+        assert closed == [True]
+        assert scanner._sock is None
+
+
 class TestParseTxtRdata:
     def test_key_value_pairs(self):
         rdata = bytes([11]) + b"model=UE55" + b"\x00" + bytes([7]) + b"fw=1.23"
