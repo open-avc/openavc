@@ -1015,7 +1015,7 @@ The `discovery:` block tells the matcher which network signals identify your dev
 - **Fingerprints** identify the driver alone. One match is enough. Result state: *identified*.
 - **Hints** narrow candidates. Several hints together produce a *possible* match with a candidate driver list. Result state: *possible*.
 
-**Choosing a fingerprint type.** Most AV devices announce themselves passively over one of three multicast channels. Pick the one your device actually emits. `mdns:` matches the device's Bonjour / Avahi service-type announcement (e.g. `_pjlink._tcp.local.`) and is the common case for projectors, displays, and networked audio gear. `ssdp:` matches the UPnP device-type URN advertised in SSDP NOTIFY (e.g. `urn:schemas-upnp-org:device:MediaRenderer:1`) and shows up on media renderers, smart displays, and consumer-grade AV devices. `amx_ddp:` matches the AMXB make / model beacon many AV control-system devices emit on multicast `239.255.250.250:9131`; provide a `make` string and an optional `model_pattern` glob. When the device doesn't announce, fall back to `tcp_probe:` or `udp_probe:` to actively send a control-port query and match the response. Reach for `python:` only when the wire format is too dynamic for the declarative blocks (multi-step handshakes, binary parsing, broadcast-then-per-host TCP follow-ups).
+**Choosing a fingerprint type.** Most AV devices announce themselves passively over one of three multicast channels. Pick the one your device actually emits. `mdns:` matches the device's Bonjour / Avahi service-type announcement (e.g. `_pjlink._tcp.local.`) and is the common case for projectors, displays, and networked audio gear. `ssdp:` matches the UPnP device-type URN advertised in SSDP NOTIFY (e.g. `urn:schemas-upnp-org:device:MediaRenderer:1`) and shows up on media renderers, smart displays, and consumer-grade AV devices; when a vendor's whole product family advertises one URN, add a `model:` (or `manufacturer:` / `friendly_name:`) filter to the entry — it matches the device-description XML the scanner fetches, so each model can map to its own driver. `amx_ddp:` matches the AMXB make / model beacon many AV control-system devices emit on multicast `239.255.250.250:9131`; provide a `make` string and an optional `model_pattern` glob. When the device doesn't announce, fall back to `tcp_probe:` or `udp_probe:` to actively send a control-port query and match the response. Reach for `python:` only when the wire format is too dynamic for the declarative blocks (multi-step handshakes, binary parsing, broadcast-then-per-host TCP follow-ups).
 
 A driver with no `discovery:` block at all is invisible to the matcher (still installable manually). The loader logs a warning so you notice.
 
@@ -1039,6 +1039,12 @@ discovery:
   #       txt: { manufacturer: "Shure" }   # TXT-record filter
 
   ssdp: "urn:schemas-upnp-org:device:MediaRenderer:1"
+  # OR list; entries can filter on the UPnP device description when a
+  # vendor's whole family shares one URN:
+  #   ssdp:
+  #     - device_type: "urn:schemas-upnp-org:device:ATCUDevice:1"
+  #       model: "ATDM-0604a"            # exact match, case-insensitive
+  #       # also: manufacturer, friendly_name
 
   amx_ddp:
     make: "Polycom"
@@ -1088,7 +1094,7 @@ discovery:
 | Field | Kind | Description |
 |-------|------|-------------|
 | `mdns` | Fingerprint | mDNS service type the device announces. Bare string or list; list entries can be `{service, txt}` for TXT-record disambiguation when the service type is generic. |
-| `ssdp` | Fingerprint | UPnP device-type URN announced in SSDP `ST` / `NT` headers. Bare string or list. |
+| `ssdp` | Fingerprint | UPnP device-type URN announced in SSDP `ST` / `NT` headers. Bare string or list; list entries can be `{device_type, model, manufacturer, friendly_name}` — the optional fields match the device's UPnP description exactly (case-insensitive), so several drivers can share a family-wide URN. |
 | `amx_ddp` | Fingerprint | AMX Device Discovery Protocol beacon match. Provide `make` (required) and optional `model_pattern` glob. |
 | `tcp_probe` | Fingerprint | Connect to `port`, optionally send `send_ascii` / `send_hex`, match exactly one of `expect` / `expect_regex` / `expect_hex`. Optional `tls` (TLS-wrap the connection, no cert verification, for an HTTPS-only device), `cross_vendor`, `extract_manufacturer`, `extract` rules, `timeout_ms` (≤ 10000). |
 | `udp_probe` | Fingerprint | Broadcast on `port`, match the response. Same sub-fields as `tcp_probe`, except `timeout_ms` defaults to 2000 (vs 3000 for `tcp_probe`). |

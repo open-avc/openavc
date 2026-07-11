@@ -122,11 +122,14 @@ class SignalRule:
             - ``KIND_HOSTNAME``: regex source string (compiled lazily by the index)
             - ``KIND_OPEN_PORT``: port number as string, e.g. ``"4352"``
             - ``KIND_VENDOR_STRING``: lowercased manufacturer alias
-        txt_match: Optional TXT-record filter. The signal matches only
-            when every key in this dict is present in the observed TXT
-            and matches the value (case-insensitive). Used to disambiguate
-            generic service types (``_http._tcp``, ``_airplay._tcp``) by
-            requiring a manufacturer or model TXT field.
+        txt_match: Optional observed-field filter. The signal matches only
+            when every key in this dict is present in the observation's
+            field map and matches the value (case-insensitive). For mDNS
+            the fields are the TXT record; for SSDP they are the UPnP
+            device-description fields (model / manufacturer /
+            friendly_name). Used to disambiguate shared source IDs
+            (``_http._tcp``, a family-wide UPnP device-type URN) by
+            requiring a manufacturer or model field.
         evidence_data: Optional static data merged into the evidence
             record when this rule matches. Used to pre-fill manufacturer
             / model when the signal alone implies them.
@@ -168,6 +171,7 @@ class SignalRule:
         cls,
         driver_id: str,
         device_type: str,
+        txt_match: dict[str, str] | None = None,
         *,
         generic: bool = False,
     ) -> "SignalRule":
@@ -176,6 +180,7 @@ class SignalRule:
             tier=SignalTier.PASSIVE_LISTENER,
             kind=KIND_SSDP,
             source_id=device_type,
+            txt_match=_freeze_dict(txt_match),
             generic=generic,
         )
 

@@ -77,9 +77,17 @@ class MdnsFingerprint:
 
 @dataclass(frozen=True)
 class SsdpFingerprint:
-    """One SSDP/UPnP device-type declaration."""
+    """One SSDP/UPnP device-type declaration.
+
+    ``fields`` optionally filters on the responder's UPnP device
+    description (model / manufacturer / friendly_name, matched
+    case-insensitively), so several drivers can share one device-type
+    URN — vendor UPnP stacks commonly advertise a single family-wide
+    URN and only the description XML names the exact model.
+    """
 
     device_type: str
+    fields: tuple[tuple[str, str], ...] = ()
     cross_vendor: bool = False
 
 
@@ -345,14 +353,28 @@ def _parse_mdns_entry(driver_id: str, raw: Any) -> MdnsFingerprint:
     )
 
 
+_SSDP_FILTER_KEYS = ("model", "manufacturer", "friendly_name")
+
+
 def _parse_ssdp_entry(driver_id: str, raw: Any) -> SsdpFingerprint:
-    """Accept a bare device-type string or a ``{device_type, cross_vendor}`` mapping."""
+    """Accept a bare device-type string or a mapping.
+
+    The mapping form takes ``device_type`` plus optional ``model`` /
+    ``manufacturer`` / ``friendly_name`` filters matched exactly
+    (case-insensitive) against the responder's UPnP device description,
+    and ``cross_vendor``.
+    """
     if isinstance(raw, str):
         return SsdpFingerprint(device_type=raw, cross_vendor=False)
     mapping = _ensure_dict(driver_id, "ssdp entry", raw)
     device_type = _ensure_str(driver_id, "ssdp.device_type", mapping.get("device_type"))
+    fields = tuple(sorted(
+        (key, _ensure_str(driver_id, f"ssdp.{key}", mapping[key]))
+        for key in _SSDP_FILTER_KEYS
+        if mapping.get(key) is not None
+    ))
     cross_vendor = _ensure_bool(driver_id, "ssdp.cross_vendor", mapping.get("cross_vendor"))
-    return SsdpFingerprint(device_type=device_type, cross_vendor=cross_vendor)
+    return SsdpFingerprint(device_type=device_type, fields=fields, cross_vendor=cross_vendor)
 
 
 def _parse_amx_ddp_entry(driver_id: str, raw: Any) -> AmxDdpFingerprint:
@@ -900,7 +922,9 @@ def build_signal_index(hints: list[DiscoveryHint]) -> SignalIndex:
             ))
         for fp in hint.ssdp:
             index.add_rule(SignalRule.for_ssdp(
-                hint.driver_id, fp.device_type, generic=fp.cross_vendor,
+                hint.driver_id, fp.device_type,
+                txt_match={k: v for k, v in fp.fields} or None,
+                generic=fp.cross_vendor,
             ))
         for fp in hint.amx_ddp:
             index.add_rule(SignalRule.for_amx_ddp(

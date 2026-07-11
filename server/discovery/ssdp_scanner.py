@@ -136,6 +136,21 @@ class SSDPResult:
         if self.server:
             data["server"] = self.server
 
+        # Device-description fields double as the matcher's observed-field
+        # map, so ssdp rules can filter on model/manufacturer the way mdns
+        # rules filter on TXT records.
+        txt = {
+            key: value
+            for key, value in (
+                ("model", self.model_name),
+                ("manufacturer", self.manufacturer),
+                ("friendly_name", self.friendly_name),
+            )
+            if value
+        }
+        if txt:
+            data["txt"] = txt
+
         return Evidence(
             tier=SignalTier.PASSIVE_LISTENER,
             source=f"ssdp:{self.st}",

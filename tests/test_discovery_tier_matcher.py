@@ -309,6 +309,37 @@ class TestTierMatcherIdentified:
         assert result.state == DeviceState.IDENTIFIED
         assert result.driver_id == "crestron_3series"
 
+    def test_ssdp_model_filter_end_to_end(self):
+        # Two drivers share one family URN; the scanner's device-description
+        # fields (SSDPResult.to_evidence -> data["txt"]) pick the right one.
+        from server.discovery.ssdp_scanner import SSDPResult
+
+        idx = SignalIndex()
+        idx.add_rule(SignalRule.for_ssdp(
+            "widget_a", "urn:foo:device:AcmeFamily:1", txt_match={"model": "Widget-6"},
+        ))
+        idx.add_rule(SignalRule.for_ssdp(
+            "widget_b", "urn:foo:device:AcmeFamily:1", txt_match={"model": "Widget-6a"},
+        ))
+        m = TierMatcher(idx)
+
+        ev = SSDPResult(
+            ip="10.0.0.60",
+            st="urn:foo:device:AcmeFamily:1",
+            manufacturer="AcmeCorp",
+            model_name="Widget-6a",
+        ).to_evidence()
+        result = m.match([ev])
+        assert result.state == DeviceState.IDENTIFIED
+        assert result.driver_id == "widget_b"
+
+        # Same URN with no description fields -> filtered rules stay silent.
+        bare = SSDPResult(
+            ip="10.0.0.61", st="urn:foo:device:AcmeFamily:1",
+        ).to_evidence()
+        result = m.match([bare])
+        assert result.state != DeviceState.IDENTIFIED
+
     def test_active_probe_match_identified(self):
         idx = SignalIndex()
         idx.add_rule(SignalRule.for_active_probe("pjlink_class1", "pjlink"))

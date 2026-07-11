@@ -134,6 +134,30 @@ class TestSSDPResultEvidence:
         r = SSDPResult(ip="10.0.0.50", usn="uuid:abc", friendly_name="thing")
         assert r.to_evidence() is None
 
+    def test_description_fields_emitted_as_observed_field_map(self):
+        # model/manufacturer/friendly_name double as the matcher's
+        # observed-field map so ssdp rules can filter on them.
+        r = SSDPResult(
+            ip="10.0.0.50",
+            st="urn:foo:device:AcmeFamily:1",
+            friendly_name="Widget 6a",
+            manufacturer="AcmeCorp",
+            model_name="Widget-6a",
+        )
+        ev = r.to_evidence()
+        assert ev is not None
+        assert ev.data["txt"] == {
+            "model": "Widget-6a",
+            "manufacturer": "AcmeCorp",
+            "friendly_name": "Widget 6a",
+        }
+
+    def test_no_description_fields_omits_field_map(self):
+        r = SSDPResult(ip="10.0.0.50", st="urn:foo:device:AcmeFamily:1")
+        ev = r.to_evidence()
+        assert ev is not None
+        assert "txt" not in ev.data
+
 
 class TestDriverDeclaredServiceTypes:
     """Service types come from driver catalog declarations.

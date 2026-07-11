@@ -97,7 +97,9 @@ const readSsdp = (raw: string | DriverDiscoverySsdpFingerprint) =>
   typeof raw === "string" ? { device_type: raw } : raw;
 
 const writeSsdp = (fp: DriverDiscoverySsdpFingerprint) =>
-  fp.cross_vendor ? fp : fp.device_type;
+  fp.cross_vendor || fp.model || fp.manufacturer || fp.friendly_name
+    ? fp
+    : fp.device_type;
 
 const readPython = (raw: string | DriverDiscoveryPython) =>
   typeof raw === "string" ? { file: raw } : raw;
@@ -294,21 +296,50 @@ function SsdpList({
     <div>
       <label style={LABEL}>SSDP / UPnP device type</label>
       {items.map((item, i) => (
-        <div key={i} style={ROW}>
-          <input
-            type="text"
-            value={item.device_type}
-            placeholder="urn:schemas-upnp-org:device:MediaRenderer:1"
-            onChange={(e) => setAt(i, { device_type: e.target.value })}
-            style={MONO}
-          />
-          <CrossVendorToggle
-            checked={!!item.cross_vendor}
-            onChange={(v) => setAt(i, { cross_vendor: v || undefined })}
-          />
-          <RemoveButton
-            onClick={() => onChange(items.filter((_, j) => j !== i))}
-          />
+        <div key={i} style={CARD}>
+          <div style={ROW}>
+            <input
+              type="text"
+              value={item.device_type}
+              placeholder="urn:schemas-upnp-org:device:MediaRenderer:1"
+              onChange={(e) => setAt(i, { device_type: e.target.value })}
+              style={MONO}
+            />
+            <CrossVendorToggle
+              checked={!!item.cross_vendor}
+              onChange={(v) => setAt(i, { cross_vendor: v || undefined })}
+            />
+            <RemoveButton
+              onClick={() => onChange(items.filter((_, j) => j !== i))}
+            />
+          </div>
+          <div style={ROW}>
+            <input
+              type="text"
+              value={item.model ?? ""}
+              placeholder="Model filter (exact, e.g. ATDM-0604a)"
+              onChange={(e) => setAt(i, { model: e.target.value || undefined })}
+              style={MONO}
+            />
+            <input
+              type="text"
+              value={item.manufacturer ?? ""}
+              placeholder="Manufacturer filter"
+              onChange={(e) =>
+                setAt(i, { manufacturer: e.target.value || undefined })
+              }
+              style={MONO}
+            />
+            <input
+              type="text"
+              value={item.friendly_name ?? ""}
+              placeholder="Friendly-name filter"
+              onChange={(e) =>
+                setAt(i, { friendly_name: e.target.value || undefined })
+              }
+              style={MONO}
+            />
+          </div>
         </div>
       ))}
       <button
@@ -318,6 +349,12 @@ function SsdpList({
       >
         <Plus size={12} /> Add SSDP type
       </button>
+      <div style={HELP}>
+        Add a model / manufacturer filter when several devices share one
+        device-type URN (common for a vendor&apos;s whole product family) —
+        the filter matches the device&apos;s UPnP description exactly,
+        case-insensitive.
+      </div>
     </div>
   );
 }

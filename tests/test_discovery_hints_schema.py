@@ -117,6 +117,24 @@ class TestSsdpFingerprint:
         with pytest.raises(DiscoveryHintError, match="ssdp.device_type"):
             parse_driver_discovery(_drv("bad", ssdp={"cross_vendor": True}))
 
+    def test_device_description_filters_parsed(self):
+        h = parse_driver_discovery(_drv("widget", ssdp={
+            "device_type": "urn:foo:device:AcmeFamily:1",
+            "model": "Widget-6a",
+            "manufacturer": "AcmeCorp",
+        }))
+        assert h is not None
+        assert h.ssdp[0].fields == (
+            ("manufacturer", "AcmeCorp"), ("model", "Widget-6a"),
+        )
+
+    def test_filter_value_must_be_string(self):
+        with pytest.raises(DiscoveryHintError, match="ssdp.model"):
+            parse_driver_discovery(_drv("bad", ssdp={
+                "device_type": "urn:foo:device:AcmeFamily:1",
+                "model": 604,
+            }))
+
 
 class TestAmxDdpFingerprint:
     def test_basic_mapping(self):
@@ -562,6 +580,57 @@ class TestSignalIndexBuilder:
         registry = [
             _drv("a", ssdp="urn:foo:device:Bar:1"),
             _drv("b", ssdp="urn:foo:device:Bar:1"),
+        ]
+        with pytest.raises(ValueError, match="Signal collision"):
+            build_signal_index(load_discovery_hints(registry))
+
+    def test_ssdp_shared_urn_split_by_model_filter(self):
+        # A vendor family advertising one URN: each driver filters on the
+        # modelName from the UPnP device description.
+        registry = [
+            _drv("widget_a", ssdp={
+                "device_type": "urn:foo:device:AcmeFamily:1",
+                "model": "Widget-6",
+            }),
+            _drv("widget_b", ssdp={
+                "device_type": "urn:foo:device:AcmeFamily:1",
+                "model": "Widget-6a",
+            }),
+        ]
+        idx = build_signal_index(load_discovery_hints(registry))
+        rule = idx.find_strong(
+            KIND_SSDP, "urn:foo:device:AcmeFamily:1", txt={"model": "Widget-6a"},
+        )
+        assert rule is not None and rule.driver_id == "widget_b"
+        # Exact match — "Widget-6" must not claim a "Widget-6a" observation.
+        rule = idx.find_strong(
+            KIND_SSDP, "urn:foo:device:AcmeFamily:1", txt={"model": "Widget-6"},
+        )
+        assert rule is not None and rule.driver_id == "widget_a"
+        # No description fields observed -> no filtered rule can match.
+        assert idx.find_strong(KIND_SSDP, "urn:foo:device:AcmeFamily:1") is None
+
+    def test_ssdp_identical_model_filters_collide(self):
+        registry = [
+            _drv("a", ssdp={
+                "device_type": "urn:foo:device:AcmeFamily:1",
+                "model": "Widget-6",
+            }),
+            _drv("b", ssdp={
+                "device_type": "urn:foo:device:AcmeFamily:1",
+                "model": "Widget-6",
+            }),
+        ]
+        with pytest.raises(ValueError, match="Signal collision"):
+            build_signal_index(load_discovery_hints(registry))
+
+    def test_ssdp_unfiltered_claim_cannot_shadow_filtered(self):
+        registry = [
+            _drv("a", ssdp={
+                "device_type": "urn:foo:device:AcmeFamily:1",
+                "model": "Widget-6",
+            }),
+            _drv("b", ssdp="urn:foo:device:AcmeFamily:1"),
         ]
         with pytest.raises(ValueError, match="Signal collision"):
             build_signal_index(load_discovery_hints(registry))

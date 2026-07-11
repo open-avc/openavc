@@ -598,6 +598,11 @@ export interface DriverDiscoveryMdnsFingerprint {
 
 export interface DriverDiscoverySsdpFingerprint {
   device_type: string;
+  // Optional exact-match filters (case-insensitive) against the responder's
+  // UPnP device description, for families that share one device-type URN.
+  model?: string;
+  manufacturer?: string;
+  friendly_name?: string;
   cross_vendor?: boolean;
 }
 
