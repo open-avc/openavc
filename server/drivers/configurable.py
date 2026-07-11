@@ -246,9 +246,24 @@ class ConfigurableDriver(BaseDriver):
 
             # JSON-body response: parse the whole body once and map many keys
             # at a time. Additive — does not change the regex first-match path.
+            # Optional `require:` scopes the rule to bodies carrying the named
+            # key(s) — different endpoints on one REST device often reuse a
+            # field name (`status`, `id`, `serialNumber`) with different
+            # meanings, and an unscoped rule would misapply across them.
             if resp.get("json"):
+                raw_require = resp.get("require")
+                if isinstance(raw_require, str):
+                    require = (raw_require,)
+                elif isinstance(raw_require, list):
+                    require = tuple(str(k) for k in raw_require if k)
+                else:
+                    require = ()
                 self._json_responses.append(
-                    (self._build_json_mappings(resp), self._build_throttle(resp))
+                    (
+                        self._build_json_mappings(resp),
+                        self._build_throttle(resp),
+                        require,
+                    )
                 )
                 continue
 
@@ -1883,7 +1898,16 @@ class ConfigurableDriver(BaseDriver):
             return False
         applied = False
         throttled = False
-        for mappings, tstate in self._json_responses:
+        for mappings, tstate, require in self._json_responses:
+            # A rule scoped by `require:` applies only to bodies carrying all
+            # of the named keys — without the scope, endpoints that reuse a
+            # field name (a paired peripheral's `status` vs the main unit's)
+            # would cross-write each other's state.
+            if require and not all(
+                self._extract_json_path(obj, key) is not _JSON_PATH_MISSING
+                for key in require
+            ):
+                continue
             # Resolve first so a body without this rule's keys neither applies
             # nor stamps the rule's throttle window.
             resolved: list[tuple[dict[str, Any], Any]] = []

@@ -92,9 +92,9 @@ export function canUseSetShorthand(
 
 /** Build a response def, preserving the original form (set: shorthand or
  *  mappings:) of the loaded response when the new mappings still fit.
- *  `child_set` and `throttle` ride along untouched — rebuilding from a
- *  pattern/mapping edit must never drop the child routing or the rate
- *  limit. */
+ *  `child_set`, `throttle`, and the json-rule keys (`json`, `require`) ride
+ *  along untouched — rebuilding from a pattern/mapping edit must never drop
+ *  the child routing, the rate limit, or the rule's body-parsing mode. */
 export function buildResponse(
   pattern: string,
   mappings: DriverResponseMapping[],
@@ -104,16 +104,27 @@ export function buildResponse(
   const childSet = original.child_set?.length
     ? { child_set: original.child_set }
     : {};
-  const throttle =
-    original.throttle !== undefined ? { throttle: original.throttle } : {};
+  const carry = {
+    ...(original.throttle !== undefined ? { throttle: original.throttle } : {}),
+    ...(original.json !== undefined ? { json: original.json } : {}),
+    ...(original.require !== undefined ? { require: original.require } : {}),
+  };
   // OSC responses always use mappings + address (no child_set — the loader
   // rejects it there; throttle is valid on any response kind).
   if (original.address !== undefined) {
-    return { address: pattern, mappings, ...throttle };
+    return { address: pattern, mappings, ...carry };
   }
   // A child_set-only response keeps its YAML clean: no empty mappings key.
   if (mappings.length === 0 && original.mappings === undefined && original.set === undefined) {
-    return { match: pattern, ...childSet, ...throttle };
+    return { match: pattern, ...childSet, ...carry };
+  }
+  // A json rule has no match pattern — its set values are JSON keys, not
+  // capture refs. Preserve it verbatim apart from the edited mappings.
+  if (original.json) {
+    const base: DriverResponseDef = { ...original };
+    delete base.match;
+    delete base.pattern;
+    return { ...base, ...carry };
   }
   // Choose set: shorthand when (a) the original used it AND (b) the
   // current mapping shape still fits the shorthand. Otherwise fall back
@@ -128,9 +139,9 @@ export function buildResponse(
         set[m.state] = `$${m.group}`;
       }
     }
-    return { match: pattern, set, ...childSet, ...throttle };
+    return { match: pattern, set, ...childSet, ...carry };
   }
-  return { match: pattern, mappings, ...childSet, ...throttle };
+  return { match: pattern, mappings, ...childSet, ...carry };
 }
 
 /** Validate renaming a value-map raw key against its sibling keys. Renaming

@@ -552,6 +552,14 @@ export interface DriverResponseDef {
   // push telemetry (10 Hz meter frames + throttle 0.5 = 2 state writes/sec).
   // Must be a positive number; absent means every match applies.
   throttle?: number;
+  // JSON-body rule: the reply parses as a JSON object and every `set` value
+  // names the JSON key/path to read (not a capture ref). All json rules run
+  // against every reply. The Builder has no dedicated editor for these yet;
+  // it preserves them through edits.
+  json?: boolean;
+  // Scope a json rule to bodies carrying the named key(s) — endpoints on one
+  // REST device often reuse a field name with different meanings.
+  require?: string | string[];
   mappings?: DriverResponseMapping[];
   // Shorthand for capture-or-static mappings:
   //   set: { volume: "$1" }       — capture group reference

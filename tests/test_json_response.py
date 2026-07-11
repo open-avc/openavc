@@ -151,6 +151,103 @@ def test_normalize_json_response_row():
     assert out == {"json": True, "set": {"in_use": {"key": "inUse", "type": "boolean"}}}
 
 
+# ── require: scoping json rules to matching bodies ─────────────────────────
+
+
+def _scoped_driver():
+    """Invented device where two endpoints reuse the JSON key `status`: the
+    power endpoint (has supportedStatuses) means On/Standby, the peripheral
+    endpoint means Ok/Error — the classic cross-fire require: prevents."""
+    definition = dict(JSON_DEFINITION, id="acme_scoped")
+    definition["responses"] = [
+        {
+            "json": True,
+            "require": "supportedStatuses",
+            "set": {"status_text": {"key": "status"}},
+        },
+        {"json": True, "set": {"sessions": {"key": "sessions", "type": "integer"}}},
+    ]
+    cls = create_configurable_driver_class(definition)
+
+    from server.core.event_bus import EventBus
+    from server.core.state_store import StateStore
+
+    events = EventBus()
+    st = StateStore()
+    st.set_event_bus(events)
+    return cls("scoped1", {"host": "127.0.0.1"}, st, events)
+
+
+async def test_json_require_scopes_rule_to_matching_bodies():
+    drv = _scoped_driver()
+    # Peripheral body: carries `status` but not the required key — the scoped
+    # rule must not apply; the unscoped rule still does.
+    await drv.on_data_received(b'{"status":"Ok","sessions":2}')
+    assert drv.get_state("status_text") == ""
+    assert drv.get_state("sessions") == 2
+    # Power body: required key present — the scoped rule applies.
+    await drv.on_data_received(
+        b'{"status":"Standby","supportedStatuses":["On","Standby"]}'
+    )
+    assert drv.get_state("status_text") == "Standby"
+
+
+async def test_json_require_list_needs_every_key():
+    definition = dict(JSON_DEFINITION, id="acme_scoped2")
+    definition["responses"] = [
+        {
+            "json": True,
+            "require": ["alpha", "beta"],
+            "set": {"status_text": {"key": "status"}},
+        },
+    ]
+    cls = create_configurable_driver_class(definition)
+
+    from server.core.event_bus import EventBus
+    from server.core.state_store import StateStore
+
+    events = EventBus()
+    st = StateStore()
+    st.set_event_bus(events)
+    drv = cls("scoped2", {"host": "127.0.0.1"}, st, events)
+
+    await drv.on_data_received(b'{"status":"A","alpha":1}')
+    assert drv.get_state("status_text") == ""
+    await drv.on_data_received(b'{"status":"B","alpha":1,"beta":2}')
+    assert drv.get_state("status_text") == "B"
+
+
+def test_loader_validates_require():
+    from server.drivers.driver_loader import validate_driver_definition
+
+    base = dict(JSON_DEFINITION, id="acme_v")
+    base["name"] = "Acme V"
+    base["author"] = "Test"
+    base["description"] = "x"
+    base["source_url"] = "https://example.com"
+
+    ok = dict(base)
+    ok["responses"] = [
+        {"json": True, "require": "supportedStatuses", "set": {"mode": "mode"}},
+        {"json": True, "require": ["a", "b"], "set": {"sessions": "sessions"}},
+    ]
+    # The invented definition trips unrelated metadata checks; only assert
+    # that a well-formed require produces no require-specific error.
+    assert not [e for e in validate_driver_definition(ok) if "require" in e]
+
+    for bad, expect in [
+        ({"match": "x", "require": "k", "set": {"mode": "$0"}}, "only applies to json"),
+        ({"json": True, "require": "", "set": {"mode": "m"}}, "must name a JSON key"),
+        ({"json": True, "require": [], "set": {"mode": "m"}}, "non-empty JSON key"),
+        ({"json": True, "require": [""], "set": {"mode": "m"}}, "non-empty JSON key"),
+        ({"json": True, "require": 5, "set": {"mode": "m"}}, "JSON key name or a"),
+    ]:
+        d = dict(base)
+        d["responses"] = [bad]
+        errors = validate_driver_definition(d)
+        assert any(expect in e for e in errors), (bad, errors)
+
+
 # ── Gap B: on_connect / dispatch query ───────────────────────────────────────
 
 class _FakeResp:

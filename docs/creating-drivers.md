@@ -881,6 +881,20 @@ responses:
 
 Each `set` value is the JSON field to read: a plain key, a dot path (`video.mode`), or a `{ key, type, map }` object. Missing keys are left alone, and a key that lands on a list or object yields its length. A reply wrapped in a single-element array (`[{ ... }]` — some devices wrap every reply that way) is unwrapped to its object first; multi-element arrays are ambiguous and are not parsed. You can add several `json: true` responses — they all run against every reply — and a body that isn't JSON falls through to your regex patterns. In the no-code Commands & Responses editor this is the "has a JSON field" response mode (one field per row).
 
+Because every json rule runs against every reply, two endpoints on the same device that reuse a field name with different meanings would cross-write each other's state — a paired peripheral's `status` landing in the main unit's power state, say. Scope such a rule with `require:` — a JSON key (or list of keys, all required) that must be present in the body before the rule applies:
+
+```yaml
+responses:
+  - json: true
+    require: supportedStatuses     # only the power-management reply has this
+    set:
+      system_status:   { key: status }
+      power_mode:      { key: powerMode }
+      standby_timeout: { key: standbyTimeout }
+```
+
+Rules whose mapped keys are unique across the device's replies don't need it.
+
 Response patterns (and the `auth` prompt regexes) are validated when the driver loads: an invalid regex, or one with nested/overlapping quantifiers that can cause catastrophic backtracking against hostile device input (for example `(.+)+`, `(a|a)+`, `(foo|foobar)*`), is rejected and the driver won't load. Anchor and bound your patterns instead.
 
 **Config values in patterns**: You can use config value placeholders like `{level_control}` in response patterns. They are resolved when the driver connects. This is useful for protocols like QSC Q-SYS where responses include user-configured control names.

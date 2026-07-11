@@ -291,6 +291,33 @@ def validate_driver_definition(driver_def: dict[str, Any]) -> list[str]:
             errors.append(
                 f"Response {i}: throttle must be a positive number of seconds"
             )
+        # Optional `require:` scope on json rules — a misdeclared value would
+        # silently disable the rule (never matches) or leave it unscoped.
+        require = resp.get("require")
+        if require is not None:
+            if not resp.get("json"):
+                errors.append(
+                    f"Response {i}: require only applies to json: true "
+                    f"responses"
+                )
+            if isinstance(require, str):
+                if not require.strip():
+                    errors.append(
+                        f"Response {i}: require must name a JSON key"
+                    )
+            elif isinstance(require, list):
+                if not require or not all(
+                    isinstance(k, str) and k.strip() for k in require
+                ):
+                    errors.append(
+                        f"Response {i}: require list entries must be "
+                        f"non-empty JSON key names"
+                    )
+            else:
+                errors.append(
+                    f"Response {i}: require must be a JSON key name or a "
+                    f"list of them"
+                )
         # OSC responses use "address" key — validate it starts with /
         if "address" in resp:
             addr = resp["address"]
