@@ -711,8 +711,9 @@ def _import_avc(content: bytes, override_id: str | None) -> dict[str, Any]:
     # surface any plugins the project references but that aren't installed.
     missing_plugins = _check_missing_plugins(data)
     for mp in missing_plugins:
+        name = mp["plugin_name"] or mp["plugin_id"]
         warnings.append(
-            f"Plugin '{mp}' is not installed. Install it from the community repository."
+            f"Plugin '{name}' is not installed. Install it from the community repository."
         )
 
     log.info(f"Imported project '{pid}' from .avc file")
@@ -845,15 +846,26 @@ def _install_bundled_plugins(zf: zipfile.ZipFile) -> list[str]:
     return installed
 
 
-def _check_missing_plugins(data: dict) -> list[str]:
-    """Check which plugins referenced in the project are not installed."""
+def _check_missing_plugins(data: dict) -> list[dict[str, Any]]:
+    """Check which plugins referenced in the project are not installed.
+
+    Returns an object list mirroring ``_check_missing_drivers`` so clients get
+    a consistent shape (and the human-readable plugin name when the project
+    carries it in ``plugin_dependencies``).
+    """
     from server.core.plugin_loader import get_plugin_registry
 
     registry = get_plugin_registry()
-    missing = []
+    missing: list[dict[str, Any]] = []
     for plugin_id in data.get("plugins", {}):
-        if plugin_id not in registry:
-            missing.append(plugin_id)
+        if plugin_id in registry:
+            continue
+        dep_name = ""
+        for dep in data.get("plugin_dependencies", []):
+            if dep.get("plugin_id") == plugin_id:
+                dep_name = dep.get("plugin_name", "")
+                break
+        missing.append({"plugin_id": plugin_id, "plugin_name": dep_name})
     return missing
 
 
@@ -928,8 +940,9 @@ def _import_zip(content: bytes, override_id: str | None) -> dict[str, Any]:
     # Check for missing plugins
     missing_plugins = _check_missing_plugins(data)
     for mp in missing_plugins:
+        name = mp["plugin_name"] or mp["plugin_id"]
         warnings.append(
-            f"Plugin '{mp}' is not installed and was not bundled in the export. "
+            f"Plugin '{name}' is not installed and was not bundled in the export. "
             f"Install it from the community repository."
         )
 

@@ -591,8 +591,26 @@ class TestMissingPluginParity:
     def test_import_avc_reports_missing_plugins(self, tmp_lib):
         avc = _valid_avc("withplugin", plugins={"acme_widget": {"enabled": True}})
         result = import_project(avc.encode("utf-8"), "withplugin.avc")
-        assert "acme_widget" in result["missing_plugins"]
+        # missing_plugins is an object list mirroring missing_drivers, not a
+        # bare list of id strings — clients get a consistent shape.
+        assert result["missing_plugins"] == [
+            {"plugin_id": "acme_widget", "plugin_name": ""}
+        ]
         assert any("acme_widget" in w for w in result["warnings"])
+
+    def test_missing_plugin_carries_name_from_dependencies(self, tmp_lib):
+        data = json.loads(
+            _valid_avc("named", plugins={"acme_widget": {"enabled": True}})
+        )
+        data["plugin_dependencies"] = [
+            {"plugin_id": "acme_widget", "plugin_name": "Acme Widget"}
+        ]
+        result = import_project(json.dumps(data).encode("utf-8"), "named.avc")
+        assert result["missing_plugins"] == [
+            {"plugin_id": "acme_widget", "plugin_name": "Acme Widget"}
+        ]
+        # The warning prefers the human-readable name when the project has one.
+        assert any("Acme Widget" in w for w in result["warnings"])
 
 
 class TestBundledDriverIdDedup:
