@@ -13,7 +13,9 @@ Covers the audit findings fixed in the driverBuilderStore.ts group:
   H-072/M-126 reconcileAfterSave (don't clobber edits made during the save
   await; keep selection consistent with the persisted id), M-127 makeLatestWins
   (overlapping list refreshes resolve newest-started-wins, not last-resolved),
-  M-128 importBlockers (route imports through validateDriver instead of a 422).
+  M-128 importBlockers (route imports through validateDriver instead of a 422),
+  L-150 parseDriverDefinition (gate on a mapping so an imported list/scalar is
+  rejected with a shape message, not cast through to a misleading 422).
 """
 from __future__ import annotations
 
@@ -89,6 +91,13 @@ SCENARIOS = [
     "m128_import_warning_does_not_block",
     "m229_clone_fills_missing_state_variables",
     "m229_clone_preserves_shape_and_is_deep",
+    "l150_json_object_ok",
+    "l150_yaml_mapping_ok",
+    "l150_json_array_rejected",
+    "l150_yaml_sequence_rejected",
+    "l150_scalar_rejected",
+    "l150_null_rejected",
+    "l150_unparseable_distinct_message",
 ]
 
 

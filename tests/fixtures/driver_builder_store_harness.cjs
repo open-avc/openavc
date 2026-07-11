@@ -193,4 +193,73 @@ const results = {};
   }
 }
 
+// --- L-150: parseDriverDefinition gates on a mapping, not any non-null object ---
+const parseOutcome = (text) => {
+  try {
+    return { value: H.parseDriverDefinition(text), threw: false };
+  } catch (e) {
+    return { threw: true, isSyntax: e instanceof SyntaxError, message: String(e && e.message) };
+  }
+};
+{
+  // A JSON object round-trips to a definition.
+  const r = parseOutcome('{"id":"acme_x","name":"Acme X","transport":"tcp"}');
+  results.l150_json_object_ok = {
+    pass: r.threw === false && r.value.id === "acme_x" && r.value.transport === "tcp",
+    detail: r,
+  };
+}
+{
+  // A YAML mapping (community driver form) round-trips too.
+  const r = parseOutcome("id: acme_x\nname: Acme X\ntransport: tcp\n");
+  results.l150_yaml_mapping_ok = {
+    pass: r.threw === false && r.value.id === "acme_x" && r.value.name === "Acme X",
+    detail: r,
+  };
+}
+{
+  // A JSON array was cast straight to DriverDefinition by the old code, reached
+  // the API and 422'd on a missing id. Now rejected up front with a shape msg.
+  const r = parseOutcome("[1, 2, 3]");
+  results.l150_json_array_rejected = {
+    pass: r.threw === true && r.isSyntax === true && /mapping/.test(r.message),
+    detail: r,
+  };
+}
+{
+  // A YAML sequence slipped through the old `parsed && typeof === 'object'`
+  // guard (typeof [] === "object"); the mapping gate rejects it.
+  const r = parseOutcome("- one\n- two\n");
+  results.l150_yaml_sequence_rejected = {
+    pass: r.threw === true && r.isSyntax === true && /mapping/.test(r.message),
+    detail: r,
+  };
+}
+{
+  // A bare scalar (JSON number) is rejected — the old code returned it verbatim.
+  const r = parseOutcome("42");
+  results.l150_scalar_rejected = {
+    pass: r.threw === true && r.isSyntax === true && /mapping/.test(r.message),
+    detail: r,
+  };
+}
+{
+  // JSON null (the one shape the old guard already caught) stays rejected — the
+  // mapping gate is a superset of the old null check.
+  const r = parseOutcome("null");
+  results.l150_null_rejected = {
+    pass: r.threw === true && r.isSyntax === true,
+    detail: r,
+  };
+}
+{
+  // Genuinely unparseable input reports the distinct "not JSON or YAML" message,
+  // not the wrong-shape one — the two failures stay separable for the caller.
+  const r = parseOutcome("{ this: is: not: valid");
+  results.l150_unparseable_distinct_message = {
+    pass: r.threw === true && r.isSyntax === true && /not valid JSON or YAML/.test(r.message),
+    detail: r,
+  };
+}
+
 process.stdout.write(JSON.stringify(results));

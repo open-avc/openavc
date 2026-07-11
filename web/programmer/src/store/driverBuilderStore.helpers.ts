@@ -1,5 +1,47 @@
+import yaml from "js-yaml";
 import type { DriverDefinition } from "../api/types";
 import { validateDriver } from "../components/driver-builder/validateDriver";
+
+/** A driver definition is a mapping. Excludes null, arrays, and scalars —
+ *  mirrors the runtime loader's isinstance(dict) gate. */
+function isMapping(value: unknown): boolean {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Parse a driver definition from an imported/pasted file — accepts both JSON
+ * and YAML (community drivers are YAML; our own exports are usually JSON).
+ *
+ * A definition is a mapping. JSON.parse and yaml.load both happily return
+ * arrays and scalars for a well-formed but wrong-shaped file (`[...]`, `42`, a
+ * bare string), and the old caller cast either straight to DriverDefinition —
+ * so a YAML list imported here reached the API and failed with a misleading
+ * "missing id" 422. Gate on a mapping up front, mirroring the runtime loader's
+ * isinstance(dict) check (server/drivers/driver_loader.py), so the thrown error
+ * names the real failure (not-a-mapping) instead of the cast laundering a list
+ * or scalar through the type system.
+ */
+export function parseDriverDefinition(text: string): DriverDefinition {
+  // Try JSON first (faster, more common from our own exports), then YAML.
+  // Both failure modes throw a SyntaxError with a message the caller can show
+  // verbatim: unparseable vs. parseable-but-wrong-shape are distinct problems.
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    try {
+      parsed = yaml.load(text);
+    } catch {
+      throw new SyntaxError("File is not valid JSON or YAML");
+    }
+  }
+  if (!isMapping(parsed)) {
+    throw new SyntaxError(
+      "Driver file must contain a set of fields (a mapping), not a list or single value",
+    );
+  }
+  return parsed as DriverDefinition;
+}
 
 /**
  * Clone a definition into an editor draft, filling in the collections the

@@ -1,28 +1,11 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import yaml from "js-yaml";
 import { useDriverBuilderStore } from "../store/driverBuilderStore";
+import { parseDriverDefinition } from "../store/driverBuilderStore.helpers";
 import { DriverList } from "../components/driver-builder/DriverList";
 import { DriverEditor } from "../components/driver-builder/DriverEditor";
 import { CommunityBrowser } from "../components/driver-builder/CommunityBrowser";
 import { InstalledDriversView } from "../components/driver-builder/InstalledDriversView";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
-import type { DriverDefinition } from "../api/types";
-
-/** Parse a driver definition from text — supports both JSON and YAML. */
-function parseDriverDefinition(text: string): DriverDefinition {
-  // Try JSON first (faster, more common from our own exports)
-  try {
-    return JSON.parse(text) as DriverDefinition;
-  } catch {
-    // Fall through to YAML
-  }
-  // Try YAML (community drivers are YAML)
-  const parsed = yaml.load(text);
-  if (parsed && typeof parsed === "object") {
-    return parsed as DriverDefinition;
-  }
-  throw new SyntaxError("File is not valid JSON or YAML");
-}
 
 type ViewTab = "installed" | "create" | "browse-community";
 
@@ -88,7 +71,7 @@ export function DriverPanel() {
         setShowImportDialog(false);
       } catch (err) {
         useDriverBuilderStore.setState({
-          error: `Failed to import: ${err instanceof SyntaxError ? "Invalid file (not JSON or YAML)" : String(err)}`,
+          error: `Failed to import: ${err instanceof SyntaxError ? err.message : String(err)}`,
         });
       }
       // Reset the input so the same file can be re-selected
@@ -232,7 +215,7 @@ export function DriverPanel() {
               setShowImportDialog(false);
             } catch (err) {
               useDriverBuilderStore.setState({
-                error: `Failed to import: ${err instanceof SyntaxError ? "Invalid JSON or YAML" : String(err)}`,
+                error: `Failed to import: ${err instanceof SyntaxError ? err.message : String(err)}`,
               });
             }
           }}
