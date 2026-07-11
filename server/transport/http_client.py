@@ -24,15 +24,149 @@ TLS:
 
 from __future__ import annotations
 
+import asyncio
 import json as json_module
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 import httpx
 
 from server.utils.logger import get_logger
 
 log = get_logger(__name__)
+
+
+class SSEEventStream:
+    """One persistent Server-Sent-Events subscription (``push: {type: sse}``).
+
+    Holds a GET request open with ``Accept: text/event-stream`` and delivers
+    each event's assembled data block to the callback. The stream owns its
+    own reconnect loop: a dropped or rejected connection is retried with
+    exponential backoff (1 s doubling to 30 s, reset once data flows), so a
+    device reboot or transient network cut re-establishes the subscription
+    without tearing the driver down — polling covers the gap.
+
+    ``idle_timeout`` (seconds) bounds the silence between received lines;
+    when the device promises periodic keepalives, setting it slightly above
+    the keepalive interval lets a half-open TCP connection (device power
+    cut, NAT expiry) be detected and reconnected. 0 waits forever.
+    """
+
+    def __init__(
+        self,
+        client: httpx.AsyncClient,
+        path: str,
+        callback: Callable[[bytes], Any],
+        idle_timeout: float = 0.0,
+        connect_timeout: float = 10.0,
+        name: str | None = None,
+    ) -> None:
+        self.path = path
+        self._client = client
+        self._callback = callback
+        self._idle_timeout = idle_timeout
+        self._connect_timeout = connect_timeout
+        self._name = name or path
+        self._closed = False
+        # First failure logs at warning; repeats drop to debug until a
+        # connection succeeds again, so an unreachable device doesn't flood
+        # the log at the retry cadence.
+        self._warned = False
+        self._task: asyncio.Task | None = asyncio.get_running_loop().create_task(
+            self._run()
+        )
+
+    async def close(self) -> None:
+        """Stop the stream and its reconnect loop (idempotent)."""
+        self._closed = True
+        task = self._task
+        self._task = None
+        if task is not None:
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
+
+    async def _run(self) -> None:
+        backoff = 1.0
+        headers = {"Accept": "text/event-stream"}
+        timeout = httpx.Timeout(
+            connect=self._connect_timeout,
+            read=self._idle_timeout if self._idle_timeout > 0 else None,
+            write=self._connect_timeout,
+            pool=self._connect_timeout,
+        )
+        while not self._closed:
+            try:
+                async with self._client.stream(
+                    "GET", self.path, headers=headers, timeout=timeout
+                ) as response:
+                    if response.status_code != 200:
+                        await response.aread()
+                        raise ConnectionError(
+                            f"event stream rejected with HTTP "
+                            f"{response.status_code}"
+                        )
+                    log.info(
+                        f"[{self._name}] Event stream open: {self.path}"
+                    )
+                    self._warned = False
+                    data_lines: list[str] = []
+                    async for line in response.aiter_lines():
+                        backoff = 1.0
+                        if line == "":
+                            # Blank line ends an event; dispatch its data.
+                            if data_lines:
+                                await self._dispatch("\n".join(data_lines))
+                                data_lines = []
+                            continue
+                        if line.startswith(":"):
+                            continue  # comment / keepalive
+                        field, _, value = line.partition(":")
+                        if value.startswith(" "):
+                            value = value[1:]
+                        if field == "data":
+                            data_lines.append(value)
+                        # event/id/retry fields carry no data — ignored.
+                    # Server closed the stream cleanly; fall through to retry.
+                    if data_lines:
+                        await self._dispatch("\n".join(data_lines))
+                log.debug(
+                    f"[{self._name}] Event stream {self.path} ended; "
+                    f"reconnecting"
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                if self._closed:
+                    return
+                msg = (
+                    f"[{self._name}] Event stream {self.path} failed "
+                    f"({str(e) or type(e).__name__}); retrying in "
+                    f"{backoff:.0f}s"
+                )
+                if self._warned:
+                    log.debug(msg)
+                else:
+                    log.warning(msg)
+                    self._warned = True
+            if self._closed:
+                return
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2, 30.0)
+
+    async def _dispatch(self, data: str) -> None:
+        """Hand one event's data to the callback; a callback error must not
+        kill the stream (the next event may parse fine)."""
+        try:
+            result = self._callback(data.encode("utf-8"))
+            if asyncio.iscoroutine(result):
+                await result
+        except Exception:
+            log.exception(
+                f"[{self._name}] Error in event-stream callback"
+            )
 
 
 @dataclass
@@ -111,6 +245,10 @@ class HTTPClientTransport:
         self.last_data_received: float = 0.0
         # Last request error string, for the connection-fault classifier.
         self._last_error = ""
+        # Open event-stream subscriptions (push: {type: sse}); closed with
+        # the client so a stream's reconnect loop never runs against a
+        # closed session.
+        self._event_streams: list[SSEEventStream] = []
 
     async def open(self) -> None:
         """Create the httpx.AsyncClient session with configured auth and TLS."""
@@ -153,11 +291,48 @@ class HTTPClientTransport:
         )
 
     async def close(self) -> None:
-        """Close the HTTP session."""
+        """Close the HTTP session (and any open event streams)."""
+        for stream in list(self._event_streams):
+            await stream.close()
+        self._event_streams.clear()
         if self._client is not None:
             await self._client.aclose()
             self._client = None
             log.info(f"HTTP client closed: {self.base_url}")
+
+    def open_event_stream(
+        self,
+        path: str,
+        callback: Callable[[bytes], Any],
+        idle_timeout: float = 0.0,
+        name: str | None = None,
+    ) -> SSEEventStream:
+        """Subscribe to a Server-Sent-Events endpoint (``push: {type: sse}``).
+
+        Holds ``GET path`` open with ``Accept: text/event-stream`` on this
+        client session (so auth headers/TLS settings apply) and delivers each
+        event's data block to ``callback(bytes)`` (sync or async). The stream
+        reconnects on its own with exponential backoff; ``await
+        handle.close()`` (or closing this transport) stops it.
+
+        Raises:
+            ConnectionError: If the client is not open.
+        """
+        if self._client is None:
+            raise ConnectionError("HTTP client not open — call open() first")
+        # Prune subscriptions closed by their owner so repeated
+        # subscribe/unsubscribe cycles on one session don't accumulate.
+        self._event_streams = [s for s in self._event_streams if not s._closed]
+        stream = SSEEventStream(
+            client=self._client,
+            path=path,
+            callback=callback,
+            idle_timeout=idle_timeout,
+            connect_timeout=self.timeout,
+            name=name or self._name,
+        )
+        self._event_streams.append(stream)
+        return stream
 
     async def verify(self, timeout: float = 5.0) -> bool:
         """Verify the remote HTTP device is reachable with a HEAD request."""

@@ -446,7 +446,7 @@ The tables below document each field in detail.
 | `on_connect` | No | List of raw commands sent immediately after connecting. Use for enabling verbose/feedback mode or requesting initial state. |
 | `polling` | No | Periodic status query configuration. |
 | `liveness` | No | Connection watchdog — send a probe on an interval, reconnect after consecutive misses. See `liveness` section below. |
-| `push` | No | Device-initiated push notifications (e.g. a device that multicasts state-change frames). Frames feed the same `responses` rules. See `push` section below. |
+| `push` | No | Device-initiated push notifications — a multicast group the device sends frames to, or an SSE event stream on its HTTP API. Everything feeds the same `responses` rules. See `push` section below. |
 | `frame_parser` | No | Advanced: custom receive framing (see below). |
 | `send_frame` | No | Advanced: send-side packet framing — wraps every command in a binary header with a computed data length (e.g. eISCP). The send twin of `frame_parser` (see below). Byte-stream transports only. |
 | `protocols` | No | Protocol names this driver speaks (e.g., `["pjlink"]`, `["extron_sis"]`). Helps discovery match devices to drivers. |
@@ -1022,31 +1022,46 @@ frame_parser:
 
 #### `push` section
 
-Most devices report state only when polled, and some push updates on the connection the driver already holds — both of those need nothing special. A `push` block is for devices that deliver notifications on a **separate channel the platform must open**. The supported type is `multicast`: the device sends state-change frames to a multicast group that OpenAVC joins.
+Most devices report state only when polled, and some push updates on the connection the driver already holds — both of those need nothing special. A `push` block is for devices that deliver notifications on a **separate channel the platform must open**. Two types are supported: `multicast` (the device sends state-change frames to a multicast group that OpenAVC joins) and `sse` (the device streams updates over a Server-Sent-Events endpoint on its HTTP API).
 
 ```yaml
+# UDP multicast — the device sends frames to a group OpenAVC joins:
 push:
   type: multicast
   group: "{notify_group}"   # literal address, or a {config_field} the user can change
   port: "{notify_port}"
 ```
 
-- `type` — `multicast` (required).
+- `type` — `multicast`.
 - `group` — the IPv4 multicast group (224.0.0.0 – 239.255.255.255), as a literal or a `{config_field}` template. Use a template with a matching `config_schema` field when the device's notification target is user-configurable, so an installer who changed it on the device can match it in OpenAVC.
 - `port` — the UDP port, literal or `{config_field}` template.
+
+```yaml
+# SSE — the driver holds a GET open with Accept: text/event-stream and the
+# device streams updates back. HTTP transport only:
+push:
+  type: sse
+  path: /v2/configuration/system/status   # one path, or a list of paths
+  idle_timeout: 200                        # optional, seconds
+```
+
+- `type` — `sse`.
+- `path` — the event-stream URL path on the device, or a **list** of paths for devices that stream each resource separately (Barco ClickShare lets you subscribe to every endpoint you can GET). Literal paths start with `/`; `{config_field}` templates are allowed.
+- `idle_timeout` — optional. If the stream is silent (keepalives included) for this many seconds, the connection is presumed dead and reopened. Set it above the device's keepalive interval (ClickShare sends one every 90 s); omit it to wait indefinitely.
 
 How it behaves:
 
 - The subscription starts as soon as the device connects — **before** `on_connect` runs, so a device whose notifications must be armed by an `on_connect` command never sends a frame the platform misses. It stops when the device disconnects and re-arms automatically on reconnect.
-- Each incoming datagram goes through the driver's normal `responses` rules — same `match`/`set` semantics as a polled reply, nothing new to learn. If the driver declares a `delimiter`, a datagram carrying several frames is split on it first.
-- Frames are accepted **only from the device's own address**, so two identical devices multicasting to the same group each update their own OpenAVC device.
-- Push supplements polling; it doesn't replace it. Keep your `polling` block as the baseline resync — if the network filters multicast (see below), the device still works, just at poll speed.
+- Everything that arrives goes through the driver's normal `responses` rules — same `match`/`set` semantics as a polled reply, nothing new to learn. A multicast datagram carrying several frames is split on the driver's `delimiter` first; an SSE event dispatches whole, exactly like an HTTP response body (SSE payloads are typically JSON — pair them with `json: true` response rules).
+- Multicast frames are accepted **only from the device's own address**, so two identical devices multicasting to the same group each update their own OpenAVC device. SSE needs no filtering — the stream rides the driver's own HTTP session, with its authentication and TLS settings.
+- A dropped SSE stream reconnects on its own with exponential backoff (1 s doubling to 30 s); a device reboot re-establishes the subscription without any user action.
+- Push supplements polling; it doesn't replace it. Keep your `polling` block as the baseline resync — if the network filters multicast or an event stream drops (see below), the device still works, just at poll speed.
 
 Many devices ship with notifications disabled and a runtime command to enable them — send it from `on_connect`. If a device offers a continuous meter stream on the same channel, gate it behind a config field (substituted into the arming command) and put a `throttle:` on the meter response rule so panels get smooth readings without flooding the system.
 
-Network requirements (worth repeating in your driver's `help.setup` text): the device and OpenAVC must be on the same VLAN (multicast doesn't cross VLANs without a router configured for it), and switches with IGMP snooping need an IGMP querier or the group may never reach the server. When the join fails or frames are filtered, nothing breaks — the driver logs the gap and polling carries on.
+Network requirements (worth repeating in your driver's `help.setup` text): for multicast, the device and OpenAVC must be on the same VLAN (multicast doesn't cross VLANs without a router configured for it), and switches with IGMP snooping need an IGMP querier or the group may never reach the server. SSE has no special requirements — it's an ordinary outbound HTTPS/HTTP connection to the device's existing API port, just held open. When a join fails or a stream can't connect, nothing breaks — the driver logs the gap and polling carries on.
 
-The simulator understands `push` too: a driver with a multicast push block emits its `simulator.notifications` templates to the group instead of the control connection, so you can watch push updates end-to-end against a simulated device. See the [notifications section](https://github.com/open-avc/openavc-drivers/blob/main/docs/writing-simulators.md) of the simulator guide.
+The simulator understands `push` too: a driver with a multicast push block emits its `simulator.notifications` templates to the group instead of the control connection, and a driver with an SSE push block serves its declared event-stream paths and delivers the templates there — so you can watch push updates end-to-end against a simulated device either way. See the [notifications section](https://github.com/open-avc/openavc-drivers/blob/main/docs/writing-simulators.md) of the simulator guide.
 
 ### Discovery
 

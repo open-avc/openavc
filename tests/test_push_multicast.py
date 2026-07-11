@@ -103,7 +103,10 @@ def test_loader_accepts_literal_group_and_port():
     "push, expect",
     [
         ({"type": "tcp_listener", "group": "239.0.0.1", "port": 1}, "not supported yet"),
-        ({"type": "sse", "group": "239.0.0.1", "port": 1}, "not supported yet"),
+        ({"type": "http_listener", "group": "239.0.0.1", "port": 1}, "not supported yet"),
+        # sse is a real type now, but group/port don't apply to it (and it
+        # requires the http transport — this invented mixer is tcp).
+        ({"type": "sse", "group": "239.0.0.1", "port": 1}, "unknown key"),
         ({"group": "239.0.0.1", "port": 1}, "missing or unknown 'type'"),
         ({"type": "multicast", "group": "239.0.0.1", "port": 1, "bogus": 1}, "unknown key"),
         ({"type": "multicast", "group": "192.168.1.5", "port": 1}, "multicast address"),

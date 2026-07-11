@@ -46,6 +46,7 @@ from __future__ import annotations
 import argparse
 import ast
 import fnmatch
+import json
 import re
 import sys
 from pathlib import Path
@@ -393,6 +394,7 @@ def _check_response_parsing(
 
     # Compile response patterns (with config variable substitution)
     response_patterns = _compile_response_patterns(responses, driver_def)
+    json_keys = _json_rule_keys(responses)
 
     # Check explicit handler responses
     for handler_def in sim_handlers:
@@ -412,7 +414,9 @@ def _check_response_parsing(
             # Skip if it has unresolved capture group refs ({1}, {2}, etc.)
             if re.search(r"\{\d+\}", response_text):
                 continue
-            _check_single_response(result, response_text, response_patterns, handler_def)
+            _check_single_response(
+                result, response_text, response_patterns, handler_def, json_keys
+            )
 
         elif handler_code:
             # Script handler — extract respond() calls and try to resolve them
@@ -426,7 +430,9 @@ def _check_response_parsing(
                 if "{" in response_text and "}" in response_text:
                     # Has unresolved template vars — can't validate statically
                     continue
-                _check_single_response(result, response_text, response_patterns, handler_def)
+                _check_single_response(
+                    result, response_text, response_patterns, handler_def, json_keys
+                )
 
 
 def _check_single_response(
@@ -434,13 +440,16 @@ def _check_single_response(
     response_text: str,
     response_patterns: list[re.Pattern],
     handler_def: dict,
+    json_keys: set[str] = frozenset(),
 ) -> None:
     """Check if a single response text matches any response pattern."""
     # Skip empty responses or pure ACKs
     if not response_text or response_text in ("+OK", "OK", "sr"):
         return
 
-    matched = any(p.search(response_text) for p in response_patterns)
+    matched = any(
+        p.search(response_text) for p in response_patterns
+    ) or _matches_json_rules(response_text, json_keys)
     if not matched:
         pattern_key = handler_def.get("receive") or handler_def.get("match", "?")
         result.warning(
@@ -873,21 +882,24 @@ def _check_notifications(
     if not notifications:
         return
 
-    # A driver with a multicast push channel emits its notifications to the
-    # group instead of the control connection — valid on any transport.
+    # A driver with a push channel emits its notifications there instead of
+    # the control connection — multicast is valid on any transport, SSE on
+    # HTTP (subscriptions ride the control session).
     push_def = driver_def.get("push")
-    has_push_multicast = (
-        isinstance(push_def, dict) and push_def.get("type") == "multicast"
+    has_push_channel = isinstance(push_def, dict) and (
+        push_def.get("type") == "multicast"
+        or (push_def.get("type") == "sse" and transport == "http")
     )
-    if transport not in ("tcp", "serial") and not has_push_multicast:
+    if transport not in ("tcp", "serial") and not has_push_channel:
         result.warning(
             "notifications",
             f"notifications: has no effect for transport '{transport}' — only "
             f"line-based TCP/serial simulators push notification messages "
-            f"(unless the driver declares a multicast push: block)"
+            f"(unless the driver declares a multicast or SSE push: block)"
         )
 
     response_patterns = _compile_response_patterns(responses, driver_def)
+    json_keys = _json_rule_keys(responses)
 
     for key, value_map in notifications.items():
         if known_keys and key not in known_keys:
@@ -938,7 +950,7 @@ def _check_notifications(
                 )
                 continue
 
-            if not response_patterns:
+            if not response_patterns and not json_keys:
                 continue
 
             # Round-trip: the emitted message should parse via responses:
@@ -962,9 +974,14 @@ def _check_notifications(
             message = YAMLAutoSimulator._render_notification(
                 str(template), key, sample_value
             )
-            if "{" in message and "}" in message:
-                continue  # unresolved placeholders — can't validate statically
-            if not any(p.search(message) for p in response_patterns):
+            # Unresolved {placeholder} tokens can't be validated statically.
+            # A brace followed by a quote is JSON, not a placeholder — a
+            # rendered JSON notification must still round-trip below.
+            if re.search(r"\{[a-zA-Z_]\w*(:[^}]*)?\}", message):
+                continue
+            if not any(
+                p.search(message) for p in response_patterns
+            ) and not _matches_json_rules(message, json_keys):
                 result.warning(
                     "notifications",
                     f"notification '{key}' emits {message!r} which matches no "
@@ -1528,6 +1545,45 @@ def _compile_response_patterns(
         except re.error:
             pass
     return patterns
+
+
+def _json_rule_keys(responses: list) -> set[str]:
+    """Top-level JSON keys mapped by ``json: true`` response rules.
+
+    Used by the round-trip checks: a simulated body that parses as a JSON
+    object carrying one of these keys IS parsed by the driver (via
+    _apply_json_responses), even though it matches no regex pattern.
+    """
+    keys: set[str] = set()
+    for resp in responses:
+        if not isinstance(resp, dict) or not resp.get("json"):
+            continue
+        for spec in (resp.get("set") or {}).values():
+            key = (
+                spec.get("key", spec.get("path")) if isinstance(spec, dict)
+                else spec
+            )
+            if isinstance(key, str) and key:
+                keys.add(key.split(".")[0].split("[")[0])
+        for mapping in resp.get("mappings") or []:
+            key = mapping.get("key") if isinstance(mapping, dict) else None
+            if isinstance(key, str) and key:
+                keys.add(key.split(".")[0].split("[")[0])
+    return keys
+
+
+def _matches_json_rules(message: str, json_keys: set[str]) -> bool:
+    """True when ``message`` is a JSON object carrying a json-rule key
+    (mirroring _apply_json_responses, single-element array unwrap included)."""
+    if not json_keys:
+        return False
+    try:
+        obj = json.loads(message)
+    except (ValueError, TypeError):
+        return False
+    if isinstance(obj, list) and len(obj) == 1 and isinstance(obj[0], dict):
+        obj = obj[0]
+    return isinstance(obj, dict) and any(k in obj for k in json_keys)
 
 
 def _resolve_state_refs(template: str, state: dict) -> str:

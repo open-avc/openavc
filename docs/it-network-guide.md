@@ -75,6 +75,8 @@ The Video Panel plugin can also show the built-in preview stream of an AV-over-I
 
 **Device push notifications (multicast).** A few AV devices report state changes by multicasting small UDP frames to a group address instead of answering only when polled. When a driver for such a device is connected, OpenAVC joins that group (standard IGMP membership) and listens on the device's notification port — receive-only, filtered to frames from that device's own IP address, active only while the device is connected. Two network notes: multicast does not cross VLANs, so the device and the OpenAVC host must share one (or your routers must be configured for multicast routing); and on switches with **IGMP snooping** enabled, an **IGMP querier** must exist on the VLAN or the switch may stop forwarding the group and the notifications silently disappear. Nothing breaks if the frames are filtered — OpenAVC keeps polling the device and changes simply appear at poll speed instead of instantly.
 
+**Device push notifications (event streams).** Some HTTP-controlled devices (Barco ClickShare, Philips Hue bridges) stream state changes over Server-Sent Events instead. For these, OpenAVC simply holds one or more ordinary **outbound** HTTP(S) requests open to the device's existing API port — the same port the driver already polls, with the same authentication and TLS. No inbound port opens on the OpenAVC host, nothing crosses VLAN boundaries beyond the device connection you already allow, and no firewall change is needed. The only infrastructure note: middleboxes that aggressively time out long-lived idle HTTP connections (some proxies and stateful firewalls between VLANs) can silently kill an event stream; the driver notices, reconnects automatically, and polling covers any gap.
+
 Apart from the mDNS advertiser noted above (standard multicast DNS, receive-only, no control surface), the application does not listen on any other ports by default: no SNMP agent, no embedded database port, and no proprietary discovery protocol that accepts inbound connections. The Raspberry Pi appliance image can optionally run an SSH server (port 22) for remote console access, but it ships **disabled** — an operator turns it on in Settings > Security when it is needed (see [Raspberry Pi appliance](#raspberry-pi-appliance-login-and-ssh) below).
 
 ### Who can access the web interface
@@ -435,7 +437,8 @@ Add to the minimum rules:
 | Crestron CIP probe | Outbound + Inbound | OpenAVC host | Subnet broadcast | 41794/udp | Opens when the `utility/crestron_cip` driver is installed |
 | Driver-declared UDP probes | Outbound + Inbound | OpenAVC host | Subnet broadcast | Vendor-specific | If installed drivers declare a `udp_probe:` or sibling `_discovery.py` Python companion |
 | Driver-declared TCP probes | Outbound | OpenAVC host | Live hosts with port open | Vendor-specific | If installed drivers declare a `tcp_probe:` |
-| Device push notifications | Inbound | Device multicast group | OpenAVC host | Device-specific /udp | Only for drivers that declare a multicast push channel (e.g. 239.0.0.100:17000); receive-only while the device is connected |
+| Device push notifications (multicast) | Inbound | Device multicast group | OpenAVC host | Device-specific /udp | Only for drivers that declare a multicast push channel (e.g. 239.0.0.100:17000); receive-only while the device is connected |
+| Device push notifications (event stream) | Outbound | OpenAVC host | Device | Device's API port | Drivers that declare an SSE push channel hold the device's existing HTTP(S) control connection open — no new port, no inbound listener |
 | Update checks | Outbound | OpenAVC host | api.github.com | 443/tcp | HTTPS |
 
 ### With media plugins (Video Panel / Present)

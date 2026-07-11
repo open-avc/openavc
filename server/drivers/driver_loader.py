@@ -492,9 +492,10 @@ def validate_driver_definition(driver_def: dict[str, Any]) -> list[str]:
     # frames arriving on a channel the platform must open, not the established
     # control connection). A misdeclared block would silently never deliver a
     # frame (the exact still-polling failure it exists to fix); enforce shape
-    # and addressing at load time. `group`/`port` accept `{config_field}`
-    # templates so a device whose notification target is user-configurable
-    # can resolve them per instance.
+    # and addressing at load time. Values accept `{config_field}` templates so
+    # a device whose notification target is user-configurable can resolve
+    # them per instance. Per-type keys: multicast joins a group:port; sse
+    # holds GET path(s) open on the driver's own HTTP session.
     push_def = driver_def.get("push")
     if push_def is not None:
         if not isinstance(push_def, dict):
@@ -506,21 +507,30 @@ def validate_driver_definition(driver_def: dict[str, Any]) -> list[str]:
                 if isinstance(src, dict):
                     _push_config_fields.update(src)
 
+            _push_known_keys = {
+                "multicast": {"type", "group", "port"},
+                "sse": {"type", "path", "idle_timeout"},
+            }
             ptype = push_def.get("type")
-            if ptype in ("tcp_listener", "http_listener", "sse"):
+            if ptype in ("tcp_listener", "http_listener"):
                 errors.append(
                     f"push: type '{ptype}' is not supported yet "
-                    f"(only 'multicast')"
+                    f"(only 'multicast' and 'sse')"
                 )
-            elif ptype != "multicast":
+            elif ptype not in _push_known_keys:
                 errors.append(
-                    "push: missing or unknown 'type' (supported: multicast)"
+                    "push: missing or unknown 'type' "
+                    "(supported: multicast, sse)"
                 )
-            unknown_push = set(push_def) - {"type", "group", "port"}
+            known_keys = _push_known_keys.get(
+                ptype, {"type", "group", "port", "path", "idle_timeout"}
+            )
+            unknown_push = set(push_def) - known_keys
             if unknown_push:
                 errors.append(
                     f"push: unknown key(s): {', '.join(sorted(unknown_push))} "
-                    f"(known keys: type, group, port)"
+                    f"(known keys for type {ptype!r}: "
+                    f"{', '.join(sorted(known_keys))})"
                 )
 
             def _push_template_ok(where: str, value: str) -> None:
@@ -538,37 +548,89 @@ def validate_driver_definition(driver_def: dict[str, Any]) -> list[str]:
                             f"config_schema or default_config"
                         )
 
-            group = push_def.get("group")
-            if group is None:
-                errors.append("push: missing 'group'")
-            elif isinstance(group, str) and "{" in group:
-                _push_template_ok("group", group)
-            else:
-                from server.transport.multicast_listener import (
-                    is_multicast_group,
-                )
-
-                if not isinstance(group, str) or not is_multicast_group(group):
-                    errors.append(
-                        f"push: group {group!r} must be an IPv4 multicast "
-                        f"address (224.0.0.0 - 239.255.255.255) or a "
-                        f"{{config_field}} template"
+            if ptype == "multicast":
+                group = push_def.get("group")
+                if group is None:
+                    errors.append("push: missing 'group'")
+                elif isinstance(group, str) and "{" in group:
+                    _push_template_ok("group", group)
+                else:
+                    from server.transport.multicast_listener import (
+                        is_multicast_group,
                     )
 
-            pport = push_def.get("port")
-            if pport is None:
-                errors.append("push: missing 'port'")
-            elif isinstance(pport, str) and "{" in pport:
-                _push_template_ok("port", pport)
-            elif (
-                isinstance(pport, bool)
-                or not isinstance(pport, int)
-                or not (0 < pport < 65536)
-            ):
-                errors.append(
-                    "push: port must be an integer 1-65535 or a "
-                    "{config_field} template"
+                    if not isinstance(group, str) or not is_multicast_group(group):
+                        errors.append(
+                            f"push: group {group!r} must be an IPv4 multicast "
+                            f"address (224.0.0.0 - 239.255.255.255) or a "
+                            f"{{config_field}} template"
+                        )
+
+                pport = push_def.get("port")
+                if pport is None:
+                    errors.append("push: missing 'port'")
+                elif isinstance(pport, str) and "{" in pport:
+                    _push_template_ok("port", pport)
+                elif (
+                    isinstance(pport, bool)
+                    or not isinstance(pport, int)
+                    or not (0 < pport < 65536)
+                ):
+                    errors.append(
+                        "push: port must be an integer 1-65535 or a "
+                        "{config_field} template"
+                    )
+
+            elif ptype == "sse":
+                # SSE rides the driver's own HTTP session — it is a streaming
+                # mode of the control transport, not a separate listener.
+                if transport and transport != "http":
+                    errors.append(
+                        f"push: type 'sse' requires the http transport, "
+                        f"not '{transport}'"
+                    )
+
+                raw_path = push_def.get("path")
+                paths = (
+                    [raw_path]
+                    if isinstance(raw_path, str)
+                    else raw_path if isinstance(raw_path, list) else None
                 )
+                if raw_path is None or paths == []:
+                    errors.append(
+                        "push: missing 'path' (an event-stream URL path, "
+                        "or a list of them)"
+                    )
+                elif paths is None:
+                    errors.append(
+                        "push: path must be a string or a list of strings"
+                    )
+                else:
+                    for p in paths:
+                        if not isinstance(p, str) or not p.strip():
+                            errors.append(
+                                f"push: path entry {p!r} must be a non-empty "
+                                f"string"
+                            )
+                        elif "{" in p:
+                            _push_template_ok("path", p)
+                        elif not p.startswith("/"):
+                            errors.append(
+                                f"push: path {p!r} must start with '/' "
+                                f"(a URL path on the device) or be a "
+                                f"{{config_field}} template"
+                            )
+
+                idle = push_def.get("idle_timeout")
+                if idle is not None and (
+                    isinstance(idle, bool)
+                    or not isinstance(idle, (int, float))
+                    or idle <= 0
+                ):
+                    errors.append(
+                        "push: idle_timeout must be a positive number of "
+                        "seconds"
+                    )
 
     # Validate the optional `auth:` login handshake block. The runtime swaps to
     # raw byte buffering and types credentials before any other traffic — so a

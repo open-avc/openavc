@@ -253,6 +253,14 @@ class YAMLAutoSimulator(TCPSimulator):
         self._push_multicast = self._resolve_push_multicast(driver_def, config)
         self._mcast_sock: socket.socket | None = None
 
+        # SSE push emission: when an HTTP driver declares `push: {type: sse}`,
+        # a GET on one of its declared paths with Accept: text/event-stream is
+        # held open and the `notifications:` templates are delivered there as
+        # SSE events (data: <msg>\n\n) — the HTTP analogue of the multicast
+        # channel above.
+        self._push_sse_paths = self._resolve_push_sse(driver_def, config)
+        self._sse_clients: set[asyncio.Queue] = set()
+
         logger.info(
             "Auto-gen simulator for %s: %d command handlers, %d query handlers, %d state responses",
             self.driver_id,
@@ -448,6 +456,39 @@ class YAMLAutoSimulator(TCPSimulator):
             return None
         return (group, port)
 
+    @staticmethod
+    def _resolve_push_sse(driver_def: dict, config: dict | None) -> list[str]:
+        """Resolve the driver's `push: {type: sse}` block to the list of
+        event-stream paths the simulator should serve. `{config_field}`
+        templates resolve against default_config overlaid with the instance
+        config — the same fields the real driver resolves them from."""
+        push = driver_def.get("push")
+        if not isinstance(push, dict) or push.get("type") != "sse":
+            return []
+        merged = dict(driver_def.get("default_config") or {})
+        merged.update(config or {})
+
+        def resolve(value: Any) -> str:
+            if isinstance(value, str) and "{" in value:
+                return re.sub(
+                    r"\{(\w+)\}",
+                    lambda m: str(merged.get(m.group(1), m.group(0))),
+                    value,
+                )
+            return str(value)
+
+        raw = push.get("path")
+        raw_paths = [raw] if isinstance(raw, str) else list(raw or [])
+        paths = [resolve(p).strip() for p in raw_paths]
+        good = [p for p in paths if p.startswith("/")]
+        if not good:
+            logger.warning(
+                "push block did not resolve to event-stream path(s) "
+                "(path=%r) — simulator will not emit notifications",
+                push.get("path"),
+            )
+        return good
+
     def _open_multicast_sender(self) -> None:
         """Open the multicast emission socket (TTL 1, loopback enabled so a
         same-host platform listener receives the frames)."""
@@ -529,7 +570,11 @@ class YAMLAutoSimulator(TCPSimulator):
         app = web.Application()
         app.router.add_route("*", "/{path:.*}", self._handle_http_request)
 
-        self._http_runner = web.AppRunner(app)
+        # handler_cancellation: an event-stream subscriber that disconnects
+        # (driver reconnect, network drop) must release its handler — without
+        # it the handler blocks on its queue until the next notification
+        # write fails.
+        self._http_runner = web.AppRunner(app, handler_cancellation=True)
         await self._http_runner.setup()
         self._http_site = web.TCPSite(self._http_runner, "127.0.0.1", port)
         await self._http_site.start()
@@ -542,6 +587,9 @@ class YAMLAutoSimulator(TCPSimulator):
     async def _stop_http(self) -> None:
         """Stop the HTTP server."""
         self._running = False
+        # Unblock held event-stream handlers first — cleanup() waits for
+        # active handlers, and an SSE subscription blocks on its queue.
+        self._close_sse_clients()
         if self._http_runner:
             await self._http_runner.cleanup()
             self._http_runner = None
@@ -572,6 +620,18 @@ class YAMLAutoSimulator(TCPSimulator):
             raw_path += "?" + request.query_string
         # URL-decode so handlers can match the un-encoded form (e.g. "#" not "%23")
         decoded_path = unquote(raw_path)
+
+        # Event-stream subscription (push: {type: sse}): a GET on a declared
+        # push path with Accept: text/event-stream is held open and fed the
+        # notifications: templates instead of a one-shot response.
+        if (
+            method == "GET"
+            and self._push_sse_paths
+            and decoded_path.split("?")[0] in self._push_sse_paths
+            and "text/event-stream" in request.headers.get("Accept", "")
+        ):
+            return await self._serve_sse(request, decoded_path)
+
         body_text = await request.text()
 
         log_text = f"{method} {decoded_path}"
@@ -613,6 +673,46 @@ class YAMLAutoSimulator(TCPSimulator):
         response_text = response_bytes.decode("utf-8", errors="replace")
         self.log_protocol("out", f"200 | {response_text[:200]}")
         return web.Response(status=200, text=response_text)
+
+    async def _serve_sse(self, request: Any, path: str) -> Any:
+        """Hold an event-stream subscription open and relay notifications.
+
+        Each subscriber gets its own queue; set_state() enqueues rendered
+        notification templates, and this handler writes them out as
+        ``data: <msg>\\n\\n`` frames until the client disconnects or the
+        simulator stops (a ``None`` sentinel unblocks the queue wait so
+        stop() never hangs on an open subscription).
+        """
+        from aiohttp import web
+
+        response = web.StreamResponse(
+            status=200,
+            headers={
+                "Content-Type": "text/event-stream",
+                "Cache-Control": "no-cache",
+            },
+        )
+        await response.prepare(request)
+        queue: asyncio.Queue = asyncio.Queue()
+        self._sse_clients.add(queue)
+        self.log_protocol("in", f"GET {path} (event-stream subscribed)")
+        try:
+            while self._running:
+                msg = await queue.get()
+                if msg is None:
+                    break
+                await response.write(f"data: {msg}\n\n".encode("utf-8"))
+        except (ConnectionResetError, ConnectionError, asyncio.CancelledError):
+            pass
+        finally:
+            self._sse_clients.discard(queue)
+            self.log_protocol("in", f"GET {path} (event-stream closed)")
+        return response
+
+    def _close_sse_clients(self) -> None:
+        """Unblock every open event-stream handler so stop() can finish."""
+        for queue in list(self._sse_clients):
+            queue.put_nowait(None)
 
     def _handle_udp_datagram(self, data: bytes, addr: tuple[str, int]) -> None:
         """Process an incoming UDP datagram and send response."""
@@ -1500,9 +1600,9 @@ class YAMLAutoSimulator(TCPSimulator):
         delimiter = self._get_delimiter()
         data = (msg + delimiter).encode()
 
-        # A driver with a multicast push channel gets its notifications on
-        # that channel ONLY — real devices with a multicast notice feed never
-        # send those frames on the control connection.
+        # A driver with a multicast or SSE push channel gets its
+        # notifications on that channel ONLY — real devices with a dedicated
+        # notice feed never send those frames on the control connection.
         if self._push_multicast:
             if self._mcast_sock is not None:
                 try:
@@ -1512,6 +1612,12 @@ class YAMLAutoSimulator(TCPSimulator):
                     logger.debug(
                         "Multicast notification send failed", exc_info=True
                     )
+        elif self._push_sse_paths:
+            # SSE events are self-framed — no delimiter appended.
+            if self._sse_clients:
+                for queue in list(self._sse_clients):
+                    queue.put_nowait(msg)
+                self.log_protocol("out", f"data: {msg[:200]}")
         elif self._clients:
             asyncio.ensure_future(self.push(data))
 

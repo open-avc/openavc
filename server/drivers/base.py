@@ -415,11 +415,12 @@ class BaseDriver(ABC):
         # probe; stopped on disconnect / transport drop.
         self._health_task: asyncio.Task | None = None
         self._health_failures = 0
-        # Push-notification subscription (DRIVER_INFO["push"], e.g. a device
-        # that multicasts state-change frames). Started by connect() once the
-        # session is up — before any on_connect arming commands run — and
-        # stopped on both disconnect paths. None when the driver declares no
-        # push block or the subscription failed (polling still covers it).
+        # Push-notification subscription (DRIVER_INFO["push"] — a multicast
+        # group membership, or a list of SSE event-stream handles). Started
+        # by connect() once the session is up — before any on_connect arming
+        # commands run — and stopped on both disconnect paths. None when the
+        # driver declares no push block or the subscription failed (polling
+        # still covers it).
         self._push_subscription: Any = None
         # Registered child entities: {child_type: {local_id: register_epoch}}.
         # The inner mapping is a dict (not a set) so it preserves insertion
@@ -1279,22 +1280,28 @@ class BaseDriver(ABC):
     async def _start_push(self) -> None:
         """Subscribe to the driver's declared push channel, if any.
 
-        Only ``type: multicast`` exists today. Never raises: a device whose
-        push channel can't be joined still connects and polls — the gap is
-        logged so the user can see why changes aren't instant.
+        ``type: multicast`` and ``type: sse`` exist today. Never raises: a
+        device whose push channel can't be opened still connects and polls —
+        the gap is logged so the user can see why changes aren't instant.
         """
         push_def = self.DRIVER_INFO.get("push")
         if not isinstance(push_def, dict):
             return
-        if push_def.get("type") != "multicast":
+        ptype = push_def.get("type")
+        if ptype == "multicast":
+            await self._start_push_multicast(push_def)
+        elif ptype == "sse":
+            self._start_push_sse(push_def)
+        else:
             # The loader rejects unknown/unsupported types for catalog
             # drivers; this is the runtime backstop for hand-installed files.
             log.warning(
                 f"[{self.device_id}] push: type "
-                f"{push_def.get('type')!r} is not supported at runtime"
+                f"{ptype!r} is not supported at runtime"
             )
-            return
 
+    async def _start_push_multicast(self, push_def: dict[str, Any]) -> None:
+        """Join the device's multicast notification group."""
         from server.transport.multicast_listener import (
             is_multicast_group,
             subscribe,
@@ -1328,13 +1335,57 @@ class BaseDriver(ABC):
                 f"listener on {group}:{port}: {e}"
             )
 
+    def _start_push_sse(self, push_def: dict[str, Any]) -> None:
+        """Open the driver's declared SSE event stream(s).
+
+        SSE rides the driver's own HTTP session (auth + TLS settings apply),
+        so it needs the HTTP transport — no listener, no source demux. The
+        stream owns reconnect/backoff; a stream that can't connect is a
+        logged gap covered by polling, never a device fault.
+        """
+        transport = self.transport
+        if transport is None or not hasattr(transport, "open_event_stream"):
+            log.warning(
+                f"[{self.device_id}] push: type 'sse' requires the HTTP "
+                f"transport"
+            )
+            return
+        raw_path = push_def.get("path")
+        paths = [raw_path] if isinstance(raw_path, str) else list(raw_path or [])
+        try:
+            idle_timeout = float(push_def.get("idle_timeout") or 0)
+        except (TypeError, ValueError):
+            idle_timeout = 0.0
+        streams = []
+        for raw in paths:
+            path = str(self._resolve_push_value(raw) or "").strip()
+            if not path.startswith("/"):
+                log.warning(
+                    f"[{self.device_id}] push: event-stream path {raw!r} "
+                    f"did not resolve to a URL path (check the device's "
+                    f"config fields)"
+                )
+                continue
+            streams.append(
+                transport.open_event_stream(
+                    path,
+                    self._handle_push_event,
+                    idle_timeout=idle_timeout,
+                    name=self.device_id,
+                )
+            )
+        if streams:
+            self._push_subscription = streams
+
     async def _stop_push(self) -> None:
-        """Drop the push subscription (no-op when none is active)."""
+        """Drop the push subscription(s) (no-op when none is active)."""
         sub = self._push_subscription
         self._push_subscription = None
-        if sub is not None:
+        if sub is None:
+            return
+        for handle in sub if isinstance(sub, list) else [sub]:
             try:
-                await sub.close()
+                await handle.close()
             except Exception:
                 log.debug(
                     f"[{self.device_id}] Error closing push subscription",
@@ -1357,6 +1408,18 @@ class BaseDriver(ABC):
                 if part.strip():
                     await self.on_data_received(part)
         elif data:
+            await self.on_data_received(data)
+
+    async def _handle_push_event(self, data: bytes) -> None:
+        """Feed one SSE event's data block through the normal response path.
+
+        Unlike a datagram, an SSE event is already one complete framed
+        message (the transport assembled its data lines), so it dispatches
+        whole — exactly like an HTTP poll response body. No delimiter split:
+        SSE payloads are JSON bodies, and splitting one on a line delimiter
+        would break multi-field parsing.
+        """
+        if data.strip():
             await self.on_data_received(data)
 
     def _force_disconnect(self, code: str = NO_RESPONSE, message: str = "") -> None:
