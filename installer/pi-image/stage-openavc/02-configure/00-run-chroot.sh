@@ -212,6 +212,10 @@ systemctl enable openavc.service
 # and has proper access to the Wayland display.
 systemctl enable openavc-firstboot.service
 systemctl enable avahi-daemon.service
+# Boot info display: prints the device IP + access URLs on the HDMI console
+# so a headless unit can be commissioned without a keyboard or mDNS. The unit
+# is installed by the 01-install stage but does nothing until it is enabled.
+systemctl enable openavc-info.service
 # Watcher for privileged actions (OS password sync, SSH toggle, reboot).
 systemctl enable openavc-privileged.path
 
@@ -385,6 +389,14 @@ fi
 
 if [ ! -f "$LABWC_DIR/autostart" ]; then
     echo "FATAL: openavc labwc autostart missing at $LABWC_DIR/autostart"
+    errors=$((errors + 1))
+fi
+
+# The boot info display ships as a unit file but only runs if enabled; a unit
+# left disabled means a headless first boot shows no IP/access URLs.
+info_state=$(systemctl is-enabled openavc-info.service 2>&1 || true)
+if [ "$info_state" != "enabled" ]; then
+    echo "FATAL: openavc-info.service is not enabled: $info_state (boot info banner would not appear)"
     errors=$((errors + 1))
 fi
 
