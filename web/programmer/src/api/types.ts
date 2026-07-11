@@ -858,14 +858,22 @@ export interface DriverAuthDef {
 }
 
 export interface DriverPushDef {
-  /** Only "multicast" is supported (tcp_listener/http_listener/sse are
-   *  reserved for future channel types and rejected by the loader). */
+  /** "multicast" or "sse" (tcp_listener/http_listener are reserved for
+   *  future channel types and rejected by the loader). */
   type?: string;
-  /** IPv4 multicast group literal (224.0.0.0 - 239.255.255.255) or a
+  /** Multicast only: IPv4 group literal (224.0.0.0 - 239.255.255.255) or a
    *  {config_field} template naming a declared config field. */
   group?: string;
-  /** Integer 1-65535, or a {config_field} template string. */
+  /** Multicast only: integer 1-65535, or a {config_field} template string. */
   port?: number | string;
+  /** SSE only: event-stream URL path(s) on the device (e.g.
+   *  "/v2/configuration/system/status"), each a literal starting with "/"
+   *  or a {config_field} template. */
+  path?: string | string[];
+  /** SSE only: seconds of stream silence (device keepalives included)
+   *  before the connection is considered dead and reopened. Omit to wait
+   *  indefinitely. */
+  idle_timeout?: number;
 }
 
 export interface DriverLivenessDef {

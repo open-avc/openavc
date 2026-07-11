@@ -979,14 +979,16 @@ function isMulticastGroup(value: string): boolean {
 const RESERVED_PUSH_TYPES: ReadonlySet<string> = new Set([
   "tcp_listener",
   "http_listener",
-  "sse",
 ]);
 
-const PUSH_KEYS: ReadonlySet<string> = new Set(["type", "group", "port"]);
+const PUSH_KEYS_BY_TYPE: Readonly<Record<string, ReadonlySet<string>>> = {
+  multicast: new Set(["type", "group", "port"]),
+  sse: new Set(["type", "path", "idle_timeout"]),
+};
 
-/** Mirror server/drivers/driver_loader.py's push: load-time checks. The
- *  group/port accept {config_field} templates, and a template may only name
- *  a field declared in config_schema or default_config — an undeclared field
+/** Mirror server/drivers/driver_loader.py's push: load-time checks. Values
+ *  accept {config_field} templates, and a template may only name a field
+ *  declared in config_schema or default_config — an undeclared field
  *  resolves to nothing at runtime and the channel never opens. */
 function validatePush(
   draft: DriverDefinition,
@@ -1000,29 +1002,35 @@ function validatePush(
     ...Object.keys(draft.default_config ?? {}),
   ]);
 
-  if (push.type && RESERVED_PUSH_TYPES.has(push.type)) {
+  const type = push.type ?? "";
+  if (RESERVED_PUSH_TYPES.has(type)) {
     issues.push({
       severity: "error",
       section: "connection",
       field: "push.type",
-      message: `Push type "${push.type}" isn't supported yet — only "multicast".`,
+      message: `Push type "${type}" isn't supported yet — only "multicast" and "sse".`,
     });
-  } else if (push.type !== "multicast") {
+  } else if (type !== "multicast" && type !== "sse") {
     issues.push({
       severity: "error",
       section: "connection",
       field: "push.type",
-      message: `Push type must be "multicast" (the only supported channel type).`,
+      message: `Push type must be "multicast" or "sse".`,
     });
   }
 
-  const unknownKeys = Object.keys(push).filter((k) => !PUSH_KEYS.has(k));
+  const knownKeys =
+    PUSH_KEYS_BY_TYPE[type] ??
+    new Set(["type", "group", "port", "path", "idle_timeout"]);
+  const unknownKeys = Object.keys(push).filter(
+    (k) => !knownKeys.has(k) && (push as Record<string, unknown>)[k] !== undefined,
+  );
   if (unknownKeys.length > 0) {
     issues.push({
       severity: "error",
       section: "connection",
       field: "push",
-      message: `Push has unknown key(s): ${unknownKeys.join(", ")} — only type, group, and port are allowed.`,
+      message: `Push has key(s) that don't apply to type "${type}": ${unknownKeys.join(", ")} — allowed: ${[...knownKeys].join(", ")}.`,
     });
   }
 
@@ -1050,50 +1058,116 @@ function validatePush(
     }
   };
 
-  const group = push.group;
-  if (group === undefined || group === "") {
-    issues.push({
-      severity: "error",
-      section: "connection",
-      field: "push.group",
-      message:
-        "Push needs a multicast group — a literal address like 239.0.0.100, or a {config_field} template.",
-    });
-  } else if (group.includes("{")) {
-    checkTemplate("group", group);
-  } else if (!isMulticastGroup(group)) {
-    issues.push({
-      severity: "error",
-      section: "connection",
-      field: "push.group",
-      message: `Push group "${group}" must be an IPv4 multicast address (224.0.0.0 – 239.255.255.255) or a {config_field} template.`,
-    });
+  if (type === "multicast") {
+    const group = push.group;
+    if (group === undefined || group === "") {
+      issues.push({
+        severity: "error",
+        section: "connection",
+        field: "push.group",
+        message:
+          "Push needs a multicast group — a literal address like 239.0.0.100, or a {config_field} template.",
+      });
+    } else if (group.includes("{")) {
+      checkTemplate("group", group);
+    } else if (!isMulticastGroup(group)) {
+      issues.push({
+        severity: "error",
+        section: "connection",
+        field: "push.group",
+        message: `Push group "${group}" must be an IPv4 multicast address (224.0.0.0 – 239.255.255.255) or a {config_field} template.`,
+      });
+    }
+
+    const port = push.port;
+    if (port === undefined || port === "") {
+      issues.push({
+        severity: "error",
+        section: "connection",
+        field: "push.port",
+        message:
+          "Push needs a port — a number 1-65535, or a {config_field} template.",
+      });
+    } else if (typeof port === "string" && port.includes("{")) {
+      checkTemplate("port", port);
+    } else if (
+      typeof port !== "number" ||
+      !Number.isInteger(port) ||
+      port < 1 ||
+      port > 65535
+    ) {
+      issues.push({
+        severity: "error",
+        section: "connection",
+        field: "push.port",
+        message:
+          "Push port must be a whole number between 1 and 65535, or a {config_field} template.",
+      });
+    }
   }
 
-  const port = push.port;
-  if (port === undefined || port === "") {
-    issues.push({
-      severity: "error",
-      section: "connection",
-      field: "push.port",
-      message:
-        "Push needs a port — a number 1-65535, or a {config_field} template.",
-    });
-  } else if (typeof port === "string" && port.includes("{")) {
-    checkTemplate("port", port);
-  } else if (
-    typeof port !== "number" ||
-    !Number.isInteger(port) ||
-    port < 1 ||
-    port > 65535
-  ) {
-    issues.push({
-      severity: "error",
-      section: "connection",
-      field: "push.port",
-      message:
-        "Push port must be a whole number between 1 and 65535, or a {config_field} template.",
-    });
+  if (type === "sse") {
+    // SSE rides the driver's HTTP session — it is a streaming mode of the
+    // control transport, not a separate listener.
+    if (draft.transport && draft.transport !== "http") {
+      issues.push({
+        severity: "error",
+        section: "connection",
+        field: "push.type",
+        message: `SSE push requires the HTTP transport (this driver uses "${draft.transport}").`,
+      });
+    }
+
+    const rawPath = push.path;
+    const paths =
+      typeof rawPath === "string"
+        ? rawPath === ""
+          ? []
+          : [rawPath]
+        : Array.isArray(rawPath)
+          ? rawPath
+          : [];
+    if (paths.length === 0) {
+      issues.push({
+        severity: "error",
+        section: "connection",
+        field: "push.path",
+        message:
+          "Push needs an event-stream path — a URL path on the device like /v2/configuration/system/status (one per line for multiple streams).",
+      });
+    }
+    for (const p of paths) {
+      if (typeof p !== "string" || p.trim() === "") {
+        issues.push({
+          severity: "error",
+          section: "connection",
+          field: "push.path",
+          message: "Every event-stream path must be a non-empty string.",
+        });
+      } else if (p.includes("{")) {
+        checkTemplate("path", p);
+      } else if (!p.startsWith("/")) {
+        issues.push({
+          severity: "error",
+          section: "connection",
+          field: "push.path",
+          message: `Event-stream path "${p}" must start with "/" (a URL path on the device) or be a {config_field} template.`,
+        });
+      }
+    }
+
+    const idle = push.idle_timeout;
+    if (
+      idle !== undefined &&
+      (typeof idle !== "number" || !Number.isFinite(idle) || idle <= 0)
+    ) {
+      issues.push({
+        severity: "error",
+        section: "connection",
+        field: "push.idle_timeout",
+        message: "Idle timeout must be a positive number of seconds.",
+      });
+    }
   }
 }
 
