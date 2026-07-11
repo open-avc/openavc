@@ -227,6 +227,49 @@ class TestMigrate03To04:
         assert len(result["device_groups"]) == 1
         assert result["device_groups"][0]["id"] == "g1"
 
+    def test_dotted_group_name_migrates_to_loadable_id(self):
+        # A group named "Row.1" must not produce a dotted id — DeviceGroup's
+        # validator rejects dots, which previously made the whole project
+        # unloadable after auto-migration.
+        from server.core.project_loader import DeviceGroup
+
+        data = make_v03_project()
+        data["devices"][0]["group"] = "Row.1"
+        result = migrate_0_3_to_0_4(copy.deepcopy(data))
+        group = result["device_groups"][0]
+        assert "." not in group["id"]
+        DeviceGroup(**group)  # the real validator accepts the migrated id
+
+    def test_per_device_groups_merged_into_existing_device_groups(self):
+        # A file carrying BOTH a device_groups list and lingering per-device
+        # group fields must not lose the per-device memberships.
+        data = make_v03_project(
+            device_groups=[{"id": "existing", "name": "Existing", "device_ids": []}]
+        )
+        dev_id = data["devices"][0]["id"]
+        data["devices"][0]["group"] = "Projectors"
+        result = migrate_0_3_to_0_4(copy.deepcopy(data))
+
+        ids = {g["id"] for g in result["device_groups"]}
+        assert "existing" in ids           # existing group preserved
+        assert "projectors" in ids         # per-device group not dropped
+        projectors = next(g for g in result["device_groups"] if g["id"] == "projectors")
+        assert dev_id in projectors["device_ids"]
+
+    def test_per_device_group_merges_into_matching_existing_group(self):
+        # When an existing group already has the id a device's group name
+        # sanitizes to, the device merges into it (no duplicate group).
+        data = make_v03_project(
+            device_groups=[{"id": "projectors", "name": "Projectors", "device_ids": []}]
+        )
+        dev_id = data["devices"][0]["id"]
+        data["devices"][0]["group"] = "Projectors"
+        result = migrate_0_3_to_0_4(copy.deepcopy(data))
+
+        projectors = [g for g in result["device_groups"] if g["id"] == "projectors"]
+        assert len(projectors) == 1        # merged, not duplicated
+        assert dev_id in projectors[0]["device_ids"]
+
 
 # ---------------------------------------------------------------------------
 # 0.4.0 → 0.5.0

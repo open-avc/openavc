@@ -95,6 +95,13 @@ def migrate_0_3_to_0_4(data: dict) -> dict:
     - Convert per-device group field into device_groups entries
     - Bump version
     """
+    # sanitize_id strips dots and other characters DeviceGroup's id validator
+    # rejects; a raw name.lower().replace(" ", "_") would let a group named
+    # e.g. "Row.1" migrate to the id "row.1", which fails validation and makes
+    # the whole project unloadable. Imported lazily to keep this module light
+    # and avoid an import cycle with project_library.
+    from server.core.project_library import sanitize_id
+
     # Collect group assignments from devices
     groups_map: dict[str, list[str]] = {}
     for device in data.get("devices", []):
@@ -102,19 +109,25 @@ def migrate_0_3_to_0_4(data: dict) -> dict:
         if group_name:
             groups_map.setdefault(group_name, []).append(device.get("id", ""))
 
-    # Only create device_groups if there were actual group assignments
-    existing = data.get("device_groups")
-    if not existing:
-        data["device_groups"] = [
-            {
-                "id": name.lower().replace(" ", "_"),
-                "name": name,
-                "device_ids": ids,
-            }
-            for name, ids in groups_map.items()
-        ]
-    else:
-        data.setdefault("device_groups", [])
+    # Merge the per-device assignments INTO any device_groups already present
+    # (a hand-edited or partially-migrated file can carry both). Dropping
+    # either side would silently lose group memberships. Existing groups keep
+    # their own ids; groups synthesized from a device's group name get a
+    # sanitized id and merge with an existing group of the same id.
+    groups = list(data.get("device_groups") or [])
+    by_id = {g.get("id"): g for g in groups}
+    for name, ids in groups_map.items():
+        gid = sanitize_id(name)
+        target = by_id.get(gid)
+        if target is None:
+            target = {"id": gid, "name": name, "device_ids": []}
+            by_id[gid] = target
+            groups.append(target)
+        device_ids = target.setdefault("device_ids", [])
+        for device_id in ids:
+            if device_id and device_id not in device_ids:
+                device_ids.append(device_id)
+    data["device_groups"] = groups
 
     data["openavc_version"] = "0.4.0"
     return data
