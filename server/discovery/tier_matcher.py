@@ -47,6 +47,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Iterable
 
+from server.discovery.oui_database import normalize_oui_prefix
 from server.discovery.result import (
     Evidence,
     IdentificationMatch,
@@ -310,8 +311,15 @@ def _normalize_service_type(service: str) -> str:
 
 
 def _normalize_mac_prefix(prefix: str) -> str:
-    """Normalize OUI prefix to colon-separated lowercase, first 8 chars."""
-    return prefix.replace("-", ":").lower()[:8]
+    """Normalize an OUI prefix or MAC to canonical ``xx:xx:xx``.
+
+    Delegates to the shared canonicalizer so rule registration (``for_oui``)
+    and lookup (``find_soft_oui`` / ``evidence_oui``) always agree on the key
+    regardless of the caller's separator style — dotted MACs included. Returns
+    ``''`` for a value with no usable OUI so a malformed entry never matches
+    (parse-time validation already warns on those).
+    """
+    return normalize_oui_prefix(prefix) or ""
 
 
 def _freeze_dict(d: dict[str, str] | None) -> tuple[tuple[str, str], ...]:

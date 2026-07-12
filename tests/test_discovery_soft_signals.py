@@ -47,6 +47,36 @@ def test_oui_hint_produces_possible():
         assert "acme_widget" in result.candidates
 
 
+def test_oui_hint_matches_regardless_of_separator_style():
+    """A non-canonical OUI hint (bare hex, dashed, dotted) still matches an
+    observed MAC in any format — registration and lookup canonicalize to the
+    same key. Regression for hints silently ignored unless already xx:xx:xx.
+    """
+    for hint_val in ("001122", "00-11-22", "0011.22"):
+        matcher = _matcher({"oui": [hint_val]})
+        for mac in ("00:11:22:33:44:55", "00-11-22-33-44-55", "0011.2233.4455"):
+            result = matcher.match([evidence_oui(mac)])
+            assert result.state == DeviceState.POSSIBLE, (
+                f"hint {hint_val!r} vs MAC {mac!r} did not produce POSSIBLE "
+                f"(got {result.state}, candidates={result.candidates})"
+            )
+            assert "acme_widget" in result.candidates
+
+
+def test_invalid_oui_entry_is_skipped_not_fatal():
+    """A garbage OUI entry is dropped (with a warning); the driver's other
+    hints still load — parse must not reject the whole driver over one bad OUI.
+    """
+    hint = parse_driver_discovery({
+        "id": "acme_widget",
+        "name": "Acme Widget",
+        "discovery": {"oui": ["nope", "00:11:22"], "port_open": [9876]},
+    })
+    assert hint is not None
+    assert hint.oui == ["00:11:22"]  # garbage dropped, valid kept
+    assert 9876 in hint.port_open
+
+
 def test_hostname_hint_produces_possible():
     """A hostname pattern hint alone surfaces the driver as possible."""
     matcher = _matcher({"hostname": ["acme-*", "widget-*"]})

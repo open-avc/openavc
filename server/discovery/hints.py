@@ -29,6 +29,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from server.discovery.oui_database import normalize_oui_prefix
 from server.discovery.tier_matcher import (
     SignalIndex,
     SignalRule,
@@ -842,6 +843,16 @@ def parse_driver_discovery(driver_info: dict[str, Any]) -> DiscoveryHint | None:
             raise DiscoveryHintError(
                 f"{driver_id}: discovery.oui entries must be non-empty strings"
             )
+        # An entry that can't yield at least 3 octets of hex would register a
+        # key no observed MAC ever resolves to — warn and skip it (rather than
+        # reject the whole driver) so the contributor sees it was ignored.
+        if normalize_oui_prefix(prefix) is None:
+            log.warning(
+                "%s: discovery.oui entry %r is not a valid OUI prefix "
+                "(need at least 3 octets of hex, e.g. 00:11:22) — ignoring",
+                driver_id, prefix,
+            )
+            continue
         hint.oui.append(prefix)
 
     raw_host = discovery.get("hostname") or []
