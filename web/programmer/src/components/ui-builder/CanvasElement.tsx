@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import type { UIElement, GridArea } from "../../api/types";
 
@@ -104,6 +104,9 @@ export function CanvasElement({
   const [tempGridArea, setTempGridArea] = useState<GridArea | null>(null);
   const tempGridAreaRef = useRef<GridArea | null>(null);
   const isResizing = useRef(false);
+  // Tears down an in-progress resize (removes the document listeners, clears
+  // isResizing). Held in a ref so the unmount effect below can call it.
+  const cleanupResizeRef = useRef<(() => void) | null>(null);
 
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `canvas-${element.id}`,
@@ -137,7 +140,6 @@ export function CanvasElement({
     (direction: string, e: React.PointerEvent) => {
       e.stopPropagation();
       e.preventDefault();
-      isResizing.current = true;
 
       const startX = e.clientX;
       const startY = e.clientY;
@@ -148,7 +150,11 @@ export function CanvasElement({
         "[data-canvas-grid]",
       );
       const gridRect = gridEl?.getBoundingClientRect();
+      // Bail before flagging the resize — flipping isResizing.current true first
+      // would leave it stuck true on a transient miss, permanently disabling
+      // drag for this element (disabled reads it) until the element remounts.
       if (!gridRect) return;
+      isResizing.current = true;
 
       const cellW = gridRect.width / columns;
       const cellH = gridRect.height / rows;
@@ -188,6 +194,7 @@ export function CanvasElement({
         document.removeEventListener("pointerup", handlePointerUp);
         document.removeEventListener("keydown", handleKeyDown);
         isResizing.current = false;
+        cleanupResizeRef.current = null;
       };
 
       const handlePointerUp = () => {
@@ -215,12 +222,18 @@ export function CanvasElement({
         }
       };
 
+      cleanupResizeRef.current = cleanup;
       document.addEventListener("pointermove", handlePointerMove);
       document.addEventListener("pointerup", handlePointerUp);
       document.addEventListener("keydown", handleKeyDown);
     },
     [element.grid_area, element.id, columns, rows, onCommitResize],
   );
+
+  // If the element unmounts mid-resize (deleted or its page switched while a
+  // handle is held), tear down the document listeners so the leaked closure
+  // can't fire handlePointerUp and commit a resize on a gone element.
+  useEffect(() => () => cleanupResizeRef.current?.(), []);
 
   // Transparent hit-box sitting on top of the iframe. The iframe renders the element's
   // pixels; this wrapper handles selection, drag, resize, context menu, and the selection
