@@ -17,9 +17,51 @@ LOG_FORMAT = "[%(asctime)s.%(msecs)03d] [%(levelname)-5s] [%(name)s] %(message)s
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 _configured = False
-# Reference to the console handler so the level can be re-applied at runtime
-# (PATCH /system/config) without a restart.
+# References to the mutable handlers so their settings can be re-applied at
+# runtime (PATCH /system/config) without a restart.
 _console_handler: logging.Handler | None = None
+_file_handler: logging.Handler | None = None
+
+
+def _build_file_handler(formatter: logging.Formatter) -> logging.Handler | None:
+    """Build the rotating file handler from the current logging config.
+
+    Honors ``logging.file_enabled`` / ``max_size_mb`` / ``max_files`` (defaults
+    50 MB per file, 5 rotated files). Returns ``None`` when file logging is
+    disabled or the log directory can't be prepared, so callers just skip the
+    handler. Bad/non-numeric sizes fall back to the defaults rather than
+    producing an unbounded or broken handler.
+    """
+    from server.system_config import get_log_dir, get_system_config
+
+    cfg = get_system_config()
+    if not cfg.get("logging", "file_enabled", True):
+        return None
+
+    try:
+        max_mb = float(cfg.get("logging", "max_size_mb", 50))
+        if max_mb <= 0:
+            max_mb = 50.0
+    except (TypeError, ValueError):
+        max_mb = 50.0
+    try:
+        max_files = int(cfg.get("logging", "max_files", 5))
+        if max_files < 0:
+            max_files = 5
+    except (TypeError, ValueError):
+        max_files = 5
+
+    log_dir = get_log_dir()
+    log_dir.mkdir(parents=True, exist_ok=True)
+    handler = RotatingFileHandler(
+        str(log_dir / "openavc.log"),
+        maxBytes=int(max_mb * 1024 * 1024),
+        backupCount=max_files,
+        encoding="utf-8",
+    )
+    handler.setLevel(logging.INFO)
+    handler.setFormatter(formatter)
+    return handler
 
 
 def _configure_root():
@@ -54,20 +96,13 @@ def _configure_root():
     global _console_handler
     _console_handler = handler
 
-    # Persistent file logging (10 MB per file, 3 rotated files)
+    # Persistent file logging, honoring the configured file_enabled /
+    # max_size_mb / max_files settings.
+    global _file_handler
     try:
-        from server.system_config import get_log_dir
-        log_dir = get_log_dir()
-        log_dir.mkdir(parents=True, exist_ok=True)
-        file_handler = RotatingFileHandler(
-            str(log_dir / "openavc.log"),
-            maxBytes=10 * 1024 * 1024,
-            backupCount=3,
-            encoding="utf-8",
-        )
-        file_handler.setLevel(logging.INFO)
-        file_handler.setFormatter(formatter)
-        root.addHandler(file_handler)
+        _file_handler = _build_file_handler(formatter)
+        if _file_handler is not None:
+            root.addHandler(_file_handler)
     except Exception:
         pass  # Don't fail startup if log dir isn't writable
 
@@ -101,6 +136,35 @@ def set_log_level(level: str) -> bool:
     if _console_handler is not None:
         _console_handler.setLevel(resolved)
     return True
+
+
+def set_file_logging() -> None:
+    """Re-apply the persistent file-logging settings at runtime (no restart).
+
+    Rebuilds the rotating file handler from the current config so toggling
+    ``file_enabled`` or changing ``max_size_mb`` / ``max_files`` takes effect
+    immediately — the same live-apply contract ``set_log_level`` gives the
+    console level.
+    """
+    _configure_root()
+    global _file_handler
+    root = logging.getLogger()
+
+    if _file_handler is not None:
+        root.removeHandler(_file_handler)
+        try:
+            _file_handler.close()
+        except Exception:
+            pass
+        _file_handler = None
+
+    formatter = logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT)
+    try:
+        _file_handler = _build_file_handler(formatter)
+        if _file_handler is not None:
+            root.addHandler(_file_handler)
+    except Exception:
+        pass
 
 
 def get_logger(name: str) -> logging.Logger:

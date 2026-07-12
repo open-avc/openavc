@@ -520,6 +520,15 @@ async def update_system_config(request: Request) -> dict[str, Any]:
         from server.utils.logger import set_log_level
         set_log_level(str(cfg.get("logging", "level", "info")))
 
+    # File-logging settings apply live too — toggling file logging off or
+    # changing the rotation size/count rebuilds the file handler now, so the
+    # controls aren't silent no-ops until the next restart.
+    if isinstance(body.get("logging"), dict) and any(
+        k in body["logging"] for k in ("file_enabled", "max_size_mb", "max_files")
+    ):
+        from server.utils.logger import set_file_logging
+        set_file_logging()
+
     # Mirror the effective update channel into state so the Updates view shows
     # the new channel after a Settings change instead of a stale value until
     # restart (system.update_channel is otherwise only written at boot).
