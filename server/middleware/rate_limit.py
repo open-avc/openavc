@@ -30,8 +30,12 @@ WINDOW_SECONDS = 60.0
 CLEANUP_INTERVAL = 60.0
 STALE_THRESHOLD = 300.0  # 5 minutes
 
-# Paths to skip entirely (static files, WebSocket upgrades, docs)
-_SKIP_PREFIXES = ("/panel", "/programmer", "/docs", "/openapi.json", "/ws", "/isc/ws")
+# Paths to skip entirely (static files, WebSocket upgrades, docs).
+# /api/push/ is device push traffic (webhooks / GENA NOTIFY): legitimate
+# event bursts exceed any human-scale per-minute budget, and a 429 silently
+# drops device state (Cisco codecs even deactivate a feedback slot after
+# delivery failures). Same trusted-VLAN posture as UDP device control.
+_SKIP_PREFIXES = ("/panel", "/programmer", "/docs", "/openapi.json", "/ws", "/isc/ws", "/api/push/")
 
 # Open tier paths (high limit, no auth needed)
 _OPEN_EXACT = {"/api/status", "/api/health", "/api/cloud/status", "/api/startup-status", "/api/auth/required", "/api/setup/status"}

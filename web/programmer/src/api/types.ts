@@ -896,8 +896,11 @@ export interface DriverAuthDef {
 }
 
 export interface DriverPushDef {
-  /** "multicast", "sse", or "tcp_listener" (http_listener is reserved for a
-   *  future channel type and rejected by the loader). */
+  /** "multicast", "sse", "tcp_listener", or "http_listener". tcp_listener
+   *  opens a local port the device dials back to (its registration command
+   *  references {listener_port}); http_listener has no fields of its own —
+   *  the platform assigns the callback path and the registration command
+   *  references {push_callback_url}. */
   type?: string;
   /** Multicast only: IPv4 group literal (224.0.0.0 - 239.255.255.255) or a
    *  {config_field} template naming a declared config field. */

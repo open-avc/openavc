@@ -10,9 +10,11 @@ interface PushEditorProps {
  * channel the platform opens (`type: multicast` joins the device's
  * notification group; `type: sse` holds an event-stream request open on
  * the driver's HTTP session; `type: tcp_listener` opens a local port the
- * device dials back to after a registration command). Frames arriving on
- * the channel feed the same `responses` rules as the control connection,
- * so state updates land instantly instead of waiting for the next poll.
+ * device dials back to after a registration command; `type: http_listener`
+ * accepts the device's own HTTP POSTs on a platform-assigned callback URL).
+ * Frames arriving on the channel feed the same `responses` rules as the
+ * control connection, so state updates land instantly instead of waiting
+ * for the next poll.
  */
 export function PushEditor({ draft, onUpdate }: PushEditorProps) {
   const push = draft.push;
@@ -55,6 +57,8 @@ export function PushEditor({ draft, onUpdate }: PushEditorProps) {
       onUpdate({ push: { type: "sse", path: "" } });
     } else if (next === "tcp_listener") {
       onUpdate({ push: { type: "tcp_listener", port: 0 } });
+    } else if (next === "http_listener") {
+      onUpdate({ push: { type: "http_listener" } });
     } else {
       onUpdate({ push: { type: "multicast", group: "", port: 17000 } });
     }
@@ -159,7 +163,9 @@ export function PushEditor({ draft, onUpdate }: PushEditorProps) {
         device sends to; SSE (Server-Sent Events) holds an event-stream
         request open on the device&apos;s HTTP API; TCP Listener opens a local
         port that the device dials back to after a registration command tells
-        it where. Every frame or event that arrives feeds the driver&apos;s
+        it where; HTTP Listener accepts the device&apos;s own HTTP POSTs
+        (webhooks) on a callback URL OpenAVC assigns. Every frame or event
+        that arrives feeds the driver&apos;s
         response rules — so state updates land instantly, without waiting for
         the next poll. Values can reference config fields, which lets one
         driver match devices whose notification target is configurable.
@@ -203,15 +209,31 @@ export function PushEditor({ draft, onUpdate }: PushEditorProps) {
               <option value="multicast">Multicast</option>
               <option value="sse">SSE (Server-Sent Events)</option>
               <option value="tcp_listener">TCP Listener (device dials back)</option>
+              <option value="http_listener">
+                HTTP Listener (device posts to OpenAVC)
+              </option>
             </select>
             <div style={helpStyle}>
               {type === "sse"
                 ? "The driver holds a GET request open with Accept: text/event-stream on its HTTP session, and the device streams updates back. Requires the HTTP transport."
                 : type === "tcp_listener"
                   ? "OpenAVC listens on a local TCP port; a registration command tells the device where to connect, and the device pushes framed notifications to that port."
-                  : "The device sends state-change frames to a multicast group address OpenAVC joins."}
+                  : type === "http_listener"
+                    ? "OpenAVC accepts the device's HTTP POSTs on a callback URL it assigns per device. Nothing to configure here — the registration command tells the device where to post."
+                    : "The device sends state-change frames to a multicast group address OpenAVC joins."}
             </div>
           </div>
+
+          {type === "http_listener" && (
+            <div style={helpStyle}>
+              The callback URL is built at connect time from the server
+              address the device can reach and the device&apos;s ID. Send it
+              to the device in an On Connect registration command — the token{" "}
+              <code>{"{push_callback_url}"}</code> substitutes into command
+              bodies, paths, and headers. Bodies the device posts back feed
+              the response rules whole, exactly like a poll response.
+            </div>
+          )}
 
           {type === "multicast" && (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-md)" }}>

@@ -715,7 +715,10 @@ def validate_driver_definition(driver_def: dict[str, Any]) -> list[str]:
     # them per instance. Per-type keys: multicast joins a group:port; sse
     # holds GET path(s) open on the driver's own HTTP session; tcp_listener
     # opens a local port the device dials back to after a registration
-    # command tells it where ({listener_port} substitution).
+    # command tells it where ({listener_port} substitution); http_listener
+    # accepts device POSTs on a platform-assigned callback path (no keys of
+    # its own — the URL is built at runtime and substitutes into commands as
+    # {push_callback_url}).
     push_def = driver_def.get("push")
     if push_def is not None:
         if not isinstance(push_def, dict):
@@ -733,17 +736,13 @@ def validate_driver_definition(driver_def: dict[str, Any]) -> list[str]:
                 "tcp_listener": {
                     "type", "port", "frame_parser", "register", "unregister",
                 },
+                "http_listener": {"type"},
             }
             ptype = push_def.get("type")
-            if ptype == "http_listener":
-                errors.append(
-                    f"push: type '{ptype}' is not supported yet "
-                    f"(only 'multicast', 'sse', and 'tcp_listener')"
-                )
-            elif ptype not in _push_known_keys:
+            if ptype not in _push_known_keys:
                 errors.append(
                     "push: missing or unknown 'type' "
-                    "(supported: multicast, sse, tcp_listener)"
+                    "(supported: multicast, sse, tcp_listener, http_listener)"
                 )
             known_keys = _push_known_keys.get(
                 ptype,

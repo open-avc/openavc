@@ -99,6 +99,40 @@ class HTTPSimulator(BaseSimulator):
         self._site = None
         logger.info("%s stopped", self.name)
 
+    # ── HTTP-callback push (push: {type: http_listener}) ──
+
+    async def post_http_callback(
+        self,
+        url: str,
+        body: str | bytes,
+        headers: dict[str, str] | None = None,
+        method: str = "POST",
+    ) -> int | None:
+        """Deliver one push notification to a registered callback URL.
+
+        For simulators of devices that dial OUT to a subscriber (webhooks,
+        UPnP GENA NOTIFY — pass ``method="NOTIFY"`` and the GENA headers).
+        Returns the response status, or None when delivery failed — a real
+        device silently drops feedback its subscriber stopped answering, so
+        failures log at debug level only.
+        """
+        from aiohttp import ClientSession, ClientTimeout
+
+        data = body.encode("utf-8") if isinstance(body, str) else body
+        try:
+            async with ClientSession(timeout=ClientTimeout(total=10)) as session:
+                async with session.request(
+                    method, url, data=data, headers=headers or {}
+                ) as resp:
+                    preview = data[:200].decode("utf-8", errors="replace")
+                    self.log_protocol(
+                        "out", f"{method} {url} -> {resp.status} | {preview}"
+                    )
+                    return resp.status
+        except Exception as e:
+            logger.debug("%s: callback %s to %s failed: %s", self.name, method, url, e)
+            return None
+
     # ── Server-Sent Events (push: {type: sse}) ──
 
     def push_sse_event(self, data: str) -> None:

@@ -186,11 +186,16 @@ def test_loader_rejects_bad_tcp_listener_blocks(mutate, expect):
     assert any(expect in e for e in errors), errors
 
 
-def test_loader_still_reserves_http_listener():
+def test_loader_accepts_http_listener_and_rejects_tcp_keys_on_it():
+    """http_listener ships alongside tcp_listener — it is a real type, but it
+    takes none of the dial-back keys (the platform assigns its callback URL)."""
     d = _cam_def()
     d["push"] = {"type": "http_listener"}
+    assert validate_driver_definition(d) == []
+
+    d["push"] = {"type": "http_listener", "port": 31004}
     errors = validate_driver_definition(d)
-    assert any("not supported yet" in e for e in errors), errors
+    assert any("unknown key" in e for e in errors), errors
 
 
 def test_factory_copies_push_into_driver_info():

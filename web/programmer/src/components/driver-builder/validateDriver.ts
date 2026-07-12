@@ -1217,7 +1217,10 @@ function isMulticastGroup(value: string): boolean {
 /** Push channel types the runtime knows about but hasn't implemented — kept
  *  distinct from plain typos so the message says "not yet" rather than
  *  "never". Mirror driver_loader.py. */
-const RESERVED_PUSH_TYPES: ReadonlySet<string> = new Set(["http_listener"]);
+// Every declared shape is implemented — nothing is reserved-but-unbuilt
+// today. Kept (empty) so a future shape can be named here with a
+// "not yet" message instead of reading as a typo. Mirror driver_loader.py.
+const RESERVED_PUSH_TYPES: ReadonlySet<string> = new Set<string>();
 
 const PUSH_KEYS_BY_TYPE: Readonly<Record<string, ReadonlySet<string>>> = {
   multicast: new Set(["type", "group", "port"]),
@@ -1229,6 +1232,9 @@ const PUSH_KEYS_BY_TYPE: Readonly<Record<string, ReadonlySet<string>>> = {
     "register",
     "unregister",
   ]),
+  // http_listener has no fields of its own: the platform assigns the
+  // callback path and the registration command uses {push_callback_url}.
+  http_listener: new Set(["type"]),
 };
 
 const PUSH_FRAME_PARSER_TYPES: ReadonlySet<string> = new Set([
@@ -1259,14 +1265,14 @@ function validatePush(
       severity: "error",
       section: "connection",
       field: "push.type",
-      message: `Push type "${type}" isn't supported yet — only "multicast", "sse", and "tcp_listener".`,
+      message: `Push type "${type}" isn't supported yet — only "multicast", "sse", "tcp_listener", and "http_listener".`,
     });
-  } else if (type !== "multicast" && type !== "sse" && type !== "tcp_listener") {
+  } else if (!(type in PUSH_KEYS_BY_TYPE)) {
     issues.push({
       severity: "error",
       section: "connection",
       field: "push.type",
-      message: `Push type must be "multicast", "sse", or "tcp_listener".`,
+      message: `Push type must be "multicast", "sse", "tcp_listener", or "http_listener".`,
     });
   }
 

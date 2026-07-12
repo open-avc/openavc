@@ -416,12 +416,17 @@ class BaseDriver(ABC):
         self._health_task: asyncio.Task | None = None
         self._health_failures = 0
         # Push-notification subscription (DRIVER_INFO["push"] — a multicast
-        # group membership, an inbound TCP listener subscription, or a list
-        # of SSE event-stream handles). Started by connect() once the session
+        # group membership, an inbound TCP dial-back listener, a list of SSE
+        # event-stream handles, or an HTTP push-listener registration).
+        # Started by connect() once the session
         # is up — before any on_connect arming commands run — and stopped on
         # both disconnect paths. None when the driver declares no push block
         # or the subscription failed (polling still covers it).
         self._push_subscription: Any = None
+        # http_listener shape: the callback URL the device must deliver to,
+        # rebuilt on every (re)connect. Exposed as push_callback_url so
+        # registration commands can hand it to the device.
+        self._push_callback_url: str = ""
         # Registered child entities: {child_type: {local_id: register_epoch}}.
         # The inner mapping is a dict (not a set) so it preserves insertion
         # order, which makes list_children() output stable for tests and IDE
@@ -1280,10 +1285,10 @@ class BaseDriver(ABC):
     async def _start_push(self) -> None:
         """Subscribe to the driver's declared push channel, if any.
 
-        ``type: multicast``, ``type: sse``, and ``type: tcp_listener`` exist
-        today. Never raises: a device whose push channel can't be opened
-        still connects and polls — the gap is logged so the user can see why
-        changes aren't instant.
+        ``multicast``, ``sse``, ``tcp_listener`` and ``http_listener`` all
+        exist today. Never raises: a device whose push channel can't be
+        opened still connects and polls — the gap is logged so the user can
+        see why changes aren't instant.
         """
         push_def = self.DRIVER_INFO.get("push")
         if not isinstance(push_def, dict):
@@ -1295,6 +1300,8 @@ class BaseDriver(ABC):
             self._start_push_sse(push_def)
         elif ptype == "tcp_listener":
             await self._start_push_tcp_listener(push_def)
+        elif ptype == "http_listener":
+            await self._start_push_http_listener(push_def)
         else:
             # The loader rejects unknown/unsupported types for catalog
             # drivers; this is the runtime backstop for hand-installed files.
@@ -1446,10 +1453,54 @@ class BaseDriver(ABC):
         if streams:
             self._push_subscription = streams
 
+    async def _start_push_http_listener(self, push_def: dict[str, Any]) -> None:
+        """Register an inbound HTTP callback for this device.
+
+        The platform's web listener receives the device's POSTs (webhook
+        registrations, GENA NOTIFY) at a per-device path; the body feeds the
+        normal response path. The callback URL the device must be told about
+        is exposed as :attr:`push_callback_url` — send it in an ``on_connect``
+        registration command (``{push_callback_url}`` substitutes in YAML
+        command bodies).
+        """
+        from server.transport.http_listener import callback_url, subscribe
+
+        host = str(self.config.get("host", "") or "")
+        try:
+            self._push_subscription = await subscribe(
+                device_id=self.device_id,
+                source_ip=host,
+                callback=self._handle_push_http,
+                name=self.device_id,
+            )
+        except Exception:
+            log.warning(
+                f"[{self.device_id}] push: could not register the inbound "
+                f"HTTP callback",
+                exc_info=True,
+            )
+            return
+        self._push_callback_url = callback_url(
+            host, self._push_subscription.path
+        )
+        log.info(
+            f"[{self.device_id}] push: inbound HTTP callback at "
+            f"{self._push_callback_url}"
+        )
+
+    @property
+    def push_callback_url(self) -> str:
+        """The URL a device must deliver push notifications to (http_listener
+        shape), or ``""`` outside an active subscription. Python drivers that
+        manage their own device-side registration (e.g. GENA SUBSCRIBE) read
+        it after ``super().connect()``."""
+        return self._push_callback_url
+
     async def _stop_push(self) -> None:
         """Drop the push subscription(s) (no-op when none is active)."""
         sub = self._push_subscription
         self._push_subscription = None
+        self._push_callback_url = ""
         if sub is None:
             return
         await self._push_unregister()
@@ -1522,6 +1573,18 @@ class BaseDriver(ABC):
         """
         if data.strip():
             await self.on_data_received(data)
+
+    async def _handle_push_http(self, request: Any) -> None:
+        """Feed one inbound HTTP push body through the normal response path.
+
+        Like an SSE event, a push request's body is one complete framed
+        message (an XML/JSON document per delivery), so it dispatches whole —
+        exactly like an HTTP poll response body. Python drivers that need
+        the request's headers (e.g. GENA's SID/SEQ) override this.
+        """
+        body = request.body
+        if body and body.strip():
+            await self.on_data_received(body)
 
     def _force_disconnect(self, code: str = NO_RESPONSE, message: str = "") -> None:
         """Tear down a dead transport and fire the disconnect path so the

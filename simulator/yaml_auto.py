@@ -279,6 +279,17 @@ class YAMLAutoSimulator(TCPSimulator):
         # dial-back target host for a registration command (HTTP fills it
         # from the request; plain-TCP sims fall back to loopback).
         self._last_peer_ip = "127.0.0.1"
+        # HTTP-callback push emission: when the driver declares
+        # `push: {type: http_listener}`, script handlers record the callback
+        # URL the (simulated) controller registers — via register_callback()
+        # in the handler namespace — and the `notifications:` templates are
+        # POSTed to every registered URL, exactly like a real device's
+        # webhook delivery.
+        push = driver_def.get("push")
+        self._push_http = (
+            isinstance(push, dict) and push.get("type") == "http_listener"
+        )
+        self._http_push_callbacks: list[str] = []
 
         logger.info(
             "Auto-gen simulator for %s: %d command handlers, %d query handlers, %d state responses",
@@ -642,6 +653,61 @@ class YAMLAutoSimulator(TCPSimulator):
                 )
             else:
                 self._push_tcp_subscribers[target] = failures + 1
+    # ── HTTP-callback push (push: {type: http_listener}) ──
+
+    def register_callback(self, url: Any) -> None:
+        """Record a notification callback URL (script-handler namespace).
+
+        A handler matching the device's registration command calls this with
+        the URL the controller supplied; subsequent state-change
+        notifications POST there. Registering an already-known URL is a
+        no-op, matching re-registration on reconnect.
+        """
+        url = str(url or "").strip()
+        if url and url not in self._http_push_callbacks:
+            self._http_push_callbacks.append(url)
+            self.log_protocol("in", f"(callback registered: {url})")
+
+    def unregister_callback(self, url: Any) -> None:
+        """Drop a previously registered callback URL (script-handler
+        namespace — for handlers matching the device's deregistration
+        command)."""
+        url = str(url or "").strip()
+        if url in self._http_push_callbacks:
+            self._http_push_callbacks.remove(url)
+            self.log_protocol("in", f"(callback unregistered: {url})")
+
+    async def _post_http_callback(self, url: str, msg: str) -> None:
+        """Deliver one rendered notification to a registered callback URL.
+
+        Content type follows the payload shape (XML vs JSON) purely for
+        protocol-log realism — the platform's dispatch reads only the body.
+        Delivery failure is a debug-level event: a real device silently
+        drops feedback its subscriber stopped answering.
+        """
+        import aiohttp
+
+        body = msg.encode("utf-8")
+        stripped = msg.lstrip()
+        if stripped.startswith("<"):
+            ctype = "text/xml"
+        elif stripped.startswith(("{", "[")):
+            ctype = "application/json"
+        else:
+            ctype = "text/plain"
+        try:
+            timeout = aiohttp.ClientTimeout(total=10)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(
+                    url, data=body, headers={"Content-Type": ctype}
+                ) as resp:
+                    self.log_protocol(
+                        "out", f"POST {url} -> {resp.status} | {msg[:200]}"
+                    )
+        except Exception as e:
+            logger.debug(
+                "%s: callback POST to %s failed: %s", self.name, url, e
+            )
 
     def _open_multicast_sender(self) -> None:
         """Open the multicast emission socket (TTL 1, loopback enabled so a
@@ -1299,6 +1365,11 @@ class YAMLAutoSimulator(TCPSimulator):
             "state": state_proxy,
             "config": self.config,
             "respond": respond,
+            # http_listener push: a handler matching the device's
+            # registration command records where to deliver notifications
+            # (e.g. the ServerUrl a codec's feedback registration carries).
+            "register_callback": self.register_callback,
+            "unregister_callback": self.unregister_callback,
             **_SAFE_HANDLER_BUILTINS,
         }
 
@@ -1799,6 +1870,12 @@ class YAMLAutoSimulator(TCPSimulator):
             # carrying one framed notification (the dial-back pattern).
             if self._push_tcp_subscribers:
                 self._emit_push_tcp(data)
+        elif self._push_http:
+            # HTTP-callback bodies are self-framed — no delimiter appended.
+            # No registered callback (controller never sent its registration
+            # command) means no delivery, matching a real device.
+            for url in list(self._http_push_callbacks):
+                asyncio.ensure_future(self._post_http_callback(url, msg))
         elif self._clients:
             asyncio.ensure_future(self.push(data))
 

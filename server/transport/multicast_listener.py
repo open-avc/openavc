@@ -297,6 +297,9 @@ class _Registry:
 async def resolve_source_ips(source_ip: str, name: str) -> set[str] | None:
     """Compute the accepted source-address set for a subscription.
 
+    Public because the HTTP push listener (``transport/http_listener.py``)
+    gates inbound callbacks by the same source semantics.
+
     A loopback host means the device is redirected to the local simulator, so
     the frames' real source is whichever local interface the simulator's
     sender socket used — accept loopback plus every local interface address.
