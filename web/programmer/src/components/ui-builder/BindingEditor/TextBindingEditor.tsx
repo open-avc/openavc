@@ -1,4 +1,3 @@
-import { useState } from "react";
 import type { ProjectConfig } from "../../../api/types";
 import { VariableKeyPicker } from "../../shared/VariableKeyPicker";
 
@@ -17,7 +16,13 @@ export function TextBindingEditor({
   onChange,
   onClear,
 }: TextBindingEditorProps) {
-  const currentMode: TextMode = value
+  // Derive the mode from the current binding value rather than local useState.
+  // The editor is not remounted when the selected element changes (its parent
+  // Card uses a constant key="value"), so a useState mode would keep the prior
+  // element's mode while value points at the new element — the radio would show
+  // the wrong mode and edits would spread onto the wrong binding shape. Sibling
+  // ColorBindingEditor derives from value the same way.
+  const mode: TextMode = value
     ? value.source === "macro_progress"
       ? "macro_progress"
       : value.condition
@@ -25,10 +30,7 @@ export function TextBindingEditor({
         : "state"
     : "static";
 
-  const [mode, setMode] = useState<TextMode>(currentMode);
-
   const handleModeChange = (newMode: TextMode) => {
-    setMode(newMode);
     if (newMode === "static") {
       onClear();
     } else if (newMode === "state") {
