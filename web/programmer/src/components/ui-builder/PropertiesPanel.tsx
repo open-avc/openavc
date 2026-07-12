@@ -7,6 +7,7 @@ import { LayoutProperties } from "./PropertySections/LayoutProperties";
 import { StyleProperties } from "./PropertySections/StyleProperties";
 import { BindingProperties } from "./PropertySections/BindingProperties";
 import { AssetPicker } from "./AssetPicker";
+import { InlineColorPicker } from "../shared/InlineColorPicker";
 
 interface ThemeSummary {
   id: string;
@@ -77,11 +78,23 @@ export function PropertiesPanel({
       }
     };
 
-    // Get a common value for a style prop (returns undefined if mixed)
-    const getCommonStyle = (prop: string): unknown => {
+    // Common value for a style prop. `mixed` distinguishes "the elements
+    // disagree" from "they all share the same (possibly unset) value" — the
+    // latter must show the inherited theme value, not a false "mixed".
+    const getCommonStyle = (prop: string): { common: unknown; mixed: boolean } => {
       const values = selectedElements.map((el) => el.style[prop]);
       const first = values[0];
-      return values.every((v) => v === first) ? first : undefined;
+      const mixed = !values.every((v) => v === first);
+      return { common: mixed ? undefined : first, mixed };
+    };
+
+    // The theme default for a prop, but only when every selected element (which
+    // may be different types) resolves to the same default — otherwise there's
+    // no single effective value to show as a placeholder.
+    const getCommonThemeDefault = (prop: string): unknown => {
+      const defs = selectedElements.map((el) => themeDefaults?.[el.type]?.[prop]);
+      const first = defs[0];
+      return defs.every((d) => d === first) ? first : undefined;
     };
 
     return (
@@ -119,7 +132,8 @@ export function PropertiesPanel({
           { key: "bg_color", label: "Background", type: "color" as const, unit: undefined },
           { key: "text_color", label: "Text Color", type: "color" as const, unit: undefined },
         ]).map(({ key, label, type, unit }) => {
-          const common = getCommonStyle(key);
+          const { common, mixed } = getCommonStyle(key);
+          const themeDefault = getCommonThemeDefault(key);
           return (
             <div key={key} style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
               <label style={{ fontSize: 11, color: "var(--text-muted)", minWidth: 70, flexShrink: 0 }}>{label}</label>
@@ -128,18 +142,23 @@ export function PropertiesPanel({
                   <input
                     type="number"
                     value={common != null ? Number(common) : ""}
-                    placeholder={common === undefined ? "mixed" : ""}
+                    // "mixed" only when the elements genuinely disagree; a shared
+                    // unset value shows the inherited theme default instead.
+                    placeholder={mixed ? "mixed" : themeDefault != null ? String(themeDefault) : ""}
                     onChange={(e) => applyStyleToAll({ [key]: e.target.value ? Number(e.target.value) : undefined })}
                     style={{ width: 60, padding: "2px 4px", fontSize: 11, borderRadius: 3, border: "1px solid var(--border-color)", background: "var(--bg-primary)", color: "var(--text-primary)", textAlign: "center" }}
                   />
                   {unit && <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{unit}</span>}
                 </div>
               ) : (
-                <input
-                  type="color"
-                  value={typeof common === "string" ? common : "#333333"}
-                  onChange={(e) => applyStyleToAll({ [key]: e.target.value })}
-                  style={{ width: 28, height: 22, padding: 0, border: "1px solid var(--border-color)", borderRadius: 3, cursor: "pointer" }}
+                // InlineColorPicker (not a native input) so multi-select can show
+                // the inherited theme color and clear back to it, instead of
+                // fabricating #333333 and force-writing hex to every element on
+                // open. Empty value ⇒ inherit; a pick/clear applies to all.
+                <InlineColorPicker clearable
+                  value={typeof common === "string" ? common : ""}
+                  placeholder={mixed ? "" : String(themeDefault ?? "")}
+                  onChange={(v) => applyStyleToAll({ [key]: v || undefined })}
                 />
               )}
             </div>
