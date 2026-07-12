@@ -38,6 +38,9 @@ export interface Message {
   contentBlocks?: ContentBlock[];
   inputTokens?: number;
   outputTokens?: number;
+  // True when the pre-send project snapshot couldn't be captured, so this
+  // response's edits can't be rolled back — surfaced in the message footer.
+  undoUnavailable?: boolean;
 }
 
 interface AIChatStore {
@@ -181,7 +184,10 @@ export const useAIChatStore = create<AIChatStore>((set, get) => ({
       createdAt: new Date().toISOString(),
     };
 
-    // Add placeholder assistant message for streaming
+    // Add placeholder assistant message for streaming. handleSend always
+    // attempts a project snapshot first; a falsy snapshot here means that
+    // capture failed, so this response's edits can't be rolled back — flag
+    // it so the footer tells the user instead of silently dropping undo.
     const assistantMsg: Message = {
       id: localMessageId("stream"),
       role: "assistant",
@@ -189,6 +195,7 @@ export const useAIChatStore = create<AIChatStore>((set, get) => ({
       createdAt: new Date().toISOString(),
       streaming: true,
       liveToolCalls: [],
+      undoUnavailable: !snapshot,
     };
 
     const assistantId = assistantMsg.id;

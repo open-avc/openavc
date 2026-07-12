@@ -115,6 +115,14 @@ export function ChatMessage({ message, canUndo, onUndo }: ChatMessageProps) {
                 {message.inputTokens?.toLocaleString()} in / {message.outputTokens?.toLocaleString()} out
               </span>
             )}
+            {message.undoUnavailable && (
+              <span
+                style={{ fontSize: 10, color: "var(--text-muted)", fontStyle: "italic" }}
+                title="A project snapshot couldn't be captured before this response, so its changes can't be rolled back here."
+              >
+                Undo unavailable
+              </span>
+            )}
             {canUndo && onUndo && (
               <button
                 onClick={onUndo}
