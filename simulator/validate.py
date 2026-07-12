@@ -492,6 +492,13 @@ def _check_poll_coverage(
         sample = sample.strip().replace("\\n", "").replace("\\r", "")
         sample = sample.rstrip("\r\n").strip()
 
+        # An HTTP raw-path query (not a command name) is fetched with GET, and
+        # the HTTP simulator dispatches it as the synthesized line
+        # "GET /path?query" — so compare handlers against that form, not the
+        # bare path, or every raw-path poll looks uncovered.
+        if transport == "http" and sample.startswith("/"):
+            sample = f"GET {sample}"
+
         matched = _find_matching_handler(sample, handler_patterns)
         if not matched:
             # Check if auto-gen handlers would cover this. The simulator
