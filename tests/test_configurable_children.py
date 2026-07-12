@@ -390,3 +390,163 @@ def test_loader_rejects_string_ids_with_count():
         d["child_entity_types"]["output"]["id_format"] = {"type": "string"}
 
     assert any("requires integer ids" in e for e in _errors_for(mutate))
+
+
+# ---------------------------------------------------------------------------
+# Wire-id maps (0-based / letter-coded protocols): child_set id {group, map}
+# routes wire ids to local child ids, and a command param map: translates
+# the validated value to its wire form before substitution.
+# ---------------------------------------------------------------------------
+
+
+def _wire_map_definition():
+    import copy
+
+    definition = copy.deepcopy(ACME_MATRIX)
+    # Wire speaks 0-based outputs; children are 1-based.
+    definition["responses"].append(
+        {
+            "match": r"WIRE(\d+):(\d+)",
+            "child_set": [
+                {
+                    "type": "output",
+                    "id": {"group": 1, "map": {"0": 1, "1": 2}},
+                    "state": {"input": "$2"},
+                },
+            ],
+        }
+    )
+    definition["commands"]["route_wire"] = {
+        "label": "Route (wire)",
+        "string": "R{output}!\\r\\n",
+        "params": {
+            "output": {
+                "type": "child_id",
+                "child_type": "output",
+                "required": True,
+                "map": {"1": "0", "2": "1"},
+            },
+        },
+    }
+    definition["commands"]["preset_code"] = {
+        "label": "Preset",
+        "string": "P{preset}\\r\\n",
+        "params": {
+            "preset": {
+                "type": "enum",
+                "values": ["day", "night"],
+                "map": {"day": "01", "night": "02"},
+            },
+        },
+    }
+    return definition
+
+
+async def test_child_set_id_map_routes_wire_id():
+    driver = _make_driver(_wire_map_definition())
+    driver._register_declared_children()
+    await driver.on_data_received(b"WIRE0:7")
+    assert driver.state.get("device.dev1.output.01.input") == 7
+    await driver.on_data_received(b"WIRE1:3")
+    assert driver.state.get("device.dev1.output.02.input") == 3
+
+
+async def test_child_set_id_map_unmapped_wire_id_skips():
+    driver = _make_driver(_wire_map_definition())
+    driver._register_declared_children()
+    await driver.on_data_received(b"WIRE9:5")
+    assert driver.state.get("device.dev1.output.01.input") == 0
+    assert driver.state.get("device.dev1.output.02.input") == 0
+    assert driver.state.get("device.dev1.output.09.input") is None
+
+
+async def test_param_wire_map_translates_child_id():
+    driver = _make_driver(_wire_map_definition())
+    driver._register_declared_children()
+    driver.transport = FakeTransport()
+    await driver.send_command("route_wire", {"output": 2})
+    assert driver.transport.sent[-1] == b"R1!\r\n"
+
+
+async def test_param_wire_map_translates_enum_value():
+    driver = _make_driver(_wire_map_definition())
+    driver.transport = FakeTransport()
+    await driver.send_command("preset_code", {"preset": "night"})
+    assert driver.transport.sent[-1] == b"P02\r\n"
+
+
+async def test_param_wire_map_unmapped_value_passes_through():
+    driver = _make_driver(_wire_map_definition())
+    driver._register_declared_children()
+    driver.transport = FakeTransport()
+    # 3 isn't in the map — goes on the wire as-is.
+    await driver.send_command("route_wire", {"output": 3})
+    assert driver.transport.sent[-1] == b"R3!\r\n"
+
+
+def test_loader_accepts_wire_map_shapes():
+    definition = _wire_map_definition()
+    assert validate_driver_definition(definition) == []
+
+
+def test_loader_rejects_id_map_without_group():
+    def mutate(d):
+        d["responses"].append(
+            {
+                "match": r"XOut(\d+)",
+                "child_set": [
+                    {
+                        "type": "output",
+                        "id": {"map": {"0": 1}},
+                        "state": {"input": "$1"},
+                    },
+                ],
+            }
+        )
+
+    assert any("id group must be a capture ref" in e for e in _errors_for(mutate))
+
+
+def test_loader_rejects_id_map_group_out_of_range():
+    def mutate(d):
+        d["responses"].append(
+            {
+                "match": r"XOut(\d+)",
+                "child_set": [
+                    {
+                        "type": "output",
+                        "id": {"group": 3, "map": {"0": 1}},
+                        "state": {"input": "$1"},
+                    },
+                ],
+            }
+        )
+
+    assert any("exceeds the pattern's" in e for e in _errors_for(mutate))
+
+
+def test_loader_rejects_id_map_non_integer_local_id():
+    def mutate(d):
+        d["responses"].append(
+            {
+                "match": r"XOut(\d+)",
+                "child_set": [
+                    {
+                        "type": "output",
+                        "id": {"group": 1, "map": {"0": "left"}},
+                        "state": {"input": "$1"},
+                    },
+                ],
+            }
+        )
+
+    assert any("is not an integer" in e for e in _errors_for(mutate))
+
+
+def test_loader_rejects_bad_param_map_shape():
+    def mutate(d):
+        d["commands"]["route"]["params"]["output"]["map"] = "not-a-dict"
+
+    assert any(
+        "map must be a non-empty mapping" in e for e in _errors_for(mutate)
+    )

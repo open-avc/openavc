@@ -12,6 +12,9 @@ import {
   addValueMapEntry,
   buildResponse,
   checkValueMapKeyRename,
+  childIdFromParts,
+  childIdMap,
+  childIdToText,
   getMappings,
   getPattern,
   renameValueMapKey,
@@ -502,11 +505,12 @@ function ChildSetEditor({
                 ID from
               </span>
               <input
-                value={String(entry.id ?? "")}
+                value={childIdToText(entry.id)}
                 onChange={(e) => {
-                  const raw = e.target.value;
-                  const asInt = /^\d+$/.test(raw) ? parseInt(raw, 10) : raw;
-                  updateEntry(idx, { ...entry, id: asInt });
+                  updateEntry(idx, {
+                    ...entry,
+                    id: childIdFromParts(e.target.value, childIdMap(entry.id)),
+                  });
                 }}
                 placeholder="$1 or a number"
                 title="Which capture group holds the child ID ($1, $2, ...) — or a literal ID when the pattern is specific to one child"
@@ -524,6 +528,17 @@ function ChildSetEditor({
                 <Trash2 size={12} />
               </button>
             </div>
+            {/^\$\d+$/.test(childIdToText(entry.id)) && (
+              <WireIdMapRows
+                idMap={childIdMap(entry.id)}
+                onChange={(map) =>
+                  updateEntry(idx, {
+                    ...entry,
+                    id: childIdFromParts(childIdToText(entry.id), map),
+                  })
+                }
+              />
+            )}
             {stateEntries.map(([prop, expr], si) => (
               <div
                 key={si}
@@ -721,6 +736,107 @@ function ValueMapEditor({
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Optional wire-ID translation for a capture-ref child_set id: rows of
+ *  "wire id on the device" -> "child ID in OpenAVC", for protocols whose
+ *  channel numbers differ from the children (0-based wire, ST codes). A
+ *  captured id the map doesn't cover skips the entry at runtime. */
+function WireIdMapRows({
+  idMap,
+  onChange,
+}: {
+  idMap: Record<string, string | number> | undefined;
+  onChange: (map: Record<string, string | number> | undefined) => void;
+}) {
+  const rows = Object.entries(idMap ?? {});
+  if (rows.length === 0) {
+    return (
+      <button
+        onClick={() => onChange({ "": "" })}
+        title="Translate the captured wire id to the child ID (e.g. a 0-based protocol channel to a 1-based child)"
+        style={{ fontSize: "11px", color: "var(--accent)", padding: "2px 0" }}
+      >
+        + Wire ID map
+      </button>
+    );
+  }
+  const rebuild = (
+    mutate: (next: Record<string, string | number>) => void,
+  ) => {
+    const next: Record<string, string | number> = { ...(idMap ?? {}) };
+    mutate(next);
+    onChange(Object.keys(next).length > 0 ? next : undefined);
+  };
+  return (
+    <div style={{ margin: "2px 0 var(--space-xs) 0" }}>
+      <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+        Wire ID → Child ID
+      </div>
+      {rows.map(([wire, local], ri) => (
+        <div
+          key={ri}
+          style={{
+            display: "flex",
+            gap: "var(--space-xs)",
+            alignItems: "center",
+            marginBottom: 2,
+          }}
+        >
+          <input
+            value={wire}
+            onChange={(e) =>
+              rebuild((next) => {
+                const rebuilt: Record<string, string | number> = {};
+                for (const [k, v] of Object.entries(next)) {
+                  rebuilt[k === wire ? e.target.value : k] = v;
+                }
+                for (const k of Object.keys(next)) delete next[k];
+                Object.assign(next, rebuilt);
+              })
+            }
+            placeholder="wire id"
+            style={{
+              width: 70,
+              fontFamily: "var(--font-mono)",
+              fontSize: "var(--font-size-sm)",
+            }}
+          />
+          <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>→</span>
+          <input
+            value={String(local)}
+            onChange={(e) =>
+              rebuild((next) => {
+                next[wire] = /^\d+$/.test(e.target.value)
+                  ? parseInt(e.target.value, 10)
+                  : e.target.value;
+              })
+            }
+            placeholder="child id"
+            style={{
+              width: 70,
+              fontFamily: "var(--font-mono)",
+              fontSize: "var(--font-size-sm)",
+            }}
+          />
+          <button
+            onClick={() => rebuild((next) => delete next[wire])}
+            style={{ padding: 1, color: "var(--text-muted)" }}
+          >
+            <Trash2 size={10} />
+          </button>
+        </div>
+      ))}
+      <button
+        onClick={() => rebuild((next) => {
+          if (!("" in next)) next[""] = "";
+        })}
+        style={{ fontSize: "11px", color: "var(--accent)", padding: "2px 0" }}
+      >
+        + Add
+      </button>
     </div>
   );
 }

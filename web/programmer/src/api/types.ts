@@ -512,6 +512,12 @@ export interface DriverParamDef {
   // is picked, or Yes/No when `mute` is picked. Falls back to the declared
   // `type` until the sibling is chosen. Authoring aid; runtime still validates.
   type_from?: ParamTypeFrom;
+  // Wire-value translation: after validation, the runtime looks the value up
+  // here (string-keyed) and substitutes the mapped wire value instead —
+  // 0-based channel numbers, letter codes. Values the map doesn't cover pass
+  // through unchanged. Most useful on child_id params whose local ids differ
+  // from the protocol's channel numbers.
+  map?: Record<string, string | number>;
 }
 
 export interface ParamOptionsFrom {
@@ -575,8 +581,18 @@ export interface DriverResponseDef {
 
 export interface DriverChildSetEntry {
   type: string;
-  id: string | number;
+  // A capture ref ("$1"), a literal id, or the long form routing a captured
+  // wire id through a translation map: { group: 1, map: { "0": 1 } } — for
+  // protocols whose wire channel numbers differ from the local child ids
+  // (0-based wire, ST-channel codes). A wire id the map doesn't cover skips
+  // the entry.
+  id: string | number | DriverChildSetIdSpec;
   state: Record<string, unknown>;
+}
+
+export interface DriverChildSetIdSpec {
+  group: number | string;
+  map?: Record<string, string | number>;
 }
 
 /** Per-child query template for polling.queries / on_connect: expands to one

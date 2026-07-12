@@ -226,4 +226,31 @@ const results = {};
   };
 }
 
+{
+  // Wire-ID map helpers: the long form renders as its capture ref, keeps its
+  // map, and rebuilds correctly from text + rows.
+  const longForm = { group: 1, map: { "0": 1, "10": "ST" } };
+  results.child_id_long_form_renders_ref = {
+    pass: H.childIdToText(longForm) === "$1" &&
+      eq(H.childIdMap(longForm), { "0": 1, "10": "ST" }) &&
+      H.childIdToText("$2") === "$2" &&
+      H.childIdToText(3) === "3" &&
+      H.childIdMap("$2") === undefined,
+    detail: H.childIdToText(longForm),
+  };
+}
+{
+  // Rebuild: ref + rows -> long form; ref alone stays a ref; a literal drops
+  // the (meaningless) map; numeric text becomes a number.
+  const rows = { "0": 1 };
+  results.child_id_rebuild_shapes = {
+    pass: eq(H.childIdFromParts("$1", rows), { group: 1, map: rows }) &&
+      H.childIdFromParts("$1", undefined) === "$1" &&
+      H.childIdFromParts("$1", {}) === "$1" &&
+      H.childIdFromParts("2", rows) === 2 &&
+      H.childIdFromParts("ST", rows) === "ST",
+    detail: H.childIdFromParts("$1", rows),
+  };
+}
+
 process.stdout.write(JSON.stringify(results));

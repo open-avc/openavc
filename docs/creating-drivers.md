@@ -656,6 +656,19 @@ responses:
 
 A response entry can carry `set:` (flat state) and `child_set:` together; first-match-wins dispatch is unchanged. A routed ID that isn't registered is skipped quietly — devices legitimately answer for ports beyond a configured roster. `child_set` works on regex responses (TCP, serial, UDP, HTTP text); it is not supported on OSC or `json:` responses.
 
+When the protocol's channel numbers differ from your child IDs — a 0-based wire where children are 1-based, or a special code for a stereo channel — use the long ID form to translate the captured wire ID:
+
+```yaml
+responses:
+  # Wire channels 0-5 are inputs 1-6. A captured ID the map doesn't cover
+  # skips the entry, so a separate rule can claim special channels first.
+  - match: 'GICL \S+ NC (\d+),(\d+)'
+    child_set:
+      - type: input
+        id: { group: 1, map: { "0": 1, "1": 2, "2": 3, "3": 4, "4": 5, "5": 6 } }
+        state: { level: $2 }
+```
+
 Poll each child with an `each_child:` entry in `polling.queries` (also allowed in `on_connect`). It expands to one query per registered child, substituting `{child_id}` with the unpadded local ID:
 
 ```yaml
@@ -723,6 +736,22 @@ route_decoder:
   params:
     decoder_id: { type: child_id, child_type: decoder, required: true }
     encoder_id: { type: child_id, child_type: encoder, required: true }
+```
+
+**Wire value maps.** Any parameter may declare a `map:` translating the validated value to what the protocol wants on the wire — most useful when a `child_id`'s local ID differs from the protocol's channel number (0-based channels, letter codes). The map is applied after validation, so `min`/`max`/`enum` checks see the value the operator picked; values the map doesn't cover pass through unchanged:
+
+```yaml
+set_input_level:
+  label: Set Input Level
+  send: "SICL S 0000 00 NC {channel},{level} \r"
+  params:
+    # Children are inputs 1-6; the wire speaks channels 0-5.
+    channel:
+      type: child_id
+      child_type: input
+      required: true
+      map: { "1": "0", "2": "1", "3": "2", "4": "3", "5": "4", "6": "5" }
+    level: { type: integer, required: true, min: 0, max: 511 }
 ```
 
 **Enum labels.** An `enum` parameter's `values` entries may be plain strings or `{value, label}` pairs. The **label** is what the operator picks in the dropdown and reads in a macro; the **value** is what goes on the wire — so you label a code set once instead of defining one command per code. A caller may pass either the label or the wire value (picker, macro `$var`, or the REST/cloud API); the runtime normalizes to the value. Plain-string lists behave exactly as before.

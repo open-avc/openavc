@@ -183,3 +183,43 @@ export function addValueMapEntry(
   if ("" in map) return null;
   return { ...map, "": "" };
 }
+
+/** The text shown in the child_set ID input: the long form {group, map}
+ *  renders as its capture ref ("$1"); plain forms render verbatim. */
+export function childIdToText(id: unknown): string {
+  if (id !== null && typeof id === "object") {
+    const group = (id as { group?: unknown }).group;
+    const text = String(group ?? "");
+    return text.startsWith("$") ? text : `$${text}`;
+  }
+  return String(id ?? "");
+}
+
+/** The wire-id map carried by a long-form child_set id, if any. */
+export function childIdMap(
+  id: unknown,
+): Record<string, string | number> | undefined {
+  if (id !== null && typeof id === "object") {
+    const map = (id as { map?: unknown }).map;
+    if (map !== null && typeof map === "object") {
+      return map as Record<string, string | number>;
+    }
+  }
+  return undefined;
+}
+
+/** Rebuild a child_set id from the ID input's text + the map rows. A capture
+ *  ref with map rows becomes the long form {group, map}; a capture ref
+ *  without rows stays "$N"; anything else is a literal (numeric text becomes
+ *  a number) and the map — meaningless for a literal — is dropped. */
+export function childIdFromParts(
+  text: string,
+  map: Record<string, string | number> | undefined,
+): string | number | { group: number; map: Record<string, string | number> } {
+  const refMatch = /^\$(\d+)$/.exec(text.trim());
+  if (refMatch && map && Object.keys(map).length > 0) {
+    return { group: parseInt(refMatch[1], 10), map };
+  }
+  if (refMatch) return text.trim();
+  return /^\d+$/.test(text.trim()) ? parseInt(text.trim(), 10) : text;
+}

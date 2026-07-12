@@ -1022,6 +1022,119 @@ function ParamRow({
           </div>
         </div>
       )}
+      <ParamWireMapEditor
+        map={def.map}
+        onChange={(map) => onUpdate({ map })}
+      />
+    </div>
+  );
+}
+
+/** Optional wire-value translation for a param: rows of "value" -> "wire
+ *  value" applied by the runtime after validation, before the value is
+ *  substituted into the send template. Use when the value the integrator
+ *  picks differs from what the protocol wants on the wire — a 1-based child
+ *  ID on a 0-based protocol, a named preset that sends a code. Unmapped
+ *  values pass through unchanged. */
+function ParamWireMapEditor({
+  map,
+  onChange,
+}: {
+  map: Record<string, string | number> | undefined;
+  onChange: (map: Record<string, string | number> | undefined) => void;
+}) {
+  const rows = Object.entries(map ?? {});
+  if (rows.length === 0) {
+    return (
+      <button
+        onClick={() => onChange({ "": "" })}
+        title="Translate the picked value to a different value on the wire (e.g. child ID 1 sends channel 0)"
+        style={{
+          fontSize: "11px",
+          color: "var(--accent)",
+          padding: "2px 0",
+          display: "block",
+          marginTop: "var(--space-xs)",
+        }}
+      >
+        + Wire value map
+      </button>
+    );
+  }
+  const rebuild = (
+    mutate: (next: Record<string, string | number>) => void,
+  ) => {
+    const next: Record<string, string | number> = { ...(map ?? {}) };
+    mutate(next);
+    onChange(Object.keys(next).length > 0 ? next : undefined);
+  };
+  return (
+    <div style={{ marginTop: "var(--space-sm)" }}>
+      <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+        Wire value map (value → what is sent)
+      </div>
+      {rows.map(([from, to], ri) => (
+        <div
+          key={ri}
+          style={{
+            display: "flex",
+            gap: "var(--space-xs)",
+            alignItems: "center",
+            marginBottom: 2,
+          }}
+        >
+          <input
+            value={from}
+            onChange={(e) =>
+              rebuild((next) => {
+                const rebuilt: Record<string, string | number> = {};
+                for (const [k, v] of Object.entries(next)) {
+                  rebuilt[k === from ? e.target.value : k] = v;
+                }
+                for (const k of Object.keys(next)) delete next[k];
+                Object.assign(next, rebuilt);
+              })
+            }
+            placeholder="value"
+            style={{
+              width: 90,
+              fontFamily: "var(--font-mono)",
+              fontSize: "var(--font-size-sm)",
+            }}
+          />
+          <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>→</span>
+          <input
+            value={String(to)}
+            onChange={(e) =>
+              rebuild((next) => {
+                next[from] = e.target.value;
+              })
+            }
+            placeholder="wire value"
+            style={{
+              width: 90,
+              fontFamily: "var(--font-mono)",
+              fontSize: "var(--font-size-sm)",
+            }}
+          />
+          <button
+            onClick={() => rebuild((next) => delete next[from])}
+            style={{ padding: 1, color: "var(--text-muted)" }}
+          >
+            <Trash2 size={10} />
+          </button>
+        </div>
+      ))}
+      <button
+        onClick={() =>
+          rebuild((next) => {
+            if (!("" in next)) next[""] = "";
+          })
+        }
+        style={{ fontSize: "11px", color: "var(--accent)", padding: "2px 0" }}
+      >
+        + Add
+      </button>
     </div>
   );
 }

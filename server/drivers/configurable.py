@@ -360,7 +360,8 @@ class ConfigurableDriver(BaseDriver):
     def _compile_child_set(self, resp: dict[str, Any]) -> list[dict[str, Any]]:
         """Compile a response entry's ``child_set:`` list — route regex
         captures into child-entity state. Each entry is
-        ``{type, id: $N | literal, state: {prop: $N | literal | {group/value/map/type}}}``.
+        ``{type, id: $N | literal | {group, map}, state: {prop: $N | literal
+        | {group/value/map/type}}}``.
         Value coercion uses the child type's declared ``state_variables``,
         mirroring the flat ``set:`` shorthand (static values coerce too).
         Malformed entries are skipped with a warning; the loader validates
@@ -385,7 +386,28 @@ class ConfigurableDriver(BaseDriver):
             cvars = tdef.get("state_variables") or {}
             cid = entry.get("id")
             idspec: tuple[str, Any]
-            if isinstance(cid, str) and cid.startswith("$"):
+            id_map: dict[str, Any] | None = None
+            if isinstance(cid, dict):
+                # Long form: {group: N | $N, map: {wire: local_id}} — route
+                # by capture ref, translating the captured wire id to the
+                # local child id (0-based protocols, letter codes). A wire
+                # id the map doesn't cover skips the entry at apply time.
+                gref = cid.get("group")
+                if isinstance(gref, str) and gref.startswith("$"):
+                    gref = gref[1:]
+                try:
+                    idspec = ("group", int(gref))
+                except (TypeError, ValueError):
+                    log.warning(
+                        f"[{self.device_id}] child_set: id group "
+                        f"{cid.get('group')!r} is not a capture ref; "
+                        f"skipping entry"
+                    )
+                    continue
+                raw_map = cid.get("map")
+                if isinstance(raw_map, dict) and raw_map:
+                    id_map = {str(k): v for k, v in raw_map.items()}
+            elif isinstance(cid, str) and cid.startswith("$"):
                 try:
                     idspec = ("group", int(cid[1:]))
                 except ValueError:
@@ -440,7 +462,14 @@ class ConfigurableDriver(BaseDriver):
                     # Static value — coerce by declared type like flat set:.
                     props.append({"prop": prop, "value": expr, "type": var_type})
             if props:
-                compiled.append({"type": ctype, "id": idspec, "props": props})
+                compiled.append(
+                    {
+                        "type": ctype,
+                        "id": idspec,
+                        "id_map": id_map,
+                        "props": props,
+                    }
+                )
         return compiled
 
     def _merge_config_protocol(self) -> None:
@@ -1200,6 +1229,15 @@ class ConfigurableDriver(BaseDriver):
             command, cmd_def.get("params", {}), params
         )
 
+        # Wire-value translation (opt-in): a param may declare a ``map:``
+        # translating the validated user-facing value to what the protocol
+        # wants on the wire (0-based channel numbers, letter codes, ...).
+        # Applied once, here — after validation so min/max/enum checks see
+        # the user-facing value, before any transport branch so TCP, OSC,
+        # and HTTP sends all get the wire form. Values the map doesn't
+        # cover pass through unchanged.
+        params = self._apply_param_wire_maps(cmd_def.get("params", {}), params)
+
         # Check if this is an OSC command (has 'address' key)
         if self._is_osc_command(cmd_def):
             return await self._send_osc_command(command, cmd_def, params)
@@ -1243,6 +1281,34 @@ class ConfigurableDriver(BaseDriver):
         await self.transport.send(data)
         log.debug(f"[{self.device_id}] Sent command '{command}': {data!r}")
         return True
+
+    @staticmethod
+    def _apply_param_wire_maps(
+        param_defs: dict[str, Any], params: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Translate param values through their declared ``map:`` lookup.
+
+        Match is on ``str(value)`` so a coerced ``child_id`` int hits its
+        string key, and map keys are string-normalized so an unquoted YAML
+        integer key still matches. The mapped value substitutes as a string
+        (it is a wire token, not a number to re-coerce)."""
+        if not isinstance(param_defs, dict) or not params:
+            return params
+        out = params
+        for name, pdef in param_defs.items():
+            if not isinstance(pdef, dict) or name not in params:
+                continue
+            value_map = pdef.get("map")
+            if not isinstance(value_map, dict) or not value_map:
+                continue
+            mapped = {str(k): v for k, v in value_map.items()}.get(
+                str(params[name])
+            )
+            if mapped is not None:
+                if out is params:
+                    out = dict(params)
+                out[name] = str(mapped)
+        return out
 
     def _is_osc_command(self, cmd_def: dict[str, Any]) -> bool:
         """Check if a command definition uses OSC-style fields."""
@@ -1698,6 +1764,16 @@ class ConfigurableDriver(BaseDriver):
                     continue
             else:
                 raw_id = id_val
+            id_map = cm.get("id_map")
+            if id_map is not None:
+                mapped_id = id_map.get(str(raw_id).strip())
+                if mapped_id is None:
+                    log.debug(
+                        f"[{self.device_id}] child_set: {ctype} wire id "
+                        f"{raw_id!r} not in the id map — skipping"
+                    )
+                    continue
+                raw_id = mapped_id
             local_id = self._coerce_child_local_id(ctype, raw_id)
             if local_id is None:
                 continue

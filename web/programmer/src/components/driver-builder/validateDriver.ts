@@ -563,6 +563,30 @@ export function validateDriver(
       }
     }
 
+    // Wire value maps (mirror driver_loader.py): every row needs both a
+    // value and a wire value — an empty row would silently never translate.
+    for (const [paramName, paramDef] of Object.entries(cmd.params ?? {})) {
+      if (paramDef.map === undefined) continue;
+      const rows = Object.entries(paramDef.map ?? {});
+      const rowsOk =
+        rows.length > 0 &&
+        rows.every(
+          ([k, v]) =>
+            k !== "" &&
+            (typeof v === "string" || typeof v === "number") &&
+            String(v) !== "",
+        );
+      if (!rowsOk) {
+        issues.push({
+          severity: "error",
+          section: "behavior",
+          command: cmdName,
+          param: paramName,
+          message: `Parameter "${paramName}" in command "${cmdName}" has a wire value map with empty rows — each row needs a value and what to send.`,
+        });
+      }
+    }
+
     // Param-name legality. The renamer used to silently strip illegal
     // characters; flag the residue so the user understands what got
     // trimmed.
@@ -810,6 +834,56 @@ export function validateDriver(
             section: "behavior",
             message: `${label}: ${eLabel} needs an ID — a capture reference like $1, or a literal child ID.`,
           });
+        } else if (typeof entry.id === "object") {
+          // Long form {group, map}: wire-ID translation on a capture ref.
+          const spec = entry.id as { group?: unknown; map?: unknown };
+          const gref = spec.group;
+          if (typeof gref === "number" && Number.isInteger(gref)) {
+            checkRef(`${eLabel} ID`, `$${gref}`);
+          } else if (typeof gref === "string" && gref.startsWith("$")) {
+            checkRef(`${eLabel} ID`, gref);
+          } else {
+            issues.push({
+              severity: "error",
+              section: "behavior",
+              message: `${label}: ${eLabel} wire-ID map needs a capture group (which capture holds the wire ID).`,
+            });
+          }
+          if (spec.map !== undefined) {
+            const entriesOk =
+              typeof spec.map === "object" &&
+              spec.map !== null &&
+              Object.keys(spec.map as object).length > 0 &&
+              Object.entries(spec.map as Record<string, unknown>).every(
+                ([k, v]) =>
+                  k !== "" &&
+                  (typeof v === "string" || typeof v === "number") &&
+                  String(v) !== "",
+              );
+            if (!entriesOk) {
+              issues.push({
+                severity: "error",
+                section: "behavior",
+                message: `${label}: ${eLabel} wire-ID map rows must each have a wire ID and a child ID.`,
+              });
+            } else if (
+              (childTypes[entry.type]?.id_format?.type ?? "integer") ===
+              "integer"
+            ) {
+              for (const v of Object.values(
+                spec.map as Record<string, string | number>,
+              )) {
+                if (!/^\d+$/.test(String(v).trim())) {
+                  issues.push({
+                    severity: "error",
+                    section: "behavior",
+                    message: `${label}: ${eLabel} wire-ID map value "${v}" isn't an integer, but child type "${entry.type}" uses integer IDs.`,
+                  });
+                  break;
+                }
+              }
+            }
+          }
         } else if (typeof entry.id === "string" && entry.id.startsWith("$")) {
           checkRef(`${eLabel} ID`, entry.id);
         }

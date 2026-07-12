@@ -90,6 +90,8 @@ SCENARIOS = [
     "matching_type_returns_to_shorthand",
     "mappings_form_stays_mappings",
     "child_set_rides_along",
+    "child_id_long_form_renders_ref",
+    "child_id_rebuild_shapes",
 ]
 
 
