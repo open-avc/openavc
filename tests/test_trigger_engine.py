@@ -624,6 +624,8 @@ def test_list_triggers(trigger_engine):
 
 async def test_test_trigger(trigger_engine, macro_engine, core):
     state, events = core
+    fired = []
+    events.on("trigger.fired", lambda e, p: fired.append(p))
     macro_engine.load_macros([{
         "id": "m1",
         "name": "Test Macro",
@@ -638,9 +640,15 @@ async def test_test_trigger(trigger_engine, macro_engine, core):
     ok = await trigger_engine.test_trigger("trg_test")
     assert ok is True
     assert state.get("var.tested") is True
+    # The "Fire now" button must emit trigger.fired so the Macro editor flashes
+    # the trigger card the same as a real fire.
+    assert [p["trigger_id"] for p in fired] == ["trg_test"]
+    assert fired[0]["trigger_type"] == "test"
 
     not_ok = await trigger_engine.test_trigger("nonexistent")
     assert not_ok is False
+    # A nonexistent trigger fires nothing new.
+    assert len(fired) == 1
 
 
 # --- Reload (stop + reload + start) ---

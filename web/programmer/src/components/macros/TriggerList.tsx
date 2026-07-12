@@ -20,42 +20,14 @@ interface TriggerListProps {
 export function TriggerList({ triggers, devices, allMacros, onUpdate }: TriggerListProps) {
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   const [showAddMenu, setShowAddMenu] = useState(false);
-  const [recentlyFired, setRecentlyFired] = useState<Set<string>>(new Set());
   const [pendingTriggers, setPendingTriggers] = useState<Record<string, { reason: string; waitSeconds?: number; queuePosition?: number }>>({});
   const addMenuRef = useRef<HTMLDivElement>(null);
 
-  // Poll for trigger.fired events every 2s instead of subscribing to logEntries
-  // (avoids re-rendering on every log entry)
-  const lastCheckedRef = useRef(0);
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const entries = useLogStore.getState().logEntries;
-      if (entries.length === lastCheckedRef.current) return;
-      // Only check new entries since last poll
-      const newEntries = entries.slice(lastCheckedRef.current);
-      lastCheckedRef.current = entries.length;
-      for (const entry of newEntries.slice(-10)) {
-        if (entry.message?.includes("[TRIGGER]") && entry.message?.includes("fired")) {
-          const match = entry.message.match(/\btrg_\w+/);
-          if (match) {
-            setRecentlyFired((prev) => {
-              const next = new Set(prev);
-              next.add(match[0]);
-              return next;
-            });
-            setTimeout(() => {
-              setRecentlyFired((prev) => {
-                const next = new Set(prev);
-                next.delete(match[0]);
-                return next;
-              });
-            }, 1500);
-          }
-        }
-      }
-    }, 2000);
-    return () => clearInterval(interval);
-  }, []);
+  // "Just fired" highlights come straight from the trigger.fired WS message,
+  // which useWebSocket records into this store slice (and auto-clears after the
+  // flash). Subscribing to this one slice re-renders only when a trigger fires,
+  // not on every log entry.
+  const recentlyFired = useLogStore((s) => s.recentlyFired);
 
   // Poll for trigger pending state every 1s
   useEffect(() => {
@@ -234,7 +206,7 @@ export function TriggerList({ triggers, devices, allMacros, onUpdate }: TriggerL
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
           {triggers.map((trigger, i) => {
             const typeInfo = getTriggerType(trigger.type);
-            const isFired = recentlyFired.has(trigger.id);
+            const isFired = trigger.id in recentlyFired;
             const pending = pendingTriggers[trigger.id];
 
             return (

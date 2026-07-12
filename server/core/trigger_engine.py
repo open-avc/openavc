@@ -734,6 +734,19 @@ class TriggerEngine:
         ts = self._triggers.get(trigger_id)
         if not ts:
             return False
+        # Emit trigger.fired so the Macro editor flashes the trigger card the same
+        # as a real fire — this button is the primary "test automation" affordance.
+        # The only listener forwards it to WS clients; deliberately no cooldown /
+        # last_fired / depth bookkeeping so a manual test stays side-effect-free.
+        await self.events.emit(
+            "trigger.fired",
+            {
+                "trigger_id": trigger_id,
+                "macro_id": ts.macro_id,
+                "macro_name": ts.macro_name,
+                "trigger_type": "test",
+            },
+        )
         try:
             await self.macros.execute(ts.macro_id)
         except ValueError:

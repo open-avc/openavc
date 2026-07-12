@@ -88,6 +88,10 @@ interface LogStore {
 
   // Trigger pending states (trigger_id -> pending info)
   triggerPending: Record<string, TriggerPending>;
+  // Recently-fired triggers (trigger_id -> fire timestamp), driving the brief
+  // "just fired" highlight. Set from the trigger.fired WS message and auto-cleared
+  // by useWebSocket after the flash.
+  recentlyFired: Record<string, number>;
 
   addLogEntry: (entry: Omit<LogEntry, "id">) => void;
   addLogBatch: (entries: Omit<LogEntry, "id">[]) => void;
@@ -103,6 +107,7 @@ interface LogStore {
   startMacroRun: (macroId: string) => void;
   finishMacroRun: (status: "completed" | "error", error?: string) => void;
   setTriggerPending: (triggerId: string, pending: TriggerPending | null) => void;
+  setTriggerFired: (triggerId: string, fired: boolean) => void;
 }
 
 let nextLogEntryId = 1;
@@ -127,6 +132,7 @@ export const useLogStore = create<LogStore>((set, get) => ({
   macroStartedAt: 0,
   lastRun: null,
   triggerPending: {},
+  recentlyFired: {},
 
   addLogEntry: (entry) =>
     set((s) => {
@@ -206,5 +212,16 @@ export const useLogStore = create<LogStore>((set, get) => ({
         delete next[triggerId];
       }
       return { triggerPending: next };
+    }),
+
+  setTriggerFired: (triggerId, fired) =>
+    set((s) => {
+      const next = { ...s.recentlyFired };
+      if (fired) {
+        next[triggerId] = Date.now();
+      } else {
+        delete next[triggerId];
+      }
+      return { recentlyFired: next };
     }),
 }));

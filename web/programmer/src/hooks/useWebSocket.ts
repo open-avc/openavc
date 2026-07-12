@@ -11,6 +11,10 @@ import { invalidatePluginMacroActions } from "../components/macros/pluginMacroAc
 import { showSuccess, showInfo, showError } from "../store/toastStore";
 import * as api from "../api/restClient";
 
+// How long the "just fired" highlight stays lit on a trigger card after a
+// trigger.fired message.
+const TRIGGER_FIRED_FLASH_MS = 1500;
+
 export function useWebSocket() {
   const setConnected = useConnectionStore((s) => s.setConnected);
   const applyStateUpdate = useConnectionStore((s) => s.applyStateUpdate);
@@ -97,6 +101,9 @@ export function useWebSocket() {
         triggerClearTimers.delete(triggerId);
       }
     };
+    // trigger.fired "just fired" highlight auto-clear timers, keyed by trigger_id.
+    // A rapid re-fire re-arms the timer so the flash restarts cleanly.
+    const firedClearTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
     const unsub = ws.onMessage((msg) => {
       // Full state snapshot (sent by server on WS connect)
@@ -294,11 +301,19 @@ export function useWebSocket() {
         });
       }
 
-      // Clear trigger pending when it fires
+      // Clear trigger pending when it fires, and flash the "just fired" highlight.
       if (msg.type === "trigger.fired") {
         const triggerId = msg.trigger_id as string;
         cancelTriggerClear(triggerId);
         useLogStore.getState().setTriggerPending(triggerId, null);
+        useLogStore.getState().setTriggerFired(triggerId, true);
+        const priorFlash = firedClearTimers.get(triggerId);
+        if (priorFlash) clearTimeout(priorFlash);
+        const flashTimer = setTimeout(() => {
+          firedClearTimers.delete(triggerId);
+          useLogStore.getState().setTriggerFired(triggerId, false);
+        }, TRIGGER_FIRED_FLASH_MS);
+        firedClearTimers.set(triggerId, flashTimer);
       }
 
       // Discovery events
@@ -352,6 +367,8 @@ export function useWebSocket() {
       macroResetTimers.clear();
       triggerClearTimers.forEach(clearTimeout);
       triggerClearTimers.clear();
+      firedClearTimers.forEach(clearTimeout);
+      firedClearTimers.clear();
       unsub();
       unsubConnect();
       unsubDisconnect();
