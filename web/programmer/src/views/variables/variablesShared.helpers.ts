@@ -165,3 +165,30 @@ export function collectWildcardMatches(pattern: string, candidateKeys: Iterable<
   }
   return out;
 }
+
+// Built-in macro action types whose step `params` the runtime does NOT resolve
+// `$var` references in. Every OTHER action — `device.command`, `group.command`,
+// and any plugin-registered action — has its `params` passed through the macro
+// engine's `_resolve_params` (server/core/macro_engine.py: device.command,
+// group.command, and the plugin-action `else` branch), so a `$var.<name>` inside
+// those params is live at runtime.
+const NON_PARAM_MACRO_ACTIONS = new Set([
+  "delay",
+  "state.set",
+  "event.emit",
+  "macro",
+  "conditional",
+  "wait_until",
+  "ui.navigate",
+]);
+
+/**
+ * True when a macro step's `params` object carries runtime-resolved `$var`
+ * references — i.e. device/group commands and plugin-action steps. The variable
+ * rename rewrite and the "Used By" scan both gate on this, so a variable
+ * referenced only from a plugin-action param is rewritten/counted instead of
+ * being silently left dangling (rename) or under-counted (usage panel).
+ */
+export function stepParamsResolveVars(action: string | undefined | null): boolean {
+  return !!action && !NON_PARAM_MACRO_ACTIONS.has(action);
+}

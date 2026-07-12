@@ -16,6 +16,21 @@ import {
   btnPrimary, btnSecondary, codeStyle, typeBadgeStyle, iconBtn,
   detailLabel, detailInput, sectionTitle,
 } from "./variablesShared";
+import { stepParamsResolveVars } from "./variablesShared.helpers";
+
+/**
+ * Coerce an existing default to a concrete boolean using the same true-set as
+ * the runtime (`_coerce_bool` in condition_eval.py, and configurable.py's
+ * `raw.lower() in (1/true/yes/on)`). JS `Boolean()` treats any non-empty string
+ * as true, so switching a variable to boolean would flip "false"/"0"/"off" to
+ * true — this reads them as false, matching how the runtime interprets them.
+ */
+function coerceToBool(value: unknown): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  if (typeof value === "string") return ["true", "1", "yes", "on"].includes(value.trim().toLowerCase());
+  return false;
+}
 
 // ==========================================================================
 // Variables Actions (header button)
@@ -246,7 +261,9 @@ export function VariablesSubTab() {
           step = { ...step, condition: { ...step.condition, key: newKey } }; changed = true;
         }
         if (step.skip_if?.key === oldKey) { step = { ...step, skip_if: { ...step.skip_if, key: newKey } }; changed = true; }
-        if ((step.action === "device.command" || step.action === "group.command") && step.params) {
+        // device/group command AND plugin-action params all resolve $var refs
+        // at runtime, so rewrite them all (see stepParamsResolveVars).
+        if (stepParamsResolveVars(step.action) && step.params) {
           const newParams: Record<string, unknown> = {};
           let paramChanged = false;
           for (const [pk, pv] of Object.entries(step.params)) {
@@ -548,7 +565,7 @@ export function VariablesSubTab() {
                   onChange={(e) => {
                     const newType = e.target.value;
                     const patch: Partial<VariableConfig> = { type: newType };
-                    if (newType === "boolean") patch.default = Boolean(selectedVar.default);
+                    if (newType === "boolean") patch.default = coerceToBool(selectedVar.default);
                     else if (newType === "number") patch.default = Number(selectedVar.default) || 0;
                     else patch.default = selectedVar.default != null ? String(selectedVar.default) : "";
                     const cleanValidation = { ...selectedVar.validation };

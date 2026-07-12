@@ -3,7 +3,7 @@ import { ChevronRight, ExternalLink, X, Zap, Layout, FileCode } from "lucide-rea
 import { useNavigationStore, type FocusTarget } from "../../store/navigationStore";
 import type { ProjectConfig, ScriptReference } from "../../api/types";
 import type { ViewId } from "../../components/layout/Sidebar";
-import { scanBindingForVars, scanBindingForAllKeys, collectWildcardMatches, hasGlobChars } from "./variablesShared.helpers";
+import { scanBindingForVars, scanBindingForAllKeys, collectWildcardMatches, hasGlobChars, stepParamsResolveVars } from "./variablesShared.helpers";
 
 // ==========================================================================
 // Shared types
@@ -113,13 +113,14 @@ function scanStepsForVarUsages(
         nav: macroNav,
       });
     }
-    // Scan $var references in device/group command params
-    if ((step.action === "device.command" || step.action === "group.command") && step.params) {
+    // Scan $var references in device/group command AND plugin-action params
+    // (the runtime resolves $var in all of these — see stepParamsResolveVars).
+    if (stepParamsResolveVars(step.action) && step.params) {
       for (const val of Object.values(step.params)) {
         if (typeof val === "string" && val.startsWith("$var.")) {
           addUsage(val.slice(5), {
             type: "macro", icon: Zap, label: macroName,
-            detail: `${step.command ?? "?"} param — dynamic value`,
+            detail: `${step.command ?? step.action ?? "?"} param — dynamic value`,
             nav: macroNav,
           });
         }
@@ -236,12 +237,12 @@ function scanStepsForAllKeyUsages(
         nav: macroNav,
       });
     }
-    if ((step.action === "device.command" || step.action === "group.command") && step.params) {
+    if (stepParamsResolveVars(step.action) && step.params) {
       for (const val of Object.values(step.params)) {
         if (typeof val === "string" && val.startsWith("$")) {
           addUsage(val.slice(1), {
             type: "macro", icon: Zap, label: macroName,
-            detail: `${step.command ?? "?"} param — dynamic value`,
+            detail: `${step.command ?? step.action ?? "?"} param — dynamic value`,
             nav: macroNav,
           });
         }

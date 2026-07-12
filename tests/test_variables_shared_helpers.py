@@ -105,6 +105,8 @@ SCENARIOS = [
     "l103_wildcard_segment_scoped",
     # Backlog 67 item 2 — var.* wildcard matches the project's variables.
     "varmap_wildcard_matches_vars",
+    # M-277 — plugin-action params (not just device/group) resolve $var refs.
+    "m277_plugin_action_params_resolve_vars",
 ]
 
 

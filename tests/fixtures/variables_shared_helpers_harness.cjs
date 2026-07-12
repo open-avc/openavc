@@ -216,4 +216,22 @@ results.varmap_wildcard_matches_vars = (() => {
   };
 })();
 
+// --- M-277: plugin-action params carry runtime-resolved $var refs ----------
+// The macro engine resolves $var in device.command, group.command, AND any
+// plugin-registered action's params, but not in the other built-ins. The
+// variable rename rewrite + "Used By" scan gate on this predicate, so a var
+// referenced only from a plugin-action param is rewritten/counted, not dropped.
+results.m277_plugin_action_params_resolve_vars = (() => {
+  try {
+    const resolves = ["device.command", "group.command", "acme.dim", "widgetplugin.pulse"];
+    const skips = ["delay", "state.set", "event.emit", "macro", "conditional", "wait_until", "ui.navigate"];
+    const resolvesOk = resolves.every((a) => V.stepParamsResolveVars(a) === true);
+    const skipsOk = skips.every((a) => V.stepParamsResolveVars(a) === false);
+    const emptyOk = V.stepParamsResolveVars("") === false && V.stepParamsResolveVars(undefined) === false;
+    return { pass: resolvesOk && skipsOk && emptyOk, detail: { resolvesOk, skipsOk, emptyOk } };
+  } catch (e) {
+    return { pass: false, detail: `threw: ${e}` };
+  }
+})();
+
 process.stdout.write(JSON.stringify(results));
