@@ -98,6 +98,9 @@ class TestSystemConfig:
         assert cfg.get("network", "bind_address") == "127.0.0.1"
         assert cfg.get("cloud", "enabled") is False
         assert cfg.get("updates", "channel") == "stable"
+        # Shipped default is a daily check, matching the docs and the auto-check
+        # task's own fallback (manager.start_auto_check default of 24h).
+        assert cfg.get("updates", "auto_check_interval_hours") == 24
 
     def test_tls_defaults(self, tmp_path):
         """TLS section defaults: disabled, port 8443, auto_generate on, redirect on."""

@@ -125,7 +125,7 @@ System-level configuration controls the server itself: networking, authenticatio
     "updates": {
         "check_enabled": true,
         "channel": "stable",
-        "auto_check_interval_hours": 1,
+        "auto_check_interval_hours": 24,
         "auto_backup_before_update": true,
         "notify_only": false
     },
