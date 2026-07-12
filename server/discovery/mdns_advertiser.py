@@ -290,6 +290,7 @@ class MDNSAdvertiser:
         self._running = False
         self._responder_task: asyncio.Task | None = None
         self._retry_task: asyncio.Task | None = None
+        self._announce_tasks: set[asyncio.Task] = set()
         self._joined_ips: list[str] = []
         self._local_ip: str = ""
         self._hostname: str = ""
@@ -393,6 +394,16 @@ class MDNSAdvertiser:
             except asyncio.CancelledError:
                 pass
 
+        # Drain any in-flight query-triggered announcements before closing the
+        # socket. The responder is stopped now, so no new ones can be spawned;
+        # cancel + await the survivors so none races a send against a torn-down
+        # socket.
+        if self._announce_tasks:
+            for task in list(self._announce_tasks):
+                task.cancel()
+            await asyncio.gather(*self._announce_tasks, return_exceptions=True)
+            self._announce_tasks.clear()
+
         # Close socket
         if self._sock:
             try:
@@ -453,10 +464,10 @@ class MDNSAdvertiser:
         for name, qtype in questions:
             name_lower = name.rstrip(".").lower()
             if qtype == DNS_TYPE_PTR and name_lower == service_type_lower:
-                asyncio.create_task(self._send_announcement())
+                self._spawn_announcement()
                 return
             if name_lower == instance_fqdn_lower:
-                asyncio.create_task(self._send_announcement())
+                self._spawn_announcement()
                 return
             # Direct A query for "<hostname>.local" — what a device sends when
             # someone types the hostname URL from the setup screen or Panel
@@ -465,8 +476,20 @@ class MDNSAdvertiser:
             # responder, so answer it here. The full announcement carries the
             # A record, which satisfies the question.
             if qtype == DNS_TYPE_A and name_lower == hostname_fqdn_lower:
-                asyncio.create_task(self._send_announcement())
+                self._spawn_announcement()
                 return
+
+    def _spawn_announcement(self) -> None:
+        """Fire off a query-triggered announcement as a tracked task.
+
+        Tracked (not a detached ``create_task``) so ``stop()`` can cancel and
+        await it before closing the socket. Otherwise a query that arrives
+        during shutdown races its send against a torn-down socket.
+        """
+        task = asyncio.create_task(self._send_announcement())
+        self._announce_tasks.add(task)
+        task.add_done_callback(self._announce_tasks.discard)
+        task.add_done_callback(self._on_task_done)
 
     async def _send_record_set(self, ttl: int) -> None:
         """Send the full record set once per joined interface.
@@ -537,7 +560,7 @@ class MDNSAdvertiser:
 
     @staticmethod
     def _on_task_done(task: asyncio.Task) -> None:
-        """Log unhandled exceptions from the responder task."""
+        """Log unhandled exceptions from a background task (responder/announce)."""
         if task.cancelled():
             return
         exc = task.exception()

@@ -72,7 +72,12 @@ def test_tls_port_zero_default_when_tls_off():
 import asyncio  # noqa: E402
 import struct  # noqa: E402
 
-from server.discovery.mdns_scanner import DNS_TYPE_A, encode_dns_name  # noqa: E402
+from server.discovery.mdns_advertiser import SERVICE_TYPE  # noqa: E402
+from server.discovery.mdns_scanner import (  # noqa: E402
+    DNS_TYPE_A,
+    DNS_TYPE_PTR,
+    encode_dns_name,
+)
 
 
 def _query_packet(name: str, qtype: int) -> bytes:
@@ -111,3 +116,65 @@ async def test_ignores_a_query_for_other_hosts():
     adv._hostname = "openavc-box"
     packet = _query_packet("some-other-host.local.", DNS_TYPE_A)
     assert not await _announcements_for(adv, packet)
+
+
+# --- Shutdown must not race query-triggered announcements ---
+#
+# A query arriving mid-shutdown makes _handle_query schedule an announcement.
+# stop() must cancel/await those tasks before it closes the socket, or the
+# send fires against a torn-down socket.
+
+
+class _FakeSock:
+    def __init__(self):
+        self.closed = False
+
+    def sendto(self, *a, **k):
+        return 0
+
+    def setsockopt(self, *a, **k):
+        pass
+
+    def settimeout(self, *a, **k):
+        pass
+
+    def close(self):
+        self.closed = True
+
+
+async def test_stop_drains_query_spawned_announcement():
+    """stop() cancels in-flight query-triggered announcements before closing
+    the socket, so none runs against torn-down state."""
+    adv = _make_advertiser()
+    adv._running = True
+    adv._sock = _FakeSock()
+
+    started = asyncio.Event()
+    ran_against_closed = []
+
+    async def slow_announce():
+        started.set()
+        # Outlast stop() (its goodbye path sleeps ~0.25s) so the send is still
+        # pending when the socket is closed — the shutdown race window.
+        await asyncio.sleep(0.5)
+        if adv._sock is None or adv._sock.closed:
+            ran_against_closed.append(True)
+
+    adv._send_announcement = slow_announce
+
+    # A PTR query for our service type schedules an announcement — the exact
+    # shutdown race window.
+    packet = _query_packet(SERVICE_TYPE.rstrip("."), DNS_TYPE_PTR)
+    adv._handle_query(packet, ("192.168.1.9", 5353))
+    await started.wait()
+    assert len(adv._announce_tasks) == 1
+
+    await adv.stop()
+
+    # Give any *leaked* undrained task the chance to run against the closed sock.
+    await asyncio.sleep(0.5)
+
+    assert not ran_against_closed, (
+        "announcement ran after socket close — untracked task raced shutdown"
+    )
+    assert not adv._announce_tasks
