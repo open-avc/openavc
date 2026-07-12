@@ -55,18 +55,9 @@ export function ScriptView() {
     }
   }, []);
 
-  // Consume pending focus from navigation store
-  useEffect(() => {
-    const focus = useNavigationStore.getState().consumeFocus();
-    if (focus?.type === "script") {
-      if (focus.detail?.startsWith("line:")) {
-        pendingLineRef.current = parseInt(focus.detail.slice(5), 10);
-      }
-      handleSelectScript(focus.id);
-    } else if (focus?.type === "python_driver") {
-      doSelect(focus.id, "driver");
-    }
-  }, []);
+  // Reactive pending-focus consume lives after the selection handlers (below),
+  // so its deps can reference them without hitting the temporal dead zone.
+  const pendingFocus = useNavigationStore((s) => s.pendingFocus);
 
   const scripts = project?.scripts ?? [];
   const isDirty = source !== originalSource;
@@ -145,6 +136,36 @@ export function ScriptView() {
     }
     doSelect(id, "driver");
   }, [isDirty, selectedId, doSelect]);
+
+  // Act on a pending focus target (e.g. a console "line N" click). Subscribing to
+  // pendingFocus rather than reading once on mount is what makes the links work
+  // when already on the Script view: App.tsx keys views by activeView, so a
+  // same-view navigateTo doesn't remount this component.
+  useEffect(() => {
+    if (pendingFocus?.type !== "script" && pendingFocus?.type !== "python_driver") return;
+    const focus = useNavigationStore.getState().consumeFocus();
+    if (!focus) return;
+    const line = focus.detail?.startsWith("line:") ? parseInt(focus.detail.slice(5), 10) : null;
+    const targetType: "script" | "driver" = focus.type === "python_driver" ? "driver" : "script";
+    const alreadyOpen = !!focus.id && focus.id === selectedId && targetType === selectedType;
+
+    if (focus.id && !alreadyOpen) {
+      // A different file: open it; onEditorReady runs the jump once it mounts.
+      if (line !== null) pendingLineRef.current = line;
+      if (targetType === "script") handleSelectScript(focus.id);
+      else handleSelectDriver(focus.id);
+    } else if (line !== null) {
+      // Target already open (or no id given): jump the live editor directly.
+      const editor = editorInstanceRef.current;
+      if (editor) {
+        editor.revealLineInCenter(line);
+        editor.setPosition({ lineNumber: line, column: 1 });
+        editor.focus();
+      } else {
+        pendingLineRef.current = line;
+      }
+    }
+  }, [pendingFocus, selectedId, selectedType, handleSelectScript, handleSelectDriver]);
 
   // --- Save handlers ---
 
@@ -686,9 +707,11 @@ export function ScriptView() {
                     filterCategory="driver"
                     filterSource={`openavc_driver_${selectedId}`}
                     emptyText="Driver output will appear here. Click Save & Reload Driver or press Ctrl+Shift+R."
+                    focusId={selectedId}
+                    focusType="python_driver"
                   />
                 ) : (
-                  <ScriptConsole />
+                  <ScriptConsole focusId={selectedId} focusType="script" />
                 )}
               </Panel>
             </PanelGroup>

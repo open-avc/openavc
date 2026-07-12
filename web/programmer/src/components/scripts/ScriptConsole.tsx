@@ -17,12 +17,18 @@ interface ScriptConsoleProps {
   filterSource?: string;
   /** Placeholder text when no entries. */
   emptyText?: string;
+  /** Id of the script/driver this console belongs to, so "line N" links target it. */
+  focusId?: string | null;
+  /** Focus type for navigation: "script" (default) or "python_driver". */
+  focusType?: "script" | "python_driver";
 }
 
 export function ScriptConsole({
   filterCategory = "script",
   filterSource,
   emptyText = "Script output will appear here. Click Save & Reload or press Ctrl+Shift+R.",
+  focusId,
+  focusType = "script",
 }: ScriptConsoleProps) {
   const entries = useLogStore((s) => s.logEntries);
   const clear = useLogStore((s) => s.clearLogEntries);
@@ -113,7 +119,7 @@ export function ScriptConsole({
           </div>
         ) : (
           scriptEntries.map((e, i) => (
-            <ConsoleEntry key={i} entry={e} formatTime={formatTime} />
+            <ConsoleEntry key={i} entry={e} formatTime={formatTime} focusId={focusId} focusType={focusType} />
           ))
         )}
       </div>
@@ -122,7 +128,7 @@ export function ScriptConsole({
 }
 
 /** Render a single console entry with multi-line support and clickable line numbers. */
-function ConsoleEntry({ entry, formatTime }: { entry: { timestamp: number; level: string; message: string }; formatTime: (ts: number) => string }) {
+function ConsoleEntry({ entry, formatTime, focusId, focusType }: { entry: { timestamp: number; level: string; message: string }; formatTime: (ts: number) => string; focusId?: string | null; focusType?: "script" | "python_driver" }) {
   const lines = entry.message.split("\n");
   const isMultiLine = lines.length > 1;
 
@@ -142,10 +148,11 @@ function ConsoleEntry({ entry, formatTime }: { entry: { timestamp: number; level
         <span
           key={match.index}
           onClick={() => {
-            // Navigate to the line in the editor
-            // Scroll to line in the current editor — the ScriptView picks up the focus
+            // Jump the editor to this line. Carry the console's own script/driver
+            // id so ScriptView targets the right file (an empty id would deselect
+            // the open one) and can jump even when already on the Script view.
             const nav = useNavigationStore.getState();
-            nav.navigateTo("scripts", { type: "script", id: "", detail: `line:${lineNum}` });
+            nav.navigateTo("scripts", { type: focusType ?? "script", id: focusId ?? "", detail: `line:${lineNum}` });
           }}
           style={{
             color: "var(--accent)",
