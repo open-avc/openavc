@@ -4,8 +4,44 @@ import asyncio
 
 import pytest
 
-from server.transport.osc import OSCTransport
+from server.transport.osc import OSCTransport, _OSCListenProtocol
 from server.transport.osc_codec import osc_encode_message
+
+
+class _StubParent:
+    """Minimal stand-in for OSCTransport (the listen protocol reads _host and
+    stamps _listen_last_data)."""
+
+    def __init__(self, host):
+        self._host = host
+        self._listen_last_data = 0.0
+
+
+def test_osc_listen_socket_drops_spoofed_feedback():
+    """The dedicated OSC feedback socket only accepts datagrams from the
+    configured device — a spoofed source is dropped (no callback, no liveness
+    stamp) while the device's own feedback passes."""
+    received: list[bytes] = []
+    parent = _StubParent("10.0.0.7")
+    proto = _OSCListenProtocol(received.append, "osc", parent=parent)
+
+    proto.datagram_received(b"forged", ("10.0.0.99", 9000))
+    assert received == []
+    assert parent._listen_last_data == 0.0
+
+    proto.datagram_received(b"real", ("10.0.0.7", 9000))
+    assert received == [b"real"]
+    assert parent._listen_last_data > 0.0
+
+
+def test_osc_listen_socket_fails_open_for_hostname_target():
+    """A hostname target can't be pinned to an IP without a blocking lookup, so
+    the listen socket accepts any source (matches prior behaviour)."""
+    received: list[bytes] = []
+    parent = _StubParent("console.local")
+    proto = _OSCListenProtocol(received.append, "osc", parent=parent)
+    proto.datagram_received(b"x", ("10.9.9.9", 9000))
+    assert received == [b"x"]
 
 
 # --- Helpers ---

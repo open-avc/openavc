@@ -21,11 +21,12 @@ default; existing UDP OSC drivers are untouched.
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import time
 from typing import Any
 
 from server.transport.osc_codec import osc_encode_message
-from server.transport.udp import UDPTransport
+from server.transport.udp import UDPTransport, _expected_source_ip
 from server.utils.logger import get_logger
 from .types import Callback
 
@@ -292,12 +293,26 @@ class _OSCListenProtocol(asyncio.DatagramProtocol):
         self._on_data = on_data
         self._name = name
         self._parent = parent
+        # Same source filter as the send socket: only accept feedback from the
+        # configured device (fail open for hostname/multicast/broadcast targets).
+        self._expected_src = _expected_source_ip(parent._host if parent else None)
         # Strong refs to fire-and-forget async on_data tasks so they aren't
         # garbage-collected mid-flight; cleared by their own done-callback.
         self._bg_tasks: set[asyncio.Task] = set()
 
     def datagram_received(self, data: bytes, addr: tuple[str, int]) -> None:
         import time
+        if self._expected_src is not None:
+            try:
+                from_target = ipaddress.ip_address(addr[0]) == self._expected_src
+            except ValueError:
+                from_target = False
+            if not from_target:
+                log.debug(
+                    f"[{self._name}] dropping OSC feedback from unexpected "
+                    f"source {addr[0]} (expected {self._expected_src})"
+                )
+                return
         if self._parent is not None:
             self._parent._listen_last_data = time.monotonic()
         log.debug(f"[{self._name}] RX: ({len(data)} bytes) <- {addr[0]}:{addr[1]}")

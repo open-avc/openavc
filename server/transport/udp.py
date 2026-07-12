@@ -16,12 +16,40 @@ Each UDP packet is a complete message — no framing or delimiters needed.
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 from typing import Callable
 
 from server.utils.logger import get_logger
 from .types import Callback
 
 log = get_logger(__name__)
+
+
+def _expected_source_ip(host: str | None):
+    """The address a targeted unicast peer's datagrams must originate from.
+
+    Returns an ``ipaddress`` object to source-filter against, or ``None`` when
+    the source can't be pinned — an unset host, a hostname (don't block a
+    datagram handler on DNS), or a multicast/broadcast target (the reply's
+    unicast source can't be predicted). In those cases datagrams are not
+    filtered (fail open), matching prior behaviour.
+
+    A device that pushes over multicast/broadcast still sends from its own
+    unicast IP, so filtering against the (unicast) target host passes the
+    device's own traffic — solicited replies and unsolicited push alike — while
+    dropping spoofed datagrams injected by any other host on the segment.
+    """
+    if not host:
+        return None
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return None  # hostname — don't do a blocking lookup on the hot path
+    if ip.is_multicast or ip.is_unspecified:
+        return None
+    if isinstance(ip, ipaddress.IPv4Address) and int(ip) == 0xFFFFFFFF:
+        return None  # 255.255.255.255 limited broadcast
+    return ip
 
 
 def _log_task_exception(task: asyncio.Task) -> None:
@@ -66,6 +94,10 @@ class UDPTransport:
         self._on_disconnect = on_disconnect
         self._inter_command_delay = inter_command_delay
         self._name = name or "udp"
+        # Source to accept datagrams from in targeted mode. None = don't filter
+        # (ad-hoc/broadcast/hostname target). Guards send_and_wait responses and
+        # the on_data matcher against forged datagrams from other hosts.
+        self._expected_src = _expected_source_ip(host)
 
         self._transport: asyncio.DatagramTransport | None = None
         self._protocol: _UDPProtocol | None = None
@@ -252,6 +284,23 @@ class UDPTransport:
     def _deliver_message(self, data: bytes, addr: tuple[str, int]) -> None:
         """Route an incoming datagram to the response queue and/or callback."""
         import time
+
+        # Drop datagrams from any source other than the targeted peer: on a
+        # shared AV LAN another host can spoof a query reply or a state push,
+        # driving forged state (or a false "connected"). Rejected before the
+        # liveness stamp so a spoofer can't keep a dead device looking alive.
+        if self._expected_src is not None:
+            try:
+                from_target = ipaddress.ip_address(addr[0]) == self._expected_src
+            except ValueError:
+                from_target = False
+            if not from_target:
+                log.debug(
+                    f"[{self._name}] dropping datagram from unexpected source "
+                    f"{addr[0]} (expected {self._expected_src})"
+                )
+                return
+
         self.last_data_received = time.monotonic()
         log.debug(f"[{self._name}] RX: {_format_data(data)} <- {addr[0]}:{addr[1]}")
 

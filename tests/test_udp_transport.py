@@ -227,3 +227,76 @@ async def test_send_and_wait_wakes_on_socket_loss(udp_receiver):
         await waiter
     assert loop.time() - start < 2.0
     await transport.close()
+
+
+# --- Source filtering (spoofed datagrams rejected) ---
+
+
+async def test_deliver_drops_datagram_from_wrong_source():
+    """A datagram from a host other than the target is dropped: not queued as a
+    response, not passed to on_data, and it doesn't bump the liveness stamp."""
+    received: list[bytes] = []
+    t = UDPTransport(host="10.0.0.5", port=4000, on_data=received.append, name="t")
+    t._waiting_for_response = True
+    t._deliver_message(b"forged", ("10.0.0.99", 4000))
+    assert received == []
+    assert t._response_queue.empty()
+    assert t.last_data_received == 0.0
+
+
+async def test_deliver_accepts_datagram_from_target_source():
+    received: list[bytes] = []
+    t = UDPTransport(host="10.0.0.5", port=4000, on_data=received.append, name="t")
+    t._waiting_for_response = True
+    t._deliver_message(b"real", ("10.0.0.5", 4000))
+    assert received == [b"real"]
+    assert t._response_queue.get_nowait() == b"real"
+    assert t.last_data_received > 0.0
+
+
+async def test_deliver_does_not_filter_adhoc_or_multicast_targets():
+    """Fail open when the source can't be predicted: an ad-hoc transport (no
+    host) and a multicast target both accept any source (matches prior
+    behaviour so broadcast/multicast drivers keep working)."""
+    adhoc: list[bytes] = []
+    t = UDPTransport(on_data=adhoc.append, name="t")  # host=None
+    t._deliver_message(b"x", ("1.2.3.4", 9))
+    assert adhoc == [b"x"]
+
+    mcast: list[bytes] = []
+    t2 = UDPTransport(host="239.1.2.3", port=5000, on_data=mcast.append, name="t2")
+    t2._deliver_message(b"y", ("10.9.9.9", 5000))
+    assert mcast == [b"y"]
+
+
+async def test_send_and_wait_rejects_spoofed_source(udp_receiver):
+    """A response from the wrong source doesn't satisfy send_and_wait — it
+    times out rather than returning the forged payload."""
+    _, port = udp_receiver
+    t = UDPTransport(host="127.0.0.1", port=port, name="t")
+    await t.open()
+    try:
+        async def spoof():
+            await asyncio.sleep(0.05)
+            t._deliver_message(b"forged", ("10.0.0.99", port))
+
+        asyncio.create_task(spoof())
+        with pytest.raises(asyncio.TimeoutError):
+            await t.send_and_wait(b"query", timeout=0.3)
+    finally:
+        await t.close()
+
+
+async def test_send_and_wait_accepts_response_from_target(udp_receiver):
+    _, port = udp_receiver
+    t = UDPTransport(host="127.0.0.1", port=port, name="t")
+    await t.open()
+    try:
+        async def reply():
+            await asyncio.sleep(0.05)
+            t._deliver_message(b"pong", ("127.0.0.1", port))
+
+        asyncio.create_task(reply())
+        assert await t.send_and_wait(b"ping", timeout=0.5) == b"pong"
+    finally:
+        await t.close()
