@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { ProjectConfig } from "../api/types";
 import * as api from "../api/restClient";
+import { runSaveWithRetry } from "./projectStoreSave";
 
 interface UndoEntry {
   description: string;
@@ -97,47 +98,35 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     if (!get().project) return;
 
     const performSave = async (): Promise<void> => {
-      const { project, etag } = get();
-      if (!project) return;
+      if (!get().project) return;
       _saveInFlight = true;
-      set({ saving: true, savePending: false, error: null });
-      try {
-        const projectAtSendTime = project;
-        const result = await api.saveProject(projectAtSendTime, etag ?? undefined);
-        const newEtag = result.etag ?? null;
-        const newRevision = newEtag ? parseInt(newEtag.replace(/"/g, ""), 10) || null : null;
-        // If the project ref changed during the save, the user kept editing —
-        // keep dirty=true so the tail logic below schedules another save.
-        const editedDuringSave = get().project !== projectAtSendTime;
-        set({
-          saving: false,
-          dirty: editedDuringSave,
-          etag: newEtag,
-          revision: newRevision,
-          conflictDetected: false,
-        });
-      } catch (e) {
-        if (e instanceof api.ConflictError) {
-          set({ saving: false, conflictDetected: true, error: e.message });
-          _saveInFlight = false;
-          _resaveQueued = false;  // user must reload to clear the conflict
-          return;
-        }
-        const maxRetries = 2;
-        if (retryCount < maxRetries) {
-          const delay = (retryCount + 1) * 1000;
-          set({ error: `Save failed, retrying in ${delay / 1000}s...`, saving: false });
-          _saveInFlight = false;
-          setTimeout(() => { void get().save(retryCount + 1); }, delay);
-          return;
-        }
-        set({ error: String(e), saving: false });
+      // Retries are awaited inside runSaveWithRetry, so this promise (and thus
+      // _saveChain) resolves only after the final underlying write — see
+      // projectStoreSave.ts.
+      const outcome = await runSaveWithRetry(
+        {
+          getProject: () => get().project,
+          getEtag: () => get().etag,
+          saveProject: api.saveProject,
+          isConflict: (e) => e instanceof api.ConflictError,
+          conflictMessage: (e) => (e as Error).message,
+          setState: (patch) => set(patch),
+          sleep: (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+        },
+        retryCount,
+      );
+      if (outcome === "conflict") {
+        _saveInFlight = false;
+        _resaveQueued = false;  // user must reload to clear the conflict
+        return;
       }
       _saveInFlight = false;
-      // If user kept editing OR another save was requested while we were
-      // busy, chain another save into the same promise so awaiters see the
-      // final write complete.
-      if (_resaveQueued || get().dirty) {
+      // Chain another save only when there's genuinely more to write: the user
+      // kept editing during a SUCCESSFUL save (dirty carries editedDuringSave),
+      // or a save was queued while we were busy. A failed save also leaves
+      // dirty=true, but re-chaining on that would spin forever, so gate on
+      // "saved".
+      if (_resaveQueued || (outcome === "saved" && get().dirty)) {
         _resaveQueued = false;
         await get().save();
       }
