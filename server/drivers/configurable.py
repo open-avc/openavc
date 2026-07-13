@@ -1416,7 +1416,7 @@ class ConfigurableDriver(BaseDriver):
         # Uses _safe_substitute to handle JSON protocols (UDP) where literal
         # braces must be preserved — only {name} tokens matching known params
         # are replaced, all other braces are left alone.
-        all_params = {**self.config, **params}
+        all_params = {**self.config, **self._push_params(), **params}
         formatted = self._safe_substitute(raw, all_params)
 
         # Encode (handle explicit escape sequences only — safe subset), then
@@ -1578,7 +1578,7 @@ class ConfigurableDriver(BaseDriver):
             )
             return None
 
-        all_params = {**self.config, **params}
+        all_params = {**self.config, **self._push_params(), **params}
 
         method = cmd_def.get("method", "GET").upper()
         raw_path = cmd_def.get("path", "/")
@@ -1637,6 +1637,19 @@ class ConfigurableDriver(BaseDriver):
             else:
                 out[k] = str(v)
         return out
+
+    def _push_params(self) -> dict[str, Any]:
+        """Platform-provided substitution values for command templates.
+
+        ``{push_callback_url}`` resolves to the http_listener callback URL so
+        a registration command can hand it to the device. Injected only while
+        a subscription is active — otherwise the token stays verbatim in the
+        outgoing payload, which is louder (and greppable in the device log)
+        than silently registering an empty URL.
+        """
+        if self._push_callback_url:
+            return {"push_callback_url": self._push_callback_url}
+        return {}
 
     @staticmethod
     def _safe_substitute(template: str, params: dict[str, Any]) -> str:
@@ -2498,31 +2511,18 @@ class ConfigurableDriver(BaseDriver):
         return sf["header"] + length + sf["after_length"] + data
 
     def _create_frame_parser(self) -> FrameParser | None:
-        """Check definition for frame parser config."""
+        """Check definition for frame parser config.
+
+        Delegates to the shared declarative builder (length_prefix,
+        fixed_length, struct_frame) — the same interpreter the push
+        channel's per-subscription framing uses.
+        """
+        from server.transport.frame_parsers import build_frame_parser
+
         parser_config = self._definition.get("frame_parser")
         if not parser_config:
             return None
-
-        parser_type = parser_config.get("type", "")
-        if parser_type == "length_prefix":
-            from server.transport.frame_parsers import LengthPrefixFrameParser
-
-            return LengthPrefixFrameParser(
-                header_size=parser_config.get("header_size", 2),
-                header_offset=parser_config.get("header_offset", 0),
-                include_header=parser_config.get("include_header", False),
-                length_offset=parser_config.get("length_offset", 0),
-                header_extra=parser_config.get("header_extra", 0),
-                length_endian=parser_config.get("length_endian", "big"),
-            )
-        elif parser_type == "fixed_length":
-            from server.transport.frame_parsers import FixedLengthFrameParser
-
-            return FixedLengthFrameParser(
-                length=parser_config.get("length", 1),
-            )
-
-        return None
+        return build_frame_parser(parser_config)
 
     @staticmethod
     def _coerce_value(raw: str, value_type: str) -> Any:

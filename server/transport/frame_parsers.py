@@ -9,6 +9,8 @@ Built-in parsers:
     - DelimiterFrameParser: splits on a byte sequence (e.g., \\r, \\r\\n)
     - LengthPrefixFrameParser: reads a length header then N bytes of payload
     - FixedLengthFrameParser: returns messages of exactly N bytes
+    - StructFrameParser: fixed reserve + length field + fixed reserve +
+      payload + fixed reserve (device dial-back notification containers)
     - CallableFrameParser: wraps a user function for custom protocols
 """
 
@@ -212,6 +214,127 @@ class FixedLengthFrameParser(FrameParser):
 
     def reset(self) -> None:
         self._buffer = b""
+
+
+class StructFrameParser(FrameParser):
+    """
+    Extracts the payload from fixed-structure frames of the shape::
+
+        [header_reserve][length field][mid_reserve][payload][trailer_reserve]
+
+    Several AV devices push notifications in a container like this — a
+    constant-size reserved header, a length field, more reserved bytes, the
+    variable-length payload, and a constant-size reserved trailer (Panasonic
+    PTZ camera dial-back frames are 22 + 2 + 4 + payload + 24). The reserved
+    regions carry undocumented metadata and are discarded; only the payload
+    is returned.
+
+    ``length_adjust`` is added to the decoded length-field value to get the
+    payload byte count, for protocols whose length field includes constant
+    overhead (Panasonic's counts the payload plus 8, so ``length_adjust: -8``).
+    """
+
+    def __init__(
+        self,
+        header_reserve: int = 0,
+        length_size: int = 2,
+        length_endian: str = "big",
+        length_adjust: int = 0,
+        mid_reserve: int = 0,
+        trailer_reserve: int = 0,
+        max_buffer: int = DEFAULT_MAX_BUFFER,
+    ) -> None:
+        if length_size not in (1, 2, 4):
+            raise ValueError("length_size must be 1, 2, or 4")
+        if header_reserve < 0 or mid_reserve < 0 or trailer_reserve < 0:
+            raise ValueError("reserve byte counts must be >= 0")
+        self._header_reserve = header_reserve
+        self._length_size = length_size
+        self._length_endian = "little" if length_endian == "little" else "big"
+        self._length_adjust = length_adjust
+        self._mid_reserve = mid_reserve
+        self._trailer_reserve = trailer_reserve
+        self._payload_start = header_reserve + length_size + mid_reserve
+        self._buffer = b""
+        self._max_buffer = max_buffer
+
+    def feed(self, data: bytes) -> list[bytes]:
+        self._buffer += data
+        messages: list[bytes] = []
+        while len(self._buffer) >= self._payload_start:
+            lo = self._header_reserve
+            length_field = self._buffer[lo : lo + self._length_size]
+            payload_len = (
+                int.from_bytes(length_field, self._length_endian)
+                + self._length_adjust
+            )
+            if payload_len < 0:
+                payload_len = 0
+            total = self._payload_start + payload_len + self._trailer_reserve
+            # A claimed frame beyond the buffer cap can never be assembled —
+            # desync or garbage. Like the sibling parsers, clear rather than
+            # walk byte-by-byte (there is no in-band resync point).
+            if total > self._max_buffer:
+                log.warning(
+                    "Struct-frame parser: claimed frame size %d exceeds max "
+                    "%d; clearing desynced buffer", total, self._max_buffer,
+                )
+                self._buffer = b""
+                break
+            if len(self._buffer) < total:
+                break
+            payload = self._buffer[self._payload_start : self._payload_start + payload_len]
+            self._buffer = self._buffer[total:]
+            if payload:
+                messages.append(payload)
+        # Defensive symmetry with the other parsers: a stalled partial frame
+        # must not pin an unbounded buffer until disconnect.
+        if len(self._buffer) > self._max_buffer:
+            log.warning(
+                "Struct-frame parser buffer overflow (%d bytes), clearing",
+                len(self._buffer),
+            )
+            self._buffer = b""
+        return messages
+
+    def reset(self) -> None:
+        self._buffer = b""
+
+
+def build_frame_parser(config: dict) -> FrameParser | None:
+    """Build a FrameParser from a declarative config mapping, or None.
+
+    The shared interpreter for ``frame_parser:`` blocks — used by the YAML
+    driver's top-level receive framing and by push-channel subscriptions
+    (``push: {type: tcp_listener, frame_parser: ...}``). Returns None for a
+    missing/unknown config so callers can fall back to their default framing.
+    """
+    if not config or not isinstance(config, dict):
+        return None
+    parser_type = config.get("type", "")
+    if parser_type == "length_prefix":
+        return LengthPrefixFrameParser(
+            header_size=config.get("header_size", 2),
+            header_offset=config.get("header_offset", 0),
+            include_header=config.get("include_header", False),
+            length_offset=config.get("length_offset", 0),
+            header_extra=config.get("header_extra", 0),
+            length_endian=config.get("length_endian", "big"),
+        )
+    if parser_type == "fixed_length":
+        return FixedLengthFrameParser(
+            length=config.get("length", 1),
+        )
+    if parser_type == "struct_frame":
+        return StructFrameParser(
+            header_reserve=config.get("header_reserve", 0),
+            length_size=config.get("length_size", 2),
+            length_endian=config.get("length_endian", "big"),
+            length_adjust=config.get("length_adjust", 0),
+            mid_reserve=config.get("mid_reserve", 0),
+            trailer_reserve=config.get("trailer_reserve", 0),
+        )
+    return None
 
 
 # SLIP (RFC 1055) control bytes. OSC 1.1 frames OSC packets over a byte

@@ -800,6 +800,33 @@ def _build_redirect_app(target_port: int, scheme: str = "https"):
 
     _BAD_HOST_CHARS = (" ", "/", "\\", "@", "<", ">", "\"", "'")
 
+    async def _push_passthrough(request: Request) -> Response:
+        """Serve inbound device push directly instead of redirecting.
+
+        Devices delivering push callbacks (webhooks, GENA NOTIFY) speak
+        plain HTTP, don't follow redirects, and won't trust the self-signed
+        certificate a redirect would send them to — so the push registry is
+        served in-process on this listener too (it's process-global; see
+        server/transport/http_listener.py).
+        """
+        from server.transport import http_listener
+
+        device_id = request.path_params["device_id"]
+        label = request.path_params.get("label") or ""
+        body = await request.body()
+        status = await http_listener.dispatch(
+            device_id,
+            label,
+            http_listener.HTTPPushRequest(
+                body=body,
+                method=request.method,
+                headers={k.lower(): v for k, v in request.headers.items()},
+                source_ip=request.client.host if request.client else "",
+                label=label,
+            ),
+        )
+        return Response(status_code=status)
+
     async def _handler(request: Request) -> Response:
         host_header = request.headers.get("host", "")
         if host_header.startswith("["):
@@ -834,6 +861,16 @@ def _build_redirect_app(target_port: int, scheme: str = "https"):
         )
 
     return Starlette(routes=[
+        Route(
+            "/api/push/{device_id}",
+            _push_passthrough,
+            methods=["POST", "NOTIFY"],
+        ),
+        Route(
+            "/api/push/{device_id}/{label}",
+            _push_passthrough,
+            methods=["POST", "NOTIFY"],
+        ),
         Route(
             "/{path:path}",
             _handler,

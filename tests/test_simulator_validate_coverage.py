@@ -588,3 +588,53 @@ def test_config_derived_resolves_in_poll_queries(tmp_path):
                 respond("/level", [("f", state["level"])])
     """)
     assert not _messages(r, "poll_coverage"), _messages(r, "poll_coverage")
+
+
+def test_http_raw_path_poll_query_matches_get_prefixed_handler(tmp_path):
+    """An HTTP driver polling a raw path is dispatched by the simulator as the
+    synthesized line "GET /path?query" — the validator must compare handlers
+    against that form, not the bare path, or every raw-path poll reads as
+    uncovered (false error)."""
+    r = _validate(tmp_path, """\
+        id: acme_widget
+        transport: http
+        state_variables:
+          level: {type: integer}
+        commands:
+          query_level:
+            method: GET
+            path: "/getxml"
+            query_params:
+              location: "/Status/Level"
+        polling:
+          queries:
+            - "/getxml?location=/Status/Level"
+        responses:
+          - match: '<Level>(\\d+)</Level>'
+            set: {level: "$1"}
+        simulator:
+          initial_state: {level: 5}
+          command_handlers:
+            - match: '^GET /getxml\\?location=/Status/Level\\b.*'
+              handler: |
+                respond(f'<Level>{state["level"]}</Level>')
+    """)
+    assert not _messages(r, "poll_coverage", "error"), _messages(r, "poll_coverage")
+
+
+def test_http_raw_path_poll_query_without_handler_still_errors(tmp_path):
+    """The GET-prefix fix must not blind the check: an unanswered raw path is
+    still a real coverage error."""
+    r = _validate(tmp_path, """\
+        id: acme_widget
+        transport: http
+        state_variables:
+          level: {type: integer}
+        polling:
+          queries:
+            - "/getxml?location=/Status/Unanswered"
+        simulator:
+          initial_state: {level: 5}
+    """)
+    msgs = _messages(r, "poll_coverage", "error")
+    assert len(msgs) == 1 and "/Status/Unanswered" in msgs[0], msgs

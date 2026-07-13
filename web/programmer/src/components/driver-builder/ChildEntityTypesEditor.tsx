@@ -377,11 +377,19 @@ function IdFormatSection({
         <div>
           <span style={{ ...labelStyle, fontSize: "11px" }}>Type</span>
           <select
-            value="integer"
-            disabled
+            value={idf.type ?? "integer"}
+            onChange={(e) =>
+              onUpdate({
+                id_format:
+                  e.target.value === "string"
+                    ? { type: "string" }
+                    : { type: "integer", min: 1 },
+              })
+            }
             style={{ width: "100%", fontSize: "var(--font-size-sm)" }}
           >
             <option value="integer">Integer</option>
+            <option value="string">String</option>
           </select>
         </div>
         <div>
@@ -389,6 +397,7 @@ function IdFormatSection({
           <input
             type="number"
             value={idf.min ?? ""}
+            disabled={idf.type === "string"}
             onChange={(e) =>
               writeIdFormat({ min: parseInteger(e.target.value) })
             }
@@ -401,6 +410,7 @@ function IdFormatSection({
           <input
             type="number"
             value={idf.max ?? ""}
+            disabled={idf.type === "string"}
             onChange={(e) =>
               writeIdFormat({ max: parseInteger(e.target.value) })
             }
@@ -413,6 +423,7 @@ function IdFormatSection({
           <input
             type="number"
             value={idf.pad_width ?? ""}
+            disabled={idf.type === "string"}
             onChange={(e) =>
               writeIdFormat({ pad_width: parseInteger(e.target.value) })
             }
@@ -422,9 +433,11 @@ function IdFormatSection({
         </div>
       </div>
       <div style={helpStyle}>
-        IDs are integers in <code>[min, max]</code>. Pad width zero-pads the
+        Integer IDs live in <code>[min, max]</code>; pad width zero-pads the
         local id when rendered in state keys — e.g. pad_width 3 renders
-        encoder 5 as <code>005</code>. v1 only supports integer IDs.
+        encoder 5 as <code>005</code>. String IDs are device-native names
+        (letters, digits, <code>_</code>, <code>-</code>) and take their
+        roster from an ID-list config field.
       </div>
     </div>
   );

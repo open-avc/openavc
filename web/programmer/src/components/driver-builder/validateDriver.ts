@@ -333,15 +333,15 @@ export function validateDriver(
       });
     }
 
-    // id_format sanity. v1 only supports integer IDs; the runtime raises
-    // on anything else, so flag a non-integer type as an error.
+    // id_format sanity (mirror driver_loader.py): integer or string local
+    // ids. The runtime raises on anything else.
     const idf = typeDef.id_format ?? { type: "integer" };
-    if (idf.type !== "integer") {
+    if (idf.type !== "integer" && idf.type !== "string") {
       issues.push({
         severity: "error",
         section: "behavior",
         field: `child_entity_types.${typeName}.id_format`,
-        message: `Child type "${typeName}" id_format.type must be "integer" (only integer IDs are supported).`,
+        message: `Child type "${typeName}" id_format.type must be "integer" or "string".`,
       });
     }
     if (
@@ -465,6 +465,14 @@ export function validateDriver(
             message: `Child type "${typeName}" instances count (${count}) exceeds id_format.max (${idf.max}).`,
           });
         }
+        if (idf.type === "string") {
+          issues.push({
+            severity: "error",
+            section: "behavior",
+            field: `child_entity_types.${typeName}.instances`,
+            message: `Child type "${typeName}" instances count requires integer ids (id_format.type is "string" — use an ID-list config field).`,
+          });
+        }
       } else {
         const fieldName = inst[sources[0]] as string;
         if (!fieldName || !configFields.has(fieldName)) {
@@ -473,6 +481,14 @@ export function validateDriver(
             section: "behavior",
             field: `child_entity_types.${typeName}.instances`,
             message: `Child type "${typeName}" instances reads config field "${fieldName || "(none)"}", which isn't declared in the driver's config.`,
+          });
+        }
+        if (sources[0] === "count_from" && idf.type === "string") {
+          issues.push({
+            severity: "error",
+            section: "behavior",
+            field: `child_entity_types.${typeName}.instances`,
+            message: `Child type "${typeName}" instances count field requires integer ids (id_format.type is "string" — use an ID-list config field).`,
           });
         }
       }
@@ -1201,15 +1217,31 @@ function isMulticastGroup(value: string): boolean {
 /** Push channel types the runtime knows about but hasn't implemented — kept
  *  distinct from plain typos so the message says "not yet" rather than
  *  "never". Mirror driver_loader.py. */
-const RESERVED_PUSH_TYPES: ReadonlySet<string> = new Set([
-  "tcp_listener",
-  "http_listener",
-]);
+// Every declared shape is implemented — nothing is reserved-but-unbuilt
+// today. Kept (empty) so a future shape can be named here with a
+// "not yet" message instead of reading as a typo. Mirror driver_loader.py.
+const RESERVED_PUSH_TYPES: ReadonlySet<string> = new Set<string>();
 
 const PUSH_KEYS_BY_TYPE: Readonly<Record<string, ReadonlySet<string>>> = {
   multicast: new Set(["type", "group", "port"]),
   sse: new Set(["type", "path", "idle_timeout"]),
+  tcp_listener: new Set([
+    "type",
+    "port",
+    "frame_parser",
+    "register",
+    "unregister",
+  ]),
+  // http_listener has no fields of its own: the platform assigns the
+  // callback path and the registration command uses {push_callback_url}.
+  http_listener: new Set(["type"]),
 };
+
+const PUSH_FRAME_PARSER_TYPES: ReadonlySet<string> = new Set([
+  "struct_frame",
+  "length_prefix",
+  "fixed_length",
+]);
 
 /** Mirror server/drivers/driver_loader.py's push: load-time checks. Values
  *  accept {config_field} templates, and a template may only name a field
@@ -1233,20 +1265,29 @@ function validatePush(
       severity: "error",
       section: "connection",
       field: "push.type",
-      message: `Push type "${type}" isn't supported yet — only "multicast" and "sse".`,
+      message: `Push type "${type}" isn't supported yet — only "multicast", "sse", "tcp_listener", and "http_listener".`,
     });
-  } else if (type !== "multicast" && type !== "sse") {
+  } else if (!(type in PUSH_KEYS_BY_TYPE)) {
     issues.push({
       severity: "error",
       section: "connection",
       field: "push.type",
-      message: `Push type must be "multicast" or "sse".`,
+      message: `Push type must be "multicast", "sse", "tcp_listener", or "http_listener".`,
     });
   }
 
   const knownKeys =
     PUSH_KEYS_BY_TYPE[type] ??
-    new Set(["type", "group", "port", "path", "idle_timeout"]);
+    new Set([
+      "type",
+      "group",
+      "port",
+      "path",
+      "idle_timeout",
+      "frame_parser",
+      "register",
+      "unregister",
+    ]);
   const unknownKeys = Object.keys(push).filter(
     (k) => !knownKeys.has(k) && (push as Record<string, unknown>)[k] !== undefined,
   );
@@ -1392,6 +1433,117 @@ function validatePush(
         field: "push.idle_timeout",
         message: "Idle timeout must be a positive number of seconds.",
       });
+    }
+  }
+
+  if (type === "tcp_listener") {
+    const port = push.port;
+    if (port === undefined || port === "") {
+      issues.push({
+        severity: "error",
+        section: "connection",
+        field: "push.port",
+        message:
+          "Push needs a listener port — a number 0-65535 (0 = automatic), or a {config_field} template.",
+      });
+    } else if (typeof port === "string" && port.includes("{")) {
+      checkTemplate("port", port);
+    } else if (
+      typeof port !== "number" ||
+      !Number.isInteger(port) ||
+      port < 0 ||
+      port > 65535
+    ) {
+      issues.push({
+        severity: "error",
+        section: "connection",
+        field: "push.port",
+        message:
+          "Listener port must be a whole number between 0 and 65535 (0 = automatic), or a {config_field} template.",
+      });
+    }
+
+    const frame = push.frame_parser;
+    if (frame !== undefined && frame !== null) {
+      const ftype = frame.type ?? "";
+      if (!PUSH_FRAME_PARSER_TYPES.has(ftype)) {
+        issues.push({
+          severity: "error",
+          section: "connection",
+          field: "push.frame_parser",
+          message: `Notification framing type "${ftype}" must be struct_frame, length_prefix, or fixed_length.`,
+        });
+      } else if (ftype === "struct_frame") {
+        for (const fkey of [
+          "header_reserve",
+          "mid_reserve",
+          "trailer_reserve",
+        ]) {
+          const fval = (frame as Record<string, unknown>)[fkey] ?? 0;
+          if (
+            typeof fval !== "number" ||
+            !Number.isInteger(fval) ||
+            fval < 0
+          ) {
+            issues.push({
+              severity: "error",
+              section: "connection",
+              field: `push.frame_parser.${fkey}`,
+              message: `Frame ${fkey.replace("_", " ")} must be a non-negative whole number of bytes.`,
+            });
+          }
+        }
+        const fsize = (frame as Record<string, unknown>).length_size ?? 2;
+        if (fsize !== 1 && fsize !== 2 && fsize !== 4) {
+          issues.push({
+            severity: "error",
+            section: "connection",
+            field: "push.frame_parser.length_size",
+            message: "Frame length size must be 1, 2, or 4 bytes.",
+          });
+        }
+        const fadj = (frame as Record<string, unknown>).length_adjust ?? 0;
+        if (typeof fadj !== "number" || !Number.isInteger(fadj)) {
+          issues.push({
+            severity: "error",
+            section: "connection",
+            field: "push.frame_parser.length_adjust",
+            message: "Frame length adjust must be a whole number.",
+          });
+        }
+        const fend = (frame as Record<string, unknown>).length_endian ?? "big";
+        if (fend !== "big" && fend !== "little") {
+          issues.push({
+            severity: "error",
+            section: "connection",
+            field: "push.frame_parser.length_endian",
+            message: 'Frame length byte order must be "big" or "little".',
+          });
+        }
+      }
+    }
+
+    // register / unregister must name declared commands — a typo would
+    // silently never arm the device.
+    const commandNames = new Set(Object.keys(draft.commands ?? {}));
+    for (const ckey of ["register", "unregister"] as const) {
+      const cval = push[ckey];
+      if (cval === undefined) continue;
+      if (typeof cval !== "string" || cval.trim() === "") {
+        issues.push({
+          severity: "error",
+          section: "connection",
+          field: `push.${ckey}`,
+          message: `Push ${ckey} must be a command name.`,
+        });
+      } else if (!commandNames.has(cval)) {
+        issues.push({
+          severity: "error",
+          section: "connection",
+          field: `push.${ckey}`,
+          message: `Push ${ckey} command "${cval}" is not declared in this driver's commands.`,
+        });
+      }
     }
   }
 }

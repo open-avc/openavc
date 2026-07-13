@@ -261,6 +261,36 @@ class YAMLAutoSimulator(TCPSimulator):
         self._push_sse_paths = self._resolve_push_sse(driver_def, config)
         self._sse_clients: set[asyncio.Queue] = set()
 
+        # Dial-out push emission: when the driver declares
+        # `push: {type: tcp_listener}`, the simulator watches for the
+        # driver's register/unregister commands (recognized by their
+        # {listener_port} templates), tracks the registered subscribers, and
+        # on each notification dials out a TCP connection per subscriber and
+        # sends the `notifications:` template wrapped in the declared frame
+        # container — matching real devices that push one framed notification
+        # per outbound connection.
+        self._push_tcp = self._resolve_push_tcp_listener(driver_def)
+        # (host, port) -> consecutive delivery failures. Real devices prune
+        # subscribers they can't reach; the simulator drops one after 3
+        # straight failures so a departed platform doesn't get dialed forever.
+        self._push_tcp_subscribers: dict[tuple[str, int], int] = {}
+        self._push_tcp_tasks: set[asyncio.Task] = set()
+        # Peer address of the request currently being dispatched — the
+        # dial-back target host for a registration command (HTTP fills it
+        # from the request; plain-TCP sims fall back to loopback).
+        self._last_peer_ip = "127.0.0.1"
+        # HTTP-callback push emission: when the driver declares
+        # `push: {type: http_listener}`, script handlers record the callback
+        # URL the (simulated) controller registers — via register_callback()
+        # in the handler namespace — and the `notifications:` templates are
+        # POSTed to every registered URL, exactly like a real device's
+        # webhook delivery.
+        push = driver_def.get("push")
+        self._push_http = (
+            isinstance(push, dict) and push.get("type") == "http_listener"
+        )
+        self._http_push_callbacks: list[str] = []
+
         logger.info(
             "Auto-gen simulator for %s: %d command handlers, %d query handlers, %d state responses",
             self.driver_id,
@@ -489,6 +519,196 @@ class YAMLAutoSimulator(TCPSimulator):
             )
         return good
 
+    def _resolve_push_tcp_listener(self, driver_def: dict) -> dict | None:
+        """Resolve a `push: {type: tcp_listener}` block for dial-out emission.
+
+        Returns ``{"frame": <frame_parser cfg or None>, "register": <compiled
+        regex or None>, "unregister": ...}``. The register/unregister matchers
+        are built from the named commands' own path/send templates, with the
+        ``{listener_port}`` token becoming a port capture group — so the
+        simulator recognizes the registration exactly as the driver sends it.
+        """
+        push = driver_def.get("push")
+        if not isinstance(push, dict) or push.get("type") != "tcp_listener":
+            return None
+        commands = driver_def.get("commands") or {}
+
+        def build_matcher(cmd_name: Any) -> re.Pattern | None:
+            cmd = commands.get(cmd_name) if isinstance(cmd_name, str) else None
+            if not isinstance(cmd, dict):
+                return None
+            if "path" in cmd or "method" in cmd:
+                template = (
+                    f"{cmd.get('method', 'GET').upper()} {cmd.get('path', '/')}"
+                )
+            else:
+                template = str(cmd.get("send", "") or cmd.get("string", ""))
+            if not template:
+                return None
+            pattern = re.escape(template)
+            pattern = pattern.replace(
+                re.escape("{listener_port}"), r"(?P<lport>\d+)"
+            )
+            # Other {tokens} in the template match any non-separator run.
+            pattern = re.sub(r"\\\{\w+\\\}", r"[^&\\s|]+", pattern)
+            # Allow a trailing "|body" (HTTP POST synthesis) or whitespace.
+            return re.compile(r"^" + pattern + r"\s*(?:\|.*)?$")
+
+        return {
+            "frame": push.get("frame_parser")
+            if isinstance(push.get("frame_parser"), dict)
+            else None,
+            "register": build_matcher(push.get("register")),
+            "unregister": build_matcher(push.get("unregister")),
+        }
+
+    def _watch_push_registration(self, text: str) -> bool:
+        """Track dial-back subscribers from register/unregister commands.
+
+        Observe-only bookkeeping run before normal dispatch; returns True
+        when ``text`` was a registration command (callers use that to give
+        an empty-success default response if no handler answers it).
+        """
+        if not self._push_tcp:
+            return False
+        for key, add in (("register", True), ("unregister", False)):
+            matcher = self._push_tcp.get(key)
+            m = matcher.match(text) if matcher else None
+            if not m:
+                continue
+            try:
+                port = int(m.group("lport"))
+            except (IndexError, ValueError):
+                # Template carried no {listener_port}; nothing to track.
+                return True
+            target = (self._last_peer_ip or "127.0.0.1", port)
+            if add:
+                self._push_tcp_subscribers.setdefault(target, 0)
+                self._push_tcp_subscribers[target] = 0
+                self.log_protocol(
+                    "in", f"(push subscriber registered: {target[0]}:{port})"
+                )
+            else:
+                self._push_tcp_subscribers.pop(target, None)
+                self.log_protocol(
+                    "in", f"(push subscriber removed: {target[0]}:{port})"
+                )
+            return True
+        return False
+
+    def _wrap_push_tcp_frame(self, payload: bytes) -> bytes:
+        """Wrap a notification payload in the declared frame container.
+
+        Inverse of the platform's StructFrameParser: zeroed reserve regions
+        around a length field that counts ``len(payload) - length_adjust``.
+        Without a struct_frame declaration the payload goes out raw.
+        """
+        frame = (self._push_tcp or {}).get("frame")
+        if not frame or frame.get("type") != "struct_frame":
+            return payload
+        length_size = int(frame.get("length_size", 2))
+        endian = "little" if frame.get("length_endian") == "little" else "big"
+        length_value = len(payload) - int(frame.get("length_adjust", 0))
+        return (
+            bytes(int(frame.get("header_reserve", 0)))
+            + max(0, length_value).to_bytes(length_size, endian)
+            + bytes(int(frame.get("mid_reserve", 0)))
+            + payload
+            + bytes(int(frame.get("trailer_reserve", 0)))
+        )
+
+    def _emit_push_tcp(self, payload: bytes) -> None:
+        """Dial each registered subscriber and push one framed notification."""
+        framed = self._wrap_push_tcp_frame(payload)
+        for target in list(self._push_tcp_subscribers):
+            task = asyncio.ensure_future(self._dial_push_tcp(target, framed))
+            self._push_tcp_tasks.add(task)
+            task.add_done_callback(self._push_tcp_tasks.discard)
+
+    async def _dial_push_tcp(self, target: tuple[str, int], framed: bytes) -> None:
+        """One outbound notification connection: connect, send, close.
+
+        Mirrors real dial-back devices, which prune subscribers they cannot
+        reach — three consecutive failed deliveries drop the registration.
+        """
+        try:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(target[0], target[1]), timeout=2.0
+            )
+            writer.write(framed)
+            await writer.drain()
+            writer.close()
+            if target in self._push_tcp_subscribers:
+                self._push_tcp_subscribers[target] = 0
+            self.log_protocol("out", framed)
+        except (OSError, asyncio.TimeoutError):
+            failures = self._push_tcp_subscribers.get(target)
+            if failures is None:
+                return
+            if failures + 1 >= 3:
+                del self._push_tcp_subscribers[target]
+                logger.info(
+                    "%s: push subscriber %s:%d unreachable 3 times — removed",
+                    self.name, target[0], target[1],
+                )
+            else:
+                self._push_tcp_subscribers[target] = failures + 1
+    # ── HTTP-callback push (push: {type: http_listener}) ──
+
+    def register_callback(self, url: Any) -> None:
+        """Record a notification callback URL (script-handler namespace).
+
+        A handler matching the device's registration command calls this with
+        the URL the controller supplied; subsequent state-change
+        notifications POST there. Registering an already-known URL is a
+        no-op, matching re-registration on reconnect.
+        """
+        url = str(url or "").strip()
+        if url and url not in self._http_push_callbacks:
+            self._http_push_callbacks.append(url)
+            self.log_protocol("in", f"(callback registered: {url})")
+
+    def unregister_callback(self, url: Any) -> None:
+        """Drop a previously registered callback URL (script-handler
+        namespace — for handlers matching the device's deregistration
+        command)."""
+        url = str(url or "").strip()
+        if url in self._http_push_callbacks:
+            self._http_push_callbacks.remove(url)
+            self.log_protocol("in", f"(callback unregistered: {url})")
+
+    async def _post_http_callback(self, url: str, msg: str) -> None:
+        """Deliver one rendered notification to a registered callback URL.
+
+        Content type follows the payload shape (XML vs JSON) purely for
+        protocol-log realism — the platform's dispatch reads only the body.
+        Delivery failure is a debug-level event: a real device silently
+        drops feedback its subscriber stopped answering.
+        """
+        import aiohttp
+
+        body = msg.encode("utf-8")
+        stripped = msg.lstrip()
+        if stripped.startswith("<"):
+            ctype = "text/xml"
+        elif stripped.startswith(("{", "[")):
+            ctype = "application/json"
+        else:
+            ctype = "text/plain"
+        try:
+            timeout = aiohttp.ClientTimeout(total=10)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(
+                    url, data=body, headers={"Content-Type": ctype}
+                ) as resp:
+                    self.log_protocol(
+                        "out", f"POST {url} -> {resp.status} | {msg[:200]}"
+                    )
+        except Exception as e:
+            logger.debug(
+                "%s: callback POST to %s failed: %s", self.name, url, e
+            )
+
     def _open_multicast_sender(self) -> None:
         """Open the multicast emission socket (TTL 1, loopback enabled so a
         same-host platform listener receives the frames)."""
@@ -534,6 +754,7 @@ class YAMLAutoSimulator(TCPSimulator):
     async def stop(self) -> None:
         """Stop the simulator server."""
         self._cancel_state_machine_timers()
+        self._cancel_push_tcp_tasks()
         if self._mcast_sock is not None:
             try:
                 self._mcast_sock.close()
@@ -590,11 +811,18 @@ class YAMLAutoSimulator(TCPSimulator):
         # Unblock held event-stream handlers first — cleanup() waits for
         # active handlers, and an SSE subscription blocks on its queue.
         self._close_sse_clients()
+        self._cancel_push_tcp_tasks()
         if self._http_runner:
             await self._http_runner.cleanup()
             self._http_runner = None
             self._http_site = None
         logger.info("%s stopped", self.name)
+
+    def _cancel_push_tcp_tasks(self) -> None:
+        """Abandon in-flight dial-out notification connections."""
+        for task in list(self._push_tcp_tasks):
+            task.cancel()
+        self._push_tcp_tasks.clear()
 
     def _http_response_delay(self) -> float:
         """Resolve the HTTP response delay: ``command_response`` when the
@@ -633,6 +861,8 @@ class YAMLAutoSimulator(TCPSimulator):
             return await self._serve_sse(request, decoded_path)
 
         body_text = await request.text()
+        # Dial-back registrations record the requester as the push target.
+        self._last_peer_ip = str(request.remote or "127.0.0.1")
 
         log_text = f"{method} {decoded_path}"
         if body_text:
@@ -1002,6 +1232,11 @@ class YAMLAutoSimulator(TCPSimulator):
         if not text:
             return None
 
+        # Dial-back subscriber bookkeeping (push: {type: tcp_listener}) —
+        # observe-only; the command still dispatches normally below so the
+        # driver YAML can shape the response with an explicit handler.
+        was_registration = self._watch_push_registration(text)
+
         # Try explicit handlers first (from simulator: command_handlers)
         for handler in self._explicit_handlers:
             m = handler.pattern.match(text)
@@ -1032,6 +1267,13 @@ class YAMLAutoSimulator(TCPSimulator):
             m = handler.pattern.match(text)
             if m:
                 return self._execute_query_handler(handler)
+
+        # A registration command with no handler of its own still succeeds —
+        # the empty body means "204-style ack" (real dial-back devices answer
+        # registrations with No Content), so drivers don't need boilerplate
+        # simulator handlers for the subscribe/unsubscribe pair.
+        if was_registration:
+            return b""
 
         logger.debug("%s: unrecognized command: %r", self.device_id, text)
         return None
@@ -1123,6 +1365,11 @@ class YAMLAutoSimulator(TCPSimulator):
             "state": state_proxy,
             "config": self.config,
             "respond": respond,
+            # http_listener push: a handler matching the device's
+            # registration command records where to deliver notifications
+            # (e.g. the ServerUrl a codec's feedback registration carries).
+            "register_callback": self.register_callback,
+            "unregister_callback": self.unregister_callback,
             **_SAFE_HANDLER_BUILTINS,
         }
 
@@ -1600,7 +1847,7 @@ class YAMLAutoSimulator(TCPSimulator):
         delimiter = self._get_delimiter()
         data = (msg + delimiter).encode()
 
-        # A driver with a multicast or SSE push channel gets its
+        # A driver with a multicast, SSE, or dial-back push channel gets its
         # notifications on that channel ONLY — real devices with a dedicated
         # notice feed never send those frames on the control connection.
         if self._push_multicast:
@@ -1618,6 +1865,17 @@ class YAMLAutoSimulator(TCPSimulator):
                 for queue in list(self._sse_clients):
                     queue.put_nowait(msg)
                 self.log_protocol("out", f"data: {msg[:200]}")
+        elif self._push_tcp:
+            # One outbound connection per registered subscriber, each
+            # carrying one framed notification (the dial-back pattern).
+            if self._push_tcp_subscribers:
+                self._emit_push_tcp(data)
+        elif self._push_http:
+            # HTTP-callback bodies are self-framed — no delimiter appended.
+            # No registered callback (controller never sent its registration
+            # command) means no delivery, matching a real device.
+            for url in list(self._http_push_callbacks):
+                asyncio.ensure_future(self._post_http_callback(url, msg))
         elif self._clients:
             asyncio.ensure_future(self.push(data))
 

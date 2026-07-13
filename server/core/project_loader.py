@@ -11,6 +11,7 @@ import os
 import re
 import shutil
 import tempfile
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
 
@@ -548,40 +549,47 @@ def build_driver_dependencies(project: ProjectConfig) -> list[DriverDependency]:
     return deps
 
 
-def _get_driver_source(driver_id: str) -> str:
-    """Determine if a driver is builtin, community, or user-created."""
-    from server.system_config import DRIVER_DEFINITIONS_DIR, DRIVER_REPO_DIR
-    definitions_dir = DRIVER_DEFINITIONS_DIR
-    driver_repo_dir = DRIVER_REPO_DIR
+@lru_cache(maxsize=1)
+def _builtin_driver_ids() -> frozenset[str]:
+    """Driver ids served by the read-only built-in definitions tree.
 
-    # Check built-in definitions
-    for f in definitions_dir.glob("*.avcdriver"):
-        try:
-            import yaml
-            data = yaml.safe_load(f.read_text(encoding="utf-8"))
-            if data and data.get("id") == driver_id:
-                return "builtin"
-        except Exception as e:
-            log.warning(f"Failed to parse driver definition '{f.name}': {e}")
-
-    # Check driver_repo (community/user). Resolve by the driver's DECLARED
-    # id (the way the loader registers it), not just the filename stem: an
-    # uploaded driver keeps its original filename, so the stem can differ
-    # from its id. A stem-only match here would mis-stamp such a driver
-    # 'builtin', and the export bundler would then silently omit it.
+    Cached for the life of the process: the definitions tree ships inside the
+    install directory and cannot change at runtime (the driver routes refuse to
+    write there, see ``is_builtin_definition_path``). Resolve by each file's
+    DECLARED id rather than its filename stem — the two can differ.
+    """
     from server.drivers.driver_loader import driver_id_from_file
-    for ext in ("*.avcdriver", "*.py"):
-        for f in driver_repo_dir.glob(ext):
+    from server.system_config import DRIVER_DEFINITIONS_DIR
+
+    if not DRIVER_DEFINITIONS_DIR.is_dir():
+        return frozenset()
+
+    ids: set[str] = set()
+    for pattern in ("*.avcdriver", "*.py"):
+        for f in DRIVER_DEFINITIONS_DIR.glob(pattern):
             if f.name.startswith("_"):
                 continue
-            if (
-                f.stem == driver_id
-                or f.stem.replace("-", "_") == driver_id
-                or driver_id_from_file(f) == driver_id
-            ):
-                return "community"
+            driver_id = driver_id_from_file(f)
+            if driver_id:
+                ids.add(driver_id)
+    return frozenset(ids)
 
-    return "builtin"  # fallback for GenericTCP and similar
+
+def _get_driver_source(driver_id: str) -> str:
+    """Classify an already-registered driver as builtin or community.
+
+    Callers reach here only for ids found in the driver registry, so a driver
+    that the built-in definitions tree does not serve was necessarily loaded
+    from driver_repo.
+
+    This must not touch the disk. It runs once per unique driver on every save,
+    and the previous implementation globbed and YAML-parsed the entire driver
+    library per call — O(unique_drivers x library_files), which cost 6.4s to
+    save a 30-driver project against a 151-driver library.
+    """
+    if driver_id in _builtin_driver_ids():
+        return "builtin"
+    return "community"
 
 
 def build_plugin_dependencies(project: ProjectConfig) -> list[PluginDependency]:

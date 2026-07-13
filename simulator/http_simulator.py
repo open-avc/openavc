@@ -46,17 +46,20 @@ class HTTPSimulator(BaseSimulator):
         path: str,
         headers: dict[str, str],
         body: str,
-    ) -> tuple[int, dict | str]:
+    ) -> tuple[int, dict | str] | tuple[int, dict | str, dict[str, str]]:
         """Handle an incoming HTTP request from the driver.
 
         Args:
-            method: HTTP method (GET, POST, PUT, DELETE)
+            method: HTTP method (GET, POST, PUT, DELETE — and any other verb
+                the device's protocol uses, e.g. UPnP's SUBSCRIBE)
             path: Request path (e.g., "/api/power")
             headers: Request headers as dict
             body: Request body as string (empty for GET)
 
         Returns:
-            (status_code, response_body)
+            (status_code, response_body) — or (status_code, response_body,
+            response_headers) for protocols whose answer carries meaningful
+            headers (a UPnP SUBSCRIBE reply's SID / TIMEOUT, for instance).
             response_body can be a dict (auto-serialized to JSON) or a string.
 
         Use self.state to read current state, self.set_state(k, v) to update it.
@@ -98,6 +101,40 @@ class HTTPSimulator(BaseSimulator):
         self._app = None
         self._site = None
         logger.info("%s stopped", self.name)
+
+    # ── HTTP-callback push (push: {type: http_listener}) ──
+
+    async def post_http_callback(
+        self,
+        url: str,
+        body: str | bytes,
+        headers: dict[str, str] | None = None,
+        method: str = "POST",
+    ) -> int | None:
+        """Deliver one push notification to a registered callback URL.
+
+        For simulators of devices that dial OUT to a subscriber (webhooks,
+        UPnP GENA NOTIFY — pass ``method="NOTIFY"`` and the GENA headers).
+        Returns the response status, or None when delivery failed — a real
+        device silently drops feedback its subscriber stopped answering, so
+        failures log at debug level only.
+        """
+        from aiohttp import ClientSession, ClientTimeout
+
+        data = body.encode("utf-8") if isinstance(body, str) else body
+        try:
+            async with ClientSession(timeout=ClientTimeout(total=10)) as session:
+                async with session.request(
+                    method, url, data=data, headers=headers or {}
+                ) as resp:
+                    preview = data[:200].decode("utf-8", errors="replace")
+                    self.log_protocol(
+                        "out", f"{method} {url} -> {resp.status} | {preview}"
+                    )
+                    return resp.status
+        except Exception as e:
+            logger.debug("%s: callback %s to %s failed: %s", self.name, method, url, e)
+            return None
 
     # ── Server-Sent Events (push: {type: sse}) ──
 
@@ -193,9 +230,15 @@ class HTTPSimulator(BaseSimulator):
         if delay > 0:
             await asyncio.sleep(delay)
 
-        # Handle the request
+        # Handle the request. A 3-tuple carries response headers (a protocol
+        # like UPnP answers a SUBSCRIBE with its SID and TIMEOUT there).
+        response_headers: dict[str, str] = {}
         try:
-            status_code, response_body = self.handle_request(method, path, headers, body)
+            result = self.handle_request(method, path, headers, body)
+            if len(result) == 3:
+                status_code, response_body, response_headers = result
+            else:
+                status_code, response_body = result
         except Exception:
             logger.exception("%s: error in handle_request", self.name)
             status_code = 500
@@ -216,4 +259,5 @@ class HTTPSimulator(BaseSimulator):
             status=status_code,
             text=response_text,
             content_type=content_type,
+            headers=response_headers or None,
         )

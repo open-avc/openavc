@@ -713,7 +713,12 @@ def validate_driver_definition(driver_def: dict[str, Any]) -> list[str]:
     # and addressing at load time. Values accept `{config_field}` templates so
     # a device whose notification target is user-configurable can resolve
     # them per instance. Per-type keys: multicast joins a group:port; sse
-    # holds GET path(s) open on the driver's own HTTP session.
+    # holds GET path(s) open on the driver's own HTTP session; tcp_listener
+    # opens a local port the device dials back to after a registration
+    # command tells it where ({listener_port} substitution); http_listener
+    # accepts device POSTs on a platform-assigned callback path (no keys of
+    # its own — the URL is built at runtime and substitutes into commands as
+    # {push_callback_url}).
     push_def = driver_def.get("push")
     if push_def is not None:
         if not isinstance(push_def, dict):
@@ -728,20 +733,23 @@ def validate_driver_definition(driver_def: dict[str, Any]) -> list[str]:
             _push_known_keys = {
                 "multicast": {"type", "group", "port"},
                 "sse": {"type", "path", "idle_timeout"},
+                "tcp_listener": {
+                    "type", "port", "frame_parser", "register", "unregister",
+                },
+                "http_listener": {"type"},
             }
             ptype = push_def.get("type")
-            if ptype in ("tcp_listener", "http_listener"):
-                errors.append(
-                    f"push: type '{ptype}' is not supported yet "
-                    f"(only 'multicast' and 'sse')"
-                )
-            elif ptype not in _push_known_keys:
+            if ptype not in _push_known_keys:
                 errors.append(
                     "push: missing or unknown 'type' "
-                    "(supported: multicast, sse)"
+                    "(supported: multicast, sse, tcp_listener, http_listener)"
                 )
             known_keys = _push_known_keys.get(
-                ptype, {"type", "group", "port", "path", "idle_timeout"}
+                ptype,
+                {
+                    "type", "group", "port", "path", "idle_timeout",
+                    "frame_parser", "register", "unregister",
+                },
             )
             unknown_push = set(push_def) - known_keys
             if unknown_push:
@@ -849,6 +857,99 @@ def validate_driver_definition(driver_def: dict[str, Any]) -> list[str]:
                         "push: idle_timeout must be a positive number of "
                         "seconds"
                     )
+
+            elif ptype == "tcp_listener":
+                # The local inbound port the device dials back to. 0 lets the
+                # OS assign one (fine when the registration command carries
+                # {listener_port}; a fixed port is easier to firewall).
+                pport = push_def.get("port")
+                if pport is None:
+                    errors.append("push: missing 'port'")
+                elif isinstance(pport, str) and "{" in pport:
+                    _push_template_ok("port", pport)
+                elif (
+                    isinstance(pport, bool)
+                    or not isinstance(pport, int)
+                    or not (0 <= pport < 65536)
+                ):
+                    errors.append(
+                        "push: port must be an integer 0-65535 (0 = "
+                        "OS-assigned) or a {config_field} template"
+                    )
+
+                # Per-subscription framing for the pushed frames. The control
+                # transport's framing doesn't apply here — the dial-back
+                # channel is its own byte stream.
+                frame_cfg = push_def.get("frame_parser")
+                if frame_cfg is not None:
+                    if not isinstance(frame_cfg, dict):
+                        errors.append("push: frame_parser must be a mapping")
+                    else:
+                        ftype = frame_cfg.get("type")
+                        if ftype not in (
+                            "struct_frame", "length_prefix", "fixed_length",
+                        ):
+                            errors.append(
+                                f"push: frame_parser type {ftype!r} must be "
+                                f"struct_frame, length_prefix, or "
+                                f"fixed_length"
+                            )
+                        elif ftype == "struct_frame":
+                            for fkey in (
+                                "header_reserve", "mid_reserve",
+                                "trailer_reserve",
+                            ):
+                                fval = frame_cfg.get(fkey, 0)
+                                if (
+                                    isinstance(fval, bool)
+                                    or not isinstance(fval, int)
+                                    or fval < 0
+                                ):
+                                    errors.append(
+                                        f"push: frame_parser {fkey} must be "
+                                        f"a non-negative integer"
+                                    )
+                            fsize = frame_cfg.get("length_size", 2)
+                            if fsize not in (1, 2, 4):
+                                errors.append(
+                                    "push: frame_parser length_size must be "
+                                    "1, 2, or 4"
+                                )
+                            fadj = frame_cfg.get("length_adjust", 0)
+                            if isinstance(fadj, bool) or not isinstance(
+                                fadj, int
+                            ):
+                                errors.append(
+                                    "push: frame_parser length_adjust must "
+                                    "be an integer"
+                                )
+                            fend = frame_cfg.get("length_endian", "big")
+                            if fend not in ("big", "little"):
+                                errors.append(
+                                    "push: frame_parser length_endian must "
+                                    "be 'big' or 'little'"
+                                )
+
+                # register / unregister name driver commands (run after the
+                # listener opens / before it closes). A typo here would
+                # silently never arm the device — enforce the reference.
+                _commands = driver_def.get("commands")
+                _command_names = (
+                    set(_commands) if isinstance(_commands, dict) else set()
+                )
+                for ckey in ("register", "unregister"):
+                    cval = push_def.get(ckey)
+                    if cval is None:
+                        continue
+                    if not isinstance(cval, str) or not cval.strip():
+                        errors.append(
+                            f"push: {ckey} must be a command name"
+                        )
+                    elif cval not in _command_names:
+                        errors.append(
+                            f"push: {ckey} command '{cval}' is not declared "
+                            f"in commands"
+                        )
 
     # Validate the optional `auth:` login handshake block. The runtime swaps to
     # raw byte buffering and types credentials before any other traffic — so a

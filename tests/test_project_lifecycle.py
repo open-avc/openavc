@@ -7,8 +7,14 @@ from pathlib import Path
 
 import pytest
 
-from server.core.device_manager import DeviceManager, _DRIVER_REGISTRY
+from server.core.device_manager import (
+    DeviceManager,
+    _DRIVER_REGISTRY,
+    register_driver,
+    unregister_driver,
+)
 from server.core.event_bus import EventBus
+from server.drivers.base import BaseDriver
 from server.core.project_loader import (
     ProjectConfig,
     build_driver_dependencies,
@@ -489,3 +495,65 @@ class TestDriverDependencies:
         project = ProjectConfig(**data)
         deps = build_driver_dependencies(project)
         assert deps == []
+
+    def test_driver_from_definitions_tree_is_builtin(self):
+        """A driver the built-in definitions tree serves is stamped 'builtin'."""
+        data = copy.deepcopy(TEST_PROJECT_NEW)
+        data["devices"] = [
+            {"id": "dev1", "driver": "generic_tcp", "name": "A", "config": {}},
+        ]
+        data["connections"] = {}
+        deps = build_driver_dependencies(ProjectConfig(**data))
+
+        assert [d.source for d in deps] == ["builtin"]
+
+    def test_registered_driver_outside_definitions_tree_is_community(self):
+        """A registered driver the built-in tree does not serve came from
+        driver_repo, so it is stamped 'community' — this is what tells the
+        export bundler to carry the driver file with the project."""
+        class AcmeWidget(BaseDriver):
+            DRIVER_INFO = {
+                "id": "acme_widget",
+                "name": "Acme Widget",
+                "version": "2.1.0",
+                "transport": "tcp",
+            }
+
+            async def connect(self) -> None:
+                pass
+
+        register_driver(AcmeWidget)
+        try:
+            data = copy.deepcopy(TEST_PROJECT_NEW)
+            data["devices"] = [
+                {"id": "dev1", "driver": "acme_widget", "name": "A", "config": {}},
+            ]
+            data["connections"] = {}
+            deps = build_driver_dependencies(ProjectConfig(**data))
+
+            assert len(deps) == 1
+            assert deps[0].driver_id == "acme_widget"
+            assert deps[0].driver_name == "Acme Widget"
+            assert deps[0].version == "2.1.0"
+            assert deps[0].source == "community"
+        finally:
+            unregister_driver("acme_widget")
+
+    def test_source_lookup_does_not_touch_the_driver_library(self, monkeypatch):
+        """Classifying a driver must not read driver_repo.
+
+        It runs once per unique driver on every save; globbing and parsing the
+        library per call made saving a large project take seconds.
+        """
+        import server.system_config as sc
+
+        monkeypatch.setattr(sc, "DRIVER_REPO_DIR", Path("/nonexistent/driver_repo"))
+
+        data = copy.deepcopy(TEST_PROJECT_NEW)
+        data["devices"] = [
+            {"id": "dev1", "driver": "generic_tcp", "name": "A", "config": {}},
+        ]
+        data["connections"] = {}
+        deps = build_driver_dependencies(ProjectConfig(**data))
+
+        assert [d.source for d in deps] == ["builtin"]

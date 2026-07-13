@@ -15,6 +15,7 @@ from server.api.routes import drivers as _drivers_routes
 from server.api.routes import ir_db as _ir_db_routes
 from server.api.routes import macros as _macros_routes
 from server.api.routes import project as _project_routes
+from server.api.routes import push as _push_routes
 from server.api.routes import scripts as _scripts_routes
 from server.api.routes import setup as _setup_routes
 from server.api.routes import system as _system_routes
@@ -53,6 +54,7 @@ router.include_router(_system_routes.router)
 
 # Include open (unauthenticated) sub-routers
 open_router.include_router(_project_routes.open_router)
+open_router.include_router(_push_routes.open_router)
 open_router.include_router(_setup_routes.open_router)
 open_router.include_router(_system_routes.open_router)
 

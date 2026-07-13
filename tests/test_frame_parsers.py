@@ -8,6 +8,8 @@ from server.transport.frame_parsers import (
     FixedLengthFrameParser,
     LengthPrefixFrameParser,
     SlipFrameParser,
+    StructFrameParser,
+    build_frame_parser,
     slip_encode,
 )
 
@@ -378,3 +380,146 @@ def test_slip_carries_a_real_osc_message():
     addr, args = osc_decode_message(frames[0])
     assert addr == "/workspace/ABC/cue/1/start"
     assert args == [("f", 1.0)]
+
+
+# --- StructFrameParser ---
+
+
+def _acme_frame(payload: bytes, header: int = 4, mid: int = 2, trailer: int = 6,
+                adjust: int = -8, endian: str = "big", size: int = 2) -> bytes:
+    """Build a synthetic struct frame: zeroed reserves around a length field
+    that counts len(payload) - adjust (mirroring devices whose length field
+    includes constant overhead)."""
+    length_value = len(payload) - adjust
+    return (
+        bytes(header)
+        + length_value.to_bytes(size, endian)
+        + bytes(mid)
+        + payload
+        + bytes(trailer)
+    )
+
+
+def _acme_parser(**kw) -> StructFrameParser:
+    args = dict(header_reserve=4, length_size=2, length_endian="big",
+                length_adjust=-8, mid_reserve=2, trailer_reserve=6)
+    args.update(kw)
+    return StructFrameParser(**args)
+
+
+def test_struct_frame_basic():
+    p = _acme_parser()
+    assert p.feed(_acme_frame(b"\r\nNOTIFY 1\r\n")) == [b"\r\nNOTIFY 1\r\n"]
+
+
+def test_struct_frame_split_across_feeds():
+    p = _acme_parser()
+    frame = _acme_frame(b"\r\nNOTIFY 2\r\n")
+    assert p.feed(frame[:3]) == []
+    assert p.feed(frame[3:9]) == []
+    assert p.feed(frame[9:]) == [b"\r\nNOTIFY 2\r\n"]
+
+
+def test_struct_frame_multiple_in_one_feed():
+    p = _acme_parser()
+    data = _acme_frame(b"A1") + _acme_frame(b"B22")
+    assert p.feed(data) == [b"A1", b"B22"]
+
+
+def test_struct_frame_trailer_consumed_between_frames():
+    # A wrong trailer size would desync the second frame; prove the parser
+    # resumes exactly at the next header.
+    p = _acme_parser()
+    data = _acme_frame(b"first") + _acme_frame(b"second")
+    assert p.feed(data[: len(_acme_frame(b"first")) + 5]) == [b"first"]
+    assert p.feed(data[len(_acme_frame(b"first")) + 5 :]) == [b"second"]
+
+
+def test_struct_frame_little_endian():
+    p = _acme_parser(length_endian="little")
+    frame = _acme_frame(b"LE", endian="little")
+    assert p.feed(frame) == [b"LE"]
+
+
+def test_struct_frame_no_adjust():
+    p = _acme_parser(length_adjust=0)
+    frame = _acme_frame(b"RAW", adjust=0)
+    assert p.feed(frame) == [b"RAW"]
+
+
+def test_struct_frame_zero_reserves_is_plain_length_prefix():
+    p = StructFrameParser(length_size=1)
+    assert p.feed(b"\x02hi\x03bye") == [b"hi", b"bye"]
+
+
+def test_struct_frame_desync_clears_buffer():
+    p = _acme_parser(max_buffer=64)
+    # Claimed length far beyond the cap -> buffer cleared, parser recovers.
+    bogus = bytes(4) + (60000).to_bytes(2, "big") + bytes(2) + b"x"
+    assert p.feed(bogus) == []
+    assert p.feed(_acme_frame(b"OK")) == [b"OK"]
+
+
+def test_struct_frame_negative_payload_clamped():
+    # Length field smaller than the adjustment -> zero-byte payload, frame
+    # still consumed (no wedge, no crash).
+    p = _acme_parser()
+    frame = bytes(4) + (3).to_bytes(2, "big") + bytes(2) + bytes(6)
+    assert p.feed(frame) == []
+    assert p.feed(_acme_frame(b"NEXT")) == [b"NEXT"]
+
+
+def test_struct_frame_invalid_params_raise():
+    with pytest.raises(ValueError):
+        StructFrameParser(length_size=3)
+    with pytest.raises(ValueError):
+        StructFrameParser(header_reserve=-1)
+
+
+def test_struct_frame_reset():
+    p = _acme_parser()
+    p.feed(_acme_frame(b"partial")[:5])
+    p.reset()
+    assert p.feed(_acme_frame(b"fresh")) == [b"fresh"]
+
+
+# --- build_frame_parser (shared declarative builder) ---
+
+
+def test_build_frame_parser_types():
+    assert isinstance(
+        build_frame_parser({"type": "length_prefix"}), LengthPrefixFrameParser
+    )
+    assert isinstance(
+        build_frame_parser({"type": "fixed_length", "length": 4}),
+        FixedLengthFrameParser,
+    )
+    assert isinstance(
+        build_frame_parser({"type": "struct_frame"}), StructFrameParser
+    )
+    assert build_frame_parser({"type": "bogus"}) is None
+    assert build_frame_parser({}) is None
+    assert build_frame_parser(None) is None
+
+
+def test_build_frame_parser_struct_config():
+    p = build_frame_parser(
+        {
+            "type": "struct_frame",
+            "header_reserve": 22,
+            "length_size": 2,
+            "length_endian": "big",
+            "length_adjust": -8,
+            "mid_reserve": 4,
+            "trailer_reserve": 24,
+        }
+    )
+    payload = b"\r\np1\r\n"
+    frame = (
+        bytes(22)
+        + (len(payload) + 8).to_bytes(2, "big")
+        + bytes(4)
+        + payload
+        + bytes(24)
+    )
+    assert p.feed(frame) == [payload]
