@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -91,6 +91,35 @@ class _RefreshSupportingDriver(_FakeControllerDriver):
 # ---------------------------------------------------------------------------
 
 
+def _wire_seam(engine):
+    """Mirror the route contract: mutate a model_copy of the project, hand
+    it to apply_project, which swaps it in and bumps the revision."""
+    import copy as _copylib
+
+    engine._project_revision = 0
+
+    def _wire_project_copy(p):
+        def _copy(*, deep=False, update=None):
+            cp = MagicMock()
+            for attr in ("devices", "variables", "macros",
+                         "scripts", "connections", "plugins"):
+                setattr(cp, attr, _copylib.deepcopy(getattr(p, attr)))
+            cp.ui = p.ui
+            cp.project = p.project
+            _wire_project_copy(cp)
+            return cp
+        p.model_copy = MagicMock(side_effect=_copy)
+
+    _wire_project_copy(engine.project)
+
+    async def _fake_apply(new_project, **kwargs):
+        engine.project = new_project
+        engine._project_revision += 1
+        return engine._project_revision
+
+    engine.apply_project = AsyncMock(side_effect=_fake_apply)
+
+
 def _make_engine(tmp_path: Path, *, driver_cls=_FakeControllerDriver):
     state = StateStore()
     events = EventBus()
@@ -151,6 +180,7 @@ def _make_engine(tmp_path: Path, *, driver_cls=_FakeControllerDriver):
     engine.project.plugins = {}
     engine.project_path = str(tmp_path / "project.avc")
     engine.project_dir = tmp_path
+    _wire_seam(engine)
 
     return engine, driver, device_cfg
 
@@ -347,10 +377,10 @@ def test_get_single_child_happy_path(child_client):
 
 
 def test_patch_label_persists_to_project_and_state(child_client):
-    c, _engine, driver, device_cfg = child_client
+    c, engine, driver, _device_cfg = child_client
     driver.register_child("encoder", 7, initial_state={"name": "Original"})
 
-    with patch("server.core.project_loader.save_project") as save:
+    with patch("server.core.project_loader.save_project"):
         resp = c.patch(
             "/api/devices/ctrl1/children/encoder/7",
             json={"label": "Stage Right TX"},
@@ -361,17 +391,17 @@ def test_patch_label_persists_to_project_and_state(child_client):
     assert body["label"] == "Stage Right TX"
     assert body["state"]["label"] == "Stage Right TX"
 
-    # Project file mutated and saved.
-    entry = device_cfg.child_entities["encoder"]["007"]
+    # Persisted through the seam (which also bumps the revision).
+    entry = engine.project.devices[0].child_entities["encoder"]["007"]
     assert entry.label == "Stage Right TX"
-    save.assert_called_once()
+    engine.apply_project.assert_awaited_once()
 
     # Live state key updated so existing subscribers see the new label.
     assert driver.state.get("device.ctrl1.encoder.007.label") == "Stage Right TX"
 
 
 def test_patch_config_only_preserves_existing_label(child_client):
-    c, _engine, _driver, device_cfg = child_client
+    c, engine, _driver, _device_cfg = child_client
     # Project pre-seeds encoder 005 with label "Lobby TX" + room=Lobby.
     with patch("server.core.project_loader.save_project"):
         resp = c.patch(
@@ -383,7 +413,8 @@ def test_patch_config_only_preserves_existing_label(child_client):
     body = resp.json()
     assert body["label"] == "Lobby TX"  # untouched
     assert body["config"] == {"room": "Stage", "tag": "primary"}
-    entry = device_cfg.child_entities["encoder"]["005"]
+    # The applied project (swapped in by apply_project) carries the merge.
+    entry = engine.project.devices[0].child_entities["encoder"]["005"]
     assert entry.label == "Lobby TX"
     assert entry.config == {"room": "Stage", "tag": "primary"}
 
@@ -392,7 +423,7 @@ def test_patch_label_works_on_unregistered_child(child_client):
     """Label persistence isn't gated on the child being live — the IDE
     can label a child that hasn't connected yet; the label seeds into
     state on the next register_child call."""
-    c, _engine, driver, device_cfg = child_client
+    c, engine, driver, _device_cfg = child_client
     assert not driver.is_child_registered("encoder", 42)
 
     with patch("server.core.project_loader.save_project"):
@@ -402,7 +433,7 @@ def test_patch_label_works_on_unregistered_child(child_client):
         )
 
     assert resp.status_code == 200
-    entry = device_cfg.child_entities["encoder"]["042"]
+    entry = engine.project.devices[0].child_entities["encoder"]["042"]
     assert entry.label == "Future TX"
     # No state key created — child isn't registered.
     assert driver.state.get("device.ctrl1.encoder.042.label") is None
@@ -536,8 +567,14 @@ def dsp_client(tmp_path):
     )
     engine.project = MagicMock()
     engine.project.devices = [device_cfg]
+    engine.project.connections = {}
+    engine.project.variables = []
+    engine.project.macros = []
+    engine.project.scripts = []
+    engine.project.plugins = {}
     engine.project_path = str(tmp_path / "project.avc")
     engine.project_dir = tmp_path
+    _wire_seam(engine)
 
     rest.set_engine(engine)
     ws.set_engine(engine)
@@ -577,7 +614,7 @@ def test_get_dynamic_child_by_string_id(dsp_client):
 
 
 def test_patch_dynamic_child_string_id_persists_label(dsp_client):
-    c, _engine, driver, cfg = dsp_client
+    c, engine, driver, _cfg = dsp_client
     with patch("server.core.project_loader.save_project"):
         resp = c.patch(
             "/api/devices/dsp1/children/component/PgmGain",
@@ -585,5 +622,6 @@ def test_patch_dynamic_child_string_id_persists_label(dsp_client):
         )
     assert resp.status_code == 200
     # Persisted to project (keyed by the verbatim string id) and mirrored live.
-    assert cfg.child_entities["component"]["PgmGain"].label == "Program Gain"
+    assert (engine.project.devices[0].child_entities["component"]["PgmGain"].label
+            == "Program Gain")
     assert driver.get_child_state("component", "PgmGain")["label"] == "Program Gain"
