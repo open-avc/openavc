@@ -26,5 +26,15 @@ export async function request<T>(
     const body = await res.text();
     throw new Error(`API ${res.status}: ${body}`);
   }
+  // Handle 204 No Content (e.g., DELETE responses) — res.json() on an empty
+  // body rejects with "Unexpected end of JSON input". Mirrors cloudClient.ts.
+  if (res.status === 204) {
+    return undefined as T;
+  }
+  // Handle other non-JSON / empty responses.
+  const contentType = res.headers.get("content-type");
+  if (!contentType || !contentType.includes("application/json")) {
+    return undefined as T;
+  }
   return res.json();
 }
