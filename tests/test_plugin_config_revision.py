@@ -1,11 +1,12 @@
 """Regression guard for the plugin enable/config clobber bug.
 
-Server-side project saves that bypass the reload path (plugin enable/disable and
-plugin-config saves such as the Video Streams editor) must bump the project
-revision. Otherwise an open editor's cached ETag still matches the server, so its
-next full-project ``PUT /api/project`` silently overwrites the change — which is
-how enabling the Video Panel plugin (and picking a stream) kept getting wiped by
-the UI Builder's autosave.
+Every server-side project persist must advance the project revision — whether
+it goes through ``apply_project`` (plugin enable/disable, uninstall) or the
+bookkeeping persist (``_save_plugin_config``, e.g. the Video Streams editor).
+Otherwise an open editor's cached ETag still matches the server, so its next
+full-project ``PUT /api/project`` silently overwrites the change — which is
+how enabling the Video Panel plugin (and picking a stream) kept getting wiped
+by the UI Builder's autosave.
 """
 
 import pytest
@@ -25,13 +26,6 @@ def _engine(tmp_path, monkeypatch):
         plugins={"video_panel": PluginConfig(enabled=True, config={})},
     )
     return engine
-
-
-def test_bump_project_revision_increments(tmp_path, monkeypatch):
-    engine = _engine(tmp_path, monkeypatch)
-    engine._project_revision = 3
-    engine.bump_project_revision()
-    assert engine._project_revision == 4
 
 
 @pytest.mark.asyncio

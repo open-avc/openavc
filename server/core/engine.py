@@ -1143,20 +1143,6 @@ class Engine:
                         f"config change and is stopped"
                     )
 
-    def bump_project_revision(self) -> None:
-        """Advance the project revision after a server-side save that bypasses
-        the reload path.
-
-        Plugin enable/disable and plugin-config saves (e.g. the Video Streams
-        editor) persist the project directly, without going through
-        ``apply_project`` (which is what normally increments the revision).
-        Left un-bumped, an open editor's cached ETag still matches the server,
-        so its next full-project ``PUT /api/project`` overwrites these changes
-        instead of being rejected with a 409. Bumping here keeps the
-        optimistic-concurrency guard authoritative for every persisted change.
-        """
-        self._project_revision += 1
-
     async def persist_bookkeeping_change(self, mutate, *, on_error=None) -> int:
         """Persist an in-place project mutation whose runtime effect is
         already applied — no reconcile, just save + revision bump +
@@ -2124,6 +2110,7 @@ class Engine:
             handler = CommandHandler(
                 self.cloud_agent, self.devices, self.events,
                 reload_fn=self.reload_project,
+                apply_fn=self.apply_project,
                 project_path=self.project_path,
             )
             self.cloud_agent.set_command_handler(handler)

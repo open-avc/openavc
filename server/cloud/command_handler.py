@@ -45,6 +45,7 @@ class CommandHandler:
         devices: DeviceManager,
         events: EventBus,
         reload_fn=None,
+        apply_fn=None,
         update_manager=None,
         project_path=None,
     ):
@@ -53,7 +54,10 @@ class CommandHandler:
             agent: The CloudAgent to send responses through.
             devices: DeviceManager for device commands.
             events: EventBus for emitting audit events.
-            reload_fn: Optional async callable to trigger project reload.
+            reload_fn: Optional async callable to reload the project from disk
+                (used by a bare config_push that carries no project_json).
+            apply_fn: Optional async callable (engine.apply_project) that
+                persists and reconciles a pushed project through the one seam.
             update_manager: Optional UpdateManager for cloud-triggered updates.
             project_path: Path to the active project.avc file.
         """
@@ -61,6 +65,7 @@ class CommandHandler:
         self._devices = devices
         self._events = events
         self._reload_fn = reload_fn
+        self._apply_fn = apply_fn
         self._update_manager = update_manager
         self._project_path = project_path
 
@@ -143,10 +148,10 @@ class CommandHandler:
             "request_id": request_id,
         })
 
-        if self._reload_fn and self._project_path:
+        if (self._apply_fn or self._reload_fn) and self._project_path:
             try:
                 from pathlib import Path
-                from server.core.project_loader import ProjectConfig, save_project_async
+                from server.core.project_loader import ProjectConfig
                 from server.core.project_migration import migrate_project
                 from server.core.backup_manager import create_backup
 
@@ -161,8 +166,10 @@ class CommandHandler:
                 except (OSError, json.JSONDecodeError, ValueError):
                     pass  # Best-effort: previous config capture is optional for rollback
 
-                # Write new project_json to disk if provided
                 if project_json:
+                    if self._apply_fn is None:
+                        await self._send_result(request_id, False, error="Apply not available")
+                        return
                     # Migrate an old-schema push to the current format BEFORE
                     # validating/saving, matching load_project — otherwise a
                     # pre-current-schema cloud project is persisted with stale
@@ -177,9 +184,22 @@ class CommandHandler:
                     # Create backup before overwriting
                     import asyncio
                     await asyncio.to_thread(create_backup, project_path.parent, "Before cloud config push")
-                    await save_project_async(project_path, project)
 
-                await self._reload_fn()
+                    # A fleet push wins by design — no expected_revision — but
+                    # it goes through the one seam: LOAD-origin apply persists
+                    # the pushed bytes, fully reconciles, bumps the revision,
+                    # and broadcasts project.reloaded, so an open IDE 409s on
+                    # its next save instead of silently reverting the push.
+                    from server.core.project_diff import ProjectOrigin
+                    await self._apply_fn(
+                        project, origin=ProjectOrigin.LOAD, persist=True
+                    )
+                else:
+                    if self._reload_fn is None:
+                        await self._send_result(request_id, False, error="Reload not available")
+                        return
+                    # Bare push: re-read whatever is on disk (LOAD reload).
+                    await self._reload_fn()
 
                 # Include previous config in result for rollback
                 result_data = {"previous_project_json": previous_json} if previous_json else "Config applied"

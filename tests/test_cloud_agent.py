@@ -1032,12 +1032,22 @@ class TestCommandHandler:
         )
 
         reloaded = []
+        applied = []
 
         async def reload_fn():
             reloaded.append(True)
 
+        # Mirror the seam contract: apply_project persists the pushed project
+        # (the reconcile itself is pinned by the engine tests).
+        async def apply_fn(project, **kwargs):
+            from server.core.project_loader import save_project
+            save_project(project_path, project)
+            applied.append(kwargs)
+            return 1
+
         handler = CommandHandler(
-            MockAgent(), devices, events, reload_fn=reload_fn, project_path=str(project_path),
+            MockAgent(), devices, events,
+            reload_fn=reload_fn, apply_fn=apply_fn, project_path=str(project_path),
         )
 
         # Push a 0.6.0-schema project; the current schema is 0.7.0.
@@ -1051,7 +1061,58 @@ class TestCommandHandler:
         assert saved["openavc_version"] == "0.7.0", saved.get("openavc_version")
         # And the pushed project is what got saved (not the pre-existing one).
         assert saved["project"]["id"] == "pushed"
+        # The push went through the seam — LOAD origin, no OCC check (a fleet
+        # push wins by design, but the apply bumps + broadcasts so an open IDE
+        # 409s instead of silently reverting it). No double reload-from-disk.
+        from server.core.project_diff import ProjectOrigin
+        assert applied == [{"origin": ProjectOrigin.LOAD, "persist": True}]
+        assert reloaded == []
+        assert sent and sent[-1][1]["success"] is True
+
+    @pytest.mark.asyncio
+    async def test_bare_config_push_reloads_from_disk(self, tmp_path):
+        """A config_push with no project_json is a plain reload-from-disk."""
+        import json
+        from server.core.state_store import StateStore
+        from server.core.event_bus import EventBus
+        from server.core.device_manager import DeviceManager
+        from server.cloud.command_handler import CommandHandler
+
+        state = StateStore()
+        events = EventBus()
+        devices = DeviceManager(state, events)
+
+        sent = []
+
+        class MockAgent:
+            async def send_message(self, msg_type, payload):
+                sent.append((msg_type, payload))
+
+        project_path = tmp_path / "project.avc"
+        project_path.write_text(
+            json.dumps({"openavc_version": "0.7.0", "project": {"id": "p", "name": "P"}}),
+            encoding="utf-8",
+        )
+
+        reloaded = []
+        applied = []
+
+        async def reload_fn():
+            reloaded.append(True)
+
+        async def apply_fn(project, **kwargs):
+            applied.append(kwargs)
+            return 1
+
+        handler = CommandHandler(
+            MockAgent(), devices, events,
+            reload_fn=reload_fn, apply_fn=apply_fn, project_path=str(project_path),
+        )
+
+        await handler._handle_config_push({"mode": "reload"}, "req-cfg2", "tech@x.com")
+
         assert reloaded == [True]
+        assert applied == []
         assert sent and sent[-1][1]["success"] is True
 
 
