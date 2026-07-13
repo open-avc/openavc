@@ -59,6 +59,33 @@ def _make_mock_engine():
     engine.project.plugins = {}
     engine.project_path = "/tmp/test_project.avc"
     engine.project_dir = Path("/tmp")
+    engine._project_revision = 0
+
+    # Routes mutate a model_copy of the project and hand it to
+    # apply_project. Mirror that contract: the copy carries deep-copied
+    # section values, and apply_project swaps it in and bumps the revision.
+    import copy as _copylib
+
+    def _wire_project_copy(p):
+        def _copy(*, deep=False, update=None):
+            cp = MagicMock()
+            for attr in ("devices", "variables", "macros",
+                         "scripts", "connections", "plugins"):
+                setattr(cp, attr, _copylib.deepcopy(getattr(p, attr)))
+            cp.ui = p.ui
+            cp.project = p.project
+            _wire_project_copy(cp)
+            return cp
+        p.model_copy = MagicMock(side_effect=_copy)
+
+    _wire_project_copy(engine.project)
+
+    async def _fake_apply(new_project, **kwargs):
+        engine.project = new_project
+        engine._project_revision += 1
+        return engine._project_revision
+
+    engine.apply_project = AsyncMock(side_effect=_fake_apply)
 
     return engine
 

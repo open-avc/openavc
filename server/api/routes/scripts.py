@@ -9,7 +9,6 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from server.api._engine import _get_engine
 from server.api.auth import require_claimed_auth
 from server.api.models import ScriptCreateRequest
-from server.core.project_loader import save_project_async
 from server.utils.paths import is_safe_script_filename, safe_path_within
 
 router = APIRouter()
@@ -148,7 +147,9 @@ async def create_script(data: ScriptCreateRequest) -> dict[str, Any]:
     path = _safe_script_path(scripts_dir, data.file)
     path.write_text(data.source, encoding="utf-8")
 
-    # Add to project config and save
+    # Add to a copy of the project config and apply through the one seam:
+    # the scripts diff loads just this script instead of the old full
+    # reload (which re-executed every script and re-fired startup triggers).
     from server.core.project_loader import ScriptConfig
     new_script = ScriptConfig(
         id=data.id,
@@ -156,9 +157,9 @@ async def create_script(data: ScriptCreateRequest) -> dict[str, Any]:
         enabled=data.enabled,
         description=data.description,
     )
-    engine.project.scripts.append(new_script)
-    await save_project_async(engine.project_path, engine.project)
-    await engine.reload_project()
+    project = engine.project.model_copy(deep=True)
+    project.scripts.append(new_script)
+    await engine.apply_project(project)
     return {"status": "created", "id": data.id}
 
 
@@ -179,10 +180,12 @@ async def delete_script(script_id: str) -> dict[str, Any]:
     if path.exists():
         path.unlink()
 
-    # Remove from project config and save
-    engine.project.scripts = [s for s in engine.project.scripts if s.id != script_id]
-    await save_project_async(engine.project_path, engine.project)
-    await engine.reload_project()
+    # Remove from a copy of the project config; the scripts diff unloads
+    # just this script (handlers, subscriptions, timers) without disturbing
+    # the others.
+    project = engine.project.model_copy(deep=True)
+    project.scripts = [s for s in project.scripts if s.id != script_id]
+    await engine.apply_project(project)
     return {"status": "deleted"}
 
 

@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from server.api._engine import _get_engine
 from server.api.errors import api_error as _api_error
 from server.core.engine import ProjectRevisionConflictError
-from server.core.project_loader import ProjectConfig, save_project_async
+from server.core.project_loader import ProjectConfig
 from server.utils.log_buffer import get_log_buffer
 
 router = APIRouter()
@@ -324,7 +324,6 @@ async def create_blank(request: Request) -> dict[str, Any]:
     await asyncio.to_thread(create_backup, engine.project_path.parent, "Before creating blank project")
 
     project = create_blank_project(project_id, project_name)
-    await save_project_async(engine.project_path, project)
 
     scripts_dir = engine.project_path.parent / "scripts"
     replace_scripts(scripts_dir, {})
@@ -334,7 +333,11 @@ async def create_blank(request: Request) -> dict[str, Any]:
         "project_name": project_name,
         "source": "blank",
     })
-    await engine.reload_project()
+    # A whole new project: LOAD origin persists it and does the full
+    # reconcile (library rescan, startup triggers) in one pass instead of
+    # save-then-reload-from-disk.
+    from server.core.project_diff import ProjectOrigin
+    await engine.apply_project(project, origin=ProjectOrigin.LOAD)
 
     return {"status": "created", "project_name": project_name}
 
