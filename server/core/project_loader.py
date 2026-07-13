@@ -549,30 +549,40 @@ def build_driver_dependencies(project: ProjectConfig) -> list[DriverDependency]:
     return deps
 
 
-@lru_cache(maxsize=1)
-def _builtin_driver_ids() -> frozenset[str]:
-    """Driver ids served by the read-only built-in definitions tree.
+@lru_cache(maxsize=8)
+def _scan_builtin_driver_ids(definitions_dir: str, _dir_mtime_ns: int) -> frozenset[str]:
+    """Read the driver ids declared by the files in ``definitions_dir``.
 
-    Cached for the life of the process: the definitions tree ships inside the
-    install directory and cannot change at runtime (the driver routes refuse to
-    write there, see ``is_builtin_definition_path``). Resolve by each file's
+    Keyed on the directory's mtime as well as its path so the cache can never
+    serve a stale answer: adding or removing a file bumps the directory mtime,
+    and a different directory is a different key. Resolve by each file's
     DECLARED id rather than its filename stem — the two can differ.
     """
     from server.drivers.driver_loader import driver_id_from_file
-    from server.system_config import DRIVER_DEFINITIONS_DIR
-
-    if not DRIVER_DEFINITIONS_DIR.is_dir():
-        return frozenset()
 
     ids: set[str] = set()
     for pattern in ("*.avcdriver", "*.py"):
-        for f in DRIVER_DEFINITIONS_DIR.glob(pattern):
+        for f in Path(definitions_dir).glob(pattern):
             if f.name.startswith("_"):
                 continue
             driver_id = driver_id_from_file(f)
             if driver_id:
                 ids.add(driver_id)
     return frozenset(ids)
+
+
+def _builtin_driver_ids() -> frozenset[str]:
+    """Driver ids served by the built-in definitions tree.
+
+    The scan is cached, so the per-call cost is a single stat().
+    """
+    from server.system_config import DRIVER_DEFINITIONS_DIR
+
+    try:
+        mtime_ns = DRIVER_DEFINITIONS_DIR.stat().st_mtime_ns
+    except OSError:
+        return frozenset()
+    return _scan_builtin_driver_ids(str(DRIVER_DEFINITIONS_DIR), mtime_ns)
 
 
 def _get_driver_source(driver_id: str) -> str:

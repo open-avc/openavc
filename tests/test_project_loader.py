@@ -742,3 +742,35 @@ def test_driver_source_stem_match_still_classifies_community(tmp_path, monkeypat
         "id: acme_widget\nname: Acme Widget\ntransport: tcp\n", encoding="utf-8"
     )
     assert _get_driver_source("acme_widget") == "community"
+
+
+def test_driver_source_reflects_the_current_definitions_tree(tmp_path, monkeypatch):
+    """The built-in id scan is cached, so pin that it can never go stale.
+
+    The same driver id must classify as 'builtin' or 'community' purely by
+    whether the definitions tree currently serves it — a cached answer from an
+    earlier tree must not leak. A stale answer here would mis-stamp a driver's
+    source, and source drives which driver files the export bundler carries.
+    """
+    import server.system_config as sc
+    from server.core.project_loader import _get_driver_source
+
+    served = tmp_path / "served"
+    served.mkdir()
+    (served / "acme_widget.avcdriver").write_text(
+        "id: acme_widget\nname: Acme Widget\ntransport: tcp\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(sc, "DRIVER_DEFINITIONS_DIR", served)
+    assert _get_driver_source("acme_widget") == "builtin"
+
+    # A different definitions tree that does not serve it.
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    monkeypatch.setattr(sc, "DRIVER_DEFINITIONS_DIR", empty)
+    assert _get_driver_source("acme_widget") == "community"
+
+    # Adding the driver to the tree in place must be picked up too.
+    (empty / "acme_widget.avcdriver").write_text(
+        "id: acme_widget\nname: Acme Widget\ntransport: tcp\n", encoding="utf-8"
+    )
+    assert _get_driver_source("acme_widget") == "builtin"
