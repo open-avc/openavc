@@ -9,6 +9,7 @@ import { Login } from "./components/Login";
 import { Setup } from "./components/Setup";
 import { DashboardView } from "./views/DashboardView";
 import { useProjectStore } from "./store/projectStore";
+import { useDriverBuilderStore } from "./store/driverBuilderStore";
 import { useNavigationStore } from "./store/navigationStore";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { showInfo } from "./store/toastStore";
@@ -89,10 +90,13 @@ function AuthedApp() {
     loadProject();
   }, [loadProject]);
 
-  // Warn before closing tab with unsaved changes
+  // Warn before closing tab with unsaved changes. The driver-builder draft is
+  // a module-global store that only persists to disk on Save, and it stays
+  // dirty even after navigating away from the Driver Builder view, so guard it
+  // globally here alongside the project (matches the project/script/UI guards).
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
-      if (useProjectStore.getState().dirty) {
+      if (useProjectStore.getState().dirty || useDriverBuilderStore.getState().dirty) {
         e.preventDefault();
         e.returnValue = "";
       }
