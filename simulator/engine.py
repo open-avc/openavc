@@ -65,7 +65,6 @@ class SimulatorManager:
         self._available: dict[str, SimulatorInfo] = {}
         self._instances: dict[str, BaseSimulator] = {}  # keyed by device_id
         self._allocated_ports: set[int] = set()
-        self._next_port = PORT_RANGE_START
         self._change_listeners: list = []
         self.network = NetworkConditionLayer()
 
@@ -227,8 +226,13 @@ class SimulatorManager:
         # Add change listener for broadcasting
         simulator.add_change_listener(self._on_simulator_change)
 
-        # Start it
-        await simulator.start(port)
+        # Start it. A bind/startup failure must release the reserved port so a
+        # transient collision doesn't permanently burn a slot from the pool.
+        try:
+            await simulator.start(port)
+        except Exception:
+            self._allocated_ports.discard(port)
+            raise
         self._instances[device_id] = simulator
 
         logger.info(
@@ -309,10 +313,13 @@ class SimulatorManager:
             raise ValueError(f"Unknown simulator source: {info.source}")
 
     def _allocate_port(self) -> int:
-        """Allocate the next available port from the range."""
-        while self._next_port <= PORT_RANGE_END:
-            port = self._next_port
-            self._next_port += 1
+        """Allocate the lowest free port from the range.
+
+        Scans the whole range each call so a port released by a failed start or
+        a stopped device is reused, instead of a monotonic cursor that only ever
+        advances and shrinks the usable pool until restart.
+        """
+        for port in range(PORT_RANGE_START, PORT_RANGE_END + 1):
             if port not in self._allocated_ports:
                 return port
         raise RuntimeError(
