@@ -16,8 +16,9 @@ import { Dialog } from "../components/shared/Dialog";
 import { AssetBrowser, type AssetFilter } from "../components/assets/AssetBrowser";
 import { VideoStreamsSection } from "../components/video-streams/VideoStreamsSection";
 import { useProjectStore } from "../store/projectStore";
+import { importParsedProject } from "./projectImport";
 import * as api from "../api/restClient";
-import type { LibraryProject } from "../api/types";
+import type { LibraryProject, ProjectConfig } from "../api/types";
 import { showError, showInfo, showSuccess } from "../store/toastStore";
 
 export function ProjectView() {
@@ -26,7 +27,6 @@ export function ProjectView() {
   const saving = useProjectStore((s) => s.saving);
   const save = useProjectStore((s) => s.save);
   const updateProject = useProjectStore((s) => s.updateProject);
-  const setProject = useProjectStore((s) => s.setProject);
   const forceReloadProject = useProjectStore((s) => s.forceReload);
 
   // Library state
@@ -120,21 +120,26 @@ export function ProjectView() {
     input.onchange = async () => {
       const file = input.files?.[0];
       if (!file) return;
+      let parsed: ProjectConfig;
       try {
-        const text = await file.text();
-        const parsed = JSON.parse(text);
-        setProject(parsed);
-        // Save to server and reload engine so imported project is active
-        const store = useProjectStore.getState();
-        store.update(parsed);
-        await store.save();
-        await api.reloadProject();
+        parsed = JSON.parse(await file.text());
       } catch {
-        showError("Invalid project file");
+        showError("Invalid project file: the file isn't valid JSON.");
+        return;
       }
+      // Validate through the server before adopting into the store — see
+      // importParsedProject. A wrong/corrupt file can't reach the live store.
+      await importParsedProject(parsed, {
+        getEtag: () => useProjectStore.getState().etag ?? undefined,
+        saveProject: api.saveProject,
+        reloadProject: api.reloadProject,
+        forceReload: forceReloadProject,
+        isConflict: (e) => e instanceof api.ConflictError,
+        onError: showError,
+      });
     };
     input.click();
-  }, [setProject]);
+  }, [forceReloadProject]);
 
   const handleSaveAs = async () => {
     if (!saveAsId.trim() || !saveAsName.trim()) return;
