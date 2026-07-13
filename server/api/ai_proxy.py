@@ -98,6 +98,49 @@ def _check_cloud_ready() -> tuple[str, str, bytes]:
     return api_url, system_id, system_key
 
 
+async def _cloud_request(
+    method: str,
+    url: str,
+    *,
+    headers: dict[str, str],
+    content: bytes | None = None,
+    timeout: Any = 30.0,
+    ok_statuses: tuple[int, ...] = (200,),
+) -> httpx.Response:
+    """Proxy a non-streaming request to the cloud, translating transport
+    failures and non-OK responses into graceful HTTPExceptions.
+
+    Mirrors the streaming path's error handling so a cloud outage yields a clear
+    message instead of a raw 500, and a non-OK cloud response yields a sanitized
+    detail (via _error_message) instead of the raw cloud body relayed verbatim.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            if method == "POST":
+                resp = await client.post(url, content=content, headers=headers)
+            elif method == "GET":
+                resp = await client.get(url, headers=headers)
+            elif method == "DELETE":
+                resp = await client.delete(url, headers=headers)
+            else:  # pragma: no cover - internal misuse
+                raise HTTPException(status_code=500, detail="Unsupported cloud request method")
+    except HTTPException:
+        raise
+    except httpx.TimeoutException:
+        log.warning("Cloud AI request timed out: %s %s", method, url)
+        raise HTTPException(status_code=504, detail="Request timed out. Please try again.")
+    except Exception as e:
+        log.warning("Cloud AI request failed: %s %s — %s", method, url, e)
+        raise HTTPException(status_code=502, detail="Connection to cloud lost. Please try again.")
+
+    if resp.status_code not in ok_statuses:
+        raise HTTPException(
+            status_code=resp.status_code,
+            detail=_error_message(resp.status_code, resp.content),
+        )
+    return resp
+
+
 # --- Status ---
 
 
@@ -171,16 +214,13 @@ async def ai_chat(request: Request, stream: bool = Query(False)):
         )
 
     # Non-streaming
-    async with httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=10.0)) as client:
-        resp = await client.post(
-            cloud_url,
-            content=body,
-            headers={"Content-Type": "application/json", **auth_headers},
-        )
-
-    if resp.status_code != 200:
-        raise HTTPException(status_code=resp.status_code, detail=resp.text)
-
+    resp = await _cloud_request(
+        "POST",
+        cloud_url,
+        content=body,
+        headers={"Content-Type": "application/json", **auth_headers},
+        timeout=httpx.Timeout(300.0, connect=10.0),
+    )
     return resp.json()
 
 
@@ -195,14 +235,9 @@ async def ai_list_conversations():
     body = b""
     auth_headers = _sign_request(system_id, system_key, body)
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.get(
-            f"{api_url}/api/v1/ai/system/conversations",
-            headers=auth_headers,
-        )
-
-    if resp.status_code != 200:
-        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+    resp = await _cloud_request(
+        "GET", f"{api_url}/api/v1/ai/system/conversations", headers=auth_headers,
+    )
     return resp.json()
 
 
@@ -214,14 +249,11 @@ async def ai_get_conversation(conversation_id: str):
     body = b""
     auth_headers = _sign_request(system_id, system_key, body)
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.get(
-            f"{api_url}/api/v1/ai/system/conversations/{conversation_id}",
-            headers=auth_headers,
-        )
-
-    if resp.status_code != 200:
-        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+    resp = await _cloud_request(
+        "GET",
+        f"{api_url}/api/v1/ai/system/conversations/{conversation_id}",
+        headers=auth_headers,
+    )
     return resp.json()
 
 
@@ -233,14 +265,12 @@ async def ai_delete_conversation(conversation_id: str):
     body = b""
     auth_headers = _sign_request(system_id, system_key, body)
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.delete(
-            f"{api_url}/api/v1/ai/system/conversations/{conversation_id}",
-            headers=auth_headers,
-        )
-
-    if resp.status_code not in (200, 204):
-        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+    await _cloud_request(
+        "DELETE",
+        f"{api_url}/api/v1/ai/system/conversations/{conversation_id}",
+        headers=auth_headers,
+        ok_statuses=(200, 204),
+    )
 
 
 # --- Usage ---
@@ -254,19 +284,20 @@ async def ai_get_usage():
     body = b""
     auth_headers = _sign_request(system_id, system_key, body)
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.get(
-            f"{api_url}/api/v1/ai/system/usage",
-            headers=auth_headers,
-        )
-
-    if resp.status_code != 200:
-        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+    resp = await _cloud_request(
+        "GET", f"{api_url}/api/v1/ai/system/usage", headers=auth_headers,
+    )
     return resp.json()
 
 
-def _error_json(status_code: int, body: bytes) -> str:
-    """Build a JSON error string for SSE error events."""
+def _error_message(status_code: int, body: bytes) -> str:
+    """Map a cloud error response to a friendly, sanitized message.
+
+    Never returns the raw cloud body verbatim — it extracts the JSON ``detail``
+    or a truncated snippet, and maps the common billing/limit statuses. Shared by
+    the streaming (_error_json) and non-streaming paths so both surface the same
+    message and neither leaks a full internal cloud body to the browser.
+    """
     import json
     try:
         detail = json.loads(body)
@@ -281,4 +312,10 @@ def _error_json(status_code: int, body: bytes) -> str:
     elif status_code == 503:
         msg = "AI service is not available."
 
-    return json.dumps({"message": msg})
+    return msg
+
+
+def _error_json(status_code: int, body: bytes) -> str:
+    """Build a JSON error string for SSE error events."""
+    import json
+    return json.dumps({"message": _error_message(status_code, body)})

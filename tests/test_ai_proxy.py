@@ -15,6 +15,7 @@ from server.api.ai_proxy import (
     _sign_request,
     _check_cloud_ready,
     _error_json,
+    _error_message,
 )
 
 
@@ -191,6 +192,26 @@ class TestErrorJson:
         assert "plain text error" in result["message"]
 
 
+class TestErrorMessage:
+    """_error_message is shared by the streaming and non-streaming paths so
+    neither relays a raw cloud body verbatim (L-168)."""
+
+    def test_maps_known_statuses(self):
+        assert "limit reached" in _error_message(429, b"whatever")
+        assert "subscription" in _error_message(402, b"whatever")
+        assert "not available" in _error_message(503, b"whatever")
+
+    def test_extracts_json_detail(self):
+        body = json.dumps({"detail": "Model not found"}).encode()
+        assert _error_message(400, body) == "Model not found"
+
+    def test_truncates_long_raw_body(self):
+        """A long non-JSON cloud body is truncated, not forwarded whole."""
+        body = b"x" * 5000
+        msg = _error_message(500, body)
+        assert len(msg) <= 200
+
+
 # --- API endpoint tests ---
 
 
@@ -268,10 +289,11 @@ class TestAiChatEndpoint:
         assert resp.json() == {"response": "hello"}
 
     async def test_non_streaming_cloud_error(self, client):
-        """Non-streaming chat returns cloud error status."""
+        """Non-streaming chat relays the cloud error STATUS but a sanitized
+        detail — not the raw cloud body verbatim (L-168)."""
         mock_response = MagicMock()
         mock_response.status_code = 429
-        mock_response.text = "Rate limited"
+        mock_response.content = b"Rate limited: account 4c9f... over quota"
 
         with patch("server.api.ai_proxy.cfg") as mock_cfg:
             mock_cfg.CLOUD_ENABLED = True
@@ -289,6 +311,55 @@ class TestAiChatEndpoint:
                 resp = await client.post("/api/ai/chat", content=b'{"message": "hi"}')
 
         assert resp.status_code == 429
+        # The friendly 429 message, not the raw cloud body.
+        detail = resp.json()["detail"]
+        assert "limit reached" in detail
+        assert "over quota" not in detail
+
+    async def test_non_streaming_cloud_timeout_is_graceful(self, client):
+        """A cloud timeout on the non-streaming path yields a graceful 504, not
+        a raw 500 (L-167)."""
+        import httpx as _httpx
+
+        with patch("server.api.ai_proxy.cfg") as mock_cfg:
+            mock_cfg.CLOUD_ENABLED = True
+            mock_cfg.CLOUD_SYSTEM_ID = "sys-123"
+            mock_cfg.CLOUD_SYSTEM_KEY = "aa" * 32
+            mock_cfg.CLOUD_ENDPOINT = "wss://cloud.openavc.com/agent/v1"
+
+            with patch("httpx.AsyncClient") as mock_client_cls:
+                mock_client = AsyncMock()
+                mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+                mock_client.__aexit__ = AsyncMock(return_value=False)
+                mock_client.post = AsyncMock(side_effect=_httpx.ConnectTimeout("timed out"))
+                mock_client_cls.return_value = mock_client
+
+                resp = await client.post("/api/ai/chat", content=b'{"message": "hi"}')
+
+        assert resp.status_code == 504
+        assert "timed out" in resp.json()["detail"].lower()
+
+    async def test_non_streaming_cloud_connection_error_is_graceful(self, client):
+        """A cloud connection failure yields a graceful 502, not a raw 500 (L-167)."""
+        import httpx as _httpx
+
+        with patch("server.api.ai_proxy.cfg") as mock_cfg:
+            mock_cfg.CLOUD_ENABLED = True
+            mock_cfg.CLOUD_SYSTEM_ID = "sys-123"
+            mock_cfg.CLOUD_SYSTEM_KEY = "aa" * 32
+            mock_cfg.CLOUD_ENDPOINT = "wss://cloud.openavc.com/agent/v1"
+
+            with patch("httpx.AsyncClient") as mock_client_cls:
+                mock_client = AsyncMock()
+                mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+                mock_client.__aexit__ = AsyncMock(return_value=False)
+                mock_client.post = AsyncMock(side_effect=_httpx.ConnectError("refused"))
+                mock_client_cls.return_value = mock_client
+
+                resp = await client.post("/api/ai/chat", content=b'{"message": "hi"}')
+
+        assert resp.status_code == 502
+        assert "cloud" in resp.json()["detail"].lower()
 
 
 class TestConversationsEndpoints:
