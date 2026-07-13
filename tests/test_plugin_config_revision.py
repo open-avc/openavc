@@ -89,7 +89,8 @@ async def test_save_plugin_config_reverts_on_save_failure(tmp_path, monkeypatch)
 
 
 class _StubLoader:
-    """Minimal plugin_loader stand-in for the uninstall endpoint."""
+    """Minimal plugin_loader stand-in for the uninstall endpoint (the seam's
+    plugin reconcile also consults it)."""
 
     def is_running(self, plugin_id):
         return False
@@ -102,6 +103,9 @@ class _StubLoader:
 
     def remove_plugin_tracking(self, plugin_id):
         pass
+
+    def get_known_plugin_ids(self):
+        return set()
 
 
 @pytest.mark.asyncio

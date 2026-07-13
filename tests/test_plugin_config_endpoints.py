@@ -76,14 +76,18 @@ def _engine(monkeypatch, *, restart_outcome="restarted"):
         project_path="unused.avc",
         plugin_loader=SimpleNamespace(restart_or_apply=_restart),
         events=_RecordingEvents(),
-        bump_project_revision=lambda: None,
+        _project_revision=0,
     )
+
+    # The route mutates a model_copy and hands it to apply_project; mirror
+    # the swap-and-bump contract (no reconcile — that's pinned elsewhere).
+    async def _apply(new_project, **kwargs):
+        engine.project = new_project
+        engine._project_revision += 1
+        return engine._project_revision
+
+    engine.apply_project = _apply
     monkeypatch.setattr("server.api.plugins._engine", engine)
-
-    async def _no_save(*a, **k):
-        return None
-
-    monkeypatch.setattr("server.api.plugins.save_project_async", _no_save)
     return engine
 
 
@@ -285,14 +289,17 @@ async def test_context_action_missing_body_emits_empty_dict(monkeypatch):
 # ── DELETE /plugins/{id}/config (remove project reference) ──
 
 
-def _removal_engine(monkeypatch, *, running=False):
-    """Engine whose plugin_loader records removal-related calls."""
+def _removal_engine(monkeypatch):
+    """Engine that records what the route hands to apply_project.
+
+    The route no longer stops the plugin or drops its tracking itself —
+    the seam's plugin reconcile does (pinned by the _sync_plugins matrix in
+    test_engine_reload_behavior). What the route owns is handing the seam a
+    project without the entry.
+    """
     from server.core.project_loader import PluginDependency
 
-    calls = {"stopped": [], "untracked": [], "saved": [], "bumped": 0}
-
-    async def _stop(plugin_id):
-        calls["stopped"].append(plugin_id)
+    calls = {"applied": []}
 
     project = _project()
     project.plugin_dependencies = [
@@ -300,42 +307,37 @@ def _removal_engine(monkeypatch, *, running=False):
         PluginDependency(plugin_id="other_plugin", plugin_name="Other"),
     ]
 
-    def _bump():
-        calls["bumped"] += 1
-
     engine = SimpleNamespace(
         project=project,
         project_path="unused.avc",
-        plugin_loader=SimpleNamespace(
-            is_running=lambda pid: running,
-            stop_plugin=_stop,
-            remove_plugin_tracking=lambda pid: calls["untracked"].append(pid),
-        ),
-        bump_project_revision=_bump,
+        _project_revision=0,
     )
+
+    async def _apply(new_project, **kwargs):
+        calls["applied"].append(new_project)
+        engine.project = new_project
+        engine._project_revision += 1
+        return engine._project_revision
+
+    engine.apply_project = _apply
     monkeypatch.setattr("server.api.plugins._engine", engine)
-
-    async def _record_save(path, project_cfg):
-        calls["saved"].append(path)
-
-    monkeypatch.setattr("server.api.plugins.save_project_async", _record_save)
     return engine, calls
 
 
 @pytest.mark.asyncio
-async def test_remove_config_deletes_reference_dependencies_and_tracking(monkeypatch):
+async def test_remove_config_deletes_reference_and_dependencies(monkeypatch):
     from server.api.plugins import remove_plugin_config
 
     engine, calls = _removal_engine(monkeypatch)
     result = await remove_plugin_config("acme_widget")
 
     assert result == {"status": "removed", "plugin_id": "acme_widget"}
+    # Exactly one seam apply, carrying the removal (which bumps the revision
+    # and lets the reconcile stop the plugin / drop its tracking).
+    assert len(calls["applied"]) == 1
     assert "acme_widget" not in engine.project.plugins
     assert [d.plugin_id for d in engine.project.plugin_dependencies] == ["other_plugin"]
-    assert calls["saved"] == ["unused.avc"]
-    assert calls["bumped"] == 1
-    assert calls["untracked"] == ["acme_widget"]
-    assert calls["stopped"] == []  # not running, no stop needed
+    assert engine._project_revision == 1
 
 
 @pytest.mark.asyncio
@@ -347,19 +349,8 @@ async def test_remove_config_404s_when_not_in_project(monkeypatch):
         await remove_plugin_config("ghost_plugin")
     assert exc.value.status_code == 404
     assert "acme_widget" in engine.project.plugins  # untouched
-    assert calls["saved"] == []
-    assert calls["bumped"] == 0
-
-
-@pytest.mark.asyncio
-async def test_remove_config_stops_running_plugin_first(monkeypatch):
-    from server.api.plugins import remove_plugin_config
-
-    engine, calls = _removal_engine(monkeypatch, running=True)
-    result = await remove_plugin_config("acme_widget")
-    assert result["status"] == "removed"
-    assert calls["stopped"] == ["acme_widget"]
-    assert "acme_widget" not in engine.project.plugins
+    assert calls["applied"] == []
+    assert engine._project_revision == 0
 
 
 # ── Frontend wiring pins (missing-plugin banner Remove Plugin Config) ──

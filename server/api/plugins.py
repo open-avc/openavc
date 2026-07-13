@@ -24,7 +24,6 @@ from server.core.project_loader import (
     PluginConfig,
     build_default_plugin_config,
     get_plugin_setup_fields,
-    save_project_async,
 )
 from server.utils.logger import get_logger
 
@@ -241,28 +240,30 @@ async def enable_plugin(plugin_id: str) -> dict[str, Any]:
     if plugin_class is None:
         raise HTTPException(status_code=404, detail=f"Plugin '{plugin_id}' not installed")
 
-    # Check if already in project
-    if plugin_id not in engine.project.plugins:
+    # Build the change on a copy — apply_project diffs it against the live
+    # project to decide what to reconcile.
+    project = engine.project.model_copy(deep=True)
+    if plugin_id not in project.plugins:
         # First time — build default config from schema
         schema = getattr(plugin_class, "CONFIG_SCHEMA", {}) or {}
         default_config = build_default_plugin_config(schema)
-        engine.project.plugins[plugin_id] = PluginConfig(
+        project.plugins[plugin_id] = PluginConfig(
             enabled=True,
             config=default_config,
         )
     else:
-        engine.project.plugins[plugin_id].enabled = True
+        project.plugins[plugin_id].enabled = True
 
-    # Start first, only persist to disk if start succeeds
-    config = engine.project.plugins[plugin_id].config
+    # Start first so a failed start persists enabled=False (won't retry on
+    # the next restart). The seam's plugin sync then sees runtime == project
+    # and does nothing further.
+    config = project.plugins[plugin_id].config
     success = await engine.plugin_loader.start_plugin(plugin_id, config)
 
     if not success:
-        # Roll back enabled flag so it won't retry on next restart
-        engine.project.plugins[plugin_id].enabled = False
+        project.plugins[plugin_id].enabled = False
 
-    await save_project_async(engine.project_path, engine.project)
-    engine.bump_project_revision()
+    await engine.apply_project(project)
 
     return {
         "status": "enabled" if success else "error",
@@ -281,10 +282,10 @@ async def disable_plugin(plugin_id: str) -> dict[str, Any]:
     if plugin_id not in engine.project.plugins:
         raise HTTPException(status_code=404, detail=f"Plugin '{plugin_id}' not in project")
 
-    engine.project.plugins[plugin_id].enabled = False
-    await save_project_async(engine.project_path, engine.project)
-    engine.bump_project_revision()
-    await engine.plugin_loader.stop_plugin(plugin_id)
+    project = engine.project.model_copy(deep=True)
+    project.plugins[plugin_id].enabled = False
+    # The plugins-section reconcile stops the running plugin.
+    await engine.apply_project(project)
 
     return {"status": "disabled", "plugin_id": plugin_id}
 
@@ -330,12 +331,14 @@ async def update_plugin_config(plugin_id: str, request: Request) -> dict[str, An
         raise HTTPException(status_code=400, detail=err)
     missing = missing_required_for_plugin(plugin_id, new_config)
 
-    engine.project.plugins[plugin_id].config = new_config
-    await save_project_async(engine.project_path, engine.project)
-    engine.bump_project_revision()
-
-    # Hot-apply when the plugin supports it, else restart
+    # Hot-apply when the plugin supports it, else restart — before the seam
+    # apply, so the reconcile sees the running config already current and
+    # doesn't apply it a second time.
     outcome = await engine.plugin_loader.restart_or_apply(plugin_id, new_config)
+
+    project = engine.project.model_copy(deep=True)
+    project.plugins[plugin_id].config = new_config
+    await engine.apply_project(project)
 
     result: dict[str, Any] = {"status": "updated", "plugin_id": plugin_id, "applied": outcome}
     if missing:
@@ -368,20 +371,17 @@ async def remove_plugin_config(plugin_id: str) -> dict[str, Any]:
     if not engine.project or plugin_id not in engine.project.plugins:
         raise HTTPException(status_code=404, detail=f"Plugin '{plugin_id}' not in project")
     try:
-        if engine.plugin_loader.is_running(plugin_id):
-            await engine.plugin_loader.stop_plugin(plugin_id)
-        del engine.project.plugins[plugin_id]
-        engine.project.plugin_dependencies = [
-            d for d in engine.project.plugin_dependencies
+        project = engine.project.model_copy(deep=True)
+        del project.plugins[plugin_id]
+        project.plugin_dependencies = [
+            d for d in project.plugin_dependencies
             if d.plugin_id != plugin_id
         ]
-        await save_project_async(engine.project_path, engine.project)
-        # Server-side project mutation: bump the revision so an open editor's
-        # stale full-project PUT is 409'd instead of restoring the entry.
-        engine.bump_project_revision()
-        # Drop missing/incompatible tracking and broadcast state keys so the
-        # warning doesn't linger for a reference that no longer exists.
-        engine.plugin_loader.remove_plugin_tracking(plugin_id)
+        # The plugins-section reconcile stops a running plugin and drops its
+        # missing/incompatible tracking + broadcast state keys, and the
+        # revision bump 409s an open editor's stale full-project PUT instead
+        # of letting it restore the entry.
+        await engine.apply_project(project)
         return {"status": "removed", "plugin_id": plugin_id}
     except Exception as e:
         raise _api_error(500, f"Failed to remove plugin config for '{plugin_id}'", e)
@@ -629,23 +629,21 @@ async def uninstall_plugin_endpoint(
             plugin_id, project_plugins, remove_data=remove_data
         )
 
-        # Remove from project file so it doesn't show as "missing" on restart
+        # Remove from project file so it doesn't show as "missing" on restart.
+        # apply_project bumps the revision (a stale editor PUT would otherwise
+        # silently restore the entry) and its plugin reconcile clears the
+        # loader tracking for ids the project no longer references.
         if engine.project and plugin_id in engine.project.plugins:
-            del engine.project.plugins[plugin_id]
-            # Clean up plugin_dependencies too
-            engine.project.plugin_dependencies = [
-                d for d in engine.project.plugin_dependencies
+            project = engine.project.model_copy(deep=True)
+            del project.plugins[plugin_id]
+            project.plugin_dependencies = [
+                d for d in project.plugin_dependencies
                 if d.plugin_id != plugin_id
             ]
-            await save_project_async(engine.project_path, engine.project)
-            # Like enable/disable/config-save, this server-side project mutation
-            # must bump the revision. Otherwise an open editor's stale full-project
-            # PUT (still holding this plugin entry) is accepted instead of 409'd,
-            # silently restoring the just-removed plugin and its config.
-            engine.bump_project_revision()
+            await engine.apply_project(project)
 
-        # Clear all in-memory tracking and broadcast state keys (missing,
-        # incompatible, auto_disabled) so nothing lingers for the uninstalled id.
+        # Clear tracking directly too: the files are gone even when the
+        # plugin was never referenced by the project (no entry to diff).
         engine.plugin_loader.remove_plugin_tracking(plugin_id)
 
         return result
