@@ -12,6 +12,7 @@ import { DRIVER_TEMPLATES } from "../components/scripts/driverTemplates";
 import { useProjectStore } from "../store/projectStore";
 import { useNavigationStore } from "../store/navigationStore";
 import { useLogStore } from "../store/logStore";
+import { extractScriptRuntimeErrors, latestScriptErrorId } from "../components/scripts/scriptRuntimeErrors";
 import * as api from "../api/restClient";
 import { showError, showSuccess } from "../store/toastStore";
 import type { PythonDriverInfo } from "../api/types";
@@ -71,23 +72,20 @@ export function ScriptView() {
     return () => window.removeEventListener("beforeunload", handler);
   }, [isDirty]);
 
-  // Extract runtime errors from log entries for the selected item
+  // Narrow subscription to the (rapidly-updating) log store: just the id of the
+  // most recent script error. A primitive, so it re-renders this view only when
+  // a new script error is logged — not on every log line — and re-runs the
+  // marker memo below then, which a plain getState() read never did.
+  const scriptErrorId = useLogStore((s) => latestScriptErrorId(s.logEntries));
+
+  // Extract runtime errors from log entries for the selected item.
   const runtimeErrors = useMemo((): RuntimeError[] => {
     if (!selectedId) return [];
     if (selectedType === "driver") return driverReloadErrors;
-    const entries = useLogStore.getState().logEntries;
-    const errors: RuntimeError[] = [];
     const scriptFile = scripts.find((s) => s.id === selectedId)?.file ?? selectedId;
-    for (const entry of entries) {
-      if (entry.level !== "ERROR" || entry.category !== "script") continue;
-      if (!entry.message.includes(selectedId) && !entry.message.includes(scriptFile)) continue;
-      const lineMatch = entry.message.match(/line (\d+)/);
-      if (lineMatch) {
-        errors.push({ line: parseInt(lineMatch[1], 10), message: entry.message.split("\n")[0] });
-      }
-    }
-    return errors;
-  }, [selectedId, selectedType, scripts, driverReloadErrors]);
+    return extractScriptRuntimeErrors(useLogStore.getState().logEntries, selectedId, scriptFile);
+    // scriptErrorId is the reactive trigger: a new script error bumps it, re-running this memo.
+  }, [selectedId, selectedType, scripts, driverReloadErrors, scriptErrorId]);
 
   // --- Selection handlers ---
 
