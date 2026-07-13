@@ -211,19 +211,40 @@ export function detectEventCategory(
   return EVENT_CATEGORIES.findIndex((c) => c.label === "Custom");
 }
 
-/** Cron expression validation (5-field format) with range checking. */
+// croniter's non-standard aliases — the runtime accepts these verbatim, so the
+// author-time validator must too. It only warns (the raw value saves either
+// way), and flagging a working alias as "invalid" invites deleting a live
+// schedule. @reboot is intentionally absent: croniter can't schedule it.
+const CRON_ALIASES = new Set([
+  "@yearly", "@annually", "@monthly", "@weekly", "@daily", "@midnight", "@hourly",
+]);
+
+// Three-letter names croniter accepts (case-insensitive) in the month and
+// day-of-week fields, as whole values or range/list endpoints.
+const CRON_MONTH_NAMES = [
+  "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
+];
+const CRON_DOW_NAMES = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+
+/** Cron expression validation matching the runtime (croniter): 5-field format
+ *  with range checking, plus @-aliases and month / day-of-week names. */
 export function isValidCron(cron: string): boolean {
-  if (!cron.trim()) return false;
-  const parts = cron.trim().split(/\s+/);
+  const trimmed = cron.trim();
+  if (!trimmed) return false;
+  if (CRON_ALIASES.has(trimmed.toLowerCase())) return true;
+  const parts = trimmed.split(/\s+/);
   if (parts.length !== 5) return false;
   // Field ranges: minute(0-59), hour(0-23), day(1-31), month(1-12), dow(0-7)
   const maxValues = [59, 23, 31, 12, 7];
   const minValues = [0, 0, 1, 1, 0];
-  const fieldPattern = /^[\d*\-/,]+$/;
+  // Names are valid only in the month (index 3) and day-of-week (index 4) fields.
+  const nameFields: Record<number, string[]> = { 3: CRON_MONTH_NAMES, 4: CRON_DOW_NAMES };
+  const fieldPattern = /^[\d*\-/,a-z]+$/i;
   for (let i = 0; i < 5; i++) {
     const p = parts[i];
     if (!fieldPattern.test(p)) return false;
     if (p === "*") continue;
+    const names = nameFields[i];
     // Validate each comma-separated segment
     for (const seg of p.split(",")) {
       // Handle step values like */5 or 1-10/2
@@ -233,8 +254,13 @@ export function isValidCron(cron: string): boolean {
         if (isNaN(step) || step <= 0) return false;
       }
       if (rangePart === "*") continue;
-      // Handle ranges like 1-5
+      // Handle ranges like 1-5 (or mon-fri / jan-mar in a name field)
       const [startStr, endStr] = rangePart.split("-");
+      if (names && /[a-z]/i.test(rangePart)) {
+        if (!names.includes(startStr.toLowerCase())) return false;
+        if (endStr !== undefined && !names.includes(endStr.toLowerCase())) return false;
+        continue;
+      }
       const start = parseInt(startStr, 10);
       if (isNaN(start) || start < minValues[i] || start > maxValues[i]) return false;
       if (endStr !== undefined) {

@@ -95,6 +95,17 @@ SCENARIOS = [
     "category_unknown_is_custom",
     "category_deleted_device_is_custom",
     "category_no_pattern_defaults_device",
+    "cron_alias_daily",
+    "cron_alias_hourly",
+    "cron_dow_name_range",
+    "cron_dow_name_single",
+    "cron_dow_name_list",
+    "cron_month_name",
+    "cron_reboot_rejected",
+    "cron_name_wrong_field_rejected",
+    "cron_bad_name_rejected",
+    "cron_out_of_range_rejected",
+    "cron_numeric_range_still_valid",
 ]
 
 

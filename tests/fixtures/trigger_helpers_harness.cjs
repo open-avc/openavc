@@ -159,4 +159,25 @@ const MACROS = [{ id: "m1", name: "Startup" }];
   results.category_no_pattern_defaults_device = { pass: r === 0, detail: r };
 }
 
+// --- isValidCron accepts everything the runtime (croniter) does ---
+// The old validator required 5 numeric fields, so @-aliases and day/month
+// names — all valid at runtime — were falsely flagged "Invalid", tempting an
+// integrator to delete a working schedule.
+const cronCase = (key, cron, expected) => {
+  const got = H.isValidCron(cron);
+  results[key] = { pass: got === expected, detail: { cron, got, expected } };
+};
+cronCase("cron_alias_daily", "@daily", true);
+cronCase("cron_alias_hourly", "@hourly", true);
+cronCase("cron_dow_name_range", "0 8 * * mon-fri", true);
+cronCase("cron_dow_name_single", "30 6 * * sun", true);
+cronCase("cron_dow_name_list", "0 9 * * mon,wed,fri", true);
+cronCase("cron_month_name", "0 0 1 jan *", true);
+// Still-strict where the runtime is strict:
+cronCase("cron_reboot_rejected", "@reboot", false); // croniter can't schedule it
+cronCase("cron_name_wrong_field_rejected", "mon 8 * * *", false); // name only in month/dow
+cronCase("cron_bad_name_rejected", "0 8 * * xyz", false);
+cronCase("cron_out_of_range_rejected", "99 8 * * *", false);
+cronCase("cron_numeric_range_still_valid", "0 8 * * 1-5", true);
+
 process.stdout.write(JSON.stringify(results));
