@@ -227,59 +227,96 @@ def test_required_port_invalid_value_raises():
 # ---------------------------------------------------------------------------
 
 
-async def test_discovery_add_device_pulls_in_driver_defaults_on_first_add(
-    tmp_path, fake_tcp_driver, monkeypatch
-):
-    """Regression: clicking Add/Install in Discovery must save the driver's
-    declared port (and other defaults) into the project file AND apply
-    them to the runtime device on first add — without requiring a server
-    restart.
+@pytest.fixture
+def noop_discovery_driver():
+    """A registered driver whose connect() never touches the network, with
+    the same default_config shape as ``fake_tcp_driver`` — the add-device
+    tests drive the real device reconcile, which connects the device."""
+
+    class _DiscoNoopDriver(BaseDriver):
+        DRIVER_INFO = {
+            "id": "fake_disco_test",
+            "name": "Fake Discovery Device (test)",
+            "transport": "tcp",
+            "default_config": {
+                "host": "",
+                "port": 5000,
+                "machine_number": "01",
+                "poll_interval": 10,
+            },
+            "state_variables": {},
+            "commands": {},
+        }
+
+        async def connect(self) -> None:
+            return None
+
+        async def disconnect(self) -> None:
+            return None
+
+        async def send_command(self, command, params=None):
+            return None
+
+    register_driver(_DiscoNoopDriver)
+    yield _DiscoNoopDriver
+    unregister_driver("fake_disco_test")
+
+
+def _wire_add_device_env(tmp_path, monkeypatch):
+    """Stub the discovery engine and wire a real Engine (real device manager,
+    real apply_project seam) so ``add_device`` runs against the code path
+    that ships. Only disk persistence is stubbed out.
     """
-    from unittest.mock import AsyncMock, MagicMock
+    from unittest.mock import MagicMock
 
     from server.api import discovery as discovery_api
-    from server.api.discovery import AddDeviceRequest, add_device
 
-    # Stub the discovery engine — add_device only reads .results for
-    # display-name enrichment.
     fake_discovery = MagicMock()
     fake_discovery.results = {}
     discovery_api.set_discovery_engine(fake_discovery)
 
-    # Real engine with empty project, plus mocked devices manager so we
-    # can assert what runtime_config the route handed off.
     engine = Engine(str(tmp_path / "test.avc"))
     engine.project = ProjectConfig(
         project=ProjectMeta(id="t", name="Test"),
         devices=[],
         connections={},
     )
-    engine.devices = MagicMock()
-    engine.devices.add_device = AsyncMock()
-    # Untracked device — the idempotency guard reads this.
-    engine.devices.get_device_config = MagicMock(return_value=None)
-    engine._project_revision = 0
-
-    discovery_api.set_app_engine(engine)
-
-    # Don't actually write to disk
     monkeypatch.setattr(
         "server.core.project_loader.save_project", lambda *a, **k: None
     )
 
-    req = AddDeviceRequest(ip="192.0.2.50", driver_id="fake_kramer_test")
+    discovery_api.set_app_engine(engine)
+    return engine
+
+
+async def test_discovery_add_device_pulls_in_driver_defaults_on_first_add(
+    tmp_path, noop_discovery_driver, monkeypatch
+):
+    """Regression: clicking Add/Install in Discovery must save the driver's
+    declared port (and other defaults) into the project file AND apply
+    them to the runtime device on first add — without requiring a server
+    restart.
+    """
+    from server.api.discovery import AddDeviceRequest, add_device
+
+    engine = _wire_add_device_env(tmp_path, monkeypatch)
+
+    req = AddDeviceRequest(ip="192.0.2.50", driver_id="fake_disco_test")
     result = await add_device(req)
 
     assert result["status"] == "ok"
+    device_id = result["device_id"]
 
-    # 1. Runtime hand-off includes driver defaults (port etc.)
-    runtime_arg = engine.devices.add_device.await_args.args[0]
-    assert runtime_arg["config"]["host"] == "192.0.2.50"
-    assert runtime_arg["config"]["port"] == 5000, (
+    # 1. The devices reconcile instantiated the runtime device from the
+    #    resolved config — driver defaults (port etc.) included.
+    runtime_cfg = engine.devices.get_device_config(device_id)
+    assert runtime_cfg is not None, "reconcile must add the runtime device"
+    assert runtime_cfg["config"]["host"] == "192.0.2.50"
+    assert runtime_cfg["config"]["port"] == 5000, (
         "first-add must include driver default_config.port at runtime"
     )
-    assert runtime_arg["config"]["machine_number"] == "01"
-    assert runtime_arg["config"]["poll_interval"] == 10
+    assert runtime_cfg["config"]["machine_number"] == "01"
+    assert runtime_cfg["config"]["poll_interval"] == 10
 
     # 2. Saved project also has the defaults — user opening the device
     #    sees port populated, not a blank field.
@@ -291,38 +328,40 @@ async def test_discovery_add_device_pulls_in_driver_defaults_on_first_add(
     assert saved_device.config["poll_interval"] == 10
 
 
-def _wire_add_device_env(tmp_path):
-    """Stub the discovery + app engine so ``add_device`` runs in isolation.
-
-    Returns the Engine whose mocked ``devices.add_device`` records hand-offs
-    and whose in-memory project the route mutates.
+async def test_discovery_add_device_bumps_revision_and_broadcasts(
+    tmp_path, noop_discovery_driver, monkeypatch
+):
+    """Regression (data loss): add-device must advance the project revision
+    and broadcast project.reloaded with the NEW revision. The old path saved
+    without bumping and broadcast the stale revision, so an open IDE's cached
+    ETag stayed valid and its next full-project PUT silently deleted the
+    just-discovered device.
     """
-    from unittest.mock import AsyncMock, MagicMock
+    from server.api.discovery import AddDeviceRequest, add_device
 
-    from server.api import discovery as discovery_api
+    engine = _wire_add_device_env(tmp_path, monkeypatch)
 
-    fake_discovery = MagicMock()
-    fake_discovery.results = {}
-    discovery_api.set_discovery_engine(fake_discovery)
+    messages: list[dict] = []
 
-    engine = Engine(str(tmp_path / "test.avc"))
-    engine.project = ProjectConfig(
-        project=ProjectMeta(id="t", name="Test"),
-        devices=[],
-        connections={},
+    async def _record(msg):
+        messages.append(msg)
+
+    monkeypatch.setattr(engine, "broadcast_ws", _record)
+
+    before = engine._project_revision
+    result = await add_device(
+        AddDeviceRequest(ip="192.0.2.51", driver_id="fake_disco_test")
     )
-    engine.devices = MagicMock()
-    engine.devices.add_device = AsyncMock()
-    # No device tracked yet — mirrors a fresh runtime.
-    engine.devices.get_device_config = MagicMock(return_value=None)
-    engine._project_revision = 0
+    assert result["status"] == "ok"
+    assert engine._project_revision > before
 
-    discovery_api.set_app_engine(engine)
-    return engine
+    reloaded = [m for m in messages if m["type"] == "project.reloaded"]
+    assert reloaded, "add-device must broadcast project.reloaded"
+    assert reloaded[-1]["revision"] == engine._project_revision
 
 
 async def test_discovery_add_device_rejects_duplicate(
-    tmp_path, fake_tcp_driver, monkeypatch
+    tmp_path, noop_discovery_driver, monkeypatch
 ):
     """Re-adding a device the project already has must 409 — not append a
     duplicate DeviceConfig or overwrite (and leak) the live runtime driver.
@@ -331,16 +370,15 @@ async def test_discovery_add_device_rejects_duplicate(
 
     from server.api.discovery import AddDeviceRequest, add_device
 
-    engine = _wire_add_device_env(tmp_path)
-    monkeypatch.setattr(
-        "server.core.project_loader.save_project", lambda *a, **k: None
-    )
+    engine = _wire_add_device_env(tmp_path, monkeypatch)
 
-    req = AddDeviceRequest(ip="192.0.2.50", driver_id="fake_kramer_test")
+    req = AddDeviceRequest(ip="192.0.2.50", driver_id="fake_disco_test")
     first = await add_device(req)
     assert first["status"] == "ok"
     assert len(engine.project.devices) == 1
-    assert engine.devices.add_device.await_count == 1
+    device_id = first["device_id"]
+    live_driver = engine.devices.get_driver(device_id)
+    assert live_driver is not None
 
     # The first add appended the device to the project, so the guard fires on
     # the project check alone — the realistic re-add path after a rescan.
@@ -349,13 +387,13 @@ async def test_discovery_add_device_rejects_duplicate(
     assert exc.value.status_code == 409
     assert "already in the project" in exc.value.detail
 
-    # No second runtime hand-off and no duplicate row persisted.
-    assert engine.devices.add_device.await_count == 1
+    # No duplicate row persisted and the live driver was not replaced.
     assert len(engine.project.devices) == 1
+    assert engine.devices.get_driver(device_id) is live_driver
 
 
 async def test_discovery_add_device_rejects_nested_config(
-    tmp_path, fake_tcp_driver, monkeypatch
+    tmp_path, noop_discovery_driver, monkeypatch
 ):
     """Caller-supplied config must be flat primitives; a nested object or a
     list value is rejected with 422 before anything is persisted.
@@ -364,14 +402,11 @@ async def test_discovery_add_device_rejects_nested_config(
 
     from server.api.discovery import AddDeviceRequest, add_device
 
-    engine = _wire_add_device_env(tmp_path)
-    monkeypatch.setattr(
-        "server.core.project_loader.save_project", lambda *a, **k: None
-    )
+    engine = _wire_add_device_env(tmp_path, monkeypatch)
 
     nested = AddDeviceRequest(
         ip="192.0.2.51",
-        driver_id="fake_kramer_test",
+        driver_id="fake_disco_test",
         config={"creds": {"password": "x"}},
     )
     with pytest.raises(HTTPException) as exc:
@@ -379,11 +414,11 @@ async def test_discovery_add_device_rejects_nested_config(
     assert exc.value.status_code == 422
     # Nothing persisted, nothing handed to the runtime.
     assert engine.project.devices == []
-    assert engine.devices.add_device.await_count == 0
+    assert engine.devices.get_device_configs() == {}
 
     listy = AddDeviceRequest(
         ip="192.0.2.52",
-        driver_id="fake_kramer_test",
+        driver_id="fake_disco_test",
         config={"ports": [1, 2, 3]},
     )
     with pytest.raises(HTTPException) as exc2:
@@ -392,21 +427,18 @@ async def test_discovery_add_device_rejects_nested_config(
 
 
 async def test_discovery_add_device_accepts_flat_primitive_config(
-    tmp_path, fake_tcp_driver, monkeypatch
+    tmp_path, noop_discovery_driver, monkeypatch
 ):
     """A flat primitive config (string/number/bool/None) is accepted and
     merged into the saved device.
     """
     from server.api.discovery import AddDeviceRequest, add_device
 
-    engine = _wire_add_device_env(tmp_path)
-    monkeypatch.setattr(
-        "server.core.project_loader.save_project", lambda *a, **k: None
-    )
+    engine = _wire_add_device_env(tmp_path, monkeypatch)
 
     req = AddDeviceRequest(
         ip="192.0.2.53",
-        driver_id="fake_kramer_test",
+        driver_id="fake_disco_test",
         config={"machine_number": "07", "poll_interval": 5, "verify_ssl": False},
     )
     result = await add_device(req)

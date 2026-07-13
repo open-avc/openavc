@@ -63,18 +63,37 @@ class SetupActionContext:
         config. The live driver instance's ``self.config`` is updated in place so
         the next ``connect()`` uses the new settings — the same instance keeps
         running, so the handler's ``self`` stays valid.
+
+        A ``None``-valued connection field is ignored (with a warning): the
+        connections table never stores None, so honoring it would drop the key
+        from the persisted table while the live driver kept ``key=None`` — a
+        skew the device reconcile reads as a config change, tearing down the
+        device mid-action and invalidating the running handler.
         """
         if not isinstance(delta, dict) or not delta:
             return
         engine = self._engine
-        project = getattr(engine, "project", None)
-        if project is None:
+        if getattr(engine, "project", None) is None:
             raise RuntimeError("No project loaded")
 
-        from server.core.project_loader import save_project_async
         from server.core.project_migration import CONNECTION_FIELDS
 
         device_id = self._device_id
+        none_conn = [k for k, v in delta.items()
+                     if k in CONNECTION_FIELDS and v is None]
+        if none_conn:
+            log.warning(
+                "[%s] Setup action tried to unset connection field(s) %s — "
+                "ignored (unsetting connection fields is not supported)",
+                device_id, sorted(none_conn),
+            )
+            delta = {k: v for k, v in delta.items() if k not in none_conn}
+            if not delta:
+                return
+
+        # Build the change on a copy — apply_project diffs it against the
+        # live project, so an in-place edit would reconcile nothing.
+        project = engine.project.model_copy(deep=True)
         dev = next((d for d in project.devices if d.id == device_id), None)
         if dev is None:
             raise RuntimeError(f"Device '{device_id}' not found in project")
@@ -86,17 +105,26 @@ class SetupActionContext:
                 conn[key] = value
             else:
                 protocol[key] = value
-        conn = {k: v for k, v in conn.items() if v is not None}
         if conn:
             project.connections[device_id] = conn
         else:
             project.connections.pop(device_id, None)
         dev.config = protocol
-        await save_project_async(engine.project_path, project)
 
+        # Merge into the live driver BEFORE the reconcile: driver.config is
+        # the same dict the device manager compares against the new resolved
+        # config, so updating it first keeps that compare convergent — the
+        # running instance is not torn down, the handler's ``self`` stays
+        # valid, and the next connect() uses the new settings.
         driver = engine.devices.get_driver(device_id)
         if driver is not None:
             driver.config.update(delta)
+
+        # Runs in the action's background task, never under the reconcile
+        # lock, so awaiting the seam directly is safe. The revision bump and
+        # project.reloaded broadcast mean a stale IDE PUT gets a 409 instead
+        # of silently reverting what the wizard just wrote.
+        await engine.apply_project(project)
         log.info("[%s] Setup action applied config update: %s",
                  device_id, sorted(delta.keys()))
 

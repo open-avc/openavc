@@ -11,7 +11,6 @@ real provisioning wizard takes.
 from __future__ import annotations
 
 import asyncio
-from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
@@ -19,8 +18,12 @@ import pytest
 
 from server.core.device_manager import DeviceManager
 from server.core.event_bus import EventBus
-from server.core.project_loader import DeviceConfig
-from server.core.setup_actions import SetupActionInProgress, SetupActionRunner
+from server.core.project_loader import DeviceConfig, ProjectConfig, ProjectMeta
+from server.core.setup_actions import (
+    SetupActionContext,
+    SetupActionInProgress,
+    SetupActionRunner,
+)
 from server.core.state_store import StateStore
 from server.drivers.actions import resolve_device_actions
 from server.drivers.base import BaseDriver
@@ -106,7 +109,8 @@ class _FakeEngine:
     def __init__(self, dm: DeviceManager) -> None:
         self.devices = dm
         self.project_path = "unused.avc"
-        self.project = SimpleNamespace(
+        self.project = ProjectConfig(
+            project=ProjectMeta(id="t", name="Test"),
             devices=[
                 DeviceConfig(
                     id="dev1", driver="acme_provision", name="Dev 1",
@@ -115,7 +119,15 @@ class _FakeEngine:
             ],
             connections={},
         )
+        self._project_revision = 0
         self.ws_messages: list[dict[str, Any]] = []
+
+    async def apply_project(self, new_project, **kwargs) -> int:
+        # Mirror the seam's copy+swap+bump contract; the real reconcile is
+        # pinned by test_apply_config_update_bumps_revision_without_bounce.
+        self.project = new_project
+        self._project_revision += 1
+        return self._project_revision
 
     async def broadcast_ws(self, message: dict[str, Any]) -> None:
         self.ws_messages.append(message)
@@ -186,8 +198,87 @@ async def test_setup_action_streams_progress_updates_config_and_reconnects():
     assert driver.config["port"] == 9999
     assert driver.config["provisioned"] == "yes"
 
+    # The delta went through the apply_project seam — revision advanced, so
+    # a stale IDE PUT 409s instead of silently reverting the wizard's write.
+    assert engine._project_revision == 1
+
     # Auto-reconnect suppression was lifted at the end.
     assert "dev1" not in dm._intentional_disconnect
+
+
+async def test_none_connection_field_in_delta_is_ignored():
+    """A None-valued connection field in a delta is dropped before it touches
+    anything: honoring it would remove the key from the persisted connections
+    table while the live driver kept key=None — a skew the device reconcile
+    reads as a config change, bouncing the device mid-action.
+    """
+    _runner, engine, _dm, driver = _make_env()
+    ctx = SetupActionContext(engine, "dev1")
+
+    await ctx.apply_config_update({"port": None, "provisioned": "yes"})
+
+    # The protocol field applied; the None connection field changed nothing.
+    assert engine.project.devices[0].config["provisioned"] == "yes"
+    assert engine.project.devices[0].config["port"] == 23
+    assert "port" not in engine.project.connections.get("dev1", {})
+    assert driver.config["port"] == 23
+    assert driver.config["provisioned"] == "yes"
+    assert engine._project_revision == 1
+
+
+async def test_delta_of_only_none_connection_fields_is_a_no_op():
+    _runner, engine, _dm, driver = _make_env()
+    ctx = SetupActionContext(engine, "dev1")
+
+    await ctx.apply_config_update({"host": None, "port": None})
+
+    assert engine._project_revision == 0
+    assert driver.config == {"host": "h", "port": 23}
+
+
+async def test_apply_config_update_bumps_revision_without_bounce(tmp_path):
+    """Regression (data loss), real seam: a setup action's config delta must
+    advance the project revision — the old path saved without bumping, so a
+    stale IDE PUT silently reverted what the wizard just wrote. And the
+    reconcile it triggers must NOT tear down the device mid-action: the live
+    config is updated first, so the device compare stays convergent and the
+    running handler's ``self`` stays valid.
+    """
+    from server.core.device_manager import register_driver, unregister_driver
+    from server.core.engine import Engine
+
+    register_driver(_ProvisionDriver)
+    engine = Engine(str(tmp_path / "p.avc"))
+    try:
+        engine.project = ProjectConfig(
+            project=ProjectMeta(id="t", name="Test"),
+            devices=[
+                DeviceConfig(
+                    id="dev1", driver="acme_provision", name="Dev 1", config={},
+                )
+            ],
+            connections={"dev1": {"host": "h", "port": 23}},
+        )
+        await engine.devices.add_device(
+            engine.resolved_device_config(engine.project.devices[0])
+        )
+        driver_before = engine.devices.get_driver("dev1")
+        assert driver_before is not None
+        revision_before = engine._project_revision
+
+        ctx = SetupActionContext(engine, "dev1")
+        await ctx.apply_config_update({"port": 9999, "provisioned": "yes"})
+
+        assert engine._project_revision > revision_before
+        # Same driver instance — the reconcile did not bounce the device.
+        assert engine.devices.get_driver("dev1") is driver_before
+        assert engine.project.connections["dev1"]["port"] == 9999
+        assert engine.project.devices[0].config["provisioned"] == "yes"
+        assert driver_before.config["port"] == 9999
+    finally:
+        await engine.devices._cancel_reconnect("dev1")
+        await engine.devices.disconnect_all()
+        unregister_driver("acme_provision")
 
 
 # --- Error path -------------------------------------------------------------

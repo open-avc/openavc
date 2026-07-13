@@ -380,6 +380,8 @@ async def add_device(req: AddDeviceRequest) -> dict[str, Any]:
     """
     if _app_engine is None:
         raise HTTPException(status_code=503, detail="Engine not available")
+    if _app_engine.project is None:
+        raise HTTPException(status_code=503, detail="No project loaded")
 
     discovery = _get_engine()
 
@@ -400,9 +402,8 @@ async def add_device(req: AddDeviceRequest) -> dict[str, Any]:
     # disconnecting it, leaking its open transport. Reject the duplicate before
     # any runtime/project mutation; editing an existing device goes through
     # PUT /api/devices/{id}.
-    already_added = (
-        any(d.id == device_id for d in _app_engine.project.devices)
-        if _app_engine.project else False
+    already_added = any(
+        d.id == device_id for d in _app_engine.project.devices
     ) or _app_engine.devices.get_device_config(device_id) is not None
     if already_added:
         raise HTTPException(
@@ -454,39 +455,22 @@ async def add_device(req: AddDeviceRequest) -> dict[str, Any]:
         "enabled": True,
     }
 
-    # Pass merged config (protocol + connection) to the device manager
-    runtime_config = dict(device_config)
-    runtime_config["config"] = {**protocol_config, **conn_overrides}
+    # Persist and reconcile through the one seam: build the change on a copy
+    # (apply_project diffs it against the live project — an in-place edit
+    # would reconcile nothing), and let the devices reconcile instantiate and
+    # connect the runtime device from the resolved config. The revision bump
+    # and project.reloaded broadcast mean an open IDE's stale full-project
+    # PUT gets a 409 instead of silently deleting the just-discovered device.
+    from server.core.project_loader import DeviceConfig
 
+    project = _app_engine.project.model_copy(deep=True)
+    project.devices.append(DeviceConfig(**device_config))
+    if conn_overrides:
+        project.connections[device_id] = conn_overrides
     try:
-        await _app_engine.devices.add_device(runtime_config)
+        await _app_engine.apply_project(project)
     except Exception as e:
-        raise _api_error(400, f"Failed to add device '{device_id}'", e)
-
-    # Save to project with connection table separation
-    try:
-        from server.core.project_loader import save_project_async
-        if _app_engine.project:
-            from server.core.project_loader import DeviceConfig
-            _app_engine.project.devices.append(DeviceConfig(**device_config))
-            if conn_overrides:
-                _app_engine.project.connections[device_id] = conn_overrides
-            await save_project_async(_app_engine.project_path, _app_engine.project)
-    except Exception as e:
-        # Device was added to runtime but project save failed
-        raise _api_error(500, f"Device '{device_id}' added but project save failed", e)
-
-    # Notify the IDE to refresh the project (so Devices tab updates immediately).
-    # Include the current revision so other tabs' optimistic-concurrency check
-    # has something to compare against; matches engine.apply_project.
-    if _broadcast_fn:
-        try:
-            await _broadcast_fn({
-                "type": "project.reloaded",
-                "revision": _app_engine._project_revision,
-            })
-        except Exception:
-            pass  # Non-critical — worst case user refreshes manually
+        raise _api_error(500, f"Failed to add device '{device_id}'", e)
 
     return {
         "status": "ok",
