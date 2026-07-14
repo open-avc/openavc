@@ -883,6 +883,13 @@ class DeviceToolsMixin:
                     return {"error": "Invalid script filename"}
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(source, encoding="utf-8")
+                # A source write alone is inert — reload the running script
+                # like the IDE reload button. reload_script imports the new
+                # version before unloading the old, so a broken edit leaves
+                # the previous version active (reported in the result).
+                if engine.scripts:
+                    reload_result = engine.scripts.reload_script(s.model_dump())
+                    return {"status": "saved", "reload": reload_result}
                 return {"status": "saved"}
         return {"error": f"Script '{script_id}' not found"}
 
