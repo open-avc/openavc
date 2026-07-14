@@ -867,13 +867,23 @@ export function AddDeviceDialog({
         : {}),
     });
 
-    save();
-
     // Show setup dialog if driver has setup settings
     if (hasSetupSettings) {
       setIsAdding(true);
+      // The setup dialog reads the device's settings from the engine as soon
+      // as it opens, so the save (persist + reconcile) must land first —
+      // un-awaited, opening it raced the device's instantiation.
+      await save();
+      const store = useProjectStore.getState();
+      if (store.conflictDetected || store.dirty) {
+        // The save didn't land (conflict, or retries exhausted — the global
+        // banner explains); don't open setup for a device that isn't there.
+        setIsAdding(false);
+        return;
+      }
       setSetupDeviceId(deviceId);
     } else {
+      save();
       onClose();
     }
   };
@@ -1093,14 +1103,16 @@ export function AddDeviceDialog({
           </button>
           <button
             onClick={handleAdd}
+            disabled={isAdding}
             style={{
               padding: "var(--space-sm) var(--space-lg)",
               borderRadius: "var(--border-radius)",
               background: "var(--accent-bg)",
               color: "var(--text-on-accent)",
+              opacity: isAdding ? 0.6 : 1,
             }}
           >
-            {prefill ? "Duplicate Device" : "Add Device"}
+            {isAdding ? "Adding..." : prefill ? "Duplicate Device" : "Add Device"}
           </button>
         </div>
       </div>
