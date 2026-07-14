@@ -74,6 +74,10 @@ export function AssetBrowser({
     const used = new Set<string>();
     if (!pages) return used;
     for (const page of pages) {
+      const bg = page.background;
+      if (bg && typeof bg === "object" && (bg as { image?: string }).image?.startsWith("assets://")) {
+        used.add((bg as { image: string }).image.replace("assets://", ""));
+      }
       for (const el of page.elements) {
         if (el.src?.startsWith("assets://")) used.add(el.src.replace("assets://", ""));
         if (el.button_image?.startsWith("assets://")) used.add(el.button_image.replace("assets://", ""));
@@ -85,10 +89,6 @@ export function AssetBrowser({
         }
         if (fb?.style_active?.button_image?.startsWith("assets://")) used.add(fb.style_active.button_image.replace("assets://", ""));
         if (fb?.style_inactive?.button_image?.startsWith("assets://")) used.add(fb.style_inactive.button_image.replace("assets://", ""));
-        const bg = page.background;
-        if (bg && typeof bg === "object" && (bg as { image?: string }).image?.startsWith("assets://")) {
-          used.add((bg as { image: string }).image.replace("assets://", ""));
-        }
       }
     }
     return used;
