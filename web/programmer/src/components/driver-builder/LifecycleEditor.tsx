@@ -1,10 +1,13 @@
 import { Plus, Trash2 } from "lucide-react";
 import type { DriverDefinition } from "../../api/types";
+import { OscArgsEditor } from "./OscArgsEditor";
 import {
   buildQueryEntry,
   gateFieldNames,
   isEachChild,
   isOpaque,
+  isOscItem,
+  queryArgs,
   queryWhen,
   querySend,
   type QueryEntry,
@@ -63,9 +66,10 @@ export function LifecycleEditor({ draft, onUpdate }: LifecycleEditorProps) {
       case "osc":
         return (
           <>
-            OSC addresses sent on connect (no arguments — used for
-            subscription registration). Behringer X32 uses{" "}
-            <code>/xremote</code> here to start receiving state pushes.
+            OSC addresses sent on connect. A bare address registers for state
+            pushes — Behringer X32 uses <code>/xremote</code> here. Add typed{" "}
+            <strong>arguments</strong> when the bring-up message needs to set a
+            value rather than just subscribe.
           </>
         );
       case "http":
@@ -121,100 +125,104 @@ export function LifecycleEditor({ draft, onUpdate }: LifecycleEditorProps) {
 
       {items.map((item, i) => {
         const eachChild = isEachChild(item);
-        // An OSC {address, args} step has no inline editor — show it read-only
-        // rather than corrupting it.
-        const opaque = isOpaque(item);
+        // Show an object step read-only rather than corrupting it when we have
+        // no inline editor for it: a genuinely-malformed shape, or an OSC
+        // {address, args} step on a non-OSC transport (where there's no args
+        // editor to author it).
+        const opaque =
+          isOpaque(item) || (transport !== "osc" && isOscItem(item));
         const send = querySend(item);
         const when = queryWhen(item);
+        const args = queryArgs(item);
+        const childKey = eachChild ? item.each_child : "";
+        // OSC args are only authorable on a "send once" item — the runtime
+        // sends each_child OSC items address-only, without args.
+        const showArgs = transport === "osc" && !opaque && !eachChild;
         return (
-          <div
-            key={i}
-            style={{
-              display: "flex",
-              gap: "var(--space-sm)",
-              marginBottom: "var(--space-xs)",
-              alignItems: "center",
-            }}
-          >
-            <span
+          <div key={i} style={{ marginBottom: "var(--space-sm)" }}>
+            <div
               style={{
-                fontSize: "11px",
-                color: "var(--text-muted)",
-                fontFamily: "var(--font-mono)",
-                width: 24,
-                textAlign: "right",
+                display: "flex",
+                gap: "var(--space-sm)",
+                alignItems: "center",
               }}
             >
-              {i + 1}.
-            </span>
-            {childTypeNames.length > 0 && !opaque && (
-              <select
-                value={eachChild ? item.each_child : ""}
-                onChange={(e) =>
-                  updateItem(i, buildQueryEntry(send, e.target.value, when))
-                }
-                title="Send once, or once per registered child of a type"
-                style={{ width: 130, fontSize: "var(--font-size-sm)" }}
+              <span
+                style={{
+                  fontSize: "11px",
+                  color: "var(--text-muted)",
+                  fontFamily: "var(--font-mono)",
+                  width: 24,
+                  textAlign: "right",
+                }}
               >
-                <option value="">Once</option>
-                {childTypeNames.map((t) => (
-                  <option key={t} value={t}>
-                    Per {draft.child_entity_types?.[t]?.label || t}
-                  </option>
-                ))}
-              </select>
-            )}
-            <input
-              value={opaque ? JSON.stringify(item) : send}
-              disabled={opaque}
-              onChange={(e) =>
-                updateItem(
-                  i,
-                  buildQueryEntry(
-                    e.target.value,
-                    eachChild ? item.each_child : "",
-                    when,
-                  ),
-                )
-              }
-              placeholder={eachChild ? "e.g., ?VOUT{child_id}\\r" : placeholder}
-              style={{
-                flex: 1,
-                fontFamily: "var(--font-mono)",
-                fontSize: "var(--font-size-sm)",
-              }}
-            />
-            {gateFields.length > 0 && !opaque && (
-              <select
-                value={when}
+                {i + 1}.
+              </span>
+              {childTypeNames.length > 0 && !opaque && (
+                <select
+                  value={childKey}
+                  onChange={(e) =>
+                    updateItem(i, buildQueryEntry(send, e.target.value, when, args))
+                  }
+                  title="Send once, or once per registered child of a type"
+                  style={{ width: 130, fontSize: "var(--font-size-sm)" }}
+                >
+                  <option value="">Once</option>
+                  {childTypeNames.map((t) => (
+                    <option key={t} value={t}>
+                      Per {draft.child_entity_types?.[t]?.label || t}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <input
+                value={opaque ? JSON.stringify(item) : send}
+                disabled={opaque}
                 onChange={(e) =>
-                  updateItem(
-                    i,
-                    buildQueryEntry(
-                      send,
-                      eachChild ? item.each_child : "",
-                      e.target.value,
-                    ),
-                  )
+                  updateItem(i, buildQueryEntry(e.target.value, childKey, when, args))
                 }
-                title="Only send this step while a config field is on — e.g. arm a level-meter subscription behind an 'Enable Meters' checkbox"
-                style={{ width: 150, fontSize: "var(--font-size-sm)" }}
+                placeholder={eachChild ? "e.g., ?VOUT{child_id}\\r" : placeholder}
+                style={{
+                  flex: 1,
+                  fontFamily: "var(--font-mono)",
+                  fontSize: "var(--font-size-sm)",
+                }}
+              />
+              {gateFields.length > 0 && !opaque && (
+                <select
+                  value={when}
+                  onChange={(e) =>
+                    updateItem(i, buildQueryEntry(send, childKey, e.target.value, args))
+                  }
+                  title="Only send this step while a config field is on — e.g. arm a level-meter subscription behind an 'Enable Meters' checkbox"
+                  style={{ width: 150, fontSize: "var(--font-size-sm)" }}
+                >
+                  <option value="">Always</option>
+                  {gateFields.map((f) => (
+                    <option key={f} value={f}>
+                      Only if {f}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <button
+                onClick={() => removeItem(i)}
+                style={{ padding: "2px", color: "var(--text-muted)" }}
+                title="Remove"
               >
-                <option value="">Always</option>
-                {gateFields.map((f) => (
-                  <option key={f} value={f}>
-                    Only if {f}
-                  </option>
-                ))}
-              </select>
+                <Trash2 size={14} />
+              </button>
+            </div>
+            {showArgs && (
+              <div style={{ marginLeft: 32 }}>
+                <OscArgsEditor
+                  args={args ?? []}
+                  onChange={(newArgs) =>
+                    updateItem(i, buildQueryEntry(send, "", when, newArgs))
+                  }
+                />
+              </div>
             )}
-            <button
-              onClick={() => removeItem(i)}
-              style={{ padding: "2px", color: "var(--text-muted)" }}
-              title="Remove"
-            >
-              <Trash2 size={14} />
-            </button>
           </div>
         );
       })}

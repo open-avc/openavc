@@ -860,7 +860,11 @@ class ConfigurableDriver(BaseDriver):
                         elif isinstance(item, dict):
                             if not self._query_enabled(item):
                                 continue
-                            address = item.get("address", "")
+                            # The address may be keyed "address" (the {address,
+                            # args} form) or "send" (a plain {send, when} gated
+                            # entry) — accept either so a gated OSC subscription
+                            # isn't silently sent as an empty address.
+                            address = item.get("address") or item.get("send") or ""
                             if "{" in address:
                                 address = self._safe_substitute(address, self.config)
                             args = self._build_osc_args(item.get("args", []), self.config)

@@ -619,6 +619,18 @@ export interface DriverGatedQuery {
   when: string;
 }
 
+/** An OSC `on_connect` item that carries typed arguments — a bring-up message
+ *  that isn't a bare subscription address (e.g. setting a value on connect).
+ *  Bare-address items stay plain strings; this object form is only used when
+ *  the message needs args. `when:` gates it on a config field just like the
+ *  other entry shapes (the runtime checks `when` before building the args).
+ *  The runtime builds these via `_build_osc_args`. */
+export interface DriverOscConnectItem {
+  address: string;
+  args?: { type: string; value: string }[];
+  when?: string;
+}
+
 // Driver ``discovery:`` block. Schema reference:
 // ``OpenAVC-Discovery-Spec.md`` §2 (workspace root) and the runtime parser
 // in ``openavc/server/discovery/hints.py``.
@@ -878,6 +890,7 @@ export interface DriverDefinition {
     | string
     | DriverEachChildQuery
     | DriverGatedQuery
+    | DriverOscConnectItem
     | Record<string, unknown>
   )[];
   // Login handshake the runtime performs after raw connect. Today only
