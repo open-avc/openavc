@@ -1126,11 +1126,11 @@ function OptionFeedValue({ raw }: { raw: string }) {
 }
 
 function DeviceSettingsSection({ deviceId, connected }: { deviceId: string; connected: boolean }) {
-  const project = useProjectStore((s) => s.project);
+  const devices = useProjectStore((s) => s.project?.devices);
   const pendingSettings = useMemo(() => {
-    const dev = project?.devices.find((d) => d.id === deviceId);
+    const dev = devices?.find((d) => d.id === deviceId);
     return dev?.pending_settings ?? {};
-  }, [project, deviceId]);
+  }, [devices, deviceId]);
 
   const [settings, setSettings] = useState<Record<string, DeviceSettingValue>>({});
   const [editingKey, setEditingKey] = useState<string | null>(null);

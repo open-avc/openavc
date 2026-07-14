@@ -121,13 +121,15 @@ export function VariableKeyPicker({
   placeholder = "Select state key...",
   style,
 }: VariableKeyPickerProps) {
-  const project = useProjectStore((s) => s.project);
+  const projectVariables = useProjectStore((s) => s.project?.variables);
+  const projectDevices = useProjectStore((s) => s.project?.devices);
+  const projectPages = useProjectStore((s) => s.project?.ui?.pages);
   const storeUpdate = useProjectStore((s) => s.update);
   const liveState = useConnectionStore((s) => s.liveState);
 
-  const variables = project?.variables ?? [];
-  const devices = project?.devices ?? [];
-  const pages = project?.ui?.pages ?? [];
+  const variables = projectVariables ?? [];
+  const devices = projectDevices ?? [];
+  const pages = projectPages ?? [];
 
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -186,7 +188,7 @@ export function VariableKeyPicker({
     return () => {
       stale = true;
     };
-  }, [open, showDeviceState, devices]);
+  }, [open, showDeviceState, projectDevices]);
 
   // Build grouped entries
   const allEntries = useMemo((): KeyEntry[] => {
@@ -297,7 +299,7 @@ export function VariableKeyPicker({
     return entries;
     // labelsVersion re-runs this once lazily-fetched device labels land.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [variables, devices, pages, liveState, showDeviceState, showTriggerContext, eventContext, labelsVersion]);
+  }, [projectVariables, projectDevices, projectPages, liveState, showDeviceState, showTriggerContext, eventContext, labelsVersion]);
 
   // Filter entries by search
   const filteredEntries = useMemo(() => {

@@ -78,7 +78,7 @@ export function DriverEditor({
   // the first Save attempt; for existing drivers (where the user has
   // chosen what to edit), validation is live as before.
   const [attemptedSave, setAttemptedSave] = useState(false);
-  const project = useProjectStore((s) => s.project);
+  const devices = useProjectStore((s) => s.project?.devices);
   const allDefinitions = useDriverBuilderStore((s) => s.definitions);
 
   // When the loaded driver changes (or a new draft starts), reset the
@@ -125,7 +125,7 @@ export function DriverEditor({
   // Devices in the current project that reference the loaded driver by its
   // original id. Used to warn the user that renaming will orphan them.
   const devicesUsingDriver = originalId
-    ? (project?.devices ?? []).filter((d) => d.driver === originalId)
+    ? (devices ?? []).filter((d) => d.driver === originalId)
     : [];
   const idChanged = originalId !== null && draft.id !== originalId;
 

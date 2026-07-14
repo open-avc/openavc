@@ -38,7 +38,7 @@ interface ISCPeer {
 }
 
 export function ISCView() {
-  const project = useProjectStore((s) => s.project);
+  const isc = useProjectStore((s) => s.project?.isc);
   const update = useProjectStore((s) => s.update);
   const liveState = useConnectionStore((s) => s.liveState);
 
@@ -54,10 +54,10 @@ export function ISCView() {
 
   // Load ISC config from project
   useEffect(() => {
-    if (project?.isc) {
-      setAuthKey(project.isc.auth_key ?? "");
+    if (isc) {
+      setAuthKey(isc.auth_key ?? "");
     }
-  }, [project?.isc?.auth_key]);
+  }, [isc?.auth_key]);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -77,112 +77,111 @@ export function ISCView() {
 
   // Only poll when ISC is enabled in the project
   useEffect(() => {
-    if (!project?.isc?.enabled) return;
+    if (!isc?.enabled) return;
     fetchStatus();
     const interval = setInterval(fetchStatus, 3000);
     return () => clearInterval(interval);
-  }, [fetchStatus, project?.isc?.enabled]);
+  }, [fetchStatus, isc?.enabled]);
 
-  const isc = project?.isc;
   const enabled = isc?.enabled ?? false;
   const sharedState = isc?.shared_state ?? [];
   const manualPeers = isc?.peers ?? [];
   const allowedCommands = isc?.allowed_remote_commands ?? [];
 
   const handleToggleEnabled = useCallback(() => {
-    if (!project) return;
+    if (!isc) return;
     update({
-      isc: { ...project.isc, enabled: !enabled },
+      isc: { ...isc, enabled: !enabled },
     });
     useProjectStore.getState().debouncedSave();
-  }, [project, enabled, update]);
+  }, [isc, enabled, update]);
 
   const handleAddPattern = useCallback(() => {
-    if (!project || !newPattern.trim()) return;
+    if (!isc || !newPattern.trim()) return;
     const pattern = newPattern.trim();
     if (sharedState.includes(pattern)) return;
     update({
-      isc: { ...project.isc, shared_state: [...sharedState, pattern] },
+      isc: { ...isc, shared_state: [...sharedState, pattern] },
     });
     setNewPattern("");
     useProjectStore.getState().debouncedSave();
-  }, [project, newPattern, sharedState, update]);
+  }, [isc, newPattern, sharedState, update]);
 
   const handleRemovePattern = useCallback(
     (pattern: string) => {
-      if (!project) return;
+      if (!isc) return;
       update({
         isc: {
-          ...project.isc,
+          ...isc,
           shared_state: sharedState.filter((p) => p !== pattern),
         },
       });
       useProjectStore.getState().debouncedSave();
     },
-    [project, sharedState, update]
+    [isc, sharedState, update]
   );
 
   const handleAddPeer = useCallback(() => {
-    if (!project || !newPeer.trim()) return;
+    if (!isc || !newPeer.trim()) return;
     const addr = newPeer.trim();
     if (!/^[\w.-]+(:\d{1,5})?$/.test(addr)) return;
     if (manualPeers.includes(addr)) return;
     update({
-      isc: { ...project.isc, peers: [...manualPeers, addr] },
+      isc: { ...isc, peers: [...manualPeers, addr] },
     });
     setNewPeer("");
     useProjectStore.getState().debouncedSave();
-  }, [project, newPeer, manualPeers, update]);
+  }, [isc, newPeer, manualPeers, update]);
 
   const handleRemovePeer = useCallback(
     (addr: string) => {
-      if (!project) return;
+      if (!isc) return;
       update({
         isc: {
-          ...project.isc,
+          ...isc,
           peers: manualPeers.filter((p) => p !== addr),
         },
       });
       useProjectStore.getState().debouncedSave();
     },
-    [project, manualPeers, update]
+    [isc, manualPeers, update]
   );
 
   const handleAddCommand = useCallback(() => {
-    if (!project || !newCommand.trim()) return;
+    if (!isc || !newCommand.trim()) return;
     const pattern = newCommand.trim();
     if (allowedCommands.includes(pattern)) return;
     update({
       isc: {
-        ...project.isc,
+        ...isc,
         allowed_remote_commands: [...allowedCommands, pattern],
       },
     });
     setNewCommand("");
     useProjectStore.getState().debouncedSave();
-  }, [project, newCommand, allowedCommands, update]);
+  }, [isc, newCommand, allowedCommands, update]);
 
   const handleRemoveCommand = useCallback(
     (pattern: string) => {
-      if (!project) return;
+      if (!isc) return;
       update({
         isc: {
-          ...project.isc,
+          ...isc,
           allowed_remote_commands: allowedCommands.filter((p) => p !== pattern),
         },
       });
       useProjectStore.getState().debouncedSave();
     },
-    [project, allowedCommands, update]
+    [isc, allowedCommands, update]
   );
 
   const handleSaveAuthKey = useCallback(() => {
-    if (!project) return;
+    if (!isc) return;
     update({
-      isc: { ...project.isc, auth_key: authKey },
+      isc: { ...isc, auth_key: authKey },
     });
     useProjectStore.getState().debouncedSave();
-  }, [project, authKey, update]);
+  }, [isc, authKey, update]);
 
   const connectedCount = peers.filter((p) => p.connected).length;
   const iscEnabled = liveState["system.isc.enabled"] === true;

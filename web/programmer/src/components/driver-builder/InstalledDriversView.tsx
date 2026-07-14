@@ -52,7 +52,7 @@ export function InstalledDriversView({
   const loadInstalledDrivers = useDriverBuilderStore((s) => s.loadInstalledDrivers);
   const loadDefinitions = useDriverBuilderStore((s) => s.loadDefinitions);
   const uninstallDriver = useDriverBuilderStore((s) => s.uninstallDriver);
-  const project = useProjectStore((s) => s.project);
+  const devices = useProjectStore((s) => s.project?.devices);
   const navigateTo = useNavigationStore((s) => s.navigateTo);
   const selectedId = useDriverBuilderStore((s) => s.installedDriverId);
   const setSelectedId = useDriverBuilderStore((s) => s.setInstalledDriverId);
@@ -99,8 +99,8 @@ export function InstalledDriversView({
   const isBuiltin = selectedDefinition?.source === "builtin"
     || (!selectedInstalled && !!selectedDefinition);
 
-  const devicesUsingDriver = selectedDriver && project
-    ? project.devices.filter((d) => d.driver === selectedDriver.id)
+  const devicesUsingDriver = selectedDriver && devices
+    ? devices.filter((d) => d.driver === selectedDriver.id)
     : [];
 
   const handleOpenInCodeEditor = (driverId: string, filename?: string) => {

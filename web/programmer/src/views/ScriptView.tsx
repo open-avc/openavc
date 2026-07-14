@@ -18,7 +18,7 @@ import { showError, showSuccess } from "../store/toastStore";
 import type { PythonDriverInfo } from "../api/types";
 
 export function ScriptView() {
-  const project = useProjectStore((s) => s.project);
+  const scripts = useProjectStore((s) => s.project?.scripts) ?? [];
   const load = useProjectStore((s) => s.load);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -60,7 +60,6 @@ export function ScriptView() {
   // so its deps can reference them without hitting the temporal dead zone.
   const pendingFocus = useNavigationStore((s) => s.pendingFocus);
 
-  const scripts = project?.scripts ?? [];
   const isDirty = source !== originalSource;
 
   // Warn before closing tab with unsaved changes

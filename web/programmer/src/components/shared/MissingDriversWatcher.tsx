@@ -14,7 +14,7 @@ import { MissingDriversModal } from "./MissingDriversModal";
  * every state-snapshot diff.
  */
 export function MissingDriversWatcher() {
-  const project = useProjectStore((s) => s.project);
+  const devices = useProjectStore((s) => s.project?.devices);
   const revision = useProjectStore((s) => s.revision);
   const liveState = useConnectionStore((s) => s.liveState);
 
@@ -23,7 +23,7 @@ export function MissingDriversWatcher() {
   const [dismissedRevision, setDismissedRevision] = useState<number | null>(null);
 
   // Quick check from local state to avoid an API call when no orphans exist.
-  const orphanCount = project?.devices.reduce((count, dev) => {
+  const orphanCount = devices?.reduce((count, dev) => {
     return count + (liveState[`device.${dev.id}.orphaned`] ? 1 : 0);
   }, 0) ?? 0;
 

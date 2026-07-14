@@ -22,7 +22,9 @@ import type { LibraryProject, ProjectConfig } from "../api/types";
 import { showError, showInfo, showSuccess } from "../store/toastStore";
 
 export function ProjectView() {
-  const project = useProjectStore((s) => s.project);
+  const meta = useProjectStore((s) => s.project?.project);
+  const openavcVersion = useProjectStore((s) => s.project?.openavc_version);
+  const videoPanelEnabled = useProjectStore((s) => s.project?.plugins?.video_panel?.enabled);
   const dirty = useProjectStore((s) => s.dirty);
   const saving = useProjectStore((s) => s.saving);
   const save = useProjectStore((s) => s.save);
@@ -103,6 +105,7 @@ export function ProjectView() {
   // --- Handlers ---
 
   const handleExportCurrent = useCallback(() => {
+    const project = useProjectStore.getState().project;
     if (!project) return;
     const blob = new Blob([JSON.stringify(project, null, 4)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -111,7 +114,7 @@ export function ProjectView() {
     a.download = `${project.project.id}.avc`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [project]);
+  }, []);
 
   const handleImportCurrent = useCallback(() => {
     const input = document.createElement("input");
@@ -269,10 +272,10 @@ export function ProjectView() {
   };
 
   const openSaveAs = () => {
-    if (!project) return;
-    setSaveAsId(project.project.id);
-    setSaveAsName(project.project.name);
-    setSaveAsDesc(project.project.description);
+    if (!meta) return;
+    setSaveAsId(meta.id);
+    setSaveAsName(meta.name);
+    setSaveAsDesc(meta.description);
     setShowSaveAs(true);
   };
 
@@ -322,7 +325,7 @@ export function ProjectView() {
   const fieldStyle: React.CSSProperties = { marginBottom: "var(--space-lg)" };
   const dialogInputStyle: React.CSSProperties = { width: "100%", marginBottom: "var(--space-md)" };
 
-  if (!project) {
+  if (!meta) {
     return (
       <ViewContainer title="Program">
         <p style={{ color: "var(--text-secondary)" }}>Loading project...</p>
@@ -365,7 +368,7 @@ export function ProjectView() {
           <label style={labelStyle}>Project Name</label>
           <input
             style={inputStyle}
-            value={project.project.name}
+            value={meta.name}
             onChange={(e) => updateProject({ name: e.target.value })}
           />
         </div>
@@ -373,28 +376,28 @@ export function ProjectView() {
           <label style={labelStyle}>Description</label>
           <textarea
             style={{ ...inputStyle, minHeight: 80, resize: "vertical" }}
-            value={project.project.description}
+            value={meta.description}
             onChange={(e) => updateProject({ description: e.target.value })}
           />
         </div>
         <div style={fieldStyle}>
           <label style={labelStyle}>Project ID</label>
-          <input style={inputStyle} value={project.project.id} readOnly />
+          <input style={inputStyle} value={meta.id} readOnly />
         </div>
         <div style={fieldStyle}>
           <label style={labelStyle}>Project Format</label>
-          <input style={inputStyle} value={"v" + project.openavc_version} readOnly />
+          <input style={inputStyle} value={"v" + openavcVersion} readOnly />
         </div>
-        {project.project.created && (
+        {meta.created && (
           <div style={fieldStyle}>
             <label style={labelStyle}>Created</label>
-            <input style={inputStyle} value={new Date(project.project.created).toLocaleString()} readOnly />
+            <input style={inputStyle} value={new Date(meta.created).toLocaleString()} readOnly />
           </div>
         )}
-        {project.project.modified && (
+        {meta.modified && (
           <div style={fieldStyle}>
             <label style={labelStyle}>Last Modified</label>
-            <input style={inputStyle} value={new Date(project.project.modified).toLocaleString()} readOnly />
+            <input style={inputStyle} value={new Date(meta.modified).toLocaleString()} readOnly />
           </div>
         )}
 
@@ -590,7 +593,7 @@ export function ProjectView() {
       </div>
 
       {/* Video Streams (only when the Video Panel plugin is enabled for this project) */}
-      {project?.plugins?.video_panel?.enabled && <VideoStreamsSection />}
+      {videoPanelEnabled && <VideoStreamsSection />}
 
       {/* Backups */}
       <div style={{ marginTop: "var(--space-2xl)", maxWidth: 600 }}>

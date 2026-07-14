@@ -133,21 +133,22 @@ export function IrCodesEditor({
   connected: boolean;
   onSaved: () => void;
 }) {
-  const project = useProjectStore((s) => s.project);
-  const deviceConfig = project?.devices.find((d) => d.id === deviceId);
+  const devices = useProjectStore((s) => s.project?.devices);
+  const connections = useProjectStore((s) => s.project?.connections);
+  const deviceConfig = devices?.find((d) => d.id === deviceId);
   const savedConfig = useMemo(
     () => (deviceConfig?.config ?? {}) as Record<string, unknown>,
     [deviceConfig],
   );
 
   // The bound bridge (IR emit + learn go through it). From the connections table.
-  const conn = project?.connections?.[deviceId] as
+  const conn = connections?.[deviceId] as
     | Record<string, unknown>
     | undefined;
   const bridgeId = (conn?.bridge as string) || "";
   const bridgePort = (conn?.bridge_port as string) || "";
   const bridgeName =
-    project?.devices.find((d) => d.id === bridgeId)?.name || bridgeId;
+    devices?.find((d) => d.id === bridgeId)?.name || bridgeId;
   const canBridge = Boolean(bridgeId && bridgePort);
 
   const [rows, setRows] = useState<IrRow[]>([]);

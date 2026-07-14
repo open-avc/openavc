@@ -767,7 +767,7 @@ export function AddDeviceDialog({
   onClose: () => void;
   prefill?: DeviceConfig;
 }) {
-  const project = useProjectStore((s) => s.project);
+  const devices = useProjectStore((s) => s.project?.devices);
   const update = useProjectStore((s) => s.update);
   const save = useProjectStore((s) => s.save);
 
@@ -820,7 +820,7 @@ export function AddDeviceDialog({
       setError("Device ID and driver are required");
       return;
     }
-    if (project?.devices.some((d) => d.id === deviceId)) {
+    if (devices?.some((d) => d.id === deviceId)) {
       setError("A device with this ID already exists");
       return;
     }
@@ -962,7 +962,7 @@ export function AddDeviceDialog({
               }
               setConfigValues(prefilled);
               if (newDriver) {
-                const generated = generateDeviceDefaults(newDriver, project?.devices ?? []);
+                const generated = generateDeviceDefaults(newDriver, devices ?? []);
                 if (!idTouchedByUser) setDeviceId(generated.id);
                 if (!nameTouchedByUser) setDeviceName(generated.name);
               }
@@ -1008,7 +1008,7 @@ export function AddDeviceDialog({
             placeholder="e.g., projector_room_1"
             style={{
               width: "100%",
-              borderColor: deviceId && !isAdding && project?.devices.some((d) => d.id === deviceId)
+              borderColor: deviceId && !isAdding && devices?.some((d) => d.id === deviceId)
                 ? "var(--color-error, #ef4444)" : undefined,
             }}
           />
@@ -1017,7 +1017,7 @@ export function AddDeviceDialog({
             {deviceId && (
               <span style={{ marginLeft: 6 }}>
                 Your ID: <code style={{ fontFamily: "var(--font-mono)", color: "var(--text-primary)" }}>{deviceId}</code>
-                {!isAdding && project?.devices.some((d) => d.id === deviceId) && (
+                {!isAdding && devices?.some((d) => d.id === deviceId) && (
                   <span style={{ color: "var(--color-error, #ef4444)", marginLeft: 6 }}>Already exists</span>
                 )}
               </span>
@@ -1067,7 +1067,7 @@ export function AddDeviceDialog({
                 driverInfo={driverInfo}
                 configValues={configValues}
                 setConfigValues={setConfigValues}
-                devices={project?.devices ?? []}
+                devices={devices ?? []}
                 drivers={drivers}
                 selfId={deviceId || undefined}
               />
@@ -1121,7 +1121,7 @@ export function AddDeviceDialog({
         <DeviceSettingsSetupDialog
           deviceId={setupDeviceId}
           driverInfo={driverInfo}
-          existingDeviceIds={(project?.devices ?? []).map((d) => d.id)}
+          existingDeviceIds={(devices ?? []).map((d) => d.id)}
           onClose={onClose}
         />
       )}
@@ -1140,7 +1140,7 @@ export function EditDeviceDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const project = useProjectStore((s) => s.project);
+  const devices = useProjectStore((s) => s.project?.devices);
   const [drivers, setDrivers] = useState<DriverInfo[]>([]);
   const [deviceName, setDeviceName] = useState(device.name);
   const [selectedDriver, setSelectedDriver] = useState(device.driver);
@@ -1378,7 +1378,7 @@ export function EditDeviceDialog({
                 driverInfo={driverInfo}
                 configValues={configValues}
                 setConfigValues={setConfigValues}
-                devices={project?.devices ?? []}
+                devices={devices ?? []}
                 drivers={drivers}
                 selfId={device.id}
               />

@@ -460,7 +460,12 @@ function PanelAccessCard({ systemStatus, tlsStatus, roomName }: { systemStatus: 
 }
 
 export function DashboardView() {
-  const project = useProjectStore((s) => s.project);
+  const projectName = useProjectStore((s) => s.project?.project?.name);
+  const devices = useProjectStore((s) => s.project?.devices);
+  const macros = useProjectStore((s) => s.project?.macros);
+  const scripts = useProjectStore((s) => s.project?.scripts);
+  const variables = useProjectStore((s) => s.project?.variables);
+  const isc = useProjectStore((s) => s.project?.isc);
   const liveState = useConnectionStore((s) => s.liveState);
   const [cloudStatus, setCloudStatus] = useState<CloudStatus | null>(null);
   const [systemStatus, setSystemStatus] = useState<Record<string, unknown> | null>(null);
@@ -480,11 +485,10 @@ export function DashboardView() {
     return () => clearInterval(interval);
   }, []);
 
-  if (!project) {
+  if (!devices || !macros || !scripts || !variables) {
     return <ViewContainer title="Dashboard"><p style={{ color: "var(--text-muted)" }}>Loading...</p></ViewContainer>;
   }
 
-  const devices = project.devices;
   const connectedCount = devices.filter(d => {
     if (d.enabled === false) return false;
     return liveState[`device.${d.id}.connected`] === true;
@@ -492,8 +496,8 @@ export function DashboardView() {
   const enabledCount = devices.filter(d => d.enabled !== false).length;
   const disconnectedCount = enabledCount - connectedCount;
 
-  const triggerCount = project.macros.reduce((sum, m) => sum + (m.triggers?.filter(t => t.enabled !== false).length ?? 0), 0);
-  const scriptCount = project.scripts.filter(s => s.enabled).length;
+  const triggerCount = macros.reduce((sum, m) => sum + (m.triggers?.filter(t => t.enabled !== false).length ?? 0), 0);
+  const scriptCount = scripts.filter(s => s.enabled).length;
 
   const isCloudConnected = cloudStatus?.connected === true;
   const isCloudEnabled = cloudStatus?.enabled === true;
@@ -509,11 +513,11 @@ export function DashboardView() {
     return `${h}h ${mn}m`;
   };
 
-  const iscEnabled = project.isc?.enabled === true;
-  const iscPeerCount = (project.isc?.peers as unknown[])?.length ?? 0;
-  const iscPatternCount = (project.isc?.shared_state as unknown[])?.length ?? 0;
+  const iscEnabled = isc?.enabled === true;
+  const iscPeerCount = (isc?.peers as unknown[])?.length ?? 0;
+  const iscPatternCount = (isc?.shared_state as unknown[])?.length ?? 0;
 
-  const activeTriggers = project.macros.flatMap(m =>
+  const activeTriggers = macros.flatMap(m =>
     (m.triggers ?? []).filter(t => t.enabled !== false).map(t => ({
       macroName: String(m.name),
       triggerType: String(t.type),
@@ -527,7 +531,7 @@ export function DashboardView() {
     }))
   );
 
-  const trackedVars = project.variables.filter(v => v.dashboard);
+  const trackedVars = variables.filter(v => v.dashboard);
 
   // Snapshot of recent log entries (non-reactive to avoid rapid re-renders)
   const logEntries = useLogStore.getState().logEntries;
@@ -565,7 +569,7 @@ export function DashboardView() {
           {/* Top bar */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "var(--space-lg)" }}>
             <div>
-              <div style={{ fontSize: "var(--font-size-lg)", fontWeight: 600 }}>{String(project.project.name)}</div>
+              <div style={{ fontSize: "var(--font-size-lg)", fontWeight: 600 }}>{String(projectName)}</div>
               <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
                 {"OpenAVC v" + String(systemStatus?.version ?? "")}
               </div>
@@ -642,7 +646,7 @@ export function DashboardView() {
           )}
 
           {/* Getting Started — shown when project is empty */}
-          {devices.length === 0 && project.macros.length === 0 && (
+          {devices.length === 0 && macros.length === 0 && (
             <div style={{ ...cardStyle, marginBottom: "var(--space-xl)", borderColor: "var(--accent-bg)", background: "var(--color-info-bg)" }}>
               <div style={{ fontSize: "var(--font-size-md)", fontWeight: 600, marginBottom: "var(--space-md)" }}>
                 Getting Started
@@ -792,7 +796,7 @@ export function DashboardView() {
         {/* Right sidebar */}
         <div>
           {/* Panel Access */}
-          <PanelAccessCard systemStatus={systemStatus} tlsStatus={tlsStatus} roomName={String(project.project.name ?? "")} />
+          <PanelAccessCard systemStatus={systemStatus} tlsStatus={tlsStatus} roomName={String(projectName ?? "")} />
 
           {/* Tracked Variables */}
           {trackedVars.length > 0 && (

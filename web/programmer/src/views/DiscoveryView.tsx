@@ -1132,7 +1132,7 @@ function DriverAddRow({
   const [showSetup, setShowSetup] = useState(false);
   const [driverInfoForSetup, setDriverInfoForSetup] = useState<DriverInfo | null>(null);
   const [addedDeviceId, setAddedDeviceId] = useState<string | null>(null);
-  const project = useProjectStore((s) => s.project);
+  const devices = useProjectStore((s) => s.project?.devices);
 
   const handleAdd = async () => {
     setError(null);
@@ -1261,7 +1261,7 @@ function DriverAddRow({
         <DeviceSettingsSetupDialog
           deviceId={addedDeviceId}
           driverInfo={driverInfoForSetup}
-          existingDeviceIds={(project?.devices ?? []).map((d) => d.id)}
+          existingDeviceIds={(devices ?? []).map((d) => d.id)}
           onClose={() => {
             setDriverInfoForSetup(null);
             onDeviceAdded({ name: driverName, deviceId: addedDeviceId });

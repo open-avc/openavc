@@ -33,7 +33,8 @@ export function FeedbackBindingEditor({
   showConditionalLabel = false,
   showImageField = false,
 }: FeedbackBindingEditorProps) {
-  const project = useProjectStore((s) => s.project);
+  const projectVariables = useProjectStore((s) => s.project?.variables);
+  const projectDevices = useProjectStore((s) => s.project?.devices);
 
   const current = value || {
     source: "state",
@@ -64,8 +65,8 @@ export function FeedbackBindingEditor({
 
   // ──── Two-Level State Key Picker ────
 
-  const variables = project?.variables ?? [];
-  const devices = project?.devices ?? [];
+  const variables = projectVariables ?? [];
+  const devices = projectDevices ?? [];
 
   // Build categories
   const categories = useMemo(() => {
@@ -125,7 +126,7 @@ export function FeedbackBindingEditor({
     // stateVersion drives recomputation when a new state batch arrives (liveState
     // is re-read from getState() on the triggered re-render).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [variables, devices, liveState, stateVersion]);
+  }, [projectVariables, projectDevices, liveState, stateVersion]);
 
   // Determine selected category from current key
   const derivedCategory = useMemo(() => {

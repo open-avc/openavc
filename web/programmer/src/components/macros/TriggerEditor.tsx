@@ -500,9 +500,8 @@ function EventEditor({
   trigger: TriggerConfig;
   onChange: (patch: Partial<TriggerConfig>) => void;
 }) {
-  const project = useProjectStore((s) => s.project);
-  const devices = project?.devices ?? [];
-  const macros = project?.macros ?? [];
+  const devices = useProjectStore((s) => s.project?.devices) ?? [];
+  const macros = useProjectStore((s) => s.project?.macros) ?? [];
 
   // Open in the category that lists the saved event, so editing an existing
   // trigger shows the right dropdown instead of defaulting to Device Events.
@@ -519,7 +518,7 @@ function EventEditor({
     .filter((c) => c.label !== "Custom")
     .flatMap((c) => c.options(devices, macros));
   // Also add script events from configured scripts
-  const scripts = project?.scripts ?? [];
+  const scripts = useProjectStore((s) => s.project?.scripts) ?? [];
   for (const s of scripts) {
     allSuggestions.push({ label: `Script: ${s.id}`, pattern: `script.${s.id}` });
   }

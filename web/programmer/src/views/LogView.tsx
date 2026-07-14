@@ -97,8 +97,8 @@ function SystemLogTab() {
   const setPaused = useLogStore((s) => s.setLogPaused);
   const clearEntries = useLogStore((s) => s.clearLogEntries);
 
-  const project = useProjectStore((s) => s.project);
-  const deviceIds = project?.devices.map(d => d.id) ?? [];
+  const devices = useProjectStore((s) => s.project?.devices);
+  const deviceIds = devices?.map(d => d.id) ?? [];
 
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [levelFilter, setLevelFilter] = useState("all");
@@ -267,8 +267,8 @@ function StateChangeTab() {
   const nextIdRef = useRef(1);
   const listRef = useRef<HTMLDivElement>(null);
 
-  const project = useProjectStore((s) => s.project);
-  const deviceIds = project?.devices.map(d => d.id) ?? [];
+  const devices = useProjectStore((s) => s.project?.devices);
+  const deviceIds = devices?.map(d => d.id) ?? [];
 
   // Load history on mount
   useEffect(() => {

@@ -29,8 +29,7 @@ export function MacroRefPicker({
   onChange: (v: string) => void;
   style?: React.CSSProperties;
 }) {
-  const project = useProjectStore((s) => s.project);
-  const macros = project?.macros ?? [];
+  const macros = useProjectStore((s) => s.project?.macros) ?? [];
   return (
     <select value={value} onChange={(e) => onChange(e.target.value)} style={style ?? selectStyle}>
       <option value="">Select macro...</option>
@@ -50,8 +49,7 @@ export function DeviceRefPicker({
   onChange: (v: string) => void;
   style?: React.CSSProperties;
 }) {
-  const project = useProjectStore((s) => s.project);
-  const devices = project?.devices ?? [];
+  const devices = useProjectStore((s) => s.project?.devices) ?? [];
   return (
     <select value={value} onChange={(e) => onChange(e.target.value)} style={style ?? selectStyle}>
       <option value="">Select device...</option>

@@ -11,7 +11,6 @@ import type { MacroConfig } from "../api/types";
 import { showError, showInfo } from "../store/toastStore";
 
 export function MacroView() {
-  const project = useProjectStore((s) => s.project);
   const update = useProjectStore((s) => s.update);
   const updateWithUndo = useProjectStore((s) => s.updateWithUndo);
 
@@ -24,12 +23,12 @@ export function MacroView() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [scriptPreview, setScriptPreview] = useState<{ source: string; scriptId: string; fileName: string; warnings: string[] } | null>(null);
 
-  const macros = project?.macros ?? [];
-  const devices = project?.devices ?? [];
+  const macros = useProjectStore((s) => s.project?.macros) ?? [];
+  const devices = useProjectStore((s) => s.project?.devices) ?? [];
   const selectedMacro = macros.find((m) => m.id === selectedId) ?? null;
 
   const handleAdd = useCallback(() => {
-    if (!project) return;
+    if (!useProjectStore.getState().project) return;
     const id = generateId("macro");
     const newMacro: MacroConfig = {
       id,
@@ -40,7 +39,7 @@ export function MacroView() {
     setSelectedId(id);
     // Auto-save
     useProjectStore.getState().debouncedSave();
-  }, [project, macros, update]);
+  }, [macros, update]);
 
   const handleDelete = useCallback(
     (id: string) => {
@@ -73,13 +72,14 @@ export function MacroView() {
 
   // Show preview before converting (9.6)
   const handleConvertToScript = useCallback(() => {
+    const project = useProjectStore.getState().project;
     if (!selectedMacro || !project) return;
     const source = macroToScript(selectedMacro, project.device_groups);
     const warnings = getConversionWarnings(selectedMacro, project.device_groups);
     const scriptId = selectedMacro.id.replace(/^macro_/, "script_");
     const fileName = `${scriptId}.py`;
     setScriptPreview({ source, scriptId, fileName, warnings });
-  }, [selectedMacro, project]);
+  }, [selectedMacro]);
 
   const handleConfirmConvert = useCallback(async () => {
     if (!scriptPreview || !selectedMacro) return;

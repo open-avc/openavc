@@ -5,12 +5,13 @@ import { useProjectStore } from "../../store/projectStore";
 import type { DeviceGroup } from "../../api/types";
 
 export function DeviceGroupsPanel() {
-  const project = useProjectStore((s) => s.project);
+  const deviceGroups = useProjectStore((s) => s.project?.device_groups);
+  const projectDevices = useProjectStore((s) => s.project?.devices);
   const update = useProjectStore((s) => s.update);
   const updateWithUndo = useProjectStore((s) => s.updateWithUndo);
 
-  const groups = project?.device_groups ?? [];
-  const devices = project?.devices ?? [];
+  const groups = deviceGroups ?? [];
+  const devices = projectDevices ?? [];
 
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);

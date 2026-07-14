@@ -70,7 +70,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate }: CanvasToolb
   const pushUndo = useUIBuilderStore((s) => s.pushUndo);
   const touchMutation = useUIBuilderStore((s) => s.touchMutation);
 
-  const project = useProjectStore((s) => s.project);
+  const ui = useProjectStore((s) => s.project?.ui);
   const update = useProjectStore((s) => s.update);
   const dirty = useProjectStore((s) => s.dirty);
   const saving = useProjectStore((s) => s.saving);
@@ -111,7 +111,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate }: CanvasToolb
     return () => document.removeEventListener("mousedown", handler);
   }, [showAddMenu]);
 
-  const pageGroups: PageGroup[] = project?.ui?.page_groups || [];
+  const pageGroups: PageGroup[] = ui?.page_groups || [];
 
   // Build organized page list: grouped pages followed by ungrouped pages
   const organizedPages = useMemo(() => {
@@ -131,24 +131,24 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate }: CanvasToolb
 
   const applyPageMutation = useCallback(
     (mutate: (pages: UIPage[]) => UIPage[], description: string) => {
-      if (!project) return;
-      pushUndo({ pages: project.ui.pages }, description);
-      const newPages = mutate(project.ui.pages);
-      update({ ui: { ...project.ui, pages: newPages } });
+      if (!ui) return;
+      pushUndo({ pages: ui.pages }, description);
+      const newPages = mutate(ui.pages);
+      update({ ui: { ...ui, pages: newPages } });
       touchMutation();
     },
-    [project, pushUndo, update, touchMutation],
+    [ui, pushUndo, update, touchMutation],
   );
 
   const applyGroupMutation = useCallback(
     (mutate: (groups: PageGroup[]) => PageGroup[], description: string) => {
-      if (!project) return;
-      pushUndo({ page_groups: project.ui.page_groups || [] }, description);
-      const newGroups = mutate(project.ui.page_groups || []);
-      update({ ui: { ...project.ui, page_groups: newGroups } });
+      if (!ui) return;
+      pushUndo({ page_groups: ui.page_groups || [] }, description);
+      const newGroups = mutate(ui.page_groups || []);
+      update({ ui: { ...ui, page_groups: newGroups } });
       touchMutation();
     },
-    [project, pushUndo, update, touchMutation],
+    [ui, pushUndo, update, touchMutation],
   );
 
   const handleAddGroup = (name: string) => {
@@ -176,8 +176,8 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate }: CanvasToolb
   };
 
   const handleAddPage = (pageType: "page" | "overlay" | "sidebar" = "page") => {
-    if (!project) return;
-    const newPages = addPage(project.ui.pages, pageType);
+    if (!ui) return;
+    const newPages = addPage(ui.pages, pageType);
     const newPageId = newPages[newPages.length - 1].id;
     applyPageMutation(() => newPages, `Add ${pageType}`);
     selectPage(newPageId);
@@ -185,11 +185,11 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate }: CanvasToolb
   };
 
   const handleDuplicatePage = (pageId: string) => {
-    if (!project) return;
-    const idx = project.ui.pages.findIndex((p) => p.id === pageId);
+    if (!ui) return;
+    const idx = ui.pages.findIndex((p) => p.id === pageId);
     // Master ids share the ui.<id> namespace with page element ids
-    const masterIds = (project.ui.master_elements || []).map((m) => m.id);
-    const newPages = duplicatePage(project.ui.pages, pageId, masterIds);
+    const masterIds = (ui.master_elements || []).map((m) => m.id);
+    const newPages = duplicatePage(ui.pages, pageId, masterIds);
     const newPageId = newPages[idx + 1]?.id;
     applyPageMutation(() => newPages, "Duplicate page");
     if (newPageId) selectPage(newPageId);
@@ -197,39 +197,39 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate }: CanvasToolb
 
   const handleDeletePage = (pageId: string) => {
     if (pages.length <= 1) return;
-    if (!project) return;
+    if (!ui) return;
     setPendingDeletePageId(pageId);
   };
 
   const confirmDeletePage = () => {
-    if (!pendingDeletePageId || !project) { setPendingDeletePageId(null); return; }
+    if (!pendingDeletePageId || !ui) { setPendingDeletePageId(null); return; }
     const pageId = pendingDeletePageId;
     const pageName = pages.find(p => p.id === pageId)?.name || pageId;
     const nextPageId = pages.find((p) => p.id !== pageId)?.id;
-    const idleClobbered = project.ui.settings?.idle_page === pageId;
+    const idleClobbered = ui.settings?.idle_page === pageId;
 
     // Single references for the scrub inputs — the changed-only snapshot
     // below relies on identity, and a fresh `|| []` per comparison would
     // never match what the scrub returned.
-    const masterElements = project.ui.master_elements || [];
-    const projectMacros = project.macros || [];
+    const masterElements = ui.master_elements || [];
+    const projectMacros = useProjectStore.getState().project?.macros || [];
     const result = removePageAndScrubRefs(
-      project.ui.pages,
+      ui.pages,
       pageId,
       masterElements,
       projectMacros,
     );
-    const snapshot: Record<string, unknown> = { pages: project.ui.pages };
-    if (idleClobbered) snapshot.settings = project.ui.settings;
+    const snapshot: Record<string, unknown> = { pages: ui.pages };
+    if (idleClobbered) snapshot.settings = ui.settings;
     if (result.masterElements !== masterElements) snapshot.master_elements = masterElements;
     if (result.macros !== projectMacros) snapshot.macros = projectMacros;
     pushUndo(snapshot, `Delete page "${pageName}"`);
 
     const settings = idleClobbered
-      ? { ...project.ui.settings, idle_page: result.pages[0]?.id || "" }
-      : project.ui.settings;
+      ? { ...ui.settings, idle_page: result.pages[0]?.id || "" }
+      : ui.settings;
     update({
-      ui: { ...project.ui, pages: result.pages, master_elements: result.masterElements, settings },
+      ui: { ...ui, pages: result.pages, master_elements: result.masterElements, settings },
       macros: result.macros,
     });
     touchMutation();
@@ -255,8 +255,8 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate }: CanvasToolb
   };
 
   const handleAlign = (action: AlignAction) => {
-    if (selectedElementIds.length === 0 || !selectedPageId || !project) return;
-    const page = project.ui.pages.find((p) => p.id === selectedPageId);
+    if (selectedElementIds.length === 0 || !selectedPageId || !ui) return;
+    const page = ui.pages.find((p) => p.id === selectedPageId);
     if (!page) return;
     applyPageMutation(
       (p) => alignElements(p, selectedPageId!, selectedElementIds, action, page.grid),
@@ -265,8 +265,8 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate }: CanvasToolb
   };
 
   const handleDistribute = (direction: "horizontal" | "vertical") => {
-    if (selectedElementIds.length < 3 || !selectedPageId || !project) return;
-    const page = project.ui.pages.find((p) => p.id === selectedPageId);
+    if (selectedElementIds.length < 3 || !selectedPageId || !ui) return;
+    const page = ui.pages.find((p) => p.id === selectedPageId);
     if (!page) return;
     const elements = selectedElementIds
       .map((eid) => page.elements.find((el) => el.id === eid))
@@ -778,10 +778,10 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate }: CanvasToolb
       {/* Grid configuration quick-access (11.2) */}
       {!previewMode && showGrid && (() => {
         const currentPage = pages.find((p) => p.id === selectedPageId);
-        if (!currentPage || !project) return null;
+        if (!currentPage || !ui) return null;
         const handleGridChange = (patch: Record<string, number>) => {
           const sizeChanged = "columns" in patch || "rows" in patch;
-          const updatedPages = project.ui.pages.map((p) => {
+          const updatedPages = ui.pages.map((p) => {
             if (p.id !== currentPage.id) return p;
             const grid = { ...p.grid, ...(sizeChanged ? patch : {}) };
             return {
@@ -797,10 +797,10 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate }: CanvasToolb
             };
           });
           if (!gridUndoPushed.current) {
-            pushUndo({ pages: project.ui.pages }, "Edit grid");
+            pushUndo({ pages: ui.pages }, "Edit grid");
             gridUndoPushed.current = true;
           }
-          update({ ui: { ...project.ui, pages: updatedPages } });
+          update({ ui: { ...ui, pages: updatedPages } });
           touchMutation();
           clearTimeout(gridUndoTimer.current);
           gridUndoTimer.current = setTimeout(() => {

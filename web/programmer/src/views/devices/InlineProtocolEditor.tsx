@@ -241,8 +241,8 @@ export function InlineProtocolEditor({
   connected: boolean;
   onSaved: () => void;
 }) {
-  const project = useProjectStore((s) => s.project);
-  const deviceConfig = project?.devices.find((d) => d.id === deviceId);
+  const devices = useProjectStore((s) => s.project?.devices);
+  const deviceConfig = devices?.find((d) => d.id === deviceId);
   const savedConfig = useMemo(
     () => (deviceConfig?.config ?? {}) as Record<string, unknown>,
     [deviceConfig]

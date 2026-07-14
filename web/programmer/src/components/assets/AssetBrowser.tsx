@@ -69,11 +69,11 @@ export function AssetBrowser({
 
   // Track which image assets are referenced by UI elements so we can flag unused ones.
   // Audio reference tracking (macros, scripts) lands in later phases of the audio player plan.
-  const project = useProjectStore((s) => s.project);
+  const pages = useProjectStore((s) => s.project?.ui.pages);
   const usedImageAssets = useMemo(() => {
     const used = new Set<string>();
-    if (!project) return used;
-    for (const page of project.ui.pages) {
+    if (!pages) return used;
+    for (const page of pages) {
       for (const el of page.elements) {
         if (el.src?.startsWith("assets://")) used.add(el.src.replace("assets://", ""));
         if (el.button_image?.startsWith("assets://")) used.add(el.button_image.replace("assets://", ""));
@@ -92,7 +92,7 @@ export function AssetBrowser({
       }
     }
     return used;
-  }, [project]);
+  }, [pages]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);

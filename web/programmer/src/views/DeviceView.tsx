@@ -19,7 +19,9 @@ import { computeStatusCounts } from "./deviceViewHelpers";
 type DeviceSubTab = "devices" | "groups" | "discovery" | "drivers";
 
 export function DeviceView() {
-  const project = useProjectStore((s) => s.project);
+  const devices = useProjectStore((s) => s.project?.devices);
+  const projectConnections = useProjectStore((s) => s.project?.connections);
+  const projectDeviceGroups = useProjectStore((s) => s.project?.device_groups);
   const update = useProjectStore((s) => s.update);
   const reloadProject = useProjectStore((s) => s.load);
 
@@ -65,14 +67,14 @@ export function DeviceView() {
   }, []);
 
   const stateVersion = useConnectionStore((s) => s.stateVersion);
-  const deviceConfigs = project?.devices ?? [];
+  const deviceConfigs = devices ?? [];
 
   // Bridge topology: each bridge device, its advertised ports, and which
   // devices are bound to each port (from the connections table). Drives the
   // read-only tree panel in the device list column.
   const bridges = useMemo(() => {
     const byId = new Map(drivers.map((d) => [d.id, d]));
-    const conns = project?.connections ?? {};
+    const conns = projectConnections ?? {};
     return deviceConfigs
       .map((dev) => ({ dev, ports: byId.get(dev.driver)?.bridge?.ports ?? [] }))
       .filter((b) => b.ports.length > 0)
@@ -86,12 +88,12 @@ export function DeviceView() {
           }),
         })),
       }));
-  }, [deviceConfigs, drivers, project?.connections]);
+  }, [devices, drivers, projectConnections]);
 
-  const deviceGroups = project?.device_groups ?? [];
+  const deviceGroups = projectDeviceGroups ?? [];
 
   // Filter and group devices (memoized)
-  const connections = project?.connections ?? {};
+  const connections = projectConnections ?? {};
   const { filteredDevices, grouped, sortedGroups, hasGroups, statusCounts, deviceGroupNames } = useMemo(() => {
     const q = search.toLowerCase();
     const filtered = deviceConfigs.filter(
@@ -166,7 +168,7 @@ export function DeviceView() {
       deviceGroupNames: deviceToAllGroups,
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deviceConfigs, deviceGroups, search, connections, statusFilter, stateVersion]);
+  }, [devices, projectDeviceGroups, search, projectConnections, statusFilter, stateVersion]);
 
   const handleDeviceDeleted = useCallback(
     (deletedId: string) => {
@@ -181,6 +183,7 @@ export function DeviceView() {
   }, [reloadProject]);
 
   const handleBulkDelete = useCallback(() => {
+    const project = useProjectStore.getState().project;
     if (!project || selectedIds.size === 0) return;
     const allRefs: string[] = [];
     for (const id of selectedIds) {
@@ -197,7 +200,7 @@ export function DeviceView() {
       </>
     );
     setBulkDeleteConfirm({ message });
-  }, [project, selectedIds]);
+  }, [selectedIds]);
 
   const doBulkDelete = useCallback(async () => {
     setBulkDeleteConfirm(null);
@@ -216,8 +219,8 @@ export function DeviceView() {
 
   const handleBulkToggle = useCallback(
     async (enabled: boolean) => {
-      if (!project || selectedIds.size === 0) return;
-      const updatedDevices = project.devices.map((d) =>
+      if (!devices || selectedIds.size === 0) return;
+      const updatedDevices = devices.map((d) =>
         selectedIds.has(d.id) ? { ...d, enabled } : d
       );
       update({ devices: updatedDevices });
@@ -225,7 +228,7 @@ export function DeviceView() {
       setSelectedIds(new Set());
       setBulkMode(false);
     },
-    [project, selectedIds, update]
+    [devices, selectedIds, update]
   );
 
   const toggleSelection = useCallback(
