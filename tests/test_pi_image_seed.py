@@ -27,7 +27,25 @@ STAGE_DIR = REPO_ROOT / "installer" / "pi-image" / "stage-openavc"
 RUN_SH = STAGE_DIR / "01-install-openavc" / "00-run.sh"
 CHROOT_SH = STAGE_DIR / "02-configure" / "00-run-chroot.sh"
 STREAMDECK_RULES = STAGE_DIR / "01-install-openavc" / "files" / "99-streamdeck.rules"
+INFO_SH = STAGE_DIR / "01-install-openavc" / "files" / "openavc-info.sh"
 GITIGNORE = REPO_ROOT / ".gitignore"
+
+
+def _render_info_box(*lines: str) -> list[str]:
+    """Source openavc-info.sh and render its boot banner for the given body
+    lines, returning the rendered (non-blank) output lines. Skips if bash is
+    unavailable (the script only ever runs on the Linux Pi image)."""
+    if shutil.which("bash") is None:
+        pytest.skip("bash not installed")
+    body = " ".join(f"'{line}'" for line in lines)
+    proc = subprocess.run(
+        ["bash", "-c", f"source '{INFO_SH}'; render_box 'OpenAVC Room Control' {body}"],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert proc.returncode == 0, f"render_box failed: {proc.stderr}"
+    return [ln for ln in proc.stdout.splitlines() if ln.strip()]
 
 CANONICAL_SEED = "installer/seed/default/project.avc"
 STAGED_SEED = "installer/pi-image/stage-openavc/01-install-openavc/files/project.avc"
@@ -142,3 +160,38 @@ def test_streamdeck_group_membership_is_granted():
         "00-run-chroot.sh does not add the openavc user to plugdev, so the "
         "group-scoped Stream Deck rule would deny the service access"
     )
+
+
+def test_boot_banner_lines_align():
+    """The HDMI boot banner must render with every border aligned, whatever
+    the IP/URL/hostname length. The old fixed-width version overflowed for a
+    normal IP (the Programmer URL line alone was 51 chars in a 50-wide box)."""
+    # A realistic case whose Programmer URL exceeded the old fixed box width.
+    ip = "192.168.100.200"
+    url = f"http://{ip}:8443"
+    lines = _render_info_box(
+        f"  IP Address:   {ip}",
+        "",
+        f"  Programmer:   {url}/programmer",
+        f"  Panel:        {url}/panel",
+        "  mDNS:         http://openavc.local:8443",
+    )
+    assert lines, "boot banner rendered no output"
+    widths = {len(ln) for ln in lines}
+    assert len(widths) == 1, (
+        f"boot banner borders do not line up — distinct widths {sorted(widths)}:\n"
+        + "\n".join(lines)
+    )
+
+
+def test_boot_banner_has_no_fixed_pad_arithmetic():
+    """Guard against reintroducing the fragile fixed-width padding constants
+    (e.g. `$((27 - ${#URL} - 11))`) that produced negative widths and
+    misaligned borders. Padding must derive from the content, not magic
+    numbers."""
+    text = INFO_SH.read_text(encoding="utf-8")
+    assert "27 - ${#" not in text and "18 - ${#" not in text, (
+        "openavc-info.sh reintroduced hardcoded pad arithmetic — size the box "
+        "to its content instead"
+    )
+    assert "render_box" in text, "openavc-info.sh lost its content-sized box renderer"
