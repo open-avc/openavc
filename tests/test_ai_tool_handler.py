@@ -161,6 +161,27 @@ async def test_execute_macro(handler, mock_agent):
     assert payload["success"] is True
 
 
+@pytest.mark.asyncio
+async def test_execute_macro_rate_limited(handler, mock_agent):
+    """The AI execute_macro tool debounces rapid re-firing of the same macro,
+    matching the REST /macros/{id}/execute guard and sharing its window."""
+    mock_engine = MagicMock()
+    mock_engine.macros = MagicMock()
+    mock_engine.macros.execute = AsyncMock()
+
+    with patch("server.cloud.ai_tool_handler.AIToolHandler._get_engine", return_value=mock_engine):
+        await _handle_and_wait(handler, _make_tool_call_msg(
+            "execute_macro", {"macro_id": "rl_all_off"}, request_id="req-1"))
+        await _handle_and_wait(handler, _make_tool_call_msg(
+            "execute_macro", {"macro_id": "rl_all_off"}, request_id="req-2"))
+
+    # The macro ran once; the throttled second call never reached the engine.
+    mock_engine.macros.execute.assert_called_once_with("rl_all_off")
+    payload = mock_agent.send_message.call_args[0][1]
+    assert payload["success"] is False
+    assert "Too many requests" in payload["error"]
+
+
 # --- Error handling ---
 
 

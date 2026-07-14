@@ -232,6 +232,9 @@ class MacroToolsMixin:
 
     async def _execute_macro(self, input: dict) -> Any:
         macro_id = input.get("macro_id", "")
+        from server.api._engine import _test_call_retry_after
+        if _test_call_retry_after(f"macro_execute:{macro_id}") > 0:
+            return {"error": "Too many requests — wait a moment before running the same macro again."}
         engine = self._get_engine()
         if engine and engine.macros:
             try:
@@ -267,6 +270,9 @@ class MacroToolsMixin:
 
     async def _test_trigger(self, input: dict) -> Any:
         trigger_id = input.get("trigger_id", "")
+        from server.api._engine import _test_call_retry_after
+        if _test_call_retry_after(f"test_trigger:{trigger_id}") > 0:
+            return {"error": "Too many requests — wait a moment before testing the same trigger again."}
         engine = self._get_engine()
         if engine and engine.triggers:
             ok = await engine.triggers.test_trigger(trigger_id)

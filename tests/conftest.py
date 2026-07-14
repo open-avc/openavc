@@ -83,6 +83,12 @@ def _reset_rate_limit_buckets():
     from server.middleware.rate_limit import _ip_buckets, _warn_dedup
     _ip_buckets.clear()
     _warn_dedup.clear()
+    # Also clear the per-key macro/trigger "fire now" debounce (a separate
+    # module-level window in api/_engine). Two tests firing the same macro or
+    # trigger id within 2s would otherwise spill a 429 / throttle-error into
+    # the second one.
+    from server.api._engine import _test_endpoint_last_call
+    _test_endpoint_last_call.clear()
     yield
 
 

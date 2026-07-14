@@ -16,6 +16,10 @@ router = APIRouter()
 @router.post("/macros/{macro_id}/execute")
 async def execute_macro(macro_id: str) -> dict[str, Any]:
     """Execute a macro by ID."""
+    # Same runaway guard as /triggers/{id}/test: the only callers are the
+    # IDE's manual "run this macro" buttons, so debounce rapid re-firing of
+    # the same macro (runtime automation never uses this endpoint).
+    _rate_limit_test(f"macro_execute:{macro_id}")
     engine = _get_engine()
     try:
         await engine.macros.execute(macro_id)

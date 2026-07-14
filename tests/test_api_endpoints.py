@@ -377,6 +377,21 @@ def test_execute_macro_success(client):
     assert resp.json()["status"] == "executed"
 
 
+def test_execute_macro_is_rate_limited(client):
+    """Rapid re-fire of the same macro is debounced, matching the guard on
+    /triggers/{id}/test — the callers are the IDE's manual run buttons."""
+    c, engine = client
+    engine.macros.load_macros([{
+        "id": "rl_macro",
+        "name": "RL",
+        "steps": [{"action": "state.set", "key": "var.flag", "value": True}],
+    }])
+    first = c.post("/api/macros/rl_macro/execute")
+    assert first.status_code == 200
+    second = c.post("/api/macros/rl_macro/execute")
+    assert second.status_code == 429
+
+
 # ── Trigger endpoints ──
 
 
