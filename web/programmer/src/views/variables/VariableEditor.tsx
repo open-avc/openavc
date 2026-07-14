@@ -287,18 +287,28 @@ export function VariablesSubTab() {
 
     const newMacros = project.macros.map((m) => {
       const [steps, changed] = renameInSteps(m.steps);
+      let triggersChanged = false;
       const triggers = (m.triggers ?? []).map((t) => {
-        let tc = false;
         const patched = { ...t };
+        let tc = false;
         if (t.state_key === oldKey) { patched.state_key = newKey; tc = true; }
+        let condChanged = false;
         const conditions = (t.conditions ?? []).map((c) => {
-          if (c.key === oldKey) { tc = true; return { ...c, key: newKey }; }
+          if (c.key === oldKey) { condChanged = true; return { ...c, key: newKey }; }
           return c;
         });
-        if (tc) patched.conditions = conditions;
-        return tc ? patched : t;
+        if (condChanged) { patched.conditions = conditions; tc = true; }
+        if (!tc) return t;
+        triggersChanged = true;
+        return patched;
       });
-      return changed || triggers !== m.triggers ? { ...m, steps, triggers } : m;
+      // Only rebuild what actually changed — an untouched macro keeps its
+      // object identity, and one without triggers never gains triggers: [].
+      if (!changed && !triggersChanged) return m;
+      const next = { ...m };
+      if (changed) next.steps = steps;
+      if (triggersChanged) next.triggers = triggers;
+      return next;
     });
     const newPages = project.ui.pages.map((page) => ({
       ...page,
