@@ -75,7 +75,10 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       const raw = await api.getProject();
       const etag = (raw as any)._etag ?? null;
       delete (raw as any)._etag;
-      const revision = etag ? parseInt(etag.replace(/"/g, ""), 10) || null : null;
+      // Revision 0 is valid (engine boots at 0 before the first save) — guard
+      // with isNaN rather than `|| null`, which would collapse 0 to null.
+      const parsed = etag ? parseInt(etag.replace(/"/g, ""), 10) : NaN;
+      const revision = Number.isNaN(parsed) ? null : parsed;
       if (!get().dirty) {
         set({ project: raw, loading: false, dirty: false, etag, revision, conflictDetected: false });
       } else {
@@ -197,7 +200,10 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       const raw = await api.getProject();
       const etag = (raw as any)._etag ?? null;
       delete (raw as any)._etag;
-      const revision = etag ? parseInt(etag.replace(/"/g, ""), 10) || null : null;
+      // Revision 0 is valid (engine boots at 0 before the first save) — guard
+      // with isNaN rather than `|| null`, which would collapse 0 to null.
+      const parsed = etag ? parseInt(etag.replace(/"/g, ""), 10) : NaN;
+      const revision = Number.isNaN(parsed) ? null : parsed;
       set({ project: raw, loading: false, dirty: false, etag, revision, conflictDetected: false, undoStack: [], redoStack: [] });
     } catch (e) {
       set({ error: String(e), loading: false });

@@ -639,7 +639,14 @@ export function PresentManagementPanel({ running }: { running: boolean }) {
                     </span>
                   );
                 })()}
-                <SourceSelect display={d} status={status} onRouted={() => refresh(true)} />
+                <SourceSelect
+                  display={d}
+                  status={status}
+                  onRouted={() => {
+                    refresh(true);
+                    syncProjectStore();
+                  }}
+                />
                 {d.kind !== "stream" && (
                   <button
                     onClick={() => window.open(displayUrl(d), "_blank", "noopener")}

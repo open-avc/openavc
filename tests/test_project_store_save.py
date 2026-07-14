@@ -77,6 +77,8 @@ SCENARIOS = [
     "m307_conflict_no_retry",
     "m307_edit_during_save_keeps_dirty",
     "m307_noop_when_no_project",
+    "revision_zero_survives_save",
+    "revision_non_numeric_etag_null",
 ]
 
 

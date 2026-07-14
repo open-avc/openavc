@@ -55,7 +55,10 @@ export async function runSaveWithRetry(
     try {
       const result = await deps.saveProject(project, etag ?? undefined);
       const newEtag = result.etag ?? null;
-      const newRevision = newEtag ? parseInt(newEtag.replace(/"/g, ""), 10) || null : null;
+      // Revision 0 is valid (engine boots at 0 before the first save) — guard
+      // with isNaN rather than `|| null`, which would collapse 0 to null.
+      const parsedRevision = newEtag ? parseInt(newEtag.replace(/"/g, ""), 10) : NaN;
+      const newRevision = Number.isNaN(parsedRevision) ? null : parsedRevision;
       // If the project ref changed during the save, the user kept editing —
       // keep dirty=true so the caller schedules another save.
       const editedDuringSave = deps.getProject() !== project;

@@ -121,6 +121,31 @@ async function main() {
     };
   }
 
+  // ETag "0" is a real revision (the engine boots at revision 0 before the
+  // first save) — it must parse to 0, not collapse to null.
+  {
+    const { deps, state } = makeDeps({
+      saveProject: async () => ({ etag: '"0"' }),
+    });
+    const outcome = await H.runSaveWithRetry(deps);
+    results.revision_zero_survives_save = {
+      pass: outcome === "saved" && state.revision === 0 && state.etag === '"0"',
+      detail: { outcome, revision: state.revision, etag: state.etag },
+    };
+  }
+
+  // A non-numeric ETag still falls back to revision null.
+  {
+    const { deps, state } = makeDeps({
+      saveProject: async () => ({ etag: '"abc"' }),
+    });
+    const outcome = await H.runSaveWithRetry(deps);
+    results.revision_non_numeric_etag_null = {
+      pass: outcome === "saved" && state.revision === null,
+      detail: { outcome, revision: state.revision },
+    };
+  }
+
   // No project loaded → no-op, nothing written.
   {
     let calls = 0;

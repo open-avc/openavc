@@ -619,10 +619,12 @@ def _get_driver_source(driver_id: str) -> str:
     that the built-in definitions tree does not serve was necessarily loaded
     from driver_repo.
 
-    This must not touch the disk. It runs once per unique driver on every save,
-    and the previous implementation globbed and YAML-parsed the entire driver
-    library per call — O(unique_drivers x library_files), which cost 6.4s to
-    save a 30-driver project against a 151-driver library.
+    This must stay cheap. It runs once per unique driver on every save; the
+    per-call disk cost is a directory listing plus a stat per built-in
+    definition file (the signature key), never a re-parse. The previous
+    implementation globbed and YAML-parsed the entire driver library per
+    call — O(unique_drivers x library_files), which cost 6.4s to save a
+    30-driver project against a 151-driver library.
     """
     if driver_id in _builtin_driver_ids():
         return "builtin"

@@ -564,9 +564,10 @@ async def invoke_device_action(
 
     ``kind:"command"`` actions route to the device's command path (which
     requires the device to be connected). ``kind:"setup"`` actions are the
-    offline-capable provisioning wizards — not yet wired (returns 501).
-    The action's *meaning* lives entirely in the driver; this endpoint only
-    dispatches by kind.
+    offline-capable provisioning wizards — they start a background run via
+    ``engine.setup_actions`` and return a run_id (progress streams over the
+    WS ``action.progress`` channel). The action's *meaning* lives entirely
+    in the driver; this endpoint only dispatches by kind.
     """
     from server.drivers.actions import resolve_device_actions
 
