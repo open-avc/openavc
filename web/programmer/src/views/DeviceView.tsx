@@ -14,6 +14,7 @@ import { DeviceGroupsPanel } from "./devices/DeviceGroupsPanel";
 import { DeviceListItem } from "./devices/DeviceListItem";
 import { AddDeviceDialog, EditDeviceDialog } from "./devices/DeviceDialogs";
 import { findDeviceReferences } from "./devices/deviceUtils";
+import { computeStatusCounts } from "./deviceViewHelpers";
 
 type DeviceSubTab = "devices" | "groups" | "discovery" | "drivers";
 
@@ -124,14 +125,11 @@ export function DeviceView() {
       if (!groups.has(g)) groups.set(g, []);
       groups.get(g)!.push(dev);
     }
-    // Compute status counts from live state (snapshot read)
+    // Status counts from live state (snapshot read). Count from the
+    // search-`filtered` list, not all deviceConfigs, so the chip counts match
+    // the visible (search-narrowed) device list.
     const ls = useConnectionStore.getState().liveState;
-    let online = 0, offline = 0, orphanedCount = 0;
-    for (const dev of deviceConfigs) {
-      if (ls[`device.${dev.id}.orphaned`]) orphanedCount++;
-      else if (ls[`device.${dev.id}.connected`]) online++;
-      else offline++;
-    }
+    const statusCounts = computeStatusCounts(filtered, ls);
 
     // Apply status filter
     let statusFiltered = filtered;
@@ -164,7 +162,7 @@ export function DeviceView() {
       grouped: filteredGroups,
       sortedGroups: filteredSorted,
       hasGroups: filteredSorted.some((g) => g !== ""),
-      statusCounts: { total: deviceConfigs.length, online, offline, orphaned: orphanedCount },
+      statusCounts,
       deviceGroupNames: deviceToAllGroups,
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
