@@ -39,8 +39,27 @@ export function DynamicControls({ controls, state, onStateChange }: Props) {
             return <GroupControl key={key} control={ctrl} state={state} onStateChange={onStateChange} />;
           case "indicator":
             return <IndicatorControl key={key} control={ctrl} state={state} />;
-          default:
-            return null;
+          default: {
+            // The ControlDef union is compile-time only — the actual list comes
+            // from the API, so a driver's simulator.controls can carry a type
+            // this build doesn't render (a typo like "meter" for "meters", or a
+            // newer type). Don't drop it silently: warn and show a marker so the
+            // author sees the failure instead of a blank card.
+            const badType = (ctrl as ControlDef).type;
+            console.warn(
+              `[simulator] Unknown control type "${badType}" — nothing to render. ` +
+                "Check the driver's simulator.controls (run `python -m simulator.validate` to catch this).",
+            );
+            return (
+              <div
+                key={key}
+                className="control-unknown"
+                style={{ fontSize: 11, color: "#c0392b", padding: "4px 8px" }}
+              >
+                Unknown control type: <code>{String(badType)}</code>
+              </div>
+            );
+          }
         }
       })}
     </div>
