@@ -110,8 +110,18 @@ export function validateSettingValue(
   raw: string,
   def: Pick<DriverDeviceSettingDef, "type" | "min" | "max" | "regex"> | undefined,
 ): SettingValueCheck {
-  if (raw === "" || !def) return { ok: true };
+  if (!def) return { ok: true };
   const type = def.type ?? "string";
+
+  if (raw === "") {
+    // A numeric setting can't be pushed blank — it would silently coerce to 0
+    // (e.g. a cleared port/channel/gain field). Require a value. String /
+    // password / enum settings may legitimately be left blank.
+    if (type === "integer" || type === "number" || type === "float") {
+      return { ok: false, error: "Enter a value." };
+    }
+    return { ok: true };
+  }
 
   if (type === "integer" || type === "number" || type === "float") {
     const n = type === "integer" ? parseInt(raw, 10) : parseFloat(raw);

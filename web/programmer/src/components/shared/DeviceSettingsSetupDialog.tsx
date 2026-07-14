@@ -119,6 +119,10 @@ export function DeviceSettingsSetupDialog({
       try {
         await api.storePendingSettings(deviceId, failedSettings);
       } catch (e) {
+        // Surface the per-field results before bailing — some keys may have
+        // applied online, so the dialog should still show their Saved/Queued
+        // state instead of only the generic queue-failure banner.
+        setResults(newResults);
         setError(`Failed to queue settings: ${e}`);
         setSaving(false);
         return;

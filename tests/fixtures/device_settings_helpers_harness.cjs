@@ -140,7 +140,24 @@ const results = {};
   results.m169_regex_mismatch = { pass: H.validateSettingValue("ABC!", def).ok === false, detail: H.validateSettingValue("ABC!", def) };
 }
 {
-  results.m169_empty_allowed = { pass: H.validateSettingValue("", { type: "integer", min: 1 }).ok === true, detail: H.validateSettingValue("", { type: "integer", min: 1 }) };
+  // L-169: an empty NUMERIC setting is rejected (it would silently coerce to 0
+  // on push); an empty string/enum or a def-less value is still allowed blank.
+  results.l169_empty_integer_rejected = {
+    pass: H.validateSettingValue("", { type: "integer", min: 1 }).ok === false,
+    detail: H.validateSettingValue("", { type: "integer", min: 1 }),
+  };
+  results.l169_empty_number_rejected = {
+    pass: H.validateSettingValue("", { type: "number" }).ok === false,
+    detail: H.validateSettingValue("", { type: "number" }),
+  };
+  results.l169_empty_string_allowed = {
+    pass: H.validateSettingValue("", { type: "string" }).ok === true,
+    detail: H.validateSettingValue("", { type: "string" }),
+  };
+  results.l169_empty_no_def_allowed = {
+    pass: H.validateSettingValue("", undefined).ok === true,
+    detail: H.validateSettingValue("", undefined),
+  };
   results.m169_malformed_regex_does_not_block = {
     pass: H.validateSettingValue("x", { type: "string", regex: "[" }).ok === true,
     detail: H.validateSettingValue("x", { type: "string", regex: "[" }),

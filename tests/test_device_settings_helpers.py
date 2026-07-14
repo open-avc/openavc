@@ -93,7 +93,10 @@ SCENARIOS = [
     "m169_int_not_a_number",
     "m169_regex_match_ok",
     "m169_regex_mismatch",
-    "m169_empty_allowed",
+    "l169_empty_integer_rejected",
+    "l169_empty_number_rejected",
+    "l169_empty_string_allowed",
+    "l169_empty_no_def_allowed",
     "m169_malformed_regex_does_not_block",
 ]
 
