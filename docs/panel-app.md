@@ -37,10 +37,10 @@ This uses mDNS (Bonjour). It works on most home and small-business WiFi networks
 ### 2. QR Code from the Programmer
 
 1. On a computer, open the OpenAVC Programmer IDE (http://your-system-ip:8080/programmer).
-2. On the Dashboard, under **Panel Access**, click the **QR Code** button.
+2. On the Dashboard, under **Panel Access**, click the **Show QR code** button.
 3. In the app, tap **Scan QR code** and point the tablet camera at the screen.
 
-The QR contains the panel URL. This is the fastest method when the tablet doesn't have easy keyboard input.
+The QR code points to your system's pairing page, so the app connects without you typing an address. This is the fastest method when the tablet doesn't have easy keyboard input.
 
 ### 3. Manual Entry
 
