@@ -1245,16 +1245,73 @@ export interface InstalledDriver {
   version: string;
 }
 
-/** Compare semver strings. Returns true if `available` is newer than `installed`. */
+interface ParsedSemver {
+  main: number[];
+  pre: string[];
+}
+
+/** Parse a semver string into numeric main parts and pre-release identifiers.
+ *  Build metadata (`+...`) is stripped (it has no precedence). Returns null if
+ *  the main version has a non-numeric part, so callers can treat it as
+ *  incomparable rather than silently coercing NaN to 0. */
+function parseSemver(v: string): ParsedSemver | null {
+  const noBuild = v.split("+", 1)[0];
+  const dash = noBuild.indexOf("-");
+  const core = dash === -1 ? noBuild : noBuild.slice(0, dash);
+  const pre = dash === -1 ? [] : noBuild.slice(dash + 1).split(".");
+  const main = core.split(".").map((s) => parseInt(s, 10));
+  if (main.some((n) => Number.isNaN(n))) return null;
+  return { main, pre };
+}
+
+/** Semver precedence compare: -1 / 0 / 1 for a < b / a == b / a > b.
+ *  Unparseable versions compare equal (0) so a garbled string never fabricates
+ *  an update. Follows semver: main parts numeric; a pre-release ranks LOWER
+ *  than its release; build metadata is ignored. */
+function compareSemver(a: string, b: string): number {
+  const pa = parseSemver(a);
+  const pb = parseSemver(b);
+  if (!pa || !pb) return 0;
+
+  const len = Math.max(pa.main.length, pb.main.length);
+  for (let i = 0; i < len; i++) {
+    const x = pa.main[i] ?? 0;
+    const y = pb.main[i] ?? 0;
+    if (x !== y) return x > y ? 1 : -1;
+  }
+
+  // Equal main parts: a version WITHOUT a pre-release outranks one WITH.
+  if (!pa.pre.length && !pb.pre.length) return 0;
+  if (!pa.pre.length) return 1;
+  if (!pb.pre.length) return -1;
+
+  // Both pre-release: compare identifiers left to right (numeric < alphanumeric;
+  // more identifiers outrank a prefix-equal shorter set).
+  const plen = Math.max(pa.pre.length, pb.pre.length);
+  for (let i = 0; i < plen; i++) {
+    const ai = pa.pre[i];
+    const bi = pb.pre[i];
+    if (ai === undefined) return -1;
+    if (bi === undefined) return 1;
+    const aNum = /^\d+$/.test(ai);
+    const bNum = /^\d+$/.test(bi);
+    if (aNum && bNum) {
+      const d = parseInt(ai, 10) - parseInt(bi, 10);
+      if (d !== 0) return d > 0 ? 1 : -1;
+    } else if (aNum !== bNum) {
+      return aNum ? -1 : 1;
+    } else if (ai !== bi) {
+      return ai > bi ? 1 : -1;
+    }
+  }
+  return 0;
+}
+
+/** Compare semver strings. Returns true if `available` is newer than `installed`.
+ *  Handles pre-release and build suffixes (e.g. `1.0.1-beta`) — the old
+ *  `.split('.').map(Number)` turned any suffixed segment into NaN and coerced
+ *  it to 0, silently hiding updates to (or from) a suffixed version. */
 export function hasUpdate(installed: string, available: string): boolean {
   if (!installed || !available) return false;
-  const a = installed.split(".").map(Number);
-  const b = available.split(".").map(Number);
-  for (let i = 0; i < Math.max(a.length, b.length); i++) {
-    const ai = a[i] || 0;
-    const bi = b[i] || 0;
-    if (bi > ai) return true;
-    if (bi < ai) return false;
-  }
-  return false;
+  return compareSemver(available, installed) > 0;
 }
