@@ -1233,6 +1233,10 @@ export function EditDeviceDialog({
         driver?: string;
         config?: Record<string, unknown>;
       });
+      // The endpoint persisted + bumped the revision — refetch project +
+      // ETag now rather than waiting for the debounced WS reload. With
+      // unsaved edits in flight load() no-ops and the 409 guard covers.
+      await useProjectStore.getState().load();
       onSaved();
       onClose();
     } catch (e) {
