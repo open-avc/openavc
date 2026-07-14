@@ -13,7 +13,7 @@ import {
   X,
   Search,
 } from "lucide-react";
-import { useProjectStore } from "../../store/projectStore";
+import { useProjectStore, syncDeviceConfig } from "../../store/projectStore";
 import * as api from "../../api/restClient";
 import { IrLearnSession, type IrLearnMode } from "../../api/irLearn";
 import { IrDbSearch } from "./IrDbSearch";
@@ -134,7 +134,6 @@ export function IrCodesEditor({
   onSaved: () => void;
 }) {
   const project = useProjectStore((s) => s.project);
-  const update = useProjectStore((s) => s.update);
   const deviceConfig = project?.devices.find((d) => d.id === deviceId);
   const savedConfig = useMemo(
     () => (deviceConfig?.config ?? {}) as Record<string, unknown>,
@@ -240,14 +239,9 @@ export function IrCodesEditor({
       const map = buildIrCodes(rows);
       const newConfig = { ...savedConfig, ir_codes: map };
       await api.updateDevice(deviceId, { config: newConfig });
-      const cur = useProjectStore.getState().project;
-      if (cur) {
-        update({
-          devices: cur.devices.map((d) =>
-            d.id === deviceId ? { ...d, config: newConfig } : d,
-          ),
-        });
-      }
+      // The endpoint persisted + bumped the revision — re-sync the store
+      // (fresh ETag when clean, mirror when unsaved edits are in flight).
+      await syncDeviceConfig(deviceId, newConfig);
       setDirty(false);
       setSaved(true);
       onSaved();

@@ -252,3 +252,33 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     get().debouncedSave(100);
   },
 }));
+
+/**
+ * Re-sync the store after a dedicated device endpoint (PUT /devices/{id})
+ * persisted a config change server-side. That endpoint bumps the project
+ * revision, so the store's cached ETag is stale from this point on.
+ *
+ * Clean store: refetch the project so both the content and the ETag match the
+ * server again. Store with unsaved edits (or a save in flight): a refetch
+ * would clobber them, so mirror just the persisted config into the in-memory
+ * project instead — the stale ETag is covered by the server's 409 guard on
+ * the next full-project save.
+ */
+export async function syncDeviceConfig(
+  deviceId: string,
+  config: Record<string, unknown>,
+): Promise<void> {
+  const store = useProjectStore.getState();
+  if (store.dirty || store.saving) {
+    const cur = store.project;
+    if (cur) {
+      store.update({
+        devices: cur.devices.map((d) =>
+          d.id === deviceId ? { ...d, config } : d,
+        ),
+      });
+    }
+    return;
+  }
+  await store.load();
+}
