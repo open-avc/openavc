@@ -48,6 +48,7 @@ export function ISCView() {
   // Config editing
   const [newPattern, setNewPattern] = useState("");
   const [newPeer, setNewPeer] = useState("");
+  const [peerError, setPeerError] = useState("");
   const [newCommand, setNewCommand] = useState("");
   const [authKey, setAuthKey] = useState("");
   const [authVisible, setAuthVisible] = useState(false);
@@ -124,8 +125,23 @@ export function ISCView() {
   const handleAddPeer = useCallback(() => {
     if (!isc || !newPeer.trim()) return;
     const addr = newPeer.trim();
-    if (!/^[\w.-]+(:\d{1,5})?$/.test(addr)) return;
-    if (manualPeers.includes(addr)) return;
+    const m = addr.match(/^([\w.-]+)(?::(\d{1,5}))?$/);
+    if (!m) {
+      setPeerError("Enter a host or IP address, optionally with :port (e.g. 192.168.1.10:8080).");
+      return;
+    }
+    if (m[2] !== undefined) {
+      const port = Number(m[2]);
+      if (port < 1 || port > 65535) {
+        setPeerError("Port must be between 1 and 65535.");
+        return;
+      }
+    }
+    if (manualPeers.includes(addr)) {
+      setPeerError("That peer is already in the list.");
+      return;
+    }
+    setPeerError("");
     update({
       isc: { ...isc, peers: [...manualPeers, addr] },
     });
@@ -396,7 +412,10 @@ export function ISCView() {
               <input
                 style={fieldInput}
                 value={newPeer}
-                onChange={(e) => setNewPeer(e.target.value)}
+                onChange={(e) => {
+                  setNewPeer(e.target.value);
+                  if (peerError) setPeerError("");
+                }}
                 placeholder="e.g. 192.168.1.10:8080"
                 onKeyDown={(e) => e.key === "Enter" && handleAddPeer()}
               />
@@ -404,6 +423,11 @@ export function ISCView() {
                 <Plus size={14} />
               </button>
             </div>
+            {peerError && (
+              <div style={{ fontSize: 11, color: "var(--danger, #ef4444)", marginTop: "var(--space-xs)" }}>
+                {peerError}
+              </div>
+            )}
           </div>
 
           {/* Remote Command Allowlist */}
