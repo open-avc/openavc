@@ -512,7 +512,15 @@ def _spawn_replacement() -> None:
     Used during cloud-driven restart in dev sessions where no service
     manager will relaunch us. The child uses `sys.orig_argv` so the original
     invocation is reproduced exactly (`python -m server.main`, the frozen
-    exe, with `--simulator`, etc.). OPENAVC_RESTARTING tells the child to
+    exe, with `--simulator`, etc.) — except argv[0], which is replaced with
+    `sys.executable` on non-frozen runs. On macOS framework builds (Homebrew)
+    the interpreter re-execs itself through Python.app at startup, so
+    orig_argv[0] is the bare framework binary with no trace of the venv
+    (the __PYVENV_LAUNCHER__ handoff var is stripped from the environment
+    too) — a child spawned from it can't import anything installed in the
+    venv. sys.executable still points at the venv interpreter, and on
+    Windows/Linux the two agree, so preferring it is a no-op there.
+    OPENAVC_RESTARTING tells the child to
     retry its port pre-flight briefly: the parent's `os._exit(0)` releases
     the listening socket essentially immediately, but on Windows there's a
     brief window where the new bind can race the old one.
@@ -526,6 +534,13 @@ def _spawn_replacement() -> None:
     from server.system_config import get_data_dir
     try:
         cmd = list(getattr(sys, "orig_argv", None) or ([sys.executable] + sys.argv))
+        # Relaunch through the interpreter that's actually running us, not
+        # whatever argv[0] claims. On macOS the framework build re-execs
+        # through Python.app, leaving an orig_argv[0] that knows nothing of
+        # the venv — the replacement would die on its first import. Frozen
+        # exes keep their argv untouched (sys.executable IS the bundle exe).
+        if cmd and sys.executable and not getattr(sys, "frozen", False):
+            cmd[0] = sys.executable
         env = {**os.environ, "OPENAVC_RESTARTING": "1"}
 
         # Capture child output so DETACHED_PROCESS on Windows doesn't swallow
