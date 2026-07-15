@@ -4,6 +4,7 @@ import * as api from "../../api/restClient";
 import { getSerialPorts, type SerialPortInfo } from "../../api/systemClient";
 import type { DeviceConfig, DriverInfo } from "../../api/types";
 import { DeviceSettingsSetupDialog, hasDriverSetupSettings } from "../../components/shared/DeviceSettingsSetupDialog";
+import { normalizeOptionList } from "../../components/shared/paramOptions";
 import {
   coerceConfigValue,
   configFieldKind,
@@ -34,7 +35,10 @@ function ConfigFieldInputs({
         const label = String(schema.label || key);
         const description = schema.description ? String(schema.description) : "";
         const fieldType = String(schema.type || "string");
-        const values = schema.values as string[] | undefined;
+        // Enum options may be plain strings OR {value,label} objects — both are
+        // valid in config_schema, so normalize before rendering (a raw object
+        // rendered as an <option> child is React error #31 and crashes the form).
+        const values = schema.values as unknown[] | undefined;
         const isRequired = schema.required === true;
         const defaultVal = schema.default;
         const isObjectField = fieldType === "object" || fieldType === "json";
@@ -112,9 +116,9 @@ function ConfigFieldInputs({
                 style={{ width: "100%" }}
               >
                 <option value="">Select...</option>
-                {values?.map((v) => (
-                  <option key={v} value={v}>
-                    {v}
+                {normalizeOptionList(values ?? []).map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
                   </option>
                 ))}
               </select>

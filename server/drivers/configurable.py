@@ -155,6 +155,20 @@ class ConfigurableDriver(BaseDriver):
         # responses are compiled and config commands are visible to the IDE.
         self._merge_config_protocol()
 
+        # Child rosters can size themselves from a device-reported state var
+        # (`instances.count_from_state`, e.g. num_outputs) instead of only a
+        # static config field, so a driver's channel count tracks what the
+        # hardware reports. Collect those state keys now; set_state() reconciles
+        # the roster whenever one of them updates.
+        self._roster_state_deps: set[str] = {
+            str(tdef["instances"]["count_from_state"])
+            for tdef in (self._definition.get("child_entity_types") or {}).values()
+            if isinstance(tdef, dict)
+            and isinstance(tdef.get("instances"), dict)
+            and tdef["instances"].get("count_from_state")
+        }
+        self._reconciling_roster = False
+
         # Compute declarative derived config values (e.g. an optional address
         # prefix) into self.config, so every downstream substitution path —
         # commands, on_connect, responses, polling — sees them. Done before the
@@ -1069,7 +1083,7 @@ class ConfigurableDriver(BaseDriver):
                     if text:
                         ids.append(text)
             return ids
-        if "count" in inst or "count_from" in inst:
+        if "count" in inst or "count_from" in inst or "count_from_state" in inst:
             if id_type != "integer":
                 log.warning(
                     f"[{self.device_id}] instances: count/count_from require "
@@ -1077,9 +1091,31 @@ class ConfigurableDriver(BaseDriver):
                 )
                 return None
             if "count" in inst:
-                raw = inst["count"]
+                raw: Any = inst["count"]
             else:
-                raw = self.config.get(inst.get("count_from"), "")
+                # Prefer a device-reported count (e.g. num_outputs from the amp)
+                # so the roster tracks the hardware; fall back to the config
+                # field while that state is still unknown (offline / pre-sync).
+                raw = None
+                state_key = inst.get("count_from_state")
+                if state_key:
+                    sval = self.get_state(str(state_key))
+                    # Only trust a POSITIVE reported count. 0 / None / blank means
+                    # "not reported yet" (e.g. the state-var's pre-connect default),
+                    # so fall back to the config field rather than build 0 children.
+                    try:
+                        if sval is not None and int(str(sval).strip()) > 0:
+                            raw = sval
+                    except (TypeError, ValueError):
+                        pass
+                if raw is None and inst.get("count_from"):
+                    cval = self.config.get(inst.get("count_from"), "")
+                    if str(cval).strip() != "":
+                        raw = cval
+                if raw is None:
+                    # No count known yet — leave the roster untouched until one
+                    # is (the count_from_state var arriving triggers a reconcile).
+                    return None
             try:
                 n = int(str(raw).strip())
             except (TypeError, ValueError):
@@ -1111,6 +1147,29 @@ class ConfigurableDriver(BaseDriver):
             else:
                 ids.append(token)
         return ids
+
+    def set_state(self, property_name: str, value: Any) -> None:
+        """Set device-level state, and reconcile declared child rosters when a
+        state var one of them sizes from (``instances.count_from_state``, e.g.
+        num_outputs) changes — so the roster tracks what the device reports."""
+        super().set_state(property_name, value)
+        # getattr guards: set_state runs during super().__init__() (seeding
+        # state-var defaults) before these attributes are assigned — those early
+        # calls have no registered children to reconcile anyway.
+        if (
+            property_name in getattr(self, "_roster_state_deps", ())
+            and not getattr(self, "_reconciling_roster", False)
+        ):
+            self._reconciling_roster = True
+            try:
+                self._register_declared_children()
+            except Exception:
+                log.exception(
+                    f"[{self.device_id}] Failed to reconcile children after "
+                    f"'{property_name}' update"
+                )
+            finally:
+                self._reconciling_roster = False
 
     def _register_declared_children(self) -> dict[str, int]:
         """Register/reconcile children declared via an ``instances:`` block on

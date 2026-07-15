@@ -1302,6 +1302,18 @@ def validate_driver_definition(driver_def: dict[str, Any]) -> list[str]:
                     id_fmt = type_def.get("id_format")
                     id_fmt = id_fmt if isinstance(id_fmt, dict) else {}
                     id_type = id_fmt.get("type", "integer")
+                    cfs = instances.get("count_from_state")
+                    if cfs is not None:
+                        if not isinstance(cfs, str) or not cfs:
+                            errors.append(
+                                f"{where}.instances: count_from_state must "
+                                f"name a state variable"
+                            )
+                        elif cfs not in (driver_def.get("state_variables") or {}):
+                            errors.append(
+                                f"{where}.instances: count_from_state {cfs!r} "
+                                f"is not a declared state variable"
+                            )
                     sources = [
                         k for k in ("count", "count_from", "ids_from", "ids")
                         if k in instances
