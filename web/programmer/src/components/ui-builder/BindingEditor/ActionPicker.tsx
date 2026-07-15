@@ -144,7 +144,14 @@ function DeviceCommandConfig({
       setDeviceInfo(null);
       return;
     }
-    api.getDevice(selectedDevice).then(setDeviceInfo).catch(() => setDeviceInfo(null));
+    // Guard against out-of-order responses: if the user switches devices
+    // before an earlier getDevice() resolves, ignore the stale result so it
+    // can't overwrite the newly-selected device's command list / param schema.
+    let cancelled = false;
+    api.getDevice(selectedDevice)
+      .then((info) => { if (!cancelled) setDeviceInfo(info); })
+      .catch(() => { if (!cancelled) setDeviceInfo(null); });
+    return () => { cancelled = true; };
   }, [selectedDevice]);
 
   const commands = deviceInfo?.commands ?? {};
