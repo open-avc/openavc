@@ -1,5 +1,5 @@
 import * as LucideIcons from "lucide-react";
-import { getTunnelPrefix } from "../../api/restClient";
+import { getAssetUrl } from "../../api/restClient";
 
 interface ElementIconProps {
   name: string;
@@ -27,7 +27,7 @@ export function ElementIcon({ name, size, color }: ElementIconProps) {
   if (name.startsWith("assets://")) {
     return (
       <img
-        src={`${getTunnelPrefix()}/api/projects/default/assets/${name.slice("assets://".length)}`}
+        src={getAssetUrl(name.slice("assets://".length))}
         style={{ width: size, height: size, flexShrink: 0 }}
         alt=""
       />

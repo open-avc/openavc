@@ -4500,10 +4500,8 @@ class PanelApp {
         }
         // Background image with opacity
         if (bg.image) {
-            const pathParts = location.pathname.split('/panel');
-            const basePath = pathParts[0] || '';
             const imgUrl = bg.image.startsWith('assets://')
-                ? `${basePath}/api/projects/default/assets/${bg.image.replace('assets://', '')}`
+                ? this.resolveAssetUrl(bg.image)
                 : bg.image;
             const opacity = bg.image_opacity ?? 1;
             const size = bg.image_size || 'cover';
@@ -4743,7 +4741,12 @@ class PanelApp {
             // Derive base path so asset URLs route through cloud tunnel
             const pathParts = location.pathname.split('/panel');
             const basePath = pathParts[0] || '';
-            return `${basePath}/api/projects/default/assets/${ref.slice('assets://'.length)}`;
+            // Encode the filename so legal-but-special names (spaces etc.,
+            // allowed by the server's asset FILENAME_PATTERN) resolve. Asset
+            // names are flat filenames, so encodeURIComponent is safe and
+            // matches the programmer's getAssetUrl.
+            const name = encodeURIComponent(ref.slice('assets://'.length));
+            return `${basePath}/api/projects/default/assets/${name}`;
         }
         return ref;
     }
