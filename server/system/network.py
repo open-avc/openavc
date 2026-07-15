@@ -31,6 +31,7 @@ import subprocess
 import sys
 
 from server.utils.logger import get_logger
+from server.utils.spawn import CREATE_NO_WINDOW
 
 log = get_logger(__name__)
 
@@ -215,6 +216,7 @@ class NmcliBackend(NetworkBackend):
             *args,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            creationflags=CREATE_NO_WINDOW,
         )
         try:
             out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
@@ -500,6 +502,7 @@ def _nmcli_running() -> bool:
             capture_output=True,
             text=True,
             timeout=5,
+            creationflags=CREATE_NO_WINDOW,
         )
     except (OSError, subprocess.SubprocessError):
         return False

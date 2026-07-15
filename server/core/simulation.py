@@ -21,6 +21,7 @@ from typing import Any
 
 from server.system_config import APP_DIR, DRIVER_DEFINITIONS_DIR, DRIVER_REPO_DIR
 from server.utils.logger import get_logger
+from server.utils.spawn import CREATE_NO_WINDOW
 
 log = get_logger(__name__)
 
@@ -193,6 +194,7 @@ class SimulationManager:
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                creationflags=CREATE_NO_WINDOW,
             )
         except Exception as e:
             raise RuntimeError(f"Failed to start simulator process: {e}")

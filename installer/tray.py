@@ -147,10 +147,13 @@ def _service_command(command: str) -> bool:
     elevation; if that fails, requests UAC elevation via ShellExecuteW.
     """
     try:
+        # CREATE_NO_WINDOW: the tray is a windowed app with no console, so
+        # without it every nssm call flashes a console window on the desktop.
         result = subprocess.run(
             [NSSM_PATH, command, SERVICE_NAME],
             capture_output=True,
             timeout=30,
+            creationflags=subprocess.CREATE_NO_WINDOW,
         )
         if result.returncode == 0:
             return True

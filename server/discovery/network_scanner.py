@@ -12,6 +12,7 @@ import struct
 from typing import Callable, Awaitable
 
 from server.discovery import icmp
+from server.utils.spawn import CREATE_NO_WINDOW
 
 log = logging.getLogger("discovery.network")
 
@@ -299,6 +300,7 @@ async def _harvest_arp_windows() -> dict[str, str]:
         "arp", "-a",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.DEVNULL,
+        creationflags=CREATE_NO_WINDOW,
     )
     stdout, _ = await proc.communicate()
     text = stdout.decode("utf-8", errors="replace")
@@ -376,6 +378,7 @@ async def _harvest_arp_ip_neigh() -> dict[str, str]:
         "ip", "neigh",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.DEVNULL,
+        creationflags=CREATE_NO_WINDOW,
     )
     stdout, _ = await proc.communicate()
     text = stdout.decode("utf-8", errors="replace")

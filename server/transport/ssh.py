@@ -47,6 +47,7 @@ import sys
 import tempfile
 
 from server.utils.logger import get_logger
+from server.utils.spawn import CREATE_NO_WINDOW
 
 from .types import Callback
 
@@ -230,6 +231,7 @@ class SSHTransport:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 env=env,
+                creationflags=CREATE_NO_WINDOW,
             )
         except (OSError, ValueError) as e:
             self._cleanup_askpass()

@@ -526,9 +526,16 @@ def _spawn_replacement() -> None:
     brief window where the new bind can race the old one.
 
     Child stdout/stderr are redirected to ``data_dir/logs/restart-child.log``
-    so a silent failure on Windows (DETACHED_PROCESS = no console) leaves a
+    so a silent failure on Windows (the child has no console window) leaves a
     trail. Path + parent PID are logged before spawning so the user can
     correlate the breadcrumb with the actual relaunch.
+
+    Windows child gets CREATE_NO_WINDOW — a hidden console — NOT
+    DETACHED_PROCESS (no console at all). The difference matters: console
+    children of the replacement (ping during a discovery scan, ssh, pip)
+    attach to whatever console their parent has. With a hidden console they
+    stay hidden; with no console, Windows gives each one its own visible
+    console window — a discovery scan then pops one window per address.
     """
     import subprocess
     from server.system_config import get_data_dir
@@ -543,9 +550,9 @@ def _spawn_replacement() -> None:
             cmd[0] = sys.executable
         env = {**os.environ, "OPENAVC_RESTARTING": "1"}
 
-        # Capture child output so DETACHED_PROCESS on Windows doesn't swallow
-        # startup errors silently. Append (not truncate) — successive restarts
-        # in one dev session leave readable history.
+        # Capture child output so the console-less child on Windows doesn't
+        # swallow startup errors silently. Append (not truncate) — successive
+        # restarts in one dev session leave readable history.
         try:
             log_dir = get_data_dir() / "logs"
             log_dir.mkdir(parents=True, exist_ok=True)
@@ -562,12 +569,12 @@ def _spawn_replacement() -> None:
             child_log_path = None
 
         if sys.platform == "win32":
-            DETACHED_PROCESS = 0x00000008
-            CREATE_NEW_PROCESS_GROUP = 0x00000200
             child = subprocess.Popen(
                 cmd,
                 env=env,
-                creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
+                creationflags=(
+                    subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
+                ),
                 close_fds=True,
                 stdin=subprocess.DEVNULL,
                 stdout=child_log,

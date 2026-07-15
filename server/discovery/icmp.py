@@ -45,6 +45,8 @@ import struct
 from dataclasses import dataclass
 from itertools import count
 
+from server.utils.spawn import CREATE_NO_WINDOW
+
 log = logging.getLogger("discovery.icmp")
 
 _IS_WINDOWS = platform.system() == "Windows"
@@ -280,10 +282,13 @@ async def _ping_exec(ip: str, timeout: float, source_ip: str) -> str:
     cmd.append(ip)
 
     try:
+        # CREATE_NO_WINDOW: a sweep spawns one ping per address — without it,
+        # a console-less server (in-app restart) pops hundreds of windows.
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
+            creationflags=CREATE_NO_WINDOW,
         )
     except OSError:
         # Binary missing or exec failed — an environment failure, NOT a

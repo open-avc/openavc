@@ -19,6 +19,7 @@ from server.cloud.protocol import (
     extract_payload,
 )
 from server.utils.logger import get_logger
+from server.utils.spawn import CREATE_NO_WINDOW
 
 if TYPE_CHECKING:
     from server.cloud.agent import CloudAgent
@@ -569,6 +570,7 @@ async def _diagnostic_ping(target: str, params: dict) -> dict:
 
     proc = await asyncio.create_subprocess_exec(
         *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        creationflags=CREATE_NO_WINDOW,
     )
     # Overall bound: each of `count` pings can wait up to timeout_s, plus slack.
     overall_timeout = count * timeout_s + 5
@@ -668,6 +670,7 @@ async def _diagnostic_traceroute(target: str, params: dict) -> dict:
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            creationflags=CREATE_NO_WINDOW,
         )
     except FileNotFoundError:
         return {"error": f"{cmd[0]} not installed on this system"}

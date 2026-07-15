@@ -35,6 +35,7 @@ from server.core.plugin_loader import (
 )
 from server.system_config import PLUGIN_DATA_DIR, PLUGIN_REPO_DIR
 from server.utils.logger import get_logger
+from server.utils.spawn import CREATE_NO_WINDOW
 
 log = get_logger(__name__)
 
@@ -579,6 +580,7 @@ async def _install_pip_deps(plugin_id: str, plugin_dir: Path) -> None:
                 text=True,
                 timeout=120,
                 check=True,
+                creationflags=CREATE_NO_WINDOW,
             )
         except subprocess.CalledProcessError as e:
             log.warning(f"pip install failed for '{plugin_id}': {e.stderr}")
@@ -1064,6 +1066,7 @@ def _check_native_dep(dep: dict) -> bool:
             import shlex
             result = subprocess.run(
                 shlex.split(cmd), capture_output=True, timeout=10, shell=False,
+                creationflags=CREATE_NO_WINDOW,
             )
             return result.returncode == 0
         except (OSError, subprocess.TimeoutExpired):
@@ -1204,7 +1207,8 @@ def _install_native_dep_command(dep_name: str, platform_info: dict) -> None:
     log.info(f"Running: {cmd_list}")
     try:
         result = subprocess.run(
-            cmd_list, shell=False, capture_output=True, text=True, timeout=60
+            cmd_list, shell=False, capture_output=True, text=True, timeout=60,
+            creationflags=CREATE_NO_WINDOW,
         )
         if result.returncode == 0:
             log.info(f"Installed native dep '{dep_name}' via system command")

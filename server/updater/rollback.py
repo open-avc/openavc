@@ -15,6 +15,8 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from server.utils.spawn import CREATE_NO_WINDOW
+
 log = logging.getLogger(__name__)
 
 PENDING_UPDATE_MARKER = "pending-update"
@@ -103,6 +105,7 @@ def _launch_installer_via_scheduler(installer: Path, label: str) -> bool:
         subprocess.run(
             ["schtasks", "/create", "/f", "/tn", task_name, "/xml", str(xml_path)],
             check=True, capture_output=True, text=True, timeout=30,
+            creationflags=CREATE_NO_WINDOW,
         )
         log.info("Scheduled installer task '%s' to run at %s", task_name, run_at)
         return True

@@ -38,6 +38,7 @@ import time
 from pathlib import Path
 
 from server.system_config import get_system_config
+from server.utils.spawn import CREATE_NO_WINDOW
 from server.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -165,6 +166,7 @@ def ssh_status() -> dict:
             proc = subprocess.run(
                 ["systemctl", "is-active", "ssh"],
                 capture_output=True, text=True, timeout=5,
+                creationflags=CREATE_NO_WINDOW,
             )
             enabled = proc.stdout.strip() == "active"
         except (OSError, subprocess.SubprocessError):
