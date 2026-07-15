@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, Download, ExternalLink, RefreshCw } from "lucide-react";
 import { Dialog } from "./Dialog";
-import { shouldEnterCertError } from "./restartPollHelpers";
+import { healthProbeUrl, shouldEnterCertError } from "./restartPollHelpers";
 import * as api from "../../api/restClient";
 
 type Phase = "starting" | "waiting" | "polling" | "cert-error" | "success" | "timeout" | "error";
@@ -68,9 +68,10 @@ export function RestartProgressDialog({
         if (cancelled) return;
         try {
           // `cache: "no-store"` keeps stale 502/0 responses from the previous
-          // boot out of the way. `mode: "cors"` makes the cert error surface
-          // as a TypeError instead of an opaque success.
-          const res = await fetch(`${targetUrl.replace(/\/$/, "")}/api/health`, {
+          // boot out of the way. Probe the server root (/api/health), NOT the
+          // full targetUrl — targetUrl ends in /programmer, and the SPA mount
+          // 404s /programmer/api/health forever (see healthProbeUrl).
+          const res = await fetch(healthProbeUrl(targetUrl), {
             cache: "no-store",
             credentials: "omit",
           });
