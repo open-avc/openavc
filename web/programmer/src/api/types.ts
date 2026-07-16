@@ -1080,7 +1080,7 @@ export interface ActionParam {
  *  folded into the unified list). */
 export interface DeviceAction {
   id: string;
-  kind: "command" | "setup";
+  kind: "command" | "setup" | "link";
   label: string;
   icon?: string | null; // lucide icon name
   confirm?: boolean | string | null; // string = custom confirmation message
@@ -1088,6 +1088,7 @@ export interface DeviceAction {
   availability: "online" | "offline" | "always";
   params: Record<string, ActionParam>;
   command?: string; // kind === "command": the command id invoked
+  url?: string; // kind === "link": URL to open (host-substituted by the backend)
 }
 
 export interface DeviceInfo {

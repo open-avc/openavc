@@ -367,3 +367,94 @@ def test_invoke_action_bad_param_returns_400_not_404(actions_client):
     assert resp.status_code == 400
     assert "level" in resp.text
     assert "not found" not in resp.text.lower()
+
+
+# --- kind: link / Open Web UI ---------------------------------------------
+
+
+def test_web_ui_flag_auto_adds_open_web_ui_link():
+    """A driver that declares web_ui gets an Open Web UI link with no action."""
+    actions = resolve_device_actions(_driver_info_with(web_ui=True))
+    link = [a for a in actions if a["kind"] == "link"]
+    assert len(link) == 1
+    a = link[0]
+    assert a["id"] == "open_web_ui"
+    assert a["label"] == "Open Web UI"
+    assert a["availability"] == "always"
+    assert a["url"] == "https://{host}"  # unsubstituted without config
+
+
+def test_web_ui_link_url_host_substituted_from_config():
+    actions = resolve_device_actions(
+        _driver_info_with(web_ui=True), {"host": "10.0.0.5", "port": 443}
+    )
+    link = next(a for a in actions if a["kind"] == "link")
+    assert link["url"] == "https://10.0.0.5"
+
+
+def test_web_ui_string_is_used_as_url_template():
+    actions = resolve_device_actions(
+        _driver_info_with(web_ui="http://{host}:8080/admin"),
+        {"host": "10.0.0.5"},
+    )
+    link = next(a for a in actions if a["kind"] == "link")
+    assert link["url"] == "http://10.0.0.5:8080/admin"
+
+
+def test_explicit_link_action_suppresses_web_ui_auto_add():
+    info = _driver_info_with(
+        web_ui=True,
+        actions=[{"id": "web", "kind": "link", "label": "Console",
+                  "url": "https://{host}:9000"}],
+    )
+    actions = resolve_device_actions(info, {"host": "1.2.3.4"})
+    links = [a for a in actions if a["kind"] == "link"]
+    assert len(links) == 1
+    assert links[0]["id"] == "web"
+    assert links[0]["url"] == "https://1.2.3.4:9000"
+
+
+def test_link_action_missing_url_defaults_to_https_host():
+    info = _driver_info_with(actions=[{"id": "web", "kind": "link"}])
+    link = next(a for a in resolve_device_actions(info) if a["kind"] == "link")
+    assert link["url"] == "https://{host}"
+    assert link["availability"] == "always"  # links default to always-visible
+
+
+def test_missing_placeholder_left_intact():
+    """An unknown/absent placeholder must not raise — left as-is."""
+    actions = resolve_device_actions(
+        _driver_info_with(web_ui="http://{host}:{webport}"), {"host": "9.9.9.9"}
+    )
+    link = next(a for a in actions if a["kind"] == "link")
+    assert link["url"] == "http://9.9.9.9:{webport}"
+
+
+def test_validate_link_action_ok():
+    info = _driver_info_with(actions=[{"id": "web", "kind": "link", "url": "https://{host}"}])
+    assert validate_actions(info) == []
+
+
+def test_validate_link_empty_url_rejected():
+    info = _driver_info_with(actions=[{"id": "web", "kind": "link", "url": ""}])
+    errs = validate_actions(info)
+    assert any("url" in e for e in errs)
+
+
+def test_validate_url_on_non_link_rejected():
+    info = _driver_info_with(
+        actions=[{"id": "power_on", "kind": "command", "url": "https://x"}]
+    )
+    errs = validate_actions(info)
+    assert any("url" in e and "link" in e for e in errs)
+
+
+def test_invoke_link_action_returns_400(actions_client):
+    """A link opens client-side; invoking it server-side is a 400, not a crash."""
+    c, engine = actions_client
+    driver = MagicMock()
+    driver.DRIVER_INFO = {"web_ui": True, "commands": {}}
+    engine.devices.get_driver = MagicMock(return_value=driver)
+    resp = c.post("/api/devices/dev1/actions/open_web_ui", json={"params": {}})
+    assert resp.status_code == 400
+    assert "link" in resp.text.lower()

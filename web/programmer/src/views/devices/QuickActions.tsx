@@ -69,7 +69,10 @@ export function QuickActions({
 
   const handleClick = useCallback(
     (action: DeviceAction) => {
-      if (action.kind === "setup") {
+      if (action.kind === "link") {
+        // Opens the device's web interface in a new tab — nothing is sent.
+        if (action.url) window.open(action.url, "_blank", "noopener,noreferrer");
+      } else if (action.kind === "setup") {
         // The wizard owns the whole flow: confirm, params, and live progress.
         setWizardAction(action);
       } else if (Object.keys(action.params).length > 0) {

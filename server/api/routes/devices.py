@@ -610,6 +610,14 @@ async def invoke_device_action(
                 500, f"Failed to run action '{action_id}' on device '{device_id}'", e
             )
 
+    if action["kind"] == "link":
+        # A link action opens the URL client-side; there's nothing to invoke.
+        raise HTTPException(
+            status_code=400,
+            detail=f"Action '{action_id}' is a link — open its URL in the browser, "
+                   f"not via the invoke endpoint",
+        )
+
     # kind == "setup": offline-capable provisioning wizard. Kicks off a
     # background run and returns a run_id; progress streams over the WS
     # `action.progress` channel until status "done" or "error".

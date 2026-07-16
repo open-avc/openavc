@@ -567,7 +567,8 @@ class DeviceManager:
             "commands": driver.DRIVER_INFO.get("commands", {}),
             # Quick Actions strip: driver-declared actions resolved (quick_actions
             # sugar folded in). The IDE filters by visible_when + availability.
-            "actions": resolve_device_actions(driver.DRIVER_INFO),
+            # Pass config so link (Open Web UI) URLs get {host}-substituted.
+            "actions": resolve_device_actions(driver.DRIVER_INFO, config),
             "driver_info": driver.DRIVER_INFO,
         }
 
