@@ -1109,7 +1109,7 @@ async def _run_http() -> None:
     await _serve_until_first_exit(tasks)
 
 
-if __name__ == "__main__":
+def main():
     # The pre-flight port is whichever port we'll actually bind primary.
     # When TLS is on with redirect, the HTTP redirect listener is best-effort
     # and pre-flighted inside _run_tls (logs a warning, never blocks startup).
@@ -1150,3 +1150,6 @@ if __name__ == "__main__":
             log_level="info",
             ws_max_size=_WS_MAX_SIZE,
         )
+
+if __name__ == "__main__":
+    main()
