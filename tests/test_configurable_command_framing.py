@@ -45,7 +45,7 @@ ACME_RECEIVER = {
         "raw_ping": {"label": "Raw Ping", "send": "PING\\r", "raw": True},
         "power_query": {"label": "Power Query", "send": "PWRQSTN"},
     },
-    "polling": {"interval": 10, "queries": ["power_query"]},
+    "polling": {"queries": ["power_query"]},
 }
 
 

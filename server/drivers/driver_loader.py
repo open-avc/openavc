@@ -724,8 +724,10 @@ def validate_driver_definition(driver_def: dict[str, Any]) -> list[str]:
         if not isinstance(push_def, dict):
             errors.append("push: must be a mapping")
         else:
+            # config_derived keys resolve into config at runtime, so a push
+            # template may reference them like any declared field.
             _push_config_fields: set[str] = set()
-            for src_key in ("config_schema", "default_config"):
+            for src_key in ("config_schema", "default_config", "config_derived"):
                 src = driver_def.get(src_key)
                 if isinstance(src, dict):
                     _push_config_fields.update(src)
@@ -771,7 +773,8 @@ def validate_driver_definition(driver_def: dict[str, Any]) -> list[str]:
                         errors.append(
                             f"push: {where} references config field "
                             f"'{field}' that is not declared in "
-                            f"config_schema or default_config"
+                            f"config_schema, default_config, or "
+                            f"config_derived"
                         )
 
             if ptype == "multicast":
@@ -1094,6 +1097,15 @@ def validate_driver_definition(driver_def: dict[str, Any]) -> list[str]:
                 f"State variable '{var_name}': control must be true or false "
                 f"(got {control!r})"
             )
+        # The cloud state relay reads this tag to pick the forwarding tier;
+        # a typo would silently fall back to the default cadence.
+        cloud_priority = var_def.get("cloud_priority")
+        if cloud_priority is not None and cloud_priority not in ("low", "high"):
+            errors.append(
+                f"State variable '{var_name}': cloud_priority must be 'low' "
+                f"or 'high' (got {cloud_priority!r}); omit it for the "
+                f"default cadence"
+            )
 
     # Validate the optional frame_parser block (binary protocols). The runtime
     # LengthPrefixFrameParser only accepts header_size in {1, 2, 4} and
@@ -1294,8 +1306,10 @@ def validate_driver_definition(driver_def: dict[str, Any]) -> list[str]:
                 if not isinstance(instances, dict):
                     errors.append(f"{where}.instances: must be a mapping")
                 else:
+                    # config_derived keys resolve into config at runtime, so
+                    # count_from / ids_from may name them too.
                     config_fields = set()
-                    for src in ("config_schema", "default_config"):
+                    for src in ("config_schema", "default_config", "config_derived"):
                         block = driver_def.get(src)
                         if isinstance(block, dict):
                             config_fields.update(block.keys())
@@ -1390,7 +1404,7 @@ def validate_driver_definition(driver_def: dict[str, Any]) -> list[str]:
                             errors.append(
                                 f"{where}.instances: {src_key} '{field}' is "
                                 f"not a declared config field (config_schema "
-                                f"/ default_config)"
+                                f"/ default_config / config_derived)"
                             )
                         if src_key == "count_from" and id_type == "string":
                             errors.append(
@@ -1407,8 +1421,10 @@ def validate_driver_definition(driver_def: dict[str, Any]) -> list[str]:
     # Validate mapping entries in polling.queries and on_connect: per-child
     # query templates (each_child) and their optional `when:` gate. A bad entry
     # would silently poll nothing.
+    # config_derived keys resolve into config at runtime, so a `when:` gate
+    # may name them like any declared field.
     query_config_fields: set[str] = set()
-    for _src in ("config_schema", "default_config"):
+    for _src in ("config_schema", "default_config", "config_derived"):
         _block = driver_def.get(_src)
         if isinstance(_block, dict):
             query_config_fields.update(_block.keys())
@@ -1431,7 +1447,8 @@ def validate_driver_definition(driver_def: dict[str, Any]) -> list[str]:
                 elif when not in query_config_fields:
                     errors.append(
                         f"{name}[{i}]: 'when' field '{when}' is not a declared "
-                        f"config field (config_schema / default_config)"
+                        f"config field (config_schema / default_config / "
+                        f"config_derived)"
                     )
             if "each_child" not in q:
                 if allow_osc_dict and "address" in q:
@@ -1470,7 +1487,16 @@ def validate_driver_definition(driver_def: dict[str, Any]) -> list[str]:
                 )
 
     polling_def = driver_def.get("polling")
-    if isinstance(polling_def, dict):
+    if polling_def is not None and not isinstance(polling_def, dict):
+        errors.append("polling: must be a mapping")
+    elif isinstance(polling_def, dict):
+        # The runtime sources poll cadence from default_config.poll_interval
+        # only; an interval here would silently do nothing.
+        if "interval" in polling_def:
+            errors.append(
+                "polling.interval is not read by the runtime — remove the "
+                "interval: key and set default_config.poll_interval instead"
+            )
         _validate_each_child(
             "polling.queries", polling_def.get("queries"), allow_osc_dict=False
         )

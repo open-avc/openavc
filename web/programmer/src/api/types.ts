@@ -858,8 +858,9 @@ export interface DriverDefinition {
   child_entity_types?: Record<string, DriverChildEntityType>;
   commands: Record<string, DriverCommandDef>;
   responses: DriverResponseDef[];
+  // Poll cadence lives in default_config.poll_interval — polling holds only
+  // the query list.
   polling: {
-    interval?: number;
     queries?: (string | DriverEachChildQuery | DriverGatedQuery)[];
   };
   frame_parser?: { type: string; [key: string]: unknown } | null;

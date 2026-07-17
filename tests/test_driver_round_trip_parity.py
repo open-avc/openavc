@@ -40,14 +40,35 @@ def _discover_driver_files() -> list[Path]:
 
 DRIVER_FILES = _discover_driver_files()
 
+
+def test_minimal_definition_gains_no_model_defaults():
+    """A minimal definition round-trips without gaining model defaults.
+
+    The save routes dump the request model with exclude_unset +
+    exclude_none, so only fields the client actually sent reach the saved
+    YAML — the model's defaults (manufacturer, category, version, author,
+    delimiter, empty containers) must not be stamped in. An injected
+    delimiter is the dangerous one: it can change runtime framing.
+    """
+    src = {"id": "acme_widget", "name": "Acme Widget", "transport": "tcp"}
+    out = DriverDefinitionRequest(**src).model_dump(
+        exclude_unset=True, exclude_none=True
+    )
+    assert out == src
+
+    # An explicit null is dropped, not written into the YAML.
+    out = DriverDefinitionRequest(**src, frame_parser=None).model_dump(
+        exclude_unset=True, exclude_none=True
+    )
+    assert out == src
+
+
 # Treat a missing sibling repo as a skip, not a hard failure — devs may
 # only have the openavc/ repo cloned. CI clones both.
-pytestmark = pytest.mark.skipif(
+@pytest.mark.skipif(
     not DRIVER_FILES,
     reason=f"No community drivers found at {DRIVERS_ROOT}",
 )
-
-
 @pytest.mark.parametrize("driver_path", DRIVER_FILES, ids=lambda p: p.name)
 def test_round_trip_preserves_every_field(driver_path: Path) -> None:
     """Every top-level key in the YAML survives a Pydantic round-trip.

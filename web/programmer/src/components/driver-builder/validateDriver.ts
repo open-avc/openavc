@@ -184,9 +184,11 @@ export function scrubForTransport(
         `${name} (setting)`,
         false,
       );
-      // A write emptied by the scrub is dropped entirely — the runtime
-      // treats a missing write as a read-only setting, which is the honest
-      // state once its wire format is gone.
+      // A write emptied by the scrub is dropped entirely — its wire format
+      // can't survive the transport switch, so it's honestly gone. The
+      // runtime loader still requires a write block on every device
+      // setting, so validation flags the setting as an error until it's
+      // re-authored for the new transport.
       const scrubbed = { ...setting } as DriverDeviceSettingDef;
       if (Object.keys(nextWrite).length > 0) {
         scrubbed.write = nextWrite as DriverDeviceSettingDef["write"];
@@ -723,7 +725,18 @@ export function validateDriver(
     draft.device_settings ?? {},
   )) {
     const write = setting.write;
-    if (!write || Object.keys(write).length === 0) continue; // read-only
+    if (!write || Object.keys(write).length === 0) {
+      // The runtime loader hard-requires a write block on every device
+      // setting (driver_loader.py: "a device setting must be writable") —
+      // a missing or emptied write (e.g. after a transport switch scrubbed
+      // its wire format) would 422 at load time.
+      issues.push({
+        severity: "error",
+        section: "behavior",
+        message: `Device setting "${settingName}": missing write block (send / path / address) - a device setting must be writable.`,
+      });
+      continue;
+    }
     issues.push(
       ...shapeMismatchIssues(
         write as Record<string, unknown>,

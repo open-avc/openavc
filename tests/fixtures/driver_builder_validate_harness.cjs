@@ -664,6 +664,62 @@ const responseIssues = (issues) => issues.filter((i) => /^Response \d/.test(i.me
   results.m173_response_with_pattern_ok = { pass: issues.length === 0, detail: issues };
 }
 
+// --- Device settings: the runtime requires a write block ------------------
+// driver_loader.py hard-errors on a device setting without a write block
+// ("a device setting must be writable") — a draft missing one (or with a
+// write emptied by the transport scrub) must be flagged before save.
+const missingWriteIssues = (issues) =>
+  issues.filter((i) => /missing write block/.test(i.message));
+{
+  const issues = missingWriteIssues(
+    validate(
+      baseDraft("tcp", {}, {
+        device_settings: { volume: { label: "Volume", type: "number" } },
+      }),
+    ),
+  );
+  results.setting_missing_write_error = {
+    pass:
+      issues.length === 1 &&
+      issues[0].severity === "error" &&
+      /Device setting "volume"/.test(issues[0].message),
+    detail: issues,
+  };
+}
+{
+  // An emptied write object is the same as none — no wire format left.
+  const issues = missingWriteIssues(
+    validate(
+      baseDraft("tcp", {}, {
+        device_settings: {
+          volume: { label: "Volume", type: "number", write: {} },
+        },
+      }),
+    ),
+  );
+  results.setting_empty_write_error = {
+    pass: issues.length === 1 && issues[0].severity === "error",
+    detail: issues,
+  };
+}
+{
+  // A setting with a real write block raises no missing-write error.
+  const issues = missingWriteIssues(
+    validate(
+      baseDraft("tcp", {}, {
+        device_settings: {
+          volume: {
+            label: "Volume",
+            type: "number",
+            write: { send: "VOL {value}\\r" },
+          },
+        },
+      }),
+    ),
+  );
+  results.setting_with_write_ok = { pass: issues.length === 0, detail: issues };
+}
+
 // --- Config fields: secret defaults are errors, wrong-typed defaults warn ---
 const configIssues = (issues) =>
   issues.filter((i) => /^Config field/.test(i.message));

@@ -1108,7 +1108,10 @@ async def create_driver_definition(body: DriverDefinitionRequest) -> dict:
     from server.core.device_manager import register_driver
 
     dirs = _get_driver_dirs()
-    driver_def = body.model_dump(exclude_none=True)
+    # Echo only what the client sent: exclude_unset keeps model defaults
+    # (manufacturer, delimiter, empty containers) out of the saved YAML;
+    # explicit nulls are dropped, not written into the file.
+    driver_def = body.model_dump(exclude_unset=True, exclude_none=True)
 
     # Check for duplicate ID
     existing = _list(dirs)
@@ -1156,7 +1159,8 @@ async def update_driver_definition(driver_id: str, body: DriverDefinitionRequest
     from server.core.device_manager import register_driver
 
     dirs = _get_driver_dirs()
-    driver_def = body.model_dump(exclude_none=True)
+    # Echo only what the client sent (see create_driver_definition).
+    driver_def = body.model_dump(exclude_unset=True, exclude_none=True)
 
     # Must already exist
     existing = _list(dirs)

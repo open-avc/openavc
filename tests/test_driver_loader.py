@@ -423,6 +423,90 @@ def test_validate_state_variable_unit_and_control():
     assert any("control must be true or false" in e for e in errors)
 
 
+def test_validate_state_variable_cloud_priority():
+    """`cloud_priority` selects the cloud forwarding tier; a typo would
+    silently fall back to the default cadence."""
+    for value in ("low", "high"):
+        good = {
+            **VALID_DEFINITION,
+            "state_variables": {
+                "power": {
+                    "type": "string", "label": "Power",
+                    "cloud_priority": value,
+                },
+            },
+        }
+        assert validate_driver_definition(good) == []
+
+    bad = {
+        **VALID_DEFINITION,
+        "state_variables": {
+            "power": {
+                "type": "string", "label": "Power",
+                "cloud_priority": "hgih",
+            },
+        },
+    }
+    errors = validate_driver_definition(bad)
+    assert any(
+        "cloud_priority must be 'low' or 'high'" in e for e in errors
+    )
+
+
+def test_validate_polling_non_mapping():
+    defn = {**VALID_DEFINITION, "polling": ["PWR?\r"]}
+    errors = validate_driver_definition(defn)
+    assert any("polling: must be a mapping" in e for e in errors)
+
+
+def test_validate_polling_interval_rejected():
+    """The runtime reads only default_config.poll_interval — an interval
+    inside the polling block would silently do nothing."""
+    defn = {
+        **VALID_DEFINITION,
+        "polling": {"interval": 10, "queries": ["PWR?\r"]},
+    }
+    errors = validate_driver_definition(defn)
+    assert any(
+        "polling.interval is not read by the runtime" in e for e in errors
+    )
+
+    ok = {**VALID_DEFINITION, "polling": {"queries": ["PWR?\r"]}}
+    assert validate_driver_definition(ok) == []
+
+
+def test_validate_config_derived_names_accepted():
+    """config_derived keys resolve into config at runtime, so push
+    templates, `when:` gates, and instances *_from may reference them."""
+    defn = {
+        **VALID_DEFINITION,
+        "default_config": {"node": "3", "zones": "1,2", "gate": ""},
+        "config_derived": {
+            "mc_group": "239.1.2.{node}",
+            "poll_gate": "{gate}",
+            "zone_list": "{zones}",
+        },
+        "push": {"type": "multicast", "group": "{mc_group}", "port": 9131},
+        "polling": {"queries": [{"send": "STAT?\r", "when": "poll_gate"}]},
+        "child_entity_types": {
+            "zone": {
+                "label": "Zone",
+                "state_variables": {},
+                "instances": {"ids_from": "zone_list"},
+            },
+        },
+    }
+    assert validate_driver_definition(defn) == []
+
+    # Without the config_derived block the same references are typos.
+    bad = {
+        **VALID_DEFINITION,
+        "push": {"type": "multicast", "group": "{mc_group}", "port": 9131},
+    }
+    errors = validate_driver_definition(bad)
+    assert any("'mc_group'" in e and "is not declared" in e for e in errors)
+
+
 def test_validate_child_state_variable_unit_and_control():
     """Child-entity state variables carry the same typed unit/control."""
     good = {

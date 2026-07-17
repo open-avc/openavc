@@ -1,7 +1,7 @@
 """
 OpenAVC Binary Protocol Helpers — utilities for binary AV control protocols.
 
-Many AV devices (Samsung MDC, Extron SIS, Crestron CIP, etc.) use binary
+Many AV devices — displays, switchers, control processors — use binary
 protocols with checksums, escape sequences, and hex-encoded data. These
 helpers provide the building blocks so drivers don't reinvent the wheel.
 """
@@ -57,8 +57,9 @@ def pack_length_prefix(value: int, size: int, endian: str = "big") -> bytes:
 
     The send-side counterpart to :class:`LengthPrefixFrameParser` — used by a
     driver's ``send_frame`` block to build the computed data-length field of a
-    binary packet header (e.g. eISCP's 4-byte big-endian length that a static
-    ``command_prefix`` can't express, since it varies per message). ``size`` is
+    binary packet header (e.g. an AV receiver protocol's 4-byte big-endian
+    length that a static ``command_prefix`` can't express, since it varies
+    per message). ``size`` is
     the field width in bytes; ``endian`` is "big" (default) or "little". A value
     too large for the field raises OverflowError — a genuine protocol error the
     author should see, not silently truncate.
@@ -70,7 +71,7 @@ def pack_length_prefix(value: int, size: int, endian: str = "big") -> bytes:
 
 
 def checksum_xor(data: bytes) -> int:
-    """XOR all bytes together. Common in Samsung MDC, LG, etc."""
+    """XOR all bytes together. Common in display control protocols."""
     result = 0
     for b in data:
         result ^= b

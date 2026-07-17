@@ -101,7 +101,6 @@ ACME_MATRIX = {
         {"match": r"Pwr(\d)", "set": {"power": "$1"}},
     ],
     "polling": {
-        "interval": 10,
         "queries": [
             "PWR?\\r\\n",
             {"each_child": "zone", "send": "VOL? {child_id}\\r\\n"},
@@ -838,7 +837,6 @@ ACME_OSC_MIXER = {
         },
     ],
     "polling": {
-        "interval": 9,
         "queries": [
             {"each_child": "channel", "send": "/ch/{child_id:02d}/mix/fader"},
             {"each_child": "main", "send": "/main/{child_id}/mix/fader"},

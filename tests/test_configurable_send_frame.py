@@ -62,7 +62,7 @@ ACME_EISCP = {
             "params": {"mode": {"type": "string", "required": True}},
         },
     },
-    "polling": {"interval": 10, "queries": ["power_query"]},
+    "polling": {"queries": ["power_query"]},
     "liveness": {"send": "!1PWRQSTN\\r", "expect": "!1PWR", "interval": 30},
     "responses": [
         {"match": "^!1PWR(0[01])", "set": {"power": "$1"}},

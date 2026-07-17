@@ -16,17 +16,37 @@ id: generic_http
 name: Generic HTTP/REST Device
 manufacturer: Generic
 category: utility
-version: 1.0.0
+version: 1.2.0
 author: OpenAVC
 description: >
   Control any HTTP/REST device. Define commands and responses on the device
   page — no driver file needed. Supports configurable authentication (none,
   basic, bearer, API key, digest) and optional HTTPS with self-signed certs.
+
+source_url: https://github.com/open-avc/openavc/blob/main/docs/creating-drivers.md
+tags: [template, rest, custom]
+verified: false
+
 transport: http
 
 # Enables the device-page Commands & Responses editor (commands / responses /
 # state_variables are read from the device config and merged into this driver).
 inline_protocol: true
+
+help:
+  overview: >
+    Control any device with an HTTP or REST API. Add the device, then define
+    its commands, responses, and state variables right on the device page
+    (Commands & Responses) — no driver file needed. Many modern AV devices
+    expose REST APIs alongside traditional serial or TCP protocols.
+  setup: >
+    1. Enter the device's IP address and HTTP port.
+    2. Configure authentication if the device requires it (basic, bearer,
+       API key, or digest).
+    3. Enable HTTPS if the device uses TLS. Turn off certificate verification
+       only for self-signed certs (common on AV equipment).
+    4. Open Commands & Responses on the device page to add commands, status
+       polling, and state variables for your specific device.
 
 default_config:
   host: ""
