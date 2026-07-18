@@ -17,7 +17,9 @@ from server.drivers.driver_loader import (
     load_driver_file,
     load_driver_files,
     load_python_driver_file,
+    load_python_drivers,
     reload_python_driver,
+    restore_driver_registration,
     save_driver_definition,
     validate_driver_definition,
 )
@@ -238,8 +240,10 @@ def test_find_driver_file_by_id_matches_declared_id_not_stem(tmp_path):
     assert found == filepath
 
 
-def test_find_driver_file_by_id_first_directory_wins(tmp_path):
-    # Earlier directories take precedence (built-in dirs are scanned first).
+def test_find_driver_file_by_id_later_directory_wins(tmp_path):
+    # Later directories take precedence — a user copy in driver_repo
+    # overrides a same-id built-in, and callers get the file that
+    # actually serves the driver.
     builtin = tmp_path / "builtin"
     user = tmp_path / "user"
     builtin.mkdir()
@@ -247,7 +251,7 @@ def test_find_driver_file_by_id_first_directory_wins(tmp_path):
     _write_avcdriver(builtin / "d.avcdriver", VALID_DEFINITION)
     _write_avcdriver(user / "d.avcdriver", VALID_DEFINITION)
     found = find_driver_file_by_id([builtin, user], "test_loader_driver")
-    assert found == builtin / "d.avcdriver"
+    assert found == user / "d.avcdriver"
 
 
 def test_load_driver_file_missing_fields(tmp_path):
@@ -653,6 +657,159 @@ def test_is_builtin_driver_and_delete_guard(tmp_path, monkeypatch):
     assert delete_driver_definition("test_loader_driver", dirs) is True
     assert not (repo_dir / "test_loader_driver.avcdriver").exists()
     assert (builtin_dir / "test_loader_driver.avcdriver").exists()
+
+
+# --- Duplicate-id precedence: a user copy overrides a same-id built-in ---
+
+
+def _registry_info(driver_id):
+    from server.core.device_manager import get_driver_registry
+
+    for info in get_driver_registry():
+        if info["id"] == driver_id:
+            return info
+    return None
+
+
+def test_load_driver_files_user_copy_overrides_builtin(tmp_path):
+    builtin = tmp_path / "definitions"
+    user = tmp_path / "repo"
+    builtin.mkdir()
+    user.mkdir()
+    _write_avcdriver(
+        builtin / "d.avcdriver",
+        {**VALID_DEFINITION, "id": "acme_dup", "name": "Built-in"},
+    )
+    _write_avcdriver(
+        user / "d.avcdriver",
+        {**VALID_DEFINITION, "id": "acme_dup", "name": "User Copy"},
+    )
+
+    from server.core.device_manager import unregister_driver
+
+    count = load_driver_files([builtin, user])
+    try:
+        assert count == 1  # one distinct driver, not two
+        assert _registry_info("acme_dup")["name"] == "User Copy"
+    finally:
+        unregister_driver("acme_dup")
+
+
+def test_load_driver_files_same_directory_duplicate_first_wins(tmp_path):
+    _write_avcdriver(
+        tmp_path / "a_first.avcdriver",
+        {**VALID_DEFINITION, "id": "acme_dup", "name": "First"},
+    )
+    _write_avcdriver(
+        tmp_path / "b_second.avcdriver",
+        {**VALID_DEFINITION, "id": "acme_dup", "name": "Second"},
+    )
+
+    from server.core.device_manager import unregister_driver
+
+    count = load_driver_files([tmp_path])
+    try:
+        assert count == 1
+        assert _registry_info("acme_dup")["name"] == "First"
+    finally:
+        unregister_driver("acme_dup")
+
+
+def test_load_driver_files_invalid_user_copy_keeps_builtin(tmp_path):
+    builtin = tmp_path / "definitions"
+    user = tmp_path / "repo"
+    builtin.mkdir()
+    user.mkdir()
+    _write_avcdriver(
+        builtin / "d.avcdriver",
+        {**VALID_DEFINITION, "id": "acme_dup", "name": "Built-in"},
+    )
+    (user / "d.avcdriver").write_text("{{{{not yaml!!", encoding="utf-8")
+
+    from server.core.device_manager import unregister_driver
+
+    count = load_driver_files([builtin, user])
+    try:
+        assert count == 1
+        assert _registry_info("acme_dup")["name"] == "Built-in"
+    finally:
+        unregister_driver("acme_dup")
+
+
+def test_load_python_drivers_user_copy_overrides_builtin(tmp_path):
+    builtin = tmp_path / "definitions"
+    user = tmp_path / "repo"
+    builtin.mkdir()
+    user.mkdir()
+    template = (
+        "from server.drivers.base import BaseDriver\n"
+        "class AcmeDriver(BaseDriver):\n"
+        '    DRIVER_INFO = {{"id": "acme_py_dup", "name": "{name}"}}\n'
+    )
+    (builtin / "acme_builtin.py").write_text(
+        template.format(name="Built-in"), encoding="utf-8"
+    )
+    (user / "acme_user.py").write_text(
+        template.format(name="User Copy"), encoding="utf-8"
+    )
+
+    from server.core.device_manager import unregister_driver
+
+    count = load_python_drivers([builtin, user])
+    try:
+        assert count == 1
+        assert _registry_info("acme_py_dup")["name"] == "User Copy"
+    finally:
+        unregister_driver("acme_py_dup")
+        sys.modules.pop("openavc_driver_acme_builtin", None)
+        sys.modules.pop("openavc_driver_acme_user", None)
+
+
+def test_restore_driver_registration_restores_builtin(tmp_path):
+    builtin = tmp_path / "definitions"
+    user = tmp_path / "repo"
+    builtin.mkdir()
+    user.mkdir()
+    _write_avcdriver(
+        builtin / "d.avcdriver",
+        {**VALID_DEFINITION, "id": "acme_dup", "name": "Built-in"},
+    )
+
+    from server.core.device_manager import is_driver_registered, unregister_driver
+
+    try:
+        # As after deleting a user override: the built-in file remains.
+        assert restore_driver_registration("acme_dup", [builtin, user]) is True
+        assert _registry_info("acme_dup")["name"] == "Built-in"
+    finally:
+        unregister_driver("acme_dup")
+
+    # No file serves the id anymore: the stale registration is dropped.
+    (builtin / "d.avcdriver").unlink()
+    assert restore_driver_registration("acme_dup", [builtin, user]) is False
+    assert not is_driver_registered("acme_dup")
+
+
+def test_list_driver_definitions_user_copy_overrides_builtin(tmp_path):
+    builtin = tmp_path / "definitions"
+    user = tmp_path / "repo"
+    builtin.mkdir()
+    user.mkdir()
+    _write_avcdriver(
+        builtin / "d.avcdriver",
+        {**VALID_DEFINITION, "id": "acme_dup", "name": "Built-in"},
+    )
+    _write_avcdriver(
+        user / "d.avcdriver",
+        {**VALID_DEFINITION, "id": "acme_dup", "name": "User Copy"},
+    )
+
+    result = list_driver_definitions([builtin, user])
+    entries = [d for d in result if d["id"] == "acme_dup"]
+    assert len(entries) == 1
+    # The listing shows the copy that actually serves the id at runtime.
+    assert entries[0]["name"] == "User Copy"
+    assert entries[0]["_source_file"] == str(user / "d.avcdriver")
 
 
 # --- M-096: a failed Python-driver import leaves no module behind ---

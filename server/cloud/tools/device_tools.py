@@ -745,7 +745,12 @@ class DeviceToolsMixin:
     async def _update_driver_definition(self, input: dict) -> Any:
         from pathlib import Path
 
-        from server.drivers.driver_loader import list_driver_definitions, save_driver_definition, validate_driver_definition
+        from server.drivers.driver_loader import (
+            list_driver_definitions,
+            restore_driver_registration,
+            save_driver_definition,
+            validate_driver_definition,
+        )
         from server.drivers.configurable import create_configurable_driver_class
         from server.core.device_manager import register_driver
         from server.system_config import DRIVER_DEFINITIONS_DIR
@@ -789,6 +794,11 @@ class DeviceToolsMixin:
             old_path.unlink(missing_ok=True)
         driver_class = create_configurable_driver_class(definition)
         register_driver(driver_class)
+        if new_id != driver_id:
+            # The rename removed the user file for the old id. If it was
+            # overriding a shipped built-in, re-register the built-in so the
+            # old id keeps working; otherwise drop the stale registration.
+            restore_driver_registration(driver_id, dirs)
         return {"status": "updated", "id": new_id}
 
     async def _test_driver_command(self, input: dict) -> Any:

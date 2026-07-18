@@ -1152,6 +1152,7 @@ async def update_driver_definition(driver_id: str, body: DriverDefinitionRequest
         delete_driver_definition,
         is_builtin_driver,
         list_driver_definitions as _list,
+        restore_driver_registration,
         save_driver_definition,
         validate_driver_definition,
     )
@@ -1206,6 +1207,10 @@ async def update_driver_definition(driver_id: str, body: DriverDefinitionRequest
     reconnected = await engine.devices.reload_driver(driver_def["id"])
     # A renamed driver id leaves devices on the old id orphaned — retry those too.
     if driver_def.get("id") != driver_id:
+        # The rename removed the user file for the old id. If that file was
+        # overriding a shipped built-in, re-register the built-in so the old
+        # id keeps working; otherwise drop the stale registration.
+        restore_driver_registration(driver_id, dirs)
         reconnected = reconnected + await engine.devices.reload_driver(driver_id)
 
     return {"status": "updated", "id": driver_def["id"], "devices_reconnected": reconnected}
@@ -1294,7 +1299,11 @@ async def patch_driver_definition(driver_id: str, body: dict) -> dict:
 @router.delete("/driver-definitions/{driver_id}")
 async def delete_driver_definition_endpoint(driver_id: str) -> dict:
     """Delete a JSON driver definition."""
-    from server.drivers.driver_loader import delete_driver_definition, is_builtin_driver
+    from server.drivers.driver_loader import (
+        delete_driver_definition,
+        is_builtin_driver,
+        restore_driver_registration,
+    )
 
     dirs = _get_driver_dirs()
 
@@ -1312,10 +1321,14 @@ async def delete_driver_definition_endpoint(driver_id: str) -> dict:
             status_code=404,
             detail=f"Driver definition '{driver_id}' not found",
         )
-    # Also unregister from runtime driver registry
-    from server.core.device_manager import unregister_driver
-    unregister_driver(driver_id)
-    return {"status": "deleted", "id": driver_id}
+    # The deleted file may have been a user copy overriding a shipped
+    # built-in: re-register the built-in so the id keeps working, or drop
+    # the stale registration when nothing serves the id anymore.
+    restored = restore_driver_registration(driver_id, dirs)
+    if restored:
+        # Reconnect devices on this driver so they pick up the restored class.
+        await _get_engine().devices.reload_driver(driver_id)
+    return {"status": "deleted", "id": driver_id, "builtin_restored": restored}
 
 
 @router.post("/driver-definitions/{driver_id}/test-command")

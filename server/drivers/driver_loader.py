@@ -1626,21 +1626,26 @@ def find_driver_file_by_id(
 ) -> Path | None:
     """Find the ``.avcdriver`` file on disk that declares ``driver_id``.
 
-    Scans the given directories (first match wins, so earlier dirs take
-    precedence) for a YAML driver whose declared id matches. Matches on the
-    declared id, not the filename stem, since uploads keep their original
-    name (see ``driver_id_from_file``). Returns the path, or None if no
+    Scans the given directories for a YAML driver whose declared id matches.
+    When more than one directory declares the id, the match from the LAST
+    directory wins — mirroring load precedence, where a user copy in
+    ``driver_repo`` overrides a same-id built-in — so callers always get the
+    file that actually serves the driver. Matches on the declared id, not
+    the filename stem, since uploads keep their original name (see
+    ``driver_id_from_file``). Returns the path, or None if no
     ``.avcdriver`` declares that id. (Python ``.py`` drivers are out of
     scope — they have their own reload path keyed by filename.)
     """
+    found: Path | None = None
     for directory in directories:
         dir_path = Path(directory)
         if not dir_path.is_dir():
             continue
         for filepath in sorted(dir_path.glob(f"*{DRIVER_EXTENSION}")):
             if driver_id_from_file(filepath) == driver_id:
-                return filepath
-    return None
+                found = filepath
+                break  # first match within a directory; a later dir may override
+    return found
 
 
 def load_driver_files(directories: Sequence[Path | str]) -> int:
@@ -1648,14 +1653,20 @@ def load_driver_files(directories: Sequence[Path | str]) -> int:
     Scan directories for .avcdriver files, validate them,
     create ConfigurableDriver subclasses, and register them.
 
-    Returns the number of drivers successfully loaded.
+    Directories are scanned in order and LATER directories take precedence:
+    a same-id driver in a later directory (the user's ``driver_repo``)
+    replaces one from an earlier directory (the read-only built-in
+    definitions), so an installed or edited user copy actually serves the
+    id. Within a single directory a duplicate id is a conflict — the first
+    file (alphabetical) wins and the rest are skipped with a warning.
+
+    Returns the number of distinct drivers successfully registered.
     """
     from server.core.device_manager import register_driver
     from server.drivers.configurable import create_configurable_driver_class
 
-    count = 0
-    seen_ids: set[str] = set()
-    for dir_path in directories:
+    registered: dict[str, int] = {}  # driver_id -> index of the dir it loaded from
+    for dir_index, dir_path in enumerate(directories):
         dir_path = Path(dir_path)
         if not dir_path.exists():
             continue
@@ -1666,19 +1677,23 @@ def load_driver_files(directories: Sequence[Path | str]) -> int:
                 continue
 
             driver_id = driver_def.get("id", "")
-            if driver_id in seen_ids:
-                log.warning(f"Duplicate driver ID '{driver_id}' in {filepath.name} — skipping")
-                continue
-            seen_ids.add(driver_id)
+            if driver_id in registered:
+                if registered[driver_id] == dir_index:
+                    log.warning(f"Duplicate driver ID '{driver_id}' in {filepath.name} — skipping")
+                    continue
+                log.info(
+                    f"Driver '{driver_id}' from {filepath.name} overrides the "
+                    f"copy loaded from an earlier directory"
+                )
             try:
                 driver_class = create_configurable_driver_class(driver_def)
                 register_driver(driver_class)
-                count += 1
+                registered[driver_id] = dir_index
                 log.info(f"Loaded driver: {driver_id} from {filepath.name}")
             except Exception:  # Catch-all: YAML parsing/validation can fail in many ways
                 log.exception(f"Failed to create driver class from {filepath}")
 
-    return count
+    return len(registered)
 
 
 def load_python_driver_file(filepath: Path) -> type | None:
@@ -1809,13 +1824,15 @@ def load_python_drivers(directories: Sequence[Path | str]) -> int:
     """
     Scan directories for .py driver files, load them, and register.
 
-    Returns the number of drivers successfully loaded.
+    Same precedence as ``load_driver_files``: later directories win for a
+    duplicate id; within one directory the first file (alphabetical) wins.
+
+    Returns the number of distinct drivers successfully registered.
     """
     from server.core.device_manager import register_driver
 
-    count = 0
-    seen_ids: set[str] = set()
-    for dir_path in directories:
+    registered: dict[str, int] = {}  # driver_id -> index of the dir it loaded from
+    for dir_index, dir_path in enumerate(directories):
         dir_path = Path(dir_path)
         if not dir_path.exists():
             continue
@@ -1829,18 +1846,22 @@ def load_python_drivers(directories: Sequence[Path | str]) -> int:
                 continue
 
             driver_id = driver_class.DRIVER_INFO.get("id", "")
-            if driver_id in seen_ids:
-                log.warning(f"Duplicate Python driver ID '{driver_id}' in {filepath.name} — skipping")
-                continue
-            seen_ids.add(driver_id)
+            if driver_id in registered:
+                if registered[driver_id] == dir_index:
+                    log.warning(f"Duplicate Python driver ID '{driver_id}' in {filepath.name} — skipping")
+                    continue
+                log.info(
+                    f"Python driver '{driver_id}' from {filepath.name} overrides "
+                    f"the copy loaded from an earlier directory"
+                )
             try:
                 register_driver(driver_class)
-                count += 1
+                registered[driver_id] = dir_index
                 log.info(f"Loaded Python driver: {driver_id} from {filepath.name}")
             except Exception:
                 log.exception(f"Failed to register Python driver from {filepath}")
 
-    return count
+    return len(registered)
 
 
 def load_all_drivers(directories: Sequence[Path | str]) -> int:
@@ -1949,6 +1970,39 @@ def is_builtin_driver(
     return builtin_match and not user_match
 
 
+def restore_driver_registration(
+    driver_id: str,
+    directories: Sequence[Path | str],
+) -> bool:
+    """Re-register ``driver_id`` from whatever ``.avcdriver`` file still serves it.
+
+    After a user copy that overrode a built-in is deleted (or renamed away),
+    the registry still holds the removed copy's class. If any on-disk
+    definition still declares the id — normally the shipped built-in — load
+    and register it so the id keeps working with its original behavior;
+    otherwise drop the stale registration.
+
+    Returns True if a definition was re-registered, False if the id is now
+    unregistered. (YAML definitions only; Python drivers have their own
+    filename-keyed reload path.)
+    """
+    from server.core.device_manager import register_driver, unregister_driver
+    from server.drivers.configurable import create_configurable_driver_class
+
+    filepath = find_driver_file_by_id(directories, driver_id)
+    if filepath is not None:
+        driver_def = load_driver_file(filepath)
+        if driver_def is not None:
+            try:
+                register_driver(create_configurable_driver_class(driver_def))
+                log.info(f"Restored driver '{driver_id}' from {filepath}")
+                return True
+            except Exception:  # Catch-all: class creation can fail in many ways
+                log.exception(f"Failed to restore driver '{driver_id}' from {filepath}")
+    unregister_driver(driver_id)
+    return False
+
+
 def delete_driver_definition(
     driver_id: str,
     directories: Sequence[Path | str],
@@ -1988,12 +2042,19 @@ def list_driver_definitions(directories: Sequence[Path | str]) -> list[dict[str,
     """
     List all driver definitions from the given directories.
 
+    Duplicate ids resolve the same way loading does: a definition in a
+    later directory (the user's ``driver_repo``) replaces a same-id one
+    from an earlier directory (the built-ins), so the listing shows the
+    copy that actually serves the id at runtime. ``_source_file`` on each
+    entry points at the winning file.
+
     Returns a list of driver definition dicts.
     """
     definitions: list[dict[str, Any]] = []
-    seen_ids: set[str] = set()
+    # driver_id -> (index of the dir it came from, position in definitions)
+    slots: dict[str, tuple[int, int]] = {}
 
-    for dir_path in directories:
+    for dir_index, dir_path in enumerate(directories):
         dir_path = Path(dir_path)
         if not dir_path.exists():
             continue
@@ -2003,11 +2064,16 @@ def list_driver_definitions(directories: Sequence[Path | str]) -> list[dict[str,
             if driver_def is None:
                 continue
             driver_id = driver_def.get("id", "")
-            if driver_id in seen_ids:
-                continue
-            seen_ids.add(driver_id)
             # Add source info
             driver_def["_source_file"] = str(filepath)
+            if driver_id in slots:
+                prev_dir, position = slots[driver_id]
+                if prev_dir == dir_index:
+                    continue  # duplicate within one directory — first file wins
+                definitions[position] = driver_def  # later directory overrides
+                slots[driver_id] = (dir_index, position)
+                continue
+            slots[driver_id] = (dir_index, len(definitions))
             definitions.append(driver_def)
 
     return definitions

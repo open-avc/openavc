@@ -144,14 +144,17 @@ class SimulationManager:
         if not devices_config:
             raise RuntimeError("No devices to simulate")
 
-        # Build driver paths
+        # Build driver paths. The simulator scans these in order with
+        # last-write-wins on duplicate ids, so list them lowest-precedence
+        # first: the user's driver_repo goes last to mirror the runtime
+        # loader, where a user copy overrides a same-id built-in.
         driver_paths = []
         if _DRIVERS_DIR.exists():
             driver_paths.append(str(_DRIVERS_DIR))
-        if DRIVER_REPO_DIR.exists():
-            driver_paths.append(str(DRIVER_REPO_DIR))
         if DRIVER_DEFINITIONS_DIR.exists():
             driver_paths.append(str(DRIVER_DEFINITIONS_DIR))
+        if DRIVER_REPO_DIR.exists():
+            driver_paths.append(str(DRIVER_REPO_DIR))
 
         if not driver_paths:
             raise RuntimeError("No driver paths found")
