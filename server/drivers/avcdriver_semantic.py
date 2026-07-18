@@ -21,22 +21,30 @@ from typing import Any, Callable
 
 from server.drivers.spec import (
     ACTION_KINDS,
+    AUTH_TRANSPORTS,
+    AUTH_TYPES,
     AVAILABILITIES,
+    CHILD_ID_TYPES,
+    CLOUD_PRIORITIES,
+    CONFIG_FIELD_SOURCES,
     GENERIC_ID_PREFIXES,
+    INSTANCE_SOURCES,
+    LENGTH_ENDIANS,
+    LENGTH_HEADER_SIZES,
+    LIVENESS_TRANSPORTS,
+    OSC_ARG_TYPES as _OSC_ARG_TYPES,
+    PARAM_OPTIONS_FROM_SOURCES as _PARAM_OPTIONS_FROM_SOURCES,
+    PUSH_FRAME_PARSER_TYPES,
+    PUSH_TYPE_KEYS,
     REQUIRED_FIELDS,
+    SEND_FRAME_TYPES,
+    STRUCT_LENGTH_SIZES,
+    VALUE_TYPES,
     VISIBLE_WHEN_OPERATORS as _VISIBLE_WHEN_OPERATORS,
+    YAML_TRANSPORTS,
     is_multicast_group,
 )
 from server.utils.regex_safety import regex_safety_error as _regex_redos_error
-
-# OSC argument type tags the ConfigurableDriver runtime can encode from a YAML
-# value. 'b' (blob/bytes) is intentionally excluded — there's no unambiguous way
-# to express raw bytes in a YAML arg value, so it isn't a declarative type (the
-# Driver Builder UI and avcdriver.schema.json omit it too). An unsupported tag
-# is dropped silently at send time, yielding a malformed OSC message — catch it
-# at load instead.
-_OSC_ARG_TYPES = frozenset({"f", "i", "s", "h", "d", "T", "F", "N"})
-
 
 def _validate_osc_args(where: str, arg_defs: Any, errors: list[str]) -> None:
     """Validate OSC arg `type` tags so an unsupported tag or typo fails at load
@@ -56,10 +64,6 @@ def _validate_osc_args(where: str, arg_defs: Any, errors: list[str]) -> None:
                 f"{where}: args[{j}] unknown OSC type '{arg_type}' "
                 f"(expected one of f/i/s/h/d/T/F/N)"
             )
-
-
-# Sources a param's option list can cascade from (`options_from.source`).
-_PARAM_OPTIONS_FROM_SOURCES = frozenset({"child_schema"})
 
 
 def _validate_param_option_providers(
@@ -249,9 +253,7 @@ def validate_driver_definition(
     # "bridge" is the sentinel transport for a device that emits through a live
     # bridge instance (an IR device on an emitter port) rather than dialing a
     # host of its own — it opens no socket and routes commands via the bridge.
-    if transport and transport not in (
-        "tcp", "serial", "udp", "http", "osc", "bridge"
-    ):
+    if transport and transport not in YAML_TRANSPORTS:
         errors.append(f"Unsupported transport: {transport}")
 
     # The IR code-set opt-in is a boolean flag (like inline_protocol): it turns
@@ -632,7 +634,7 @@ def validate_driver_definition(
     # and just show "(not set)" forever while writes silently fired.
     declared_vars = driver_def.get("state_variables")
     declared_vars = declared_vars if isinstance(declared_vars, dict) else {}
-    valid_setting_types = {"string", "integer", "number", "boolean", "enum", "float"}
+    valid_setting_types = set(VALUE_TYPES)
     device_settings = driver_def.get("device_settings")
     if device_settings is not None and not isinstance(device_settings, dict):
         errors.append("device_settings: must be a mapping")
@@ -700,19 +702,12 @@ def validate_driver_definition(
             # config_derived keys resolve into config at runtime, so a push
             # template may reference them like any declared field.
             _push_config_fields: set[str] = set()
-            for src_key in ("config_schema", "default_config", "config_derived"):
+            for src_key in CONFIG_FIELD_SOURCES:
                 src = driver_def.get(src_key)
                 if isinstance(src, dict):
                     _push_config_fields.update(src)
 
-            _push_known_keys = {
-                "multicast": {"type", "group", "port"},
-                "sse": {"type", "path", "idle_timeout"},
-                "tcp_listener": {
-                    "type", "port", "frame_parser", "register", "unregister",
-                },
-                "http_listener": {"type"},
-            }
+            _push_known_keys = PUSH_TYPE_KEYS
             ptype = push_def.get("type")
             if ptype not in _push_known_keys:
                 errors.append(
@@ -858,9 +853,7 @@ def validate_driver_definition(
                         errors.append("push: frame_parser must be a mapping")
                     else:
                         ftype = frame_cfg.get("type")
-                        if ftype not in (
-                            "struct_frame", "length_prefix", "fixed_length",
-                        ):
+                        if ftype not in PUSH_FRAME_PARSER_TYPES:
                             errors.append(
                                 f"push: frame_parser type {ftype!r} must be "
                                 f"struct_frame, length_prefix, or "
@@ -882,7 +875,7 @@ def validate_driver_definition(
                                         f"a non-negative integer"
                                     )
                             fsize = frame_cfg.get("length_size", 2)
-                            if fsize not in (1, 2, 4):
+                            if fsize not in STRUCT_LENGTH_SIZES:
                                 errors.append(
                                     "push: frame_parser length_size must be "
                                     "1, 2, or 4"
@@ -896,7 +889,7 @@ def validate_driver_definition(
                                     "be an integer"
                                 )
                             fend = frame_cfg.get("length_endian", "big")
-                            if fend not in ("big", "little"):
+                            if fend not in LENGTH_ENDIANS:
                                 errors.append(
                                     "push: frame_parser length_endian must "
                                     "be 'big' or 'little'"
@@ -934,13 +927,13 @@ def validate_driver_definition(
             errors.append("auth: must be a mapping")
         else:
             auth_type = auth_def.get("type", "telnet_login")
-            if auth_type != "telnet_login":
+            if auth_type not in AUTH_TYPES:
                 errors.append(
                     f"auth: unsupported type '{auth_type}' (only 'telnet_login')"
                 )
             # The handshake assumes a TCP/serial byte stream; on udp/http/osc the
             # frame-parser swap and raw buffering break the normal data path.
-            if transport and transport not in ("tcp", "serial"):
+            if transport and transport not in AUTH_TRANSPORTS:
                 errors.append(
                     f"auth: login handshake is only supported on tcp/serial "
                     f"transports, not '{transport}'"
@@ -978,7 +971,7 @@ def validate_driver_definition(
             # failure, so the missed-poll watchdog covers it; `bridge` devices
             # own no transport. The probe only makes sense on the socket
             # transports that can die silently.
-            if transport and transport not in ("tcp", "serial", "udp", "osc"):
+            if transport and transport not in LIVENESS_TRANSPORTS:
                 errors.append(
                     f"liveness: not supported on transport '{transport}' "
                     f"(only tcp/serial/udp/osc)"
@@ -1039,7 +1032,7 @@ def validate_driver_definition(
             )
 
     # Validate state_variables structure
-    valid_types = {"string", "integer", "number", "boolean", "enum", "float"}
+    valid_types = set(VALUE_TYPES)
     state_variables = driver_def.get("state_variables", {})
     if not isinstance(state_variables, dict):
         errors.append("state_variables: must be a mapping")
@@ -1068,7 +1061,7 @@ def validate_driver_definition(
         # The cloud state relay reads this tag to pick the forwarding tier;
         # a typo would silently fall back to the default cadence.
         cloud_priority = var_def.get("cloud_priority")
-        if cloud_priority is not None and cloud_priority not in ("low", "high"):
+        if cloud_priority is not None and cloud_priority not in CLOUD_PRIORITIES:
             errors.append(
                 f"State variable '{var_name}': cloud_priority must be 'low' "
                 f"or 'high' (got {cloud_priority!r}); omit it for the "
@@ -1089,7 +1082,7 @@ def validate_driver_definition(
             fp_type = frame_parser.get("type", "")
             if fp_type == "length_prefix":
                 header_size = frame_parser.get("header_size", 2)
-                if header_size not in (1, 2, 4):
+                if header_size not in LENGTH_HEADER_SIZES:
                     errors.append(
                         f"frame_parser: header_size must be 1, 2, or 4 (got {header_size!r})"
                     )
@@ -1112,7 +1105,7 @@ def validate_driver_definition(
                             f"integer (got {extra_val!r})"
                         )
                 endian = frame_parser.get("length_endian", "big")
-                if endian not in ("big", "little"):
+                if endian not in LENGTH_ENDIANS:
                     errors.append(
                         f"frame_parser: length_endian must be 'big' or 'little' "
                         f"(got {endian!r})"
@@ -1140,7 +1133,7 @@ def validate_driver_definition(
             errors.append("send_frame: must be a mapping")
         else:
             sf_type = send_frame.get("type", "length_prefix")
-            if sf_type != "length_prefix":
+            if sf_type not in SEND_FRAME_TYPES:
                 errors.append(
                     f"send_frame: unknown type '{sf_type}' (expected 'length_prefix')"
                 )
@@ -1156,7 +1149,7 @@ def validate_driver_definition(
                         f"(got {length_size!r})"
                     )
                 sf_endian = send_frame.get("length_endian", "big")
-                if sf_endian not in ("big", "little"):
+                if sf_endian not in LENGTH_ENDIANS:
                     errors.append(
                         f"send_frame: length_endian must be 'big' or 'little' "
                         f"(got {sf_endian!r})"
@@ -1205,7 +1198,7 @@ def validate_driver_definition(
                     errors.append(f"{where}.id_format: must be a mapping")
                 else:
                     id_type = id_format.get("type", "integer")
-                    if id_type not in ("integer", "string"):
+                    if id_type not in CHILD_ID_TYPES:
                         errors.append(
                             f"{where}.id_format: unknown type '{id_type}' "
                             f"(expected 'integer' or 'string')"
@@ -1247,7 +1240,7 @@ def validate_driver_definition(
                             f"{where}.state_variables.{var_name}: unknown type '{vt}'"
                         )
                     cp = var_def.get("cloud_priority")
-                    if cp is not None and cp not in ("low", "high"):
+                    if cp is not None and cp not in CLOUD_PRIORITIES:
                         errors.append(
                             f"{where}.state_variables.{var_name}: cloud_priority "
                             f"must be 'low' or 'high' (got {cp!r}); omit it for "
@@ -1277,7 +1270,7 @@ def validate_driver_definition(
                     # config_derived keys resolve into config at runtime, so
                     # count_from / ids_from may name them too.
                     config_fields = set()
-                    for src in ("config_schema", "default_config", "config_derived"):
+                    for src in CONFIG_FIELD_SOURCES:
                         block = driver_def.get(src)
                         if isinstance(block, dict):
                             config_fields.update(block.keys())
@@ -1297,7 +1290,7 @@ def validate_driver_definition(
                                 f"is not a declared state variable"
                             )
                     sources = [
-                        k for k in ("count", "count_from", "ids_from", "ids")
+                        k for k in INSTANCE_SOURCES
                         if k in instances
                     ]
                     if len(sources) != 1:
@@ -1392,7 +1385,7 @@ def validate_driver_definition(
     # config_derived keys resolve into config at runtime, so a `when:` gate
     # may name them like any declared field.
     query_config_fields: set[str] = set()
-    for _src in ("config_schema", "default_config", "config_derived"):
+    for _src in CONFIG_FIELD_SOURCES:
         _block = driver_def.get(_src)
         if isinstance(_block, dict):
             query_config_fields.update(_block.keys())

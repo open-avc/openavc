@@ -47,6 +47,73 @@ CLOUD_PRIORITIES: tuple[str, ...] = ("low", "high")
 # Blocks whose keys become config fields a template/reference may name.
 CONFIG_FIELD_SOURCES: tuple[str, ...] = ("config_schema", "default_config", "config_derived")
 
+# --- transports with extra constraints ---------------------------------------
+
+# Transports the auth: login-handshake block supports (it swaps the frame
+# parser and types credentials over a raw byte stream).
+AUTH_TRANSPORTS: tuple[str, ...] = ("tcp", "serial")
+
+# Auth handshake types the runtime implements.
+AUTH_TYPES: tuple[str, ...] = ("telnet_login",)
+
+# Transports the liveness: watchdog supports (the socket transports that can
+# die silently; HTTP polling already awaits every response, bridge devices
+# own no transport).
+LIVENESS_TRANSPORTS: tuple[str, ...] = ("tcp", "serial", "udp", "osc")
+
+# --- framing -----------------------------------------------------------------
+
+# Receive-side frame_parser types a YAML driver may declare, and the
+# per-type numeric constraints the runtime parsers accept.
+FRAME_PARSER_TYPES: tuple[str, ...] = ("length_prefix", "fixed_length")
+LENGTH_HEADER_SIZES: tuple[int, ...] = (1, 2, 4)
+LENGTH_ENDIANS: tuple[str, ...] = ("big", "little")
+
+# Send-side send_frame types (the send twin of frame_parser).
+SEND_FRAME_TYPES: tuple[str, ...] = ("length_prefix",)
+
+# Frame parsers a push: tcp_listener subscription may declare for its
+# dial-back channel, and struct_frame's length-field sizes.
+PUSH_FRAME_PARSER_TYPES: tuple[str, ...] = ("struct_frame", "length_prefix", "fixed_length")
+STRUCT_LENGTH_SIZES: tuple[int, ...] = (1, 2, 4)
+
+# --- push --------------------------------------------------------------------
+
+# Push subscription types and the keys each accepts. Every type needs its
+# own channel machinery in the runtime, so an unknown type is an error, and
+# unknown keys are rejected against this table.
+PUSH_TYPE_KEYS: dict[str, frozenset[str]] = {
+    "multicast": frozenset({"type", "group", "port"}),
+    "sse": frozenset({"type", "path", "idle_timeout"}),
+    "tcp_listener": frozenset({
+        "type", "port", "frame_parser", "register", "unregister",
+    }),
+    "http_listener": frozenset({"type"}),
+}
+
+# --- children ----------------------------------------------------------------
+
+# child_entity_types.*.id_format.type values.
+CHILD_ID_TYPES: tuple[str, ...] = ("integer", "string")
+
+# The mutually exclusive roster sources an instances: block may declare.
+INSTANCE_SOURCES: tuple[str, ...] = ("count", "count_from", "ids_from", "ids")
+
+# --- OSC ---------------------------------------------------------------------
+
+# OSC argument type tags the ConfigurableDriver runtime can encode from a YAML
+# value. 'b' (blob/bytes) is intentionally excluded — there's no unambiguous way
+# to express raw bytes in a YAML arg value, so it isn't a declarative type (the
+# Driver Builder UI and avcdriver.schema.json omit it too). An unsupported tag
+# is dropped silently at send time, yielding a malformed OSC message — catch it
+# at load instead.
+OSC_ARG_TYPES: frozenset[str] = frozenset({"f", "i", "s", "h", "d", "T", "F", "N"})
+
+# --- command params ----------------------------------------------------------
+
+# Sources a param's option list can cascade from (`options_from.source`).
+PARAM_OPTIONS_FROM_SOURCES: frozenset[str] = frozenset({"child_schema"})
+
 # --- actions -----------------------------------------------------------------
 
 # Action kinds the platform understands. "command" promotes an existing command
