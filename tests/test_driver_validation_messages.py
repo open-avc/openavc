@@ -9,7 +9,12 @@ silently — the validator's messages are part of the authoring contract
 (the Driver Builder, the community catalog CI, and the docs all surface
 them).
 
-To regenerate the fixture after an intentional message change:
+The case inputs themselves are exported to
+``tests/fixtures/driver_validation_cases.json`` so consumers of the shared
+rules module — the community driver catalog vendors a copy — can replay the
+identical corpus against their copy and prove verdict parity byte-for-byte.
+
+To regenerate both fixtures after an intentional rule or message change:
 
     python tests/test_driver_validation_messages.py --regen
 """
@@ -35,6 +40,7 @@ def _validate(driver_def: Any) -> list[str]:
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "driver_validation_messages.json"
+CASES_FIXTURE = Path(__file__).parent / "fixtures" / "driver_validation_cases.json"
 
 
 def _d(**over: Any) -> dict[str, Any]:
@@ -437,13 +443,43 @@ def test_rejection_messages_match_fixture():
         )
 
 
+def test_cases_fixture_matches_case_table():
+    """The exported case inputs must match CASES exactly.
+
+    Consumers of the rules module replay the exported inputs, so an edited
+    case that isn't re-exported would leave them proving parity against a
+    stale corpus.
+    """
+    exported = json.loads(CASES_FIXTURE.read_text(encoding="utf-8"))
+    assert exported == CASES, (
+        "case inputs changed — regenerate the fixtures "
+        "(python tests/test_driver_validation_messages.py --regen)"
+    )
+
+
+def _write_fixture(path: Path, payload: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        json.dump(payload, f, indent=1, sort_keys=True)
+        f.write("\n")
+
+
 if __name__ == "__main__":
     if "--regen" in sys.argv:
-        FIXTURE.parent.mkdir(parents=True, exist_ok=True)
-        with open(FIXTURE, "w", encoding="utf-8", newline="\n") as f:
-            json.dump(_current_verdicts(), f, indent=1, sort_keys=True)
-            f.write("\n")
+        # Every case must survive a JSON round-trip unchanged, or the
+        # exported corpus would silently diverge from what this file tests.
+        round_tripped = json.loads(json.dumps(CASES))
+        if round_tripped != CASES:
+            print(
+                "CASES is not JSON-round-trip-safe (non-string dict key, "
+                "tuple, or similar) — fix the case before exporting",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        _write_fixture(FIXTURE, _current_verdicts())
+        _write_fixture(CASES_FIXTURE, CASES)
         print(f"wrote {FIXTURE} ({len(CASES)} cases)")
+        print(f"wrote {CASES_FIXTURE}")
     else:
-        print("run with --regen to rewrite the fixture", file=sys.stderr)
+        print("run with --regen to rewrite the fixtures", file=sys.stderr)
         sys.exit(2)
