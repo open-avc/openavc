@@ -134,6 +134,35 @@ def _build_update_tarball(staging_dir: Path, version: str) -> Path:
     return tarball_path
 
 
+_OPENSSL = shutil.which("openssl")
+_OPENSSL_AVAILABLE = _OPENSSL is not None
+
+
+def _arm_install(app_dir: Path) -> Path:
+    """Install a trusted signing key into a fake app dir; return the matching
+    PRIVATE key path (written outside app_dir so the swap can't sweep it).
+
+    Presence of a *.pem under installer/trusted-keys/ flips update-helper.sh
+    from 'signing not yet armed' (warn + proceed) to fail-closed enforcement.
+    """
+    keys_dir = app_dir / "installer" / "trusted-keys"
+    keys_dir.mkdir(parents=True, exist_ok=True)
+    priv = app_dir.parent / "test-signing.key"
+    subprocess.run([_OPENSSL, "ecparam", "-genkey", "-name", "prime256v1",
+                    "-noout", "-out", str(priv)], check=True, capture_output=True)
+    subprocess.run([_OPENSSL, "ec", "-in", str(priv), "-pubout",
+                    "-out", str(keys_dir / "test.pem")], check=True, capture_output=True)
+    return priv
+
+
+def _sign_artifact(artifact: Path, key: Path) -> Path:
+    """Produce artifact.sig with openssl dgst -sha256, as the CI step does."""
+    sig = Path(str(artifact) + ".sig")
+    subprocess.run([_OPENSSL, "dgst", "-sha256", "-sign", str(key),
+                    "-out", str(sig), str(artifact)], check=True, capture_output=True)
+    return sig
+
+
 def _to_msys2_path(win_path: str) -> str:
     """Convert a Windows path to MSYS2/Git Bash format.
 
@@ -741,6 +770,80 @@ class TestHelperScriptApplyUpdate:
         assert result.returncode == 0
         assert not (data_dir / "apply-update.json").exists()
         assert _read_version(app_dir) == "1.0.0"
+
+
+@pytest.mark.skipif(not (_BASH_AVAILABLE and _OPENSSL_AVAILABLE),
+                    reason="bash + openssl required")
+class TestHelperScriptSignatureGate:
+    """H-075: once trusted keys are present (signing armed), the root helper must
+    verify the artifact's detached signature against a trusted key before doing
+    ANY work with the tarball — closing the openavc-user -> root escalation."""
+
+    def _setup(self, tmp_path, *, sign=True, tamper=False, arm=True,
+               wrong_key=False):
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+        app_dir = tmp_path / "app"
+        _build_fake_install(app_dir, "1.0.0")
+        priv = _arm_install(app_dir) if arm else None
+        tarball = _build_update_tarball(tmp_path / "staging", "2.0.0")
+        if sign:
+            key = priv
+            if wrong_key:
+                key = tmp_path / "attacker.key"
+                subprocess.run([_OPENSSL, "ecparam", "-genkey", "-name",
+                                "prime256v1", "-noout", "-out", str(key)],
+                               check=True, capture_output=True)
+            _sign_artifact(tarball, key)
+        if tamper:
+            with open(tarball, "ab") as f:
+                f.write(b"evil bytes appended after signing")
+        (data_dir / "apply-update.json").write_text(json.dumps({
+            "artifact": str(tarball),
+            "from_version": "1.0.0",
+            "to_version": "2.0.0",
+        }))
+        return data_dir, app_dir
+
+    def test_valid_signature_applies(self, tmp_path):
+        data_dir, app_dir = self._setup(tmp_path, sign=True)
+        result = _run_helper(data_dir, app_dir)
+        assert result.returncode == 0
+        assert _read_version(app_dir) == "2.0.0"
+        assert not (data_dir / "apply-update.json").exists()
+
+    def test_tampered_artifact_refused(self, tmp_path):
+        """A tarball modified after signing must be refused, before any snapshot
+        or extract — the install stays on the old version untouched."""
+        data_dir, app_dir = self._setup(tmp_path, sign=True, tamper=True)
+        result = _run_helper(data_dir, app_dir)
+        assert result.returncode == 0  # helper always exits 0
+        assert _read_version(app_dir) == "1.0.0"  # NOT upgraded
+        assert not (data_dir / "apply-update.json").exists()  # instruction dropped
+        # Refusal happens before the snapshot step, so no .previous is created.
+        assert not Path(str(app_dir) + ".previous").exists()
+
+    def test_missing_signature_refused_when_armed(self, tmp_path):
+        data_dir, app_dir = self._setup(tmp_path, sign=False)
+        _run_helper(data_dir, app_dir)
+        assert _read_version(app_dir) == "1.0.0"
+        assert not (data_dir / "apply-update.json").exists()
+
+    def test_untrusted_key_refused(self, tmp_path):
+        """A validly-signed tarball whose key is NOT in trusted-keys (an
+        attacker's own keypair) must be refused."""
+        data_dir, app_dir = self._setup(tmp_path, sign=True, wrong_key=True)
+        _run_helper(data_dir, app_dir)
+        assert _read_version(app_dir) == "1.0.0"
+        assert not (data_dir / "apply-update.json").exists()
+
+    def test_unarmed_unsigned_still_applies(self, tmp_path):
+        """Transition safety: with no trusted keys installed, signing is 'not
+        armed' and an unsigned update still applies (no bricking pre-arming)."""
+        data_dir, app_dir = self._setup(tmp_path, sign=False, arm=False)
+        result = _run_helper(data_dir, app_dir)
+        assert result.returncode == 0
+        assert _read_version(app_dir) == "2.0.0"
 
 
 @pytest.mark.skipif(not _BASH_AVAILABLE, reason="bash not available")

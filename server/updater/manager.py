@@ -222,6 +222,18 @@ class UpdateManager:
         await self._verify_checksum(checksum_url=checksum_url,
                                     artifact_path=artifact_path, artifact_name=artifact_name)
 
+        # For tarball-swap deployments, fetch the artifact's detached signature
+        # next to it so the root helper can verify it before extracting (H-075).
+        if self._consumes_signed_tarball():
+            sig_url = self._find_asset_url(release, artifact_name + ".sig")
+            if sig_url:
+                await self._download_sidecar_sig(sig_url, artifact_path)
+            else:
+                log.warning(
+                    "No %s.sig in release assets — the root helper will refuse "
+                    "this update if release signing is armed", artifact_name,
+                )
+
         return artifact_path
 
     async def _download_artifact(self, url: str, filename: str) -> Path:
@@ -322,6 +334,48 @@ class UpdateManager:
             )
 
         log.info("Checksum verified for %s", artifact_name)
+
+    async def _download_sidecar_sig(self, sig_url: str, artifact_path: Path) -> None:
+        """Download the artifact's detached ``.sig`` next to it, best-effort.
+
+        The root update-helper (Linux) is the *authoritative* integrity gate: it
+        verifies ``${artifact}.sig`` against a root-owned trusted key that the
+        service user can neither forge nor replace. manager.py runs AS that
+        service user, so a manager-side verify would be bypassable and adds
+        nothing to the trust model — its only job is to place the signature
+        where the root helper looks (``str(artifact_path) + ".sig"``). If the
+        signature isn't published (signing not yet armed, or the cloud hasn't
+        started serving it), log and continue: the helper then treats the
+        artifact as unsigned and refuses it only once signing is armed.
+        """
+        sig_path = Path(str(artifact_path) + ".sig")
+        try:
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as c:
+                resp = await c.get(sig_url)
+                resp.raise_for_status()
+                sig_path.write_bytes(resp.content)
+            log.info("Downloaded update signature: %s", sig_path.name)
+        except Exception as e:  # noqa: BLE001 — best-effort sidecar, never fatal here
+            sig_path.unlink(missing_ok=True)
+            log.warning(
+                "No detached signature fetched for %s (%s) — the root helper "
+                "will refuse this update if release signing is armed",
+                artifact_path.name, e,
+            )
+
+    def _consumes_signed_tarball(self) -> bool:
+        """True for deployments whose update is a root-helper-swapped tarball.
+
+        These are the paths where the ``.sig`` sidecar matters (Linux/Pi via
+        update-helper.sh, macOS via openavc-macos-run.sh, the Android
+        appliance). Windows self-updates via an Azure-signed installer .exe, so
+        it has its own authenticity layer and needs no ``.sig``.
+        """
+        return self._deployment_type in (
+            DeploymentType.LINUX_PACKAGE,
+            DeploymentType.MACOS_APP,
+            DeploymentType.ANDROID_APPLIANCE,
+        )
 
     async def check_for_updates(self, channel: str | None = None) -> dict[str, Any]:
         """Check for available updates.
@@ -538,6 +592,14 @@ class UpdateManager:
                 )
             self._set_state("system.update_status", "verifying")
             self._verify_hash(artifact_path, checksum_sha256)
+
+            # Fetch the detached signature (convention: artifact URL + ".sig")
+            # next to the tarball for the root helper's integrity gate (H-075).
+            # The cloud must serve it at that URL (release_service exposes the
+            # .sig asset); until it does, the sidecar is simply absent and the
+            # helper refuses only once signing is armed.
+            if self._consumes_signed_tarball():
+                await self._download_sidecar_sig(update_url + ".sig", artifact_path)
 
             # Step 4: Write pending-update marker
             from server.updater.rollback import write_pending_marker
