@@ -113,7 +113,8 @@ tar czf "$OPENAVC_ARCHIVE" \
     web/simulator/dist/ \
     themes/ \
     requirements.txt \
-    pyproject.toml
+    pyproject.toml \
+    installer/trusted-keys/
 
 ARCHIVE_SIZE=$(du -h "$OPENAVC_ARCHIVE" | cut -f1)
 echo "Archive created: $ARCHIVE_SIZE"

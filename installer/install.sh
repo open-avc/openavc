@@ -36,6 +36,18 @@ HTTP_PORT=8080
 MIN_PYTHON_MAJOR=3
 MIN_PYTHON_MINOR=11
 
+# Trusted release-signing public key (PEM), embedded for the fresh-install
+# bootstrap: install.sh is fetched over HTTPS from get.openavc.com, so this key
+# is as trusted as the installer itself (standard TOFU). When set, verify_checksum
+# verifies SHA256SUMS.txt.sig against it before trusting the checksums.
+#
+# EMPTY until the production key ceremony (installer/trusted-keys/README.md).
+# Empty = signing not yet armed: the signature check is skipped with a warning
+# and the existing checksum-only verification stands, so this ships without
+# breaking installs. Keep in sync with installer/trusted-keys/*.pem (that copy
+# ships in the tarball and protects self-updates; this one bootstraps install).
+TRUSTED_SIGNING_PUBKEY=""
+
 # --- Colors ---
 
 RED='\033[0;31m'
@@ -257,6 +269,7 @@ get_latest_release_url() {
     RELEASE_VERSION=$(echo "$release_json" | grep -o '"tag_name":\s*"[^"]*"' | head -1 | sed 's/.*"tag_name":\s*"\([^"]*\)".*/\1/' | sed 's/^v//')
     RELEASE_URL=$(echo "$release_json" | grep -o '"browser_download_url":\s*"[^"]*linux-'"${ARCH}"'[^"]*\.tar\.gz"' | head -1 | sed 's/"browser_download_url":\s*"\([^"]*\)"/\1/')
     CHECKSUMS_URL=$(echo "$release_json" | grep -o '"browser_download_url":\s*"[^"]*SHA256SUMS\.txt"' | head -1 | sed 's/"browser_download_url":\s*"\([^"]*\)"/\1/')
+    CHECKSUMS_SIG_URL=$(echo "$release_json" | grep -o '"browser_download_url":\s*"[^"]*SHA256SUMS\.txt\.sig"' | head -1 | sed 's/"browser_download_url":\s*"\([^"]*\)"/\1/')
 
     if [ -n "$RELEASE_URL" ] && [ -n "$RELEASE_VERSION" ]; then
         ok "Latest release: v${RELEASE_VERSION}"
@@ -264,6 +277,39 @@ get_latest_release_url() {
     fi
 
     return 1
+}
+
+# Verify SHA256SUMS.txt's detached signature against the embedded trusted key
+# before trusting any hash in it. Without this, an attacker who can replace a
+# release asset could swap the tarball AND its SHA256SUMS.txt consistently and
+# still pass the checksum check. Fail-closed once signing is armed; skipped with
+# a warning while the key is empty (checksum-only, matching prior behavior).
+verify_checksums_signature() {
+    local sums_file="$1"
+
+    if [ -z "$TRUSTED_SIGNING_PUBKEY" ]; then
+        warn "Release signing not yet armed — verifying checksum only (no signature)."
+        return 0
+    fi
+    if ! command -v openssl &>/dev/null; then
+        fatal "openssl not found but release signing is armed — cannot verify authenticity. Install openssl and re-run."
+    fi
+    if [ -z "${CHECKSUMS_SIG_URL:-}" ]; then
+        fatal "No SHA256SUMS.txt.sig in the release assets — refusing to install (release signing is armed)."
+    fi
+
+    local sig_file="/tmp/openavc-SHA256SUMS.txt.sig"
+    local key_file="/tmp/openavc-release-pubkey.pem"
+    if ! download "$CHECKSUMS_SIG_URL" "$sig_file"; then
+        fatal "Failed to download SHA256SUMS.txt.sig — refusing unverified install."
+    fi
+    printf '%s\n' "$TRUSTED_SIGNING_PUBKEY" > "$key_file"
+    if ! openssl dgst -sha256 -verify "$key_file" -signature "$sig_file" "$sums_file" >/dev/null 2>&1; then
+        rm -f "$sig_file" "$key_file"
+        fatal "SHA256SUMS.txt signature did not verify against the trusted key — refusing install."
+    fi
+    rm -f "$sig_file" "$key_file"
+    ok "Release signature verified"
 }
 
 # Verify the downloaded archive against the release's SHA256SUMS.txt.
@@ -285,6 +331,9 @@ verify_checksum() {
     if ! download "$CHECKSUMS_URL" "$sums_file"; then
         fatal "Failed to download SHA256SUMS.txt — refusing to install unverified."
     fi
+
+    # Authenticate the checksums file itself before trusting any hash in it.
+    verify_checksums_signature "$sums_file"
 
     local artifact_name expected actual
     artifact_name=$(basename "$archive")
@@ -408,7 +457,28 @@ setup_data_dir() {
     chown -R "$SERVICE_USER:$SERVICE_GROUP" "$LOG_DIR"
     chown -R "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR"
 
+    # The recursive chown above just made the signing-key store and the
+    # root-executed helpers writable by the service user. Re-assert root
+    # ownership on them so a compromised openavc process can't swap in its own
+    # key or rewrite the helper root runs (H-075 trust root). Mirrors
+    # update-helper.sh's harden_privileged_paths.
+    harden_trust_store
+
     ok "Data directory ready"
+}
+
+# Keep the signing-key store + the root-executed scripts root-owned and
+# unreachable-for-write by the service user. Owning a parent directory is enough
+# to rename/replace a root-owned child, so $INSTALL_DIR and installer/ are rooted
+# too; venv/server and the rest stay openavc-owned. No-op until a key ships.
+harden_trust_store() {
+    local keys_dir="$INSTALL_DIR/installer/trusted-keys"
+    [ -d "$keys_dir" ] || return 0
+    chown root:root "$INSTALL_DIR" 2>/dev/null || true
+    chown -R root:root "$INSTALL_DIR/installer" 2>/dev/null || true
+    chown root:root "$INSTALL_DIR/update-helper.sh" "$INSTALL_DIR/firewall-sync.sh" 2>/dev/null || true
+    chmod 755 "$INSTALL_DIR" "$INSTALL_DIR/installer" "$keys_dir" 2>/dev/null || true
+    chmod 644 "$keys_dir"/*.pem 2>/dev/null || true
 }
 
 # The shipped unit grants ambient CAP_NET_RAW so the unprivileged service can

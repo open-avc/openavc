@@ -345,6 +345,7 @@ jobs:
             installer/seed/ \
             installer/openavc.service \
             installer/update-helper.sh \
+            installer/trusted-keys/ \
             requirements.txt \
             pyproject.toml \
             LICENSE
@@ -414,6 +415,7 @@ jobs:
             installer/seed/ \
             installer/openavc.service \
             installer/update-helper.sh \
+            installer/trusted-keys/ \
             requirements.txt \
             pyproject.toml \
             LICENSE
