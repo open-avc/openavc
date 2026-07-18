@@ -109,10 +109,89 @@ recover_from_snapshot() {
     rm -rf "$APP_DIR"
     if mv "$prev" "$APP_DIR"; then
         chown -R openavc:openavc "$APP_DIR" 2>/dev/null || true
+        harden_privileged_paths
         echo "$LOG_TAG: in-place rollback complete; staying on the previous version"
     else
         echo "$LOG_TAG: in-place rollback FAILED; manual intervention required"
     fi
+}
+
+# Verify an update artifact's detached signature against the root-owned set of
+# trusted public keys shipped in the CURRENTLY-INSTALLED release
+# ($APP_DIR/installer/trusted-keys/*.pem). This is the authoritative integrity
+# gate for the privilege boundary (H-075): anything running as the openavc
+# service user can write apply-update.json pointing at its own tarball and
+# trigger a restart, but it cannot forge a signature over that tarball, and it
+# cannot replace the root-owned trusted keys — so root never extracts an
+# attacker-supplied artifact.
+#
+# openssl is the verifier because the helper runs before/around the venv swap
+# and must not depend on the venv it is replacing; openssl is present on every
+# supported Linux and works on 1.1.1 + 3.x.
+#
+# Trust state:
+#   - no trusted-keys dir / no *.pem  -> release signing NOT YET ARMED: warn and
+#     allow, so this code can ship before the production key exists without
+#     bricking every update. An attacker can't create the root-owned key dir to
+#     force this state.
+#   - keys present                    -> ENFORCED fail-closed: "${artifact}.sig"
+#     must verify against at least one key, else refuse.
+verify_artifact_signature() {
+    local artifact="$1"
+    local keys_dir="$APP_DIR/installer/trusted-keys"
+    local sig="${artifact}.sig"
+
+    local keys=()
+    if [ -d "$keys_dir" ]; then
+        local k
+        for k in "$keys_dir"/*.pem; do
+            [ -f "$k" ] && keys+=("$k")
+        done
+    fi
+
+    if [ "${#keys[@]}" -eq 0 ]; then
+        echo "$LOG_TAG: no trusted signing keys in $keys_dir — release signing not yet armed, skipping signature check"
+        return 0
+    fi
+
+    if ! command -v openssl >/dev/null 2>&1; then
+        echo "$LOG_TAG: openssl not found but signing is armed — refusing update (cannot verify integrity)"
+        return 1
+    fi
+
+    if [ ! -f "$sig" ]; then
+        echo "$LOG_TAG: signature $sig missing — refusing unverified update"
+        return 1
+    fi
+
+    local key
+    for key in "${keys[@]}"; do
+        if openssl dgst -sha256 -verify "$key" -signature "$sig" "$artifact" >/dev/null 2>&1; then
+            echo "$LOG_TAG: signature verified against $(basename "$key")"
+            return 0
+        fi
+    done
+    echo "$LOG_TAG: signature did not verify against any trusted key — refusing update"
+    return 1
+}
+
+# Defense-in-depth for the trust root: keep the root-executed scripts and the
+# signing-key store root-owned and unreachable-for-write by the service user, so
+# the H-075 gate above never depends on the service user being unable to swap in
+# its own key or rewrite the helper root runs. On Linux this is already enforced
+# at runtime by the unit's ProtectSystem=strict (/opt/openavc is read-only to
+# the service); asserting ownership too covers non-strict deployments and any
+# future unit change. Owning a parent directory is enough to rename/replace a
+# root-owned child, so $APP_DIR and installer/ are rooted as well — venv/server
+# and the rest stay openavc-owned.
+harden_privileged_paths() {
+    local keys_dir="$APP_DIR/installer/trusted-keys"
+    [ -d "$keys_dir" ] || return 0
+    chown root:root "$APP_DIR" 2>/dev/null || true
+    chown -R root:root "$APP_DIR/installer" 2>/dev/null || true
+    chown root:root "$APP_DIR/update-helper.sh" "$APP_DIR/firewall-sync.sh" 2>/dev/null || true
+    chmod 755 "$APP_DIR" "$APP_DIR/installer" "$keys_dir" 2>/dev/null || true
+    chmod 644 "$keys_dir"/*.pem 2>/dev/null || true
 }
 
 handle_update() {
@@ -129,6 +208,14 @@ handle_update() {
 
     if [ ! -f "$ARTIFACT" ]; then
         echo "$LOG_TAG: artifact not found: $ARTIFACT, skipping"
+        rm -f "$UPDATE_FILE"
+        return
+    fi
+
+    # Integrity gate (H-075): verify the artifact's signature before doing ANY
+    # work with it (snapshot/extract/swap). Fail-closed once signing is armed.
+    if ! verify_artifact_signature "$ARTIFACT"; then
+        echo "$LOG_TAG: artifact failed signature verification, skipping update"
         rm -f "$UPDATE_FILE"
         return
     fi
@@ -285,6 +372,8 @@ handle_update() {
 
     # Ensure correct ownership (service runs as openavc user)
     chown -R openavc:openavc "$APP_DIR" 2>/dev/null || true
+    # Re-assert root ownership on the trust root + root-executed scripts.
+    harden_privileged_paths
 
     rm -f "$UPDATE_FILE"
     echo "$LOG_TAG: update to v$TO_VER applied successfully"
@@ -341,6 +430,7 @@ handle_rollback() {
 
     rm -rf "$FAILED"
     chown -R openavc:openavc "$APP_DIR" 2>/dev/null || true
+    harden_privileged_paths
     rm -f "$ROLLBACK_FILE"
     echo "$LOG_TAG: rollback complete"
 }
