@@ -34,17 +34,13 @@ import socket
 import struct
 from typing import Any, Callable
 
+# is_multicast_group lives in the shared driver-contract module (the
+# definition validator needs it too); re-exported here for its
+# transport-side callers.
+from server.drivers.spec import is_multicast_group as is_multicast_group
 from server.utils.logger import get_logger
 
 log = get_logger(__name__)
-
-
-def is_multicast_group(value: str) -> bool:
-    """True when ``value`` is an IPv4 multicast group literal (224.0.0.0/4)."""
-    try:
-        return ipaddress.IPv4Address(value).is_multicast
-    except (ipaddress.AddressValueError, ValueError):
-        return False
 
 
 def _log_task_exception(task: asyncio.Task) -> None:

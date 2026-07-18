@@ -51,31 +51,19 @@ from __future__ import annotations
 
 from typing import Any
 
+from server.drivers.avcdriver_semantic import validate_actions as validate_actions
+from server.drivers.spec import ACTION_KINDS, AVAILABILITIES
 from server.utils.logger import get_logger
 
 log = get_logger(__name__)
 
-# Action kinds the platform understands. "command" promotes an existing command
-# (runs online through send_command); "setup" is the offline-capable
-# provisioning wizard handled by the driver's run_setup_action(); "link" opens a
-# URL (the device's web UI) in a new tab, purely client-side.
-ACTION_KINDS: tuple[str, ...] = ("command", "setup", "link")
 
 # Default URL for an auto-added / url-less Open Web UI link action.
 _DEFAULT_WEB_UI_URL = "https://{host}"
 _WEB_UI_ACTION_ID = "open_web_ui"
 
-# How an action's visibility tracks the device's connection state.
-AVAILABILITIES: tuple[str, ...] = ("online", "offline", "always")
 _DEFAULT_AVAILABILITY = "online"
 
-# Operators accepted in a visible_when condition. Mirrors the shared condition
-# evaluator (server/core/condition_eval.py) and the panel / Stream Deck (§38)
-# JS evaluator so an action condition behaves identically everywhere.
-_VISIBLE_WHEN_OPERATORS: frozenset[str] = frozenset({
-    "eq", "ne", "gt", "lt", "gte", "lte", "truthy", "falsy",
-    "equals", "not_equals", "==", "!=", ">", "<", ">=", "<=",
-})
 
 
 def resolve_device_actions(
@@ -234,155 +222,3 @@ def _resolve_action_entry(
         resolved["params"] = params if isinstance(params, dict) else {}
 
     return resolved
-
-
-def validate_actions(driver_def: dict[str, Any]) -> list[str]:
-    """Validate the ``actions`` + ``quick_actions`` blocks of a driver
-    definition. Returns a list of error strings (empty when valid).
-
-    Mirrored by the catalog validator in ``openavc-drivers/scripts/
-    build_index.py`` (kept stdlib-only there); keep the two in sync.
-    """
-    errors: list[str] = []
-    commands = driver_def.get("commands")
-    command_ids = set(commands.keys()) if isinstance(commands, dict) else set()
-
-    quick = driver_def.get("quick_actions")
-    if quick is not None:
-        if not isinstance(quick, list):
-            errors.append("quick_actions: must be a list of command ids")
-        else:
-            for i, cid in enumerate(quick):
-                if not isinstance(cid, str) or not cid:
-                    errors.append(
-                        f"quick_actions[{i}]: must be a non-empty command id string"
-                    )
-                elif command_ids and cid not in command_ids:
-                    errors.append(
-                        f"quick_actions[{i}]: '{cid}' is not a declared command"
-                    )
-
-    actions = driver_def.get("actions")
-    if actions is not None:
-        if not isinstance(actions, list):
-            errors.append("actions: must be a list")
-        else:
-            seen: set[str] = set()
-            for i, entry in enumerate(actions):
-                errors.extend(
-                    _validate_action_entry(i, entry, command_ids, seen)
-                )
-
-    return errors
-
-
-def _validate_action_entry(
-    index: int, entry: Any, command_ids: set[str], seen: set[str],
-) -> list[str]:
-    errors: list[str] = []
-    where = f"actions[{index}]"
-    if not isinstance(entry, dict):
-        return [f"{where}: must be a mapping"]
-
-    action_id = entry.get("id")
-    if not isinstance(action_id, str) or not action_id:
-        errors.append(f"{where}: missing required 'id' (non-empty string)")
-    else:
-        if action_id in seen:
-            errors.append(f"{where}: duplicate action id '{action_id}'")
-        seen.add(action_id)
-
-    kind = entry.get("kind", "command")
-    if kind not in ACTION_KINDS:
-        errors.append(
-            f"{where}: unknown kind '{kind}' (expected one of {list(ACTION_KINDS)})"
-        )
-
-    label = entry.get("label")
-    if label is not None and not isinstance(label, str):
-        errors.append(f"{where}: 'label' must be a string")
-
-    icon = entry.get("icon")
-    if icon is not None and not isinstance(icon, str):
-        errors.append(f"{where}: 'icon' must be a string (lucide icon name)")
-
-    availability = entry.get("availability")
-    if availability is not None and availability not in AVAILABILITIES:
-        errors.append(
-            f"{where}: 'availability' must be one of {list(AVAILABILITIES)}"
-        )
-
-    confirm = entry.get("confirm")
-    if confirm is not None and not isinstance(confirm, (bool, str)):
-        errors.append(f"{where}: 'confirm' must be a boolean or a message string")
-
-    params = entry.get("params")
-    if params is not None and not isinstance(params, dict):
-        errors.append(f"{where}: 'params' must be a mapping")
-
-    url = entry.get("url")
-    if kind == "link":
-        if url is not None and (not isinstance(url, str) or not url):
-            errors.append(f"{where}: 'url' must be a non-empty string")
-    elif url is not None:
-        errors.append(f"{where}: 'url' is only valid on a kind:link action")
-
-    errors.extend(_validate_visible_when(where, entry.get("visible_when")))
-
-    # A kind:"command" action must resolve to a declared command. The command
-    # is the explicit `command` field, or the action id itself.
-    if kind == "command" and isinstance(action_id, str) and action_id:
-        command_id = entry.get("command")
-        if command_id is not None and not isinstance(command_id, str):
-            errors.append(f"{where}: 'command' must be a string")
-        else:
-            target = command_id or action_id
-            if command_ids and target not in command_ids:
-                errors.append(
-                    f"{where}: command '{target}' is not a declared command"
-                )
-
-    return errors
-
-
-def _validate_visible_when(where: str, vw: Any) -> list[str]:
-    """Validate a visible_when block: a single {key, operator, value} condition,
-    or a {any: [...]} / {all: [...]} group of them. Light-touch — unknown extra
-    keys are tolerated, only the recognized shapes are checked.
-    """
-    if vw is None:
-        return []
-    if not isinstance(vw, dict):
-        return [f"{where}: 'visible_when' must be a mapping"]
-
-    errors: list[str] = []
-    if "any" in vw or "all" in vw:
-        for group_key in ("any", "all"):
-            if group_key not in vw:
-                continue
-            group = vw[group_key]
-            if not isinstance(group, list) or not group:
-                errors.append(
-                    f"{where}: visible_when.{group_key} must be a non-empty list"
-                )
-                continue
-            for j, cond in enumerate(group):
-                errors.extend(
-                    _validate_condition(f"{where}: visible_when.{group_key}[{j}]", cond)
-                )
-    else:
-        errors.extend(_validate_condition(f"{where}: visible_when", vw))
-    return errors
-
-
-def _validate_condition(where: str, cond: Any) -> list[str]:
-    if not isinstance(cond, dict):
-        return [f"{where}: condition must be a mapping"]
-    errors: list[str] = []
-    key = cond.get("key")
-    if not isinstance(key, str) or not key:
-        errors.append(f"{where}: condition missing 'key' (state key string)")
-    op = cond.get("operator", "eq")
-    if op not in _VISIBLE_WHEN_OPERATORS:
-        errors.append(f"{where}: unknown operator '{op}'")
-    return errors
