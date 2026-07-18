@@ -27,6 +27,8 @@ From the Updates view, click **Install vX.Y.Z**. A progress dialog walks through
 
 Verification is mandatory. If a download cannot be checked against a published SHA256 checksum, the update is refused and nothing is applied, leaving your current version untouched.
 
+On Linux and the Raspberry Pi appliance, updates are also **cryptographically signed**. Each release artifact carries a detached signature, and a privileged pre-start step verifies that signature against a trusted key shipped with your installation before extracting anything. A tampered or unsigned artifact is refused, so a compromised download or release asset cannot be applied. This is what makes the automatic-update path safe to run unattended.
+
 Do not close the browser or power off the system during this process. After the restart, the Programmer IDE reconnects automatically and shows a confirmation toast.
 
 ## What Gets Updated
