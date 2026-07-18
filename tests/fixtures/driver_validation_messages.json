@@ -1,0 +1,621 @@
+{
+ "action_bad_availability": [
+  "actions[0]: 'availability' must be one of ['online', 'offline', 'always']"
+ ],
+ "action_command_undeclared": [
+  "actions[0]: command 'ghost' is not a declared command"
+ ],
+ "action_confirm_bad_type": [
+  "actions[0]: 'confirm' must be a boolean or a message string"
+ ],
+ "action_duplicate_id": [
+  "actions[1]: duplicate action id 'noop'"
+ ],
+ "action_icon_not_string": [
+  "actions[0]: 'icon' must be a string (lucide icon name)"
+ ],
+ "action_label_not_string": [
+  "actions[0]: 'label' must be a string"
+ ],
+ "action_link_url_empty": [
+  "actions[0]: 'url' must be a non-empty string"
+ ],
+ "action_missing_id": [
+  "actions[0]: missing required 'id' (non-empty string)"
+ ],
+ "action_not_mapping": [
+  "actions[0]: must be a mapping"
+ ],
+ "action_param_pattern_redos": [
+  "actions[0] param 'level': pattern: regex '(a+)+$' has a nested quantifier; this can cause catastrophic backtracking against hostile input"
+ ],
+ "action_params_not_mapping": [
+  "actions[0]: 'params' must be a mapping"
+ ],
+ "action_setup_kind_in_yaml": [
+  "actions[0]: kind 'setup' requires a Python driver (a run_setup_action handler); YAML drivers support kind 'command' only"
+ ],
+ "action_unknown_kind": [
+  "actions[0]: unknown kind 'wizardry' (expected one of ['command', 'setup', 'link'])"
+ ],
+ "action_url_on_command_kind": [
+  "actions[0]: 'url' is only valid on a kind:link action"
+ ],
+ "action_visible_when_any_empty": [
+  "actions[0]: visible_when.any must be a non-empty list"
+ ],
+ "action_visible_when_missing_key": [
+  "actions[0]: visible_when: condition missing 'key' (state key string)"
+ ],
+ "action_visible_when_not_mapping": [
+  "actions[0]: 'visible_when' must be a mapping"
+ ],
+ "action_visible_when_unknown_operator": [
+  "actions[0]: visible_when: unknown operator 'resembles'"
+ ],
+ "actions_not_list": [
+  "actions: must be a list"
+ ],
+ "auth_missing_prompts": [
+  "auth: missing required 'username_prompt'",
+  "auth: missing required 'password_prompt'"
+ ],
+ "auth_not_mapping": [
+  "auth: must be a mapping"
+ ],
+ "auth_redos_pattern": [
+  "auth.success_pattern: regex '(a+)+$' has a nested quantifier; this can cause catastrophic backtracking against hostile input"
+ ],
+ "auth_unsupported_type": [
+  "auth: unsupported type 'oauth' (only 'telnet_login')"
+ ],
+ "auth_wrong_transport": [
+  "auth: login handshake is only supported on tcp/serial transports, not 'udp'"
+ ],
+ "child_entity_types_not_mapping": [
+  "child_entity_types: must be a mapping"
+ ],
+ "child_id_format_min_greater_than_max": [
+  "child_entity_types.zone.id_format: min (8) is greater than max (1)"
+ ],
+ "child_id_format_min_not_int": [
+  "child_entity_types.zone.id_format: min must be an integer (got 'one')"
+ ],
+ "child_id_format_not_mapping": [
+  "child_entity_types.zone.id_format: must be a mapping"
+ ],
+ "child_id_format_pad_width_zero": [
+  "child_entity_types.zone.id_format: pad_width must be a positive integer (got 0)"
+ ],
+ "child_id_format_unknown_type": [
+  "child_entity_types.zone.id_format: unknown type 'uuid' (expected 'integer' or 'string')"
+ ],
+ "child_set_entry_not_mapping": [
+  "Response 0: child_set[0]: must be a mapping"
+ ],
+ "child_set_id_group_exceeds": [
+  "Response 0: child_set[0]: id group: capture ref $9 exceeds the pattern's 2 group(s)"
+ ],
+ "child_set_id_group_invalid": [
+  "Response 0: child_set[0]: id group must be a capture ref (1, 2, ... or '$1')"
+ ],
+ "child_set_id_group_zero": [
+  "Response 0: child_set[0]: id group: capture ref must be $1 or higher"
+ ],
+ "child_set_id_map_bad_pairs": [
+  "Response 0: child_set[0]: id map entries must be scalar wire id -> local id pairs"
+ ],
+ "child_set_id_map_empty": [
+  "Response 0: child_set[0]: id map must be a non-empty mapping of wire id -> local child id"
+ ],
+ "child_set_id_map_non_integer_local": [
+  "Response 0: child_set[0]: id map value 'left' is not an integer (zone declares integer ids)"
+ ],
+ "child_set_id_ref_below_one": [
+  "Response 0: child_set[0]: id: capture ref must be $1 or higher"
+ ],
+ "child_set_id_ref_exceeds": [
+  "Response 0: child_set[0]: id: capture ref $9 exceeds the pattern's 2 group(s)"
+ ],
+ "child_set_id_ref_not_numeric": [
+  "Response 0: child_set[0]: id: '$x' is not a numeric capture ref ($1, $2, ...)"
+ ],
+ "child_set_missing_id": [
+  "Response 0: child_set[0]: missing 'id' (a capture ref like $1, a literal, or {group, map})"
+ ],
+ "child_set_missing_state": [
+  "Response 0: child_set[0]: missing 'state' mapping (prop -> $N or literal)"
+ ],
+ "child_set_not_list": [
+  "Response 0: child_set must be a non-empty list"
+ ],
+ "child_set_state_prop_undeclared": [
+  "Response 0: child_set[0]: state prop 'gain' is not declared in child_entity_types.zone.state_variables"
+ ],
+ "child_set_state_ref_exceeds": [
+  "Response 0: child_set[0]: state 'level': capture ref $9 exceeds the pattern's 2 group(s)"
+ ],
+ "child_set_unknown_type": [
+  "Response 0: child_set[0]: type 'relay' is not a declared child_entity_type"
+ ],
+ "child_state_variable_bad_cloud_priority": [
+  "child_entity_types.zone.state_variables.level: cloud_priority must be 'low' or 'high' (got 'urgent'); omit it for the default cadence"
+ ],
+ "child_state_variable_control_not_bool": [
+  "child_entity_types.zone.state_variables.level: control must be true or false (got 'yes')"
+ ],
+ "child_state_variable_not_mapping": [
+  "child_entity_types.zone.state_variables.level: must be a mapping"
+ ],
+ "child_state_variable_unit_not_string": [
+  "child_entity_types.zone.state_variables.level: unit must be a string (got 5)"
+ ],
+ "child_state_variable_unknown_type": [
+  "child_entity_types.zone.state_variables.level: unknown type 'voltage'"
+ ],
+ "child_state_variables_not_mapping": [
+  "child_entity_types.zone.state_variables: must be a mapping"
+ ],
+ "child_type_def_not_mapping": [
+  "child_entity_types.zone: must be a mapping"
+ ],
+ "child_type_name_empty": [
+  "child_entity_types: type name '' must be a non-empty string"
+ ],
+ "child_type_name_with_dot": [
+  "child_entity_types: type name 'zone.a' must not contain dots (used as state key separator)"
+ ],
+ "child_type_name_with_glob": [
+  "child_entity_types: type name 'zone*' must not contain glob metacharacters (*) \u2014 they break state-change dispatch"
+ ],
+ "command_not_dict": [
+  "Command 'noop': must be a dict"
+ ],
+ "command_osc_arg_not_mapping": [
+  "Command 'beep': args[0] must be a mapping"
+ ],
+ "command_osc_arg_unknown_type": [
+  "Command 'beep': args[0] unknown OSC type 'z' (expected one of f/i/s/h/d/T/F/N)"
+ ],
+ "command_osc_args_not_list": [
+  "Command 'beep': args must be a list"
+ ],
+ "command_prefix_not_string": [
+  "command_prefix: must be a string"
+ ],
+ "command_suffix_not_string": [
+  "command_suffix: must be a string"
+ ],
+ "command_without_send_path_address": [
+  "Command 'noop': must have 'send' (TCP/serial), 'path'/'method' (HTTP), or 'address' (OSC)"
+ ],
+ "commands_not_mapping": [
+  "commands: must be a mapping"
+ ],
+ "device_setting_min_greater_than_max": [
+  "Device setting 'knob': min (10) is greater than max (1)"
+ ],
+ "device_setting_missing_write": [
+  "Device setting 'knob': missing 'write' block (send / path / address) \u2014 a device setting must be writable"
+ ],
+ "device_setting_not_mapping": [
+  "Device setting 'knob': must be a mapping"
+ ],
+ "device_setting_osc_write_bad_args": [
+  "Device setting 'knob' write: args[0] unknown OSC type 'z' (expected one of f/i/s/h/d/T/F/N)"
+ ],
+ "device_setting_state_key_undeclared": [
+  "Device setting 'knob': state_key 'ghost' is not a declared state variable \u2014 the setting would never read back"
+ ],
+ "device_setting_unknown_type": [
+  "Device setting 'knob': unknown type 'knob'"
+ ],
+ "device_settings_not_mapping": [
+  "device_settings: must be a mapping"
+ ],
+ "discovery_invalid_block": [
+  "discovery: acme_widget: discovery.tcp_probe.port must be an integer"
+ ],
+ "each_child_missing_send": [
+  "polling.queries[0]: missing 'send' template"
+ ],
+ "each_child_send_without_child_id": [
+  "polling.queries[0]: 'send' must contain {child_id} (a format spec like {child_id:02d} works too)"
+ ],
+ "each_child_undeclared_type": [
+  "polling.queries[0]: each_child type 'relay' is not a declared child_entity_type"
+ ],
+ "each_child_without_instances": [
+  "polling.queries[0]: each_child type 'zone' declares no instances: block \u2014 nothing would ever be polled"
+ ],
+ "frame_parser_bad_endian": [
+  "frame_parser: length_endian must be 'big' or 'little' (got 'mid')"
+ ],
+ "frame_parser_bad_header_size": [
+  "frame_parser: header_size must be 1, 2, or 4 (got 3)"
+ ],
+ "frame_parser_fixed_bad_length": [
+  "frame_parser: length must be a positive integer (got 0)"
+ ],
+ "frame_parser_header_offset_not_int": [
+  "frame_parser: header_offset must be an integer (got 'two')"
+ ],
+ "frame_parser_length_offset_negative": [
+  "frame_parser: length_offset must be a non-negative integer (got -1)"
+ ],
+ "frame_parser_missing_type": [
+  "frame_parser: missing 'type'"
+ ],
+ "frame_parser_not_mapping": [
+  "frame_parser: must be a mapping"
+ ],
+ "frame_parser_unknown_type": [
+  "frame_parser: unknown type 'crc16' (expected 'length_prefix' or 'fixed_length')"
+ ],
+ "instances_count_exceeds_max": [
+  "child_entity_types.zone.instances: count (99) exceeds id_format.max (8)"
+ ],
+ "instances_count_from_not_string": [
+  "child_entity_types.zone.instances: count_from must name a config field"
+ ],
+ "instances_count_from_state_not_string": [
+  "child_entity_types.zone.instances: count_from_state must name a state variable"
+ ],
+ "instances_count_from_state_undeclared": [
+  "child_entity_types.zone.instances: count_from_state 'zones' is not a declared state variable"
+ ],
+ "instances_count_from_undeclared_field": [
+  "child_entity_types.zone.instances: count_from 'zone_count' is not a declared config field (config_schema / default_config / config_derived)"
+ ],
+ "instances_count_from_with_string_ids": [
+  "child_entity_types.zone.instances: 'count_from' requires integer ids (id_format.type is 'string' \u2014 use 'ids_from')"
+ ],
+ "instances_count_with_string_ids": [
+  "child_entity_types.zone.instances: 'count' requires integer ids (id_format.type is 'string' \u2014 use 'ids_from')"
+ ],
+ "instances_count_zero": [
+  "child_entity_types.zone.instances: count must be an integer >= 1 (got 0)"
+ ],
+ "instances_ids_empty": [
+  "child_entity_types.zone.instances: ids must be a non-empty list of literal child ids"
+ ],
+ "instances_ids_non_integer": [
+  "child_entity_types.zone.instances: id 'left' is not an integer (zone declares integer ids)"
+ ],
+ "instances_ids_non_scalar": [
+  "child_entity_types.zone.instances: ids entries must be scalars (got [1])"
+ ],
+ "instances_label_not_string": [
+  "child_entity_types.zone.instances: label must be a string"
+ ],
+ "instances_no_source": [
+  "child_entity_types.zone.instances: declare exactly one of 'count', 'count_from', 'ids_from', 'ids'"
+ ],
+ "instances_not_mapping": [
+  "child_entity_types.zone.instances: must be a mapping"
+ ],
+ "instances_two_sources": [
+  "child_entity_types.zone.instances: declare exactly one of 'count', 'count_from', 'ids_from', 'ids'"
+ ],
+ "ir_codes_not_bool": [
+  "ir_codes: must be a boolean (the code-set lives in default_config.ir_codes / the device config)"
+ ],
+ "liveness_args_not_list": [
+  "liveness: 'args' must be a list"
+ ],
+ "liveness_args_on_tcp": [
+  "liveness: 'args' is only valid on osc"
+ ],
+ "liveness_expect_not_string": [
+  "liveness: 'expect' must be a regex string"
+ ],
+ "liveness_expect_redos": [
+  "liveness.expect: regex '(a+)+$' has a nested quantifier; this can cause catastrophic backtracking against hostile input"
+ ],
+ "liveness_interval_too_small": [
+  "liveness: 'interval' must be a number >= 1.0"
+ ],
+ "liveness_max_failures_zero": [
+  "liveness: 'max_failures' must be an integer >= 1"
+ ],
+ "liveness_missing_send": [
+  "liveness: missing required 'send' (the probe payload \u2014 a raw protocol string, or an OSC address on osc)"
+ ],
+ "liveness_not_mapping": [
+  "liveness: must be a mapping"
+ ],
+ "liveness_timeout_too_small": [
+  "liveness: 'timeout' must be a number >= 0.1"
+ ],
+ "liveness_wrong_transport": [
+  "liveness: not supported on transport 'http' (only tcp/serial/udp/osc)"
+ ],
+ "missing_required_fields": [
+  "Missing required field: id",
+  "Missing required field: name",
+  "Missing required field: transport",
+  "discovery: Driver missing required 'id' field"
+ ],
+ "not_a_mapping": [
+  "Driver definition must be a mapping"
+ ],
+ "on_connect_bad_mapping_osc_variant": [
+  "on_connect[0]: mapping entries must be {each_child, send} or {send, when} or {address, args}"
+ ],
+ "osc_child_set_entry_not_mapping": [
+  "Response 0: child_set[0]: must be a mapping"
+ ],
+ "osc_child_set_id_capture_ref": [
+  "Response 0: child_set[0]: OSC rules have no capture groups \u2014 use {segment: N} for the id, {arg: N} for values"
+ ],
+ "osc_child_set_id_map_bad_pairs": [
+  "Response 0: child_set[0]: id map entries must be scalar wire id -> local id pairs"
+ ],
+ "osc_child_set_id_map_empty": [
+  "Response 0: child_set[0]: id map must be a non-empty mapping of wire id -> local child id"
+ ],
+ "osc_child_set_id_map_non_integer_local": [
+  "Response 0: child_set[0]: id map value 'left' is not an integer (zone declares integer ids)"
+ ],
+ "osc_child_set_id_segment_negative": [
+  "Response 0: child_set[0]: segment must be 0 or higher"
+ ],
+ "osc_child_set_id_segment_not_int": [
+  "Response 0: child_set[0]: id needs an integer 'segment' (0-based index into the /-split address; OSC rules have no capture groups)"
+ ],
+ "osc_child_set_id_segment_past_end": [
+  "Response 0: child_set[0]: segment 7 is past the end of the address pattern (3 segment(s))"
+ ],
+ "osc_child_set_missing_id": [
+  "Response 0: child_set[0]: missing 'id' ({segment: N} for an address segment, or a literal)"
+ ],
+ "osc_child_set_missing_state": [
+  "Response 0: child_set[0]: missing 'state' mapping (prop -> {arg: N} or literal)"
+ ],
+ "osc_child_set_not_list": [
+  "Response 0: child_set must be a non-empty list"
+ ],
+ "osc_child_set_state_arg_negative": [
+  "Response 0: child_set[0]: state 'level' arg must be an integer >= 0 (got -2)"
+ ],
+ "osc_child_set_state_capture_ref": [
+  "Response 0: child_set[0]: state 'level' \u2014 OSC rules have no capture groups; use {arg: N}"
+ ],
+ "osc_child_set_state_missing_arg_value": [
+  "Response 0: child_set[0]: state 'level' needs {arg: N} or {value: ...}"
+ ],
+ "osc_child_set_state_prop_undeclared": [
+  "Response 0: child_set[0]: state prop 'gain' is not declared in child_entity_types.zone.state_variables"
+ ],
+ "osc_child_set_unknown_type": [
+  "Response 0: child_set[0]: type 'relay' is not a declared child_entity_type"
+ ],
+ "param_decimals_negative": [
+  "Command 'set_level' param 'level': decimals must be a non-negative integer"
+ ],
+ "param_map_bad_pairs": [
+  "Command 'set_level' param 'level': map entries must be scalar value -> wire value pairs"
+ ],
+ "param_map_empty": [
+  "Command 'set_level' param 'level': map must be a non-empty mapping of value -> wire value"
+ ],
+ "param_min_greater_than_max": [
+  "Command 'set_level' param 'level': min (10) must be <= max (1)"
+ ],
+ "param_min_not_number": [
+  "Command 'set_level' param 'level': min must be a number"
+ ],
+ "param_options_from_bad_source": [
+  "Command 'set_level' param 'level': options_from.source must be one of ['child_schema']"
+ ],
+ "param_options_from_not_mapping": [
+  "Command 'set_level' param 'level': options_from must be a mapping with 'param' and 'source'"
+ ],
+ "param_options_from_param_missing": [
+  "Command 'set_level' param 'level': options_from.param must name a sibling param"
+ ],
+ "param_options_from_param_not_sibling": [
+  "Command 'set_level' param 'level': options_from.param 'ghost' is not a param of this command"
+ ],
+ "param_options_from_sibling_not_child_id": [
+  "Command 'set' param 'b': options_from.param 'a' must be a child_id param for source 'child_schema'"
+ ],
+ "param_options_state_empty": [
+  "Command 'set_level' param 'level': options_state must be a non-empty string"
+ ],
+ "param_pattern_redos": [
+  "Command 'set_level' param 'level': pattern: regex '(a+)+$' has a nested quantifier; this can cause catastrophic backtracking against hostile input"
+ ],
+ "param_trim_not_bool": [
+  "Command 'set_level' param 'level': trim must be true or false"
+ ],
+ "param_type_from_not_mapping": [
+  "Command 'set_level' param 'level': type_from must be a mapping with 'param'"
+ ],
+ "param_type_from_param_missing": [
+  "Command 'set_level' param 'level': type_from.param must name a sibling param"
+ ],
+ "param_type_from_param_not_sibling": [
+  "Command 'set_level' param 'level': type_from.param 'ghost' is not a param of this command"
+ ],
+ "param_type_from_sibling_not_cascade": [
+  "Command 'set' param 'b': type_from.param 'a' must itself be an options_from child_schema cascade"
+ ],
+ "polling_interval_inert": [
+  "polling.interval is not read by the runtime \u2014 remove the interval: key and set default_config.poll_interval instead"
+ ],
+ "polling_not_mapping": [
+  "polling: must be a mapping"
+ ],
+ "polling_query_bad_mapping": [
+  "polling.queries[0]: mapping entries must be {each_child, send} or {send, when}"
+ ],
+ "polling_when_not_string": [
+  "polling.queries[0]: 'when' must name a config field"
+ ],
+ "polling_when_undeclared_field": [
+  "polling.queries[0]: 'when' field 'has_zones' is not a declared config field (config_schema / default_config / config_derived)"
+ ],
+ "push_frame_parser_not_mapping": [
+  "push: frame_parser must be a mapping"
+ ],
+ "push_frame_parser_unknown_type": [
+  "push: frame_parser type 'delimiter' must be struct_frame, length_prefix, or fixed_length"
+ ],
+ "push_multicast_bad_group": [
+  "push: group '10.0.0.1' must be an IPv4 multicast address (224.0.0.0 - 239.255.255.255) or a {config_field} template"
+ ],
+ "push_multicast_bad_port": [
+  "push: port must be an integer 1-65535 or a {config_field} template"
+ ],
+ "push_multicast_missing_group": [
+  "push: missing 'group'"
+ ],
+ "push_multicast_missing_port": [
+  "push: missing 'port'"
+ ],
+ "push_not_mapping": [
+  "push: must be a mapping"
+ ],
+ "push_register_not_a_name": [
+  "push: register must be a command name"
+ ],
+ "push_register_unknown_command": [
+  "push: register command 'arm' is not declared in commands"
+ ],
+ "push_sse_idle_timeout_bad": [
+  "push: idle_timeout must be a positive number of seconds"
+ ],
+ "push_sse_missing_path": [
+  "push: missing 'path' (an event-stream URL path, or a list of them)"
+ ],
+ "push_sse_path_entry_empty": [
+  "push: path entry ' ' must be a non-empty string"
+ ],
+ "push_sse_path_no_slash": [
+  "push: path 'events' must start with '/' (a URL path on the device) or be a {config_field} template"
+ ],
+ "push_sse_path_wrong_type": [
+  "push: path must be a string or a list of strings"
+ ],
+ "push_sse_wrong_transport": [
+  "push: type 'sse' requires the http transport, not 'tcp'"
+ ],
+ "push_struct_frame_bad_endian": [
+  "push: frame_parser length_endian must be 'big' or 'little'"
+ ],
+ "push_struct_frame_bad_length_adjust": [
+  "push: frame_parser length_adjust must be an integer"
+ ],
+ "push_struct_frame_bad_length_size": [
+  "push: frame_parser length_size must be 1, 2, or 4"
+ ],
+ "push_struct_frame_reserve_negative": [
+  "push: frame_parser header_reserve must be a non-negative integer"
+ ],
+ "push_tcp_listener_bad_port": [
+  "push: port must be an integer 0-65535 (0 = OS-assigned) or a {config_field} template"
+ ],
+ "push_tcp_listener_missing_port": [
+  "push: missing 'port'"
+ ],
+ "push_template_no_token": [
+  "push: group '{-}' has braces but no {config_field} token"
+ ],
+ "push_template_undeclared_field": [
+  "push: group references config field 'mcast_group' that is not declared in config_schema, default_config, or config_derived"
+ ],
+ "push_unknown_keys": [
+  "push: unknown key(s): banana (known keys for type 'multicast': group, port, type)"
+ ],
+ "push_unknown_type": [
+  "push: missing or unknown 'type' (supported: multicast, sse, tcp_listener, http_listener)"
+ ],
+ "quick_action_entry_empty": [
+  "quick_actions[0]: must be a non-empty command id string"
+ ],
+ "quick_action_unknown_command": [
+  "quick_actions[0]: 'ghost' is not a declared command"
+ ],
+ "quick_actions_not_list": [
+  "quick_actions: must be a list of command ids"
+ ],
+ "response_json_with_child_set": [
+  "Response 0: child_set is not supported on json responses"
+ ],
+ "response_json_without_set_or_mappings": [
+  "Response 0: json response needs a 'set' map or a 'mappings' list"
+ ],
+ "response_missing_pattern": [
+  "Response 0: missing pattern, match, or address"
+ ],
+ "response_not_mapping": [
+  "Response 0: must be a mapping"
+ ],
+ "response_osc_address_no_slash": [
+  "Response 0: OSC address must start with '/'"
+ ],
+ "response_redos_pattern": [
+  "Response 0: regex '(a+)+$' has a nested quantifier; this can cause catastrophic backtracking against hostile input"
+ ],
+ "response_require_bad_list_entry": [
+  "Response 0: require list entries must be non-empty JSON key names"
+ ],
+ "response_require_empty_string": [
+  "Response 0: require must name a JSON key"
+ ],
+ "response_require_without_json": [
+  "Response 0: require only applies to json: true responses"
+ ],
+ "response_require_wrong_type": [
+  "Response 0: require must be a JSON key name or a list of them"
+ ],
+ "response_throttle_bool": [
+  "Response 0: throttle must be a positive number of seconds"
+ ],
+ "response_throttle_zero": [
+  "Response 0: throttle must be a positive number of seconds"
+ ],
+ "responses_not_list": [
+  "responses: must be a list"
+ ],
+ "send_frame_bad_endian": [
+  "send_frame: length_endian must be 'big' or 'little' (got 'mid')"
+ ],
+ "send_frame_bad_length_size": [
+  "send_frame: length_size must be a positive integer (got 0)"
+ ],
+ "send_frame_header_not_string": [
+  "send_frame: header must be a string (got 5)"
+ ],
+ "send_frame_not_mapping": [
+  "send_frame: must be a mapping"
+ ],
+ "send_frame_unknown_type": [
+  "send_frame: unknown type 'delimiter' (expected 'length_prefix')"
+ ],
+ "state_variable_bad_cloud_priority": [
+  "State variable 'power': cloud_priority must be 'low' or 'high' (got 'urgent'); omit it for the default cadence"
+ ],
+ "state_variable_control_not_bool": [
+  "State variable 'power': control must be true or false (got 'yes')"
+ ],
+ "state_variable_missing_label": [
+  "State variable 'power': missing 'label'"
+ ],
+ "state_variable_not_dict": [
+  "State variable 'power': must be a dict"
+ ],
+ "state_variable_unit_not_string": [
+  "State variable 'power': unit must be a string (got 5)"
+ ],
+ "state_variable_unknown_type": [
+  "State variable 'power': unknown type 'voltage'"
+ ],
+ "state_variables_not_mapping": [
+  "state_variables: must be a mapping"
+ ],
+ "unsupported_transport": [
+  "Unsupported transport: carrier_pigeon"
+ ]
+}

@@ -218,8 +218,9 @@ def _validate_param_option_providers(
                     )
 
 
-# Required top-level fields in a driver definition
-REQUIRED_FIELDS = {"id", "name", "transport"}
+# Required top-level fields in a driver definition. Ordered (not a set) so
+# missing-field errors always report in the same order run to run.
+REQUIRED_FIELDS = ("id", "name", "transport")
 
 # File extension for driver definitions
 DRIVER_EXTENSION = ".avcdriver"
