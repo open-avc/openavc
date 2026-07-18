@@ -48,8 +48,43 @@ pi = [
     "gpiozero>=2.0.0",           # BSD-3 - GPIO access (Pi only)
 ]
 
-[tool.setuptools.packages.find]
-include = ["server*", "tests*"]
+[project.scripts]
+# The `openavc` CLI command maps to the main() function in server/main.py, which starts the server.
+# This allows users to run `openavc` from the command line if the package is installed.
+# The original `python -m server.main` entry point is still available however.
+openavc = "server.main:main"
+
+
+[build-system]
+# Using `uv_build` as the build backend allows us to include the Python packages and web assets
+# without needing as many modifications compared to the setuptools backend.
+#
+# This does not add `uv_build` as a runtime dependency, only as a build-time dependency.
+requires = ["uv_build>=0.11.16,<0.12"]
+build-backend = "uv_build"
+
+
+[tool.uv.build-backend]
+# Include the server and simulator packages and add the content of the web directory at the
+# root of the `sdist` / `wheel` archives (for static file serving in production).
+module-name = ["server", "simulator", "themes", "web"]
+module-root = ""
+namespace = true
+
+
+# Exclude node_modules and other artifacts from the wheel and source distributions
+# We mainly care about:
+# - web/programmer/dist/**
+# - web/simulator/dist/**
+# - web/panel/** (since panel is already bundled)
+source-exclude = [
+    "web/**/node_modules",
+    "web/**/src/**",
+    "web/**/public/**",
+    "web/**/.gitignore",
+]
+
+
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
