@@ -227,6 +227,8 @@ When deploying multiple OpenAVC instances (e.g., one per room), ISC allows them 
 
 **For cross-VLAN multi-instance setups**, disable auto-discovery and configure peer addresses manually. This requires only TCP access to each instance's HTTP port (default 8080), with no UDP broadcast traffic.
 
+**Security model.** ISC authenticates peers with a shared key, not with TLS. Every message is signed with an HMAC over a per-connection challenge, and the handshake is mutual: each instance proves it holds the `isc.auth_key` to the other before either acts on the other's shared state or remote commands, so a peer that lacks the key cannot join the mesh, read shared state, or issue a remote command. When the instances also run HTTPS, the ISC link is encrypted, but its TLS is encryption-only. Peers use each other's self-signed LAN certificates without certificate-authority verification (private-LAN instances have no public CA to validate against), so the certificate does not identify the peer. The shared key does. The practical consequence is the standard AV-VLAN posture: keep multi-instance hosts on a trusted control network and set a distinct, strong `isc.auth_key`. The shared key stops any outsider, but it is the whole of the trust model, so the segment it runs on must be trusted.
+
 ---
 
 ## Authentication and Access Control
@@ -252,6 +254,8 @@ In all cases:
 - All configuration-changing API endpoints require the credential
 - The **code-writing endpoints** (Python drivers, scripts) require a set credential even on a checkout otherwise configured for open access — an unclaimed instance refuses them outright
 - Username and password comparisons both use constant-time algorithms to prevent timing attacks
+
+**Opening an instance is a full-trust decision.** Setting `OPENAVC_ALLOW_ANONYMOUS=true` (or `auth.allow_anonymous: true`) removes the credential gate entirely: everyone who can reach the instance has complete admin control. That is not limited to reading configuration. An anonymous caller on an open instance can set or overwrite the admin password (locking out the owner, and the change survives a restart), change the bind address, or turn TLS off, because those are ordinary configuration writes and there is no credential to tell the owner apart from a stranger. Open an instance only where reachability is already restricted out of band (bind to localhost, or front it with an authenticating reverse proxy), and treat the network it listens on as fully trusted. The shipped default never opens the box this way: packaged installs are claimed on first run (see [Who can access the web interface](#who-can-access-the-web-interface)), so this posture applies only when an operator deliberately turns anonymous access on.
 
 ### TLS/HTTPS
 
