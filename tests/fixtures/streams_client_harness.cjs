@@ -35,10 +35,11 @@ function load(entry) {
 // --- Fake browser globals BEFORE loading the bundles (api/base.ts computes
 // BASE from window.location at module scope) ---
 const HREF = "http://192.168.4.10:8080/programmer";
+const TOKEN = "tok-URLSAFE_random-VALUE";
 const captured = [];
 let nextResponse = null;
 global.sessionStorage = {
-  getItem: () => JSON.stringify({ user: "admin", pass: "secret" }),
+  getItem: (k) => (k === "openavc.programmer.session" ? TOKEN : null),
   setItem() {},
   removeItem() {},
 };
@@ -106,7 +107,7 @@ async function main() {
       : null;
   report(
     "snapshot_carries_credential",
-    typeof auth === "string" && auth.startsWith("Basic "),
+    auth === `Bearer ${TOKEN}`,
     auth,
   );
   report(
