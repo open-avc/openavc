@@ -45,10 +45,10 @@ export function ProjectorPanel({ device, onStateChange }: Props) {
       <div className="controls-panel">
         <button
           className={`ctrl-btn ${power === "on" || power === "warming" ? "active" : ""}`}
-          onClick={() => onStateChange("power", power === "off" ? "on" : "off")}
+          onClick={() => onStateChange("power", power === "off" || power === "cooling" ? "on" : "off")}
         >
           <Power size={12} style={{ marginRight: 4 }} />
-          {power === "off" ? "Power On" : "Power Off"}
+          {power === "off" || power === "cooling" ? "Power On" : "Power Off"}
         </button>
         {["hdmi1", "hdmi2", "vga", "dvi"].map((inp) => (
           <button
