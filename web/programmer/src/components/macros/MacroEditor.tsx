@@ -593,6 +593,59 @@ export function MacroEditor({
                 ))}
               </datalist>
             </label>
+            <span style={{ color: "var(--border-color)", margin: "0 4px" }}>|</span>
+            <label style={{ fontSize: 11, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4 }}>
+              Overlap:
+              <span title="What happens when this macro is fired again while it's still running — from any source (trigger, script, button, REST, AI, or another macro). Allow: run concurrently (default). Skip: ignore the new run while one is in progress. Queue: wait for the running one to finish, then run. A trigger can still add its own overlap rule; the stricter of the two applies.">
+                <HelpCircle size={11} style={{ opacity: 0.5 }} />
+              </span>
+              <select
+                value={macro.overlap ?? "allow"}
+                onChange={(e) => onUpdate({ ...macro, overlap: e.target.value === "allow" ? undefined : (e.target.value as "skip" | "queue") })}
+                title="How concurrent re-runs of this macro are handled, from every entry point."
+                style={{
+                  padding: "1px 4px",
+                  fontSize: 11,
+                  background: "var(--bg-primary)",
+                  border: "1px solid var(--border-color)",
+                  borderRadius: 3,
+                  color: "var(--text-primary)",
+                }}
+              >
+                <option value="allow">Allow</option>
+                <option value="skip">Skip</option>
+                <option value="queue">Queue</option>
+              </select>
+            </label>
+            <span style={{ color: "var(--border-color)", margin: "0 4px" }}>|</span>
+            <label style={{ fontSize: 11, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4 }}>
+              Cooldown:
+              <span title="Minimum seconds between starts of this macro, enforced no matter what fires it. 0 = no cooldown.">
+                <HelpCircle size={11} style={{ opacity: 0.5 }} />
+              </span>
+              <input
+                type="number"
+                min={0}
+                step={0.5}
+                value={macro.cooldown_seconds ?? 0}
+                onChange={(e) => {
+                  const n = parseFloat(e.target.value);
+                  onUpdate({ ...macro, cooldown_seconds: Number.isFinite(n) && n > 0 ? n : undefined });
+                }}
+                title="Minimum seconds between starts of this macro (0 = off)."
+                style={{
+                  width: 48,
+                  padding: "1px 4px",
+                  fontSize: 11,
+                  fontFamily: "var(--font-mono)",
+                  background: "var(--bg-primary)",
+                  border: "1px solid var(--border-color)",
+                  borderRadius: 3,
+                  color: "var(--text-primary)",
+                }}
+              />
+              s
+            </label>
           </div>
         </div>
         <button

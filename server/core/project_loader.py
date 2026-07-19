@@ -236,6 +236,13 @@ class MacroConfig(_ForwardCompatModel):
     triggers: list[TriggerConfig] = Field(default_factory=list)
     stop_on_error: bool = False
     cancel_group: str | None = None  # macros in the same group preempt each other
+    # Macro-level throttle, enforced at the engine's execute() chokepoint so it
+    # holds no matter how the macro is fired (script, REST, AI, UI, trigger,
+    # another macro). Defaults leave the historic concurrent behaviour: allow.
+    # A trigger may still carry its own overlap/cooldown; the two stack and the
+    # stricter wins.
+    overlap: Literal["skip", "queue", "allow"] = "allow"
+    cooldown_seconds: float = 0
 
 
 class GridArea(_ForwardCompatModel):

@@ -35,6 +35,14 @@ BroadcastWS = Callable[[dict[str, Any]], Awaitable[None]]
 # than silently reporting success.
 _CANCEL_GRACE_SECONDS = 5.0
 
+# A macro's optional overlap="queue" guard waits for the in-flight
+# invocation to finish before starting. Poll this often for it to clear,
+# and give up after the ceiling so a queued call can't wait forever.
+# Mirrors the trigger engine's queue wait, so a macro's own guard behaves
+# the same whichever entry point fired it.
+_QUEUE_POLL_SECONDS = 1.0
+_QUEUE_MAX_WAIT_SECONDS = 300.0
+
 # The call chain of the macro currently executing in this task context.
 # The in-engine ``_call_chain`` argument only covers direct macro->macro
 # nesting; tasks spawned during step execution (event-bus handler dispatch,
@@ -76,6 +84,11 @@ class MacroEngine:
         # script/plugin/AI dispatch all leave every in-flight invocation
         # individually trackable and cancellable (A51).
         self._running: dict[str, set[asyncio.Task]] = {}
+        # macro_id -> monotonic timestamp of its last accepted start, used by
+        # the optional per-macro cooldown guard. Enforced at execute() so the
+        # cooldown holds from every entry point (script, REST, AI, UI, trigger,
+        # macro chain), not just the trigger that declared one.
+        self._last_started_monotonic: dict[str, float] = {}
         # Serializes the register-and-preempt critical section so two
         # macros in the same cancel_group started within one event-loop
         # tick can't both register before either fires preemption and
@@ -89,6 +102,27 @@ class MacroEngine:
     def is_macro_running(self, macro_id: str) -> bool:
         """Check if any invocation of the macro is currently running."""
         return bool(self._running.get(macro_id))
+
+    def _throttle_reason(
+        self, macro_id: str, overlap: str, cooldown: float
+    ) -> str | None:
+        """Return a human reason if a macro's own guard blocks this start, else None.
+
+        Called inside the start lock so the skip / cooldown decision is atomic
+        against other concurrent execute() callers. This is the macro-level
+        counterpart to the trigger's overlap/cooldown: because it sits at the
+        single execute() chokepoint, it applies no matter how the macro was
+        fired. When a trigger also carries its own guard the two stack — the
+        trigger's runs first, upstream, and this one is the floor — so the
+        stricter of the two always wins.
+        """
+        if cooldown > 0:
+            last = self._last_started_monotonic.get(macro_id)
+            if last is not None and (time.monotonic() - last) < cooldown:
+                return f"cooldown ({cooldown:g}s) not elapsed"
+        if overlap == "skip" and self.is_macro_running(macro_id):
+            return "overlap=skip and an instance is already running"
+        return None
 
     async def cancel(self, macro_id: str) -> bool:
         """Cancel every running invocation of a macro.
@@ -181,6 +215,12 @@ class MacroEngine:
             macro_id = macro.get("id", "")
             if macro_id:
                 self._macros[macro_id] = macro
+        # Drop cooldown baselines for macros that no longer exist so the map
+        # doesn't accumulate stale ids across reloads; keep live ones so a
+        # cooldown survives an edit/reload.
+        self._last_started_monotonic = {
+            k: v for k, v in self._last_started_monotonic.items() if k in self._macros
+        }
         log.info(f"Loaded {len(self._macros)} macro(s)")
 
     def load_groups(self, groups: list[dict[str, Any]]) -> None:
@@ -274,7 +314,34 @@ class MacroEngine:
         stop_on_error = macro.get("stop_on_error", False)
         cancel_group = macro.get("cancel_group")
 
+        # A macro's own overlap/cooldown guard. Unlike the trigger's, it is
+        # enforced here — the one point every invocation passes through — so a
+        # macro fired from a script, REST, the AI tool, a UI press, or another
+        # macro is throttled the same as one fired from a trigger. Defaults
+        # (overlap=allow, cooldown=0) leave the historic concurrent behaviour
+        # untouched.
+        overlap = macro.get("overlap") or "allow"
+        cooldown = float(macro.get("cooldown_seconds") or 0)
+
         task = asyncio.current_task()
+
+        # overlap=queue: hold this start until any in-flight invocation of the
+        # same macro finishes, then fall through to claim the slot. The
+        # recursion guard above already stops a macro queueing behind itself;
+        # this waits on independent concurrent invocations. Bounded so a
+        # wedged run can't make a queued call wait forever.
+        if overlap == "queue":
+            waited = 0.0
+            while self.is_macro_running(macro_id):
+                if waited >= _QUEUE_MAX_WAIT_SECONDS:
+                    log.warning(
+                        f"Macro '{name}' overlap=queue: gave up after "
+                        f"{_QUEUE_MAX_WAIT_SECONDS:.0f}s waiting for the running "
+                        f"invocation to finish; starting anyway"
+                    )
+                    break
+                await asyncio.sleep(_QUEUE_POLL_SECONDS)
+                waited += _QUEUE_POLL_SECONDS
 
         # Critical section: registering this task in _running and choosing
         # which group members to preempt must happen atomically against
@@ -287,7 +354,14 @@ class MacroEngine:
         cancelled: list[tuple[str, asyncio.Task]] = []
         if task is not None:
             async with self._start_lock:
+                blocked = self._throttle_reason(macro_id, overlap, cooldown)
+                if blocked is not None:
+                    _active_call_chain.reset(_chain_token)
+                    log.info(f"Macro '{name}' skipped — {blocked}")
+                    return
                 self._running.setdefault(macro_id, set()).add(task)
+                if cooldown > 0:
+                    self._last_started_monotonic[macro_id] = time.monotonic()
                 if cancel_group:
                     cancelled = self._collect_group_targets(
                         cancel_group, exclude_task=task
@@ -295,12 +369,22 @@ class MacroEngine:
                     for mid, t in cancelled:
                         log.info(f"Preempting macro '{mid}' (cancel_group '{cancel_group}')")
                         t.cancel()
-        elif cancel_group:
-            # Synthetic execute() with no current task — preempt anyway.
-            cancelled = self._collect_group_targets(cancel_group, exclude_task=None)
-            for mid, t in cancelled:
-                log.info(f"Preempting macro '{mid}' (cancel_group '{cancel_group}')")
-                t.cancel()
+        else:
+            # Synthetic execute() with no current task: honour the throttle
+            # (skip/cooldown) but there's no task to register or preempt with.
+            blocked = self._throttle_reason(macro_id, overlap, cooldown)
+            if blocked is not None:
+                _active_call_chain.reset(_chain_token)
+                log.info(f"Macro '{name}' skipped — {blocked}")
+                return
+            if cooldown > 0:
+                self._last_started_monotonic[macro_id] = time.monotonic()
+            if cancel_group:
+                # No current task — preempt anyway.
+                cancelled = self._collect_group_targets(cancel_group, exclude_task=None)
+                for mid, t in cancelled:
+                    log.info(f"Preempting macro '{mid}' (cancel_group '{cancel_group}')")
+                    t.cancel()
 
         # Wait for preempted tasks to fully unwind before we start sending
         # commands — A50.

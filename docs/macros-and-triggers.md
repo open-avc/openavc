@@ -166,6 +166,17 @@ You can also cancel a running macro manually by clicking the **Cancel** button i
 
 **Side effects of a cancelled macro.** Cancellation is not transactional. Any steps the cancelled macro already executed stay in effect: a **Set Variable** write is still in the state store, a **Device Command** or **Group Command** is already on the wire to the equipment, and an **Emit Event** payload has already fired on the event bus. None of those are rolled back. The two steps that unwind cleanly are **Delay** and **Wait Until**: if cancellation hits during either, the wait is abandoned with no residual change. Sub-macros invoked with **Run Macro** are cancelled at their current step, so partial effects from inside the sub-macro persist the same way. Plan paired macros (System On / System Off, for example) so that being interrupted partway through is still recoverable by the macro that takes over. A common pattern is to set a "target state" variable as the very first step of each, so whichever one finishes last decides the final system state.
 
+## Overlap and Cooldown
+
+A macro can guard against being run too often, or being run again while it's still busy, right from its header, next to the cancel group.
+
+- **Overlap** decides what happens when the macro is fired again while a previous run is still going. **Allow** (the default) lets them run at the same time. **Skip** ignores the new run until the current one finishes. **Queue** holds the new run and starts it once the current one is done.
+- **Cooldown** sets a minimum number of seconds between starts. A start that arrives inside the window is dropped. Leave it at `0` for no cooldown.
+
+The important part is *where* these apply. A trigger has its own overlap and cooldown settings, but those only cover fires from that one trigger. The macro's own overlap and cooldown are enforced on the macro itself, so they hold no matter what starts it: a schedule, a panel button, a script loop, an automation, the AI assistant, or another macro. That closes the gap where a macro you carefully protected on its trigger could still be hammered from a script or a button.
+
+If both a trigger and its macro carry a guard, both apply and the stricter one wins. Adding a guard to a macro can only ever tighten its behavior, never loosen a trigger's, so it's safe to set a sensible macro-level default and still tune individual triggers. (Because it protects against unthrottled re-runs, a macro's overlap defaults to **Allow** to preserve existing behavior, while a trigger's defaults to **Skip**.)
+
 ## Progress in Panel
 
 When a macro is running, the panel provides two forms of feedback:

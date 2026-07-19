@@ -128,6 +128,10 @@ export interface MacroConfig {
   triggers?: TriggerConfig[];
   stop_on_error?: boolean;
   cancel_group?: string;
+  // Macro-level throttle, enforced at the engine chokepoint so it applies
+  // however the macro is fired (script, REST, AI, UI, trigger, another macro).
+  overlap?: 'skip' | 'queue' | 'allow';
+  cooldown_seconds?: number;
 }
 
 export interface GridArea {
