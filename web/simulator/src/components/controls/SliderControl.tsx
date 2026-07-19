@@ -10,6 +10,8 @@ export function SliderControl({ control, state, onStateChange }: Props) {
   const raw = Number(state[control.key] ?? control.min);
   const value = Math.max(control.min, Math.min(control.max, raw));
   const step = control.step ?? (control.max - control.min > 1 ? 1 : 0.01);
+  // Readout precision follows the step so fine-grained sliders don't round away
+  const decimals = step >= 1 ? 0 : Math.min(4, (String(step).split(".")[1] ?? "1").length);
 
   return (
     <div className="ctrl-slider">
@@ -23,7 +25,7 @@ export function SliderControl({ control, state, onStateChange }: Props) {
         onChange={(e) => onStateChange(control.key, Number(e.target.value))}
       />
       <span className="value">
-        {step >= 1 ? Math.round(value) : value.toFixed(1)}
+        {value.toFixed(decimals)}
         {control.unit ? ` ${control.unit}` : ""}
       </span>
     </div>
