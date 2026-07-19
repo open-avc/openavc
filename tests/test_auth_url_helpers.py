@@ -1,11 +1,17 @@
-"""Regression test for the Programmer SPA fetch-auth URL matching (api/auth.ts).
+"""Regression tests for the Programmer SPA fetch-auth layer (api/auth.ts).
 
-The global fetch interceptor used to decide "this is an API request" with a
-path-only regex, so a fetch to a cross-origin URL whose path merely contained
-an ``api`` segment (e.g. ``https://elsewhere.example/api/...`` issued by any
-script running in the SPA) silently carried the admin ``Authorization: Basic``
-header off-box. ``isSameOriginApiUrl`` resolves the URL against the live
-location and only matches when the resolved origin is the SPA's own.
+Two properties, each of which regressed or nearly regressed once:
+
+- URL matching: the interceptor used to decide "this is an API request" with
+  a path-only regex, so a fetch to a cross-origin URL whose path merely
+  contained an ``api`` segment silently carried the admin credential off-box.
+  ``isSameOriginApiUrl`` resolves the URL against the live location and only
+  matches when the resolved origin is the SPA's own.
+- Token-only sessions: the SPA stores a server-minted session token, never
+  the password. Requests carry ``Authorization: Bearer``, the WebSocket
+  subprotocol carries ``auth.bearer.<token>``, the legacy ``{user, pass}``
+  sessionStorage blob is purged on sight, and no header ever contains a
+  password in any form.
 
 This bundles the real ``auth.ts`` with the esbuild in
 ``web/programmer/node_modules`` and asserts the matcher plus the installed
@@ -86,6 +92,10 @@ SCENARIOS = [
     # The installed interceptor end-to-end
     "interceptor_attaches_same_origin",
     "interceptor_no_credential_cross_origin",
+    # Session-token posture: the browser never holds or sends the password
+    "raw_password_never_in_headers",
+    "legacy_password_blob_purged",
+    "ws_subprotocol_is_bearer_token",
 ]
 
 

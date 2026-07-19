@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { setStoredAuth } from "../api/auth";
+import { loginWithPassword } from "../api/auth";
 import { getTunnelPrefix } from "../api/base";
 
 interface SetupProps {
@@ -45,7 +45,10 @@ export function Setup({ onComplete }: SetupProps) {
         body: JSON.stringify({ username, password: pass }),
       });
       if (res.ok) {
-        setStoredAuth(username, pass);
+        // Exchange the just-created credential for a session token. If the
+        // mint fails we continue anyway — the first 401 drops the user on
+        // the login screen, which is the correct fallback.
+        await loginWithPassword(username, pass).catch(() => undefined);
         onComplete();
         return;
       }

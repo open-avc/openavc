@@ -16,12 +16,19 @@ frictionless dev (see `anonymous_access_allowed`). Code-writing endpoints
 - OPENAVC_ALLOW_ANONYMOUS — force the no-credential posture: "true" serves the
   admin surface openly, "false" requires setup. Unset = auto (dev-only open).
 - OPENAVC_PANEL_LOCK_CODE — reserved for future panel lock screen
+
+Browser sessions don't hold the password: the Programmer SPA exchanges it for
+a short-lived session token (POST /api/auth/session) and sends
+`Authorization: Bearer <token>` / the `auth.bearer.<token>` WebSocket
+subprotocol from then on. Basic and X-API-Key remain first-class for curl and
+API clients. See `server/api/session_tokens.py`.
 """
 
 from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
 import secrets
 from functools import lru_cache
 
@@ -84,6 +91,39 @@ def _check_credentials(provided_user: str, provided_pass: str) -> bool:
 def is_claimed() -> bool:
     """Whether an admin credential (password or API key) has been set."""
     return bool(_get_password() or _get_api_key())
+
+
+def credential_fingerprint() -> str:
+    """Fingerprint of the current admin credential (username + password).
+
+    Session tokens record this at mint time and are validated against the
+    live value, so changing the password (or username) through ANY code path
+    invalidates every outstanding session without per-callsite wiring.
+    """
+    raw = f"{_get_username()}\x00{_get_password()}".encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _extract_bearer(header_value: str) -> str:
+    """Return the token from an `Authorization: Bearer <token>` value, or ""."""
+    if not header_value:
+        return ""
+    parts = header_value.split(None, 1)
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        return ""
+    return parts[1].strip()
+
+
+def _check_session_token(token: str) -> bool:
+    """Validate a session token against the store and the live credential.
+
+    Sessions only exist when a password is configured (minting requires
+    Basic auth against it), so this is gated on a configured password.
+    """
+    if not token or not _get_password():
+        return False
+    from server.api.session_tokens import store
+    return store.validate(token, credential_fingerprint())
 
 
 @lru_cache(maxsize=1)
@@ -163,7 +203,9 @@ def programmer_auth_satisfied(
     1. No password / API key configured — defer to `anonymous_access_allowed()`
        (open on a dev checkout, requires setup on a shipped deployment).
     2. X-API-Key header.
-    3. HTTP Basic credentials (username and password both checked when a
+    3. `Authorization: Bearer <session token>` (the Programmer SPA's channel;
+       tokens are minted by POST /api/auth/session).
+    4. HTTP Basic credentials (username and password both checked when a
        username is configured; password-only when no username is set).
 
     Non-raising so callers that compose auth schemes (e.g. plugin routers that
@@ -177,6 +219,10 @@ def programmer_auth_satisfied(
 
     provided_key = request.headers.get("x-api-key", "")
     if provided_key and api_key and _check_api_key(provided_key):
+        return True
+
+    bearer = _extract_bearer(request.headers.get("authorization", ""))
+    if bearer and _check_session_token(bearer):
         return True
 
     if credentials and pw:
@@ -288,12 +334,14 @@ def check_ws_auth(query_params: dict, headers: dict) -> bool:
 
     Checks (in priority order):
     1. X-API-Key header (best for programmatic access)
-    2. Authorization: Basic header (browsers send this when cached HTTP Basic
-       credentials exist for the origin — keeps the Programmer IDE WebSocket
-       authenticated without separate wiring)
-    3. Sec-WebSocket-Protocol subprotocol prefixed with "auth." (browser-safe
-       channel for clients that can't set arbitrary headers; treated as a
-       password OR an API key)
+    2. Authorization header — Basic (browsers send this when cached HTTP
+       Basic credentials exist for the origin) or Bearer (a session token,
+       for programmatic clients that can set headers)
+    3. Sec-WebSocket-Protocol subprotocol prefixed with "auth." — the
+       browser-safe channel for clients that can't set arbitrary headers.
+       `auth.bearer.<token>` carries a session token (the Programmer SPA's
+       channel); `auth.<value>` / `auth.b64.<value>` carry a password or an
+       API key.
 
     Returns True if auth passes or is not required.
     """
@@ -314,12 +362,19 @@ def check_ws_auth(query_params: dict, headers: dict) -> bool:
         user, password = decoded
         if _check_credentials(user, password):
             return True
+    bearer = _extract_bearer(auth_header)
+    if bearer and _check_session_token(bearer):
+        return True
 
     ws_protocols = headers.get("sec-websocket-protocol", "")
     for proto in ws_protocols.split(","):
         proto = proto.strip()
         if proto.startswith("auth."):
             token = proto[5:]
+            if token.startswith("bearer."):
+                if _check_session_token(token[7:]):
+                    return True
+                continue
             # Support `auth.b64.<urlsafe-b64>` for tokens with characters
             # that aren't valid in a WebSocket subprotocol token (RFC 6455
             # restricts subprotocol values to HTTP token chars).

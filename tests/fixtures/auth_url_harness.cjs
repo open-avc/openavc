@@ -1,11 +1,13 @@
 "use strict";
 // Bundles the Programmer SPA's api/auth.ts (with the esbuild already in
-// web/programmer/node_modules) and exercises the fetch-auth URL matching:
-// the admin Basic credential must only ever ride same-origin /api requests.
-// Scenarios cover the pure matcher (isSameOriginApiUrl) plus the installed
-// interceptor itself, with faked window/sessionStorage capturing whether an
-// Authorization header was attached. Prints JSON results to stdout; the
-// Python wrapper skips when the Node toolchain or esbuild is absent.
+// web/programmer/node_modules) and exercises the fetch-auth layer: the
+// session token must only ever ride same-origin /api requests, and the raw
+// password must never appear in a header or survive in storage (the legacy
+// {user, pass} blob gets purged). Scenarios cover the pure matcher
+// (isSameOriginApiUrl) plus the installed interceptor itself, with faked
+// window/sessionStorage capturing whether an Authorization header was
+// attached. Prints JSON results to stdout; the Python wrapper skips when
+// the Node toolchain or esbuild is absent.
 const path = require("path");
 
 const authPath = process.argv[2];
@@ -23,11 +25,24 @@ const code = built.outputFiles[0].text;
 
 // --- Fake browser globals (auth.ts touches them only inside functions) ---
 const BASE = "http://192.168.4.10:8080/programmer";
+const TOKEN = "tok-URLSAFE_random-VALUE";
 const captured = [];
+// A session token under the current key, plus a legacy pre-token {user, pass}
+// blob that must be purged and must never feed a header.
+const storage = {
+  "openavc.programmer.session": TOKEN,
+  "openavc.programmer.auth": JSON.stringify({ user: "admin", pass: "secret" }),
+};
+const removedKeys = [];
 global.sessionStorage = {
-  getItem: () => JSON.stringify({ user: "admin", pass: "secret" }),
-  setItem() {},
-  removeItem() {},
+  getItem: (k) => (k in storage ? storage[k] : null),
+  setItem(k, v) {
+    storage[k] = v;
+  },
+  removeItem(k) {
+    removedKeys.push(k);
+    delete storage[k];
+  },
 };
 global.window = {
   fetch: async (input, init) => {
@@ -85,7 +100,7 @@ async function interceptorChecks() {
   const sameOriginAuth =
     sameOriginInit && new Headers(sameOriginInit.headers).get("Authorization");
   results.interceptor_attaches_same_origin = {
-    pass: typeof sameOriginAuth === "string" && sameOriginAuth.startsWith("Basic "),
+    pass: sameOriginAuth === `Bearer ${TOKEN}`,
     detail: sameOriginAuth || null,
   };
 
@@ -99,6 +114,37 @@ async function interceptorChecks() {
   results.interceptor_no_credential_cross_origin = {
     pass: crossAuth === null || crossAuth === undefined,
     detail: crossAuth || null,
+  };
+
+  // The raw password (or its Basic encoding) must never appear in any header
+  // the interceptor attaches — the SPA holds only the token. Issue a fresh
+  // same-origin request so there is a credential-bearing call to scan.
+  captured.length = 0;
+  await window.fetch("/api/devices");
+  const basicOfLegacy = Buffer.from("admin:secret").toString("base64");
+  let leaked = null;
+  for (const call of captured) {
+    const headers = call.init && call.init.headers ? new Headers(call.init.headers) : null;
+    if (!headers) continue;
+    for (const [, v] of headers.entries()) {
+      if (v.includes("secret") || v.includes(basicOfLegacy)) leaked = v;
+    }
+  }
+  results.raw_password_never_in_headers = { pass: leaked === null, detail: leaked };
+
+  // Touching the session must purge the legacy {user, pass} blob.
+  results.legacy_password_blob_purged = {
+    pass:
+      removedKeys.includes("openavc.programmer.auth") &&
+      !("openavc.programmer.auth" in storage),
+    detail: removedKeys.join(","),
+  };
+
+  // The WS subprotocol carries the token, not a password form.
+  const protos = A.getAuthSubprotocols();
+  results.ws_subprotocol_is_bearer_token = {
+    pass: Array.isArray(protos) && protos.length === 1 && protos[0] === `auth.bearer.${TOKEN}`,
+    detail: protos ? protos.join(",") : null,
   };
 }
 

@@ -1,4 +1,4 @@
-import { AUTH_REQUIRED_EVENT, clearStoredAuth, getAuthSubprotocols } from "./auth";
+import { AUTH_REQUIRED_EVENT, clearSession, getAuthSubprotocols } from "./auth";
 
 type MessageHandler = (msg: Record<string, unknown>) => void;
 type LifecycleHandler = () => void;
@@ -38,16 +38,16 @@ function getWsUrl(): string {
 /** Clear cached credentials and ask the App to show the login screen. */
 function requestLogin(code: number): void {
   console.warn(`[WS] Connection rejected (code ${code}); requesting login`);
-  clearStoredAuth();
+  clearSession();
   window.dispatchEvent(new CustomEvent(AUTH_REQUIRED_EVENT));
 }
 
 export function connect(): void {
   if (socket && socket.readyState <= WebSocket.OPEN) return;
 
-  // Pass the password as a Sec-WebSocket-Protocol subprotocol so the server
-  // can authenticate the upgrade request — browsers can't attach Authorization
-  // headers to WebSockets.
+  // Pass the session token as a Sec-WebSocket-Protocol subprotocol so the
+  // server can authenticate the upgrade request — browsers can't attach
+  // Authorization headers to WebSockets.
   const protocols = getAuthSubprotocols();
   socket = protocols
     ? new WebSocket(getWsUrl(), protocols)

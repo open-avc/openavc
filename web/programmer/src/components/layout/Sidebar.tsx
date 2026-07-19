@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { getTunnelPrefix } from "../../api/restClient";
-import { clearStoredAuth, getStoredAuth } from "../../api/auth";
+import { hasSession, logout } from "../../api/auth";
 import {
   Monitor,
   Cpu,
@@ -306,12 +306,13 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
         <ArrowUpCircle size={20} />
         <span className={styles.tooltip}>{updateAvailable ? "Update available: v" + updateAvailable : "Updates"}</span>
       </button>
-      {getStoredAuth() && (
+      {hasSession() && (
         <button
           className={styles.navItem}
           onClick={() => {
-            clearStoredAuth();
-            window.location.reload();
+            // Revoke server-side first so the token is dead even if another
+            // tab copied it; the reload lands on the login screen either way.
+            void logout().finally(() => window.location.reload());
           }}
           aria-label="Sign out"
           style={{ marginBottom: "var(--space-xs)" }}

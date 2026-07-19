@@ -1,66 +1,110 @@
 /**
  * Authentication for the Programmer SPA.
  *
- * The browser's native HTTP Basic auth dialog can't pass credentials to
- * WebSocket upgrade requests, so we manage auth in JS instead:
- *   - Credentials are entered in a login screen and cached in sessionStorage.
- *   - A global fetch interceptor adds `Authorization: Basic <b64>` to every
- *     /api request.
- *   - The WebSocket client sends the password via the `auth.b64.<...>`
- *     Sec-WebSocket-Protocol subprotocol (server-side handler decodes it).
+ * The browser never keeps the admin password. The login screen exchanges it
+ * for a short-lived session token (POST /api/auth/session) and only that
+ * token is cached, in sessionStorage:
+ *   - A global fetch interceptor adds `Authorization: Bearer <token>` to
+ *     every same-origin /api request.
+ *   - The WebSocket client sends the token via the `auth.bearer.<token>`
+ *     Sec-WebSocket-Protocol subprotocol (browsers can't set headers on
+ *     WebSocket upgrades).
  *   - On any 401 response we clear the cache and dispatch
  *     `openavc:auth-required` so the App can drop back to the login screen.
+ *
+ * The server invalidates tokens on password change and restart, and expiry
+ * is sliding — an active session stays signed in, an idle one ages out.
  */
 
-const STORAGE_KEY = "openavc.programmer.auth";
+import { getTunnelPrefix } from "./base";
 
-export interface StoredAuth {
-  user: string;
-  pass: string;
-}
+const STORAGE_KEY = "openavc.programmer.session";
 
-export function getStoredAuth(): StoredAuth | null {
+/** Pre-token versions stored `{user, pass}` under this key. Never read it —
+ *  just make sure no raw password lingers in the browser after an upgrade. */
+const LEGACY_STORAGE_KEY = "openavc.programmer.auth";
+
+export function getSessionToken(): string | null {
   try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (typeof parsed?.user === "string" && typeof parsed?.pass === "string") {
-      return parsed;
-    }
+    sessionStorage.removeItem(LEGACY_STORAGE_KEY);
+    const token = sessionStorage.getItem(STORAGE_KEY);
+    return token || null;
   } catch {
-    /* fall through */
+    return null;
   }
-  return null;
 }
 
-export function setStoredAuth(user: string, pass: string): void {
-  sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ user, pass }));
+export function hasSession(): boolean {
+  return getSessionToken() !== null;
 }
 
-export function clearStoredAuth(): void {
-  sessionStorage.removeItem(STORAGE_KEY);
+export function setSessionToken(token: string): void {
+  sessionStorage.setItem(STORAGE_KEY, token);
+}
+
+export function clearSession(): void {
+  try {
+    sessionStorage.removeItem(STORAGE_KEY);
+    sessionStorage.removeItem(LEGACY_STORAGE_KEY);
+  } catch {
+    /* storage unavailable — nothing cached anyway */
+  }
 }
 
 export function getAuthHeader(): string | null {
-  const a = getStoredAuth();
-  if (!a) return null;
-  return "Basic " + btoa(`${a.user}:${a.pass}`);
+  const token = getSessionToken();
+  return token ? `Bearer ${token}` : null;
 }
 
 /**
- * Returns the WebSocket subprotocol array to authenticate with the cached
- * password, or undefined if no credentials are stored. We always use the
- * base64 form so passwords containing characters outside the HTTP token
- * grammar still work.
+ * Returns the WebSocket subprotocol array carrying the session token, or
+ * undefined when signed out. Tokens are URL-safe base64, which is already
+ * valid subprotocol grammar — no extra encoding needed.
  */
 export function getAuthSubprotocols(): string[] | undefined {
-  const a = getStoredAuth();
-  if (!a) return undefined;
-  const b64 = btoa(unescape(encodeURIComponent(a.pass)))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-  return [`auth.b64.${b64}`];
+  const token = getSessionToken();
+  return token ? [`auth.bearer.${token}`] : undefined;
+}
+
+/**
+ * Exchange the password for a session token and cache it. The password
+ * lives only in this call — it is sent once, as Basic auth, to the mint
+ * endpoint and never stored.
+ */
+export async function loginWithPassword(
+  user: string,
+  pass: string,
+): Promise<{ ok: boolean; status: number }> {
+  const res = await fetch(`${getTunnelPrefix()}/api/auth/session`, {
+    method: "POST",
+    headers: {
+      Authorization:
+        "Basic " + btoa(unescape(encodeURIComponent(`${user}:${pass}`))),
+    },
+  });
+  if (!res.ok) return { ok: false, status: res.status };
+  const data = await res.json();
+  if (typeof data?.token !== "string" || !data.token) {
+    return { ok: false, status: res.status };
+  }
+  setSessionToken(data.token);
+  return { ok: true, status: res.status };
+}
+
+/** Revoke the session server-side, then forget it locally. */
+export async function logout(): Promise<void> {
+  const header = getAuthHeader();
+  if (header) {
+    try {
+      await fetch(`${getTunnelPrefix()}/api/auth/session`, {
+        method: "DELETE",
+        headers: { Authorization: header },
+      });
+    } catch {
+      /* offline logout still clears the local session */
+    }
+  }
+  clearSession();
 }
 
 /**
@@ -75,7 +119,7 @@ export const AUTH_REQUIRED_EVENT = "openavc:auth-required";
  *
  * The origin anchor is the security boundary: the credential must never ride
  * a request to another host, no matter what that URL's path looks like. A
- * path-only match would attach the admin credential to e.g.
+ * path-only match would attach the session token to e.g.
  * https://elsewhere.example/api/... issued by any script running in the SPA
  * (a plugin UI bundle, injected code). Unparseable URLs get no credential.
  *
@@ -98,7 +142,7 @@ let installed = false;
 
 /**
  * Patches the global `fetch` so every /api request carries an Authorization
- * header derived from the stored password. Call once at app startup.
+ * header derived from the cached session token. Call once at app startup.
  */
 export function installFetchAuth(): void {
   if (installed) return;
@@ -136,7 +180,7 @@ export function installFetchAuth(): void {
     const res = await original(input, finalInit);
 
     if (attach && res.status === 401) {
-      clearStoredAuth();
+      clearSession();
       window.dispatchEvent(new CustomEvent(AUTH_REQUIRED_EVENT));
     }
 
@@ -148,8 +192,8 @@ export function installFetchAuth(): void {
  * Asks the server whether a password is configured. We use this dedicated
  * endpoint instead of probing a protected route because browsers auto-attach
  * cached HTTP Basic credentials to fetches — that would make a protected
- * endpoint return 200 even when the SPA has no usable credentials of its
- * own (which it needs for the WebSocket handshake).
+ * endpoint return 200 even when the SPA has no usable session of its own
+ * (which it needs for the WebSocket handshake).
  *
  * Returns:
  *   - "ok"       — no credential configured and anonymous allowed; skip login

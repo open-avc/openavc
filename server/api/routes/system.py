@@ -77,6 +77,56 @@ async def auth_setup(request: Request) -> dict[str, Any]:
     return {"ok": True, "state": auth_state()}
 
 
+@open_router.post("/auth/session")
+async def create_auth_session(request: Request) -> dict[str, Any]:
+    """Exchange the admin password for a short-lived session token.
+
+    The Programmer SPA calls this at login and stores only the returned
+    token — the raw password never persists in the browser. The token rides
+    `Authorization: Bearer <token>` on API requests and the
+    `auth.bearer.<token>` WebSocket subprotocol. Expiry is sliding
+    (`expires_in` seconds since last authenticated use); tokens die on
+    password change and server restart, and DELETE revokes one explicitly.
+
+    Requires HTTP Basic against the configured password. The 401 carries no
+    `WWW-Authenticate` header on purpose — this is a JSON exchange for the
+    SPA's login form, and the browser's native Basic dialog must never pop.
+    Open instances (no password) have no sessions to mint: 401.
+    """
+    from server.api.auth import (
+        _check_credentials,
+        _decode_basic_header,
+        _get_password,
+        credential_fingerprint,
+    )
+    from server.api.session_tokens import store
+
+    decoded = _decode_basic_header(request.headers.get("authorization", ""))
+    if _get_password() and decoded is not None:
+        user, password = decoded
+        if _check_credentials(user, password):
+            token, expires_in = store.issue(credential_fingerprint())
+            return {"token": token, "expires_in": expires_in}
+    raise HTTPException(status_code=401, detail="Wrong username or password.")
+
+
+@open_router.delete("/auth/session")
+async def delete_auth_session(request: Request) -> dict[str, Any]:
+    """Log out: revoke the session token presented as a Bearer credential.
+
+    Idempotent — an unknown or already-expired token still returns 200, so a
+    logout can't fail visibly after the server restarted or the token aged
+    out. Open (no auth beyond the token itself): revoking is only ever
+    destructive to the caller's own session.
+    """
+    from server.api.auth import _extract_bearer
+    from server.api.session_tokens import store
+
+    token = _extract_bearer(request.headers.get("authorization", ""))
+    revoked = store.revoke(token) if token else False
+    return {"ok": True, "revoked": revoked}
+
+
 @open_router.get("/status")
 async def get_status(
     request: Request,

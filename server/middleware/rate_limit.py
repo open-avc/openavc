@@ -76,6 +76,8 @@ def _classify(method: str, path: str) -> str:
 
     # Strict tier: expensive or security-sensitive operations
     if method == "POST":
+        if path == "/api/auth/session":
+            return "strict"
         if path.startswith("/api/discovery/"):
             return "strict"
         if path.startswith("/api/devices/") and ("/command" in path or "/test" in path):

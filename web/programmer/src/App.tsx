@@ -15,7 +15,7 @@ import { useWebSocket } from "./hooks/useWebSocket";
 import { showInfo } from "./store/toastStore";
 import {
   AUTH_REQUIRED_EVENT,
-  getStoredAuth,
+  hasSession,
   probeAuth,
 } from "./api/auth";
 
@@ -39,10 +39,10 @@ type AuthState = "checking" | "setup" | "needed" | "ready";
 
 function App() {
   const [authState, setAuthState] = useState<AuthState>(() =>
-    getStoredAuth() ? "ready" : "checking",
+    hasSession() ? "ready" : "checking",
   );
 
-  // On first mount with no stored creds, ask the server which screen to show:
+  // On first mount with no cached session, ask the server which screen to show:
   // a first-run setup (unclaimed shipped instance), the login screen (a
   // credential is set), or straight into the app (dev / anonymous allowed).
   useEffect(() => {

@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { setStoredAuth } from "../api/auth";
-import { getTunnelPrefix } from "../api/base";
+import { loginWithPassword } from "../api/auth";
 
 interface LoginProps {
   onSuccess: () => void;
@@ -23,17 +22,15 @@ export function Login({ onSuccess }: LoginProps) {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`${getTunnelPrefix()}/api/devices`, {
-        method: "GET",
-        headers: { Authorization: "Basic " + btoa(`${user}:${pass}`) },
-      });
+      const res = await loginWithPassword(user, pass);
       if (res.ok) {
-        setStoredAuth(user, pass);
         onSuccess();
         return;
       }
       if (res.status === 401) {
         setError("Wrong username or password.");
+      } else if (res.status === 429) {
+        setError("Too many attempts. Wait a minute and try again.");
       } else {
         setError(`Login failed (${res.status}).`);
       }
@@ -123,7 +120,7 @@ export function Login({ onSuccess }: LoginProps) {
         </button>
 
         <p style={{ fontSize: 12, opacity: 0.55, margin: 0, textAlign: "center" }}>
-          Credentials are kept in this browser tab only.
+          Your password is exchanged for a session key kept in this tab only.
         </p>
       </form>
     </div>
