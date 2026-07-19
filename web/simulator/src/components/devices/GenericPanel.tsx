@@ -24,10 +24,12 @@ export function GenericPanel({ device, onStateChange }: Props) {
               style={{ width: 100, textAlign: "right", fontSize: 12, padding: "2px 4px" }}
               value={String(value ?? "")}
               onChange={(e) => {
-                // Try to preserve type
+                // Try to preserve type; only decimal-looking finite values
+                // become numbers (hex strings and overflowing literals like
+                // 1e999 stay strings — Infinity would JSON-serialize to null)
                 const v = e.target.value;
                 if (v === "true" || v === "false") onStateChange(key, v === "true");
-                else if (!isNaN(Number(v)) && v !== "") onStateChange(key, Number(v));
+                else if (/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(v.trim()) && Number.isFinite(Number(v))) onStateChange(key, Number(v));
                 else onStateChange(key, v);
               }}
             />
