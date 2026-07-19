@@ -20,8 +20,10 @@ export function MeterControl({ control, state, onStateChange }: Props) {
         {channels.map((ch) => {
           const key = resolveKey(control.key_pattern, ch);
           const raw = Number(state[key] ?? 0);
-          // Normalize to 0-100 for display
-          const normalized = raw <= 1 && raw >= 0 ? raw * 100 : Math.max(0, Math.min(100, raw));
+          // Normalize to 0-100 for display. Values in [0, 1) read as 0-1
+          // fractions; exactly 1 reads as an absolute level (a 0-100 meter
+          // near silence), not a pegged full-scale bar.
+          const normalized = raw < 1 && raw >= 0 ? raw * 100 : Math.max(0, Math.min(100, raw));
           const muted = control.mute_pattern
             ? Boolean(state[resolveKey(control.mute_pattern, ch)])
             : false;
