@@ -462,7 +462,7 @@ export function SystemSettingsView() {
     setSaving(true);
     try {
       await api.updateSystemConfig(payload as Partial<SystemConfig>);
-      showSuccess("Settings saved" + (needsRestart ? "." : "."));
+      showSuccess("Settings saved" + (needsRestart ? ". Restart required for some changes to take effect." : "."));
       // Reload config + tls status to get fresh state
       const fresh = await api.getSystemConfig();
       setConfig(fresh);
