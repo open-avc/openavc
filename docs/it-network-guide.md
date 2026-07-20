@@ -168,7 +168,7 @@ When a device can't connect, its card in the Programmer shows an "Offline" banne
 | Device didn't respond as expected | The connection opened, but the device didn't speak the expected protocol. | That the right driver and transport (e.g. SSH vs Telnet, the right port) are selected for this device. |
 | Required client not found | A client OpenAVC shells out to is missing on the host (e.g. the OpenSSH `ssh` client). | That the client is installed and on the system PATH on the OpenAVC host. |
 
-OpenAVC retries automatically with exponential backoff (about an hour) before giving up; the banner shows the current attempt. The same reason is also published as the `device.<id>.offline_reason` state key for automation and monitoring.
+For a network reason (connection refused, can't reach the device, no response), OpenAVC retries automatically with exponential backoff for about an hour before giving up, and the banner shows the current attempt. Reasons that retrying can't fix — authentication failed, SSH host key changed, an untrusted TLS certificate, invalid connection settings, or a missing client — stop the retry loop early instead, and the banner says so rather than showing a climbing attempt count. Fix the cause and press Reconnect. The same reason is also published as the `device.<id>.offline_reason` state key for automation and monitoring.
 
 ### Device discovery (on-demand only)
 

@@ -58,6 +58,12 @@ except ImportError:  # pragma: no cover - httpx is a hard dependency in practice
 # frame parser's buffer ceiling; a login banner + prompts never approach it.
 _AUTH_MAX_BUFFER = DEFAULT_MAX_BUFFER
 
+# HTTP statuses that mean "the device rejected these credentials": 401 from the
+# device itself, 407 from a proxy in front of it, 403 for the devices that
+# answer a bad login with Forbidden rather than Unauthorized. Used only for the
+# whole-poll-cycle check in poll() — one of these on its own is not a verdict.
+_HTTP_AUTH_REJECT_STATUS = frozenset({401, 403, 407})
+
 
 # Sentinel returned by _extract_json_path when a JSON string can't be parsed
 # or the requested path doesn't exist — distinct from a legitimately-extracted
@@ -205,6 +211,14 @@ class ConfigurableDriver(BaseDriver):
         self._json_responses: list[
             tuple[list[dict[str, Any]], dict[str, float] | None]
         ] = []
+
+        # HTTP auth tally for the poll cycle currently in flight, or None
+        # outside one: [requests, auth rejections]. A device that answers 401
+        # on one endpoint by design (a privileged sub-API) while the
+        # credentials are perfectly good is common, so a single rejection
+        # proves nothing — only a cycle where EVERY request was rejected is
+        # read as a credential problem. See poll().
+        self._http_auth_tally: list[int] | None = None
 
         # Telnet/serial login handshake state. Active only during
         # _perform_auth_handshake() — outside that window on_data_received
@@ -941,8 +955,10 @@ class ConfigurableDriver(BaseDriver):
             else:
                 formatted = self._safe_substitute(query, self.config) if "{" in query else query
                 response = await self.transport.get(formatted)
-                if response.text:
-                    await self.on_data_received(response.text.encode("utf-8"))
+                # Same handler as the command path: response matching plus the
+                # poll cycle's auth tally. A raw path is the most common HTTP
+                # polling form, so it must not be the one that misses a 401.
+                await self._process_http_response(formatted, response)
         elif transport_type == "udp":
             if query in commands:
                 await self.send_command(query)
@@ -1842,12 +1858,25 @@ class ConfigurableDriver(BaseDriver):
         """
         Process an HTTP response: check status and match response patterns.
 
-        Returns the HTTPResponse object for the caller.
+        ``command`` is the command name, or the raw path when a polling query
+        addressed one directly — it only labels the log line. Returns the
+        HTTPResponse object for the caller.
         """
         log.debug(
             f"[{self.device_id}] HTTP command '{command}' -> "
             f"status={response.status_code}"
         )
+
+        # Tally credential rejections for the poll cycle in flight (if any).
+        # poll() decides from the whole cycle — see _http_auth_tally.
+        if self._http_auth_tally is not None:
+            self._http_auth_tally[0] += 1
+            if response.status_code in _HTTP_AUTH_REJECT_STATUS:
+                self._http_auth_tally[1] += 1
+                log.debug(
+                    f"[{self.device_id}] HTTP command '{command}' rejected "
+                    f"the credentials (status={response.status_code})"
+                )
 
         # Run response text through the standard regex-based response matching
         # so .avcdriver response patterns work with HTTP responses too
@@ -2568,6 +2597,13 @@ class ConfigurableDriver(BaseDriver):
 
         transport_type = self._definition.get("transport")
         is_osc = transport_type == "osc"
+        is_http = transport_type == "http"
+
+        # Open a fresh auth tally for HTTP cycles. connect() for an HTTP driver
+        # only opens the session (it sends no request), so a rejected login has
+        # no earlier place to surface — the poll is where wrong credentials
+        # first become visible.
+        self._http_auth_tally = [0, 0] if is_http else None
 
         for raw_query in queries:
             # each_child entries expand to one query per registered child.
@@ -2595,11 +2631,13 @@ class ConfigurableDriver(BaseDriver):
                     # errors arrive here as builtin ConnectionError — http_client
                     # translates httpx.ConnectError before it propagates.)
                     log.warning(f"[{self.device_id}] Poll query failed (transport)")
+                    self._http_auth_tally = None  # cycle aborted, tally is moot
                     raise
                 except _HTTP_TRANSPORT_ERRORS as exc:
                     # httpx timeout / status / other transport errors are also
                     # transport-level for the watchdog — re-raise, don't swallow.
                     log.warning(f"[{self.device_id}] Poll query failed (HTTP): {exc}")
+                    self._http_auth_tally = None  # cycle aborted, tally is moot
                     raise
                 except Exception as exc:  # Template substitution, encoding, parse errors
                     # Protocol-level: the device answered but the query/response was
@@ -2613,6 +2651,23 @@ class ConfigurableDriver(BaseDriver):
                         )
                     except Exception:
                         log.exception(f"[{self.device_id}] Failed to emit device.error")
+
+        tally = self._http_auth_tally
+        self._http_auth_tally = None
+        if tally is not None and tally[0] > 0 and tally[1] == tally[0]:
+            # Every request this cycle came back rejected — not one privileged
+            # endpoint, the credentials themselves. Raise typed so the fault
+            # reaches the device card as auth_failed instead of the device
+            # sitting "connected" with stale state. BaseDriver's missed-poll
+            # watchdog carries this through to _set_offline_reason once the
+            # cycle count is met, so a one-off rejection during a device
+            # reboot still can't flip the card on its own.
+            raise ConnectionFaultError(
+                f"the device rejected the credentials on every request this "
+                f"poll cycle ({tally[0]} of {tally[0]}) — check the username "
+                f"and password.",
+                code="auth_failed",
+            )
 
     @staticmethod
     def _build_send_frame(cfg: Any) -> dict[str, Any] | None:

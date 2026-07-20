@@ -2315,6 +2315,8 @@ The code becomes `offline_reason` verbatim and the message becomes `offline_deta
 
 **`auth_failed` also changes the retry policy.** The platform treats a credential rejection as non-transient: it tries once per user action, then pauses auto-reconnect until the credentials change (editing the device or pressing Reconnect tries again). This protects devices with brute-force lockouts, where every failed login counts toward blocking the controller's IP address. So classify precisely — raise `auth_failed` only for a genuine credential rejection, never a transport failure — and never send a login you know can't succeed: if the config has no password and the device requires one, raise the typed fault before contacting the device at all.
 
+**Other reasons that stop the retry loop.** `host_key_rejected`, `tls_cert_untrusted`, `invalid_config`, and `client_missing` are treated the same way, just less strictly: they get a couple of attempts (a device rebooting mid-scan can briefly present one) and then auto-reconnect stops, because nothing about retrying can clear them — someone has to change a setting, trust a certificate, or install a client. The device card says so, and Reconnect starts a fresh attempt. Network reasons (`unreachable`, `connection_refused`, `no_response`, `bridge_offline`, `transport_disconnected`) keep retrying with backoff, since those do heal on their own.
+
 ### Convenience Methods
 
 These are available on every driver via the `BaseDriver` base class:

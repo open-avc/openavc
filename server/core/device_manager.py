@@ -13,7 +13,11 @@ from __future__ import annotations
 import asyncio
 from typing import Any, TYPE_CHECKING
 
-from server.core.connection_fault import classify_connection_fault, typed_fault_from_exc
+from server.core.connection_fault import (
+    classify_connection_fault,
+    is_permanent_fault,
+    typed_fault_from_exc,
+)
 from server.drivers.base import (
     CommandParamError,
     DeviceSettingValueError,
@@ -25,6 +29,13 @@ from server.core.state_store import StateStore
 from server.utils.logger import get_logger
 
 log = get_logger(__name__)
+
+# How many reconnect attempts a permanent fault gets before the loop stops.
+# One retry past the first classification: enough to shrug off a device that
+# was mid-reboot when we read its certificate or host key, few enough that a
+# genuinely misconfigured device stops churning almost immediately. auth_failed
+# is stricter still (zero retries — see _pause_reconnect_for_auth).
+_MAX_PERMANENT_FAULT_ATTEMPTS = 2
 
 
 def _log_task_exception(task: asyncio.Task) -> None:
@@ -1021,6 +1032,25 @@ class DeviceManager:
             f"device.{device_id}.reconnect_failed", True, source="device_manager"
         )
 
+    def _stop_reconnect_for_permanent_fault(self, device_id: str, code: str) -> None:
+        """Stop auto-reconnect after a fault only a human can clear.
+
+        A rejected host key, an untrusted certificate, bad connection
+        settings, or a missing client binary all fail identically on every
+        retry — the device card already names the cause and the fix, so
+        continuing to the full 120 attempts just churns. The reason and
+        detail keys are left as classified (they carry the actionable
+        wording); ``reconnect_failed`` tells the UI we've stopped.
+        """
+        log.warning(
+            f"[{device_id}] Stopped reconnecting: '{code}' can't resolve by "
+            f"retrying. Fix the cause shown on the device card, then press "
+            f"Reconnect (editing the device also retries)."
+        )
+        self.state.set(
+            f"device.{device_id}.reconnect_failed", True, source="device_manager"
+        )
+
     # --- Reconnection ---
 
     async def _on_device_disconnected(self, event: str, payload: dict[str, Any]) -> None:
@@ -1179,6 +1209,7 @@ class DeviceManager:
         """
         delays = [2, 4, 8, 16, 30]
         attempt = 0
+        permanent_attempts = 0
 
         try:
             while attempt < max_attempts:
@@ -1227,6 +1258,18 @@ class DeviceManager:
                         # that discovers it).
                         self._pause_reconnect_for_auth(device_id)
                         return
+                    if is_permanent_fault(code):
+                        # Host key, TLS trust, connection settings, missing
+                        # client: a human has to change something. Allow a
+                        # couple of tries first — a device rebooting mid-scan
+                        # can briefly present one of these — then stop rather
+                        # than grinding through all 120 attempts.
+                        permanent_attempts += 1
+                        if permanent_attempts >= _MAX_PERMANENT_FAULT_ATTEMPTS:
+                            self._stop_reconnect_for_permanent_fault(device_id, code)
+                            return
+                    else:
+                        permanent_attempts = 0
                     attempt += 1
 
             # Exhausted all attempts

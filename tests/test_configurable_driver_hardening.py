@@ -13,8 +13,10 @@ import re
 import httpx
 import pytest
 
+from server.core.connection_fault import ConnectionFaultError
 from server.core.event_bus import EventBus
 from server.core.state_store import StateStore
+from server.transport.http_client import HTTPResponse
 from server.drivers.configurable import (
     _AUTH_MAX_BUFFER,
     ConfigurableDriver,
@@ -124,6 +126,109 @@ async def test_watchdog_marks_unreachable_http_device_disconnected():
     assert drv.get_state("connected") is False
     if drv._poll_task is not None:
         assert drv._poll_task.done()
+
+
+# ===========================================================================
+# A YAML HTTP driver surfaces a rejected login as auth_failed
+# ===========================================================================
+#
+# An HTTP driver's connect() only opens the session — it sends no request — so
+# wrong credentials first become visible on a poll. Rejections have to be
+# judged per cycle, not per request: plenty of devices answer 401 on one
+# privileged sub-API while the credentials are fine.
+
+
+class _StatusHTTP:
+    """Stand-in HTTP transport returning a canned status per path."""
+
+    def __init__(self, statuses: dict[str, int], body: str = ""):
+        self.connected = True
+        self._statuses = statuses
+        self._body = body
+        self.requested: list[str] = []
+
+    async def get(self, path: str):
+        self.requested.append(path)
+        return HTTPResponse(
+            status_code=self._statuses.get(path, 200),
+            headers={},
+            text=self._body,
+            ok=self._statuses.get(path, 200) < 400,
+        )
+
+
+_HTTP_AUTH_DEF = {
+    **_HTTP_DEF,
+    "id": "acme_http_auth",
+    "polling": {"queries": ["/status", "/inputs"]},
+}
+
+
+@pytest.mark.asyncio
+async def test_poll_raises_auth_failed_when_every_request_is_rejected():
+    """All requests rejected = the credentials are wrong, not one endpoint."""
+    drv = _make_driver(_HTTP_AUTH_DEF)
+    drv.transport = _StatusHTTP({"/status": 401, "/inputs": 401})
+
+    with pytest.raises(ConnectionFaultError) as excinfo:
+        await drv.poll()
+    assert excinfo.value.fault_code == "auth_failed"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [401, 403, 407])
+async def test_poll_treats_each_rejection_status_as_auth(status):
+    drv = _make_driver({**_HTTP_AUTH_DEF, "polling": {"queries": ["/status"]}})
+    drv.transport = _StatusHTTP({"/status": status})
+
+    with pytest.raises(ConnectionFaultError) as excinfo:
+        await drv.poll()
+    assert excinfo.value.fault_code == "auth_failed"
+
+
+@pytest.mark.asyncio
+async def test_poll_tolerates_one_privileged_endpoint_rejecting():
+    """A 401 on one endpoint while another answers is a permissions scope,
+    not a credential failure — the device stays online."""
+    drv = _make_driver(_HTTP_AUTH_DEF)
+    drv.transport = _StatusHTTP({"/status": 200, "/inputs": 401})
+
+    await drv.poll()  # must NOT raise
+
+
+@pytest.mark.asyncio
+async def test_poll_auth_tally_does_not_leak_across_cycles():
+    """A rejected cycle must not poison the next one, and commands sent
+    between polls must not be tallied into it."""
+    drv = _make_driver(_HTTP_AUTH_DEF)
+    drv.transport = _StatusHTTP({"/status": 401, "/inputs": 401})
+    with pytest.raises(ConnectionFaultError):
+        await drv.poll()
+    assert drv._http_auth_tally is None
+
+    drv.transport = _StatusHTTP({"/status": 200, "/inputs": 200})
+    await drv.poll()  # a clean cycle after a rejected one must not raise
+    assert drv._http_auth_tally is None
+
+
+@pytest.mark.asyncio
+async def test_rejected_login_reaches_the_device_card_as_auth_failed():
+    """End-to-end: the typed fault survives the missed-poll watchdog into
+    last_fault, which is what the device manager reads for offline_reason."""
+    drv = _make_driver(
+        {**_HTTP_AUTH_DEF, "id": "acme_http_auth2"},
+        config={"max_missed_polls": 2},
+    )
+    drv.transport = _StatusHTTP({"/status": 401, "/inputs": 401})
+    drv._connected = True
+    drv.set_state("connected", True)
+
+    await drv.start_polling(0.01)
+    await asyncio.sleep(0.25)
+
+    assert drv.get_state("connected") is False
+    assert drv.last_fault is not None
+    assert drv.last_fault.code == "auth_failed"
 
 
 # ===========================================================================

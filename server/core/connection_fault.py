@@ -104,6 +104,31 @@ def default_fault_message(code: str, where: str = "the device") -> str:
     return template.format(where=where)
 
 
+# Faults that retrying can never heal: the fix is a human changing something
+# (credentials, a host key, a certificate trust decision, a connection setting,
+# or installing a missing client). Retrying one of these for an hour only burns
+# CPU and fills the log — and for auth it actively harms, since devices with
+# brute-force lockouts block the source IP after a handful of failures. The
+# device manager stops reconnecting when it classifies one of these; a config
+# edit or the Reconnect button starts a fresh attempt.
+#
+# Everything else (unreachable, connection_refused, no_response,
+# bridge_offline, transport_disconnected) is a network condition that can and
+# does heal on its own, so those keep retrying.
+_PERMANENT_FAULT_CODES = frozenset({
+    AUTH_FAILED,
+    HOST_KEY_REJECTED,
+    TLS_CERT_UNTRUSTED,
+    INVALID_CONFIG,
+    CLIENT_MISSING,
+})
+
+
+def is_permanent_fault(code: str) -> bool:
+    """True when ``code`` names a fault that retrying can't fix on its own."""
+    return code in _PERMANENT_FAULT_CODES
+
+
 class ConnectionFaultError(ConnectionError):
     """A connection failure carrying an explicit, pre-classified fault code.
 

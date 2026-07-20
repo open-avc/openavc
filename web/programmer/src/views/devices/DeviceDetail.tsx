@@ -1687,6 +1687,17 @@ const devLogTdStyle: React.CSSProperties = {
   maxWidth: 150,
 };
 
+// Offline reasons the server stops retrying on, because only a human can
+// clear them. Mirrors _PERMANENT_FAULT_CODES in server/core/connection_fault.py
+// (auth_failed is in that set too, but gets its own lockout-specific wording
+// below). Keep the two lists in step.
+const PERMANENT_OFFLINE_REASONS = new Set([
+  "host_key_rejected",
+  "tls_cert_untrusted",
+  "invalid_config",
+  "client_missing",
+]);
+
 function OfflineBanner({
   detail,
   reason,
@@ -1743,7 +1754,13 @@ function OfflineBanner({
               // Retrying a rejected login would only trip the device's
               // brute-force lockout, so the server holds off on purpose.
               ? "Not retrying — repeated logins can lock this PC out of the device. Fix the credentials in Edit Device, then press Reconnect."
-              : "Automatic reconnection gave up. Use the Reconnect button above to try again."
+              : PERMANENT_OFFLINE_REASONS.has(reason ?? "")
+                // Stopped early on purpose, not out of attempts — the detail
+                // line above already names what to change. Saying "gave up"
+                // here would read as "we tried everything", sending the
+                // integrator hunting a network problem that isn't there.
+                ? "Not retrying — this won't clear on its own. Fix the cause above, then press Reconnect."
+                : "Automatic reconnection gave up. Use the Reconnect button above to try again."
             : attempt > 0
               ? `Reconnecting automatically… (attempt ${attempt})`
               : "Reconnecting automatically…"}
