@@ -1,5 +1,7 @@
 """Tests for Engine WS state batching: state.update vs state.delete."""
 
+import asyncio
+
 import pytest
 
 from server.core.engine import Engine
@@ -175,6 +177,7 @@ async def test_broadcast_state_delete_filters_per_client_namespace(engine):
         "type": "state.delete",
         "keys": ["var.a", "device.proj1.power"],
     })
+    await engine.flush_ws_sends()
 
     assert sent_per_client["all"] == [
         {"type": "state.delete", "keys": ["var.a", "device.proj1.power"]},
@@ -182,6 +185,8 @@ async def test_broadcast_state_delete_filters_per_client_namespace(engine):
     assert sent_per_client["var_only"] == [
         {"type": "state.delete", "keys": ["var.a"]},
     ]
+    engine.remove_ws_client(ws_all)
+    engine.remove_ws_client(ws_var_only)
 
 
 @pytest.mark.asyncio
@@ -201,8 +206,10 @@ async def test_broadcast_state_delete_skips_client_with_no_matching_keys(engine)
         "type": "state.delete",
         "keys": ["var.a", "device.proj1.power"],
     })
+    await engine.flush_ws_sends()
 
     assert sent == []
+    engine.remove_ws_client(ws)
 
 
 # --- Disconnect handling: a failing send removes the client ---
@@ -229,10 +236,12 @@ async def test_broadcast_fast_path_drops_failing_client(engine):
     assert bad in engine._ws_clients
 
     await engine.broadcast_ws({"type": "ping"})
+    await engine.flush_ws_sends()
 
     assert received_ok == [{"type": "ping"}]
     assert bad not in engine._ws_clients
     assert good in engine._ws_clients
+    engine.remove_ws_client(good)
 
 
 @pytest.mark.asyncio
@@ -260,8 +269,103 @@ async def test_broadcast_slow_path_drops_failing_client(engine):
         "type": "state.delete",
         "keys": ["var.a"],
     })
+    await engine.flush_ws_sends()
 
     assert received_ok == [{"type": "state.delete", "keys": ["var.a"]}]
     assert bad not in engine._ws_clients
     assert id(bad) not in engine._ws_ns_filters
     assert good in engine._ws_clients
+    engine.remove_ws_client(good)
+
+
+# --- Slow-client isolation: a wedged client must not stall the emit path ---
+
+
+class _StuckWS:
+    """A client whose send never completes (dead peer with an open TCP pipe)."""
+
+    def __init__(self):
+        self.closed = False
+        self._never = asyncio.Event()
+
+    async def send_text(self, text: str):
+        await self._never.wait()
+
+    async def close(self, code: int = 1000):
+        self.closed = True
+
+
+class _CollectingWS:
+    def __init__(self):
+        self.received: list[dict] = []
+
+    async def send_text(self, text: str):
+        import json
+        self.received.append(json.loads(text))
+
+
+@pytest.mark.asyncio
+async def test_broadcast_returns_promptly_with_stuck_client(engine):
+    """broadcast_ws must not await the wedged client's send (V-LC-001)."""
+    stuck = _StuckWS()
+    good = _CollectingWS()
+    engine.add_ws_client(stuck)
+    engine.add_ws_client(good)
+
+    # Pre-fix this hung until the stuck client's send completed (never).
+    await asyncio.wait_for(engine.broadcast_ws({"type": "ping"}), timeout=0.5)
+
+    # The healthy client still gets the message even while the other is stuck.
+    for _ in range(50):
+        if good.received:
+            break
+        await asyncio.sleep(0.01)
+    assert good.received == [{"type": "ping"}]
+    engine.remove_ws_client(stuck)
+    engine.remove_ws_client(good)
+
+
+@pytest.mark.asyncio
+async def test_stuck_client_dropped_on_queue_overflow(engine):
+    """A client whose send queue overflows is dropped and its socket closed."""
+    from server.core.engine import _WS_SEND_QUEUE_MAX
+
+    stuck = _StuckWS()
+    good = _CollectingWS()
+    engine.add_ws_client(stuck)
+    engine.add_ws_client(good)
+
+    # One message is in-flight in the writer, _WS_SEND_QUEUE_MAX fill the
+    # queue, and the next one overflows. Yield between broadcasts so the
+    # healthy client's writer keeps draining (as any real emit path does) —
+    # only the stuck client's queue may fill.
+    for _ in range(_WS_SEND_QUEUE_MAX + 2):
+        await engine.broadcast_ws({"type": "ping"})
+        await asyncio.sleep(0)
+
+    assert stuck not in engine._ws_clients
+    assert id(stuck) not in engine._ws_send_queues
+    assert good in engine._ws_clients
+
+    # The overflow close is fire-and-forget; let it run.
+    for _ in range(50):
+        if stuck.closed:
+            break
+        await asyncio.sleep(0.01)
+    assert stuck.closed
+
+    await engine.flush_ws_sends()
+    assert len(good.received) == _WS_SEND_QUEUE_MAX + 2
+    engine.remove_ws_client(good)
+
+
+@pytest.mark.asyncio
+async def test_per_client_delivery_preserves_order(engine):
+    """Messages reach a client in broadcast order through its queue."""
+    ws = _CollectingWS()
+    engine.add_ws_client(ws)
+    for i in range(10):
+        await engine.broadcast_ws({"type": "ping", "seq": i})
+    await engine.flush_ws_sends()
+    assert [m["seq"] for m in ws.received] == list(range(10))
+    engine.remove_ws_client(ws)

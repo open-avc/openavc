@@ -58,6 +58,11 @@ def _log_task_exception(task: asyncio.Task) -> None:
 # keys that exist with a None value. Used by _on_state_change.
 _STATE_MISSING = object()
 
+# Per-client WS send queue depth. At the state flush loop's 20 msg/s ceiling
+# this is >10s of buffered updates — a client that far behind is wedged, not
+# slow, and is dropped to reconnect with a fresh snapshot.
+_WS_SEND_QUEUE_MAX = 256
+
 # The state store documents flat primitives only (str, int, float, bool,
 # None) — WS broadcast, the ISC mesh, the cloud relay, and persistence all
 # rely on it. bool is intentionally listed though it's an int subclass.
@@ -128,6 +133,17 @@ class Engine:
         self._ws_clients: set = set()
         # Per-client namespace filters: id(ws) -> tuple of prefix strings
         self._ws_ns_filters: dict[int, tuple[str, ...]] = {}
+        # Per-client bounded send queues + their writer tasks: id(ws) -> ...
+        # Broadcasts enqueue and return; each writer drains its own client,
+        # so one wedged client can never stall the emit path (macros,
+        # triggers, state flushes). Overflow drops the client (see
+        # broadcast_ws).
+        self._ws_send_queues: dict[int, asyncio.Queue] = {}
+        self._ws_writers: dict[int, asyncio.Task] = {}
+        # Strong refs for short-lived WS cleanup tasks (socket closes,
+        # cancelled writers unwinding) — asyncio only weakly references
+        # tasks, so an unreferenced one can be GC'd before it runs.
+        self._ws_cleanup_tasks: set[asyncio.Task] = set()
 
         # State batching for WebSocket push
         self._state_batch: dict[str, Any] = {}
@@ -1776,20 +1792,109 @@ class Engine:
     # --- WebSocket Management ---
 
     def add_ws_client(self, ws, ns_prefixes: tuple[str, ...] | None = None) -> None:
-        """Register a WebSocket client with optional namespace filter."""
+        """Register a WebSocket client with optional namespace filter.
+
+        Each client gets a bounded send queue drained by its own writer
+        task, so broadcast_ws never awaits a client's TCP send directly.
+        """
         self._ws_clients.add(ws)
         if ns_prefixes:
             self._ws_ns_filters[id(ws)] = ns_prefixes
+        queue: asyncio.Queue = asyncio.Queue(maxsize=_WS_SEND_QUEUE_MAX)
+        self._ws_send_queues[id(ws)] = queue
+        writer = asyncio.create_task(self._ws_send_loop(ws, queue))
+        writer.add_done_callback(_log_task_exception)
+        self._ws_writers[id(ws)] = writer
         log.info(f"WebSocket client connected ({len(self._ws_clients)} total)")
 
     def remove_ws_client(self, ws) -> None:
         """Unregister a WebSocket client."""
-        self._ws_clients.discard(ws)
-        self._ws_ns_filters.pop(id(ws), None)
+        if ws not in self._ws_clients and id(ws) not in self._ws_writers:
+            return  # Already dropped (send failure / overflow) — keep idempotent
+        self._drop_ws_client(ws, cancel_writer=True)
         log.info(f"WebSocket client disconnected ({len(self._ws_clients)} total)")
 
+    def _drop_ws_client(self, ws, *, cancel_writer: bool) -> None:
+        """Remove a client from every registry; optionally cancel its writer.
+
+        ``cancel_writer=False`` is for the writer task removing its own
+        client on a send failure — it is about to exit on its own.
+        """
+        self._ws_clients.discard(ws)
+        self._ws_ns_filters.pop(id(ws), None)
+        self._ws_send_queues.pop(id(ws), None)
+        writer = self._ws_writers.pop(id(ws), None)
+        if writer is not None and cancel_writer and not writer.done():
+            writer.cancel()
+            # Keep a strong ref while the cancelled task unwinds.
+            self._ws_cleanup_tasks.add(writer)
+            writer.add_done_callback(self._ws_cleanup_tasks.discard)
+
+    async def _ws_send_loop(self, ws, queue: asyncio.Queue) -> None:
+        """Drain one client's send queue for the life of its connection.
+
+        A send failure means the peer is gone or the transport broke: drop
+        the client here; the connection handler's own remove_ws_client on
+        unwind is a no-op by then.
+        """
+        try:
+            while True:
+                text = await queue.get()
+                try:
+                    await ws.send_text(text)
+                finally:
+                    queue.task_done()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            self._drop_ws_client(ws, cancel_writer=False)
+            log.info(
+                f"WebSocket client dropped on send failure "
+                f"({len(self._ws_clients)} total)"
+            )
+        finally:
+            # Mark anything left undelivered as done so flush_ws_sends()
+            # joiners can't hang on a dead client's queue.
+            while True:
+                try:
+                    queue.get_nowait()
+                    queue.task_done()
+                except asyncio.QueueEmpty:
+                    break
+
+    def _close_ws_client(self, ws) -> None:
+        """Best-effort close of an overflowed client's socket (fire-and-forget)."""
+
+        async def _close() -> None:
+            try:
+                await ws.close(code=1013)  # 1013 = try again later
+            except Exception:
+                pass  # Peer already gone — nothing to close
+
+        task = asyncio.create_task(_close())
+        self._ws_cleanup_tasks.add(task)
+        task.add_done_callback(self._ws_cleanup_tasks.discard)
+
+    async def flush_ws_sends(self) -> None:
+        """Wait until every currently-queued WS message has been sent.
+
+        Used by the shutdown flush (best-effort, with a timeout) and by
+        tests that need delivery to have happened before asserting.
+        """
+        queues = list(self._ws_send_queues.values())
+        if queues:
+            await asyncio.gather(*(q.join() for q in queues))
+
     async def broadcast_ws(self, message: dict[str, Any]) -> None:
-        """Send a JSON message to all connected WebSocket clients."""
+        """Queue a JSON message for delivery to all connected WS clients.
+
+        Never awaits a client send: messages go onto per-client bounded
+        queues, so a slow or wedged client can't stall the caller (macro
+        and trigger event emits, the 50ms state flush loop). A client
+        whose queue overflows is dropped and its socket closed — panels
+        auto-reconnect and resnapshot, which is cheaper than letting one
+        sick client apply backpressure engine-wide.
+        """
         if not self._ws_clients:
             return
 
@@ -1797,62 +1902,41 @@ class Engine:
         # state.update and state.delete carry per-key payloads; a client with
         # ns_prefixes should only receive keys under those namespaces.
         is_filterable = msg_type in ("state.update", "state.delete")
-        has_any_filters = bool(self._ws_ns_filters)
 
-        # Fast path: no namespace filters or not a filterable message type
-        if not is_filterable or not has_any_filters:
-            text = json.dumps(message)
-            clients = list(self._ws_clients)
-            results = await asyncio.gather(
-                *(ws.send_text(text) for ws in clients),
-                return_exceptions=True,
-            )
-            for ws, result in zip(clients, results):
-                if isinstance(result, Exception):
-                    self._ws_clients.discard(ws)
-                    self._ws_ns_filters.pop(id(ws), None)
-            return
-
-        # Slow path: filter per client based on message type
         full_text: str | None = None
-        sends: list[tuple[Any, Any]] = []  # (ws, send_coroutine)
         for ws in list(self._ws_clients):
-            ns = self._ws_ns_filters.get(id(ws))
+            ns = self._ws_ns_filters.get(id(ws)) if is_filterable else None
             if not ns:
                 if full_text is None:
                     full_text = json.dumps(message)
-                sends.append((ws, ws.send_text(full_text)))
-                continue
-
-            if msg_type == "state.update":
+                text = full_text
+            elif msg_type == "state.update":
                 changes = message.get("changes", {})
                 filtered = {k: v for k, v in changes.items()
                             if k.startswith(ns)}
                 if not filtered:
                     continue
-                sends.append((ws, ws.send_text(json.dumps({
-                    "type": "state.update", "changes": filtered,
-                }))))
+                text = json.dumps({"type": "state.update", "changes": filtered})
             else:  # state.delete
                 keys = message.get("keys", [])
                 filtered_keys = [k for k in keys if k.startswith(ns)]
                 if not filtered_keys:
                     continue
-                sends.append((ws, ws.send_text(json.dumps({
-                    "type": "state.delete", "keys": filtered_keys,
-                }))))
+                text = json.dumps({"type": "state.delete", "keys": filtered_keys})
 
-        if not sends:
-            return
-        clients_to_send = [ws for ws, _ in sends]
-        results = await asyncio.gather(
-            *(coro for _, coro in sends),
-            return_exceptions=True,
-        )
-        for ws, result in zip(clients_to_send, results):
-            if isinstance(result, Exception):
-                self._ws_clients.discard(ws)
-                self._ws_ns_filters.pop(id(ws), None)
+            queue = self._ws_send_queues.get(id(ws))
+            if queue is None:
+                continue
+            try:
+                queue.put_nowait(text)
+            except asyncio.QueueFull:
+                log.warning(
+                    "WebSocket client send queue overflowed "
+                    f"({_WS_SEND_QUEUE_MAX} messages) — dropping client so it "
+                    "reconnects with a fresh snapshot"
+                )
+                self._drop_ws_client(ws, cancel_writer=True)
+                self._close_ws_client(ws)
 
     async def _on_pending_settings_applied(
         self, event: str, payload: dict[str, Any]
@@ -1942,6 +2026,9 @@ class Engine:
             if self._state_batch or self._state_deleted_keys:
                 try:
                     await self._flush_state_batch()
+                    # The flush only enqueues; give the per-client writers a
+                    # moment to actually deliver before the process exits.
+                    await asyncio.wait_for(self.flush_ws_sends(), timeout=1.0)
                 except Exception:  # Errors are non-critical at shutdown
                     pass
 
