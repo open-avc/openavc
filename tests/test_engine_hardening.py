@@ -264,16 +264,19 @@ async def test_select_event_writes_selected_binding(tmp_path):
 def test_get_status_gates_sensitive_fields(tmp_path):
     eng = Engine(_write_project(tmp_path))
     eng.project = load_project(eng.project_path)
-    eng._network_info = ("10.0.0.5", "host1")  # prime cache, avoid real socket
+    # Prime the cache so detection never touches real adapters.
+    eng._network_info = ("10.0.0.5", "host1", ["10.0.0.5", "192.168.9.5"])
 
     full = eng.get_status(include_sensitive=True)
     assert full["hostname"] == "host1"
     assert full["local_ip"] == "10.0.0.5"
+    assert full["local_ips"] == ["10.0.0.5", "192.168.9.5"]
     assert "bind_address" in full
 
     redacted = eng.get_status(include_sensitive=False)
     assert "hostname" not in redacted
     assert "local_ip" not in redacted
+    assert "local_ips" not in redacted
     assert "bind_address" not in redacted
     # Non-sensitive fields still present.
     assert redacted["status"] in ("running", "stopped")
@@ -285,42 +288,30 @@ def test_get_status_gates_sensitive_fields(tmp_path):
 
 def test_detect_network_info_caches(tmp_path, monkeypatch):
     eng = Engine(_write_project(tmp_path))
-    count = {"sock": 0, "host": 0}
+    count = {"enum": 0, "host": 0}
 
-    class FakeSock:
-        def __enter__(self):
-            return self
+    def fake_enum():
+        count["enum"] += 1
+        return ["192.168.1.50", "10.50.0.50"]
 
-        def __exit__(self, *a):
-            return False
-
-        def settimeout(self, t):
-            pass
-
-        def connect(self, addr):
-            pass
-
-        def getsockname(self):
-            return ("192.168.1.50", 0)
-
-    def fake_socket(*a, **k):
-        count["sock"] += 1
-        return FakeSock()
-
-    monkeypatch.setattr("server.core.engine.socket.socket", fake_socket)
+    monkeypatch.setattr("server.core.engine.network_scanner.get_ranked_interface_ips",
+                        fake_enum)
     monkeypatch.setattr("server.core.engine.socket.gethostname",
                         lambda: count.__setitem__("host", count["host"] + 1) or "myhost")
 
     first = eng._detect_network_info()
     second = eng._detect_network_info()
 
-    assert first == ("192.168.1.50", "myhost")
+    # local_ip is the top-ranked leg; the rest ride along for the setup screen.
+    assert first == ("192.168.1.50", "myhost", ["192.168.1.50", "10.50.0.50"])
     assert second == first
-    assert count["sock"] == 1  # second call served from cache
+    assert count["enum"] == 1  # second call served from cache
     assert count["host"] == 1
 
 
 def test_detect_network_info_closes_socket_on_connect_failure(tmp_path, monkeypatch):
+    """No route at all: the fallback socket is closed and the engine reports
+    loopback rather than leaking a descriptor on an isolated control network."""
     eng = Engine(_write_project(tmp_path))
     closed = {"v": False}
 
@@ -341,12 +332,17 @@ def test_detect_network_info_closes_socket_on_connect_failure(tmp_path, monkeypa
         def getsockname(self):  # pragma: no cover - never reached
             return ("x", 0)
 
-    monkeypatch.setattr("server.core.engine.socket.socket", lambda *a, **k: FakeSock())
+    # The route lookup lives with the rest of the adapter enumeration now.
+    monkeypatch.setattr("server.discovery.network_scanner.socket.socket",
+                        lambda *a, **k: FakeSock())
+    monkeypatch.setattr("server.discovery.network_scanner.get_interface_ips",
+                        lambda: [])
     monkeypatch.setattr("server.core.engine.socket.gethostname", lambda: "h")
 
-    ip, host = eng._detect_network_info()
+    ip, host, ips = eng._detect_network_info()
 
     assert ip == "127.0.0.1"  # fell back
+    assert ips == []
     assert closed["v"], "socket must be closed even when connect() fails"
 
 

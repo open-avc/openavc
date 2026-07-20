@@ -10,7 +10,11 @@ from server.discovery.result import (
     DiscoveredDevice,
     merge_device_info,
 )
-from server.discovery.network_scanner import get_local_subnets, _parse_cidr
+from server.discovery.network_scanner import (
+    get_local_subnets,
+    get_ranked_interface_ips,
+    _parse_cidr,
+)
 from server.discovery.port_scanner import BANNER_PORTS, BASELINE_PORTS
 from server.discovery.engine import DiscoveryEngine, ScanStatus
 
@@ -356,3 +360,52 @@ class TestGetLocalSubnets:
         result = get_local_subnets()
         for subnet in result:
             assert not subnet.startswith("127.")
+
+
+# ===== Ranked Address Tests =====
+
+
+class TestGetRankedInterfaceIps:
+    """A multi-homed host has no single right answer for "my address", so the
+    ranking decides which leg leads and callers that show one address take the
+    first. Patched at the module's own names, so no real adapters involved."""
+
+    def _ranked(self, ips, default_ip):
+        with patch(
+            "server.discovery.network_scanner.get_interface_ips", return_value=ips
+        ), patch(
+            "server.discovery.network_scanner.get_default_route_ip",
+            return_value=default_ip,
+        ):
+            return get_ranked_interface_ips()
+
+    def test_default_route_leg_leads(self):
+        """The leg that reaches the internet is the one a laptop most likely
+        shares, so it wins even when enumeration lists it last."""
+        assert self._ranked(
+            ["10.50.0.20", "192.168.1.20"], "192.168.1.20"
+        ) == ["192.168.1.20", "10.50.0.20"]
+
+    def test_private_beats_public(self):
+        """A LAN address is the one a laptop in the room can reach."""
+        assert self._ranked(["72.14.192.5", "192.168.1.20"], None) == [
+            "192.168.1.20",
+            "72.14.192.5",
+        ]
+
+    def test_ties_keep_adapter_order(self):
+        """Two private legs and no default route: stable, not reshuffled."""
+        ips = ["192.168.1.20", "10.50.0.20", "172.16.0.20"]
+        assert self._ranked(ips, None) == ips
+
+    def test_falls_back_to_route_lookup_when_enumeration_empty(self):
+        """ifaddr missing -- the socket path still yields an address."""
+        assert self._ranked([], "192.168.1.20") == ["192.168.1.20"]
+
+    def test_empty_when_host_has_no_network(self):
+        assert self._ranked([], None) == []
+
+    def test_default_route_on_excluded_adapter_is_not_added(self):
+        """A VPN leg is filtered out of enumeration on purpose; the route
+        lookup must not smuggle it back in as the top pick."""
+        assert self._ranked(["192.168.1.20"], "10.8.0.6") == ["192.168.1.20"]

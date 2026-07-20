@@ -140,7 +140,7 @@ async def setup_status(
     # Re-detect rather than serve the startup cache: a device that boots
     # before its network is up must show the address as soon as the cable
     # goes in. Detection blocks (route lookup + gethostname), so off-loop.
-    local_ip, hostname = await asyncio.to_thread(engine.refresh_network_info)
+    local_ip, hostname, all_ips = await asyncio.to_thread(engine.refresh_network_info)
     online = local_ip != "127.0.0.1"
     proto, port = _effective_endpoint()
 
@@ -154,14 +154,24 @@ async def setup_status(
     else:
         base = None
 
+    # On a multi-homed controller the top pick is only a best guess — which
+    # address works depends on which network the person reading the screen is
+    # on. Send every leg with its own Programmer URL so they can pick.
+    ips = all_ips if online else []
+    other_urls = [
+        f"{_base_url(proto, addr, port)}/programmer" for addr in ips[1:]
+    ]
+
     payload["network"] = {
         "online": online,
         "ip": local_ip if online else None,
+        "ips": ips,
         "hostname": mdns_name,
         "protocol": proto,
         "port": port,
         "programmer_url": f"{base}/programmer" if base else None,
         "panel_url": f"{base}/panel" if base else None,
+        "other_programmer_urls": other_urls,
         "ssh": await asyncio.to_thread(_ssh_info),
     }
     return payload
@@ -212,6 +222,8 @@ _PAGE = """<!DOCTYPE html>
     font-family: 'SF Mono', 'Consolas', 'Liberation Mono', monospace;
     font-size: 0.8rem; color: #fff; text-align: right; word-break: break-all;
   }
+  /* Multi-homed hosts list one address per line. */
+  .value.multiline { white-space: pre-line; }
   .btn {
     display: inline-block; padding: 14px 40px; border-radius: 12px;
     font-size: 1rem; font-weight: 500; text-decoration: none;
@@ -285,6 +297,7 @@ _PAGE = """<!DOCTYPE html>
   <div class="card" id="network-card" hidden>
     <h2>Network</h2>
     <div class="field" id="row-ip"><span class="label">IP Address</span><span class="value" id="net-ip"></span></div>
+    <div class="field" id="row-other-ips" hidden><span class="label">Other Addresses</span><span class="value multiline" id="net-other-ips"></span></div>
     <div class="field" id="row-host" hidden><span class="label">Hostname</span><span class="value" id="net-host"></span></div>
     <div class="field"><span class="label">Port</span><span class="value" id="net-port"></span></div>
   </div>
@@ -293,6 +306,7 @@ _PAGE = """<!DOCTYPE html>
     <h2>Access From Another Computer</h2>
     <div class="field"><span class="label">Programmer</span><span class="value" id="url-programmer"></span></div>
     <div class="field"><span class="label">Panel</span><span class="value" id="url-panel"></span></div>
+    <div class="field" id="row-other-urls" hidden><span class="label">Or Try</span><span class="value multiline" id="url-others"></span></div>
     <div class="field" id="row-ssh" hidden><span class="label">SSH</span><span class="value" id="ssh-state"></span></div>
   </div>
 
@@ -363,6 +377,7 @@ _PAGE = """<!DOCTYPE html>
     show('network-card', !!net);
     show('access-card', !!(net && net.programmer_url));
 
+    var others = (net && net.other_programmer_urls) || [];
     var lede = document.getElementById('lede');
     if (!net) {
       lede.textContent = 'Connection details are shown on the device itself, or sign in to view them here.';
@@ -370,12 +385,19 @@ _PAGE = """<!DOCTYPE html>
       lede.textContent = 'No network connection detected. Connect an Ethernet cable. This screen updates automatically.';
     } else {
       var url = net.programmer_url;
+      // Multi-homed: the address below is the best guess, not the only
+      // answer, and nobody is standing here to correct it.
+      var tail = others.length
+        ? ' This controller is on more than one network -- if that address does not open, try the others listed below.'
+        : '';
       if (s.state === 'setup') {
         lede.innerHTML = 'From a laptop on the same network, open <strong></strong> and create the admin password to claim this controller.';
         lede.querySelector('strong').textContent = url;
+        lede.appendChild(document.createTextNode(tail));
       } else if (!s.panel_has_content) {
         lede.innerHTML = 'From a laptop on the same network, open <strong></strong> and sign in to program this controller.';
         lede.querySelector('strong').textContent = url;
+        lede.appendChild(document.createTextNode(tail));
       } else {
         lede.textContent = '';
       }
@@ -384,6 +406,11 @@ _PAGE = """<!DOCTYPE html>
     if (net) {
       show('row-ip', true);
       text('net-ip', net.online ? net.ip : 'No connection detected');
+      var otherIps = (net.ips || []).slice(1);
+      show('row-other-ips', otherIps.length > 0);
+      if (otherIps.length) text('net-other-ips', otherIps.join('\\n'));
+      show('row-other-urls', others.length > 0);
+      if (others.length) text('url-others', others.join('\\n'));
       show('row-host', !!net.hostname);
       if (net.hostname) text('net-host', net.hostname + '.local');
       text('net-port', String(net.port));

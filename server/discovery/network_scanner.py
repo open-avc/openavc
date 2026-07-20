@@ -117,6 +117,56 @@ def get_interface_ips() -> list[str]:
     return ips
 
 
+def get_default_route_ip() -> str | None:
+    """The address this host would source traffic from to reach the internet.
+
+    A UDP socket to a public address picks a source address from the routing
+    table without sending a packet, so it works on an isolated control network
+    too. Returns None when there is no route at all.
+    """
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.settimeout(0.5)
+            s.connect(("8.8.8.8", 80))
+            addr = s.getsockname()[0]
+    except OSError:
+        return None
+    if not addr or addr.startswith("127."):
+        return None
+    return addr
+
+
+def get_ranked_interface_ips() -> list[str]:
+    """Every reachable IPv4 address of this host, best guess first.
+
+    A multi-homed controller (a control-network NIC alongside the house
+    network, or ethernet plus WiFi) has no single correct answer to "what is
+    my address" — it depends on which network the person asking is sitting on.
+    So rank rather than choose: the default-route address first (the leg most
+    likely to reach a laptop), then private LAN addresses, then anything else.
+    Callers that need one address take the first; the setup screen shows the
+    rest so whoever is at the display can pick the one they can reach.
+    """
+    default_ip = get_default_route_ip()
+    ips = get_interface_ips()
+
+    def rank(addr: str) -> int:
+        if addr == default_ip:
+            return 0
+        try:
+            if ipaddress.IPv4Address(addr).is_private:
+                return 1
+        except ValueError:
+            return 3
+        return 2
+
+    ranked = sorted(ips, key=rank)  # sorted() is stable: ties keep adapter order
+    if not ranked and default_ip:
+        # No enumeration (ifaddr missing) but the host does have a route.
+        return [default_ip]
+    return ranked
+
+
 def get_local_subnets(interface_ip: str | None = None) -> list[str]:
     """Detect subnets from local network interfaces.
 

@@ -34,6 +34,7 @@ from server.core.state_persister import StatePersister
 from server.core.state_store import StateStore
 from server.core.trigger_engine import TriggerEngine
 from server.core.value_resolver import resolve_ref
+from server.discovery import network_scanner
 from server.utils.logger import get_logger
 from server.version import __version__
 
@@ -168,9 +169,10 @@ class Engine:
         self._dirty_since_backup: bool = False
         self._last_backup_time: float = 0
 
-        # Cached (local_ip, hostname) for get_status. Detection does blocking
-        # socket / gethostname syscalls; they rarely change, so compute once.
-        self._network_info: tuple[str, str] | None = None
+        # Cached (local_ip, hostname, all_ips) for get_status. Detection does
+        # blocking adapter-enumeration / gethostname syscalls; they rarely
+        # change, so compute once.
+        self._network_info: tuple[str, str, list[str]] | None = None
 
     async def start(self) -> None:
         """
@@ -2193,33 +2195,28 @@ class Engine:
 
     # --- Status ---
 
-    def _detect_network_info(self) -> tuple[str, str]:
-        """Return ``(local_ip, hostname)``, cached after the first call.
+    def _detect_network_info(self) -> tuple[str, str, list[str]]:
+        """Return ``(local_ip, hostname, all_ips)``, cached after the first call.
 
-        Uses a context-managed socket so the descriptor is always closed even
-        when ``connect()`` fails (no FD leak on isolated/no-route control
-        networks), and caches the result — both syscalls block the event loop
-        and the values rarely change over a process's lifetime.
+        ``all_ips`` is every reachable IPv4 leg of this host, best guess first,
+        and ``local_ip`` is that top pick — a multi-homed controller has no
+        single right answer, so the setup screen shows the whole list. Both
+        syscall paths block the event loop and the values rarely change over a
+        process's lifetime, hence the cache.
         """
         if self._network_info is not None:
             return self._network_info
-        local_ip = "127.0.0.1"
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-                s.settimeout(0.5)
-                s.connect(("8.8.8.8", 80))
-                local_ip = s.getsockname()[0]
-        except OSError:
-            pass
+        all_ips = network_scanner.get_ranked_interface_ips()
+        local_ip = all_ips[0] if all_ips else "127.0.0.1"
         try:
             hostname = socket.gethostname()
         except OSError:
             hostname = ""
-        self._network_info = (local_ip, hostname)
+        self._network_info = (local_ip, hostname, all_ips)
         return self._network_info
 
-    def refresh_network_info(self) -> tuple[str, str]:
-        """Re-detect (and re-cache) the local IP and hostname.
+    def refresh_network_info(self) -> tuple[str, str, list[str]]:
+        """Re-detect (and re-cache) the local addresses and hostname.
 
         Blocking — call off-loop. The setup screen polls through this so a
         device that boots before its network is up shows its address as soon
@@ -2258,9 +2255,10 @@ class Engine:
             "port80_active": runtime_flags.port80_active,
         }
         if include_sensitive:
-            local_ip, hostname = self._detect_network_info()
+            local_ip, hostname, all_ips = self._detect_network_info()
             status["hostname"] = hostname
             status["local_ip"] = local_ip
+            status["local_ips"] = all_ips
             status["bind_address"] = config.BIND_ADDRESS
         if self.isc:
             status["isc_peers"] = sum(

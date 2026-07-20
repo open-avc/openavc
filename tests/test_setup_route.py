@@ -121,6 +121,57 @@ async def test_status_full_for_authenticated_remote(claimed, remote_client):
     assert resp.json()["network"] is not None
 
 
+# --- Status endpoint: multi-homed hosts ---
+
+
+async def test_multi_homed_lists_every_leg(claimed, monkeypatch):
+    """A controller with a leg on two networks shows both.
+
+    The kiosk display has nobody standing at it to correct a wrong guess, so
+    the screen ranks the addresses instead of picking one: the top pick drives
+    the headline URL, the rest are listed with their own Programmer URLs.
+    """
+    monkeypatch.setattr(
+        claimed,
+        "refresh_network_info",
+        lambda: ("192.168.1.20", "avc-1", ["192.168.1.20", "10.50.0.20"]),
+    )
+    net = (await _loopback_get("/api/setup/status"))["network"]
+
+    assert net["online"] is True
+    assert net["ip"] == "192.168.1.20"
+    assert net["ips"] == ["192.168.1.20", "10.50.0.20"]
+    assert net["programmer_url"].startswith("http://192.168.1.20")
+    assert len(net["other_programmer_urls"]) == 1
+    assert net["other_programmer_urls"][0].startswith("http://10.50.0.20")
+    assert net["other_programmer_urls"][0].endswith("/programmer")
+
+
+async def test_single_homed_has_no_alternates(claimed, monkeypatch):
+    monkeypatch.setattr(
+        claimed,
+        "refresh_network_info",
+        lambda: ("192.168.1.20", "avc-1", ["192.168.1.20"]),
+    )
+    net = (await _loopback_get("/api/setup/status"))["network"]
+    assert net["ips"] == ["192.168.1.20"]
+    assert net["other_programmer_urls"] == []
+
+
+async def test_offline_reports_no_addresses(claimed, monkeypatch):
+    """No route: the address list is empty rather than advertising loopback."""
+    monkeypatch.setattr(
+        claimed,
+        "refresh_network_info",
+        lambda: ("127.0.0.1", "avc-1", []),
+    )
+    net = (await _loopback_get("/api/setup/status"))["network"]
+    assert net["online"] is False
+    assert net["ip"] is None
+    assert net["ips"] == []
+    assert net["other_programmer_urls"] == []
+
+
 # --- Status endpoint: content signals ---
 
 
