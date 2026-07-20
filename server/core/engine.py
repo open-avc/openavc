@@ -593,6 +593,13 @@ class Engine:
         if self.simulation.active:
             await self.simulation.stop()
 
+        # Cancel in-flight macros (with the engine's grace drain) before the
+        # devices they command are torn down — a macro racing disconnect_all
+        # would error its remaining steps into a half-stopped engine. Late on
+        # purpose: every subsystem that can fire a macro (triggers, scripts,
+        # plugins) is already stopped, so nothing restarts one after this.
+        await self.macros.cancel_all()
+
         # Disconnect all devices
         await self.devices.disconnect_all()
 

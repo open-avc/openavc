@@ -410,7 +410,33 @@ async def test_stop_drains_pending_events(tmp_path):
     assert calls["n"] >= 1
 
 
-# ── M-020: reload rollback re-syncs devices and plugins ──
+# ── Shutdown cancels in-flight macros before device teardown ──
+
+
+@pytest.mark.asyncio
+async def test_stop_cancels_inflight_macros(tmp_path):
+    """A macro mid-run at shutdown is cancelled, not left racing device
+    teardown (V-LC-002)."""
+    eng = Engine(_write_project(tmp_path))
+    eng.project = load_project(eng.project_path)
+    eng._running = True
+
+    eng.macros.load_macros([{
+        "id": "long_running",
+        "name": "Long Running",
+        "steps": [{"action": "delay", "seconds": 60}],
+    }])
+    macro_task = asyncio.create_task(eng.macros.execute("long_running"))
+    for _ in range(20):
+        await asyncio.sleep(0.01)
+        if eng.macros.is_macro_running("long_running"):
+            break
+    assert eng.macros.is_macro_running("long_running")
+
+    await asyncio.wait_for(eng.stop(), timeout=5)
+
+    assert macro_task.done(), "stop() returned with the macro still running"
+    assert not eng.macros.is_macro_running("long_running")
 
 
 @pytest.mark.asyncio
