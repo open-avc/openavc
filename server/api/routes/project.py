@@ -4,6 +4,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 
 from server.api._engine import _get_engine
 from server.api.errors import api_error as _api_error
@@ -62,6 +63,8 @@ async def save_project_config(request: Request) -> dict[str, Any]:
         body = _json.loads(raw)
     except _json.JSONDecodeError:
         raise HTTPException(status_code=422, detail="Invalid JSON")
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=422, detail="Project must be a JSON object")
     engine = _get_engine()
 
     # Optimistic concurrency: If-Match header (preferred) or legacy _revision body field
@@ -81,6 +84,12 @@ async def save_project_config(request: Request) -> dict[str, Any]:
             raise HTTPException(status_code=400, detail="Invalid _revision value")
 
     try:
+        # Run the format-migration chain before validating: this door takes
+        # whole project documents (Programmer import saves through here), so an
+        # older export must migrate exactly like a disk load would. Current-
+        # format bodies pass through untouched.
+        from server.core.project_migration import migrate_project
+        body, _ = migrate_project(body)
         project = ProjectConfig(**body)
     except Exception as e:
         raise _api_error(422, "Invalid project configuration", e)
@@ -296,6 +305,15 @@ async def open_from_library(request: Request) -> dict[str, Any]:
               project_id, data.project_name)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"Project '{data.library_id}' not found in library")
+    except ValidationError as e:
+        # A stored project that no longer validates even after migration —
+        # surface a friendly 422 instead of a raw 500 (the pre-open backup of
+        # the current project has already been taken and stays available).
+        raise _api_error(
+            422,
+            f"Saved project '{data.library_id}' is not a valid project file",
+            e,
+        )
 
     await engine.broadcast_ws({
         "type": "project.replaced",

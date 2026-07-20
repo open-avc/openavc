@@ -463,6 +463,13 @@ def open_from_library(
     """
     data, scripts = get_project(project_id)
 
+    # Library copies keep whatever format they were saved with (open/duplicate
+    # never rewrite them) — migrate before validating so an older saved project
+    # opens cleanly instead of leaning on the current validators happening to
+    # accept old shapes (parity with the _import_avc door).
+    from server.core.project_migration import migrate_project
+    data, _ = migrate_project(data)
+
     # Install bundled drivers/plugins from the original zip if present
     _install_bundled_from_library(project_id)
 
