@@ -360,6 +360,24 @@ async def test_stuck_client_dropped_on_queue_overflow(engine):
 
 
 @pytest.mark.asyncio
+async def test_deferred_delivery_buffers_until_ready(engine):
+    """defer_delivery buffers broadcasts until mark_ws_client_ready — the
+    handshake registers before snapshotting so no flush window is missed
+    (V-LC-005)."""
+    ws = _CollectingWS()
+    engine.add_ws_client(ws, defer_delivery=True)
+
+    await engine.broadcast_ws({"type": "ping", "seq": 1})
+    await asyncio.sleep(0.05)
+    assert ws.received == []  # buffered, not delivered
+
+    engine.mark_ws_client_ready(ws)
+    await engine.flush_ws_sends()
+    assert ws.received == [{"type": "ping", "seq": 1}]
+    engine.remove_ws_client(ws)
+
+
+@pytest.mark.asyncio
 async def test_per_client_delivery_preserves_order(engine):
     """Messages reach a client in broadcast order through its queue."""
     ws = _CollectingWS()

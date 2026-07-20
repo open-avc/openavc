@@ -579,3 +579,53 @@ async def test_send_ws_logs_unexpected_send_failure(caplog):
     with caplog.at_level(logging.DEBUG, logger="server.api.ws"):
         await _send_ws(_RaisingWS(ValueError("encode boom")), {"type": "x"})
     assert any("send failed" in r.message.lower() for r in caplog.records)
+
+
+# ── Handshake ordering: register before snapshot (V-LC-005) ──
+
+
+@pytest.mark.asyncio
+async def test_ws_client_registered_before_snapshot(tmp_path):
+    """The connection handler must register the client (delivery deferred)
+    BEFORE taking the state snapshot, so changes flushed mid-handshake buffer
+    into its queue instead of being missed."""
+    from fastapi import WebSocketDisconnect
+
+    from server.api.ws import _run_ws_connection
+    from server.core.engine import Engine
+
+    eng = Engine(str(tmp_path / "no_project.avc"))
+    order: list[str] = []
+
+    real_add = eng.add_ws_client
+
+    def spy_add(ws, ns_prefixes=None, **kwargs):
+        order.append("register")
+        real_add(ws, ns_prefixes=ns_prefixes, **kwargs)
+
+    eng.add_ws_client = spy_add
+
+    class HandshakeWS:
+        async def accept(self, subprotocol=None):
+            pass
+
+        async def send_json(self, data):
+            order.append(f"send:{data.get('type')}")
+
+        async def send_text(self, text):
+            pass
+
+        async def receive_text(self):
+            raise WebSocketDisconnect(1000)
+
+        async def close(self, code=1000, reason=None):
+            pass
+
+    with patch("server.api._engine._engine", eng):
+        await _run_ws_connection(HandshakeWS(), {}, {}, "programmer")
+
+    assert "register" in order
+    assert "send:state.snapshot" in order
+    assert order.index("register") < order.index("send:state.snapshot"), (
+        f"snapshot taken before the client was registered: {order}"
+    )

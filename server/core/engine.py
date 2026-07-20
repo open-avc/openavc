@@ -140,6 +140,12 @@ class Engine:
         # broadcast_ws).
         self._ws_send_queues: dict[int, asyncio.Queue] = {}
         self._ws_writers: dict[int, asyncio.Task] = {}
+        # Per-client delivery gates: a writer sends nothing until its event
+        # is set. Lets the connection handler register (and start buffering)
+        # BEFORE taking the state snapshot, then release delivery once the
+        # snapshot is on the wire — closing the gap where changes flushed
+        # mid-handshake reached only already-registered clients.
+        self._ws_ready_events: dict[int, asyncio.Event] = {}
         # Strong refs for short-lived WS cleanup tasks (socket closes,
         # cancelled writers unwinding) — asyncio only weakly references
         # tasks, so an unreferenced one can be GC'd before it runs.
@@ -1798,21 +1804,41 @@ class Engine:
 
     # --- WebSocket Management ---
 
-    def add_ws_client(self, ws, ns_prefixes: tuple[str, ...] | None = None) -> None:
+    def add_ws_client(self, ws, ns_prefixes: tuple[str, ...] | None = None,
+                      *, defer_delivery: bool = False) -> None:
         """Register a WebSocket client with optional namespace filter.
 
         Each client gets a bounded send queue drained by its own writer
         task, so broadcast_ws never awaits a client's TCP send directly.
+
+        With ``defer_delivery=True`` broadcasts buffer into the queue but
+        nothing is delivered until ``mark_ws_client_ready()``. The
+        connection handler registers before snapshotting so changes flushed
+        mid-handshake buffer here instead of being missed, then releases
+        delivery once the snapshot is on the wire.
         """
         self._ws_clients.add(ws)
         if ns_prefixes:
             self._ws_ns_filters[id(ws)] = ns_prefixes
         queue: asyncio.Queue = asyncio.Queue(maxsize=_WS_SEND_QUEUE_MAX)
         self._ws_send_queues[id(ws)] = queue
-        writer = asyncio.create_task(self._ws_send_loop(ws, queue))
+        ready = asyncio.Event()
+        if not defer_delivery:
+            ready.set()
+        self._ws_ready_events[id(ws)] = ready
+        writer = asyncio.create_task(self._ws_send_loop(ws, queue, ready))
         writer.add_done_callback(_log_task_exception)
         self._ws_writers[id(ws)] = writer
         log.info(f"WebSocket client connected ({len(self._ws_clients)} total)")
+
+    def mark_ws_client_ready(self, ws) -> None:
+        """Release a ``defer_delivery`` client's writer once its snapshot has
+        been sent. Queued updates may partially predate the snapshot; replay
+        is safe because state messages carry full per-key values (the client
+        converges on the latest, never regresses past it)."""
+        ready = self._ws_ready_events.get(id(ws))
+        if ready is not None:
+            ready.set()
 
     def remove_ws_client(self, ws) -> None:
         """Unregister a WebSocket client."""
@@ -1830,6 +1856,7 @@ class Engine:
         self._ws_clients.discard(ws)
         self._ws_ns_filters.pop(id(ws), None)
         self._ws_send_queues.pop(id(ws), None)
+        self._ws_ready_events.pop(id(ws), None)
         writer = self._ws_writers.pop(id(ws), None)
         if writer is not None and cancel_writer and not writer.done():
             writer.cancel()
@@ -1837,7 +1864,9 @@ class Engine:
             self._ws_cleanup_tasks.add(writer)
             writer.add_done_callback(self._ws_cleanup_tasks.discard)
 
-    async def _ws_send_loop(self, ws, queue: asyncio.Queue) -> None:
+    async def _ws_send_loop(
+        self, ws, queue: asyncio.Queue, ready: asyncio.Event
+    ) -> None:
         """Drain one client's send queue for the life of its connection.
 
         A send failure means the peer is gone or the transport broke: drop
@@ -1845,6 +1874,7 @@ class Engine:
         unwind is a no-op by then.
         """
         try:
+            await ready.wait()
             while True:
                 text = await queue.get()
                 try:

@@ -127,13 +127,22 @@ async def _run_ws_connection(
             log.debug("WebSocket ping loop ended on send failure", exc_info=True)
 
     try:
-        # Send initial state snapshot BEFORE subscribing to broadcasts,
-        # so the client has a baseline before receiving incremental updates
         namespaces_param = query_params.get("namespaces", "")
         ns_prefixes: tuple[str, ...] | None = None
-        full_state = engine.state.snapshot()
         if namespaces_param:
             ns_prefixes = tuple(ns.strip() + "." for ns in namespaces_param.split(",") if ns.strip())
+
+        # Register BEFORE taking the snapshot, with delivery deferred:
+        # changes flushed while the snapshot is being built and sent buffer
+        # into this client's queue instead of being silently missed (the old
+        # snapshot-then-register order lost anything flushed in between).
+        # Buffered updates may partially predate the snapshot; replaying
+        # them after it is safe because state messages carry full per-key
+        # values — the client converges on the latest.
+        engine.add_ws_client(ws, ns_prefixes=ns_prefixes, defer_delivery=True)
+
+        full_state = engine.state.snapshot()
+        if ns_prefixes:
             state_snapshot = {k: v for k, v in full_state.items() if k.startswith(ns_prefixes)}
         else:
             state_snapshot = full_state
@@ -149,8 +158,8 @@ async def _run_ws_connection(
                 "ui": engine.project.ui.model_dump(mode="json"),
             })
 
-        # Now subscribe to broadcasts — client has its baseline
-        engine.add_ws_client(ws, ns_prefixes=ns_prefixes)
+        # Baseline is on the wire — release queued broadcasts
+        engine.mark_ws_client_ready(ws)
 
         # Start heartbeat
         ping_task = asyncio.create_task(_ping_loop())
