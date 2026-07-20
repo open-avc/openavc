@@ -4,8 +4,9 @@
 (``server.drivers.configurable``), the auto-generated device simulator
 (``simulator.yaml_auto``), and the driver/simulator validator
 (``simulator.validate``). The helpers here are the pieces those interpreters
-must agree on byte-for-byte — placeholder substitution, value coercion,
-send_frame packet framing, and delimiter decoding. Each interpreter used to
+must agree on byte-for-byte — placeholder substitution and its inversion
+back to a matching regex, value coercion, send_frame packet framing, and
+delimiter decoding. Each interpreter used to
 carry its own copy, and a copy that drifts shows up as a simulator that
 answers a command differently than the real device would — so they live here
 once instead.
@@ -106,6 +107,97 @@ def derive_config(config: dict[str, Any], derived: Any) -> None:
             config[name] = ""
         else:
             config[name] = safe_substitute(template, config)
+
+
+# ── Send-template inversion ──
+
+
+def _placeholder_re(name: str) -> re.Pattern[str]:
+    # {name} or {name:spec} — the same token shape safe_substitute expands.
+    return re.compile(r"\{" + re.escape(name) + r"(?::([^{}]*))?\}")
+
+
+def spec_int_base(spec: str) -> int | None:
+    """Numeric base an integer format spec puts on the wire.
+
+    16 for ``x``/``X``, 8 for ``o``, 2 for ``b``, None for plain decimal —
+    the decode twin of the capture class ``send_regex`` chooses, so a
+    consumer that captured a formatted value can turn it back into the
+    number the sender started from.
+    """
+    return {"x": 16, "X": 16, "o": 8, "b": 2}.get(spec[-1:] if spec else "")
+
+
+_BASE_CAPTURES = {16: r"([0-9a-fA-F]+)", 8: r"([0-7]+)", 2: r"([01]+)"}
+
+
+def _capture_for(param_type: str, spec: str) -> str:
+    """The capture class one param placeholder inverts to."""
+    if param_type in ("integer", "child_id"):
+        # The spec's presentation type decides the digit set on the wire:
+        # {addr:02X} emits hex, which (\d+) could never match back.
+        base = spec_int_base(spec)
+        if base:
+            return _BASE_CAPTURES[base]
+        # child_id values are integer child-entity IDs (optionally
+        # zero-padded), so capture digits — not a greedy (.+) that
+        # over-matches and breaks parity with the driver's send shape.
+        return r"(\d+)"
+    if param_type == "number":
+        return r"([\d.]+)"
+    if param_type == "boolean":
+        return r"(true|false|0|1)"
+    return r"(.+)"
+
+
+def send_regex(template: str, params: dict[str, Any]) -> str:
+    """Invert a command send template into the regex source that matches
+    the wire form ``safe_substitute`` produces on the send path.
+
+    Used by the auto-generated simulator and the driver/simulator validator
+    to recognize an incoming command line. Placeholders for declared params
+    ({name} and {name:spec} alike) become typed capture groups — one group
+    per occurrence, in template order; everything else matches literally.
+    Trailing terminators are dropped (real CR/LF and literal ``\\r``/``\\n``
+    escape sequences): the consumers match against delimiter-split,
+    whitespace-stripped lines, so a pattern that kept its terminator could
+    never match anything.
+    """
+    result = template.strip()
+    while result.endswith(("\\r", "\\n")):
+        result = result[:-2].rstrip()
+    for name, pdef in params.items():
+        ptype = pdef.get("type", "string") if isinstance(pdef, dict) else "string"
+        result = _placeholder_re(name).sub(
+            lambda m, _t=ptype: _capture_for(_t, m.group(1) or ""), result
+        )
+    # Escape regex specials outside the capture groups just inserted.
+    escaped = ""
+    depth = 0
+    for char in result:
+        if char == "(":
+            depth += 1
+            escaped += char
+        elif char == ")":
+            depth -= 1
+            escaped += char
+        elif depth > 0:
+            escaped += char
+        elif char in r"*+?.[]{}|^$":
+            escaped += "\\" + char
+        else:
+            escaped += char
+    return escaped
+
+
+def send_param_specs(template: str, params: dict[str, Any]) -> dict[str, str]:
+    """Map each declared param to the format spec its placeholder carries
+    in the template ('' when bare or absent)."""
+    specs: dict[str, str] = {}
+    for name in params:
+        m = _placeholder_re(name).search(template)
+        specs[name] = (m.group(1) or "") if m else ""
+    return specs
 
 
 # ── Value coercion ──

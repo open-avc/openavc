@@ -13,6 +13,9 @@ from server.drivers.compiled_protocol import (
     build_send_frame,
     compile_driver,
     decode_delimiter,
+    send_param_specs,
+    send_regex,
+    spec_int_base,
     split_send_frames,
 )
 
@@ -86,6 +89,65 @@ def test_split_send_frames_round_trips_and_keeps_partial_tail():
     buffer.extend(frame_a[5:])
     assert split_send_frames(sf, buffer) == [b"!1PWR01\r"]
     assert not buffer
+
+
+# ── send_regex / send_param_specs (send-template inversion) ──
+
+
+def test_send_regex_bare_placeholders_and_escaping():
+    assert send_regex("{input}!", {"input": {"type": "integer"}}) == r"(\d+)!"
+    assert send_regex(
+        "{out}*{inp}!",
+        {"out": {"type": "child_id"}, "inp": {"type": "integer"}},
+    ) == r"(\d+)\*(\d+)!"
+    assert send_regex("1Z", {}) == "1Z"
+
+
+def test_send_regex_handles_format_spec_placeholders():
+    # {name:spec} tokens invert the same as bare ones. This pins the fix for
+    # the sim's old private copy, which left them as literal text so the
+    # command never matched.
+    assert send_regex("LVL{v:03d}", {"v": {"type": "integer"}}) == r"LVL(\d+)"
+    # A non-decimal spec narrows the capture to the digit set the sender
+    # actually emits.
+    assert (
+        send_regex("MVL{level:02X}", {"level": {"type": "integer"}})
+        == r"MVL([0-9a-fA-F]+)"
+    )
+    assert send_regex("{n:o}", {"n": {"type": "integer"}}) == r"([0-7]+)"
+    assert send_regex("{n:08b}", {"n": {"type": "integer"}}) == r"([01]+)"
+
+
+def test_send_regex_capture_classes_by_param_type():
+    assert send_regex("{f}", {"f": {"type": "number"}}) == r"([\d.]+)"
+    assert send_regex("{b}", {"b": {"type": "boolean"}}) == r"(true|false|0|1)"
+    assert send_regex("{s}", {"s": {"type": "string"}}) == r"(.+)"
+
+
+def test_send_regex_drops_trailing_terminators():
+    params = {"value": {"type": "integer"}}
+    # Real control characters (double-quoted YAML scalar).
+    assert send_regex("#set {value:d}\r\n", params) == r"#set (\d+)"
+    # Literal backslash escapes (single-quoted YAML), trailing space too —
+    # the consumers match against stripped lines, so a kept terminator
+    # means the pattern can never match anything.
+    assert send_regex("s_link NC {value:d} \\r", params) == r"s_link NC (\d+)"
+    # Mid-template escapes are left alone (they match a real CR, which is
+    # correct if one survives line-splitting).
+    assert send_regex("A\\rB", {}) == "A\\rB"
+
+
+def test_send_param_specs_and_spec_int_base():
+    specs = send_param_specs(
+        "MVL{level:02X} {z}", {"level": {}, "z": {}, "missing": {}}
+    )
+    assert specs == {"level": "02X", "z": "", "missing": ""}
+    assert spec_int_base("02X") == 16
+    assert spec_int_base("x") == 16
+    assert spec_int_base("o") == 8
+    assert spec_int_base("08b") == 2
+    assert spec_int_base("03d") is None
+    assert spec_int_base("") is None
 
 
 # ── compile_driver (receive side) ──

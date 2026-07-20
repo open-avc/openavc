@@ -34,6 +34,9 @@ from server.drivers.compiled_protocol import (
     build_send_frame,
     decode_delimiter,
     safe_substitute,
+    send_param_specs,
+    send_regex,
+    spec_int_base,
     split_send_frames,
 )
 from server.drivers.inline_protocol import (
@@ -1257,7 +1260,16 @@ class YAMLAutoSimulator(TCPSimulator):
         for state_key, source in handler.state_changes.items():
             if isinstance(source, int) and not isinstance(source, bool):
                 # Capture group index
-                value = m.group(source)
+                value: Any = m.group(source)
+                base = handler.group_bases.get(source)
+                if base:
+                    # The wire value was formatted with a non-decimal spec —
+                    # decode it back before coercion, or an integer var would
+                    # end up holding the raw hex string.
+                    try:
+                        value = int(value, base)
+                    except ValueError:
+                        pass
                 value = self._coerce_value(state_key, value)
             else:
                 # Literal value
@@ -1422,8 +1434,9 @@ class YAMLAutoSimulator(TCPSimulator):
 
             params = cmd_def.get("params", {})
 
-            # Convert send template to regex
-            pattern_str = _send_template_to_regex(send_template, params)
+            # Convert send template to regex — the shared inversion of the
+            # same placeholder shapes the runtime substitutes on send.
+            pattern_str = send_regex(send_template, params)
             try:
                 pattern = re.compile(f"^{pattern_str}$")
             except re.error:
@@ -1433,10 +1446,24 @@ class YAMLAutoSimulator(TCPSimulator):
             # Determine state changes
             state_changes: dict[str, int | Any] = {}
             response_var: str | None = None
+            specs = send_param_specs(send_template, params)
+            group_bases: dict[int, int] = {}
 
             # Heuristic 1: param name matches state variable
             group_idx = 1
-            for param_name in params:
+            for param_name, param_def in params.items():
+                ptype = (
+                    param_def.get("type", "string")
+                    if isinstance(param_def, dict)
+                    else "string"
+                )
+                if ptype in ("integer", "child_id"):
+                    # A non-decimal format spec ({level:02X}) put hex on the
+                    # wire; remember the base so the capture decodes back to
+                    # the number the driver sent.
+                    base = spec_int_base(specs.get(param_name, ""))
+                    if base:
+                        group_bases[group_idx] = base
                 if param_name in state_vars:
                     state_changes[param_name] = group_idx  # capture group
                     if not response_var:
@@ -1470,6 +1497,7 @@ class YAMLAutoSimulator(TCPSimulator):
                 pattern=pattern,
                 state_changes=state_changes,
                 response_var=response_var,
+                group_bases=group_bases,
             )
             self._command_handlers.append(handler)
 
@@ -2055,11 +2083,21 @@ class YAMLAutoSimulator(TCPSimulator):
 
 class CommandHandler:
     """Auto-generated handler for a driver command."""
-    def __init__(self, name: str, pattern: re.Pattern, state_changes: dict, response_var: str | None):
+    def __init__(
+        self,
+        name: str,
+        pattern: re.Pattern,
+        state_changes: dict,
+        response_var: str | None,
+        group_bases: dict[int, int] | None = None,
+    ):
         self.name = name
         self.pattern = pattern
         self.state_changes = state_changes
         self.response_var = response_var
+        # Capture groups whose wire form is non-decimal ({level:02X}),
+        # mapped to the int base that decodes them.
+        self.group_bases = group_bases or {}
 
 
 class QueryHandler:
@@ -2130,52 +2168,6 @@ class StateResponse:
 
 
 # ── Utility functions ──
-
-def _send_template_to_regex(template: str, params: dict) -> str:
-    """Convert a command send template to a regex for matching incoming data.
-
-    Examples:
-        "{input}!" with params {input: {type: integer}} → "(\\d+)!"
-        "{level}V" with params {level: {type: integer}} → "(\\d+)V"
-        "1Z" with no params → "1Z"
-        "{input}*{output}!" → "(\\d+)\\*(\\d+)!"
-    """
-    result = template
-    for param_name, param_def in params.items():
-        param_type = param_def.get("type", "string")
-        if param_type in ("integer", "child_id"):
-            # child_id values are integer child-entity IDs (optionally
-            # zero-padded), so capture digits — not a greedy (.+) that
-            # over-matches and breaks parity with the driver's send shape.
-            capture = r"(\d+)"
-        elif param_type == "number":
-            capture = r"([\d.]+)"
-        elif param_type == "boolean":
-            capture = r"(true|false|0|1)"
-        else:
-            capture = r"(.+)"
-        result = result.replace(f"{{{param_name}}}", capture)
-
-    # Escape regex special chars that aren't part of our captures
-    # We need to be careful: only escape chars outside of capture groups
-    escaped = ""
-    in_group = 0
-    for char in result:
-        if char == "(":
-            in_group += 1
-            escaped += char
-        elif char == ")":
-            in_group -= 1
-            escaped += char
-        elif in_group > 0:
-            escaped += char
-        elif char in r"*+?.[]{}|^$":
-            escaped += "\\" + char
-        else:
-            escaped += char
-
-    return escaped
-
 
 def _regex_to_template(pattern: str) -> str:
     """Convert a response regex to a response template.

@@ -54,7 +54,7 @@ from typing import Any
 
 import yaml
 
-from server.drivers.compiled_protocol import derive_config, safe_substitute
+from server.drivers.compiled_protocol import derive_config, safe_substitute, send_regex
 
 
 # ── Result types ──
@@ -1416,7 +1416,10 @@ def _generate_sample_command(
     # Substitute config variables first
     result = _substitute_config(result, config)
 
-    # Substitute parameters with test values
+    # Substitute parameters with test values. The shared substitution
+    # applies any {name:spec} format spec exactly the way the runtime
+    # send path does (numeric strings coerce before formatting).
+    test_values: dict[str, str] = {}
     for param_name, param_def in params.items():
         param_type = param_def.get("type", "string")
         if param_type in ("integer", "child_id"):
@@ -1429,33 +1432,9 @@ def _generate_sample_command(
             values = param_def.get("values", ["test"])
             test_val = str(values[0])
         else:
-            test_val = param_def.get("default", "test")
-
-        # Handle format specifiers like {level:02x}
-        placeholder_pattern = re.compile(
-            r"\{" + re.escape(param_name) + r"(:[^}]*)?\}"
-        )
-        match = placeholder_pattern.search(result)
-        if match:
-            fmt_spec = match.group(1)
-            if fmt_spec:
-                # Apply Python format spec
-                try:
-                    if "x" in fmt_spec or "X" in fmt_spec:
-                        formatted = format(int(test_val), fmt_spec[1:])
-                    elif "d" in fmt_spec:
-                        formatted = format(int(test_val), fmt_spec[1:])
-                    elif "f" in fmt_spec:
-                        formatted = format(float(test_val), fmt_spec[1:])
-                    else:
-                        formatted = format(test_val, fmt_spec[1:])
-                except (ValueError, TypeError):
-                    formatted = str(test_val)
-                result = result[:match.start()] + formatted + result[match.end():]
-            else:
-                result = result.replace(f"{{{param_name}}}", str(test_val))
-        else:
-            result = result.replace(f"{{{param_name}}}", str(test_val))
+            test_val = str(param_def.get("default", "test"))
+        test_values[param_name] = test_val
+    result = safe_substitute(result, test_values)
 
     # Strip line endings (literal \n in YAML becomes part of the string).
     # The final strip mirrors the simulator's dispatch, which strips each
@@ -1490,49 +1469,13 @@ def _effective_config(driver_def: dict) -> dict:
 
 
 def _build_auto_pattern(template: str, params: dict) -> re.Pattern | None:
-    """Build the regex that the auto-gen system would create for a command."""
-    result = template
-    for param_name, param_def in params.items():
-        param_type = param_def.get("type", "string")
-        if param_type in ("integer", "child_id"):
-            # child_id values are integer child-entity IDs (mirrors the
-            # simulator's _send_template_to_regex)
-            capture = r"(\d+)"
-        elif param_type == "number":
-            capture = r"([\d.]+)"
-        elif param_type == "boolean":
-            capture = r"(true|false|0|1)"
-        else:
-            capture = r"(.+)"
+    """Build the regex the auto-gen simulator would create for a command.
 
-        # Handle format specifiers
-        placeholder_pattern = re.compile(
-            r"\{" + re.escape(param_name) + r"(:[^}]*)?\}"
-        )
-        result = placeholder_pattern.sub(lambda _: capture, result)
-
-    # Escape regex specials outside captures
-    escaped = ""
-    in_group = 0
-    for char in result:
-        if char == "(":
-            in_group += 1
-            escaped += char
-        elif char == ")":
-            in_group -= 1
-            escaped += char
-        elif in_group > 0:
-            escaped += char
-        elif char in r"*+?.[]{}|^$":
-            escaped += "\\" + char
-        else:
-            escaped += char
-
-    # Strip line endings from the pattern
-    escaped = escaped.rstrip("\\r\\n\r\n")
-
+    Delegates to the shared inversion so this check stays byte-for-byte in
+    step with the handler patterns yaml_auto actually builds.
+    """
     try:
-        return re.compile(f"^{escaped}$")
+        return re.compile(f"^{send_regex(template, params)}$")
     except re.error:
         return None
 

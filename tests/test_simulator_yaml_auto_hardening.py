@@ -10,9 +10,14 @@ import asyncio
 
 import pytest
 
+from server.drivers.compiled_protocol import send_regex
 from simulator.base import StateMachine
-from simulator.validate import ValidationResult, _check_state_machines
-from simulator.yaml_auto import YAMLAutoSimulator, _send_template_to_regex
+from simulator.validate import (
+    ValidationResult,
+    _build_auto_pattern,
+    _check_state_machines,
+)
+from simulator.yaml_auto import YAMLAutoSimulator
 
 
 def _make_sim(driver_def: dict, device_id: str = "dev1") -> YAMLAutoSimulator:
@@ -371,11 +376,70 @@ def test_integer_coercion_returns_raw_on_failure():
 
 
 def test_child_id_param_captures_digits():
-    rx = _send_template_to_regex(
+    rx = send_regex(
         "{out}*{inp}!",
         {"out": {"type": "child_id"}, "inp": {"type": "integer"}},
     )
     assert rx == r"(\d+)\*(\d+)!"
+
+
+# ===========================================================================
+# Format-spec send templates ({name:spec}) match and decode in the auto-sim
+# ===========================================================================
+
+
+def test_format_spec_command_matches_and_decodes_hex():
+    definition = {
+        "id": "acme_hexvol",
+        "name": "Acme Hex Volume",
+        "transport": "tcp",
+        "state_variables": {"volume": {"type": "integer", "min": 0, "max": 100}},
+        "commands": {
+            "set_volume": {
+                "send": "VOL{volume:02X}",
+                "params": {"volume": {"type": "integer", "min": 0, "max": 100}},
+            },
+        },
+        "responses": [],
+    }
+    sim = _make_sim(definition)
+    sim._dispatch_command(b"VOL1A")
+    # The hex wire value decodes back to the number the driver sent, so an
+    # integer state var holds 26 — not the raw string "1A".
+    assert sim._state["volume"] == 26
+
+
+def test_send_template_with_trailing_terminator_matches():
+    definition = {
+        "id": "acme_term",
+        "name": "Acme Terminator",
+        "transport": "tcp",
+        "state_variables": {"level": {"type": "integer", "min": 0, "max": 99}},
+        "commands": {
+            "set_level": {
+                # Single-quoted-YAML style: literal backslash-r terminator
+                # plus a trailing space, as several corpus drivers author it.
+                "send": "SET {level:d} \\r",
+                "params": {"level": {"type": "integer", "min": 0, "max": 99}},
+            },
+        },
+        "responses": [],
+    }
+    sim = _make_sim(definition)
+    # The simulator dispatch strips each delimiter-split line, so the
+    # pattern must not require the terminator.
+    sim._dispatch_command(b"SET 7")
+    assert sim._state["level"] == 7
+
+
+def test_auto_pattern_keeps_trailing_letter():
+    # The validator's old private copy rstripped the character set
+    # {'\\', 'r', 'n'} off the end of the finished pattern, so a template
+    # ending in a real 'n' lost it ("power_on" became ^power_o$) and the
+    # coverage check false-failed.
+    pat = _build_auto_pattern("power_on", {})
+    assert pat is not None
+    assert pat.match("power_on")
 
 
 # ===========================================================================
