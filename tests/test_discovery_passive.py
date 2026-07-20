@@ -22,6 +22,7 @@ from server.discovery.mdns_scanner import (
     _parse_txt_rdata,
     _extract_instance_name,
 )
+from server.discovery.amx_ddp_scanner import AMXDDPScanner
 from server.discovery.ssdp_scanner import (
     SSDPScanner,
     SSDPResult,
@@ -340,11 +341,28 @@ class TestRdataNameBoundary:
         assert records[0].target == "Acme Widget._svc._tcp.local"
 
 
+def _scanner_factories():
+    """Every scanner whose listen loop parks in a blocking recvfrom.
+
+    All three run `recvfrom` in the default executor under a 0.5 s socket
+    timeout, so all three need shutdown-before-close for the same reason.
+    Parametrized together so a fourth scanner added later has an obvious
+    place to land — and so the trio can't drift apart again (mdns was fixed
+    alone first, leaving these two behind for months).
+    """
+    return [
+        pytest.param(MDNSScanner, id="mdns"),
+        pytest.param(SSDPScanner, id="ssdp"),
+        pytest.param(AMXDDPScanner, id="amx_ddp"),
+    ]
+
+
 class TestCloseSocketShutdown:
     """_close_socket shuts the socket down before closing so a peer thread
     blocked in recvfrom is unblocked promptly (close alone does not wake it)."""
 
-    def test_shutdown_precedes_close(self):
+    @pytest.mark.parametrize("scanner_cls", _scanner_factories())
+    def test_shutdown_precedes_close(self, scanner_cls):
         calls: list[tuple] = []
 
         class _RecordingSocket:
@@ -354,13 +372,14 @@ class TestCloseSocketShutdown:
             def close(self):
                 calls.append(("close",))
 
-        scanner = MDNSScanner()
+        scanner = scanner_cls()
         scanner._sock = _RecordingSocket()
         scanner._close_socket()
         assert calls == [("shutdown", socket.SHUT_RDWR), ("close",)]
         assert scanner._sock is None
 
-    def test_shutdown_error_on_unconnected_is_ignored(self):
+    @pytest.mark.parametrize("scanner_cls", _scanner_factories())
+    def test_shutdown_error_on_unconnected_is_ignored(self, scanner_cls):
         closed: list[bool] = []
 
         class _UnconnectedSocket:
@@ -370,7 +389,7 @@ class TestCloseSocketShutdown:
             def close(self):
                 closed.append(True)
 
-        scanner = MDNSScanner()
+        scanner = scanner_cls()
         scanner._sock = _UnconnectedSocket()
         scanner._close_socket()  # must not raise
         assert closed == [True]

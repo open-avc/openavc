@@ -257,7 +257,21 @@ class AMXDDPScanner:
         )
 
     def _close_socket(self) -> None:
+        """Safely close the socket.
+
+        ``shutdown`` before ``close``: the listen loop runs ``recvfrom`` in
+        the default executor, and closing the socket from another thread
+        does not wake a thread blocked in ``recvfrom`` on Linux/Windows —
+        only ``shutdown`` does. Without it, a cancel/stop leaves that pool
+        thread parked until its socket timeout, briefly starving the shared
+        executor when many scanners cancel at once. ``shutdown`` raises on
+        an unconnected socket (harmless), so its error is ignored.
+        """
         if self._sock is not None:
+            try:
+                self._sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
             try:
                 self._sock.close()
             except OSError:

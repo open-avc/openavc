@@ -63,11 +63,22 @@ export const useNavigationStore = create<NavigationState>((set, get) => ({
   },
 }));
 
-// Listen for browser back/forward (popstate covers both hash changes and history nav)
-window.addEventListener("popstate", () => {
+// Adopt whatever view the URL hash currently names.
+function syncViewFromHash() {
   const view = viewFromHash();
   const current = useNavigationStore.getState().activeView;
   if (view !== current) {
     useNavigationStore.setState({ activeView: view, pendingFocus: null });
   }
-});
+}
+
+// Browser back/forward.
+window.addEventListener("popstate", syncViewFromHash);
+
+// External deep links into an ALREADY-OPEN tab. Opening ".../programmer#updates"
+// when the IDE is already up is a same-document navigation: the browser reuses
+// the tab and fires hashchange, not popstate, so without this the view never
+// changes. (The tray's "Check for Updates" is the caller that surfaced it.)
+// navigateTo() moves the hash with pushState, which fires neither event, so
+// internal navigation can't loop back through here.
+window.addEventListener("hashchange", syncViewFromHash);

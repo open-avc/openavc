@@ -64,6 +64,29 @@ def _build_file_handler(formatter: logging.Formatter) -> logging.Handler | None:
     return handler
 
 
+class _ProactorResetFilter(logging.Filter):
+    """Silence the benign Windows proactor connection-reset traceback.
+
+    On Windows, a browser dropping a kept-alive HTTP connection makes
+    asyncio's proactor loop log a full ``ConnectionResetError: [WinError
+    10054]`` traceback from ``_ProactorBasePipeTransport._call_connection_lost``
+    — at ERROR level, in recurring pairs, during entirely normal operation.
+    No request fails and no device traffic is affected (that lives in its own
+    transports), but the noise buries real ERROR lines in the server log.
+
+    Deliberately narrow: it drops a record only when all three hold — the
+    exception is a ConnectionResetError, it came from that specific proactor
+    callback, and we're on Windows. A genuine connection-reset logged from
+    anywhere else still gets through.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        exc = record.exc_info[1] if record.exc_info else None
+        if not isinstance(exc, ConnectionResetError):
+            return True
+        return "_call_connection_lost" not in record.getMessage()
+
+
 def _configure_root():
     """Configure the root logger once."""
     global _configured
@@ -119,6 +142,14 @@ def _configure_root():
     # INFO level drops every TX/RX before it reaches the buffer and the device
     # log stays empty.
     logging.getLogger("server.transport").setLevel(logging.DEBUG)
+
+    # Drop the benign Windows proactor connection-reset tracebacks (see the
+    # filter's docstring). Attached to the asyncio logger rather than a loop
+    # exception handler because the server has three entry paths (TLS, HTTP
+    # redirect, and a bare uvicorn.run that owns its own loop) — a logger
+    # filter covers all three from one place.
+    if sys.platform == "win32":
+        logging.getLogger("asyncio").addFilter(_ProactorResetFilter())
 
 
 def set_log_level(level: str) -> bool:

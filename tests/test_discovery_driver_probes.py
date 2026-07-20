@@ -481,15 +481,18 @@ class TestProbeRunnerIntegration:
     @pytest.mark.asyncio
     async def test_tcp_probe_connect_only_omits_matched_pattern(self):
         port = _next_port()
-        # Banner-grab style: responder sends a banner once its
-        # client-recv times out (2 s). Probe declares no expect_*
-        # so the runner accepts any non-empty payload — the runner
-        # timeout has to be longer than the responder's recv timeout
-        # for the banner to land.
-        _tcp_responder(port, b"banner\n")
+        # Banner-grab style: the responder sends as soon as it accepts,
+        # without reading first. Using the segments helper (one segment =
+        # no gap) keeps this deterministic. The earlier version reused
+        # _tcp_responder, whose banner only goes out after a 2 s client-recv
+        # timeout — that left ~1.5 s of slack against the probe deadline and
+        # flaked under full-suite load whenever the responder thread was
+        # scheduled late. Nothing here is testing timeout behavior, so the
+        # wall-clock dependence was pure liability.
+        _tcp_responder_segments(port, [b"banner\n"])
         h = _make_hint("connect_only", tcp_probe={
             "port": port,
-            "timeout_ms": 3500,
+            "timeout_ms": 1000,
         })
         ev = await run_tcp_active_probe(
             h.tcp_probe, target="127.0.0.1",
