@@ -267,7 +267,10 @@ class UpdateManager:
 
                     with open(artifact_path, "wb") as f:
                         async for chunk in response.aiter_bytes(chunk_size=65536):
-                            f.write(chunk)
+                            # to_thread: a 64KB write stalls on slow media
+                            # (SD cards) and this loop runs for the whole
+                            # artifact
+                            await asyncio.to_thread(f.write, chunk)
                             downloaded += len(chunk)
                             if total > 0:
                                 pct = min(int(downloaded * 100 / total), 99)
@@ -311,15 +314,8 @@ class UpdateManager:
         if not expected_hash:
             raise RuntimeError(f"Checksum for '{artifact_name}' not found in SHA256SUMS.txt")
 
-        # Compute SHA256 of downloaded file
-        sha256 = hashlib.sha256()
-        with open(artifact_path, "rb") as f:
-            while True:
-                chunk = f.read(65536)
-                if not chunk:
-                    break
-                sha256.update(chunk)
-        actual_hash = sha256.hexdigest().lower()
+        # Compute SHA256 of downloaded file (to_thread: artifacts are large)
+        actual_hash = await asyncio.to_thread(self._file_sha256, artifact_path)
 
         if actual_hash != expected_hash:
             file_size = artifact_path.stat().st_size
@@ -475,11 +471,15 @@ class UpdateManager:
         self._set_state("system.update_error", "")
 
         try:
-            # Step 1: Backup
+            # Step 1: Backup (to_thread: zips the whole data dir, and the
+            # room is still live while the update runs)
             self._set_state("system.update_status", "backing_up")
             from server.updater.backup import create_backup, cleanup_old_backups
-            backup_path = create_backup(self._data_dir, __version__, project_path=self._project_path)
-            cleanup_old_backups(self._data_dir)
+            backup_path = await asyncio.to_thread(
+                create_backup, self._data_dir, __version__,
+                project_path=self._project_path,
+            )
+            await asyncio.to_thread(cleanup_old_backups, self._data_dir)
             log.info("Pre-update backup created: %s", backup_path)
 
             # Step 2: Download + verify checksum
@@ -563,11 +563,15 @@ class UpdateManager:
         self._set_state("system.update_error", "")
 
         try:
-            # Step 1: Backup
+            # Step 1: Backup (to_thread: zips the whole data dir, and the
+            # room is still live while the update runs)
             self._set_state("system.update_status", "backing_up")
             from server.updater.backup import create_backup, cleanup_old_backups
-            backup_path = create_backup(self._data_dir, __version__, project_path=self._project_path)
-            cleanup_old_backups(self._data_dir)
+            backup_path = await asyncio.to_thread(
+                create_backup, self._data_dir, __version__,
+                project_path=self._project_path,
+            )
+            await asyncio.to_thread(cleanup_old_backups, self._data_dir)
             log.info("Pre-update backup created: %s", backup_path)
 
             # Step 2: Download from cloud-provided URL.
@@ -593,7 +597,7 @@ class UpdateManager:
                     "apply an unverified update."
                 )
             self._set_state("system.update_status", "verifying")
-            self._verify_hash(artifact_path, checksum_sha256)
+            await self._verify_hash(artifact_path, checksum_sha256)
 
             # Fetch the detached signature (convention: artifact URL + ".sig")
             # next to the tarball for the root helper's integrity gate (H-075).
@@ -696,16 +700,21 @@ class UpdateManager:
             log.exception("Failed to clear staged-update marker")
         self._set_state("system.update_staged_version", "")
 
-    def _verify_hash(self, artifact_path: Path, expected_hash: str) -> None:
-        """Verify a downloaded artifact against a known SHA-256 hash."""
+    @staticmethod
+    def _file_sha256(path: Path) -> str:
+        """SHA-256 of a file (sync; callers to_thread it — artifacts are large)."""
         sha256 = hashlib.sha256()
-        with open(artifact_path, "rb") as f:
+        with open(path, "rb") as f:
             while True:
                 chunk = f.read(65536)
                 if not chunk:
                     break
                 sha256.update(chunk)
-        actual_hash = sha256.hexdigest().lower()
+        return sha256.hexdigest().lower()
+
+    async def _verify_hash(self, artifact_path: Path, expected_hash: str) -> None:
+        """Verify a downloaded artifact against a known SHA-256 hash."""
+        actual_hash = await asyncio.to_thread(self._file_sha256, artifact_path)
         expected_hash = expected_hash.lower()
 
         if actual_hash != expected_hash:
@@ -832,8 +841,12 @@ class UpdateManager:
         self._set_state("system.update_status", "backing_up")
         try:
             from server.updater.backup import create_backup, cleanup_old_backups
-            create_backup(self._data_dir, __version__, project_path=self._project_path)
-            cleanup_old_backups(self._data_dir)  # rotate like the apply paths (don't leave rollback backups unbounded)
+            await asyncio.to_thread(
+                create_backup, self._data_dir, __version__,
+                project_path=self._project_path,
+            )
+            # Rotate like the apply paths (don't leave rollback backups unbounded)
+            await asyncio.to_thread(cleanup_old_backups, self._data_dir)
         except Exception as e:
             log.warning("Pre-rollback backup failed: %s", e)
 

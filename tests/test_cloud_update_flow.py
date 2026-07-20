@@ -21,7 +21,8 @@ from server.cloud.command_handler import CommandHandler
 # ===========================================================================
 
 
-def test_verify_hash_correct(tmp_path):
+@pytest.mark.asyncio
+async def test_verify_hash_correct(tmp_path):
     """_verify_hash passes when checksum matches."""
     from server.updater.manager import UpdateManager
 
@@ -30,12 +31,13 @@ def test_verify_hash_correct(tmp_path):
     expected = hashlib.sha256(b"hello world").hexdigest()
 
     mgr = UpdateManager.__new__(UpdateManager)
-    mgr._verify_hash(artifact, expected)
+    await mgr._verify_hash(artifact, expected)
     # No exception = pass
     assert artifact.exists()
 
 
-def test_verify_hash_wrong(tmp_path):
+@pytest.mark.asyncio
+async def test_verify_hash_wrong(tmp_path):
     """_verify_hash raises and deletes the file on mismatch."""
     from server.updater.manager import UpdateManager
 
@@ -44,12 +46,13 @@ def test_verify_hash_wrong(tmp_path):
 
     mgr = UpdateManager.__new__(UpdateManager)
     with pytest.raises(RuntimeError, match="Checksum mismatch"):
-        mgr._verify_hash(artifact, "0000000000000000000000000000000000000000000000000000000000000000")
+        await mgr._verify_hash(artifact, "0000000000000000000000000000000000000000000000000000000000000000")
 
     assert not artifact.exists()  # deleted on mismatch
 
 
-def test_verify_hash_case_insensitive(tmp_path):
+@pytest.mark.asyncio
+async def test_verify_hash_case_insensitive(tmp_path):
     """_verify_hash is case-insensitive."""
     from server.updater.manager import UpdateManager
 
@@ -58,7 +61,7 @@ def test_verify_hash_case_insensitive(tmp_path):
     expected = hashlib.sha256(b"test data").hexdigest().upper()
 
     mgr = UpdateManager.__new__(UpdateManager)
-    mgr._verify_hash(artifact, expected)
+    await mgr._verify_hash(artifact, expected)
     assert artifact.exists()
 
 
