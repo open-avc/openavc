@@ -54,6 +54,16 @@ from .types import Callback
 log = get_logger(__name__)
 
 
+def _log_task_exception(task: asyncio.Task) -> None:
+    """Done-callback for fire-and-forget on_data tasks: surface failures that
+    would otherwise vanish as a 'Task exception was never retrieved' GC warning."""
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc:
+        log.error("Unhandled exception in SSH on_data task: %s", exc, exc_info=exc)
+
+
 def default_known_hosts_path() -> str:
     """Per-user managed known_hosts file (kept out of the user's ~/.ssh)."""
     base = os.path.join(os.path.expanduser("~"), ".openavc", "ssh")
@@ -108,6 +118,9 @@ class SSHTransport:
         # Last few stderr lines from ssh, for surfacing auth/host-key failures
         # to the driver when the session dies during the prompt read.
         self._stderr_tail = ""
+        # Strong refs for async on_data callback tasks (asyncio only weakly
+        # references tasks) — same supervision pattern as the other transports.
+        self._bg_tasks: set[asyncio.Task] = set()
 
     # --- Factory ---------------------------------------------------------
 
@@ -278,7 +291,12 @@ class SSHTransport:
         try:
             result = self._on_data(data)
             if asyncio.iscoroutine(result):
-                asyncio.create_task(result)
+                # Hold a strong ref (GC-safety) and log any failure that an
+                # async handler would otherwise swallow.
+                task = asyncio.create_task(result)
+                self._bg_tasks.add(task)
+                task.add_done_callback(self._bg_tasks.discard)
+                task.add_done_callback(_log_task_exception)
         except Exception:
             log.exception(
                 f"[{self._name}] Error in SSH on_data callback — continuing"

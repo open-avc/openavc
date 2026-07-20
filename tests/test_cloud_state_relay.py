@@ -711,3 +711,27 @@ class TestTierCacheEviction:
             assert leaked == [], f"tier cache leaked {len(leaked)} deleted keys"
         finally:
             await relay.stop()
+
+
+class TestFlushLoopResilience:
+    """A single failed flush must not end a tier's relay loop (V-LC-009)."""
+
+    @pytest.mark.asyncio
+    async def test_flush_bucket_loop_survives_flush_exception(self):
+        relay = StateRelay(_RecordingAgent(), StateStore())
+        relay._running = True
+        calls: list[str] = []
+
+        async def flaky_flush(bucket):
+            calls.append(bucket)
+            if len(calls) == 1:
+                raise RuntimeError("serialization boom")
+            relay._running = False  # stop once the loop has proven it survived
+
+        relay._flush_bucket = flaky_flush
+        # Pre-fix the first exception escaped and permanently ended the loop.
+        await asyncio.wait_for(
+            relay._flush_bucket_loop("top", "state_batch_interval", 0.01),
+            timeout=2,
+        )
+        assert len(calls) >= 2

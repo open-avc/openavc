@@ -410,7 +410,20 @@ class StateRelay:
             while self._running:
                 interval = self._agent._config.get(config_key, default_interval)
                 await asyncio.sleep(interval)
-                await self._flush_bucket(bucket)
+                try:
+                    await self._flush_bucket(bucket)
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    # One failed flush (serialization surprise, transient send
+                    # error) must not silently end this tier's relay for the
+                    # rest of the session — cloud state would go quietly stale
+                    # until the next reconnect. Log and keep the loop alive,
+                    # matching alert_monitor's periodic check.
+                    log.exception(
+                        "State relay: flush failed on '%s' bucket — continuing",
+                        bucket,
+                    )
         except asyncio.CancelledError:
             return
 

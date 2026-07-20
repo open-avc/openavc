@@ -1604,6 +1604,43 @@ class TestLifecycleConcurrency:
 
         assert len(calls) == 1
 
+    async def test_auto_disable_task_strongly_referenced(self, loader, monkeypatch):
+        """The spawned auto-disable task is held by the loader while pending
+        (asyncio only weakly references tasks) and self-prunes when done."""
+        state = loader._state
+        release = asyncio.Event()
+
+        async def slow_disable(pid, epoch):
+            await release.wait()
+
+        monkeypatch.setattr(loader, "_auto_disable_plugin", slow_disable)
+
+        class Fragile3:
+            PLUGIN_INFO = _valid_info("fragile3", capabilities=["state_read"])
+
+            async def start(self, api):
+                async def always_fail(key, value, old_value):
+                    raise RuntimeError("always fails")
+
+                await api.state_subscribe("var.*", always_fail)
+
+            async def stop(self):
+                pass
+
+        register_plugin_class(Fragile3)
+        await loader.start_plugin("fragile3")
+
+        for i in range(MAX_CALLBACK_FAILURES + 2):
+            state.set("var.trigger3", i, source="test")
+            await asyncio.sleep(0.01)
+
+        assert loader._auto_disable_tasks, (
+            "in-flight auto-disable task must be strongly referenced"
+        )
+        release.set()
+        await asyncio.sleep(0.05)
+        assert not loader._auto_disable_tasks
+
 
 # ═══════════════════════════════════════════════════════════
 #  8. State-key hygiene & incompatible surfacing (M-044..M-046, L-028..L-031)

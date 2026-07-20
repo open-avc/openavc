@@ -159,3 +159,25 @@ async def test_live_roundtrip():
         assert t.connected
     finally:
         await t.close()
+
+
+@pytest.mark.asyncio
+async def test_async_on_data_exception_is_logged(caplog):
+    """An async on_data callback that raises is supervised like the other
+    transports — held with a strong ref and logged, never silently dropped."""
+    import asyncio
+    import logging
+
+    async def failing_handler(data: bytes):
+        raise RuntimeError("handler boom")
+
+    t = SSHTransport(
+        HOST, 22, USER, failing_handler, _noop, ssh_binary="/usr/bin/ssh"
+    )
+    with caplog.at_level(logging.ERROR, logger="server.transport.ssh"):
+        t._deliver(b"payload")
+        assert t._bg_tasks, "async handler task must be strongly referenced"
+        for _ in range(10):
+            await asyncio.sleep(0)
+    assert any("on_data task" in r.message for r in caplog.records)
+    assert not t._bg_tasks  # self-pruned once settled

@@ -24,6 +24,19 @@ from server.utils.logger import get_logger
 
 log = get_logger(__name__)
 
+
+def _log_task_exception(task: asyncio.Task) -> None:
+    """Done-callback for fire-and-forget tasks: surface failures that would
+    otherwise vanish as a 'Task exception was never retrieved' GC warning."""
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc:
+        log.error(
+            f"Background task {task.get_name()!r} failed: {exc}", exc_info=exc
+        )
+
+
 # Global plugin class registry: plugin_id -> plugin_class
 _PLUGIN_CLASS_REGISTRY: dict[str, type] = {}
 _REGISTRY_LOCK = threading.Lock()
@@ -457,6 +470,10 @@ class PluginLoader:
         # Plugins with an auto-disable in flight (so repeated failures past the
         # threshold don't each spawn a duplicate _auto_disable_plugin task).
         self._auto_disabling: set[str] = set()
+        # Strong refs for in-flight auto-disable tasks — asyncio only weakly
+        # references tasks, and the _auto_disabling id-set above is intent
+        # tracking, not a reference. Self-pruning via done-callback.
+        self._auto_disable_tasks: set[asyncio.Task] = set()
         # Per-plugin lifecycle lock so start/stop/auto-disable on the same
         # plugin serialize and can't interleave (a restart can't be killed by a
         # stale queued auto-disable; a config change can't race an enable).
@@ -865,7 +882,10 @@ class PluginLoader:
                     f"— auto-disabling"
                 )
                 self._auto_disabling.add(_pid)
-                asyncio.create_task(self._auto_disable_plugin(_pid, _epoch))
+                task = asyncio.create_task(self._auto_disable_plugin(_pid, _epoch))
+                self._auto_disable_tasks.add(task)
+                task.add_done_callback(self._auto_disable_tasks.discard)
+                task.add_done_callback(_log_task_exception)
 
         def _on_callback_success(_pid=plugin_id):
             # Reset failure counter on success so transient errors don't accumulate
