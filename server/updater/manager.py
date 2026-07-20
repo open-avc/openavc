@@ -488,9 +488,11 @@ class UpdateManager:
             artifact_path = await self._download_update(release)
             self._set_state("system.update_progress", 100)
 
-            # Step 3: Write pending-update marker
+            # Step 3: Write pending-update marker (records the backup so an
+            # automatic rollback can restore user data from it)
             from server.updater.rollback import write_pending_marker
-            write_pending_marker(self._data_dir, __version__, release.version)
+            write_pending_marker(self._data_dir, __version__, release.version,
+                                 backup_path=backup_path)
 
             # Step 4: Apply (platform-specific)
             self._set_state("system.update_status", "applying")
@@ -601,9 +603,11 @@ class UpdateManager:
             if self._consumes_signed_tarball():
                 await self._download_sidecar_sig(update_url + ".sig", artifact_path)
 
-            # Step 4: Write pending-update marker
+            # Step 4: Write pending-update marker (records the backup so an
+            # automatic rollback can restore user data from it)
             from server.updater.rollback import write_pending_marker
-            write_pending_marker(self._data_dir, __version__, target_version)
+            write_pending_marker(self._data_dir, __version__, target_version,
+                                 backup_path=backup_path)
 
             # Step 5: Apply (platform-specific)
             self._set_state("system.update_status", "applying")

@@ -119,11 +119,17 @@ def _launch_installer_via_scheduler(installer: Path, label: str) -> bool:
         xml_path.unlink(missing_ok=True)
 
 
-def write_pending_marker(data_dir: Path, from_version: str, to_version: str) -> None:
+def write_pending_marker(
+    data_dir: Path,
+    from_version: str,
+    to_version: str,
+    backup_path: Path | None = None,
+) -> None:
     """Write a marker file before applying an update.
 
     If the server crashes after update, the marker's presence on next
-    startup triggers automatic rollback.
+    startup triggers automatic rollback. ``backup_path`` records the
+    pre-update backup zip so that rollback can restore user data from it.
     """
     marker_path = data_dir / PENDING_UPDATE_MARKER
     marker_data = {
@@ -131,6 +137,8 @@ def write_pending_marker(data_dir: Path, from_version: str, to_version: str) -> 
         "to_version": to_version,
         "attempts": 0,
     }
+    if backup_path is not None:
+        marker_data["backup"] = str(backup_path)
     marker_path.write_text(json.dumps(marker_data), encoding="utf-8")
     log.info("Wrote pending-update marker: %s -> %s", from_version, to_version)
 
@@ -222,6 +230,59 @@ def check_rollback_needed(data_dir: Path) -> bool:
         attempts,
     )
     return False
+
+
+def restore_pre_update_data(data_dir: Path, project_path: Path | None = None) -> bool:
+    """Restore user data from the pre-update backup during automatic rollback.
+
+    Must run BEFORE the code rollback is initiated, while the version that
+    applied the update is still executing: the rolled-back code may predate
+    the running version's project-format migrations (and this function), so
+    the data restore has to happen on this side of the code swap. Manual
+    rollback deliberately does NOT restore data — the operator may roll back
+    long after a confirmed update, and edits made since must not be silently
+    discarded.
+
+    Best-effort: a failed restore never blocks the code rollback. The system
+    is crash-looping at this point; restoring service comes first, and a
+    project file left in the newer format is exactly the pre-existing
+    behavior (the loader warns on a newer stamp).
+    """
+    marker = read_pending_marker(data_dir)
+    if marker is None:
+        return False
+    backup = _find_pre_update_backup(data_dir, marker)
+    if backup is None:
+        log.warning("No pre-update backup found; rolling back code only")
+        return False
+
+    from server.updater.backup import restore_user_data
+    log.warning("Restoring user data from pre-update backup: %s", backup.name)
+    try:
+        return restore_user_data(data_dir, backup, project_path=project_path)
+    except Exception:
+        log.exception("Pre-update data restore failed; rolling back code only")
+        return False
+
+
+def _find_pre_update_backup(data_dir: Path, marker: dict) -> Path | None:
+    """Locate the backup zip for the update being rolled back."""
+    recorded = marker.get("backup")
+    if recorded:
+        path = Path(recorded)
+        if path.is_file():
+            return path
+        log.warning("Pre-update backup recorded in marker is missing: %s", recorded)
+    # Marker written by an older version (no backup field): fall back to the
+    # newest backup taken for the version we're rolling back to.
+    from_version = marker.get("from_version")
+    if not from_version:
+        return None
+    candidates = sorted(
+        (data_dir / "backups").glob(f"pre-update-v{from_version}-*.zip"),
+        key=lambda p: p.stat().st_mtime,
+    )
+    return candidates[-1] if candidates else None
 
 
 def _installer_version(installer: Path) -> tuple[int, int, int, str]:

@@ -522,6 +522,12 @@ class TestRollback:
         clear_pending_marker(tmp_path)
         assert read_pending_marker(tmp_path) is None
 
+    def test_pending_marker_records_backup_path(self, tmp_path):
+        backup = tmp_path / "backups" / "pre-update-v0.1.0-20260101T000000Z.zip"
+        write_pending_marker(tmp_path, "0.1.0", "0.2.0", backup_path=backup)
+        marker = read_pending_marker(tmp_path)
+        assert marker["backup"] == str(backup)
+
     def test_check_rollback_first_attempt(self, tmp_path):
         write_pending_marker(tmp_path, "0.1.0", "0.2.0")
         # First check increments to 1, no rollback needed yet
@@ -536,6 +542,126 @@ class TestRollback:
 
     def test_no_marker_no_rollback(self, tmp_path):
         assert check_rollback_needed(tmp_path) is False
+
+
+# --- Pre-update data restore (automatic rollback) ---
+
+
+class TestRestoreUserData:
+    """Automatic rollback restores projects/ from the pre-update backup so
+    code and data return to the pre-update snapshot together (a project file
+    migrated by the failed version would otherwise be written back
+    mixed-shape by the rolled-back code and skip re-migration later).
+    """
+
+    def _make_data_dir(self, tmp_path):
+        project_dir = tmp_path / "projects" / "default"
+        project_dir.mkdir(parents=True)
+        (project_dir / "project.avc").write_text('{"openavc_version": "0.7.0"}')
+        (project_dir / "state.json").write_text('{"var.x": 1}')
+        scripts = project_dir / "scripts"
+        scripts.mkdir()
+        (scripts / "lights.py").write_text("# old")
+        return project_dir
+
+    def test_restore_swaps_projects_tree_back(self, tmp_path):
+        from server.updater.backup import restore_user_data
+
+        project_dir = self._make_data_dir(tmp_path)
+        backup = create_backup(tmp_path, "0.7.0")
+
+        # Simulate the failed update migrating/mutating the data.
+        (project_dir / "project.avc").write_text('{"openavc_version": "0.8.0"}')
+        (project_dir / "scripts" / "lights.py").write_text("# new")
+
+        assert restore_user_data(tmp_path, backup) is True
+
+        assert (project_dir / "project.avc").read_text() == '{"openavc_version": "0.7.0"}'
+        assert (project_dir / "scripts" / "lights.py").read_text() == "# old"
+        assert (project_dir / "state.json").read_text() == '{"var.x": 1}'
+        # The displaced tree survives for manual recovery.
+        displaced = tmp_path / "projects.pre-rollback" / "default" / "project.avc"
+        assert displaced.read_text() == '{"openavc_version": "0.8.0"}'
+
+    def test_restore_carries_user_backups_over(self, tmp_path):
+        from server.updater.backup import restore_user_data
+
+        project_dir = self._make_data_dir(tmp_path)
+        backup = create_backup(tmp_path, "0.7.0")
+
+        # User backups are excluded from the archive; ones on disk must
+        # survive the swap.
+        user_backups = project_dir / "backups"
+        user_backups.mkdir()
+        (user_backups / "backup-20260101T000000Z.zip").write_bytes(b"user-zip")
+
+        assert restore_user_data(tmp_path, backup) is True
+        assert (user_backups / "backup-20260101T000000Z.zip").read_bytes() == b"user-zip"
+
+    def test_restore_external_project_files(self, tmp_path):
+        from server.updater.backup import restore_user_data
+
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+        external_dir = tmp_path / "remote" / "studio_a"
+        external_dir.mkdir(parents=True)
+        project_path = external_dir / "project.avc"
+        project_path.write_text('{"openavc_version": "0.7.0"}')
+
+        backup = create_backup(data_dir, "0.7.0", project_path=project_path)
+        project_path.write_text('{"openavc_version": "0.8.0"}')
+
+        assert restore_user_data(data_dir, backup, project_path=project_path) is True
+        assert project_path.read_text() == '{"openavc_version": "0.7.0"}'
+
+    def test_restore_bad_zip_returns_false(self, tmp_path):
+        from server.updater.backup import restore_user_data
+
+        bad = tmp_path / "pre-update-v0.1.0-x.zip"
+        bad.write_bytes(b"not a zip")
+        assert restore_user_data(tmp_path, bad) is False
+
+    def test_restore_pre_update_data_uses_marker_backup(self, tmp_path):
+        from server.updater.rollback import restore_pre_update_data
+
+        project_dir = self._make_data_dir(tmp_path)
+        backup = create_backup(tmp_path, "0.7.0")
+        write_pending_marker(tmp_path, "0.7.0", "0.8.0", backup_path=backup)
+
+        (project_dir / "project.avc").write_text('{"openavc_version": "0.8.0"}')
+
+        assert restore_pre_update_data(tmp_path) is True
+        assert (project_dir / "project.avc").read_text() == '{"openavc_version": "0.7.0"}'
+
+    def test_restore_pre_update_data_falls_back_to_version_glob(self, tmp_path):
+        # A marker written by an older version has no backup field; the
+        # newest pre-update zip matching from_version is used instead.
+        from server.updater.rollback import restore_pre_update_data
+
+        project_dir = self._make_data_dir(tmp_path)
+        create_backup(tmp_path, "0.7.0")
+        write_pending_marker(tmp_path, "0.7.0", "0.8.0")  # no backup_path
+
+        (project_dir / "project.avc").write_text('{"openavc_version": "0.8.0"}')
+
+        assert restore_pre_update_data(tmp_path) is True
+        assert (project_dir / "project.avc").read_text() == '{"openavc_version": "0.7.0"}'
+
+    def test_restore_pre_update_data_no_marker_is_noop(self, tmp_path):
+        from server.updater.rollback import restore_pre_update_data
+        assert restore_pre_update_data(tmp_path) is False
+
+    def test_restore_pre_update_data_no_backup_is_noop(self, tmp_path):
+        from server.updater.rollback import restore_pre_update_data
+
+        project_dir = self._make_data_dir(tmp_path)
+        write_pending_marker(tmp_path, "0.7.0", "0.8.0")
+
+        (project_dir / "project.avc").write_text('{"openavc_version": "0.8.0"}')
+
+        # No zip anywhere: nothing restored, nothing destroyed.
+        assert restore_pre_update_data(tmp_path) is False
+        assert (project_dir / "project.avc").read_text() == '{"openavc_version": "0.8.0"}'
 
 
 # --- Update Manager ---

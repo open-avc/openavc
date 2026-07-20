@@ -9,6 +9,8 @@ the update fails.
 from __future__ import annotations
 
 import logging
+import os
+import shutil
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -147,6 +149,147 @@ def _project_external_dir(project_path: Path, data_dir: Path) -> Path | None:
         # Not a subpath of data_dir — external.
         return project_path.parent
     return None
+
+
+def restore_user_data(
+    data_dir: Path,
+    backup_path: Path,
+    project_path: Path | None = None,
+) -> bool:
+    """Restore project data from a pre-update backup zip.
+
+    Used by automatic rollback so code and data return to the pre-update
+    snapshot together: the rolled-back code may predate the running version's
+    project-format migrations, and a project file left in the newer shape
+    would be written back mixed-shape and then skip re-migration after the
+    next upgrade.
+
+    The ``projects/`` tree is restored by staged swap — the displaced tree is
+    kept at ``projects.pre-rollback`` so nothing is destroyed. User-backup
+    subtrees (``{project_dir}/backups/``) are not archived, so they are
+    carried over from the displaced tree. An external project directory
+    (``OPENAVC_PROJECT`` outside data_dir, archived under
+    ``external-project/``) is restored by per-file overwrite instead of a
+    swap — that directory can be a mount point that cannot be renamed.
+
+    Returns True when anything was restored, False otherwise.
+    """
+    try:
+        zf = zipfile.ZipFile(backup_path)
+    except (OSError, zipfile.BadZipFile) as e:
+        log.error("Cannot open pre-update backup %s: %s", backup_path, e)
+        return False
+
+    restored = False
+    with zf:
+        members = [i for i in zf.infolist() if not i.is_dir()]
+        project_members = [i for i in members if i.filename.startswith("projects/")]
+        external_members = [
+            i for i in members if i.filename.startswith("external-project/")
+        ]
+
+        if project_members:
+            restored |= _restore_projects_tree(zf, project_members, data_dir)
+
+        if external_members and project_path is not None:
+            external_dir = _project_external_dir(project_path, data_dir)
+            if external_dir is not None:
+                restored |= _restore_external_files(zf, external_members, external_dir)
+
+    return restored
+
+
+def _member_relpath(name: str, prefix: str) -> Path | None:
+    """Relative path of a zip member below ``prefix``, or None if unsafe.
+
+    Archives are self-written, but never extract a traversal/absolute name.
+    """
+    rel = name[len(prefix):]
+    if not rel:
+        return None
+    p = Path(rel)
+    if p.is_absolute() or ".." in p.parts:
+        log.warning("Skipping unsafe backup member: %s", name)
+        return None
+    return p
+
+
+def _restore_projects_tree(zf: zipfile.ZipFile, members: list, data_dir: Path) -> bool:
+    """Swap data_dir/projects for the archived tree, keeping the old one aside."""
+    live = data_dir / "projects"
+    aside = data_dir / "projects.pre-rollback"
+    staging = data_dir / "projects.restore-tmp"
+
+    shutil.rmtree(staging, ignore_errors=True)
+    try:
+        for member in members:
+            rel = _member_relpath(member.filename, "projects/")
+            if rel is None:
+                continue
+            target = staging / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with zf.open(member) as src, open(target, "wb") as dst:
+                shutil.copyfileobj(src, dst)
+
+        # Swap: displaced tree survives at projects.pre-rollback.
+        if aside.exists():
+            shutil.rmtree(aside)
+        if live.exists():
+            os.replace(live, aside)
+        os.replace(staging, live)
+    except OSError:
+        log.exception("Failed to restore projects/ from pre-update backup")
+        # Put the live tree back if the swap displaced it without finishing.
+        if not live.exists() and aside.exists():
+            try:
+                os.replace(aside, live)
+            except OSError:
+                log.exception("Could not put original projects/ back after failed restore")
+        shutil.rmtree(staging, ignore_errors=True)
+        return False
+
+    # User backups are excluded from the archive — carry them over from the
+    # displaced tree so a rollback doesn't lose them.
+    if aside.exists():
+        for backups_dir in aside.rglob("backups"):
+            if not backups_dir.is_dir():
+                continue
+            target = live / backups_dir.relative_to(aside)
+            if target.exists():
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                shutil.move(str(backups_dir), str(target))
+            except OSError as e:
+                log.warning("Could not carry user backups %s over: %s", backups_dir, e)
+
+    log.warning("Restored projects/ from pre-update backup (previous tree kept at %s)", aside)
+    return True
+
+
+def _restore_external_files(
+    zf: zipfile.ZipFile, members: list, external_dir: Path
+) -> bool:
+    """Overwrite external project files in place from the archive."""
+    restored = False
+    for member in members:
+        rel = _member_relpath(member.filename, "external-project/")
+        if rel is None:
+            continue
+        target = external_dir / rel
+        tmp = target.parent / (target.name + ".restore-tmp")
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with zf.open(member) as src, open(tmp, "wb") as dst:
+                shutil.copyfileobj(src, dst)
+            os.replace(tmp, target)
+            restored = True
+        except OSError:
+            log.exception("Failed to restore external project file %s", target)
+            tmp.unlink(missing_ok=True)
+    if restored:
+        log.warning("Restored external project files from pre-update backup: %s", external_dir)
+    return restored
 
 
 def list_backups(data_dir: Path) -> list[dict]:

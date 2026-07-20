@@ -62,11 +62,11 @@ If an update causes problems, you can roll back to the previous version.
 
 ### Automatic Rollback
 
-If the server crashes immediately after an update (fails to start twice in a row), it automatically restores the previous version. No action needed.
+If the server crashes immediately after an update (fails to start twice in a row), it automatically restores the previous version. Your project data is restored from the backup taken just before the update, so code and data go back together. The project files from the failed update are kept in a `projects.pre-rollback` folder next to your projects in case you need anything from them. No action needed.
 
 ### Manual Rollback
 
-From the Updates view, scroll to the **Rollback** section and click **Rollback to vX.Y.Z**. This restores the previous application code and restarts the server. Your projects, drivers, and configuration are preserved.
+From the Updates view, scroll to the **Rollback** section and click **Rollback to vX.Y.Z**. This restores the previous application code and restarts the server. Your projects, drivers, and configuration are preserved as they are — manual rollback does not rewind your project data.
 
 ## Update Channels
 

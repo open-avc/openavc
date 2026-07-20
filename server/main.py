@@ -104,7 +104,12 @@ async def _initialize_engine(app: FastAPI) -> None:
         from server.updater.rollback import check_rollback_needed
         data_dir = get_system_config().data_dir
         if check_rollback_needed(data_dir):
-            from server.updater.rollback import perform_rollback
+            from pathlib import Path
+            from server.updater.rollback import perform_rollback, restore_pre_update_data
+            # Restore user data from the pre-update backup BEFORE swapping the
+            # code back: the rolled-back code may predate the running version's
+            # project-format migrations, so the restore must run on this side.
+            restore_pre_update_data(data_dir, project_path=Path(config.PROJECT_PATH))
             success = perform_rollback(data_dir)
             if success:
                 # Windows: exit 42 tells NSSM not to restart (installer handles it)
