@@ -1,5 +1,6 @@
 """Tests for WebSocket protocol — message handling, panel vs programmer, state validation."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -193,7 +194,9 @@ async def test_panel_can_execute_macro():
     engine = _make_engine()
     with patch("server.api._engine._engine", engine):
         await _handle_message(ws, {"type": "macro.execute", "macro_id": "test"}, "panel")
+        await asyncio.sleep(0)  # the macro runs in a background task
     engine.macros.execute.assert_called_once()
+    assert ws.sent[0]["type"] == "macro.execute.ack"
 
 
 @pytest.mark.asyncio
@@ -258,6 +261,7 @@ async def test_programmer_can_execute_macro():
     engine = _make_engine()
     with patch("server.api._engine._engine", engine):
         await _handle_message(ws, {"type": "macro.execute", "macro_id": "system_on"}, "programmer")
+        await asyncio.sleep(0)  # the macro runs in a background task
     engine.macros.execute.assert_awaited_once_with("system_on")
 
 
@@ -629,3 +633,47 @@ async def test_ws_client_registered_before_snapshot(tmp_path):
     assert order.index("register") < order.index("send:state.snapshot"), (
         f"snapshot taken before the client was registered: {order}"
     )
+
+
+# ── macro.execute must not head-of-line block the client loop (V-LC-006) ──
+
+
+@pytest.mark.asyncio
+async def test_macro_execute_returns_before_macro_completes():
+    """A long-running macro must not block the client's message loop — the
+    handler acks immediately and the macro runs in the background."""
+    ws = FakeWS()
+    engine = _make_engine()
+    release = asyncio.Event()
+    started = asyncio.Event()
+
+    async def slow_macro(macro_id, *a, **kw):
+        started.set()
+        await release.wait()
+
+    engine.macros.execute = slow_macro
+    with patch("server.api._engine._engine", engine):
+        # Pre-fix this awaited the macro to completion and timed out here.
+        await asyncio.wait_for(
+            _handle_message(ws, {"type": "macro.execute", "macro_id": "warmup"}, "panel"),
+            timeout=0.5,
+        )
+        assert ws.sent[0] == {"type": "macro.execute.ack", "macro_id": "warmup"}
+        await asyncio.wait_for(started.wait(), timeout=0.5)
+        release.set()
+        await asyncio.sleep(0)
+
+
+@pytest.mark.asyncio
+async def test_macro_execute_failure_still_reaches_client():
+    """Errors from the background macro run come back on the same socket."""
+    ws = FakeWS()
+    engine = _make_engine()
+    engine.macros.execute = AsyncMock(side_effect=ValueError("no such macro"))
+    with patch("server.api._engine._engine", engine):
+        await _handle_message(ws, {"type": "macro.execute", "macro_id": "ghost"}, "panel")
+        for _ in range(10):
+            await asyncio.sleep(0)
+    types = [m["type"] for m in ws.sent]
+    assert types[0] == "macro.execute.ack"
+    assert "error" in types

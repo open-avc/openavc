@@ -59,6 +59,10 @@ def set_engine(engine) -> None:
 # Per-client log subscriptions: ws -> (sub_id, task)
 _log_subscriptions: dict[int, tuple[str, asyncio.Task]] = {}
 
+# Strong refs for background macro runs spawned by macro.execute — asyncio
+# only weakly references tasks, so an unreferenced one can be GC'd mid-run.
+_bg_tasks: set[asyncio.Task] = set()
+
 
 @router.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket) -> None:
@@ -498,12 +502,25 @@ async def _handle_message(
         if not macro_id:
             await _send_ws_error(ws, msg_type, "Missing macro_id")
             return
-        try:
-            await engine.macros.execute(macro_id)
-        except Exception as e:
-            # Catch-all: macro steps run arbitrary actions (commands, scripts, state changes)
-            log.error(f"macro.execute failed: {e}")
-            await _send_ws_error(ws, msg_type, f"Macro failed: {friendly_error(e)}")
+
+        async def _run_macro() -> None:
+            try:
+                await engine.macros.execute(macro_id)
+            except Exception as e:
+                # Catch-all: macro steps run arbitrary actions (commands, scripts, state changes)
+                log.error(f"macro.execute failed: {e}")
+                await _send_ws_error(ws, msg_type, f"Macro failed: {friendly_error(e)}")
+
+        # Run in the background and ack receipt immediately: a macro with
+        # delay steps (warm-up sequences run tens of seconds) would otherwise
+        # head-of-line block this client's whole message loop — further taps
+        # queue in the socket and the panel reads as hung. Macro lifecycle
+        # events stream the actual progress; failures come back on this
+        # socket from the background task.
+        task = asyncio.create_task(_run_macro())
+        _bg_tasks.add(task)
+        task.add_done_callback(_bg_tasks.discard)
+        await _send_ws(ws, {"type": "macro.execute.ack", "macro_id": macro_id})
 
     elif msg_type == "project.reload":
         try:
