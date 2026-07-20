@@ -371,6 +371,68 @@ def test_integer_coercion_returns_raw_on_failure():
 
 
 # ===========================================================================
+# Auto-sim replies reconstructed from response patterns (shared emit
+# inversion): anchors/escapes handled, $N picks the group, bool keys hit
+# ===========================================================================
+
+
+def test_query_reply_reconstructed_from_escaped_pattern():
+    definition = {
+        "id": "acme_projector",
+        "name": "Acme Projector",
+        "transport": "tcp",
+        "state_variables": {"volume": {"type": "integer", "min": 0, "max": 100}},
+        "commands": {"query_volume": {"send": "VOL?"}},
+        "responses": [
+            {"match": "\\(VOL!(\\d+)\\)", "set": {"volume": "$1"}},
+        ],
+    }
+    sim = _make_sim(definition)
+    # The reply is the reconstructed form the driver's own regex accepts —
+    # escaped parens emit literal parens, the capture emits the state value.
+    assert sim._dispatch_command(b"VOL?") == b"(VOL!0)\r\n"
+
+
+def test_query_reply_places_value_at_referenced_group():
+    definition = {
+        "id": "acme_preset",
+        "name": "Acme Preset",
+        "transport": "tcp",
+        "state_variables": {"preset_level": {"type": "integer", "min": 0, "max": 99}},
+        "commands": {"query_preset_level": {"send": "PST?"}},
+        "responses": [
+            # preset_level reads group 2; group 1 is the preset name.
+            {"match": "NAME (\\S+) LVL (-?\\d+)",
+             "set": {"preset_level": "$2"}},
+        ],
+    }
+    sim = _make_sim(definition)
+    # {value} lands at group 2; group 1 emits representative content, so
+    # the reply still matches the driver's pattern.
+    assert sim._dispatch_command(b"PST?") == b"NAME 0 LVL 0\r\n"
+
+
+def test_value_map_hits_boolean_state_values():
+    definition = {
+        "id": "acme_mute",
+        "name": "Acme Mute",
+        "transport": "tcp",
+        "state_variables": {"mute": {"type": "boolean"}},
+        "commands": {"query_mute": {"send": "MUTE?"}},
+        "responses": [
+            # YAML bare true/false arrive as Python bools — the value_map
+            # key must normalize the way format() normalizes its lookup.
+            {"match": "^Amt1$", "set": {"mute": True}},
+            {"match": "^Amt0$", "set": {"mute": False}},
+        ],
+    }
+    sim = _make_sim(definition)
+    assert sim._dispatch_command(b"MUTE?") == b"Amt0\r\n"
+    sim.set_state("mute", True)
+    assert sim._dispatch_command(b"MUTE?") == b"Amt1\r\n"
+
+
+# ===========================================================================
 # M-067 — child_id command params capture digits, not greedy (.+)
 # ===========================================================================
 

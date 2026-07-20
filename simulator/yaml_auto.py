@@ -33,6 +33,8 @@ from server.drivers.compiled_protocol import (
     apply_send_frame,
     build_send_frame,
     decode_delimiter,
+    emit_literal,
+    emit_template,
     safe_substitute,
     send_param_specs,
     send_regex,
@@ -1386,7 +1388,14 @@ class YAMLAutoSimulator(TCPSimulator):
             set_dict = resp_def.get("set", {})
 
             for state_key, set_value in set_dict.items():
-                set_value_str = str(set_value)
+                # Normalize like StateResponse.format() normalizes its lookup
+                # key, or a YAML bare `true` (Python True) stores a "True"
+                # key that a boolean state value can never hit.
+                set_value_str = (
+                    str(set_value).lower()
+                    if isinstance(set_value, bool)
+                    else str(set_value)
+                )
 
                 if state_key not in self._state_responses:
                     self._state_responses[state_key] = StateResponse(state_key)
@@ -1399,15 +1408,23 @@ class YAMLAutoSimulator(TCPSimulator):
 
                 if has_groups and set_value_str.startswith("$"):
                     # Template-based: In(\d+) All with set: { input: "$1" }
-                    # → template: In{value} All
-                    template = _regex_to_template(match_pattern)
-                    if not sr.template:
+                    # → template: In{value} All. The $N picks which capture
+                    # group becomes {value}, so a multi-group pattern puts
+                    # the value where this state key actually reads it.
+                    try:
+                        group = int(set_value_str[1:])
+                    except ValueError:
+                        group = 0
+                    template = (
+                        emit_template(match_pattern, group) if group > 0 else None
+                    )
+                    if template and not sr.template:
                         sr.template = template
                 else:
                     # Value-mapped: Amt1 with set: { mute: "true" }
                     # → value "true" maps to response text "Amt1"
                     # Reconstruct the literal response text from the regex
-                    literal = _regex_to_literal(match_pattern)
+                    literal = emit_literal(match_pattern)
                     if literal:
                         sr.value_map[set_value_str] = literal
 
@@ -2168,37 +2185,6 @@ class StateResponse:
 
 
 # ── Utility functions ──
-
-def _regex_to_template(pattern: str) -> str:
-    """Convert a response regex to a response template.
-
-    Replaces the first capture group with {value}.
-    Example: 'In(\\d+) All' → 'In{value} All'
-    """
-    # Remove the capture group and replace with {value}
-    result = re.sub(r"\([^)]*\)", "{value}", pattern, count=1)
-    # Remove remaining regex escapes
-    result = result.replace("\\d", "").replace("\\S", "").replace("\\w", "")
-    result = result.replace("+", "").replace("*", "").replace("?", "")
-    return result
-
-
-def _regex_to_literal(pattern: str) -> str | None:
-    """Convert a simple regex (no capture groups) to a literal string.
-
-    Returns None if the pattern is too complex.
-    Example: 'Amt1' → 'Amt1'
-    """
-    # If it has capture groups, it's not a literal
-    if "(" in pattern:
-        return None
-    # Remove simple regex escapes
-    result = pattern.replace("\\", "")
-    # If it still has regex metacharacters, it's too complex
-    if any(c in result for c in "[]{}*+?.^$|"):
-        return None
-    return result
-
 
 def _infer_state_var(cmd_name: str, state_vars: set[str]) -> str | None:
     """Infer which state variable a command targets from its name.

@@ -200,6 +200,243 @@ def send_param_specs(template: str, params: dict[str, Any]) -> dict[str, str]:
     return specs
 
 
+# ── Emit-template inversion (response regex → reply text) ──
+#
+# The auto-generated simulator answers a query by reconstructing the reply
+# text a driver's response pattern would match. That means walking the regex
+# source and emitting one representative string: literals stay, anchors and
+# word boundaries vanish, a class or shorthand becomes one member character,
+# an alternation takes its first branch, an optional atom is dropped, and
+# the requested capture group becomes the {value} placeholder. Anything the
+# walk can't faithfully model returns None so the caller falls back instead
+# of putting garbage on the wire.
+
+
+class _Unsupported(Exception):
+    """Regex construct the emit reconstruction cannot model."""
+
+
+_SHORTHAND_REPS = {"d": "0", "w": "0", "s": " ", "S": "0"}
+_ESCAPE_CHARS = {"r": "\r", "n": "\n", "t": "\t", "f": "\f", "v": "\v"}
+_QUANT_RE = re.compile(r"\{(\d+)(?:,(\d*))?\}")
+_FLAG_GROUP_RE = re.compile(r"\(\?([aiLmsux]+)([:)])")
+
+
+def _class_emit(body: str) -> str | None:
+    """One representative character for a [...] class body, or None.
+
+    The first member decides: a literal char, a range's start, a shorthand's
+    representative. A negated class has no safe representative.
+    """
+    if not body or body.startswith("^"):
+        return None
+    if body[0] == "\\" and len(body) > 1:
+        c = body[1]
+        if c in _SHORTHAND_REPS:
+            return _SHORTHAND_REPS[c]
+        if c in _ESCAPE_CHARS:
+            return _ESCAPE_CHARS[c]
+        if c in ("D", "W"):
+            return None
+        return c
+    return body[0]
+
+
+def _class_end(src: str, i: int) -> int:
+    """Index of the ']' closing the class opened at src[i] == '['."""
+    j = i + 1
+    if j < len(src) and src[j] == "^":
+        j += 1
+    if j < len(src) and src[j] == "]":
+        j += 1  # leading ] is a literal member
+    while j < len(src):
+        if src[j] == "\\":
+            j += 2
+            continue
+        if src[j] == "]":
+            return j
+        j += 1
+    raise _Unsupported
+
+
+def _parse_atom(src: str, i: int, ctx: dict) -> tuple[str | None, int]:
+    """Emit one atom starting at src[i]. None means unrepresentable —
+    fatal only if the atom survives into the final emission."""
+    c = src[i]
+    if c in "^$":
+        return "", i + 1
+    if c == ".":
+        return "x", i + 1
+    if c == "\\":
+        if i + 1 >= len(src):
+            raise _Unsupported
+        e = src[i + 1]
+        if e in _SHORTHAND_REPS:
+            return _SHORTHAND_REPS[e], i + 2
+        if e in _ESCAPE_CHARS:
+            return _ESCAPE_CHARS[e], i + 2
+        if e in "bB":
+            return "", i + 2
+        if e == "x" and re.match(r"[0-9a-fA-F]{2}", src[i + 2 : i + 4]):
+            return chr(int(src[i + 2 : i + 4], 16)), i + 4
+        if e.isdigit():
+            return None, i + 2  # backreference
+        if e in "DWAZ":
+            return None, i + 2
+        return e, i + 2  # escaped literal (punctuation)
+    if c == "[":
+        j = _class_end(src, i)
+        return _class_emit(src[i + 1 : j]), j + 1
+    if c == "(":
+        return _parse_group(src, i, ctx)
+    return c, i + 1
+
+
+def _parse_group(src: str, i: int, ctx: dict) -> tuple[str | None, int]:
+    """Emit the group opened at src[i] == '('."""
+    capturing = True
+    j = i + 1
+    if src.startswith("(?:", i):
+        capturing = False
+        j = i + 3
+    elif src.startswith("(?P<", i):
+        k = src.find(">", i)
+        if k < 0:
+            raise _Unsupported
+        j = k + 1
+    elif src.startswith("(?", i):
+        m = _FLAG_GROUP_RE.match(src, i)
+        if not m:
+            raise _Unsupported  # lookarounds, conditionals, (?P=...)
+        if m.group(2) == ")":
+            return "", m.end()  # global flags like (?i)
+        capturing = False
+        j = m.end()
+    this_no = 0
+    if capturing:
+        ctx["n"] += 1
+        this_no = ctx["n"]
+    emission, j = _parse_branches(src, j, ctx, depth=1)
+    if j >= len(src) or src[j] != ")":
+        raise _Unsupported
+    j += 1
+    if capturing and this_no == ctx["target"]:
+        ctx["found"] = True
+        return "{value}", j
+    return emission, j
+
+
+def _parse_quantifier(src: str, i: int) -> tuple[int, int] | None:
+    """Parse a quantifier at src[i]; return (min_repeats, next_i) or None."""
+    if i >= len(src):
+        return None
+    c = src[i]
+    if c in "?*":
+        n, j = 0, i + 1
+    elif c == "+":
+        n, j = 1, i + 1
+    elif c == "{":
+        m = _QUANT_RE.match(src, i)
+        if not m:
+            return None  # a bare '{' is a literal, not a quantifier
+        n, j = int(m.group(1)), m.end()
+        if n > 8:
+            raise _Unsupported
+    else:
+        return None
+    if j < len(src) and src[j] == "?":
+        j += 1  # lazy variant
+    return n, j
+
+
+def _parse_seq(src: str, i: int, ctx: dict, depth: int) -> tuple[str | None, int]:
+    """Emit atoms until '|', a closing ')' (inside a group), or the end."""
+    pieces: list[str | None] = []
+    while i < len(src):
+        c = src[i]
+        if c == "|":
+            break
+        if c == ")":
+            if depth == 0:
+                raise _Unsupported  # unbalanced
+            break
+        piece, i = _parse_atom(src, i, ctx)
+        quant = _parse_quantifier(src, i)
+        reps = 1
+        if quant:
+            reps, i = quant
+        if piece is not None and "{value}" in piece:
+            if reps != 1:
+                if reps > 1:
+                    raise _Unsupported  # {value}{2} would duplicate the field
+                reps = 1  # never drop the target capture
+        if reps == 0:
+            continue
+        pieces.append(piece if reps == 1 else (None if piece is None else piece * reps))
+    if any(p is None for p in pieces):
+        return None, i
+    return "".join(pieces), i  # type: ignore[arg-type]
+
+
+def _parse_branches(src: str, i: int, ctx: dict, depth: int) -> tuple[str | None, int]:
+    """Emit an alternation: all branches are parsed (group numbering must
+    stay exact), the emission comes from the first branch carrying {value},
+    else the first representable branch."""
+    branches: list[str | None] = []
+    while True:
+        emission, i = _parse_seq(src, i, ctx, depth)
+        branches.append(emission)
+        if i < len(src) and src[i] == "|":
+            i += 1
+            continue
+        break
+    with_value = [b for b in branches if b is not None and "{value}" in b]
+    if with_value:
+        return with_value[0], i
+    for b in branches:
+        if b is not None:
+            return b, i
+    return None, i
+
+
+def emit_template(pattern: str, group: int = 1) -> str | None:
+    """Reconstruct the reply text a response pattern matches, with capture
+    group ``group`` as a ``{value}`` placeholder.
+
+    ``'In(\\d+) All'`` → ``'In{value} All'``; the group number comes from
+    the response's ``$N`` reference, so a multi-group pattern places the
+    value where that state key actually reads it. Returns None when the
+    pattern can't be modeled — the caller falls back rather than emitting
+    garbage the driver's own regex would reject.
+    """
+    ctx = {"n": 0, "target": group, "found": False}
+    try:
+        emission, i = _parse_branches(pattern, 0, ctx, depth=0)
+    except _Unsupported:
+        return None
+    if i != len(pattern) or emission is None:
+        return None
+    if not ctx["found"] or "{value}" not in emission:
+        return None
+    return emission
+
+
+def emit_literal(pattern: str) -> str | None:
+    """Reconstruct the literal reply text a capture-less response pattern
+    matches (``'^Amt1$'`` → ``'Amt1'``). None when the pattern contains a
+    capturing group (a fixed literal can't represent a captured field) or
+    a construct the reconstruction can't model.
+    """
+    ctx = {"n": 0, "target": 0, "found": False}
+    try:
+        emission, i = _parse_branches(pattern, 0, ctx, depth=0)
+    except _Unsupported:
+        return None
+    if i != len(pattern) or emission is None or ctx["n"]:
+        return None
+    return emission
+
+
 # ── Value coercion ──
 
 

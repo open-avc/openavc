@@ -13,6 +13,8 @@ from server.drivers.compiled_protocol import (
     build_send_frame,
     compile_driver,
     decode_delimiter,
+    emit_literal,
+    emit_template,
     send_param_specs,
     send_regex,
     spec_int_base,
@@ -148,6 +150,75 @@ def test_send_param_specs_and_spec_int_base():
     assert spec_int_base("08b") == 2
     assert spec_int_base("03d") is None
     assert spec_int_base("") is None
+
+
+# ── emit_template / emit_literal (response regex → reply text) ──
+
+
+def test_emit_template_basic_and_anchors():
+    assert emit_template(r"In(\d+) All") == "In{value} All"
+    # Anchors and word boundaries never emit characters.
+    assert emit_template(r"^VOL(\d+)$") == "VOL{value}"
+    assert emit_template(r"LVL=(\d+)\b") == "LVL={value}"
+
+
+def test_emit_template_escapes_and_classes():
+    # Escaped punctuation emits the literal character.
+    assert emit_template(r"\(PWR!(-?\d+)\)") == "(PWR!{value})"
+    # Shorthand classes and [...] classes emit one representative member;
+    # quantifiers collapse to their minimum (one for +, none for * and ?).
+    assert (
+        emit_template(r"TEMP:\s+[\d.]+\s+F \((\d+) C\)") == "TEMP: 0 F ({value} C)"
+    )
+
+
+def test_emit_template_groups_and_alternation():
+    # Non-capturing and scoped-flag groups emit their first alternative.
+    assert (
+        emit_template(r"(?:NOTIFY set|OK set) MTX:X 0 0 (\d+)")
+        == "NOTIFY set MTX:X 0 0 {value}"
+    )
+    assert emit_template(r"(?i:\*vol=(\d+)\b)") == "*vol={value}"
+    # An optional group is dropped — unless it carries the target capture.
+    assert (
+        emit_template(r"<Volume(?:\s[^>]*)?>(\d+)</Volume>")
+        == "<Volume>{value}</Volume>"
+    )
+
+
+def test_emit_template_targets_the_referenced_group():
+    pattern = r"OK get (MTX:mem_\S+) 0 0 (-?\d+)"
+    # $1 → the name field; $2 → the level field. A non-target group emits
+    # representative content so the reply still matches the pattern.
+    assert emit_template(pattern, 1) == "OK get {value} 0 0 0"
+    assert emit_template(pattern, 2) == "OK get MTX:mem_0 0 0 {value}"
+    # A target inside an optional tail is kept, not dropped.
+    assert (
+        emit_template(r'(\d+)(?: "([^"]*)")?', 2) == '0 "{value}"'
+    )
+
+
+def test_emit_template_returns_none_when_unmodelable():
+    assert emit_template(r"NoGroupsHere") is None
+    assert emit_template(r"(\d+)", 2) is None  # target group doesn't exist
+    assert emit_template(r"(?=lookahead)(\d+)") is None
+    assert emit_template(r"(\w+) \1") is None  # backreference survives
+    assert emit_template(r"[^/]+ (\d+)") is None  # negated class survives
+    # ...but a negated class INSIDE the target group is fine — the group
+    # becomes {value} and its content never needs a representative.
+    assert emit_template(r'val="([^"]*)"') == 'val="{value}"'
+
+
+def test_emit_literal_reconstructs_fixed_replies():
+    assert emit_literal(r"^Amt1$") == "Amt1"
+    assert emit_literal(r"(?i:\*pow=on\b)") == "*pow=on"
+    assert emit_literal(r"Bluetooth mute:\s*on") == "Bluetooth mute:on"
+    assert emit_literal(r"g_link 0000 \S+ NC 1") == "g_link 0000 0 NC 1"
+
+
+def test_emit_literal_rejects_capture_groups():
+    # A fixed literal can't represent a captured field.
+    assert emit_literal(r"~\d+@MUTE (\d+),0") is None
 
 
 # ── compile_driver (receive side) ──
