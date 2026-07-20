@@ -345,6 +345,24 @@ def _validate_plugin_id(plugin_id: str) -> None:
 # ──── Install ────
 
 
+def _extract_plugin_zip(content: bytes, plugin_dir: Path) -> None:
+    """Extract a plugin zip into plugin_dir (sync; run via to_thread)."""
+    with zipfile.ZipFile(BytesIO(content)) as zf:
+        _check_zip_bomb(zf, label="Plugin archive")
+        for name in zf.namelist():
+            parts = name.split("/", 1)
+            relative = parts[1] if len(parts) > 1 else name
+            target = _safe_zip_target(plugin_dir, relative)
+            if target is None:
+                log.warning(f"Skipping zip entry with unsafe path: {name}")
+                continue
+            if name.endswith("/"):
+                target.mkdir(parents=True, exist_ok=True)
+            else:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(zf.read(name))
+
+
 async def install_plugin(plugin_id: str, file_url: str) -> dict[str, Any]:
     """
     Download and install a plugin from the community repository.
@@ -387,25 +405,12 @@ async def _do_install(plugin_id: str, file_url: str) -> dict[str, Any]:
                 log.info(f"Installed plugin '{plugin_id}' from {filename}")
 
             elif file_url.endswith(".zip"):
-                # Zip archive
+                # Zip archive — extract off the event loop
                 content = await _download_capped(
                     client, file_url, label="plugin archive"
                 )
                 plugin_dir.mkdir(parents=True, exist_ok=True)
-                with zipfile.ZipFile(BytesIO(content)) as zf:
-                    _check_zip_bomb(zf, label="Plugin archive")
-                    for name in zf.namelist():
-                        parts = name.split("/", 1)
-                        relative = parts[1] if len(parts) > 1 else name
-                        target = _safe_zip_target(plugin_dir, relative)
-                        if target is None:
-                            log.warning(f"Skipping zip entry with unsafe path: {name}")
-                            continue
-                        if name.endswith("/"):
-                            target.mkdir(parents=True, exist_ok=True)
-                        else:
-                            target.parent.mkdir(parents=True, exist_ok=True)
-                            target.write_bytes(zf.read(name))
+                await asyncio.to_thread(_extract_plugin_zip, content, plugin_dir)
                 log.info(f"Installed plugin '{plugin_id}' from zip archive")
 
             else:
@@ -571,20 +576,35 @@ async def _install_pip_deps(plugin_id: str, plugin_dir: Path) -> None:
         # Download wheels directly from PyPI instead.
         await _install_deps_from_pypi(deps, deps_dir, plugin_id)
     else:
-        # Development: use pip normally
+        # Development: use pip normally. Async subprocess, not subprocess.run —
+        # a pip resolve can take the full 120s and this runs on the event
+        # loop of a live engine (device polling, WS, cloud heartbeats).
         try:
-            subprocess.run(
-                [sys.executable, "-m", "pip", "install", "--target", str(deps_dir)]
-                + deps,
-                capture_output=True,
-                text=True,
-                timeout=120,
-                check=True,
+            proc = await asyncio.create_subprocess_exec(
+                sys.executable, "-m", "pip", "install",
+                "--target", str(deps_dir), *deps,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
                 creationflags=CREATE_NO_WINDOW,
             )
-        except subprocess.CalledProcessError as e:
-            log.warning(f"pip install failed for '{plugin_id}': {e.stderr}")
-        except (OSError, subprocess.TimeoutExpired) as e:
+            try:
+                _stdout, stderr = await asyncio.wait_for(
+                    proc.communicate(), timeout=120
+                )
+            except asyncio.TimeoutError:
+                proc.kill()
+                await proc.communicate()
+                log.warning(
+                    f"Could not install deps for '{plugin_id}': "
+                    f"pip timed out after 120s"
+                )
+                return
+            if proc.returncode != 0:
+                log.warning(
+                    f"pip install failed for '{plugin_id}': "
+                    f"{stderr.decode('utf-8', errors='replace')}"
+                )
+        except OSError as e:
             log.warning(f"Could not install deps for '{plugin_id}': {e}")
 
 
@@ -627,37 +647,41 @@ async def _install_deps_from_pypi(
                     client, wheel_url, label=f"wheel {wheel_name}"
                 )
 
-                # Wheels are zip files — extract into .deps/
-                with zipfile.ZipFile(BytesIO(wheel_bytes)) as whl:
-                    _check_zip_bomb(whl, label="Wheel")
-                    for name in whl.namelist():
-                        # Skip .dist-info/RECORD (file hashes) — not needed
-                        if name.endswith("/"):
-                            target = _safe_zip_target(deps_dir, name)
-                            if target is None:
-                                log.warning(f"Skipping wheel entry with unsafe path: {name}")
-                                continue
-                            target.mkdir(parents=True, exist_ok=True)
-                        else:
-                            target = _safe_zip_target(deps_dir, name)
-                            if target is None:
-                                log.warning(f"Skipping wheel entry with unsafe path: {name}")
-                                continue
-                            target.parent.mkdir(parents=True, exist_ok=True)
-                            target.write_bytes(whl.read(name))
-
-                    # Read transitive dependencies from METADATA
-                    new_deps = _read_wheel_deps(whl)
-                    for dep in new_deps:
-                        dep_name = _normalize_pkg_name(_parse_requirement(dep)[0])
-                        if dep_name not in installed:
-                            queue.append(dep)
+                # Wheels are zip files — extract into .deps/ off the loop
+                new_deps = await asyncio.to_thread(
+                    _extract_wheel, wheel_bytes, deps_dir
+                )
+                for dep in new_deps:
+                    dep_name = _normalize_pkg_name(_parse_requirement(dep)[0])
+                    if dep_name not in installed:
+                        queue.append(dep)
 
                 installed.add(normalized)
                 log.info(f"[{plugin_id}] Installed {wheel_name} to .deps/")
 
             except (httpx.HTTPError, OSError, ValueError, zipfile.BadZipFile) as e:
                 log.warning(f"[{plugin_id}] Failed to install '{req}': {e}")
+
+
+def _extract_wheel(wheel_bytes: bytes, deps_dir: Path) -> list[str]:
+    """Extract a wheel into .deps/ and return its transitive requirements
+    (sync; run via to_thread)."""
+    with zipfile.ZipFile(BytesIO(wheel_bytes)) as whl:
+        _check_zip_bomb(whl, label="Wheel")
+        for name in whl.namelist():
+            # Skip .dist-info/RECORD (file hashes) — not needed
+            target = _safe_zip_target(deps_dir, name)
+            if target is None:
+                log.warning(f"Skipping wheel entry with unsafe path: {name}")
+                continue
+            if name.endswith("/"):
+                target.mkdir(parents=True, exist_ok=True)
+            else:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(whl.read(name))
+
+        # Read transitive dependencies from METADATA
+        return _read_wheel_deps(whl)
 
 
 def _normalize_pkg_name(name: str) -> str:
@@ -957,8 +981,9 @@ async def _install_native_deps(plugin_id: str, plugin_dir: Path) -> None:
             )
             continue
 
-        # Check if already installed
-        if _check_native_dep(dep):
+        # Check if already installed (to_thread: ctypes/registry/command
+        # probes can block)
+        if await asyncio.to_thread(_check_native_dep, dep):
             log.debug(f"Native dep '{dep_name}' already available")
             continue
 
@@ -969,7 +994,10 @@ async def _install_native_deps(plugin_id: str, plugin_dir: Path) -> None:
             if platform_info.get("type") in _ARCHIVE_DEP_TYPES:
                 await _install_native_dep_archive(dep_name, platform_info, deps_dir)
             elif platform_info.get("install_cmd"):
-                _install_native_dep_command(dep_name, platform_info)
+                # to_thread: runs a system command with a 60s timeout
+                await asyncio.to_thread(
+                    _install_native_dep_command, dep_name, platform_info
+                )
             else:
                 log.warning(f"No install method for native dep '{dep_name}'")
         except (OSError, ValueError, httpx.HTTPError) as e:
@@ -1136,6 +1164,16 @@ async def _install_native_dep_archive(
             client, url, label=f"native dependency {dep_name}"
         )
 
+    # Decompress + extract off the event loop (xz/gzip payloads are CPU-bound)
+    await asyncio.to_thread(
+        _extract_native_dep_file, dep_name, url, data, extract_path, deps_dir
+    )
+
+
+def _extract_native_dep_file(
+    dep_name: str, url: str, data: bytes, extract_path: str, deps_dir: Path
+) -> None:
+    """Extract one file from a native-dep archive (sync; run via to_thread)."""
     target_filename = Path(extract_path).name
     target = deps_dir / target_filename
     fmt = _detect_archive_format(url, data)

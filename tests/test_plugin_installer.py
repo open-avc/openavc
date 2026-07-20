@@ -711,6 +711,14 @@ class TestRegisterInstalledPlugin:
 # ═══════════════════════════════════════════════════════════
 
 
+def _mock_pip_proc(returncode: int = 0, stderr: bytes = b""):
+    """A fake asyncio subprocess whose communicate() resolves immediately."""
+    proc = MagicMock()
+    proc.returncode = returncode
+    proc.communicate = AsyncMock(return_value=(b"", stderr))
+    return proc
+
+
 class TestInstallPipDeps:
 
     async def test_parses_and_installs_deps(self, plugin_repo):
@@ -721,15 +729,55 @@ class TestInstallPipDeps:
             PLUGIN_WITH_DEPS_SOURCE, encoding="utf-8"
         )
 
-        with patch("server.core.plugin_installer.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0)
+        with patch(
+            "asyncio.create_subprocess_exec", new=AsyncMock(return_value=_mock_pip_proc())
+        ) as mock_exec, patch("server.core.plugin_installer.subprocess.run") as mock_run:
             await _install_pip_deps("deps_plugin", plugin_dir)
 
-        mock_run.assert_called_once()
-        call_args = mock_run.call_args[0][0]
+        # Async subprocess, never the sync blocking call (V-LC-007)
+        mock_run.assert_not_called()
+        mock_exec.assert_called_once()
+        call_args = mock_exec.call_args[0]
         assert "some-library>=1.0" in call_args
         assert "another-lib" in call_args
         assert "--target" in call_args
+
+    async def test_pip_install_lets_event_loop_breathe(self, plugin_repo):
+        """Other tasks keep running while pip does its (mocked) 0.2s of work."""
+        import asyncio
+
+        plugin_dir = plugin_repo / "deps_plugin"
+        plugin_dir.mkdir()
+        (plugin_dir / "deps_plugin.py").write_text(
+            PLUGIN_WITH_DEPS_SOURCE, encoding="utf-8"
+        )
+
+        ticks = 0
+
+        async def heartbeat():
+            nonlocal ticks
+            while True:
+                await asyncio.sleep(0.01)
+                ticks += 1
+
+        proc = MagicMock()
+        proc.returncode = 0
+
+        async def slow_communicate():
+            await asyncio.sleep(0.2)
+            return (b"", b"")
+
+        proc.communicate = slow_communicate
+
+        hb = asyncio.create_task(heartbeat())
+        try:
+            with patch(
+                "asyncio.create_subprocess_exec", new=AsyncMock(return_value=proc)
+            ), patch("server.core.plugin_installer.subprocess.run"):
+                await _install_pip_deps("deps_plugin", plugin_dir)
+        finally:
+            hb.cancel()
+        assert ticks >= 10, "event loop starved during pip install"
 
     async def test_no_deps_skips_pip(self, plugin_repo):
         """Plugin without dependencies does not call pip."""
@@ -740,10 +788,10 @@ class TestInstallPipDeps:
             encoding="utf-8",
         )
 
-        with patch("server.core.plugin_installer.subprocess.run") as mock_run:
+        with patch("asyncio.create_subprocess_exec", new=AsyncMock()) as mock_exec:
             await _install_pip_deps("no_deps", plugin_dir)
 
-        mock_run.assert_not_called()
+        mock_exec.assert_not_called()
 
     async def test_pip_failure_logged_not_raised(self, plugin_repo):
         """pip install failure is logged but does not raise."""
@@ -753,11 +801,9 @@ class TestInstallPipDeps:
             PLUGIN_WITH_DEPS_SOURCE, encoding="utf-8"
         )
 
-        import subprocess as sp
-
         with patch(
-            "server.core.plugin_installer.subprocess.run",
-            side_effect=sp.CalledProcessError(1, "pip", stderr="error"),
+            "asyncio.create_subprocess_exec",
+            new=AsyncMock(return_value=_mock_pip_proc(returncode=1, stderr=b"error")),
         ):
             # Should not raise
             await _install_pip_deps("deps_plugin", plugin_dir)
@@ -770,8 +816,9 @@ class TestInstallPipDeps:
             PLUGIN_WITH_DEPS_SOURCE, encoding="utf-8"
         )
 
-        with patch("server.core.plugin_installer.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0)
+        with patch(
+            "asyncio.create_subprocess_exec", new=AsyncMock(return_value=_mock_pip_proc())
+        ):
             await _install_pip_deps("deps_plugin", plugin_dir)
 
         assert (plugin_repo / ".deps").is_dir()
@@ -784,10 +831,10 @@ class TestInstallPipDeps:
             "def broken(\n", encoding="utf-8"
         )
 
-        with patch("server.core.plugin_installer.subprocess.run") as mock_run:
+        with patch("asyncio.create_subprocess_exec", new=AsyncMock()) as mock_exec:
             await _install_pip_deps("bad_syntax", plugin_dir)
 
-        mock_run.assert_not_called()
+        mock_exec.assert_not_called()
 
 
 # ═══════════════════════════════════════════════════════════
