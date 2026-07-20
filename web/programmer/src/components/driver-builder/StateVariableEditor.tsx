@@ -53,7 +53,7 @@ export function StateVariableEditor({
     onUpdate({
       state_variables: {
         ...vars,
-        [name]: merged as (typeof vars)[string],
+        [name]: merged as unknown as (typeof vars)[string],
       },
     });
   };

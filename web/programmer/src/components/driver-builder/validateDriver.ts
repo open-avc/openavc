@@ -3,6 +3,24 @@ import type {
   DriverDefinition,
   DriverDeviceSettingDef,
 } from "../../api/types";
+// Contract constant tables, generated from the platform's driver-contract
+// registry (types.gen.ts) — the runtime, the catalog validator, and this
+// validator all read the same tables, so they can't drift apart.
+import {
+  AUTH_TRANSPORTS,
+  DISALLOWED_OPEN_PORTS,
+  FRAME_HEADER_SIZES,
+  LENGTH_ENDIANS,
+  LIVENESS_TRANSPORTS,
+  PUSH_FRAME_PARSER_TYPES,
+  PUSH_KEYS_BY_TYPE,
+  STATE_VAR_TYPES,
+  STRUCT_LENGTH_SIZES,
+} from "../../api/types";
+
+// Re-exported for the Discovery editor, which shows the rule inline at
+// authoring time.
+export { DISALLOWED_OPEN_PORTS };
 
 export type IssueSection =
   | "general"
@@ -43,31 +61,9 @@ const ID_RE = /^[a-z][a-z0-9_]*$/;
 const PARAM_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 const PLACEHOLDER_RE = /\{(\w+)\}/g;
 
-// Mirror of DISALLOWED_OPEN_PORTS in server/discovery/hints.py — a port_open
-// hint on one of these matches every web/SSH host, so the runtime rejects it.
-// Exported so the Discovery editor shows the rule inline at authoring time.
-export const DISALLOWED_OPEN_PORTS: ReadonlySet<number> = new Set([
-  22, 80, 443, 8000, 8080, 8443, 8888,
-]);
 // Child type ids and per-child field ids share the device state-key
 // namespace, so they follow the same lowercase-identifier rule.
 const CHILD_ID_RE = /^[a-z][a-z0-9_]*$/;
-
-// Mirror of the runtime's LengthPrefixFrameParser (server/transport/
-// frame_parsers.py): the length header must be 1, 2, or 4 bytes. Any other
-// size raises a ValueError when the parser is built at device connect.
-const FRAME_HEADER_SIZES: ReadonlySet<number> = new Set([1, 2, 4]);
-
-// State-variable types the runtime accepts (driver_loader.py validate_driver_
-// definition). A non-empty value outside this set is rejected at load.
-const STATE_VAR_TYPES: ReadonlySet<string> = new Set([
-  "string",
-  "integer",
-  "number",
-  "boolean",
-  "enum",
-  "float",
-]);
 
 // ── Transport ↔ command-shape routing ──────────────────────────────────
 // The runtime routes each command/setting-write by SHAPE, not by the
@@ -1186,11 +1182,7 @@ export function validateDriver(
         message: `Login handshake type "${auth.type}" isn't supported (only "telnet_login").`,
       });
     }
-    if (
-      draft.transport &&
-      draft.transport !== "tcp" &&
-      draft.transport !== "serial"
-    ) {
+    if (draft.transport && !AUTH_TRANSPORTS.has(draft.transport)) {
       issues.push({
         severity: "error",
         section: "connection",
@@ -1259,27 +1251,6 @@ function isMulticastGroup(value: string): boolean {
 // today. Kept (empty) so a future shape can be named here with a
 // "not yet" message instead of reading as a typo. Mirror driver_loader.py.
 const RESERVED_PUSH_TYPES: ReadonlySet<string> = new Set<string>();
-
-const PUSH_KEYS_BY_TYPE: Readonly<Record<string, ReadonlySet<string>>> = {
-  multicast: new Set(["type", "group", "port"]),
-  sse: new Set(["type", "path", "idle_timeout"]),
-  tcp_listener: new Set([
-    "type",
-    "port",
-    "frame_parser",
-    "register",
-    "unregister",
-  ]),
-  // http_listener has no fields of its own: the platform assigns the
-  // callback path and the registration command uses {push_callback_url}.
-  http_listener: new Set(["type"]),
-};
-
-const PUSH_FRAME_PARSER_TYPES: ReadonlySet<string> = new Set([
-  "struct_frame",
-  "length_prefix",
-  "fixed_length",
-]);
 
 /** Mirror server/drivers/driver_loader.py's push: load-time checks. Values
  *  accept {config_field} templates, and a template may only name a field
@@ -1532,7 +1503,7 @@ function validatePush(
           }
         }
         const fsize = (frame as Record<string, unknown>).length_size ?? 2;
-        if (fsize !== 1 && fsize !== 2 && fsize !== 4) {
+        if (typeof fsize !== "number" || !STRUCT_LENGTH_SIZES.has(fsize)) {
           issues.push({
             severity: "error",
             section: "connection",
@@ -1550,7 +1521,7 @@ function validatePush(
           });
         }
         const fend = (frame as Record<string, unknown>).length_endian ?? "big";
-        if (fend !== "big" && fend !== "little") {
+        if (!(LENGTH_ENDIANS as readonly unknown[]).includes(fend)) {
           issues.push({
             severity: "error",
             section: "connection",
@@ -1585,17 +1556,6 @@ function validatePush(
     }
   }
 }
-
-/** Transports the connection watchdog supports. HTTP polling already awaits
- *  every response and raises on failure, and bridge devices own no transport,
- *  so the probe only makes sense on socket transports that can die silently.
- *  Mirror driver_loader.py. */
-const LIVENESS_TRANSPORTS: ReadonlySet<string> = new Set([
-  "tcp",
-  "serial",
-  "udp",
-  "osc",
-]);
 
 /** Mirror server/drivers/driver_loader.py's liveness: load-time checks — a
  *  misdeclared watchdog would silently never arm (the exact never-goes-
@@ -1750,7 +1710,10 @@ function validateFrameParser(
       }
     }
     const endian = fp.length_endian as string | undefined;
-    if (endian !== undefined && endian !== "big" && endian !== "little") {
+    if (
+      endian !== undefined &&
+      !(LENGTH_ENDIANS as readonly unknown[]).includes(endian)
+    ) {
       issues.push({
         severity: "error",
         section: "connection",
@@ -1813,7 +1776,10 @@ function validateSendFrame(
     });
   }
   const endian = sf.length_endian as string | undefined;
-  if (endian !== undefined && endian !== "big" && endian !== "little") {
+  if (
+    endian !== undefined &&
+    !(LENGTH_ENDIANS as readonly unknown[]).includes(endian)
+  ) {
     issues.push({
       severity: "error",
       section: "connection",

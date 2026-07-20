@@ -23,6 +23,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from server.drivers.spec import CATEGORIES
+
 # Repo root = openavc/ (this file is openavc/tests/test_driver_builder_categories.py).
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 PROGRAMMER_SRC = OPENAVC_ROOT / "web" / "programmer" / "src"
@@ -30,11 +32,8 @@ CATEGORIES_TS = PROGRAMMER_SRC / "components" / "driver-builder" / "driverCatego
 DRIVER_EDITOR_TSX = PROGRAMMER_SRC / "components" / "driver-builder" / "DriverEditor.tsx"
 CREATE_DRIVER_DIALOG_TSX = PROGRAMMER_SRC / "components" / "scripts" / "CreateDriverDialog.tsx"
 
-# The catalog-valid categories (build_index.py DRIVER_CATEGORIES / schema enum).
-CANONICAL_CATEGORIES = {
-    "projector", "display", "switcher", "audio", "camera",
-    "video", "streaming", "lighting", "power", "utility",
-}
+# The catalog-valid categories, straight from the contract tables.
+CANONICAL_CATEGORIES = set(CATEGORIES)
 # Values the old DriverEditor dropdown offered that the catalog rejects.
 CATALOG_INVALID = {"scaler", "recorder", "relay", "other"}
 

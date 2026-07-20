@@ -34,6 +34,7 @@ from server.discovery.tier_matcher import (
     SignalIndex,
     SignalRule,
 )
+from server.drivers.spec import DISALLOWED_OPEN_PORTS as _DISALLOWED_OPEN_PORTS
 
 log = logging.getLogger("discovery.hints")
 
@@ -44,13 +45,11 @@ _TEMPLATE_PREFIXES: tuple[str, ...] = ("generic_",)
 
 # Ports too generic to use as a hint — every web / admin / SSH device
 # on the network would match. AV-specific ports (1710, 4352, etc.) are
-# fine. Generic safety rule, not vendor-specific.
-#
-# 8000 / 8080 / 8443 / 8888 are admin-UI alternates that show up on
-# routers, IoT, dev servers, NAS, and most web-management consoles —
-# the same false-positive class as 80/443. A driver that only matches
-# on these is matching every web admin UI on the LAN.
-DISALLOWED_OPEN_PORTS: frozenset[int] = frozenset({22, 80, 443, 8000, 8080, 8443, 8888})
+# fine. Generic safety rule, not vendor-specific. The port list lives in
+# the driver-contract tables (server/drivers/spec.py) so the published
+# schema and the Builder reject the same ports this parser does;
+# re-exported here under the name discovery code has always used.
+DISALLOWED_OPEN_PORTS: frozenset[int] = frozenset(_DISALLOWED_OPEN_PORTS)
 
 # Cap on how long a probe is allowed to wait for a reply. Anything
 # longer would stretch the scan budget unreasonably.

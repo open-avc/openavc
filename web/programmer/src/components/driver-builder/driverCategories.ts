@@ -1,13 +1,15 @@
-// The ten canonical driver categories the community catalog accepts. This is
-// the single source of truth for every driver-authoring surface in the IDE, so
-// the authoring dropdowns can't drift out of sync with the catalog again. Keep
-// it in lockstep with build_index.py's DRIVER_CATEGORIES (openavc-drivers) and
-// avcdriver.schema.json's category enum. A value outside this list authors and
-// runs locally with no warning but is rejected by build_index.py's validator at
-// catalog-submission CI, far from the authoring surface, so the dropdowns must
-// only ever offer these.
+// The canonical driver categories the community catalog accepts, with the
+// labels the authoring dropdowns show. The category ids come from the
+// platform's generated contract tables (DRIVER_CATEGORY_IDS in
+// types.gen.ts), so a value outside the catalog's list is a compile error
+// here rather than a rejection at catalog-submission CI, far from the
+// authoring surface. Labels are IDE presentation and are maintained here.
+import { DRIVER_CATEGORY_IDS } from "../../api/types";
+
+export type CatalogCategoryId = (typeof DRIVER_CATEGORY_IDS)[number];
+
 export interface DriverCategory {
-  value: string;
+  value: CatalogCategoryId;
   label: string;
 }
 

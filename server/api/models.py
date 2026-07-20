@@ -140,6 +140,9 @@ class DriverDefinitionRequest(BaseModel):
     # `validate_driver_definition()` in driver_loader.py. This API model
     # acts only as a transit container; allow extra fields so they survive
     # the round-trip to disk instead of being silently stripped.
+    # The full field set lives in the contract registry
+    # (server/drivers/spec.py FIELDS); a test pins every field declared
+    # here to a registry entry.
     model_config = ConfigDict(extra="allow")
 
     id: str

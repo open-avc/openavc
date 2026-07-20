@@ -1,0 +1,2521 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/open-avc/openavc-drivers/main/pythondriver.schema.json",
+  "title": "OpenAVC Python Driver Metadata (DRIVER_INFO)",
+  "description": "The schema for the DRIVER_INFO metadata dict of an OpenAVC Python driver. Identical to the .avcdriver schema except where Python drivers can do more: the ssh and mqtt transports (driver-managed sessions the declarative runtime doesn't model) and kind \"setup\" actions (offline provisioning wizards backed by a run_setup_action handler). The community driver catalog validates extracted DRIVER_INFO dicts against it.",
+  "type": "object",
+  "required": [
+    "id",
+    "name",
+    "manufacturer",
+    "category",
+    "version",
+    "author",
+    "transport",
+    "description",
+    "source_url"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "description": "Unique driver identifier. Lowercase alphanumeric with underscores."
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable display name."
+    },
+    "manufacturer": {
+      "type": "string",
+      "description": "Manufacturer name. Must exist in manufacturers.json for catalog submission."
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "projector",
+        "display",
+        "switcher",
+        "audio",
+        "camera",
+        "video",
+        "streaming",
+        "lighting",
+        "power",
+        "utility"
+      ],
+      "description": "Driver category. One of the ten catalog categories."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(?:[\\-+][\\w.\\-]+)?$",
+      "description": "Semantic version, e.g. 1.0.0."
+    },
+    "author": {
+      "type": "string",
+      "description": "Driver author."
+    },
+    "transport": {
+      "type": "string",
+      "enum": [
+        "tcp",
+        "serial",
+        "udp",
+        "http",
+        "osc",
+        "bridge",
+        "ssh",
+        "mqtt"
+      ],
+      "description": "Transport the driver uses to reach the device. Use \"bridge\" for a device that has no address of its own and emits through a live bridge instance (an IR device on an emitter port); it opens no socket and routes commands via the bridge."
+    },
+    "transports": {
+      "type": "array",
+      "description": "Optional. Transports this driver can use interchangeably (e.g. [\"tcp\", \"serial\"] for a text protocol whose command/response strings are byte-identical over the network or a serial line). The per-device connection picks the actual transport; listing \"serial\" makes the device offerable over a direct serial port or through a bridge. Opt-in: only declare it when the strings really are identical across the listed media.",
+      "items": {
+        "type": "string",
+        "enum": [
+          "tcp",
+          "serial",
+          "udp",
+          "http",
+          "osc"
+        ]
+      }
+    },
+    "bridge": {
+      "type": "object",
+      "description": "Optional. Declares this driver as a bridge: a device that exposes typed ports other devices connect through (e.g. a serial-to-Ethernet or IR bridge). The port declaration is valid in YAML, but the runtime behind a port needs a Python driver: pushing serial line settings to the hardware (prepare_bridge_port), and emitting/learning IR (bridge_emit / bridge_learn_*) for ir ports.",
+      "required": [
+        "ports"
+      ],
+      "properties": {
+        "ports": {
+          "type": "array",
+          "description": "The typed ports this bridge advertises.",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "kind"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Port id referenced by a downstream device's bridge_port (e.g. \"serial:1\")."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "serial",
+                  "ir",
+                  "relay"
+                ],
+                "description": "Port kind. A serial port vends a transparent TCP pass-through; ir/relay ports route commands through the bridge at send time."
+              },
+              "passthrough_port": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 65535,
+                "description": "For serial ports: the TCP port on the bridge host that transparently pipes this serial line (e.g. 4999)."
+              },
+              "label": {
+                "type": "string",
+                "description": "Human-readable port label shown in the connection picker."
+              }
+            }
+          }
+        }
+      }
+    },
+    "description": {
+      "type": "string",
+      "description": "Brief description of what the driver controls."
+    },
+    "source_url": {
+      "type": "string",
+      "pattern": "^[Hh][Tt][Tt][Pp][Ss]?://",
+      "description": "Protocol reference or product documentation URL. Must start with http:// or https://."
+    },
+    "delimiter": {
+      "type": "string",
+      "description": "Message delimiter. Default \"\\r\". Use \"\\r\\n\" for CRLF. Escape sequences \\r and \\n are interpreted."
+    },
+    "command_prefix": {
+      "type": "string",
+      "description": "Opt-in constant string prepended to every command's send string (a fixed packet header). Set it once instead of repeating it on each command. Byte-stream transports only (tcp/serial/udp); never applied to OSC or HTTP. Supports the same escape sequences and {config} substitution as send. A command can opt out with raw: true. Requires platform 0.23.0."
+    },
+    "command_suffix": {
+      "type": "string",
+      "description": "Opt-in constant string appended to every command's send string (its terminator). Set it once so you don't type \\r on each command. Byte-stream transports only (tcp/serial/udp). Supports the same escape sequences and {config} substitution as send. A command can opt out with raw: true. Requires platform 0.23.0."
+    },
+    "inline_protocol": {
+      "type": "boolean",
+      "description": "Built-in generic devices only. When true, the device page shows a no-code Commands & Responses editor that stores commands/responses/state_variables in the device config and merges them into this driver at runtime. Community drivers ship their commands and responses in the driver file and should not set this."
+    },
+    "ir_codes": {
+      "type": "boolean",
+      "description": "Marks this as an IR code-set device (a device controlled by an infrared remote through an IR bridge). When true, the device page shows the IR Codes editor (learn / paste Pronto / type sendir / database search / test emit) and each code in the ir_codes map becomes a device command that emits through the bound bridge's IR port. A build-your-own IR device authors codes per-device; a community IR driver ships its code-set in default_config.ir_codes. Codes are stored as vendor-neutral Pronto hex plus a per-command repeat. Use transport \"bridge\" with this."
+    },
+    "ports": {
+      "type": "array",
+      "description": "TCP/UDP ports the device listens on (catalog metadata only).",
+      "items": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 65535
+      }
+    },
+    "protocols": {
+      "type": "array",
+      "description": "Protocol names this driver speaks, e.g. [\"pjlink\"]. Helps discovery match devices to drivers.",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "simulated": {
+      "type": "boolean",
+      "description": "True if the driver ships with simulator support (auto-gen or an explicit simulator: section)."
+    },
+    "verified": {
+      "type": "boolean",
+      "description": "True once the driver has been validated against real hardware."
+    },
+    "web_ui": {
+      "type": [
+        "boolean",
+        "string"
+      ],
+      "description": "The device exposes a browser-reachable web interface. true auto-adds an 'Open Web UI' button (opens https://{host}); a string is used as the URL template (e.g. \"http://{host}:8080\") with {host}/{port}/{config_key} substitution. Requires platform >= 0.24.0."
+    },
+    "min_platform_version": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^\\d+\\.\\d+\\.\\d+(?:[\\-+][\\w.\\-]+)?$",
+      "description": "Minimum OpenAVC version required. Blocks install on older platforms missing a needed feature. Semantic version."
+    },
+    "tags": {
+      "type": "array",
+      "description": "Search/browse tags. Lowercase, hyphen-separated, alphanumeric.",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+      }
+    },
+    "help": {
+      "$ref": "#/$defs/helpBlock"
+    },
+    "deprecated": {
+      "type": "boolean",
+      "description": "True if this driver is superseded. Requires replacement_id."
+    },
+    "replacement_id": {
+      "type": "string",
+      "description": "ID of the driver that replaces this one. Only valid when deprecated is true."
+    },
+    "compatible_models": {
+      "type": "array",
+      "description": "Specific device models this driver supports, with confidence levels.",
+      "items": {
+        "$ref": "#/$defs/compatibleModelsEntry"
+      }
+    },
+    "default_config": {
+      "type": "object",
+      "description": "Default values for config fields (e.g. host, port, poll_interval, inter_command_delay)."
+    },
+    "config_derived": {
+      "type": "object",
+      "description": "Computed config values, each a template substituted from other config fields, e.g. {\"ws\": \"/workspace/{workspace_id}\"}. If any {field} the template references is empty or missing, the derived value is \"\" — so an optional prefixed address segment simply disappears. Computed once when the device connects and visible to every command address, on_connect entry, response, and poll query (just like a real config field). Lets one friendly field (e.g. a workspace id) drive both a bare and a prefixed address form without conditional logic in every command.",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "config_schema": {
+      "type": "object",
+      "description": "Per-device connection settings shown in the Add Device dialog. Keyed by config field name.",
+      "additionalProperties": {
+        "$ref": "#/$defs/configSchemaEntry"
+      }
+    },
+    "device_settings": {
+      "type": "object",
+      "description": "Configurable values that live on the device hardware (polled + writable). Keyed by setting name.",
+      "additionalProperties": {
+        "$ref": "#/$defs/deviceSettingEntry"
+      }
+    },
+    "state_variables": {
+      "type": "object",
+      "description": "Read-only state properties this driver exposes. Keyed by state variable name.",
+      "additionalProperties": {
+        "$ref": "#/$defs/stateVariableEntry"
+      }
+    },
+    "child_entity_types": {
+      "type": "object",
+      "description": "Sub-units this device manages (encoders, decoders, zones, presets). Keyed by child type name.",
+      "additionalProperties": {
+        "$ref": "#/$defs/childEntityType"
+      },
+      "propertyNames": {
+        "pattern": "^[^.*?\\[]+$",
+        "description": "Child type names become state-key segments (device.<id>.<child_type>...) and feed fnmatch dispatch, so they must not contain dots or glob metacharacters (. * ? [)."
+      }
+    },
+    "commands": {
+      "type": "object",
+      "description": "Commands this driver can send. Keyed by command name.",
+      "additionalProperties": {
+        "$ref": "#/$defs/commandEntry"
+      }
+    },
+    "quick_actions": {
+      "type": "array",
+      "description": "Command ids promoted to one-click Quick Action buttons at the top of the device view. Sugar for actions of kind \"command\". Each id must name a declared command.",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "actions": {
+      "type": "array",
+      "description": "Driver-declared actions promoted to buttons in the device view. kind:\"command\" promotes a declared command (runs online); kind:\"setup\" is an offline-capable provisioning wizard handled by the driver's run_setup_action().",
+      "items": {
+        "$ref": "#/$defs/actionEntry"
+      }
+    },
+    "responses": {
+      "type": "array",
+      "description": "Patterns for parsing device replies. Regex/OSC rules are checked in order and the first match wins; a json: true rule parses the whole JSON body and applies all of its field mappings, so a multi-field JSON reply fully populates.",
+      "items": {
+        "$ref": "#/$defs/responseEntry"
+      }
+    },
+    "on_connect": {
+      "type": "array",
+      "description": "Commands sent immediately after connect, before polling. Strings for TCP/serial/UDP; {address, args} mappings for OSC (args carry typed OSC values for a value-setting bring-up message); {each_child, send} templates expand to one query per registered child. Any mapping entry may add when: <config_field> to run only while that field is on.",
+      "items": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "$ref": "#/$defs/eachChildQuery"
+          },
+          {
+            "$ref": "#/$defs/gatedQuery"
+          },
+          {
+            "type": "object",
+            "required": [
+              "address"
+            ],
+            "properties": {
+              "address": {
+                "type": "string"
+              },
+              "args": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/oscArg"
+                }
+              },
+              "when": {
+                "type": "string",
+                "description": "Config field gating this entry: it runs only while that field is truthy. Must name a field declared in config_schema / default_config. Requires platform 0.23.0."
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "polling": {
+      "type": "object",
+      "description": "Periodic status query configuration. NOTE: a polling.interval key is inert and rejected by the catalog validator; set the cadence via default_config.poll_interval instead.",
+      "properties": {
+        "queries": {
+          "type": "array",
+          "description": "Query strings (or command names) sent each poll cycle; {each_child, send} templates expand to one query per registered child; when: <config_field> gates an entry on a config field. Cadence comes from default_config.poll_interval.",
+          "items": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/$defs/eachChildQuery"
+              },
+              {
+                "$ref": "#/$defs/gatedQuery"
+              }
+            ]
+          }
+        }
+      },
+      "not": {
+        "required": [
+          "interval"
+        ]
+      }
+    },
+    "auth": {
+      "$ref": "#/$defs/authBlock"
+    },
+    "liveness": {
+      "$ref": "#/$defs/livenessBlock"
+    },
+    "push": {
+      "$ref": "#/$defs/pushBlock"
+    },
+    "frame_parser": {
+      "description": "Framing for the control transport's inbound byte stream. Top level accepts length_prefix / fixed_length only; struct_frame is push-only (push.frame_parser, for tcp_listener dial-back frames).",
+      "allOf": [
+        {
+          "$ref": "#/$defs/frameParser"
+        },
+        {
+          "properties": {
+            "type": {
+              "enum": [
+                "length_prefix",
+                "fixed_length"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "send_frame": {
+      "$ref": "#/$defs/sendFrame"
+    },
+    "simulator": {
+      "$ref": "#/$defs/simulatorSection"
+    },
+    "discovery": {
+      "$ref": "#/$defs/discoveryBlock"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "deprecated": {
+            "const": true
+          }
+        },
+        "required": [
+          "deprecated"
+        ]
+      },
+      "then": {
+        "required": [
+          "replacement_id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "replacement_id"
+        ]
+      },
+      "then": {
+        "properties": {
+          "deprecated": {
+            "const": true
+          }
+        },
+        "required": [
+          "deprecated"
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "enumValue": {
+      "description": "One enum option: a bare wire value, or a {value, label} pair where the label is shown in pickers (and read in macros) while the value goes on the wire. A plain scalar means value == label.",
+      "oneOf": [
+        {
+          "type": [
+            "string",
+            "number",
+            "boolean"
+          ]
+        },
+        {
+          "type": "object",
+          "required": [
+            "value"
+          ],
+          "properties": {
+            "value": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "The value sent on the wire."
+            },
+            "label": {
+              "type": "string",
+              "description": "Human-readable label shown in the picker. Defaults to the value."
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "helpBlock": {
+      "type": "object",
+      "description": "Help text shown in the Add Device dialog and available to the AI assistant. overview + setup are required; connection is optional.",
+      "required": [
+        "overview",
+        "setup"
+      ],
+      "properties": {
+        "overview": {
+          "type": "string",
+          "minLength": 1
+        },
+        "setup": {
+          "type": "string",
+          "minLength": 1
+        },
+        "connection": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional short troubleshooting hint shown on the device's offline banner when it can't connect (e.g. a remote-access setting that must be enabled on the device first)."
+        }
+      },
+      "additionalProperties": false
+    },
+    "compatibleModelsEntry": {
+      "type": "object",
+      "required": [
+        "manufacturer",
+        "models",
+        "confidence"
+      ],
+      "properties": {
+        "manufacturer": {
+          "type": "string"
+        },
+        "models": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "confidence": {
+          "type": "string",
+          "enum": [
+            "full",
+            "partial",
+            "untested"
+          ]
+        },
+        "notes": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "stateVariableEntry": {
+      "type": "object",
+      "required": [
+        "label"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "string",
+            "integer",
+            "number",
+            "boolean",
+            "enum",
+            "float"
+          ]
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable label. Required for top-level state variables."
+        },
+        "help": {
+          "type": "string"
+        },
+        "values": {
+          "type": "array",
+          "description": "Allowed values for enum type."
+        },
+        "min": {
+          "type": "number"
+        },
+        "max": {
+          "type": "number"
+        },
+        "step": {
+          "type": "number",
+          "description": "Value resolution for numeric types (e.g. 0.5 for a half-dB fader). Fills a matched control's Step in the UI Builder."
+        },
+        "unit": {
+          "type": "string",
+          "description": "Unit for numeric values (e.g. dB, Hz, %). Fills a matched control's Unit in the UI Builder; without it the UI falls back to parsing a trailing \"(dB)\" from the label."
+        },
+        "control": {
+          "type": "boolean",
+          "description": "Marks a variable an integrator would bind a panel control to (a fader level, a mute). The UI Builder's value picker lists flagged variables first. Ordering only — unflagged variables stay pickable."
+        },
+        "default": true,
+        "cloud_priority": {
+          "type": "string",
+          "enum": [
+            "low",
+            "high"
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "childStateVariableEntry": {
+      "type": "object",
+      "description": "Child state variable. Same shape as device state variables, but label is not required (the platform injects online and label automatically).",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "string",
+            "integer",
+            "number",
+            "boolean",
+            "enum",
+            "float"
+          ]
+        },
+        "label": {
+          "type": "string"
+        },
+        "help": {
+          "type": "string"
+        },
+        "values": {
+          "type": "array"
+        },
+        "min": {
+          "type": "number"
+        },
+        "max": {
+          "type": "number"
+        },
+        "step": {
+          "type": "number",
+          "description": "Value resolution for numeric types (e.g. 0.5 for a half-dB fader). Fills a matched control's Step in the UI Builder."
+        },
+        "unit": {
+          "type": "string",
+          "description": "Unit for numeric values (e.g. dB, Hz, %). Fills a matched control's Unit in the UI Builder's range-match prompt."
+        },
+        "control": {
+          "type": "boolean",
+          "description": "Marks a settable control (not a read-only mirror or metadata). The UI Builder's value picker and the options_from: child_schema command cascade list flagged fields first."
+        },
+        "default": true,
+        "cloud_priority": {
+          "type": "string",
+          "enum": [
+            "low",
+            "high"
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "childEntityType": {
+      "type": "object",
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "label_plural": {
+          "type": "string"
+        },
+        "id_format": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "integer",
+                "string"
+              ],
+              "description": "Local child id type. min/max/pad_width apply to integer ids; string ids pair with an instances ids_from roster (letter-addressed matrix outputs) or a literal ids list (main buses st/m; platform 0.23.0+)."
+            },
+            "min": {
+              "type": "integer"
+            },
+            "max": {
+              "type": "integer"
+            },
+            "pad_width": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "max_length": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "String ids only: maximum id length the runtime accepts at register_child time. Default 128."
+            }
+          },
+          "additionalProperties": true
+        },
+        "state_variables": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/childStateVariableEntry"
+          }
+        },
+        "summary_fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "label_field": {
+          "type": "string"
+        },
+        "instances": {
+          "$ref": "#/$defs/childInstances"
+        }
+      },
+      "additionalProperties": true
+    },
+    "childInstances": {
+      "type": "object",
+      "description": "Declarative roster — makes the child type real at runtime for YAML drivers. Exactly one of count (fixed IDs 1..N), count_from (an integer config field), ids_from (a comma-separated config field; sparse IDs), or ids (a literal fixed list; requires platform 0.23.0). An optional count_from_state names a device-reported state var (e.g. num_outputs) the roster follows once connected, with the chosen config source as the offline fallback. Children register on connect, reconcile as a want-set (also whenever count_from_state changes), and back the per-device Refresh from Device button.",
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Fixed roster: registers integer IDs 1..count."
+        },
+        "count_from": {
+          "type": "string",
+          "description": "Name of an integer config field (config_schema / default_config) holding the count — lets one driver cover different frame sizes."
+        },
+        "count_from_state": {
+          "type": "string",
+          "description": "Name of a device-reported integer state variable (e.g. num_outputs) the roster follows once the device reports it, auto-sizing the roster to the hardware. Optional companion to count_from, which stays the offline fallback used before the device answers (a non-positive/absent value falls back to count_from). Requires platform 0.23.0."
+        },
+        "ids_from": {
+          "type": "string",
+          "description": "Name of a comma-separated config field listing the IDs (e.g. \"1,2,4\") — for sparse or installer-chosen rosters."
+        },
+        "ids": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Literal fixed roster (e.g. [st, m]) — for protocol-fixed string or sparse-integer IDs that no config field should have to carry. Requires platform 0.23.0.",
+          "items": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ]
+          }
+        },
+        "label": {
+          "type": "string",
+          "description": "Initial label template; {id} substitutes the local ID. A user-set project label always wins."
+        }
+      },
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "required": [
+            "count"
+          ]
+        },
+        {
+          "required": [
+            "count_from"
+          ]
+        },
+        {
+          "required": [
+            "ids_from"
+          ]
+        },
+        {
+          "required": [
+            "ids"
+          ]
+        }
+      ]
+    },
+    "childSetEntry": {
+      "type": "object",
+      "description": "Routes a matched response into one child's state. Regex rules: id is a capture ref ($1), a literal, or {group, map}; state values are capture refs or literals. OSC rules (platform 0.23.0+): id is {segment: N} (0-based index into the /-split address) or a literal; state values are {arg: N} positional-argument specs or literals. Values coerce by the child property's declared type.",
+      "required": [
+        "type",
+        "id",
+        "state"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "A declared child_entity_types name."
+        },
+        "id": {
+          "description": "A capture ref ($1, regex rules), {segment: N} (OSC rules), a literal child id, or the map long form to translate a wire id (0-based channels, ST codes) to the local child id.",
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "object",
+              "required": [
+                "group"
+              ],
+              "properties": {
+                "group": {
+                  "description": "Which capture group holds the wire id.",
+                  "oneOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    {
+                      "type": "string",
+                      "pattern": "^\\$\\d+$"
+                    }
+                  ]
+                },
+                "map": {
+                  "type": "object",
+                  "minProperties": 1,
+                  "description": "Wire id -> local child id translation. A captured id the map doesn't cover skips the entry.",
+                  "additionalProperties": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      }
+                    ]
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "required": [
+                "segment"
+              ],
+              "properties": {
+                "segment": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "OSC rules only: which address segment holds the wire id (0-based over the /-split address — in /ch/07/mix/fader, segment 1 is \"07\")."
+                },
+                "map": {
+                  "type": "object",
+                  "minProperties": 1,
+                  "description": "Wire id -> local child id translation. A segment value the map doesn't cover skips the entry.",
+                  "additionalProperties": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      }
+                    ]
+                  }
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+        "state": {
+          "type": "object",
+          "minProperties": 1,
+          "description": "Child property -> capture ref or literal (regex rules); {arg: N[, map, type]}, {value: ...}, or literal (OSC rules)."
+        }
+      },
+      "additionalProperties": false
+    },
+    "eachChildQuery": {
+      "type": "object",
+      "description": "Per-child query template: expands to one query per registered child of the named type, substituting {child_id} with the unpadded local ID.",
+      "required": [
+        "each_child",
+        "send"
+      ],
+      "properties": {
+        "each_child": {
+          "type": "string",
+          "description": "A declared child_entity_types name (must have an instances: roster)."
+        },
+        "send": {
+          "type": "string",
+          "pattern": "\\{child_id(:[^{}]*)?\\}",
+          "description": "Query template; must contain {child_id} (a format spec like {child_id:02d} zero-pads — requires platform 0.23.0)."
+        },
+        "when": {
+          "type": "string",
+          "description": "Config field gating this entry: it runs only while that field is truthy. Must name a field declared in config_schema / default_config. Requires platform 0.23.0."
+        }
+      },
+      "additionalProperties": false
+    },
+    "gatedQuery": {
+      "type": "object",
+      "description": "A plain query in mapping form so it can carry a gate: it runs only while the named config field is truthy. Use it to arm a chatty subscription (a level-meter stream) behind an integrator checkbox instead of forcing it on every site.",
+      "required": [
+        "send",
+        "when"
+      ],
+      "properties": {
+        "send": {
+          "type": "string",
+          "description": "Query sent as authored — a raw protocol string on tcp/serial, a command name or path on http/udp."
+        },
+        "when": {
+          "type": "string",
+          "description": "Config field gating this entry. Must name a field declared in config_schema / default_config. Requires platform 0.23.0."
+        }
+      },
+      "additionalProperties": false
+    },
+    "paramEntry": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "string",
+            "integer",
+            "number",
+            "boolean",
+            "enum",
+            "child_id"
+          ]
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "label": {
+          "type": "string"
+        },
+        "help": {
+          "type": "string"
+        },
+        "values": {
+          "type": "array",
+          "description": "Allowed values for an enum param. Each entry is a bare wire value or a {value, label} pair (label shown in the picker, value sent on the wire). The runtime accepts either the label or the value from any caller and normalizes to the value.",
+          "items": {
+            "$ref": "#/$defs/enumValue"
+          }
+        },
+        "child_type": {
+          "type": "string",
+          "description": "For child_id type: the child_entity_types name this parameter targets."
+        },
+        "options_state": {
+          "type": "string",
+          "description": "Make this param a picker sourced from a device-relative state key. The IDE reads device.<id>.<options_state> (a JSON-encoded list of strings or {value,label} objects) and offers it as a dropdown. The driver publishes the enumerable set as a state variable."
+        },
+        "options_source": {
+          "type": "string",
+          "description": "Like options_state but an absolute state key, read verbatim (same primitive plugins use). Use options_state for per-device lists."
+        },
+        "options_from": {
+          "type": "object",
+          "description": "Cascade: source this param's options from a sibling param's chosen value.",
+          "required": [
+            "param",
+            "source"
+          ],
+          "properties": {
+            "param": {
+              "type": "string",
+              "description": "The sibling param whose value selects the option set."
+            },
+            "source": {
+              "type": "string",
+              "enum": [
+                "child_schema"
+              ],
+              "description": "child_schema: offer the controls of the child picked in the sibling child_id param."
+            }
+          },
+          "additionalProperties": false
+        },
+        "type_from": {
+          "type": "object",
+          "description": "Make this param's input type follow the control chosen in a sibling cascade. The named param is itself an options_from child_schema cascade; this param then renders as that control's type (number+range, Yes/No, etc.).",
+          "required": [
+            "param"
+          ],
+          "properties": {
+            "param": {
+              "type": "string",
+              "description": "The sibling options_from(child_schema) param whose chosen control supplies this param's type/min/max."
+            }
+          },
+          "additionalProperties": false
+        },
+        "min": {
+          "type": "number",
+          "description": "Minimum for an integer/number param. Enforced by the runtime at command time; the IDE also flags violations while authoring."
+        },
+        "max": {
+          "type": "number",
+          "description": "Maximum for an integer/number param. Enforced by the runtime at command time; the IDE also flags violations while authoring."
+        },
+        "decimals": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "For a number param: round the value to this many decimal places on the wire (0 = whole number). An integer param always coerces to a whole number, so decimals is not needed there. For fixed-width or hex output, use a format spec on the placeholder instead (e.g. {level:03d}, {addr:02X})."
+        },
+        "pattern": {
+          "type": "string",
+          "format": "regex",
+          "description": "Regex a free-text value must fully match — a shape check for values that can't be enumerated (IP, hostname, fixed-length ID). The runtime validates it at command time; the IDE shows an inline error while authoring. Must compile and avoid catastrophic backtracking."
+        },
+        "trim": {
+          "type": "boolean",
+          "description": "For string params. Default true: leading/trailing whitespace is trimmed before the value goes on the wire. Set false to pass the value through verbatim — for raw payloads where edge whitespace is meaningful (typed text, verbatim titles, relay bodies whose trailing terminator is part of the protocol). Requires platform 0.22.0."
+        },
+        "default": true,
+        "map": {
+          "type": "object",
+          "minProperties": 1,
+          "description": "Wire-value translation applied after validation, before substitution: the validated value (string-keyed) is replaced by the mapped wire value. Values not in the map pass through unchanged. Most useful on child_id params whose local ids differ from the protocol's channel numbers.",
+          "additionalProperties": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "oscArg": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "f",
+            "i",
+            "s",
+            "h",
+            "d",
+            "T",
+            "F",
+            "N"
+          ],
+          "description": "OSC type tag: f=float32, i=int32, s=string, h=int64, d=float64, T=true, F=false, N=nil."
+        },
+        "value": true
+      },
+      "additionalProperties": true
+    },
+    "commandEntry": {
+      "type": "object",
+      "description": "A command must declare one of: send (TCP/serial/UDP), path/method (HTTP), or address (OSC).",
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "help": {
+          "type": "string"
+        },
+        "send": {
+          "type": "string",
+          "description": "Raw bytes to send (TCP/serial/UDP). {param} and {config} placeholders substituted at runtime."
+        },
+        "raw": {
+          "type": "boolean",
+          "description": "Send this command's send string exactly as written, skipping the driver's command_prefix / command_suffix framing. Use it for the odd command that doesn't share the common frame. Requires platform 0.23.0."
+        },
+        "string": {
+          "type": "string",
+          "description": "Deprecated alias for send."
+        },
+        "method": {
+          "type": "string",
+          "description": "HTTP method (GET/POST/PUT/DELETE). Default GET."
+        },
+        "path": {
+          "type": "string",
+          "description": "HTTP URL path."
+        },
+        "body": {
+          "type": "string",
+          "description": "HTTP request body. Parsed as JSON when valid, otherwise sent raw."
+        },
+        "query_params": {
+          "type": "object",
+          "description": "HTTP query parameters with {param} substitution."
+        },
+        "headers": {
+          "type": "object",
+          "description": "Per-request HTTP headers with {param} substitution."
+        },
+        "address": {
+          "type": "string",
+          "description": "OSC address pattern."
+        },
+        "args": {
+          "type": "array",
+          "description": "OSC typed arguments.",
+          "items": {
+            "$ref": "#/$defs/oscArg"
+          }
+        },
+        "params": {
+          "type": "object",
+          "description": "Parameter definitions, keyed by {placeholder} name.",
+          "additionalProperties": {
+            "$ref": "#/$defs/paramEntry"
+          }
+        }
+      },
+      "additionalProperties": true,
+      "anyOf": [
+        {
+          "required": [
+            "send"
+          ]
+        },
+        {
+          "required": [
+            "string"
+          ]
+        },
+        {
+          "required": [
+            "path"
+          ]
+        },
+        {
+          "required": [
+            "method"
+          ]
+        },
+        {
+          "required": [
+            "address"
+          ]
+        }
+      ]
+    },
+    "actionEntry": {
+      "type": "object",
+      "description": "A promoted action. kind:\"command\" must resolve to a declared command (the command field, or the id).",
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Unique action id within the driver."
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "command",
+            "setup",
+            "link"
+          ],
+          "description": "'command' promotes a declared command (runs online via send_command). 'link' opens a URL (e.g. the device's web interface) in a new tab, client-side. Offline-capable 'setup' provisioning wizards require a Python driver with a run_setup_action() handler."
+        },
+        "label": {
+          "type": "string",
+          "description": "Button label. Defaults to the promoted command's label, else the id."
+        },
+        "icon": {
+          "type": "string",
+          "description": "lucide icon name (kebab-case), e.g. power, shield, search, radar."
+        },
+        "confirm": {
+          "type": [
+            "boolean",
+            "string"
+          ],
+          "description": "Confirm before running. true for a generic prompt, or a custom message string."
+        },
+        "availability": {
+          "type": "string",
+          "enum": [
+            "online",
+            "offline",
+            "always"
+          ],
+          "description": "When the button shows. online (default) hides while offline; offline shows only while offline; always ignores connection state."
+        },
+        "command": {
+          "type": "string",
+          "description": "kind:\"command\" only — the command id to send. Defaults to the action id."
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1,
+          "description": "kind:\"link\" only — the URL to open. Supports {host}/{port}/{config_key} substitution from the device config. Defaults to https://{host}."
+        },
+        "params": {
+          "type": "object",
+          "description": "Input dialog fields. For kind:\"command\", defaults to the promoted command's params.",
+          "additionalProperties": {
+            "$ref": "#/$defs/paramEntry"
+          }
+        },
+        "visible_when": {
+          "$ref": "#/$defs/visibleWhen"
+        }
+      },
+      "additionalProperties": true
+    },
+    "visibleWhen": {
+      "description": "Show the action only when a state condition holds. A single {key, operator, value} condition, or an {any:[...]} (OR) / {all:[...]} (AND) group. key may use $id for the device's own id.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/visibleWhenCondition"
+        },
+        {
+          "type": "object",
+          "required": [
+            "any"
+          ],
+          "properties": {
+            "any": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/visibleWhenCondition"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "all"
+          ],
+          "properties": {
+            "all": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/visibleWhenCondition"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "visibleWhenCondition": {
+      "type": "object",
+      "required": [
+        "key"
+      ],
+      "properties": {
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "description": "State key compared against. May contain $id (replaced with the device id)."
+        },
+        "operator": {
+          "type": "string",
+          "enum": [
+            "eq",
+            "ne",
+            "gt",
+            "lt",
+            "gte",
+            "lte",
+            "truthy",
+            "falsy",
+            "equals",
+            "not_equals",
+            "==",
+            "!=",
+            ">",
+            "<",
+            ">=",
+            "<="
+          ],
+          "description": "Comparison operator. Default eq."
+        },
+        "value": {
+          "description": "Value to compare against (not needed for truthy/falsy)."
+        }
+      },
+      "additionalProperties": true
+    },
+    "mappingEntry": {
+      "type": "object",
+      "properties": {
+        "group": {
+          "type": "integer",
+          "description": "Regex capture group index (1-based; 0 is the whole match)."
+        },
+        "state": {
+          "type": "string",
+          "description": "State variable to update."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "string",
+            "integer",
+            "float",
+            "number",
+            "boolean"
+          ],
+          "description": "Coercion applied to the captured value."
+        },
+        "map": {
+          "type": "object",
+          "description": "Lookup table translating raw captured values to friendly values."
+        },
+        "value": true,
+        "arg": {
+          "type": "integer",
+          "description": "OSC argument index (for OSC responses)."
+        },
+        "json_path": {
+          "type": "string",
+          "description": "Optional. The matched value is treated as a JSON string: it is parsed and this dot-separated path is walked (object keys and integer list indices, e.g. \"data\" or \"data.name\" or \"data.0\") to the value used before mapping/coercion. A path landing on an array or object yields its length (so a boolean type becomes \"is non-empty?\" and an integer type becomes the count). Omit for today's positional/raw behavior. Common for OSC devices whose replies carry the value inside a JSON string (e.g. QLab's /reply ... {\"data\": ...})."
+        }
+      },
+      "additionalProperties": true
+    },
+    "responseEntry": {
+      "type": "object",
+      "description": "A response must declare match or pattern (regex), address (OSC), or json: true (JSON-body).",
+      "properties": {
+        "json": {
+          "type": "boolean",
+          "description": "When true, the whole reply body is parsed as a JSON object and every set/mappings key is read from it. Unlike regex responses, all json rules are applied to a body (not just the first match), so one JSON reply can populate many state variables. In this mode a set value is the JSON field to read (a string key, dot path allowed) or a {key, type, map} object, not a capture ref."
+        },
+        "match": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Regex matched against incoming text. Capture groups extract values."
+        },
+        "pattern": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Deprecated alias for match."
+        },
+        "address": {
+          "type": "string",
+          "pattern": "^/",
+          "description": "OSC address pattern (must start with /). Supports fnmatch wildcards."
+        },
+        "set": {
+          "type": "object",
+          "description": "Shorthand mapping state variables to values. For regex responses, values are capture groups (\"$1\") or static values. For a json: true response, values are JSON field names (dot path allowed) or {key, type, map} specs."
+        },
+        "mappings": {
+          "type": "array",
+          "description": "Verbose mapping form, supporting type coercion and value maps.",
+          "items": {
+            "$ref": "#/$defs/mappingEntry"
+          }
+        },
+        "child_set": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Route a matched response into child-entity state. Works on regex responses (captures) and OSC address rules (address segments + positional args; platform 0.23.0+) — not json: true. May coexist with set/mappings on the same entry.",
+          "items": {
+            "$ref": "#/$defs/childSetEntry"
+          }
+        },
+        "throttle": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Optional. After this rule matches and applies, further matches of the same rule are dropped for this many seconds (drop-style; each skipped frame is superseded by the next). For continuous push telemetry like audio level meters — do not throttle ordinary replies or state-change notices. Works on regex, json, and OSC rules. Requires platform 0.23.0."
+        },
+        "require": {
+          "type": [
+            "string",
+            "array"
+          ],
+          "minLength": 1,
+          "description": "json: true rules only. Apply this rule only to bodies carrying the named JSON key (or every key in the list). Scopes a rule when different endpoints on one device reuse a field name with different meanings. Requires platform 0.23.0.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "additionalProperties": true,
+      "anyOf": [
+        {
+          "required": [
+            "match"
+          ]
+        },
+        {
+          "required": [
+            "pattern"
+          ]
+        },
+        {
+          "required": [
+            "address"
+          ]
+        },
+        {
+          "required": [
+            "json"
+          ]
+        }
+      ]
+    },
+    "pushBlock": {
+      "type": "object",
+      "description": "Device-initiated push notifications arriving on a channel the platform opens (not the established control connection). type: multicast joins the device's notification group; incoming datagrams feed the driver's responses rules (split on the driver delimiter first) and are accepted only from the device's own address. type: sse holds GET path(s) open on the driver's own HTTP session with Accept: text/event-stream; each event's data block feeds the responses rules whole (pair with json: true rules for JSON payloads). type: tcp_listener opens a local TCP port the device dials back to after a registration command carrying {listener_port} tells it where; frames are parsed by the declared frame_parser, split on the driver delimiter, and accepted only from the device's own address. In every shape the subscription starts before on_connect (and any register command) runs, and stops on disconnect; a dropped SSE stream reconnects with exponential backoff. type: http_listener accepts the device's own HTTP POSTs (webhooks) on a callback path the platform assigns per device — send the URL to the device from an on_connect registration command, where the token {push_callback_url} substitutes it into command bodies, paths, and headers; request bodies feed the responses rules whole and are accepted only from the device's own address. Requires platform 0.23.0.",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "multicast",
+            "sse",
+            "tcp_listener",
+            "http_listener"
+          ],
+          "description": "Push channel kind. multicast = UDP group listen; sse = Server-Sent Events stream on the HTTP transport; tcp_listener = local port the device dials back to; http_listener = the device POSTs to a callback URL OpenAVC assigns (no other keys; use {push_callback_url} in the registration command)."
+        },
+        "group": {
+          "type": [
+            "string"
+          ],
+          "description": "multicast only: IPv4 multicast group (224.0.0.0 - 239.255.255.255) as a literal, or a {config_field} template naming a declared config_schema/default_config field (use a template when the device's notification target is user-configurable)."
+        },
+        "port": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "multicast: UDP port (1-65535) as an integer literal, or a {config_field} template string. tcp_listener: local inbound TCP port (0-65535, 0 = OS-assigned) or a {config_field} template."
+        },
+        "path": {
+          "type": [
+            "string",
+            "array"
+          ],
+          "description": "sse only: event-stream URL path on the device (literal starting with /, or a {config_field} template) - or a list of paths for devices that stream each resource separately.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "idle_timeout": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "sse only, optional: seconds of stream silence (keepalives included) before the connection is presumed dead and reopened. Set above the device's keepalive interval; omit to wait indefinitely."
+        },
+        "frame_parser": {
+          "$ref": "#/$defs/frameParser",
+          "description": "tcp_listener only, optional: framing for the pushed frames (struct_frame / length_prefix / fixed_length) - the dial-back channel is its own byte stream, independent of the control transport's framing. Omit to dispatch raw reads."
+        },
+        "register": {
+          "type": "string",
+          "description": "tcp_listener only, optional: name of the command that registers the dial-back target with the device (reference {listener_port} in its path/send string). Runs after the listener opens, and again on every reconnect."
+        },
+        "unregister": {
+          "type": "string",
+          "description": "tcp_listener only, optional: name of the command that cancels the registration. Runs best-effort on graceful disconnect, freeing the device's receiver slot."
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "multicast"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "type",
+              "group",
+              "port"
+            ],
+            "properties": {
+              "group": true,
+              "port": true,
+              "type": true
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "sse"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "type",
+              "path"
+            ],
+            "properties": {
+              "idle_timeout": true,
+              "path": true,
+              "type": true
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "tcp_listener"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "type",
+              "port"
+            ],
+            "properties": {
+              "frame_parser": true,
+              "port": true,
+              "register": true,
+              "type": true,
+              "unregister": true
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "http_listener"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": true
+            },
+            "additionalProperties": false
+          }
+        }
+      ]
+    },
+    "authBlock": {
+      "type": "object",
+      "description": "Telnet-style login handshake. Only valid on tcp/serial transports (it reads a raw byte stream); declaring it on udp/http/osc is rejected at load time. username_prompt and password_prompt are required. All four regexes are checked for catastrophic backtracking since they run on raw pre-auth device bytes.",
+      "required": [
+        "username_prompt",
+        "password_prompt"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "telnet_login"
+          ],
+          "description": "Handshake type. Only telnet_login is implemented and accepted."
+        },
+        "username_prompt": {
+          "type": "string",
+          "description": "Regex matched against the device's username prompt. Required."
+        },
+        "password_prompt": {
+          "type": "string",
+          "description": "Regex matched against the device's password prompt. Required."
+        },
+        "success_pattern": {
+          "type": "string",
+          "description": "Optional regex indicating successful login."
+        },
+        "failure_pattern": {
+          "type": "string",
+          "description": "Optional regex indicating rejected login."
+        },
+        "username_field": {
+          "type": "string",
+          "description": "Config field holding the username. Default \"username\"."
+        },
+        "password_field": {
+          "type": "string",
+          "description": "Config field holding the password. Default \"password\"."
+        },
+        "skip_if_empty": {
+          "type": "boolean",
+          "description": "Skip the handshake when the username config is empty. Default true."
+        },
+        "timeout_seconds": {
+          "type": "number",
+          "description": "Per-stage handshake timeout. Default 10."
+        },
+        "line_ending": {
+          "type": "string",
+          "description": "Line ending appended to credentials. Default \"\\r\\n\"."
+        }
+      },
+      "additionalProperties": true
+    },
+    "livenessBlock": {
+      "type": "object",
+      "description": "Dead-link watchdog: send a probe every `interval` seconds and await a reply; after `max_failures` consecutive silent probes the platform drops the connection with a typed no_response fault and reconnects. Only valid on tcp/serial/udp/osc transports (rejected at load time on http, where polling already awaits every response, and on bridge, which owns no transport). Any inbound data during the wait window counts as alive unless `expect` narrows it. Needed for connectionless transports (UDP/OSC, where fire-and-forget polls never notice silence) and push-mostly TCP (no FIN when the device vanishes).",
+      "required": [
+        "send"
+      ],
+      "properties": {
+        "send": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Probe payload. Same conventions as polling queries: a raw protocol string with escape processing and {config} substitution (terminator included) for tcp/serial/udp, or an OSC address on osc."
+        },
+        "expect": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional regex; only inbound data matching it satisfies the probe. Without it, any inbound data counts. Checked for catastrophic backtracking."
+        },
+        "interval": {
+          "type": "number",
+          "minimum": 1,
+          "description": "Seconds between probes. Default 30."
+        },
+        "timeout": {
+          "type": "number",
+          "minimum": 0.1,
+          "description": "Seconds to await a qualifying reply. Default 5."
+        },
+        "max_failures": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Consecutive misses before the connection is dropped. Default 2."
+        },
+        "args": {
+          "type": "array",
+          "description": "OSC only: arguments sent with the probe address (same shape as command args).",
+          "items": {
+            "$ref": "#/$defs/oscArg"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "frameParser": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "struct_frame",
+            "length_prefix",
+            "fixed_length"
+          ],
+          "description": "Frame parser kind interpreted at runtime. struct_frame (fixed reserved regions around a length field and payload - common in device dial-back notification containers) requires platform 0.23.0."
+        },
+        "header_size": {
+          "type": "integer",
+          "enum": [
+            1,
+            2,
+            4
+          ],
+          "description": "length_prefix: bytes holding the body length. Must be 1, 2, or 4. Default 2."
+        },
+        "header_offset": {
+          "type": "integer",
+          "description": "length_prefix: added to the length the header decodes to. Use a negative value (e.g. -header_size) when the length field counts the header bytes themselves, so only the body is read. Default 0."
+        },
+        "include_header": {
+          "type": "boolean",
+          "description": "length_prefix: whether the parsed frame includes the header bytes (true) or just the body (false). Default false."
+        },
+        "length_offset": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "length_prefix: constant bytes before the length field (magic + fixed header fields) when the length isn't first on the wire. e.g. eISCP puts its 4-byte length at offset 8. Default 0. Requires platform 0.23.0."
+        },
+        "header_extra": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "length_prefix: constant bytes after the length field, before the data (e.g. eISCP's version + reserved = 4). Full fixed header = length_offset + header_size + header_extra. Default 0. Requires platform 0.23.0."
+        },
+        "length_endian": {
+          "type": "string",
+          "enum": [
+            "big",
+            "little"
+          ],
+          "description": "length_prefix / struct_frame: byte order of the length field. Default big. Requires platform 0.23.0."
+        },
+        "length": {
+          "type": "integer",
+          "description": "fixed_length: frame size in bytes. Default 1."
+        },
+        "header_reserve": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "struct_frame: reserved bytes before the length field (discarded). Default 0. Requires platform 0.23.0."
+        },
+        "length_size": {
+          "type": "integer",
+          "enum": [
+            1,
+            2,
+            4
+          ],
+          "description": "struct_frame: bytes holding the length field. Default 2. Requires platform 0.23.0."
+        },
+        "length_adjust": {
+          "type": "integer",
+          "description": "struct_frame: added to the decoded length value to get the payload byte count, for length fields that include constant overhead (Panasonic camera containers count payload + 8, so -8). Default 0. Requires platform 0.23.0."
+        },
+        "mid_reserve": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "struct_frame: reserved bytes between the length field and the payload (discarded). Default 0. Requires platform 0.23.0."
+        },
+        "trailer_reserve": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "struct_frame: reserved bytes after the payload (discarded). Default 0. Requires platform 0.23.0."
+        }
+      },
+      "additionalProperties": true
+    },
+    "sendFrame": {
+      "type": "object",
+      "description": "Send-side packet framing — the send twin of frame_parser. Wraps every byte-stream command in a binary header whose data-length is computed per message (e.g. eISCP). Requires platform 0.23.0.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "length_prefix"
+          ],
+          "description": "Send frame kind. Only length_prefix is supported."
+        },
+        "header": {
+          "type": "string",
+          "description": "Constant bytes emitted before the computed length field (magic + fixed header fields). Literal-escape string (\\r, \\n, \\xHH). For eISCP: \"ISCP\\x00\\x00\\x00\\x10\" (magic + header-size 16)."
+        },
+        "length_size": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Width in bytes of the computed data-length field. eISCP uses 4. Default 4."
+        },
+        "length_endian": {
+          "type": "string",
+          "enum": [
+            "big",
+            "little"
+          ],
+          "description": "Byte order of the length field. Default big."
+        },
+        "after_length": {
+          "type": "string",
+          "description": "Constant bytes emitted after the length field, before the command data (e.g. eISCP's version + reserved = \"\\x01\\x00\\x00\\x00\"). Literal-escape string."
+        }
+      },
+      "additionalProperties": true
+    },
+    "configSchemaEntry": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "string",
+            "text",
+            "integer",
+            "number",
+            "float",
+            "boolean",
+            "enum",
+            "table"
+          ]
+        },
+        "label": {
+          "type": "string"
+        },
+        "default": true,
+        "required": {
+          "type": "boolean"
+        },
+        "description": {
+          "type": "string"
+        },
+        "help": {
+          "type": "string"
+        },
+        "values": {
+          "type": "array",
+          "description": "Allowed values for enum type."
+        },
+        "row_label": {
+          "type": "string",
+          "description": "Singular noun for a table field's Add-row button (e.g. \"register\")."
+        },
+        "columns": {
+          "type": "object",
+          "description": "For type: table. Map of column id -> column spec (scalar field spec: type/label/required/default/values/min/max/help). Rendered by the device-page table editor.",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "string",
+                  "text",
+                  "integer",
+                  "number",
+                  "float",
+                  "boolean",
+                  "enum"
+                ]
+              },
+              "label": {
+                "type": "string"
+              },
+              "help": {
+                "type": "string"
+              },
+              "required": {
+                "type": "boolean"
+              },
+              "default": true,
+              "values": {
+                "type": "array"
+              },
+              "min": {
+                "type": "number"
+              },
+              "max": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "secret": {
+          "type": "boolean",
+          "description": "Render as a masked password field."
+        },
+        "min": {
+          "type": "number"
+        },
+        "max": {
+          "type": "number"
+        },
+        "regex": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "deviceSettingEntry": {
+      "type": "object",
+      "description": "type, label, help, and default are expected by the IDE; the runtime enforces only the write definition.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "string",
+            "integer",
+            "number",
+            "boolean",
+            "enum",
+            "float"
+          ]
+        },
+        "label": {
+          "type": "string"
+        },
+        "help": {
+          "type": "string"
+        },
+        "state_key": {
+          "type": "string",
+          "description": "State variable providing the current value. Defaults to the setting key."
+        },
+        "default": true,
+        "setup": {
+          "type": "boolean",
+          "description": "Prompt for this setting when adding the device to a project. Default false."
+        },
+        "unique": {
+          "type": "boolean",
+          "description": "Generate a non-clashing default (appends device ID). Default false."
+        },
+        "values": {
+          "type": "array",
+          "description": "Allowed values for an enum setting. Each entry is a bare wire value or a {value, label} pair (label shown in the editor, value written to the device). A write that resolves to nothing in the set is rejected.",
+          "items": {
+            "$ref": "#/$defs/enumValue"
+          }
+        },
+        "min": {
+          "type": "number"
+        },
+        "max": {
+          "type": "number"
+        },
+        "regex": {
+          "type": "string"
+        },
+        "write": {
+          "$ref": "#/$defs/deviceSettingWrite"
+        }
+      },
+      "additionalProperties": true
+    },
+    "deviceSettingWrite": {
+      "type": "object",
+      "properties": {
+        "send": {
+          "type": "string",
+          "description": "TCP/serial write string. {value} and config placeholders substituted."
+        },
+        "method": {
+          "type": "string",
+          "description": "HTTP method. Default POST."
+        },
+        "path": {
+          "type": "string"
+        },
+        "body": {
+          "type": "string"
+        },
+        "headers": {
+          "type": "object"
+        },
+        "address": {
+          "type": "string",
+          "description": "OSC address."
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/oscArg"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "simulatorSection": {
+      "type": "object",
+      "properties": {
+        "push_state": {
+          "type": "boolean",
+          "description": "Push state changes to connected drivers, matching real device feedback behavior."
+        },
+        "initial_state": {
+          "type": "object",
+          "description": "Override initial state values."
+        },
+        "delays": {
+          "type": "object",
+          "description": "Response delays in seconds, e.g. {command_response: 0.05}."
+        },
+        "error_modes": {
+          "type": "object",
+          "description": "Named error behaviors selectable in the simulator UI."
+        },
+        "controls": {
+          "type": "array",
+          "description": "Declarative control widgets for the simulator UI."
+        },
+        "state_machines": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "states",
+              "initial",
+              "transitions"
+            ],
+            "properties": {
+              "states": {
+                "type": "array"
+              },
+              "initial": {},
+              "transitions": {}
+            },
+            "additionalProperties": true
+          }
+        },
+        "command_handlers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "receive": {
+                "type": "string",
+                "description": "Regex pattern matched against incoming commands (template handler)."
+              },
+              "match": {
+                "type": "string",
+                "description": "Regex pattern matched against incoming commands (template or script handler)."
+              },
+              "address": {
+                "type": "string",
+                "description": "OSC address fnmatch pattern (OSC script handler)."
+              },
+              "respond": {
+                "type": "string",
+                "description": "Response template with {1}, {state.key} placeholders."
+              },
+              "set_state": {
+                "type": "object",
+                "description": "State updates with template values."
+              },
+              "handler": {
+                "type": "string",
+                "description": "Inline Python handler body."
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "notifications": {
+          "type": "object",
+          "description": "Unsolicited messages emitted on state change, keyed by state variable."
+        }
+      },
+      "additionalProperties": true
+    },
+    "discoveryBlock": {
+      "type": "object",
+      "description": "Discovery fingerprints and hints. Unknown keys are rejected by the platform and the catalog validator.",
+      "properties": {
+        "requires": {
+          "type": "string",
+          "pattern": "^[0-9]+(\\.[0-9]+)*([-+].*)?$",
+          "description": "Minimum platform version whose discovery parser understands this block. Normally stamped by scripts/build_index.py at catalog emission (e.g. SSDP description filters need 0.23.0); platforms older than this skip the block cleanly. Rarely hand-authored."
+        },
+        "mdns": {
+          "$ref": "#/$defs/mdnsField"
+        },
+        "ssdp": {
+          "$ref": "#/$defs/ssdpField"
+        },
+        "amx_ddp": {
+          "$ref": "#/$defs/amxDdpField"
+        },
+        "tcp_probe": {
+          "$ref": "#/$defs/tcpProbe"
+        },
+        "udp_probe": {
+          "$ref": "#/$defs/udpProbe"
+        },
+        "python": {
+          "$ref": "#/$defs/pythonProbe"
+        },
+        "oui": {
+          "type": "array",
+          "description": "MAC OUI prefixes (vendor) used as a soft hint.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "hostname": {
+          "type": "array",
+          "description": "Hostname regex patterns used as a soft hint.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "port_open": {
+          "type": "array",
+          "description": "Open-port hints. Generic admin/web/SSH ports are disallowed.",
+          "items": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535,
+            "not": {
+              "enum": [
+                22,
+                80,
+                443,
+                8000,
+                8080,
+                8443,
+                8888
+              ]
+            }
+          }
+        },
+        "manufacturer_alias": {
+          "type": "array",
+          "description": "Vendor-string aliases matched against discovered banners/TXT records.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "snmp_pen": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "SNMP private enterprise number."
+        }
+      },
+      "additionalProperties": false
+    },
+    "mdnsItem": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "object",
+          "required": [
+            "service"
+          ],
+          "properties": {
+            "service": {
+              "type": "string",
+              "minLength": 1
+            },
+            "txt": {
+              "type": "object"
+            },
+            "cross_vendor": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "mdnsField": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/mdnsItem"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/mdnsItem"
+          }
+        }
+      ]
+    },
+    "ssdpItem": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "object",
+          "required": [
+            "device_type"
+          ],
+          "properties": {
+            "device_type": {
+              "type": "string",
+              "minLength": 1
+            },
+            "cross_vendor": {
+              "type": "boolean"
+            },
+            "model": {
+              "type": "string",
+              "minLength": 1
+            },
+            "manufacturer": {
+              "type": "string",
+              "minLength": 1
+            },
+            "friendly_name": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ssdpField": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ssdpItem"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ssdpItem"
+          }
+        }
+      ]
+    },
+    "amxDdpItem": {
+      "type": "object",
+      "required": [
+        "make"
+      ],
+      "properties": {
+        "make": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model_pattern": {
+          "type": "string"
+        },
+        "cross_vendor": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "amxDdpField": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/amxDdpItem"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/amxDdpItem"
+          }
+        }
+      ]
+    },
+    "extractField": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "object",
+          "required": [
+            "regex"
+          ],
+          "properties": {
+            "regex": {
+              "type": "string",
+              "minLength": 1
+            },
+            "group": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "tcpProbe": {
+      "type": "object",
+      "description": "TCP probe. Connect-only probes may omit send and expect. If it sends bytes, exactly one matcher is required.",
+      "required": [
+        "port"
+      ],
+      "properties": {
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "send_hex": {
+          "type": "string"
+        },
+        "send_ascii": {
+          "type": "string"
+        },
+        "expect": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expect_regex": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expect_hex": {
+          "type": "string"
+        },
+        "cross_vendor": {
+          "type": "boolean"
+        },
+        "tls": {
+          "type": "boolean",
+          "description": "Wrap the connection in TLS (no cert verification) before send/read, for an HTTPS-only device. Default false. tcp_probe only."
+        },
+        "cert_subject": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Regex matched against the peer TLS certificate's subject (RFC4514 string + SAN DNS names) to identify a device by its self-signed cert's own name, e.g. 'CN=DM-NVX-'. Requires tls: true. A probe with only cert_subject (no send/expect) matches on the cert alone; `extract` rules also run against the subject. Platform >= 0.24.0."
+        },
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "extract": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/extractField"
+          }
+        },
+        "extract_manufacturer": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "expect",
+                  "expect_regex"
+                ]
+              },
+              {
+                "required": [
+                  "expect",
+                  "expect_hex"
+                ]
+              },
+              {
+                "required": [
+                  "expect_regex",
+                  "expect_hex"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "anyOf": [
+              {
+                "required": [
+                  "send_hex"
+                ]
+              },
+              {
+                "required": [
+                  "send_ascii"
+                ]
+              }
+            ]
+          },
+          "then": {
+            "anyOf": [
+              {
+                "required": [
+                  "expect"
+                ]
+              },
+              {
+                "required": [
+                  "expect_regex"
+                ]
+              },
+              {
+                "required": [
+                  "expect_hex"
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "not": {
+        "required": [
+          "send_hex",
+          "send_ascii"
+        ]
+      }
+    },
+    "udpProbe": {
+      "type": "object",
+      "description": "UDP probe. Must declare a send payload (send_hex or send_ascii) and exactly one matcher.",
+      "required": [
+        "port"
+      ],
+      "properties": {
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "send_hex": {
+          "type": "string"
+        },
+        "send_ascii": {
+          "type": "string"
+        },
+        "expect": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expect_regex": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expect_hex": {
+          "type": "string"
+        },
+        "cross_vendor": {
+          "type": "boolean"
+        },
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "extract": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/extractField"
+          }
+        },
+        "extract_manufacturer": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "anyOf": [
+            {
+              "required": [
+                "send_hex"
+              ]
+            },
+            {
+              "required": [
+                "send_ascii"
+              ]
+            }
+          ]
+        },
+        {
+          "anyOf": [
+            {
+              "required": [
+                "expect"
+              ]
+            },
+            {
+              "required": [
+                "expect_regex"
+              ]
+            },
+            {
+              "required": [
+                "expect_hex"
+              ]
+            }
+          ]
+        },
+        {
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "expect",
+                  "expect_regex"
+                ]
+              },
+              {
+                "required": [
+                  "expect",
+                  "expect_hex"
+                ]
+              },
+              {
+                "required": [
+                  "expect_regex",
+                  "expect_hex"
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "not": {
+        "required": [
+          "send_hex",
+          "send_ascii"
+        ]
+      }
+    },
+    "pythonProbe": {
+      "description": "Python discovery escape-hatch. Bare path string or {file, cross_vendor} mapping. The companion .py must ship alongside the driver.",
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "object",
+          "required": [
+            "file"
+          ],
+          "properties": {
+            "file": {
+              "type": "string",
+              "minLength": 1
+            },
+            "cross_vendor": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
+}
