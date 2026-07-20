@@ -1332,3 +1332,83 @@ async def test_state_change_value_reaches_macro(trigger_engine, macro_engine, co
 
     assert state.get("var.mirror") == "HDMI2"
     await trigger_engine.stop()
+
+
+# --- stop() vs in-flight trigger-fired macros (V-LC-003) ---
+
+
+async def test_stop_preserves_macro_already_executing(trigger_engine, macro_engine, core):
+    """A trigger-fired macro that has reached the macro engine survives a
+    listener rebuild — which macros survive an edit must not depend on what
+    fired them. The macro engine still owns (and can cancel) the run."""
+    state, events = core
+    macro_engine.load_macros([{
+        "id": "long_macro",
+        "name": "Long",
+        "steps": [{"action": "delay", "seconds": 60}],
+    }])
+    trigger_engine.load_triggers([{
+        "id": "long_macro",
+        "name": "Long",
+        "triggers": [{
+            "id": "trg_long",
+            "type": "state_change",
+            "enabled": True,
+            "state_key": "var.go",
+            "state_operator": "any",
+        }],
+    }])
+    await trigger_engine.start()
+
+    state.set("var.go", 1, source="test")
+    for _ in range(50):
+        await asyncio.sleep(0.01)
+        if macro_engine.is_macro_running("long_macro"):
+            break
+    assert macro_engine.is_macro_running("long_macro")
+
+    await trigger_engine.stop()
+    await asyncio.sleep(0.05)  # let any (wrong) cancellation actually land
+    assert macro_engine.is_macro_running("long_macro"), (
+        "listener teardown cancelled a running macro the reconcile preserves"
+    )
+
+    # Shutdown path: the macro engine still owns the run and cancels it.
+    await macro_engine.cancel_all()
+    assert not macro_engine.is_macro_running("long_macro")
+
+
+async def test_stop_cancels_and_drains_pending_delayed_fire(
+    trigger_engine, macro_engine, core
+):
+    """A fire still in its pre-macro delay IS cancelled by stop(), and the
+    cancellation is awaited so teardown never overlaps its unwind."""
+    state, events = core
+    macro_engine.load_macros([{
+        "id": "m",
+        "name": "M",
+        "steps": [{"action": "state.set", "key": "var.fired", "value": True}],
+    }])
+    trigger_engine.load_triggers([{
+        "id": "m",
+        "name": "M",
+        "triggers": [{
+            "id": "trg_delay",
+            "type": "state_change",
+            "enabled": True,
+            "state_key": "var.go",
+            "state_operator": "any",
+            "delay_seconds": 60,
+        }],
+    }])
+    await trigger_engine.start()
+
+    state.set("var.go", 1, source="test")
+    await asyncio.sleep(0.05)
+    ts = trigger_engine._triggers["trg_delay"]
+    assert ts.delay_task is not None and not ts.delay_task.done()
+    delay_task = ts.delay_task
+
+    await trigger_engine.stop()
+    assert delay_task.done(), "stop() must drain the tasks it cancels"
+    assert state.get("var.fired") is None

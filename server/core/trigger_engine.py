@@ -41,6 +41,10 @@ _CRON_POLL_INTERVAL = 30
 _QUEUE_POLL_INTERVAL = 1.0
 _QUEUE_MAX_WAIT_SECONDS = 300.0
 
+# How long stop() waits for cancelled pre-fire tasks to unwind — matches the
+# macro engine's cancel grace so the two teardown paths behave alike.
+_CANCEL_DRAIN_SECONDS = 2.0
+
 
 def _log_task_exception(task: asyncio.Task) -> None:
     """Done-callback to log unhandled exceptions from fire-and-forget tasks."""
@@ -104,6 +108,14 @@ class TriggerEngine:
         # emits) so the GC can't collect a still-pending task — asyncio only
         # holds a weak ref. Self-pruning via a done-callback.
         self._bg_tasks: set[asyncio.Task] = set()
+        # Fire tasks currently inside MacroEngine.execute(). Once a fire
+        # reaches the macro engine, the macro's lifetime belongs to the macro
+        # engine's registry (cancel_all, cancel-group preemption) — stop()
+        # must not kill it just because listeners are being rebuilt, which
+        # happens on ANY device/connection/variable/plugin edit. The engine's
+        # reconcile cancels running macros only when macro/group definitions
+        # actually changed, and shutdown cancels them via macros.cancel_all().
+        self._macro_exec_tasks: set[asyncio.Task] = set()
         # Cron duplicate-fire guard, instance-scoped so it survives a hot
         # reload (stop -> load_triggers -> start) instead of resetting and
         # double-firing a schedule near its scheduled minute.
@@ -221,8 +233,24 @@ class TriggerEngine:
         log.info("TriggerEngine started")
 
     async def stop(self) -> None:
-        """Unregister all listeners, cancel pending tasks."""
+        """Unregister all listeners, cancel pending (pre-fire) tasks.
+
+        Fires that have already reached ``MacroEngine.execute()`` are
+        deliberately left running: their lifetime belongs to the macro
+        engine's registry, and which macros survive an edit must not depend
+        on what fired them (the reconcile cancels running macros only on a
+        macro/group diff; shutdown cancels them via ``macros.cancel_all()``).
+        Everything this method does cancel is awaited with a short drain so
+        teardown never proceeds while cancelled fires are still unwinding.
+        """
         self._running = False
+        cancelled: list[asyncio.Task] = []
+
+        def _cancel(task: asyncio.Task | None) -> None:
+            if task is None or task.done() or task in self._macro_exec_tasks:
+                return
+            task.cancel()
+            cancelled.append(task)
 
         # Cancel cron loop
         if self._cron_task and not self._cron_task.done():
@@ -235,26 +263,21 @@ class TriggerEngine:
 
         # Cancel startup tasks
         for task in self._startup_tasks:
-            if not task.done():
-                task.cancel()
+            _cancel(task)
         self._startup_tasks.clear()
 
-        # Cancel all pending debounce/delay tasks
+        # Cancel all pending debounce/delay/queued tasks
         for ts in self._triggers.values():
-            if ts.debounce_task and not ts.debounce_task.done():
-                ts.debounce_task.cancel()
-            if ts.delay_task and not ts.delay_task.done():
-                ts.delay_task.cancel()
+            _cancel(ts.debounce_task)
+            _cancel(ts.delay_task)
             for task in ts.pending_queue:
-                if not task.done():
-                    task.cancel()
+                _cancel(task)
             ts.pending_queue.clear()
 
-        # Cancel any in-flight fire / status-emit tasks (snapshot first: the
+        # Cancel pre-fire / status-emit tasks (snapshot first: the
         # done-callback mutates the set as each task settles).
         for task in list(self._bg_tasks):
-            if not task.done():
-                task.cancel()
+            _cancel(task)
 
         # Unsubscribe state listeners
         for sub_id in self._state_sub_ids:
@@ -265,6 +288,15 @@ class TriggerEngine:
         for handler_id in self._event_handler_ids:
             self.events.off(handler_id)
         self._event_handler_ids.clear()
+
+        # Drain the cancellations (same grace the macro engine gives
+        # preempted macros) so nothing is still mid-unwind when the caller
+        # starts deleting state keys or rebuilding trigger definitions.
+        if cancelled:
+            try:
+                await asyncio.wait(cancelled, timeout=_CANCEL_DRAIN_SECONDS)
+            except asyncio.CancelledError:
+                pass
 
         self._active_trigger_depth.clear()
         log.info("TriggerEngine stopped")
@@ -687,6 +719,11 @@ class TriggerEngine:
             },
         )
 
+        # From here the fire is a running macro: hand its lifetime to the
+        # macro engine's registry (see _macro_exec_tasks comment in __init__).
+        exec_task = asyncio.current_task()
+        if exec_task is not None:
+            self._macro_exec_tasks.add(exec_task)
         try:
             # Pass the trigger context (event payload / state-change snapshot)
             # so the macro can resolve $trigger.<field> refs and branch on what
@@ -695,6 +732,8 @@ class TriggerEngine:
         except Exception:  # Catch-all: isolates macro execution errors from trigger pipeline
             log.exception(f"Trigger {trigger_id} macro execution failed")
         finally:
+            if exec_task is not None:
+                self._macro_exec_tasks.discard(exec_task)
             remaining = self._active_trigger_depth.get(trigger_id, 0) - 1
             if remaining > 0:
                 self._active_trigger_depth[trigger_id] = remaining
