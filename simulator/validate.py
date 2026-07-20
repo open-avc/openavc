@@ -54,6 +54,8 @@ from typing import Any
 
 import yaml
 
+from server.drivers.compiled_protocol import derive_config, safe_substitute
+
 
 # ── Result types ──
 
@@ -1471,31 +1473,19 @@ def _generate_sample_command(
 
 
 def _substitute_config(template: str, config: dict) -> str:
-    """Substitute config variables in a template string."""
-    result = template
-    for key, value in config.items():
-        result = result.replace(f"{{{key}}}", str(value))
-    return result
+    """Substitute config variables in a template string (shared runtime rules)."""
+    return safe_substitute(template, config)
 
 
 def _effective_config(driver_def: dict) -> dict:
     """default_config plus config_derived values.
 
-    Mirrors ConfigurableDriver._compute_derived_config: a derived template
+    Uses the same shared derivation the runtime runs, so a derived template
     whose referenced fields are all non-empty is substituted; otherwise the
     derived value is "" (so an optional prefix segment simply disappears).
     """
     config = dict(driver_def.get("default_config", {}))
-    derived = driver_def.get("config_derived")
-    if isinstance(derived, dict):
-        for name, template in derived.items():
-            if not isinstance(template, str):
-                continue
-            refs = re.findall(r"\{(\w+)(?::[^{}]*)?\}", template)
-            if any(not str(config.get(f, "") or "").strip() for f in refs):
-                config[name] = ""
-            else:
-                config[name] = _substitute_config(template, config)
+    derive_config(config, driver_def.get("config_derived"))
     return config
 
 

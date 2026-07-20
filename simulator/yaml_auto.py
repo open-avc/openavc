@@ -29,13 +29,20 @@ from urllib.parse import unquote
 
 import yaml
 
+from server.drivers.compiled_protocol import (
+    apply_send_frame,
+    build_send_frame,
+    decode_delimiter,
+    safe_substitute,
+    split_send_frames,
+)
 from server.drivers.inline_protocol import (
     _derive_state_vars_from_responses,
     _normalize_config_commands,
     _normalize_config_responses,
     _normalize_config_state_vars,
 )
-from server.transport.binary_helpers import encode_escape_sequences, pack_length_prefix
+from server.transport.binary_helpers import encode_escape_sequences
 from simulator.tcp_simulator import TCPSimulator
 
 logger = logging.getLogger(__name__)
@@ -461,11 +468,7 @@ class YAMLAutoSimulator(TCPSimulator):
 
         def resolve(value: Any) -> Any:
             if isinstance(value, str) and "{" in value:
-                return re.sub(
-                    r"\{(\w+)\}",
-                    lambda m: str(merged.get(m.group(1), m.group(0))),
-                    value,
-                )
+                return safe_substitute(value, merged)
             return value
 
         group = str(resolve(push.get("group", "")) or "").strip()
@@ -500,11 +503,7 @@ class YAMLAutoSimulator(TCPSimulator):
 
         def resolve(value: Any) -> str:
             if isinstance(value, str) and "{" in value:
-                return re.sub(
-                    r"\{(\w+)\}",
-                    lambda m: str(merged.get(m.group(1), m.group(0))),
-                    value,
-                )
+                return safe_substitute(value, merged)
             return str(value)
 
         raw = push.get("path")
@@ -1142,36 +1141,14 @@ class YAMLAutoSimulator(TCPSimulator):
 
     # ── Protocol handling ──
 
-    @staticmethod
-    def _build_sim_send_frame(cfg: Any) -> dict[str, Any] | None:
-        """Precompute send_frame header bytes + offsets for build/strip, or None.
-
-        Mirrors ConfigurableDriver._build_send_frame on the driver side. The
-        length_offset / total_header are derived from the constant byte lengths
-        so the simulator strips exactly what the driver's frame_parser skips.
-        """
-        if not cfg or not isinstance(cfg, dict):
-            return None
-        if cfg.get("type", "length_prefix") != "length_prefix":
-            return None
-        header = encode_escape_sequences(str(cfg.get("header", "") or ""))
-        after_length = encode_escape_sequences(str(cfg.get("after_length", "") or ""))
-        length_size = int(cfg.get("length_size", 4))
-        length_endian = "little" if cfg.get("length_endian") == "little" else "big"
-        return {
-            "header": header,
-            "after_length": after_length,
-            "length_size": length_size,
-            "length_endian": length_endian,
-            "length_offset": len(header),
-            "total_header": len(header) + length_size + len(after_length),
-        }
+    # Precompute send_frame header bytes for build/strip — the same shared
+    # builder the driver side uses, so the simulator frames exactly what the
+    # driver's frame_parser expects.
+    _build_sim_send_frame = staticmethod(build_send_frame)
 
     def _wrap_send_frame(self, data: bytes) -> bytes:
         """Wrap a response body in the send_frame packet header (computed length)."""
-        sf = self._send_frame
-        length = pack_length_prefix(len(data), sf["length_size"], sf["length_endian"])
-        return sf["header"] + length + sf["after_length"] + data
+        return apply_send_frame(self._send_frame, data)
 
     async def _read_send_frame_messages(
         self, reader: asyncio.StreamReader, buffer: bytearray | None,
@@ -1185,7 +1162,6 @@ class YAMLAutoSimulator(TCPSimulator):
         ISCP "!1PWR01\\r") to the normal dispatch, exactly as the driver's
         receive-side LengthPrefixFrameParser does.
         """
-        sf = self._send_frame
         if buffer is None:
             buffer = bytearray()
         try:
@@ -1195,18 +1171,7 @@ class YAMLAutoSimulator(TCPSimulator):
         if not raw:
             return None
         buffer.extend(raw)
-        messages: list[bytes] = []
-        total_header = sf["total_header"]
-        lo = sf["length_offset"]
-        lsize = sf["length_size"]
-        while len(buffer) >= total_header:
-            data_len = int.from_bytes(buffer[lo : lo + lsize], sf["length_endian"])
-            total = total_header + data_len
-            if len(buffer) < total:
-                break
-            messages.append(bytes(buffer[total_header:total]))
-            del buffer[:total]
-        return messages
+        return split_send_frames(self._send_frame, buffer)
 
     async def _read_messages(
         self, reader: asyncio.StreamReader, buffer: bytearray | None = None,
@@ -1948,9 +1913,7 @@ class YAMLAutoSimulator(TCPSimulator):
         """
         if self._is_http:
             return ""
-        delim = self._driver_def.get("delimiter", "\r\n")
-        # Handle escaped sequences
-        return delim.replace("\\r", "\r").replace("\\n", "\n")
+        return decode_delimiter(self._driver_def.get("delimiter", "\r\n"))
 
     def _coerce_value(self, state_key: str, value: Any) -> Any:
         """Coerce a value to the state variable's declared type and clamp to range."""
