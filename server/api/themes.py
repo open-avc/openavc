@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse
 
 from server.api.auth import require_programmer_auth
 from server.system_config import THEMES_DIR as BUILTIN_THEMES_DIR
+from server.utils.fileio import atomic_write_text
 from server.utils.paths import safe_path_within
 from server.utils.logger import get_logger
 
@@ -177,7 +178,7 @@ async def create_theme(data: dict[str, Any]) -> dict[str, Any]:
     if custom_path.exists():
         raise HTTPException(status_code=409, detail=f"Custom theme '{theme_id}' already exists")
 
-    custom_path.write_text(json.dumps(data, indent=4, ensure_ascii=False), encoding="utf-8")
+    atomic_write_text(custom_path, json.dumps(data, indent=4, ensure_ascii=False))
     log.info(f"Created custom theme: {theme_id}")
     return {"status": "created", "id": theme_id}
 
@@ -194,7 +195,7 @@ async def update_theme(theme_id: str, data: dict[str, Any]) -> dict[str, Any]:
 
     _validate_theme(data)
     data["id"] = theme_id  # Prevent ID change via PUT
-    custom_path.write_text(json.dumps(data, indent=4, ensure_ascii=False), encoding="utf-8")
+    atomic_write_text(custom_path, json.dumps(data, indent=4, ensure_ascii=False))
     log.info(f"Updated custom theme: {theme_id}")
     return {"status": "updated", "id": theme_id}
 
@@ -255,6 +256,6 @@ async def import_theme(file: UploadFile = File(...)) -> dict[str, Any]:
         raise HTTPException(status_code=409, detail=f"Cannot overwrite built-in theme '{theme_id}'")
 
     custom_path = _custom_themes_dir() / f"{theme_id}.json"
-    custom_path.write_text(json.dumps(data, indent=4, ensure_ascii=False), encoding="utf-8")
+    atomic_write_text(custom_path, json.dumps(data, indent=4, ensure_ascii=False))
     log.info(f"Imported theme: {theme_id}")
     return {"status": "imported", "id": theme_id, "name": data.get("name", "")}

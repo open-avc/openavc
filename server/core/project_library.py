@@ -10,10 +10,8 @@ from __future__ import annotations
 
 import io
 import json
-import os
 import re
 import shutil
-import tempfile
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -35,6 +33,7 @@ from server.system_config import (
     PLUGIN_REPO_DIR as _PLUGIN_REPO_DIR,
     SEED_TEMPLATES_DIR,
 )
+from server.utils.fileio import atomic_write_text as _atomic_write_text
 from server.utils.logger import get_logger
 from server.utils.paths import safe_path_within
 
@@ -119,21 +118,6 @@ def _load_avc(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _atomic_write_text(path: Path, content: str) -> None:
-    """Write text to a file atomically via temp + rename."""
-    fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(content)
-        os.replace(tmp, str(path))
-    except BaseException:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise
-
-
 def _read_scripts_dir(scripts_dir: Path) -> dict[str, str]:
     """Read all .py files from a scripts directory."""
     result: dict[str, str] = {}
@@ -195,8 +179,11 @@ def _seed_zip_to_library(zip_path: Path, project_id: str, lib: Path) -> None:
         data, _ = migrate_project(data)
         from server.core.project_loader import ProjectConfig
         ProjectConfig(**data)  # validate before writing
-        (project_dir / "project.avc").write_text(
-            json.dumps(data, indent=4, ensure_ascii=False), encoding="utf-8"
+        # Atomic: the .seeded marker + exists checks mean a truncated seed
+        # project.avc would never be repaired on a later start.
+        _atomic_write_text(
+            project_dir / "project.avc",
+            json.dumps(data, indent=4, ensure_ascii=False),
         )
 
         # Extract scripts
@@ -272,8 +259,9 @@ def ensure_starter_projects() -> None:
             log.warning("Failed to seed starter project %s: %s", avc_file.stem, e)
             continue
         project_dir.mkdir()
-        (project_dir / "project.avc").write_text(
-            json.dumps(data, indent=4, ensure_ascii=False), encoding="utf-8"
+        _atomic_write_text(
+            project_dir / "project.avc",
+            json.dumps(data, indent=4, ensure_ascii=False),
         )
         scripts_seed = _SEED_DIR / f"{avc_file.stem}.scripts"
         if scripts_seed.is_dir():

@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from server.api._engine import _get_engine
 from server.api.auth import require_claimed_auth
 from server.api.models import ScriptCreateRequest
+from server.utils.fileio import atomic_write_text
 from server.utils.paths import is_safe_script_filename, safe_path_within
 
 router = APIRouter()
@@ -83,7 +84,7 @@ async def save_script_source(script_id: str, request: Request) -> dict[str, Any]
     scripts_dir = _get_scripts_dir()
     path = _safe_script_path(scripts_dir, cfg["file"])
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(source, encoding="utf-8")
+    atomic_write_text(path, source)
     return {"status": "saved"}
 
 
@@ -145,7 +146,7 @@ async def create_script(data: ScriptCreateRequest) -> dict[str, Any]:
     scripts_dir = _get_scripts_dir()
     scripts_dir.mkdir(parents=True, exist_ok=True)
     path = _safe_script_path(scripts_dir, data.file)
-    path.write_text(data.source, encoding="utf-8")
+    atomic_write_text(path, data.source)
 
     # Add to the project through the one seam: the scripts diff loads just
     # this script instead of the old full reload (which re-executed every
