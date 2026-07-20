@@ -417,6 +417,24 @@ class TestBackup:
             assert any("project.avc" in n for n in names)
             assert "system.json" in names
 
+    def test_create_backup_excludes_user_backups(self, tmp_path):
+        # User backups live at {project_dir}/backups/ inside the projects
+        # tree; embedding them re-compresses up to 15 nested backup zips per
+        # update for zero restore value.
+        projects_dir = tmp_path / "projects" / "default"
+        projects_dir.mkdir(parents=True)
+        (projects_dir / "project.avc").write_text('{"name": "test"}')
+        user_backups = projects_dir / "backups"
+        user_backups.mkdir()
+        (user_backups / "backup-20260101T000000Z.zip").write_bytes(b"fake-zip")
+
+        backup_path = create_backup(tmp_path, "0.1.0")
+
+        with zipfile.ZipFile(backup_path) as zf:
+            names = zf.namelist()
+        assert "projects/default/project.avc" in names
+        assert not any("backups/" in n for n in names)
+
     def test_list_backups(self, tmp_path):
         backup_dir = tmp_path / "backups"
         backup_dir.mkdir()

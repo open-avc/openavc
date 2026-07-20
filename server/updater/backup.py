@@ -51,11 +51,14 @@ def create_backup(
 
     try:
         with zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as zf:
-            # Back up projects directory
+            # Back up projects directory. User backups (backup_manager writes
+            # {project_dir}/backups/ inside this tree) are skipped: embedding
+            # up to 15 already-compressed backup zips per update multiplies
+            # disk and CPU cost for zero restore value.
             projects_dir = data_dir / "projects"
             if projects_dir.exists():
                 for file_path in projects_dir.rglob("*"):
-                    if file_path.is_file():
+                    if file_path.is_file() and not _in_user_backups(file_path, projects_dir):
                         arcname = file_path.relative_to(data_dir).as_posix()
                         zf.write(file_path, arcname)
 
@@ -101,7 +104,7 @@ def create_backup(
                 external_dir = _project_external_dir(project_path, data_dir)
                 if external_dir is not None:
                     for file_path in external_dir.rglob("*"):
-                        if file_path.is_file():
+                        if file_path.is_file() and not _in_user_backups(file_path, external_dir):
                             rel = file_path.relative_to(external_dir).as_posix()
                             zf.write(file_path, f"external-project/{rel}")
 
@@ -115,6 +118,16 @@ def create_backup(
     size_mb = backup_path.stat().st_size / (1024 * 1024)
     log.info("Backup created: %s (%.1f MB)", backup_path, size_mb)
     return backup_path
+
+
+def _in_user_backups(file_path: Path, root: Path) -> bool:
+    """True when ``file_path`` sits under a user-backup directory below ``root``.
+
+    backup_manager keeps user backups at ``{project_dir}/backups/`` inside the
+    projects tree (and the external project dir); nothing else on the user-data
+    path creates a ``backups`` directory — scripts and assets are flat.
+    """
+    return "backups" in file_path.relative_to(root).parts[:-1]
 
 
 def _project_external_dir(project_path: Path, data_dir: Path) -> Path | None:
