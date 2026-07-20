@@ -4,6 +4,25 @@ Shared test fixtures for OpenAVC tests.
 
 
 import os
+import tempfile
+
+# Pin an isolated, empty data dir BEFORE anything imports `server.config`.
+# config.py computes TLS_ENABLED / HTTP_PORT / TLS_PORT (and friends) as
+# module-level constants at *import* time. A test module that does
+# `from server import config` at top level gets config.py imported during
+# collection -- earlier than the session-scoped _isolated_system_config
+# fixture below can run -- which would bake the developer's real
+# ./data/system.json into those constants for the whole process. When that
+# file has TLS enabled (e.g. after cert bench work), a later test that builds
+# a plain-http loopback URL then sees TLS on and gets an https URL instead,
+# so the suite fails in a way that depends on collection order and the
+# developer's machine. CI never saw it (no ./data), which is exactly what
+# made it look random. Setting the env var here, before the server imports
+# below, guarantees the first import of config.py reads an empty dir. Honor an
+# explicit override if the developer set one.
+os.environ.setdefault(
+    "OPENAVC_DATA_DIR", tempfile.mkdtemp(prefix="openavc_test_import_")
+)
 
 import pytest
 
@@ -29,6 +48,11 @@ def _isolated_system_config(tmp_path_factory):
     fresh defaults, no auth, no cloud, no kiosk. Tests that need to
     exercise specific config (e.g. test_api_auth.py) override values
     explicitly via monkeypatch.
+
+    The module-level ``OPENAVC_DATA_DIR`` pin at the top of this file already
+    covers config.py's *import-time* constants; this fixture re-pins to a
+    tidy per-session tmp dir (auto-cleaned by pytest) and resets the config
+    singleton so ``get_system_config()`` callers see the same isolation.
     """
     from server.system_config import reset_system_config
     data_dir = tmp_path_factory.mktemp("openavc_test_data")
