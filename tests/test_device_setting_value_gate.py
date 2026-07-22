@@ -183,6 +183,29 @@ async def test_pending_apply_failure_emits_device_error(core):
     assert dm._device_configs["dev3"]["pending_settings"] == {"brightness": 50}
 
 
+async def test_pending_apply_coerces_uncoerced_values(core):
+    """A pending setting can reach the queue by a path that bypasses
+    store_pending_settings' intake coercion — a project reload of a
+    hand-edited file. _apply_pending_settings must coerce against the schema
+    before the value reaches the driver (set_device_setting itself doesn't),
+    not push the raw string through."""
+    state, events = core
+    dm = DeviceManager(state, events)
+    driver = _SettingsDriver("dev4", {}, state, events)
+    await driver.connect()
+    dm._devices["dev4"] = driver
+    # A raw string as it would sit in a reloaded project file — it never went
+    # through store_pending_settings.
+    dm._device_configs["dev4"] = {"pending_settings": {"brightness": "75"}}
+
+    await dm._apply_pending_settings("dev4")
+
+    # Coerced to a real int, not the raw string.
+    assert driver.writes == [("brightness", 75)]
+    # Applied cleanly → cleared from the queue.
+    assert "pending_settings" not in dm._device_configs["dev4"]
+
+
 # ── child_id param coercion (platform-side, was per-driver folklore) ─────────
 
 

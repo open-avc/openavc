@@ -858,9 +858,16 @@ class DeviceManager:
         if driver is None:
             return
 
+        defs = driver.DRIVER_INFO.get("device_settings", {})
         applied_keys: list[str] = []
         for key, value in pending.items():
             try:
+                # Coerce against the schema before the value reaches the driver.
+                # store_pending_settings coerces at intake, but a value can
+                # enter the queue by a path that bypasses it (a project reload of
+                # a hand-edited file), and set_device_setting doesn't validate.
+                if key in defs:
+                    value = validate_device_setting_value(key, defs[key], value)
                 await driver.set_device_setting(key, value)
                 applied_keys.append(key)
                 log.info(f"[{device_id}] Applied pending setting '{key}' = {value!r}")
