@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import {
   getTheme, createTheme, updateTheme, deleteTheme, importTheme, getTunnelPrefix,
+  ThemeExistsError,
   type ThemeDefinition, type ThemeSummary,
 } from "../../api/restClient";
 import type { ProjectConfig, UIPage, UIElement } from "../../api/types";
@@ -711,6 +712,9 @@ export function ThemeStudio({
   const [pendingThemeSwitch, setPendingThemeSwitch] = useState<string | null>(null);
   const [pendingClose, setPendingClose] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // An import whose id collides with an existing custom theme, awaiting the
+  // user's Overwrite / Keep both choice.
+  const [importCollision, setImportCollision] = useState<{ file: File; id: string; name: string } | null>(null);
   const [previewView, setPreviewView] = useState<string>("gallery");
   const [focusedElement, setFocusedElement] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1071,20 +1075,68 @@ export function ThemeStudio({
     URL.revokeObjectURL(url);
   };
 
+  const runImport = async (file: File, overwrite: boolean) => {
+    const result = await importTheme(file, overwrite);
+    onChangeTheme(result.id);
+    onRefreshThemes();
+    setStatusMsg({ kind: "info", text: `Imported "${result.name}"` });
+  };
+
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    if (fileInputRef.current) fileInputRef.current.value = "";
     if (!file) return;
     setBusy(true);
     setStatusMsg(null);
     try {
-      const result = await importTheme(file);
-      onChangeTheme(result.id);
-      onRefreshThemes();
-      setStatusMsg({ kind: "info", text: `Imported "${result.name}"` });
+      await runImport(file, false);
+    } catch (err) {
+      if (err instanceof ThemeExistsError) {
+        // Don't silently clobber an edited custom theme — ask first.
+        setImportCollision({ file, id: err.themeId, name: err.themeName });
+      } else {
+        setStatusMsg({ kind: "error", text: err instanceof Error ? err.message : "Import failed" });
+      }
+    }
+    setBusy(false);
+  };
+
+  // Overwrite the existing custom theme with the imported one.
+  const handleOverwriteImport = async () => {
+    if (!importCollision) return;
+    const { file } = importCollision;
+    setImportCollision(null);
+    setBusy(true);
+    try {
+      await runImport(file, true);
     } catch (err) {
       setStatusMsg({ kind: "error", text: err instanceof Error ? err.message : "Import failed" });
     }
-    if (fileInputRef.current) fileInputRef.current.value = "";
+    setBusy(false);
+  };
+
+  // Keep both: re-import the file's theme under a fresh, non-colliding id.
+  const handleKeepBothImport = async () => {
+    if (!importCollision) return;
+    const { file, id } = importCollision;
+    setImportCollision(null);
+    setBusy(true);
+    try {
+      const parsed = JSON.parse(await file.text()) as ThemeDefinition;
+      const existing = new Set(themes.map((t) => t.id));
+      let n = 2;
+      let newId = `${id}-${n}`;
+      while (existing.has(newId)) newId = `${id}-${++n}`;
+      const baseName = (parsed.name || id).replace(/\s*\(\d+\)\s*$/, "");
+      const payload: ThemeDefinition = { ...parsed, id: newId, name: `${baseName} (${n})` };
+      delete (payload as { _source?: string })._source;
+      await createTheme(payload);
+      onChangeTheme(newId);
+      onRefreshThemes();
+      setStatusMsg({ kind: "info", text: `Imported as "${payload.name}"` });
+    } catch (err) {
+      setStatusMsg({ kind: "error", text: err instanceof Error ? err.message : "Import failed" });
+    }
     setBusy(false);
   };
 
@@ -1397,6 +1449,25 @@ export function ThemeStudio({
           style={{ display: "none" }}
           onChange={handleImport}
         />
+
+        {importCollision && (
+          <ConfirmDialog
+            title="Theme already exists"
+            confirmLabel="Overwrite"
+            extraActionLabel="Keep both"
+            cancelLabel="Cancel"
+            destructive
+            onCancel={() => setImportCollision(null)}
+            onExtraAction={handleKeepBothImport}
+            onConfirm={handleOverwriteImport}
+            message={
+              <p>
+                A custom theme named <strong>"{importCollision.name}"</strong> already exists.
+                Overwrite it, or keep both by importing under a new name?
+              </p>
+            }
+          />
+        )}
 
         {pendingThemeSwitch && (
           <ConfirmDialog

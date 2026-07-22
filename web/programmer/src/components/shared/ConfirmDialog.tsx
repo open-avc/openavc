@@ -5,6 +5,9 @@ interface ConfirmDialogProps {
   message: React.ReactNode;
   confirmLabel?: string;
   cancelLabel?: string;
+  /** Optional third button between Cancel and Confirm (e.g. "Keep both"). */
+  extraActionLabel?: string;
+  onExtraAction?: () => void;
   destructive?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
@@ -15,6 +18,8 @@ export function ConfirmDialog({
   message,
   confirmLabel = "Confirm",
   cancelLabel = "Cancel",
+  extraActionLabel,
+  onExtraAction,
   destructive = false,
   onConfirm,
   onCancel,
@@ -103,6 +108,19 @@ export function ConfirmDialog({
           >
             {cancelLabel}
           </button>
+          {extraActionLabel && onExtraAction && (
+            <button
+              data-extra
+              onClick={onExtraAction}
+              style={{
+                padding: "var(--space-sm) var(--space-lg)",
+                borderRadius: "var(--border-radius)",
+                background: "var(--bg-hover)",
+              }}
+            >
+              {extraActionLabel}
+            </button>
+          )}
           <button
             data-confirm
             onClick={onConfirm}

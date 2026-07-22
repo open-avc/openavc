@@ -235,8 +235,18 @@ async def export_theme(theme_id: str):
 
 
 @router.post("/themes/import")
-async def import_theme(file: UploadFile = File(...)) -> dict[str, Any]:
-    """Upload and import a .avctheme file."""
+async def import_theme(
+    file: UploadFile = File(...), overwrite: bool = False
+) -> dict[str, Any]:
+    """Upload and import a .avctheme file.
+
+    Safe by default: importing a theme whose id collides with an existing
+    *custom* theme returns 409 (with a machine-readable ``code: theme_exists``)
+    rather than silently replacing what the user may have edited. The Theme
+    Studio import dialog catches that and offers Overwrite (retry with
+    ``?overwrite=true``) or Keep both (re-import under a fresh id). A built-in
+    id collision is always refused — built-ins can't be overwritten at all.
+    """
     if not file.filename:
         raise HTTPException(status_code=400, detail="No filename provided")
 
@@ -256,6 +266,17 @@ async def import_theme(file: UploadFile = File(...)) -> dict[str, Any]:
         raise HTTPException(status_code=409, detail=f"Cannot overwrite built-in theme '{theme_id}'")
 
     custom_path = _custom_themes_dir() / f"{theme_id}.json"
+    if custom_path.exists() and not overwrite:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "theme_exists",
+                "id": theme_id,
+                "name": data.get("name", theme_id),
+                "message": f"A custom theme with id '{theme_id}' already exists.",
+            },
+        )
+
     atomic_write_text(custom_path, json.dumps(data, indent=4, ensure_ascii=False))
-    log.info(f"Imported theme: {theme_id}")
+    log.info(f"Imported theme: {theme_id} (overwrite={overwrite})")
     return {"status": "imported", "id": theme_id, "name": data.get("name", "")}

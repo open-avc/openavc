@@ -171,3 +171,88 @@ async def test_export_theme(client):
     theme = data.get("theme", data)
     assert "id" in theme
     assert "variables" in theme
+
+
+# --- Import collision handling (Q-030 / backlog 91) ---
+
+
+def _import(client, theme, overwrite=False):
+    url = "/api/themes/import" + ("?overwrite=true" if overwrite else "")
+    return client.post(
+        url,
+        files={"file": (f"{theme['id']}.avctheme", json.dumps(theme), "application/json")},
+    )
+
+
+async def test_import_new_theme(client):
+    import uuid
+    theme_id = f"imported-{uuid.uuid4().hex[:8]}"
+    theme = {
+        "name": "Imported",
+        "id": theme_id,
+        "version": "1.0.0",
+        "variables": {"panel_bg": "#010101"},
+    }
+    resp = _import(client, theme)
+    assert resp.status_code == 200
+    assert resp.json()["id"] == theme_id
+    assert theme_id in [t["id"] for t in client.get("/api/themes").json()]
+    client.delete(f"/api/themes/{theme_id}")
+
+
+async def test_import_custom_collision_returns_409_and_preserves_existing(client):
+    """A colliding custom id must NOT be silently overwritten."""
+    import uuid
+    theme_id = f"collide-{uuid.uuid4().hex[:8]}"
+    original = {
+        "name": "Original",
+        "id": theme_id,
+        "version": "1.0.0",
+        "variables": {"panel_bg": "#111111"},
+    }
+    assert client.post("/api/themes", json=original).status_code == 200
+
+    incoming = dict(original, name="Incoming", variables={"panel_bg": "#999999"})
+    resp = _import(client, incoming)
+    assert resp.status_code == 409
+    detail = resp.json()["detail"]
+    assert detail["code"] == "theme_exists"
+    assert detail["id"] == theme_id
+    assert detail["name"] == "Incoming"
+
+    # The edited theme the user already had is untouched.
+    kept = client.get(f"/api/themes/{theme_id}").json()
+    assert kept["variables"]["panel_bg"] == "#111111"
+    client.delete(f"/api/themes/{theme_id}")
+
+
+async def test_import_overwrite_replaces(client):
+    import uuid
+    theme_id = f"replace-{uuid.uuid4().hex[:8]}"
+    original = {
+        "name": "Original",
+        "id": theme_id,
+        "version": "1.0.0",
+        "variables": {"panel_bg": "#111111"},
+    }
+    assert client.post("/api/themes", json=original).status_code == 200
+
+    incoming = dict(original, variables={"panel_bg": "#999999"})
+    resp = _import(client, incoming, overwrite=True)
+    assert resp.status_code == 200
+    replaced = client.get(f"/api/themes/{theme_id}").json()
+    assert replaced["variables"]["panel_bg"] == "#999999"
+    client.delete(f"/api/themes/{theme_id}")
+
+
+async def test_import_builtin_collision_still_refused(client):
+    """A built-in id is refused outright — overwrite doesn't apply."""
+    builtin = {
+        "name": "Fake Dark",
+        "id": "dark-default",
+        "version": "1.0.0",
+        "variables": {"panel_bg": "#000000"},
+    }
+    assert _import(client, builtin).status_code == 409
+    # Even with overwrite=true, built-ins can't be replaced.
+    assert _import(client, builtin, overwrite=True).status_code == 409

@@ -207,14 +207,35 @@ export async function deleteTheme(themeId: string): Promise<{ status: string }> 
   return request(`/themes/${themeId}`, { method: "DELETE" });
 }
 
-export async function importTheme(file: File): Promise<{ status: string; id: string; name: string }> {
+/** Thrown when importing a theme whose id collides with an existing custom
+ *  theme. The import dialog catches this to offer Overwrite / Keep both. */
+export class ThemeExistsError extends Error {
+  constructor(public themeId: string, public themeName: string) {
+    super(`A custom theme named "${themeName}" already exists`);
+    this.name = "ThemeExistsError";
+  }
+}
+
+export async function importTheme(
+  file: File,
+  overwrite = false,
+): Promise<{ status: string; id: string; name: string }> {
   const formData = new FormData();
   formData.append("file", file);
-  const res = await fetch(`${BASE}/themes/import`, {
+  const url = `${BASE}/themes/import${overwrite ? "?overwrite=true" : ""}`;
+  const res = await fetch(url, {
     method: "POST",
     body: formData,
   });
   if (!res.ok) {
+    if (res.status === 409) {
+      const body = await res.json().catch(() => null);
+      const detail = body?.detail;
+      if (detail && typeof detail === "object" && detail.code === "theme_exists") {
+        throw new ThemeExistsError(detail.id, detail.name || detail.id);
+      }
+      throw new Error(typeof detail === "string" ? detail : "Import failed");
+    }
     const body = await res.text();
     throw new Error(`Import failed: ${body}`);
   }
