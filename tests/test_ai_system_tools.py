@@ -115,6 +115,28 @@ async def test_get_logs_redacts_plugin_config_secrets(monkeypatch):
     assert not any("tok-9f8e7d6c" in m for m in messages)
 
 
+async def test_get_logs_redaction_respects_word_boundaries(monkeypatch):
+    # An SNMP community of "public" is a real secret, but plain substring
+    # redaction mangled unrelated words that merely contain it (republic,
+    # publication). Scrub the value where it stands as its own token; leave
+    # coincidental substrings intact.
+    device = SimpleNamespace(config={"community": "public", "host": "10.0.0.9"})
+    project = SimpleNamespace(devices=[device], connections={}, plugins={})
+    _install_buffer(
+        monkeypatch,
+        [
+            _entry("SNMP community=public accepted", level="DEBUG"),
+            _entry("the republic issued a publication", level="INFO"),
+        ],
+    )
+    result = await _Handler(SimpleNamespace(project=project))._get_logs({"count": 10})
+    messages = [e["message"] for e in result]
+    # The standalone secret token is scrubbed...
+    assert "SNMP community=*** accepted" in messages
+    # ...but words that merely contain it are untouched.
+    assert "the republic issued a publication" in messages
+
+
 async def test_get_logs_coerces_string_numbers(monkeypatch):
     entries = [_entry("old line", age_seconds=3600)]
     entries += [_entry(f"line {i}") for i in range(5)]

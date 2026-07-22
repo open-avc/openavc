@@ -1,6 +1,7 @@
 """Mixin for AI tool handlers that manage system-level operations."""
 
 import asyncio
+import re
 from pathlib import Path
 from typing import Any
 
@@ -52,10 +53,23 @@ def _looks_secret(key: str) -> bool:
     return any(hint in lowered for hint in _SECRET_KEY_HINTS)
 
 
+_WORD_EDGE = re.compile(r"\w")
+
+
 def _redact_log_message(message: str, secrets: set[str]) -> str:
-    for secret in secrets:
-        if secret in message:
-            message = message.replace(secret, "***")
+    # Scrub the secret VALUE only where it stands as its own token. A plain
+    # substring replace mangled unrelated words that happen to contain a short
+    # secret — an SNMP community of "public" turned "republic" into "re***".
+    # Word boundaries are applied per edge, but only when that edge is itself a
+    # word char, so a secret with punctuation edges (e.g. "p@ss!") still
+    # matches wherever it really appears. Longest-first so overlapping secrets
+    # don't leave a fragment behind.
+    for secret in sorted(secrets, key=len, reverse=True):
+        if secret not in message:
+            continue
+        left = r"\b" if _WORD_EDGE.match(secret[0]) else ""
+        right = r"\b" if _WORD_EDGE.match(secret[-1]) else ""
+        message = re.sub(left + re.escape(secret) + right, "***", message)
     return message
 
 
