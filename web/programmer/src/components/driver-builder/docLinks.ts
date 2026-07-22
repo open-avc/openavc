@@ -29,6 +29,7 @@ export const DOCS = {
   // Behavior tab sub-sections
   stateVariables: `${DOCS_BASE}/creating-drivers/#state_variables-entry`,
   commands: `${DOCS_BASE}/creating-drivers/#commands-entry`,
+  actions: `${DOCS_BASE}/creating-drivers/#quick_actions-and-actions-quick-action-buttons`,
   responses: `${DOCS_BASE}/creating-drivers/#responses-entry`,
   polling: `${DOCS_BASE}/creating-drivers/#polling-section`,
   deviceSettings: `${DOCS_BASE}/creating-drivers/#device_settings-entry`,

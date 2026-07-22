@@ -7,6 +7,7 @@ import { useDriverBuilderStore } from "../../store/driverBuilderStore";
 import { DRIVER_CATEGORIES } from "./driverCategories";
 import { TransportPicker } from "./TransportPicker";
 import { CommandBuilder } from "./CommandBuilder";
+import { ActionsEditor } from "./ActionsEditor";
 import { ResponseBuilder } from "./ResponseBuilder";
 import { PollingConfig } from "./PollingConfig";
 import { StateVariableEditor } from "./StateVariableEditor";
@@ -144,6 +145,11 @@ export function DriverEditor({
   const childTypeCount = Object.keys(draft.child_entity_types ?? {}).length;
   const commandCount = Object.keys(draft.commands ?? {}).length;
   const responseCount = (draft.responses ?? []).length;
+  // Actions header meta: explicit actions plus legacy quick_actions count as
+  // buttons; a web_ui flag alone still deserves a non-"none" hint since it
+  // adds the Open Web UI button.
+  const actionCount = (draft.actions ?? []).length + (draft.quick_actions ?? []).length;
+  const webUiEnabled = draft.web_ui !== undefined && draft.web_ui !== false;
   const pollingQueryCount = (draft.polling?.queries ?? []).length;
   const settingCount = Object.keys(draft.device_settings ?? {}).length;
   const configFieldCount = Object.keys(draft.config_schema ?? {}).filter(
@@ -705,6 +711,22 @@ export function DriverEditor({
               helpHref={DOCS.commands}
             >
               <CommandBuilder draft={draft} onUpdate={onUpdate} />
+            </CollapsibleSection>
+
+            <CollapsibleSection
+              title="Actions"
+              subtitle="Commands promoted to one-click buttons at the top of the device view — plus an Open Web UI link for devices with a browser interface."
+              meta={
+                actionCount > 0
+                  ? `${countMeta(actionCount, "action")}${webUiEnabled ? " + web UI" : ""}`
+                  : webUiEnabled
+                    ? "web UI"
+                    : "none"
+              }
+              defaultOpen={actionCount > 0 || webUiEnabled}
+              helpHref={DOCS.actions}
+            >
+              <ActionsEditor draft={draft} onUpdate={onUpdate} />
             </CollapsibleSection>
 
             <CollapsibleSection

@@ -562,7 +562,7 @@ export function KeyValueList({
   );
 }
 
-function ParamEditor({
+export function ParamEditor({
   params,
   childTypes,
   onChange,

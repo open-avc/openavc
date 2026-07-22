@@ -7,6 +7,8 @@ import type {
 // registry (types.gen.ts) — the runtime, the catalog validator, and this
 // validator all read the same tables, so they can't drift apart.
 import {
+  ACTION_AVAILABILITIES,
+  ACTION_KINDS_YAML,
   AUTH_TRANSPORTS,
   DISALLOWED_OPEN_PORTS,
   FRAME_HEADER_SIZES,
@@ -16,6 +18,7 @@ import {
   PUSH_KEYS_BY_TYPE,
   STATE_VAR_TYPES,
   STRUCT_LENGTH_SIZES,
+  VISIBLE_WHEN_OPERATORS,
 } from "../../api/types";
 
 // Re-exported for the Discovery editor, which shows the rule inline at
@@ -1228,6 +1231,11 @@ export function validateDriver(
   //    tab at author time. At runtime a bad push block silently never
   //    delivers a frame, and a bad liveness block either never arms or tears
   //    healthy devices down. ────────────────────────────────────────────────
+  // ── Actions, quick actions, and web_ui — mirror avcdriver_semantic.py's
+  //    validate_actions so a bad promotion shows in the Behavior tab at
+  //    author time instead of as a save-time 422. ─────────────────────────
+  validateActions(draft, issues);
+
   validatePush(draft, issues);
   validateLiveness(draft, issues);
 
@@ -1255,6 +1263,272 @@ function isMulticastGroup(value: string): boolean {
   );
   if (octets.some((o) => Number.isNaN(o) || o > 255)) return false;
   return octets[0] >= 224 && octets[0] <= 239;
+}
+
+/** Mirror server/drivers/avcdriver_semantic.py's validate_actions: the
+ *  `actions` + `quick_actions` promotion blocks and the `web_ui` flag. A bad
+ *  entry either 422s at save (loader-validated) or renders a button that
+ *  404s on click, so every rule surfaces here first. Link URLs and a
+ *  web_ui template get the same {placeholder} coverage check commands get —
+ *  the runtime substitutes {host}/{port}/{config_key} and leaves unknown
+ *  tokens verbatim in the opened URL. */
+function validateActions(
+  draft: DriverDefinition,
+  issues: ValidationIssue[],
+): void {
+  const commandIds = new Set(Object.keys(draft.commands ?? {}));
+
+  // Keys a link URL / web_ui template may substitute: declared config fields
+  // plus the runtime-injected connection keys (host, port, ...).
+  const urlKeys = new Set([
+    ...Object.keys(draft.config_schema ?? {}),
+    ...Object.keys(draft.default_config ?? {}),
+    ...BASELINE_CONFIG_KEYS,
+  ]);
+  const checkUrlTemplate = (where: string, field: string, template: string) => {
+    const seen = new Set<string>();
+    const re = new RegExp(PLACEHOLDER_RE.source, "g");
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(template))) {
+      const token = m[1];
+      if (seen.has(token)) continue;
+      seen.add(token);
+      if (urlKeys.has(token)) continue;
+      issues.push({
+        severity: "warning",
+        section: "behavior",
+        field,
+        message: `${where} references {${token}}, but only {host}, {port}, and declared config fields are substituted — the placeholder would be left in the opened URL.`,
+      });
+    }
+  };
+
+  // web_ui: boolean, or a URL template string.
+  if (typeof draft.web_ui === "string" && draft.web_ui) {
+    checkUrlTemplate("The web interface URL template", "web_ui", draft.web_ui);
+  }
+
+  // quick_actions: legacy sugar — every entry must name a declared command.
+  const quick = draft.quick_actions;
+  if (quick !== undefined) {
+    if (!Array.isArray(quick)) {
+      issues.push({
+        severity: "error",
+        section: "behavior",
+        field: "quick_actions",
+        message: "Quick actions must be a list of command ids.",
+      });
+    } else {
+      quick.forEach((cid, i) => {
+        if (typeof cid !== "string" || !cid) {
+          issues.push({
+            severity: "error",
+            section: "behavior",
+            field: "quick_actions",
+            message: `Quick action ${i + 1} must be a non-empty command id.`,
+          });
+        } else if (commandIds.size > 0 && !commandIds.has(cid)) {
+          issues.push({
+            severity: "error",
+            section: "behavior",
+            field: "quick_actions",
+            message: `Quick action "${cid}" is not a declared command.`,
+          });
+        }
+      });
+    }
+  }
+
+  const actions = draft.actions;
+  if (actions === undefined) return;
+  if (!Array.isArray(actions)) {
+    issues.push({
+      severity: "error",
+      section: "behavior",
+      field: "actions",
+      message: "Actions must be a list.",
+    });
+    return;
+  }
+
+  const seenIds = new Set<string>();
+  actions.forEach((entry, i) => {
+    const where = `Action ${i + 1}`;
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      issues.push({
+        severity: "error",
+        section: "behavior",
+        field: "actions",
+        message: `${where} must be a mapping with an id.`,
+      });
+      return;
+    }
+    const a = entry as unknown as Record<string, unknown>;
+    const id = a.id;
+    let label = where;
+    if (typeof id !== "string" || !id) {
+      issues.push({
+        severity: "error",
+        section: "behavior",
+        field: "actions",
+        message: `${where} needs an id.`,
+      });
+    } else {
+      label = `Action "${id}"`;
+      if (seenIds.has(id)) {
+        issues.push({
+          severity: "error",
+          section: "behavior",
+          field: "actions",
+          message: `${label} duplicates another action's id — ids must be unique.`,
+        });
+      }
+      seenIds.add(id);
+    }
+
+    const kind = a.kind ?? "command";
+    if (!(ACTION_KINDS_YAML as readonly unknown[]).includes(kind)) {
+      issues.push({
+        severity: "error",
+        section: "behavior",
+        field: "actions",
+        message: `${label} has unknown kind "${String(kind)}" — use "command" or "link" (setup actions need a Python driver).`,
+      });
+    }
+
+    const availability = a.availability;
+    if (
+      availability !== undefined &&
+      !(ACTION_AVAILABILITIES as readonly unknown[]).includes(availability)
+    ) {
+      issues.push({
+        severity: "error",
+        section: "behavior",
+        field: "actions",
+        message: `${label} availability must be online, offline, or always.`,
+      });
+    }
+
+    const url = a.url;
+    if (kind === "link") {
+      if (url !== undefined && (typeof url !== "string" || !url)) {
+        issues.push({
+          severity: "error",
+          section: "behavior",
+          field: "actions",
+          message: `${label} URL must be a non-empty string (leave it out to open https://{host}).`,
+        });
+      } else if (typeof url === "string") {
+        checkUrlTemplate(`${label}'s URL`, "actions", url);
+      }
+    } else if (url !== undefined) {
+      issues.push({
+        severity: "error",
+        section: "behavior",
+        field: "actions",
+        message: `${label} has a URL, but only a link action opens one — set the kind to "link" or remove the URL.`,
+      });
+    }
+
+    validateVisibleWhen(label, a.visible_when, issues);
+
+    // A kind:"command" action must resolve to a declared command — the
+    // explicit command field, or the action id itself. (Skipped when no
+    // commands are declared yet, matching the backend.)
+    if (kind === "command" && typeof id === "string" && id) {
+      const command = a.command;
+      if (command !== undefined && typeof command !== "string") {
+        issues.push({
+          severity: "error",
+          section: "behavior",
+          field: "actions",
+          message: `${label} command must be a command id string.`,
+        });
+      } else {
+        const target = (command as string | undefined) || id;
+        if (commandIds.size > 0 && !commandIds.has(target)) {
+          issues.push({
+            severity: "error",
+            section: "behavior",
+            field: "actions",
+            message: `${label} promotes command "${target}", which isn't a declared command.`,
+          });
+        }
+      }
+    }
+  });
+}
+
+/** Mirror avcdriver_semantic.py's _validate_visible_when: a single
+ *  {key, operator, value} condition or an {any|all: [...]} group.
+ *  Light-touch — unknown extra keys are tolerated. */
+function validateVisibleWhen(
+  label: string,
+  vw: unknown,
+  issues: ValidationIssue[],
+): void {
+  if (vw === undefined || vw === null) return;
+  if (typeof vw !== "object" || Array.isArray(vw)) {
+    issues.push({
+      severity: "error",
+      section: "behavior",
+      field: "actions",
+      message: `${label} visibility condition must be a mapping.`,
+    });
+    return;
+  }
+  const rec = vw as Record<string, unknown>;
+
+  const checkCondition = (cwhere: string, cond: unknown) => {
+    if (!cond || typeof cond !== "object" || Array.isArray(cond)) {
+      issues.push({
+        severity: "error",
+        section: "behavior",
+        field: "actions",
+        message: `${cwhere} must be a mapping with a state key.`,
+      });
+      return;
+    }
+    const c = cond as Record<string, unknown>;
+    if (typeof c.key !== "string" || !c.key) {
+      issues.push({
+        severity: "error",
+        section: "behavior",
+        field: "actions",
+        message: `${cwhere} needs a state key to compare.`,
+      });
+    }
+    const op = c.operator ?? "eq";
+    if (typeof op !== "string" || !VISIBLE_WHEN_OPERATORS.has(op)) {
+      issues.push({
+        severity: "error",
+        section: "behavior",
+        field: "actions",
+        message: `${cwhere} has unknown operator "${String(op)}".`,
+      });
+    }
+  };
+
+  if ("any" in rec || "all" in rec) {
+    for (const groupKey of ["any", "all"] as const) {
+      if (!(groupKey in rec)) continue;
+      const group = rec[groupKey];
+      if (!Array.isArray(group) || group.length === 0) {
+        issues.push({
+          severity: "error",
+          section: "behavior",
+          field: "actions",
+          message: `${label} visibility "${groupKey}" group must list at least one condition.`,
+        });
+        continue;
+      }
+      group.forEach((cond, j) =>
+        checkCondition(`${label} visibility condition ${j + 1}`, cond),
+      );
+    }
+  } else {
+    checkCondition(`${label} visibility condition`, rec);
+  }
 }
 
 /** Push channel types the runtime knows about but hasn't implemented — kept
