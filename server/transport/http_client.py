@@ -186,6 +186,15 @@ class HTTPResponse:
         )
 
 
+# Default ceiling on a response body. Device responses are untrusted network
+# data; without a bound, one huge or runaway response materializes fully in
+# memory and can take down the control server. 32 MB clears any realistic
+# device API payload (JSON/XML status, EDID dumps, camera snapshots). A driver
+# whose device legitimately returns a larger body (a firmware or log export)
+# raises it via the ``max_response_bytes`` config key (see BaseDriver.connect).
+DEFAULT_MAX_RESPONSE_BYTES = 32 * 1024 * 1024
+
+
 class HTTPClientTransport:
     """
     Async HTTP/REST client transport for device APIs.
@@ -205,7 +214,7 @@ class HTTPClientTransport:
         timeout: float = 10.0,
         name: str | None = None,
         local_address: str | None = None,
-        max_response_bytes: int = 32 * 1024 * 1024,
+        max_response_bytes: int = DEFAULT_MAX_RESPONSE_BYTES,
     ):
         """
         Args:

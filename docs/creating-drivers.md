@@ -1565,6 +1565,7 @@ These fields in `config_schema` are recognized by the HTTP transport:
 | `api_key_header` | Header name for API key (default: `X-API-Key`) |
 | `verify_ssl` | Verify HTTPS certificates (default: true, set false for self-signed) |
 | `timeout` | Request timeout in seconds (default: 10) |
+| `max_response_bytes` | Ceiling on the response body size in bytes (default: 33554432 / 32 MB). Raise it only for a device that legitimately returns a larger body, such as a firmware or log export. |
 
 #### HTTP polling
 

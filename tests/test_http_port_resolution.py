@@ -49,9 +49,11 @@ class _FakeTransport:
     """Captures base_url passed to HTTPClientTransport and no-ops everything else."""
 
     last_base_url: str | None = None
+    last_max_response_bytes: object = None
 
-    def __init__(self, *, base_url, **_kwargs):
+    def __init__(self, *, base_url, max_response_bytes=None, **_kwargs):
         _FakeTransport.last_base_url = base_url
+        _FakeTransport.last_max_response_bytes = max_response_bytes
 
     async def open(self):
         return None
@@ -121,3 +123,43 @@ async def test_explicit_port_80_plain_http():
     driver = _build_http_driver(port=80, ssl=False)
     await driver.connect()
     assert _FakeTransport.last_base_url == "http://192.0.2.1:80"
+
+
+@pytest.mark.asyncio
+@patch("server.transport.http_client.HTTPClientTransport", _FakeTransport)
+async def test_max_response_bytes_defaults_when_config_omits_it():
+    """No config key → the transport keeps the module default cap."""
+    from server.transport.http_client import DEFAULT_MAX_RESPONSE_BYTES
+
+    driver = _build_http_driver()
+    await driver.connect()
+    assert _FakeTransport.last_max_response_bytes == DEFAULT_MAX_RESPONSE_BYTES
+
+
+@pytest.mark.asyncio
+@patch("server.transport.http_client.HTTPClientTransport", _FakeTransport)
+async def test_max_response_bytes_from_config_flows_through():
+    """A device that legitimately returns a larger body (firmware/log export)
+    raises the cap via the config key — previously constructor-only."""
+    driver = _build_http_driver()
+    driver.config["max_response_bytes"] = 100 * 1024 * 1024
+    await driver.connect()
+    assert _FakeTransport.last_max_response_bytes == 100 * 1024 * 1024
+
+
+@pytest.mark.asyncio
+@patch("server.transport.http_client.HTTPClientTransport", _FakeTransport)
+async def test_max_response_bytes_invalid_config_falls_back_to_default():
+    """A junk value (non-numeric or non-positive) falls back to the default
+    rather than passing a nonsense cap to the transport."""
+    from server.transport.http_client import DEFAULT_MAX_RESPONSE_BYTES
+
+    driver = _build_http_driver()
+    driver.config["max_response_bytes"] = "lots"
+    await driver.connect()
+    assert _FakeTransport.last_max_response_bytes == DEFAULT_MAX_RESPONSE_BYTES
+
+    driver2 = _build_http_driver()
+    driver2.config["max_response_bytes"] = 0
+    await driver2.connect()
+    assert _FakeTransport.last_max_response_bytes == DEFAULT_MAX_RESPONSE_BYTES

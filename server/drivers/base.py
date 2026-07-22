@@ -775,6 +775,7 @@ class BaseDriver(ABC):
                 timeout=self.config.get("timeout", 10.0),
                 name=self.device_id,
                 local_address=control_ip or None,
+                max_response_bytes=self._http_max_response_bytes(),
             )
             await self.transport.open()
         elif transport_type == "ssh":
@@ -1690,6 +1691,36 @@ class BaseDriver(ABC):
                 f"Device '{self.device_id}': invalid port {port!r} "
                 f"(driver '{driver_id}')"
             ) from e
+
+    def _http_max_response_bytes(self) -> int:
+        """Resolve the HTTP response-body cap from config.
+
+        The 32 MB default clears any realistic device payload; a driver whose
+        device legitimately returns a larger body (a firmware or log export)
+        raises it via the ``max_response_bytes`` config key. A missing,
+        non-numeric, or non-positive value falls back to the default rather
+        than handing the transport a nonsense cap.
+        """
+        from server.transport.http_client import DEFAULT_MAX_RESPONSE_BYTES
+
+        raw = self.config.get("max_response_bytes")
+        if raw is None:
+            return DEFAULT_MAX_RESPONSE_BYTES
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            log.warning(
+                f"[{self.device_id}] Ignoring invalid max_response_bytes "
+                f"{raw!r}; using default {DEFAULT_MAX_RESPONSE_BYTES}"
+            )
+            return DEFAULT_MAX_RESPONSE_BYTES
+        if value <= 0:
+            log.warning(
+                f"[{self.device_id}] Ignoring non-positive max_response_bytes "
+                f"{raw!r}; using default {DEFAULT_MAX_RESPONSE_BYTES}"
+            )
+            return DEFAULT_MAX_RESPONSE_BYTES
+        return value
 
     def _create_frame_parser(self) -> FrameParser | None:
         """
