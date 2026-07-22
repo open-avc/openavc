@@ -168,31 +168,44 @@ class TCPSimulator(BaseSimulator):
             # Uses read() instead of readuntil() because drivers may send a
             # different terminator than the response delimiter (e.g., Kramer
             # sends \r but response delimiter is \r\n).
-            try:
-                raw = await asyncio.wait_for(reader.read(4096), timeout=30.0)
-            except asyncio.TimeoutError:
-                return []
-            if not raw:
-                return None
-            # Append to the persistent partial-line buffer (if provided).
-            # If the chunk doesn't end with a delimiter, the trailing bytes
-            # stay in the buffer for the next read so we don't fragment a
-            # command across read boundaries.
             if buffer is None:
                 buffer = bytearray()
-            buffer.extend(raw)
-            # Find the last delimiter byte; everything after it is partial.
-            # If there's no delimiter at all, all bytes are partial — emit
-            # nothing and wait for more data.
-            last_delim = max(buffer.rfind(b"\r"), buffer.rfind(b"\n"))
-            if last_delim < 0:
-                return []
-            complete = bytes(buffer[: last_delim + 1])
-            tail = bytes(buffer[last_delim + 1:])
-            buffer.clear()
-            buffer.extend(tail)
-            parts = re.split(rb"[\r\n]+", complete)
-            return [p for p in parts if p]
+            while True:
+                # With bytes already buffered, read with a short quiet window
+                # instead of the long idle timeout: some text protocols are
+                # genuinely unterminated (single-character queries with no
+                # CR), and holding those bytes until more data arrives means
+                # they never dispatch at all. A fragmented line still
+                # coalesces — its remaining bytes arrive well inside the
+                # window — while a wire that stays quiet flushes the buffer
+                # as one complete message.
+                try:
+                    raw = await asyncio.wait_for(
+                        reader.read(4096), timeout=0.25 if buffer else 30.0
+                    )
+                except asyncio.TimeoutError:
+                    if buffer:
+                        complete = bytes(buffer)
+                        buffer.clear()
+                        return [p for p in re.split(rb"[\r\n]+", complete) if p]
+                    return []
+                if not raw:
+                    return None
+                # Append to the persistent partial-line buffer. If the chunk
+                # doesn't end with a delimiter, the trailing bytes stay in the
+                # buffer so we don't fragment a command across read boundaries.
+                buffer.extend(raw)
+                # Find the last delimiter byte; everything after it is partial
+                # and waits for the next read (or the quiet-window flush).
+                last_delim = max(buffer.rfind(b"\r"), buffer.rfind(b"\n"))
+                if last_delim < 0:
+                    continue
+                complete = bytes(buffer[: last_delim + 1])
+                tail = bytes(buffer[last_delim + 1:])
+                buffer.clear()
+                buffer.extend(tail)
+                parts = re.split(rb"[\r\n]+", complete)
+                return [p for p in parts if p]
 
         if self._delimiter:
             # Custom delimiter (non-line, e.g., "x" for LG, ">" for Shure)

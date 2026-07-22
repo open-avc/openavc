@@ -1615,9 +1615,8 @@ class YAMLAutoSimulator(TCPSimulator):
                             break
 
             if response_var:
-                pattern = re.compile(f"^{re.escape(query_text)}$")
                 self._query_handlers.append(QueryHandler(
-                    pattern=pattern,
+                    pattern=re.compile(f"^{re.escape(self._query_wire_line(query_text))}$"),
                     response_var=response_var,
                 ))
 
@@ -1635,11 +1634,26 @@ class YAMLAutoSimulator(TCPSimulator):
                 and isinstance(send, str) and send
                 and "address" not in entry
             ):
-                pattern = re.compile(f"^{re.escape(send)}$")
                 self._query_handlers.append(QueryHandler(
-                    pattern=pattern,
+                    pattern=re.compile(f"^{re.escape(self._query_wire_line(send))}$"),
                     response_var=qf,
                 ))
+
+    def _query_wire_line(self, query_text: str) -> str:
+        """The stripped line a raw poll query actually arrives as.
+
+        The driver sends raw queries with ``{config_field}`` placeholders
+        substituted and backslash escape sequences encoded to real bytes;
+        inbound dispatch then strips terminators and surrounding whitespace
+        (``_dispatch_command``). A query handler built from the as-authored
+        text (``"Status_Audio 1 \\r"``) could therefore never match the line
+        it arrives as (``"Status_Audio 1"``) — normalize the same way here.
+        """
+        if "{" in query_text:
+            merged = dict(self._driver_def.get("default_config") or {})
+            merged.update(self.config or {})
+            query_text = safe_substitute(query_text, merged)
+        return decode_delimiter(query_text).strip()
 
     def _build_inline_response_handlers(self) -> None:
         """Compile (pattern, set) handlers from the merged inline responses.
