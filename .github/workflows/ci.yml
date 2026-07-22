@@ -69,3 +69,54 @@ jobs:
         run: |
           npm ci
           npm run build
+
+  wheel-smoke:
+    name: Wheel smoke (built wheel serves the UI)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # The wheel bundles the built web assets. A wheel built from a tree that
+      # was never `npm run build`-ed installs fine but ships no UI, so build the
+      # frontends before packaging.
+      - name: Build Programmer UI
+        working-directory: web/programmer
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build Simulator UI
+        working-directory: web/simulator
+        run: |
+          npm ci
+          npm run build
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build the wheel
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build --wheel
+
+      - name: Install the wheel into a clean venv
+        run: |
+          python -m venv "${RUNNER_TEMP}/wheel-venv"
+          "${RUNNER_TEMP}/wheel-venv/bin/pip" install --upgrade pip
+          "${RUNNER_TEMP}/wheel-venv/bin/pip" install dist/*.whl
+
+      - name: Smoke — the installed wheel bundles and serves the UI
+        env:
+          # Keep the started server's seeded projects out of the checkout.
+          OPENAVC_DATA_DIR: ${{ runner.temp }}/openavc-data
+        run: |
+          "${RUNNER_TEMP}/wheel-venv/bin/python" .github/scripts/wheel_smoke.py
