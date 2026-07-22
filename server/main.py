@@ -55,6 +55,7 @@ from server import config, runtime_flags
 from server.api import rest, ws, isc_ws, discovery as discovery_api, plugins as plugins_api, assets as assets_api, themes as themes_api, ai_proxy as ai_proxy_api, ir_learn_ws
 from server.api.routes import network as network_routes
 from server.api.routes import pair as pair_routes
+from server.api.routes import root as root_routes
 from server.api.routes import setup as setup_routes
 from server.core.engine import Engine
 from server.discovery.engine import DiscoveryEngine
@@ -328,6 +329,7 @@ app.include_router(themes_api.router)
 app.include_router(ai_proxy_api.router)
 app.include_router(pair_routes.router)
 app.include_router(setup_routes.router)
+app.include_router(root_routes.router)
 app.include_router(network_routes.router)
 
 # CORS — allow same-origin and localhost by default.

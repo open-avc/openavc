@@ -169,6 +169,7 @@ Once OpenAVC is running, open a browser:
 
 | URL | Purpose |
 |-----|---------|
+| http://localhost:8080/ | Landing page with links to the Programmer and touch panel |
 | http://localhost:8080/programmer | Programmer IDE (where you build projects) |
 | http://localhost:8080/panel | End-user touch panel |
 | http://localhost:8080/api/health | Health check endpoint |
