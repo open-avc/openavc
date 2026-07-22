@@ -60,6 +60,10 @@ jobs:
           npm ci
           npm run build
 
+      - name: Test Programmer UI
+        working-directory: web/programmer
+        run: npm run test
+
       - name: Install and build Simulator UI
         working-directory: web/simulator
         run: |

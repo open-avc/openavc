@@ -177,18 +177,36 @@ export function IrCodesEditor({
   const [captures, setCaptures] = useState<Capture[]>([]);
   const sessionRef = useRef<IrLearnSession | null>(null);
 
-  // (Re)load rows when the device changes (keyed on deviceId only, so live
-  // updates elsewhere never clobber in-progress edits).
+  // (Re)load rows from the saved config. A device switch always resets. For the
+  // SAME device it also ADOPTS saved codes that arrive later — a project that
+  // hydrates after this editor mounts used to leave it stuck empty (the load
+  // keyed on deviceId alone). Adoption is gated on a pristine editor (no unsaved
+  // edits, not freshly saved) so a late store update never clobbers in-progress
+  // work; the codes-JSON ref keeps a churny store from re-parsing (and remounting
+  // the row inputs) when the actual codes haven't changed.
+  const loadedDeviceRef = useRef<string | null>(null);
+  const loadedCodesRef = useRef<string>("");
   useEffect(() => {
-    setRows(parseIrCodes((deviceConfig?.config ?? {}).ir_codes));
-    setDirty(false);
-    setSaved(false);
-    setSaveError(null);
-    setEditKey(null);
-    setSearchOpen(false);
-    closeLearn();
+    const codesJson = JSON.stringify(savedConfig.ir_codes ?? null);
+    const deviceChanged = loadedDeviceRef.current !== deviceId;
+    const codesChanged = codesJson !== loadedCodesRef.current;
+    loadedDeviceRef.current = deviceId;
+    loadedCodesRef.current = codesJson;
+    if (deviceChanged) {
+      setRows(parseIrCodes(savedConfig.ir_codes));
+      setDirty(false);
+      setSaved(false);
+      setSaveError(null);
+      setEditKey(null);
+      setSearchOpen(false);
+      closeLearn();
+      return;
+    }
+    if (codesChanged && !dirty && !saved) {
+      setRows(parseIrCodes(savedConfig.ir_codes));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deviceId]);
+  }, [deviceId, savedConfig, dirty, saved]);
 
   // Drop any live learn session on unmount.
   useEffect(() => {
@@ -201,6 +219,7 @@ export function IrCodesEditor({
   const markDirty = () => {
     setDirty(true);
     setSaved(false);
+    setSaveError(null);
   };
 
   const setRow = (key: string, patch: Partial<IrRow>) => {
@@ -233,7 +252,30 @@ export function IrCodesEditor({
     markDirty();
   };
 
+  // Rows that carry an identity (a name/label the user typed) but no captured
+  // code. buildIrCodes drops these on save, so persisting silently would lose
+  // the row while the editor still reads "Saved" — block the save and point at
+  // them instead. A blank placeholder row (nothing typed yet) is not flagged.
+  const incompleteKeys = useMemo(
+    () =>
+      new Set(
+        rows
+          .filter((r) => (r.label || r.name).trim() && !r.pronto.trim())
+          .map((r) => r.key),
+      ),
+    [rows],
+  );
+
   const handleSave = async () => {
+    if (incompleteKeys.size > 0) {
+      setSaved(false);
+      setSaveError(
+        incompleteKeys.size === 1
+          ? "One code still needs a captured signal — learn it, paste a code, or remove the row."
+          : `${incompleteKeys.size} codes still need a captured signal — learn them, paste a code, or remove the rows.`,
+      );
+      return;
+    }
     setSaving(true);
     setSaveError(null);
     try {
@@ -597,7 +639,14 @@ export function IrCodesEditor({
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
           {rows.map((r, idx) => (
-            <div key={r.key} style={card}>
+            <div
+              key={r.key}
+              style={
+                incompleteKeys.has(r.key)
+                  ? { ...card, border: "1px solid var(--color-warning, #d69e2e)" }
+                  : card
+              }
+            >
               <div style={{ display: "flex", gap: "var(--space-sm)", alignItems: "flex-start" }}>
                 <div style={{ flex: "1 1 160px" }}>
                   <div style={cellLabel}>Name</div>
@@ -646,8 +695,19 @@ export function IrCodesEditor({
                     </div>
                   ) : (
                     <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
-                      <code style={{ fontSize: 11, color: "var(--text-muted)", flex: 1, wordBreak: "break-all" }}>
-                        {prontoPreview(r.pronto)}
+                      <code
+                        style={{
+                          fontSize: 11,
+                          color: incompleteKeys.has(r.key)
+                            ? "var(--color-warning, #d69e2e)"
+                            : "var(--text-muted)",
+                          flex: 1,
+                          wordBreak: "break-all",
+                        }}
+                      >
+                        {incompleteKeys.has(r.key)
+                          ? "Needs a code before saving"
+                          : prontoPreview(r.pronto)}
                       </code>
                       <button style={iconBtn} onClick={() => openEdit(r)} title="Paste Pronto / type sendir">
                         <Pencil size={14} />
