@@ -176,6 +176,35 @@ const tests = {
         assert(handle.style.bottom === '0%', `fader reset to floor on delete, got ${handle.style.bottom}`);
     },
 
+    // §82.4 — fractional-step sliders/faders must not leak binary float noise
+    // onto the wire (Math.round(v/step)*step yields e.g. 0.30000000000000004).
+    slider_fader_step_no_float_noise() {
+        const app = mkApp();
+        // The shared snapper both controls now route their outgoing value through.
+        assert(app._snapToStep(0.3, 0.1) === 0.3, `0.1-step snap clean, got ${app._snapToStep(0.3, 0.1)}`);
+        assert(app._snapToStep(0.30000000000000004, 0.1) === 0.3, 'pre-noised value cleaned');
+        assert(app._snapToStep(2.5500000000001, 0.05) === 2.55, `0.05-step snap, got ${app._snapToStep(2.5500000000001, 0.05)}`);
+        assert(app._snapToStep(-6.0000000001, 0.5) === -6, `negative snap, got ${app._snapToStep(-6.0000000001, 0.5)}`);
+        assert(app._snapToStep(7.4, 1) === 7, 'integer step rounds to whole');
+        assert(app._snapToStep(3.14159, 0) === 3.14159, 'no step returns value as-is');
+
+        // End-to-end: a rendered fractional-step slider must send a clean value,
+        // proving the snapper is wired into the real render path (not just callable).
+        const sent = [];
+        app.send = (m) => sent.push(m);
+        const el = app.renderSlider({
+            id: 's1', type: 'slider', min: 0, max: 1, step: 0.1,
+            bindings: { show: { value: { key: 'var.g' } } },
+        });
+        const input = el.querySelector('input[type=range]');
+        // STEPS = round((1-0)/0.1) = 10; position 3 maps to value 0.3.
+        input.value = '3';
+        input.dispatchEvent(new window.Event('change'));
+        assert(sent.length === 1, `one ui.change sent, got ${sent.length}`);
+        assert(sent[0].value === 0.3, `slider wire value is clean 0.3, got ${sent[0].value}`);
+        assert(String(sent[0].value) === '0.3', `no float noise in wire value, got ${String(sent[0].value)}`);
+    },
+
     // H-003 / L-007 — lock shown once per session (no re-lock on reconnect), and
     // a cleared lock_code removes a stuck overlay.
     h003_l007_lock_reconcile() {

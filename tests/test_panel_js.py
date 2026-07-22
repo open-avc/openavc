@@ -85,6 +85,7 @@ SCENARIOS = [
     "l001_divide_by_zero_guards",
     "select_look_applies_matching_option_style",
     "select_look_registered_and_dispatched",
+    "slider_fader_step_no_float_noise",
 ]
 
 

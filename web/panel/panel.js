@@ -1329,7 +1329,7 @@ class PanelApp {
         const posToValue = (pos) => {
             const travel = STEPS > 0 ? pos / STEPS : 0;
             let v = sliderMin + this._responseCurve(travel, sResponse, sResponseDbRange) * sSpan;
-            if (sliderStep > 0) v = Math.round(v / sliderStep) * sliderStep;
+            if (sliderStep > 0) v = this._snapToStep(v, sliderStep);
             v = Math.max(sliderMin, Math.min(sliderMax, v));
             if (sHasOutputRange && !sScaleToFull) v = Math.max(sOutputMin, Math.min(sOutputMax, v));
             return v;
@@ -2810,7 +2810,7 @@ class PanelApp {
             if (hasOutputRange && !scaleToFull) {
                 val = Math.max(outputMin, Math.min(outputMax, val));
             }
-            return Math.round(val / step) * step;
+            return this._snapToStep(val, step);
         };
 
         const updateFader = (val) => {
@@ -2899,12 +2899,12 @@ class PanelApp {
             let current = parseFloat(handle.getAttribute('aria-valuenow') || String(min));
             if (e.key === 'ArrowUp' || e.key === 'ArrowRight') {
                 e.preventDefault();
-                current = Math.min(max, current + step);
+                current = Math.min(max, this._snapToStep(current + step, step));
                 updateFader(current);
                 sendChange(current);
             } else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') {
                 e.preventDefault();
-                current = Math.max(min, current - step);
+                current = Math.max(min, this._snapToStep(current - step, step));
                 updateFader(current);
                 sendChange(current);
             }
@@ -2933,6 +2933,24 @@ class PanelApp {
         if (outputRange === 0) return displayMin;
         const frac = (deviceValue - outputMin) / outputRange;
         return displayMin + frac * (displayMax - displayMin);
+    }
+
+    // Snap a value to the nearest multiple of `step`, then strip the binary
+    // float noise that Math.round(value/step)*step leaves behind — e.g. a 0.1
+    // step yielding 0.30000000000000004 — by rounding to the step's own decimal
+    // precision. Without this a fractional-step slider/fader puts that noise
+    // straight on the wire (the engine only re-rounds when a driver declares a
+    // decimals rule, which new controls no longer carry a default for). A
+    // non-positive step means "don't snap" and returns the value unchanged.
+    _snapToStep(value, step) {
+        if (!(step > 0)) return value;
+        const snapped = Math.round(value / step) * step;
+        // Decimal places the step implies (0.1 -> 1, 0.25 -> 2, 5 -> 0). Panel
+        // steps are clean decimals, so String() never goes exponential here.
+        const s = String(step);
+        const dot = s.indexOf('.');
+        const decimals = dot === -1 ? 0 : s.length - dot - 1;
+        return decimals > 0 ? Number(snapped.toFixed(decimals)) : snapped;
     }
 
     // Response curve for faders/sliders. Maps physical travel (0..1, bottom to
