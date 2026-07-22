@@ -82,6 +82,10 @@ cp installer/com.openavc.menubar.plist "$APP/Contents/Resources/com.openavc.menu
 # manual `sudo bash` run) can fully remove the services, app, and receipt.
 cp installer/macos-uninstall.sh "$APP/Contents/Resources/macos-uninstall.sh"
 chmod 755 "$APP/Contents/Resources/macos-uninstall.sh"
+# Trusted release-signing keys: the run wrapper verifies update tarballs
+# against the CURRENTLY-INSTALLED bundle's key set before swapping bundles
+# (same gate as Linux's update-helper.sh). An empty set = signing not armed.
+cp -a installer/trusted-keys "$APP/Contents/Resources/trusted-keys"
 if [ -f installer/openavc.icns ]; then
     cp installer/openavc.icns "$APP/Contents/Resources/openavc.icns"
 else

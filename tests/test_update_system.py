@@ -34,6 +34,8 @@ from server.updater.rollback import (
 )
 
 HELPER_SCRIPT = Path(__file__).resolve().parent.parent / "installer" / "update-helper.sh"
+MAC_WRAPPER_SCRIPT = Path(__file__).resolve().parent.parent / "installer" / "openavc-macos-run.sh"
+BUILD_MACOS_SCRIPT = Path(__file__).resolve().parent.parent / "installer" / "build-macos.sh"
 
 
 def _find_bash() -> str | None:
@@ -138,6 +140,16 @@ _OPENSSL = shutil.which("openssl")
 _OPENSSL_AVAILABLE = _OPENSSL is not None
 
 
+def _gen_trusted_keypair(keys_dir: Path, priv: Path) -> None:
+    """Generate an EC P-256 keypair: private key at ``priv``, public key
+    installed as ``test.pem`` inside ``keys_dir`` (created if needed)."""
+    keys_dir.mkdir(parents=True, exist_ok=True)
+    subprocess.run([_OPENSSL, "ecparam", "-genkey", "-name", "prime256v1",
+                    "-noout", "-out", str(priv)], check=True, capture_output=True)
+    subprocess.run([_OPENSSL, "ec", "-in", str(priv), "-pubout",
+                    "-out", str(keys_dir / "test.pem")], check=True, capture_output=True)
+
+
 def _arm_install(app_dir: Path) -> Path:
     """Install a trusted signing key into a fake app dir; return the matching
     PRIVATE key path (written outside app_dir so the swap can't sweep it).
@@ -145,13 +157,8 @@ def _arm_install(app_dir: Path) -> Path:
     Presence of a *.pem under installer/trusted-keys/ flips update-helper.sh
     from 'signing not yet armed' (warn + proceed) to fail-closed enforcement.
     """
-    keys_dir = app_dir / "installer" / "trusted-keys"
-    keys_dir.mkdir(parents=True, exist_ok=True)
     priv = app_dir.parent / "test-signing.key"
-    subprocess.run([_OPENSSL, "ecparam", "-genkey", "-name", "prime256v1",
-                    "-noout", "-out", str(priv)], check=True, capture_output=True)
-    subprocess.run([_OPENSSL, "ec", "-in", str(priv), "-pubout",
-                    "-out", str(keys_dir / "test.pem")], check=True, capture_output=True)
+    _gen_trusted_keypair(app_dir / "installer" / "trusted-keys", priv)
     return priv
 
 
@@ -1139,3 +1146,164 @@ class TestFullLinuxUpdateLifecycle:
 
         # === Phase 5: Normal startup ===
         assert check_rollback_needed(data_dir) is False
+
+
+# ===========================================================================
+# PART 9: Shell script — openavc-macos-run.sh signature gate
+#
+# The macOS launchd run wrapper mirrors update-helper.sh: on every launch it
+# applies any pending update instruction (swapping /Applications/OpenAVC.app),
+# then execs the server. Same signature gate, bundle-relative trusted keys
+# ($APP/Contents/Resources/trusted-keys). These run the REAL script against
+# real bundle-shaped directories and real tarballs.
+# ===========================================================================
+
+
+def _build_fake_bundle(bundle_dir: Path, version: str) -> None:
+    """Build a directory shaped like OpenAVC.app.
+
+    Carries the one thing the wrapper checks (an executable
+    Contents/Resources/server/openavc-server — a stub that exits 0 so the
+    wrapper's final ``exec "$SERVER"`` terminates cleanly) plus a version
+    marker file the tests read to see which bundle is in place.
+    """
+    server_dir = bundle_dir / "Contents" / "Resources" / "server"
+    server_dir.mkdir(parents=True, exist_ok=True)
+    exe = server_dir / "openavc-server"
+    exe.write_text(f"#!/bin/sh\necho 'openavc-server stub v{version}'\nexit 0\n")
+    exe.chmod(0o755)
+    (bundle_dir / "Contents" / "Resources" / "bundle-version.txt").write_text(version)
+
+
+def _read_bundle_version(app: Path) -> str:
+    return (app / "Contents" / "Resources" / "bundle-version.txt").read_text().strip()
+
+
+def _build_bundle_tarball(staging_dir: Path, version: str) -> Path:
+    """Build a macOS update tarball: OpenAVC.app at the tarball root, exactly
+    as build-macos.sh packages it."""
+    content_dir = staging_dir / "OpenAVC.app"
+    _build_fake_bundle(content_dir, version)
+    tarball_path = staging_dir / f"openavc-{version}-macos-arm64.tar.gz"
+    with tarfile.open(tarball_path, "w:gz") as tar:
+        tar.add(content_dir, arcname="OpenAVC.app")
+    return tarball_path
+
+
+def _arm_bundle(app: Path) -> Path:
+    """Install a trusted signing key into a fake bundle; return the matching
+    PRIVATE key path (written outside the bundle so a swap can't sweep it)."""
+    priv = app.parent / "test-signing.key"
+    _gen_trusted_keypair(app / "Contents" / "Resources" / "trusted-keys", priv)
+    return priv
+
+
+def _run_mac_wrapper(data_dir: Path, app: Path) -> subprocess.CompletedProcess:
+    """Run the actual openavc-macos-run.sh (config is all env vars)."""
+    assert _BASH_PATH is not None, "bash not found"
+    _fixup_instruction_paths(data_dir)
+    if sys.platform == "win32":
+        data_arg = _to_msys2_path(str(data_dir))
+        app_arg = _to_msys2_path(str(app))
+    else:
+        data_arg, app_arg = str(data_dir), str(app)
+    env = {**os.environ, "PYTHON": sys.executable,
+           "OPENAVC_DATA_DIR": data_arg, "OPENAVC_APP": app_arg}
+    return subprocess.run(
+        [_BASH_PATH, str(MAC_WRAPPER_SCRIPT)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=env,
+    )
+
+
+@pytest.mark.skipif(not (_BASH_AVAILABLE and _OPENSSL_AVAILABLE),
+                    reason="bash + openssl required")
+class TestMacWrapperSignatureGate:
+    """Parity with update-helper.sh's gate: once trusted keys ship in the
+    installed bundle, the wrapper must verify the update tarball's detached
+    signature before extracting or swapping anything. On macOS the wrapper and
+    server both run as root, so this is supply-chain defense-in-depth (a
+    LaunchDaemon extracting a network-fetched tarball gets no Gatekeeper
+    check), not a privilege-boundary fix."""
+
+    def _setup(self, tmp_path, *, sign=True, tamper=False, arm=True,
+               wrong_key=False):
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+        app = tmp_path / "OpenAVC.app"
+        _build_fake_bundle(app, "1.0.0")
+        priv = _arm_bundle(app) if arm else None
+        tarball = _build_bundle_tarball(tmp_path / "staging", "2.0.0")
+        if sign:
+            key = priv
+            if wrong_key:
+                key = tmp_path / "attacker.key"
+                subprocess.run([_OPENSSL, "ecparam", "-genkey", "-name",
+                                "prime256v1", "-noout", "-out", str(key)],
+                               check=True, capture_output=True)
+            _sign_artifact(tarball, key)
+        if tamper:
+            with open(tarball, "ab") as f:
+                f.write(b"evil bytes appended after signing")
+        (data_dir / "apply-update.json").write_text(json.dumps({
+            "artifact": str(tarball),
+            "from_version": "1.0.0",
+            "to_version": "2.0.0",
+        }))
+        return data_dir, app
+
+    def test_valid_signature_applies(self, tmp_path):
+        data_dir, app = self._setup(tmp_path, sign=True)
+        result = _run_mac_wrapper(data_dir, app)
+        assert result.returncode == 0
+        assert _read_bundle_version(app) == "2.0.0"
+        assert not (data_dir / "apply-update.json").exists()
+
+    def test_tampered_artifact_refused(self, tmp_path):
+        """A tarball modified after signing must be refused before any
+        extract or snapshot — the installed bundle stays untouched, and the
+        server still launches (the wrapper must never take the service down)."""
+        data_dir, app = self._setup(tmp_path, sign=True, tamper=True)
+        result = _run_mac_wrapper(data_dir, app)
+        assert result.returncode == 0  # old server still execs
+        assert _read_bundle_version(app) == "1.0.0"  # NOT upgraded
+        assert not (data_dir / "apply-update.json").exists()  # instruction dropped
+        # Refusal happens before the snapshot step, so no .previous is created.
+        assert not Path(str(app) + ".previous").exists()
+
+    def test_missing_signature_refused_when_armed(self, tmp_path):
+        data_dir, app = self._setup(tmp_path, sign=False)
+        result = _run_mac_wrapper(data_dir, app)
+        assert result.returncode == 0
+        assert _read_bundle_version(app) == "1.0.0"
+        assert not (data_dir / "apply-update.json").exists()
+
+    def test_untrusted_key_refused(self, tmp_path):
+        """A validly-signed tarball whose key is NOT in the bundle's
+        trusted-keys (an attacker's own keypair) must be refused."""
+        data_dir, app = self._setup(tmp_path, sign=True, wrong_key=True)
+        result = _run_mac_wrapper(data_dir, app)
+        assert result.returncode == 0
+        assert _read_bundle_version(app) == "1.0.0"
+        assert not (data_dir / "apply-update.json").exists()
+
+    def test_unarmed_unsigned_still_applies(self, tmp_path):
+        """Transition safety: with no trusted keys in the bundle, signing is
+        'not armed' and an unsigned update still applies (no bricking
+        pre-arming)."""
+        data_dir, app = self._setup(tmp_path, sign=False, arm=False)
+        result = _run_mac_wrapper(data_dir, app)
+        assert result.returncode == 0
+        assert _read_bundle_version(app) == "2.0.0"
+
+
+class TestMacBundleCarriesTrustedKeys:
+    """The wrapper's gate reads keys from the installed bundle, so the build
+    script must seed installer/trusted-keys/ into Contents/Resources — pinned
+    statically since the .app is only assembled on a release build."""
+
+    def test_build_script_seeds_trusted_keys(self):
+        content = BUILD_MACOS_SCRIPT.read_text(encoding="utf-8")
+        assert 'cp -a installer/trusted-keys "$APP/Contents/Resources/trusted-keys"' in content

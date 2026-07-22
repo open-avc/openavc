@@ -601,9 +601,12 @@ class UpdateManager:
 
             # Fetch the detached signature (convention: artifact URL + ".sig")
             # next to the tarball for the root helper's integrity gate (H-075).
-            # The cloud must serve it at that URL (release_service exposes the
-            # .sig asset); until it does, the sidecar is simply absent and the
-            # helper refuses only once signing is armed.
+            # The cloud hands the agent the raw GitHub release-asset URL
+            # (release_service stores browser_download_url verbatim), and CI
+            # uploads each artifact's .sig as a sibling asset — so the sidecar
+            # resolves at URL + ".sig" for any signed release. For unsigned
+            # (pre-signing) releases it is simply absent and the helper
+            # refuses only once signing is armed.
             if self._consumes_signed_tarball():
                 await self._download_sidecar_sig(update_url + ".sig", artifact_path)
 
