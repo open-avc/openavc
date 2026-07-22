@@ -44,8 +44,8 @@ The editor has six tabs across the top, each grouping a single concern:
 | Tab | What lives here |
 |-----|-----------------|
 | **General** | Identity (id, name, manufacturer, category, version, author, description), Help & Setup text, Publishing metadata (min platform version, protocols, tags, source URL) |
-| **Connection** | Transport (TCP/serial/UDP/OSC/HTTP), Authentication, Push Notifications (`push`), Connection Watchdog (`liveness`), Connect Sequence (`on_connect`), Frame Parser, Configuration Fields (`config_schema`) |
-| **Behavior** | State Variables, Commands, Responses, Polling, Device Settings |
+| **Connection** | Transport (TCP/serial/UDP/OSC/HTTP/Bridge, plus "Also Usable Over" for multi-transport drivers), Bridge Ports (`bridge`), Authentication, Push Notifications (`push`), Connection Watchdog (`liveness`), Connect Sequence (`on_connect`), Frame Parser, Configuration Fields (`config_schema` + computed fields) |
+| **Behavior** | State Variables, Commands, Responses, Polling, Actions, Device Settings |
 | **Discovery** | Discovery fingerprints (mDNS, SSDP, AMX DDP beacon, TCP/UDP probes, Python file) and hints (OUI, hostname, open port, manufacturer alias, SNMP PEN) |
 | **Simulation** | Simulator definition (initial state, controls, command handlers, error modes) |
 | **Test** | Live tester — runs commands through the real driver runtime against a device |
@@ -100,7 +100,7 @@ The **Publishing** section holds catalog metadata (`min_platform_version`, `prot
 
 #### 3. Connection tab: how the driver talks to the device
 
-The Transport section is required — pick TCP, serial, UDP, OSC, or HTTP. Transport-specific fields appear:
+The Transport section is required — pick TCP, serial, UDP, OSC, HTTP, or Bridge (for a device with no address of its own that emits through a bridge's port, such as an IR-controlled device). Transport-specific fields appear:
 
 - **TCP**: default port, message delimiter, optional inter-command delay, TLS.
 - **Serial**: baudrate, parity, bytesize, stopbits.
@@ -110,12 +110,16 @@ The Transport section is required — pick TCP, serial, UDP, OSC, or HTTP. Trans
 
 Common to text protocols: **Message Delimiter** marks the end of each message. `\r` for most AV gear (Extron, Kramer, PJLink), `\r\n` for some network devices.
 
+When the same command and response strings work byte-identically over more than one medium (network and a serial line, typically), tick the extra media under **Also Usable Over**. The per-device connection then offers a choice of transport, including routing through a serial bridge.
+
+**Bridge Ports** — declare here that this device IS a bridge other devices connect through (a serial-to-Ethernet gateway or IR emitter box). Each port gets an id (e.g. `serial:1`), a kind (serial, IR, or relay), a label for the connection picker, and for serial ports the TCP pass-through port. Declaring ports is enough for the connection picker; the behavior behind a port (pushing serial line settings, emitting IR) needs a Python driver.
+
 The other Connection sub-sections are optional:
 
 - **Authentication** — for devices that present a `login:` / `password:` prompt over Telnet or SSH after connect (Lutron HomeWorks QS, some Cisco gear, legacy serial-over-IP gateways). Off by default.
 - **Connect Sequence** (`on_connect`) — wire strings sent automatically on every connect. Common uses: enabling verbose/feedback mode (Extron `\x1b3CV\r\n`), initial state dumps (`< GET ALL >`), OSC subscriptions (`/xremote`).
 - **Frame Parser** — advanced. Only for binary protocols framed by length prefix or fixed length. Most drivers leave this off and rely on the message delimiter instead.
-- **Configuration Fields** (`config_schema`) — per-device settings users fill in on the Add Device dialog (display IDs, instance tags, custom passwords). Become `{placeholders}` in command strings.
+- **Configuration Fields** (`config_schema`) — per-device settings users fill in on the Add Device dialog (display IDs, instance tags, custom passwords). Become `{placeholders}` in command strings. The **Computed Fields** table underneath builds derived values from other config fields via templates (`config_derived`), so one friendly field can drive several address forms.
 
 #### 4. Behavior tab: state, commands, responses, polling, settings
 
@@ -141,6 +145,8 @@ Order matters here. Build them in the order they appear:
 
 **Escape sequences** in command strings: `\r`, `\n`, `\t`, `\\`, `\xHH` (hex byte, e.g. `\x1B` for ESC).
 
+**Sets State / Reports** — at the bottom of each command card, declare what the command does to device state: **Sets State** rows name the state variables the command changes (to a literal, or to one of the command's `{param}` values), and **Reports** marks the command as a status query answered with the named variable. The auto-generated simulator applies and answers these instead of guessing from the command's name, so Live Test and simulation behave like the real device. On a command with exactly one `child_id` parameter, both can name a state variable of that child type — the effect applies to the addressed child.
+
 Example for an Extron switcher:
 
 | Command ID | Label | Send | Parameters |
@@ -160,7 +166,11 @@ Example for an Extron switcher:
 
 The **set:** shorthand is also supported (`set: {mute: "$1"}` for capture-group references, `set: {signal: true}` for static literals). The builder preserves whichever form was loaded so byte-equal round-trips stay byte-equal.
 
+A response rule can also switch its kind to **JSON body** for devices that reply with JSON (most HTTP APIs): rows map a JSON field path (`status.power`, dot paths and list indices allowed) to a state variable, with optional type coercion and value map, and **Only when body has key(s)** scopes the rule to bodies carrying a named key — useful when different endpoints reuse a field name. All rows of a JSON rule apply to a matching body, so one reply can populate many variables.
+
 **Polling** — periodic queries that keep state fresh on devices that don't push updates. List the command names (or raw query strings) to send each cycle. The cadence (seconds) is the **Poll Interval** field, stored as `default_config.poll_interval`.
+
+**Actions** — promote commands to one-click buttons at the top of the device view. Each action picks a command (or opens a URL for a `link` action), with optional label, icon, confirmation prompt, availability (online / offline / always), input-field overrides, and visibility conditions. The **web interface** checkbox adds an automatic **Open Web UI** button for devices with a browser page (optionally with a URL template like `http://{host}:8080`). Drivers using the older flat `quick_actions` list show it here read-only with a one-click conversion into full actions.
 
 **Device Settings** — writable values stored on the device hardware (labels, IDs, lock codes). Pending writes queue while the device is offline and replay on reconnect. Less common than state variables — most drivers don't need this.
 
