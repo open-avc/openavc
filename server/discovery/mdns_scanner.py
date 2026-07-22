@@ -375,6 +375,18 @@ class MDNSResult:
 
 # --- mDNS Scanner ---
 
+# Flood guards, mirroring amx_ddp_scanner.MAX_BEACON_SOURCES and
+# ssdp_scanner.MAX_SSDP_SOURCES: every accumulator here can be grown by
+# hostile multicast traffic, and unlike the sibling listeners a SINGLE
+# source can inflate most of them — fabricated A records mint result IPs,
+# fabricated PTR/SRV/TXT names mint pending entries and hostname mappings,
+# and DNS-SD enumeration responses mint unknown service types. Past each
+# cap, new keys are dropped; existing entries keep updating.
+MAX_MDNS_SOURCES = 512
+MAX_PENDING_ENTRIES = 1024
+MAX_HOSTNAME_ENTRIES = 1024
+MAX_UNKNOWN_SERVICE_TYPES = 256
+
 
 class MDNSScanner:
     """Lightweight mDNS/DNS-SD listener for device discovery.
@@ -418,6 +430,8 @@ class MDNSScanner:
         # enumeration that no loaded driver claims. Surfaced for
         # catalog-growth telemetry and the unknown-state UI.
         self._unknown_service_types: set[str] = set()
+        self._cap_warned = False
+        self._pending_cap_warned = False
         self._control_ip = control_ip
         if service_types is None:
             self._service_types: list[str] = list(BASELINE_SERVICE_TYPES) + [DNS_SD_META_QUERY]
@@ -465,6 +479,8 @@ class MDNSScanner:
         self._hostname_to_ip.clear()
         self._pending.clear()
         self._running = True
+        self._cap_warned = False
+        self._pending_cap_warned = False
         self.env_error = None
 
         try:
@@ -566,10 +582,16 @@ class MDNSScanner:
         if not records:
             return
 
-        # First pass: collect A records for hostname resolution
+        # First pass: collect A records for hostname resolution. New
+        # hostnames are dropped past the cap; known ones keep updating.
         for rec in records:
             if rec.rtype == DNS_TYPE_A and rec.ip:
-                self._hostname_to_ip[rec.name.lower()] = rec.ip
+                hostname_key = rec.name.lower()
+                if (
+                    hostname_key in self._hostname_to_ip
+                    or len(self._hostname_to_ip) < MAX_HOSTNAME_ENTRIES
+                ):
+                    self._hostname_to_ip[hostname_key] = rec.ip
 
         # Second pass: process service records
         touched: set[str] = set()  # Keys modified by this packet
@@ -593,40 +615,39 @@ class MDNSScanner:
                 readable = _extract_instance_name(instance_name, service_type)
 
                 key = instance_name.lower()
+                entry = self._pending_entry(key)
+                if entry is None:
+                    continue
                 touched.add(key)
-                if key not in self._pending:
-                    self._pending[key] = {
-                        "service_type": service_type,
-                        "instance_name": readable,
-                    }
-                else:
-                    self._pending[key]["service_type"] = service_type
-                    if readable:
-                        self._pending[key]["instance_name"] = readable
+                entry["service_type"] = service_type
+                if readable:
+                    entry["instance_name"] = readable
 
             elif rec.rtype == DNS_TYPE_SRV and rec.target:
                 # SRV: instance_name -> hostname + port
                 key = rec.name.lower()
+                entry = self._pending_entry(key)
+                if entry is None:
+                    continue
                 touched.add(key)
-                if key not in self._pending:
-                    self._pending[key] = {}
-                self._pending[key]["hostname"] = rec.target
-                self._pending[key]["port"] = rec.port
+                entry["hostname"] = rec.target
+                entry["port"] = rec.port
 
                 # Try to resolve hostname to IP
                 hostname_lower = rec.target.lower().rstrip(".")
                 if hostname_lower in self._hostname_to_ip:
-                    self._pending[key]["ip"] = self._hostname_to_ip[hostname_lower]
+                    entry["ip"] = self._hostname_to_ip[hostname_lower]
                 # Also check with trailing dot
                 if rec.target.lower() in self._hostname_to_ip:
-                    self._pending[key]["ip"] = self._hostname_to_ip[rec.target.lower()]
+                    entry["ip"] = self._hostname_to_ip[rec.target.lower()]
 
             elif rec.rtype == DNS_TYPE_TXT and rec.txt:
                 key = rec.name.lower()
+                entry = self._pending_entry(key)
+                if entry is None:
+                    continue
                 touched.add(key)
-                if key not in self._pending:
-                    self._pending[key] = {}
-                self._pending[key].setdefault("txt_records", {}).update(rec.txt)
+                entry.setdefault("txt_records", {}).update(rec.txt)
 
             elif rec.rtype == DNS_TYPE_A and rec.ip:
                 # A records already processed above, but also check
@@ -644,6 +665,30 @@ class MDNSScanner:
         # fall back to the sender's IP (in mDNS, devices respond
         # about themselves from their own address).
         self._resolve_pending(sender_ip, touched)
+
+    def _pending_entry(self, key: str) -> dict[str, Any] | None:
+        """Get or create the pending entry for ``key``, subject to the cap.
+
+        Returns None once the pending dict holds MAX_PENDING_ENTRIES
+        distinct keys — a single hostile responder can mint unlimited
+        instance names, so unlike the per-source result cap this one can
+        trip without any source spoofing. Existing keys keep updating.
+        """
+        entry = self._pending.get(key)
+        if entry is None:
+            if len(self._pending) >= MAX_PENDING_ENTRIES:
+                if not self._pending_cap_warned:
+                    self._pending_cap_warned = True
+                    log.warning(
+                        "mDNS listener hit the %d pending-record cap; "
+                        "ignoring new instance names for the rest of the "
+                        "scan window",
+                        MAX_PENDING_ENTRIES,
+                    )
+                return None
+            entry = {}
+            self._pending[key] = entry
+        return entry
 
     def _resolve_pending(
         self, sender_ip: str, touched: set[str] | None = None,
@@ -670,8 +715,22 @@ class MDNSScanner:
             if not ip:
                 continue
 
-            # Create or update result
+            # Create or update result. Distinct result IPs are capped per
+            # scan window (spoofed sources / fabricated A records); a
+            # pending entry whose IP can't be created is dropped rather
+            # than left to accumulate.
             if ip not in self._results:
+                if len(self._results) >= MAX_MDNS_SOURCES:
+                    if not self._cap_warned:
+                        self._cap_warned = True
+                        log.warning(
+                            "mDNS listener hit the %d distinct-source cap; "
+                            "ignoring new sources for the rest of the scan "
+                            "window",
+                            MAX_MDNS_SOURCES,
+                        )
+                    resolved_keys.append(key)
+                    continue
                 self._results[ip] = MDNSResult(ip=ip)
 
             result = self._results[ip]
@@ -731,6 +790,8 @@ class MDNSScanner:
         if normalized in self._known_service_types_lower:
             return
         if normalized in self._unknown_service_types:
+            return
+        if len(self._unknown_service_types) >= MAX_UNKNOWN_SERVICE_TYPES:
             return
         self._unknown_service_types.add(normalized)
         log.debug("mDNS enumeration discovered unknown service type: %s", normalized)

@@ -499,3 +499,42 @@ class TestPingTotalAccounting:
 
         # Only the /24 counts: 256 - 2 network/broadcast = 254.
         assert engine.scan_status.total_hosts_scanned == 254
+
+
+class TestPassiveResultCap:
+    """Aggregate passive-source cap on engine.results.
+
+    Each passive listener caps its own distinct sources per scan window;
+    this engine-level bound covers their sum (defense-in-depth for the
+    DiscoveredDevice + WebSocket fan-out each new entry costs). Active
+    results — a ping sweep on a /16 is legitimately thousands of hosts —
+    are never counted against it.
+    """
+
+    def test_new_passive_source_counted_and_created(self):
+        engine = DiscoveryEngine()
+        device = engine._get_or_create_passive("10.0.0.1")
+        assert device is not None
+        assert "10.0.0.1" in engine.results
+        assert engine._passive_sources_created == 1
+
+    def test_capped_returns_none_and_warns_once(self):
+        engine = DiscoveryEngine()
+        engine._passive_sources_created = engine_mod.MAX_PASSIVE_RESULT_SOURCES
+        assert engine._get_or_create_passive("10.0.0.1") is None
+        assert engine._get_or_create_passive("10.0.0.2") is None
+        assert "10.0.0.1" not in engine.results
+        hits = [w for w in engine.scan_status.warnings if "result cap" in w]
+        assert len(hits) == 1
+
+    def test_existing_entry_updates_past_cap(self):
+        engine = DiscoveryEngine()
+        device = engine._get_or_create("10.0.0.1")
+        engine._passive_sources_created = engine_mod.MAX_PASSIVE_RESULT_SOURCES
+        assert engine._get_or_create_passive("10.0.0.1") is device
+
+    def test_active_creation_not_counted(self):
+        engine = DiscoveryEngine()
+        engine._get_or_create("10.0.0.1")
+        engine._get_or_create("10.0.0.2")
+        assert engine._passive_sources_created == 0

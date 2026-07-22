@@ -55,6 +55,14 @@ from server.discovery.result import (
 
 log = logging.getLogger("discovery")
 
+# Flood guard for the aggregate results dict. Each passive listener already
+# caps its own distinct sources per scan window (512 each in the mDNS, SSDP,
+# and AMX-DDP scanners); this bound covers their sum with headroom and only
+# counts NEW result entries created by passive/unsolicited traffic. Active
+# results (a ping sweep on a /16 is legitimately thousands of hosts, port
+# scans, driver probes) are never counted against it.
+MAX_PASSIVE_RESULT_SOURCES = 2048
+
 
 def _driver_version_tuple(version: object) -> tuple[int, int, int]:
     """Comparable (major, minor, patch) from a driver version string like
@@ -248,6 +256,9 @@ class DiscoveryEngine:
         self.community_index = CommunityIndexCache()
         self.community_devices = CommunityDevicesCache()
         self.results: dict[str, DiscoveredDevice] = {}
+        # Passive-source flood guard (see _get_or_create_passive).
+        self._passive_sources_created = 0
+        self._passive_cap_warned = False
         self.scan_status = ScanStatus()
         self._scan_task: asyncio.Task | None = None
         self._scan_lock = asyncio.Lock()
@@ -514,6 +525,9 @@ class DiscoveryEngine:
                 device.evidence_log.clear()
                 device.open_ports.clear()
                 device.banners.clear()
+
+            self._passive_sources_created = 0
+            self._passive_cap_warned = False
 
             self._scan_task = asyncio.create_task(
                 self._run_scan(targets, timeout)
@@ -1041,7 +1055,9 @@ class DiscoveryEngine:
 
         mdns_results = self._task_result(mdns_task, "mDNS")
         for ip, mdns_result in mdns_results.items():
-            device = self._get_or_create(ip)
+            device = self._get_or_create_passive(ip)
+            if device is None:
+                continue
             device.alive = True
             ev = mdns_result.to_evidence()
             if ev is not None:
@@ -1051,7 +1067,9 @@ class DiscoveryEngine:
 
         ssdp_results = self._task_result(ssdp_task, "SSDP")
         for ip, ssdp_result in ssdp_results.items():
-            device = self._get_or_create(ip)
+            device = self._get_or_create_passive(ip)
+            if device is None:
+                continue
             device.alive = True
             # One record per observed UPnP type — the driver-claimed
             # family URN is only one of the types a device advertises.
@@ -1061,7 +1079,9 @@ class DiscoveryEngine:
 
         amx_results = self._task_result(amx_ddp_task, "AMX DDP")
         for ip, beacon in amx_results.items():
-            device = self._get_or_create(ip)
+            device = self._get_or_create_passive(ip)
+            if device is None:
+                continue
             device.alive = True
             device.evidence_log.append(beacon.to_evidence())
             merge_device_info(device, beacon.to_device_info(), "amx_ddp")
@@ -1308,6 +1328,31 @@ class DiscoveryEngine:
         if ip not in self.results:
             self.results[ip] = DiscoveredDevice(ip=ip)
         return self.results[ip]
+
+    def _get_or_create_passive(self, ip: str) -> DiscoveredDevice | None:
+        """``_get_or_create`` for passive/unsolicited sources, capped.
+
+        Returns None (caller drops the record) once passive listeners have
+        created MAX_PASSIVE_RESULT_SOURCES new entries this scan — each new
+        entry costs a DiscoveredDevice plus a WebSocket fan-out to every
+        client, so unsolicited traffic must not grow it without bound.
+        Existing entries (hosts the ping sweep already found) keep updating.
+        """
+        if ip in self.results:
+            return self.results[ip]
+        if self._passive_sources_created >= MAX_PASSIVE_RESULT_SOURCES:
+            if not self._passive_cap_warned:
+                self._passive_cap_warned = True
+                msg = (
+                    "Passive discovery hit the %d-source result cap; "
+                    "ignoring additional mDNS/SSDP/AMX sources for this scan"
+                    % MAX_PASSIVE_RESULT_SOURCES
+                )
+                log.warning(msg)
+                self.scan_status.warnings.append(msg)
+            return None
+        self._passive_sources_created += 1
+        return self._get_or_create(ip)
 
     async def _late_arp_harvest(self) -> None:
         """Harvest a MAC + OUI for alive devices the phase-4 ARP pass missed.

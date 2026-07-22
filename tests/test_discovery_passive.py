@@ -19,6 +19,10 @@ from server.discovery.mdns_scanner import (
     DNS_TYPE_TXT,
     BASELINE_SERVICE_TYPES,
     DNS_SD_META_QUERY,
+    MAX_MDNS_SOURCES,
+    MAX_PENDING_ENTRIES,
+    MAX_HOSTNAME_ENTRIES,
+    MAX_UNKNOWN_SERVICE_TYPES,
     _parse_txt_rdata,
     _extract_instance_name,
 )
@@ -669,6 +673,117 @@ class TestMDNSScanner:
         scanner = MDNSScanner()
         scanner._process_response(b"\x00\x00", "1.2.3.4")
         assert len(scanner._results) == 0
+
+
+class TestMDNSFloodGuards:
+    """The listener caps every accumulator hostile multicast can grow.
+
+    Mirrors the AMX/SSDP distinct-source caps, with one difference: a
+    SINGLE mDNS source can inflate most structures without source
+    spoofing — fabricated A records mint result IPs and hostname
+    mappings, fabricated instance names mint pending entries.
+    """
+
+    def _ptr_packet(self, n: int) -> bytes:
+        header = struct.pack("!HHHHHH", 0, 0x8400, 0, 1, 0, 0)
+        ptr_name = encode_dns_name("_pjlink._tcp.local.")
+        ptr_target = encode_dns_name(f"Dev-{n}._pjlink._tcp.local.")
+        return (
+            header
+            + ptr_name
+            + struct.pack("!HHIH", DNS_TYPE_PTR, 1, 120, len(ptr_target))
+            + ptr_target
+        )
+
+    def _a_packet(self, hostname: str, ip: str) -> bytes:
+        header = struct.pack("!HHHHHH", 0, 0x8400, 0, 1, 0, 0)
+        name = encode_dns_name(hostname)
+        return (
+            header
+            + name
+            + struct.pack("!HHIH", DNS_TYPE_A, 1, 120, 4)
+            + socket.inet_aton(ip)
+        )
+
+    def _source_ip(self, n: int) -> str:
+        return f"10.{(n >> 16) & 255}.{(n >> 8) & 255}.{n & 255}"
+
+    def test_distinct_result_sources_capped(self):
+        scanner = MDNSScanner()
+        for n in range(MAX_MDNS_SOURCES + 50):
+            scanner._process_response(self._ptr_packet(n), self._source_ip(n))
+        assert len(scanner._results) == MAX_MDNS_SOURCES
+
+    def test_known_source_still_updates_past_cap(self):
+        scanner = MDNSScanner()
+        for n in range(MAX_MDNS_SOURCES + 50):
+            scanner._process_response(self._ptr_packet(n), self._source_ip(n))
+        # 10.0.0.0 was the first source in; a fresh advertisement from it
+        # must still be merged even though the cap has tripped.
+        scanner._process_response(self._ptr_packet(9999), "10.0.0.0")
+        assert scanner._results["10.0.0.0"].instance_name == "Dev-9999"
+
+    def test_result_cap_logs_once_per_window(self, caplog):
+        scanner = MDNSScanner()
+        with caplog.at_level("WARNING"):
+            for n in range(MAX_MDNS_SOURCES + 10):
+                scanner._process_response(self._ptr_packet(n), self._source_ip(n))
+        hits = [r for r in caplog.records if "distinct-source cap" in r.message]
+        assert len(hits) == 1
+
+    def test_capped_pending_entry_is_dropped_not_left_to_accumulate(self):
+        scanner = MDNSScanner()
+        for n in range(MAX_MDNS_SOURCES + 50):
+            scanner._process_response(self._ptr_packet(n), self._source_ip(n))
+        # Entries that couldn't land in results must not pile up in the
+        # pending staging dict either.
+        assert len(scanner._pending) == 0
+
+    def test_pending_entries_capped(self, caplog):
+        scanner = MDNSScanner()
+        for i in range(MAX_PENDING_ENTRIES):
+            scanner._pending[f"instance-{i}"] = {}
+        with caplog.at_level("WARNING"):
+            assert scanner._pending_entry("one-more") is None
+            assert scanner._pending_entry("another") is None
+        assert "one-more" not in scanner._pending
+        # Existing keys keep updating past the cap.
+        assert scanner._pending_entry("instance-0") is scanner._pending["instance-0"]
+        hits = [r for r in caplog.records if "pending-record cap" in r.message]
+        assert len(hits) == 1
+
+    def test_hostname_entries_capped(self):
+        scanner = MDNSScanner()
+        sender = "10.0.0.1"
+        for n in range(MAX_HOSTNAME_ENTRIES + 10):
+            scanner._process_response(
+                self._a_packet(f"host-{n}.local.", self._source_ip(n)), sender,
+            )
+        assert len(scanner._hostname_to_ip) == MAX_HOSTNAME_ENTRIES
+        # A known hostname still updates past the cap.
+        scanner._process_response(
+            self._a_packet("host-0.local.", "192.168.9.9"), sender,
+        )
+        assert scanner._hostname_to_ip["host-0.local"] == "192.168.9.9"
+
+    def test_unknown_service_types_capped(self):
+        scanner = MDNSScanner()
+        for n in range(MAX_UNKNOWN_SERVICE_TYPES + 20):
+            scanner._track_unknown_service_type(f"_fake{n}._tcp.local.")
+        assert len(scanner.unknown_service_types) == MAX_UNKNOWN_SERVICE_TYPES
+
+    @pytest.mark.asyncio
+    async def test_caps_reset_on_start(self):
+        scanner = MDNSScanner()
+        scanner._cap_warned = True
+        scanner._pending_cap_warned = True
+        with patch(
+            "server.discovery.mdns_scanner._create_mdns_socket",
+            side_effect=OSError("no socket"),
+        ):
+            await scanner.start(duration=0.1)
+        assert scanner._cap_warned is False
+        assert scanner._pending_cap_warned is False
 
 
 # ============================================================
