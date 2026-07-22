@@ -1629,7 +1629,7 @@ def _describe_outgoing(
         )
         return f"{method} {path}"
 
-    raw = cmd_def.get("send", "") or cmd_def.get("string", "")
+    raw = cmd_def.get("send", "")
     return ConfigurableDriver._safe_substitute(raw, all_params) if raw else ""
 
 

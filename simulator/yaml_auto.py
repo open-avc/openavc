@@ -564,7 +564,7 @@ class YAMLAutoSimulator(TCPSimulator):
                     f"{cmd.get('method', 'GET').upper()} {cmd.get('path', '/')}"
                 )
             else:
-                template = str(cmd.get("send", "") or cmd.get("string", ""))
+                template = str(cmd.get("send", ""))
             if not template:
                 return None
             pattern = re.escape(template)

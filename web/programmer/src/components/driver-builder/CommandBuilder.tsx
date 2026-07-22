@@ -65,7 +65,7 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
   const updateCommand = (name: string, partial: Partial<DriverCommandDef>) => {
     // Merge, then strip any keys whose value is `undefined` so we don't
     // serialize `key: null` into YAML when the caller wanted to delete a
-    // legacy field (e.g., `string` after migrating to `send`).
+    // legacy field (e.g., `description` after migrating to `help`).
     const merged = { ...commands[name], ...partial } as Record<string, unknown>;
     for (const k of Object.keys(merged)) {
       if (merged[k] === undefined) delete merged[k];
@@ -262,11 +262,10 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
                   <div style={{ marginBottom: "var(--space-md)" }}>
                     <label style={labelStyle}>Command String</label>
                     <input
-                      value={cmd.send ?? cmd.string ?? ""}
+                      value={cmd.send ?? ""}
                       onChange={(e) =>
                         updateCommand(name, {
                           send: e.target.value,
-                          string: undefined,
                         })
                       }
                       placeholder="e.g., %1POWR {value}\r"

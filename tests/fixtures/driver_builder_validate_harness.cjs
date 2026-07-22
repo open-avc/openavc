@@ -656,13 +656,13 @@ const responseIssues = (issues) => issues.filter((i) => /^Response \d/.test(i.me
   };
 }
 {
-  // A normal text response with a pattern is clean.
+  // A normal text response with a match pattern is clean.
   const issues = responseIssues(
     validate(baseDraft("tcp", {}, {
-      responses: [{ pattern: "PWR=(\\d)", mappings: [{ group: 1, state: "power" }] }],
+      responses: [{ match: "PWR=(\\d)", mappings: [{ group: 1, state: "power" }] }],
     })),
   );
-  results.m173_response_with_pattern_ok = { pass: issues.length === 0, detail: issues };
+  results.m173_response_with_match_ok = { pass: issues.length === 0, detail: issues };
 }
 
 // --- Device settings: the runtime requires a write block ------------------

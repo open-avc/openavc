@@ -137,6 +137,9 @@ CASES: dict[str, Any] = {
     "response_json_with_child_set": _resp(json=True, set={"power": "$.p"}, child_set=[{}]),
     "response_json_without_set_or_mappings": _resp(json=True),
     "response_missing_pattern": _resp(set={"power": "$1"}),
+    # Retired alias: `pattern:` was once accepted for `match:` — a rule
+    # carrying only the old spelling must fail like any match-less rule.
+    "response_legacy_pattern_alias": _resp(pattern="PWR=(\\d)", set={"power": "$1"}),
     "response_redos_pattern": _resp(match="(a+)+$"),
     # --- byte-stream child_set ---
     "child_set_not_list": _d(
@@ -190,6 +193,9 @@ CASES: dict[str, Any] = {
     "commands_not_mapping": _d(commands=["noop"]),
     "command_not_dict": _d(commands={"noop": "NOOP\r"}),
     "command_without_send_path_address": _d(commands={"noop": {"label": "No-op"}}),
+    # Retired alias: `string:` was once accepted for `send:` — a command
+    # carrying only the old spelling must fail like any send-less command.
+    "command_legacy_string_alias": _d(commands={"noop": {"string": "NOOP\r"}}),
     "command_osc_args_not_list": _d(
         transport="osc", commands={"beep": {"address": "/beep", "args": "f"}}
     ),

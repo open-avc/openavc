@@ -688,8 +688,7 @@ export function validateDriver(
       commandRoute(cmd) === "raw" &&
       draft.transport !== "osc" &&
       draft.transport !== "http" &&
-      !hasContent(cmdRecord.send) &&
-      !hasContent(cmdRecord.string)
+      !hasContent(cmdRecord.send)
     ) {
       issues.push({
         severity: "error",
@@ -1025,7 +1024,7 @@ export function validateDriver(
           });
         }
       }
-    } else if (!resp.pattern?.trim() && !resp.match?.trim()) {
+    } else if (!resp.match?.trim()) {
       issues.push({
         severity: "error",
         section: "behavior",
@@ -1194,7 +1193,7 @@ export function validateDriver(
       }
       // Count the pattern's capture groups when it compiles cleanly (it may
       // contain {config} placeholders substituted at runtime — skip then).
-      const patternText = resp.pattern ?? resp.match ?? "";
+      const patternText = resp.match ?? "";
       let ngroups: number | null = null;
       try {
         ngroups = new RegExp(patternText + "|").exec("")!.length - 1;
@@ -2685,7 +2684,6 @@ function collectWireStrings(cmd: DriverCommandDef): string[] {
   };
 
   push(cmd.send);
-  push(cmd.string);
   push(cmd.path);
   push(cmd.body);
   push(cmd.address);

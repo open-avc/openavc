@@ -1034,7 +1034,7 @@ def compile_driver(
     compiled = CompiledProtocol()
     child_types = definition.get("child_entity_types") or {}
     for resp in definition.get("responses", []):
-        # OSC responses use "address" key instead of "pattern"/"match"
+        # OSC responses use "address" key instead of "match"
         if "address" in resp:
             addr = safe_substitute(resp["address"], config)
             mappings = list(resp.get("mappings", []))
@@ -1072,8 +1072,7 @@ def compile_driver(
             continue
 
         try:
-            # Canonical key is "match"; "pattern" remains accepted as an alias.
-            raw_pattern = resp.get("match", "") or resp.get("pattern", "")
+            raw_pattern = resp.get("match", "")
             if not raw_pattern:
                 continue
             resolved = safe_substitute(raw_pattern, config)
@@ -1123,6 +1122,6 @@ def compile_driver(
         except re.error as e:
             log.warning(
                 f"[{device_id}] Invalid response pattern "
-                f"'{resp.get('match', resp.get('pattern', ''))}': {e}"
+                f"'{resp.get('match', '')}': {e}"
             )
     return compiled

@@ -36,51 +36,50 @@ SAMPLE_DEFINITION = {
     "commands": {
         "set_input": {
             "label": "Set Input",
-            "string": "{input}!\\r\\n",
+            "send": "{input}!\\r\\n",
             "params": {
                 "input": {"type": "integer", "required": True},
             },
         },
         "set_volume": {
             "label": "Set Volume",
-            "string": "{level}V\\r\\n",
+            "send": "{level}V\\r\\n",
             "params": {
                 "level": {"type": "integer", "required": True},
             },
         },
         "mute_on": {
             "label": "Mute On",
-            "string": "1Z\\r\\n",
+            "send": "1Z\\r\\n",
             "params": {},
         },
         "query_input": {
             "label": "Query Input",
-            "string": "!\\r\\n",
+            "send": "!\\r\\n",
             "params": {},
         },
     },
     "responses": [
         {
-            "pattern": r"In(\d+) All",
+            "match": r"In(\d+) All",
             "mappings": [
                 {"group": 1, "state": "input", "type": "integer"},
             ],
         },
         {
-            "pattern": r"Vol(\d+)",
+            "match": r"Vol(\d+)",
             "mappings": [
                 {"group": 1, "state": "volume", "type": "integer"},
             ],
         },
         {
-            "pattern": r"Amt(\d+)",
+            "match": r"Amt(\d+)",
             "mappings": [
                 {"group": 1, "state": "mute", "type": "boolean"},
             ],
         },
     ],
     "polling": {
-        "interval": 10,
         "queries": ["!\\r\\n"],
     },
 }
@@ -176,15 +175,15 @@ async def test_static_set_values_coerce_to_declared_type(state, events):
         "commands": {},
         "responses": [
             # String statics on a boolean var (the common authored form).
-            {"pattern": r"MUTE ON", "set": {"mute": "true"}},
-            {"pattern": r"MUTE OFF", "set": {"mute": "false"}},
+            {"match": r"MUTE ON", "set": {"mute": "true"}},
+            {"match": r"MUTE OFF", "set": {"mute": "false"}},
             # Real YAML bool static, inverted protocol (00 = muted).
-            {"pattern": r"OK00", "set": {"screen_mute": True}},
-            {"pattern": r"OK01", "set": {"screen_mute": False}},
+            {"match": r"OK00", "set": {"screen_mute": True}},
+            {"match": r"OK01", "set": {"screen_mute": False}},
             # Integer static.
-            {"pattern": r"PRESS", "set": {"last_action": "9"}},
+            {"match": r"PRESS", "set": {"last_action": "9"}},
             # Enum statics stay strings.
-            {"pattern": r"PWR1", "set": {"power": "on"}},
+            {"match": r"PWR1", "set": {"power": "on"}},
         ],
     }
     state.set_event_bus(events)
@@ -223,7 +222,7 @@ async def test_response_with_value_map():
         "commands": {},
         "responses": [
             {
-                "pattern": r"POWR=(\d)",
+                "match": r"POWR=(\d)",
                 "mappings": [
                     {
                         "group": 1,
@@ -268,7 +267,7 @@ def test_invalid_regex_skipped():
         "transport": "tcp",
         "commands": {},
         "responses": [
-            {"pattern": "[invalid", "mappings": []},
+            {"match": "[invalid", "mappings": []},
         ],
         "state_variables": {},
     }
@@ -280,79 +279,31 @@ def test_invalid_regex_skipped():
     assert len(drv._compiled_responses) == 0
 
 
-# --- Legacy YAML key deprecation warnings ---
+# --- Retired legacy YAML keys ---
 
 
-def _build_minimal_definition(driver_id: str, *, response_key: str, command_key: str) -> dict:
-    """Build a minimal definition that uses the requested response/command key."""
-    return {
-        "id": driver_id,
-        "name": driver_id,
+def test_retired_alias_keys_are_ignored_at_compile():
+    """The old `string:` (for send) and `pattern:` (for match) spellings are
+    retired: the loader rejects them, and the compile path must not read them
+    either — a definition still carrying one contributes no response rules."""
+    definition = {
+        "id": "legacy_alias_test",
+        "name": "legacy_alias_test",
         "transport": "tcp",
         "commands": {
-            "ping": {
-                "label": "Ping",
-                command_key: "PING\\r",
-                "params": {},
-            },
+            "ping": {"label": "Ping", "string": "PING\\r", "params": {}},
         },
         "responses": [
-            {response_key: r"PONG", "mappings": []},
+            {"pattern": r"PONG", "mappings": []},
         ],
         "state_variables": {},
     }
-
-
-def test_legacy_pattern_key_warns_once_per_driver_id(caplog):
-    from server.drivers.configurable import _WARNED_LEGACY_KEYS
-    _WARNED_LEGACY_KEYS.clear()
-
-    definition = _build_minimal_definition(
-        "legacy_pattern_test", response_key="pattern", command_key="send"
-    )
-    with caplog.at_level("WARNING"):
-        create_configurable_driver_class(definition)
-    matches = [r for r in caplog.records if "deprecated YAML key 'pattern'" in r.getMessage()]
-    assert len(matches) == 1, f"Expected exactly one warning, got {[r.getMessage() for r in matches]}"
-
-    # Same driver_id, second class build — no new warning
-    caplog.clear()
-    with caplog.at_level("WARNING"):
-        create_configurable_driver_class(definition)
-    matches = [r for r in caplog.records if "deprecated YAML key 'pattern'" in r.getMessage()]
-    assert matches == []
-
-
-def test_legacy_string_key_warns_once_per_driver_id(caplog):
-    from server.drivers.configurable import _WARNED_LEGACY_KEYS
-    _WARNED_LEGACY_KEYS.clear()
-
-    definition = _build_minimal_definition(
-        "legacy_string_test", response_key="match", command_key="string"
-    )
-    with caplog.at_level("WARNING"):
-        create_configurable_driver_class(definition)
-    matches = [r for r in caplog.records if "deprecated YAML key 'string'" in r.getMessage()]
-    assert len(matches) == 1, f"Expected exactly one warning, got {[r.getMessage() for r in matches]}"
-
-    caplog.clear()
-    with caplog.at_level("WARNING"):
-        create_configurable_driver_class(definition)
-    matches = [r for r in caplog.records if "deprecated YAML key 'string'" in r.getMessage()]
-    assert matches == []
-
-
-def test_canonical_keys_emit_no_deprecation_warning(caplog):
-    from server.drivers.configurable import _WARNED_LEGACY_KEYS
-    _WARNED_LEGACY_KEYS.clear()
-
-    definition = _build_minimal_definition(
-        "canonical_keys_test", response_key="match", command_key="send"
-    )
-    with caplog.at_level("WARNING"):
-        create_configurable_driver_class(definition)
-    matches = [r for r in caplog.records if "deprecated YAML key" in r.getMessage()]
-    assert matches == []
+    cls = create_configurable_driver_class(definition)
+    state = StateStore()
+    events = EventBus()
+    state.set_event_bus(events)
+    drv = cls("test", {}, state, events)
+    assert len(drv._compiled_responses) == 0
 
 
 # --- child_entity_types passthrough (P8) ---

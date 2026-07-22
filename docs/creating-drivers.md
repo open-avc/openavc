@@ -449,8 +449,8 @@ The tables below document each field in detail.
 | `state_variables` | No | State properties this driver exposes. |
 | `child_entity_types` | No | Sub-units this device manages (encoders, decoders, zones, presets). See below. |
 | `commands` | No | Commands this driver can send. |
-| `quick_actions` | No | Command ids promoted to one-click buttons at the top of the device view. See below. |
-| `actions` | No | Full-form promoted buttons (icon, confirm, visibility). See below. |
+| `actions` | No | Commands promoted to one-click buttons at the top of the device view (icon, confirm, visibility). See below. |
+| `quick_actions` | No | Legacy flat-list form of `actions`. Still accepted; write `actions` in new drivers. |
 | `responses` | No | Regex patterns for parsing device replies. |
 | `auth` | No | Login handshake performed between TCP connect and `on_connect`. See `auth` section below. |
 | `on_connect` | No | List of raw commands sent immediately after connecting. Use for enabling verbose/feedback mode or requesting initial state. |
@@ -795,7 +795,7 @@ set_input:
     input: { type: integer, required: true, help: "Input number (1-based)" }
 ```
 
-- `send`: The raw bytes to send. `{param_name}` placeholders are substituted at runtime. Config values like `{set_id}` are also available. Supported escape sequences: `\r`, `\n`, `\t`, `\\`, `\xHH` (hex byte). (The key `string` is accepted as an alias.)
+- `send`: The raw bytes to send. `{param_name}` placeholders are substituted at runtime. Config values like `{set_id}` are also available. Supported escape sequences: `\r`, `\n`, `\t`, `\\`, `\xHH` (hex byte).
 - `raw`: Optional. Set `raw: true` to send this command's `send` string exactly as written, skipping the driver's `command_prefix` / `command_suffix` framing (below). Use it for the odd command that doesn't share the common frame.
 - `help`: Optional description of what the command does. Shown in the Programmer IDE command testing panel, macro editor, UI builder, and used by the AI assistant to understand commands.
 
@@ -910,22 +910,14 @@ On a command with exactly one `child_id` parameter, `sets` keys and `query_for` 
 
 Declared semantics always beat name inference. Commands whose names already follow the conventions need nothing.
 
-#### `quick_actions` and `actions` (Quick Action buttons)
+#### `actions` (Quick Action buttons)
 
 Every command appears in the device view's "Send Command" list. For a device
 with many commands, promote the few an operator reaches for to prominent
 one-click buttons at the top of the view. The Send Command list still shows
 everything — the strip is additive.
 
-`quick_actions` is the simple form: a flat list of command ids. Each becomes a
-button labelled by the command, firing it on click (commands with parameters
-open an input dialog first).
-
-```yaml
-quick_actions: [power_on, power_off, recall_preset_1]
-```
-
-`actions` is the full form, with per-button icon, confirmation, and visibility:
+Declare the buttons with `actions`, with per-button icon, confirmation, and visibility:
 
 ```yaml
 actions:
@@ -949,7 +941,9 @@ actions:
 - `availability`: `online` (default) hides the button while the device is offline; `offline` shows it only while offline; `always` ignores connection state.
 - `visible_when`: show the button only when a device state condition holds — `{ key: "device.$id.alarm", operator: truthy }`, or an `{any: [...]}` / `{all: [...]}` group. `$id` resolves to the device's id. Operators: `eq, ne, gt, lt, gte, lte, truthy, falsy`.
 
-Each promoted command id must name a declared command. If an id appears in both `quick_actions` and `actions`, the `actions` entry wins.
+Each promoted command id must name a declared command.
+
+**Legacy form.** Older drivers may declare `quick_actions`, a flat list of command ids (`quick_actions: [power_on, power_off]`) — each becomes a button labelled by the command. It is still accepted and behaves the same at runtime, but write `actions` in new drivers; the Driver Builder shows a `quick_actions` list read-only with a one-click conversion. If an id appears in both, the `actions` entry wins.
 
 #### `web_ui` (Open Web UI button)
 

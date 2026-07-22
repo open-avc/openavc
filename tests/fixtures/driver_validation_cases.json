@@ -1650,6 +1650,22 @@
   },
   "transport": "tcp"
  },
+ "command_legacy_string_alias": {
+  "commands": {
+   "noop": {
+    "string": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
  "command_not_dict": {
   "commands": {
    "noop": "NOOP\r"
@@ -5287,6 +5303,30 @@
   "responses": [
    {
     "json": true
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "response_legacy_pattern_alias": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "pattern": "PWR=(\\d)",
+    "set": {
+     "power": "$1"
+    }
    }
   ],
   "state_variables": {

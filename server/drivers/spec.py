@@ -1155,10 +1155,6 @@ DEFS = {
                 'type': 'boolean',
                 'doc': "Send this command's send string exactly as written, skipping the driver's command_prefix / command_suffix framing. Use it for the odd command that doesn't share the common frame. Requires platform 0.23.0.",
             },
-            'string': {
-                'type': 'string',
-                'doc': 'Deprecated alias for send.',
-            },
             'method': {
                 'type': 'string',
                 'doc': 'HTTP method (GET/POST/PUT/DELETE). Default GET.',
@@ -1213,9 +1209,6 @@ DEFS = {
         'any_of': (
             {
                 'required': ('send',),
-            },
-            {
-                'required': ('string',),
             },
             {
                 'required': ('path',),
@@ -1371,7 +1364,7 @@ DEFS = {
     },
     'responseEntry': {
         'type': 'object',
-        'doc': 'A response must declare match or pattern (regex), address (OSC), or json: true (JSON-body).',
+        'doc': 'A response must declare match (regex), address (OSC), or json: true (JSON-body).',
         'fields': {
             'json': {
                 'type': 'boolean',
@@ -1381,11 +1374,6 @@ DEFS = {
                 'type': 'string',
                 'min_len': 1,
                 'doc': 'Regex matched against incoming text. Capture groups extract values.',
-            },
-            'pattern': {
-                'type': 'string',
-                'min_len': 1,
-                'doc': 'Deprecated alias for match.',
             },
             'address': {
                 'type': 'string',
@@ -1430,9 +1418,6 @@ DEFS = {
         'any_of': (
             {
                 'required': ('match',),
-            },
-            {
-                'required': ('pattern',),
             },
             {
                 'required': ('address',),

@@ -30,7 +30,7 @@ export function declaredStateType(
 
 /** Read the pattern from whichever key is present. */
 export function getPattern(resp: DriverResponseDef): string {
-  return resp.address ?? resp.pattern ?? resp.match ?? "";
+  return resp.address ?? resp.match ?? "";
 }
 
 /** Read mappings, converting set: shorthand if needed. The runtime coerces a
@@ -128,7 +128,6 @@ export function buildResponse(
   if (original.json) {
     const base: DriverResponseDef = { ...original };
     delete base.match;
-    delete base.pattern;
     return { ...base, ...carry };
   }
   // Choose set: shorthand when (a) the original used it AND (b) the
@@ -240,7 +239,6 @@ export function buildJsonResponse(
 ): DriverResponseDef {
   const next: DriverResponseDef = { ...original, json: true };
   delete next.match;
-  delete next.pattern;
   delete next.address;
   delete next.set;
   delete next.mappings;

@@ -1082,10 +1082,6 @@
           "type": "boolean",
           "description": "Send this command's send string exactly as written, skipping the driver's command_prefix / command_suffix framing. Use it for the odd command that doesn't share the common frame. Requires platform 0.23.0."
         },
-        "string": {
-          "type": "string",
-          "description": "Deprecated alias for send."
-        },
         "method": {
           "type": "string",
           "description": "HTTP method (GET/POST/PUT/DELETE). Default GET."
@@ -1146,11 +1142,6 @@
         {
           "required": [
             "send"
-          ]
-        },
-        {
-          "required": [
-            "string"
           ]
         },
         {
@@ -1353,7 +1344,7 @@
     },
     "responseEntry": {
       "type": "object",
-      "description": "A response must declare match or pattern (regex), address (OSC), or json: true (JSON-body).",
+      "description": "A response must declare match (regex), address (OSC), or json: true (JSON-body).",
       "properties": {
         "json": {
           "type": "boolean",
@@ -1363,11 +1354,6 @@
           "type": "string",
           "minLength": 1,
           "description": "Regex matched against incoming text. Capture groups extract values."
-        },
-        "pattern": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Deprecated alias for match."
         },
         "address": {
           "type": "string",
@@ -1416,11 +1402,6 @@
         {
           "required": [
             "match"
-          ]
-        },
-        {
-          "required": [
-            "pattern"
           ]
         },
         {

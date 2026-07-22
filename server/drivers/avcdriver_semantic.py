@@ -474,9 +474,9 @@ def validate_driver_definition(
                 )
             continue
 
-        pattern = resp.get("pattern", "") or resp.get("match", "")
+        pattern = resp.get("match", "")
         if not pattern:
-            errors.append(f"Response {i}: missing pattern, match, or address")
+            errors.append(f"Response {i}: missing match or address")
         else:
             err = _regex_redos_error(f"Response {i}", pattern)
             if err:
@@ -608,8 +608,8 @@ def validate_driver_definition(
         if not isinstance(cmd_def, dict):
             errors.append(f"Command '{cmd_name}': must be a dict")
             continue
-        # TCP/serial commands need send/string, HTTP need path/method, OSC needs address
-        has_send = cmd_def.get("send") or cmd_def.get("string")
+        # TCP/serial commands need send, HTTP need path/method, OSC needs address
+        has_send = cmd_def.get("send")
         has_http = cmd_def.get("path") or cmd_def.get("method")
         has_osc = cmd_def.get("address") is not None
         if not has_send and not has_http and not has_osc:

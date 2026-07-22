@@ -261,8 +261,6 @@ export interface DriverCommandDef {
    * doesn't share the common frame. Requires platform 0.23.0.
    */
   raw?: boolean;
-  /** Deprecated alias for send. */
-  string?: string;
   /** HTTP method (GET/POST/PUT/DELETE). Default GET. */
   method?: string;
   /** HTTP URL path. */
@@ -351,8 +349,8 @@ export interface DriverChildSetEntry {
 }
 
 /**
- * A response must declare match or pattern (regex), address (OSC), or json:
- * true (JSON-body).
+ * A response must declare match (regex), address (OSC), or json: true (JSON-
+ * body).
  */
 export interface DriverResponseDef {
   /**
@@ -366,8 +364,6 @@ export interface DriverResponseDef {
   json?: boolean;
   /** Regex matched against incoming text. Capture groups extract values. */
   match?: string;
-  /** Deprecated alias for match. */
-  pattern?: string;
   /** OSC address pattern (must start with /). Supports fnmatch wildcards. */
   address?: string;
   /**

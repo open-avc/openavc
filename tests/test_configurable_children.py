@@ -67,7 +67,7 @@ ACME_MATRIX = {
     "commands": {
         "route": {
             "label": "Route",
-            "string": "{input}*{output}!\\r\\n",
+            "send": "{input}*{output}!\\r\\n",
             "params": {
                 "input": {"type": "integer", "required": True},
                 "output": {
@@ -593,7 +593,7 @@ def _wire_map_definition():
     )
     definition["commands"]["route_wire"] = {
         "label": "Route (wire)",
-        "string": "R{output}!\\r\\n",
+        "send": "R{output}!\\r\\n",
         "params": {
             "output": {
                 "type": "child_id",
@@ -605,7 +605,7 @@ def _wire_map_definition():
     }
     definition["commands"]["preset_code"] = {
         "label": "Preset",
-        "string": "P{preset}\\r\\n",
+        "send": "P{preset}\\r\\n",
         "params": {
             "preset": {
                 "type": "enum",

@@ -31,10 +31,10 @@ VALID_DEFINITION = {
     "transport": "tcp",
     "discovery": {"oui": ["aa:bb:cc"]},
     "commands": {
-        "power_on": {"label": "Power On", "string": "PON\r", "params": {}},
+        "power_on": {"label": "Power On", "send": "PON\r", "params": {}},
     },
     "responses": [
-        {"pattern": r"PWR=(\d)", "mappings": [{"group": 1, "state": "power"}]},
+        {"match": r"PWR=(\d)", "mappings": [{"group": 1, "state": "power"}]},
     ],
     "state_variables": {
         "power": {"type": "string", "label": "Power"},
@@ -69,7 +69,7 @@ def test_validate_accepts_missing_discovery_block_with_warning():
         "id": "no_discovery",
         "name": "No Discovery",
         "transport": "tcp",
-        "commands": {"power_on": {"string": "X\r"}},
+        "commands": {"power_on": {"send": "X\r"}},
     })
     assert errors == []
 
@@ -80,7 +80,7 @@ def test_validate_accepts_hint_only_discovery():
         "name": "Hint Only Widget",
         "transport": "tcp",
         "discovery": {"oui": ["aa:bb:cc"]},
-        "commands": {"power_on": {"string": "X\r"}},
+        "commands": {"power_on": {"send": "X\r"}},
     })
     assert errors == []
 
@@ -95,7 +95,7 @@ def test_validate_accepts_fingerprint_discovery():
                 "port": 4321, "send_ascii": "Q\r", "expect": "RESP",
             },
         },
-        "commands": {"power_on": {"string": "X\r"}},
+        "commands": {"power_on": {"send": "X\r"}},
     })
     assert errors == []
 
@@ -119,7 +119,7 @@ def test_validate_bad_transport():
 
 
 def test_validate_bad_regex():
-    defn = {**VALID_DEFINITION, "responses": [{"pattern": "[bad"}]}
+    defn = {**VALID_DEFINITION, "responses": [{"match": "[bad"}]}
     errors = validate_driver_definition(defn)
     assert any("regex" in e.lower() or "invalid" in e.lower() for e in errors)
 
@@ -562,7 +562,7 @@ def test_validate_non_dict_response_entry():
 
 
 def test_validate_non_string_pattern():
-    defn = {**VALID_DEFINITION, "responses": [{"pattern": 1234}]}
+    defn = {**VALID_DEFINITION, "responses": [{"match": 1234}]}
     errors = validate_driver_definition(defn)
     assert any("must be a string" in e for e in errors)
 
@@ -1013,7 +1013,7 @@ def _def_with_command(params: dict) -> dict:
         "transport": "tcp",
         "discovery": {"oui": ["aa:bb:cc"]},
         "commands": {
-            "do_thing": {"label": "Do Thing", "string": "DO {bank}\r", "params": params},
+            "do_thing": {"label": "Do Thing", "send": "DO {bank}\r", "params": params},
         },
     }
 

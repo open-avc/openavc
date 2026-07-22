@@ -83,5 +83,5 @@ export function previewWire(
       .join("\n");
   }
 
-  return subst(command.send ?? command.string ?? "");
+  return subst(command.send ?? "");
 }

@@ -473,7 +473,7 @@ async def test_configurable_http_send_command():
         },
         "responses": [
             {
-                "pattern": '"power":\\s*"(\\w+)"',
+                "match": '"power":\\s*"(\\w+)"',
                 "mappings": [
                     {"group": 1, "state": "power", "type": "string"},
                 ],

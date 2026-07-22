@@ -71,44 +71,6 @@ _HTTP_AUTH_REJECT_STATUS = frozenset({401, 403, 407})
 _JSON_PATH_MISSING = object()
 
 
-# Tracks (driver_id, legacy_key) tuples that have already been warned about,
-# so a deprecation message fires once per driver type rather than per instance
-# or per response handled.
-_WARNED_LEGACY_KEYS: set[tuple[str, str]] = set()
-
-
-def _warn_legacy_key(driver_id: str, legacy_key: str, replacement: str) -> None:
-    """Emit a one-time deprecation warning for a legacy YAML driver key."""
-    marker = (driver_id, legacy_key)
-    if marker in _WARNED_LEGACY_KEYS:
-        return
-    _WARNED_LEGACY_KEYS.add(marker)
-    log.warning(
-        "Driver '%s' uses deprecated YAML key '%s'; use '%s' instead. "
-        "Both are accepted today but the alias may be removed in a future release.",
-        driver_id, legacy_key, replacement,
-    )
-
-
-def _warn_legacy_keys_in_definition(driver_def: dict[str, Any]) -> None:
-    """Scan a driver definition for deprecated YAML keys and warn once each."""
-    driver_id = driver_def.get("id", "?")
-
-    for cmd_def in driver_def.get("commands", {}).values():
-        if not isinstance(cmd_def, dict):
-            continue
-        if "send" not in cmd_def and "string" in cmd_def:
-            _warn_legacy_key(driver_id, "string", "send")
-            break  # one warning per driver_id is enough
-
-    for resp in driver_def.get("responses", []):
-        if not isinstance(resp, dict):
-            continue
-        if "match" not in resp and "pattern" in resp:
-            _warn_legacy_key(driver_id, "pattern", "match")
-            break
-
-
 def _build_commands_meta(commands_def: dict[str, Any]) -> dict[str, Any]:
     """Build the DRIVER_INFO ``commands`` UI metadata from a commands map.
 
@@ -138,8 +100,8 @@ class ConfigurableDriver(BaseDriver):
 
     The definition dict must contain:
         - id, name, manufacturer, category, transport
-        - commands: dict of command_name -> {string, params}
-        - responses: list of {pattern, mappings} for parsing
+        - commands: dict of command_name -> {send, params}
+        - responses: list of {match, mappings} for parsing
         - polling: optional {queries}. Poll cadence is sourced from
           default_config.poll_interval — a top-level polling.interval is
           ignored.
@@ -1179,8 +1141,7 @@ class ConfigurableDriver(BaseDriver):
         if self._is_http_command(cmd_def):
             return await self._send_http_command(command, cmd_def, params)
 
-        # Canonical key is "send"; "string" remains accepted as an alias.
-        raw = cmd_def.get("send", "") or cmd_def.get("string", "")
+        raw = cmd_def.get("send", "")
         if not raw:
             log.warning(f"[{self.device_id}] Command '{command}' has no send string")
             return None
@@ -2221,8 +2182,6 @@ def create_configurable_driver_class(
     attributes, ready to be registered in the driver registry.
     """
     driver_id = driver_def.get("id", "unknown")
-
-    _warn_legacy_keys_in_definition(driver_def)
 
     # Build DRIVER_INFO from the definition
     driver_info: dict[str, Any] = {

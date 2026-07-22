@@ -96,7 +96,7 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
     const wasJson = resp.address === undefined && !!resp.json;
     if (kind === "json" && !wasJson) {
       const dropped: string[] = [];
-      if ((resp.match ?? resp.pattern ?? "").trim()) {
+      if ((resp.match ?? "").trim()) {
         dropped.push("its match pattern");
       }
       if (

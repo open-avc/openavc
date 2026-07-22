@@ -185,8 +185,8 @@ def _yaml_with_companion(driver_id: str, *, companion: bool = True) -> str:
         "id": driver_id,
         "name": driver_id.replace("_", " ").title(),
         "transport": "tcp",
-        "commands": {"power_on": {"label": "On", "string": "P\r", "params": {}}},
-        "responses": [{"pattern": "OK", "mappings": [{"group": 0, "state": "ok"}]}],
+        "commands": {"power_on": {"label": "On", "send": "P\r", "params": {}}},
+        "responses": [{"match": "OK", "mappings": [{"group": 0, "state": "ok"}]}],
         "state_variables": {"ok": {"type": "string", "label": "OK"}},
     }
     if companion:
@@ -415,7 +415,7 @@ async def test_update_swaps_companion_when_new_yaml_changes_filename(
         "id": "crestron_cip",
         "name": "CIP",
         "transport": "tcp",
-        "commands": {"x": {"string": "x\r", "params": {}}},
+        "commands": {"x": {"send": "x\r", "params": {}}},
         "discovery": {"python": "./crestron_cip_discovery.py"},
     })
     yaml_file = driver_repo / "crestron_cip.avcdriver"
@@ -428,7 +428,7 @@ async def test_update_swaps_companion_when_new_yaml_changes_filename(
         "id": "crestron_cip",
         "name": "CIP",
         "transport": "tcp",
-        "commands": {"x": {"string": "x\r", "params": {}}},
+        "commands": {"x": {"send": "x\r", "params": {}}},
         "discovery": {"python": "./crestron_cip_v2_discovery.py"},
     })
     new_companion_text = "# new probe\n"

@@ -127,7 +127,7 @@ SCENARIOS = [
     "m173_response_no_pattern_error",
     "m173_response_osc_address_no_slash_error",
     "h124_response_osc_address_on_tcp_error",
-    "m173_response_with_pattern_ok",
+    "m173_response_with_match_ok",
     "setting_missing_write_error",
     "setting_empty_write_error",
     "setting_with_write_ok",

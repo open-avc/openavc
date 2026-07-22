@@ -168,6 +168,9 @@
  "child_type_name_with_glob": [
   "child_entity_types: type name 'zone*' must not contain glob metacharacters (*) \u2014 they break state-change dispatch"
  ],
+ "command_legacy_string_alias": [
+  "Command 'noop': must have 'send' (TCP/serial), 'path'/'method' (HTTP), or 'address' (OSC)"
+ ],
  "command_not_dict": [
   "Command 'noop': must be a dict"
  ],
@@ -582,8 +585,11 @@
  "response_json_without_set_or_mappings": [
   "Response 0: json response needs a 'set' map or a 'mappings' list"
  ],
+ "response_legacy_pattern_alias": [
+  "Response 0: missing match or address"
+ ],
  "response_missing_pattern": [
-  "Response 0: missing pattern, match, or address"
+  "Response 0: missing match or address"
  ],
  "response_not_mapping": [
   "Response 0: must be a mapping"
