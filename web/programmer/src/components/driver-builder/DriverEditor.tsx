@@ -85,8 +85,11 @@ export function DriverEditor({
 
   // When the loaded driver changes (or a new draft starts), reset the
   // save-attempted flag so a previous editor's state doesn't bleed in.
+  // A brand-new draft also opens on General — keeping the previous
+  // driver's tab (e.g. Connection) makes an empty draft look broken.
   useEffect(() => {
     setAttemptedSave(false);
+    if (isNew) setActiveTab("general");
   }, [originalId, isNew]);
 
   const issues = useMemo(

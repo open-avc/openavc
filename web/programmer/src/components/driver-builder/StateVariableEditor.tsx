@@ -1,9 +1,13 @@
 import { Plus, Trash2 } from "lucide-react";
 import type { DriverDefinition } from "../../api/types";
+import { IdRenameInput, type RenameResult } from "./IdRenameInput";
 import {
   applyStateVarTypeChange,
   nextStateVariableName,
 } from "./stateVariableHelpers";
+
+const sanitizeVariableName = (raw: string) =>
+  raw.replace(/[^a-zA-Z0-9_]/g, "").toLowerCase();
 
 interface StateVariableEditorProps {
   draft: DriverDefinition;
@@ -33,14 +37,19 @@ export function StateVariableEditor({
     onUpdate({ state_variables: next });
   };
 
-  const renameVariable = (oldName: string, newName: string) => {
-    const cleaned = newName.replace(/[^a-zA-Z0-9_]/g, "").toLowerCase();
-    if (!cleaned || cleaned === oldName || cleaned in vars) return;
+  const renameVariable = (oldName: string, newName: string): RenameResult => {
+    const cleaned = sanitizeVariableName(newName);
+    if (!cleaned) return { ok: false, reason: "ID can't be empty." };
+    if (cleaned === oldName) return { ok: true };
+    if (cleaned in vars) {
+      return { ok: false, reason: `"${cleaned}" already exists.` };
+    }
     const next: typeof vars = {};
     for (const [k, v] of Object.entries(vars)) {
       next[k === oldName ? cleaned : k] = v;
     }
     onUpdate({ state_variables: next });
+    return { ok: true };
   };
 
   const updateVariable = (
@@ -108,9 +117,10 @@ export function StateVariableEditor({
                 alignItems: "center",
               }}
             >
-              <input
+              <IdRenameInput
                 value={name}
-                onChange={(e) => renameVariable(name, e.target.value)}
+                sanitize={sanitizeVariableName}
+                onCommit={(next) => renameVariable(name, next)}
                 style={{
                   fontSize: "var(--font-size-sm)",
                   fontFamily: "var(--font-mono)",

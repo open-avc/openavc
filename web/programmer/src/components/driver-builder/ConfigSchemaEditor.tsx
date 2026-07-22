@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Plus, Trash2, ChevronDown, ChevronRight } from "lucide-react";
 import type { DriverDefinition } from "../../api/types";
+import { IdRenameInput, type RenameResult } from "./IdRenameInput";
 import {
   type ConfigFieldDef as ConfigField,
   NUMERIC_CONFIG_TYPES,
@@ -8,6 +9,9 @@ import {
   applyConfigSecretToggle,
   coerceConfigDefault,
 } from "./configSchemaHelpers";
+
+const sanitizeFieldName = (raw: string) =>
+  raw.replace(/[^a-zA-Z0-9_]/g, "").toLowerCase();
 
 interface ConfigSchemaEditorProps {
   draft: DriverDefinition;
@@ -64,9 +68,13 @@ export function ConfigSchemaEditor({ draft, onUpdate }: ConfigSchemaEditorProps)
     });
   };
 
-  const renameField = (oldName: string, newName: string) => {
-    const cleaned = newName.replace(/[^a-zA-Z0-9_]/g, "").toLowerCase();
-    if (!cleaned || cleaned === oldName || cleaned in schema) return;
+  const renameField = (oldName: string, newName: string): RenameResult => {
+    const cleaned = sanitizeFieldName(newName);
+    if (!cleaned) return { ok: false, reason: "ID can't be empty." };
+    if (cleaned === oldName) return { ok: true };
+    if (cleaned in schema) {
+      return { ok: false, reason: `"${cleaned}" already exists.` };
+    }
     const nextSchema: Record<string, ConfigField> = {};
     for (const [k, v] of Object.entries(schema)) {
       nextSchema[k === oldName ? cleaned : k] = v;
@@ -77,6 +85,7 @@ export function ConfigSchemaEditor({ draft, onUpdate }: ConfigSchemaEditorProps)
     }
     onUpdate({ config_schema: nextSchema, default_config: nextDefault });
     if (expanded === oldName) setExpanded(cleaned);
+    return { ok: true };
   };
 
   // `undefined` = no default: the key is dropped so the exported YAML doesn't
@@ -166,13 +175,11 @@ export function ConfigSchemaEditor({ draft, onUpdate }: ConfigSchemaEditorProps)
                 >
                   <div>
                     <label style={labelStyle}>Field ID</label>
-                    <input
+                    <IdRenameInput
                       value={name}
-                      onChange={(e) => renameField(name, e.target.value)}
-                      style={{
-                        width: "100%",
-                        fontFamily: "var(--font-mono)",
-                      }}
+                      sanitize={sanitizeFieldName}
+                      onCommit={(next) => renameField(name, next)}
+                      style={{ fontFamily: "var(--font-mono)" }}
                     />
                     <div
                       style={{
@@ -479,14 +486,19 @@ function ComputedFieldsEditor({
 
   // Rename in place, preserving declaration order — templates may reference
   // earlier computed names, so order matters at runtime.
-  const renameField = (oldName: string, newName: string) => {
-    const cleaned = newName.replace(/[^a-zA-Z0-9_]/g, "").toLowerCase();
-    if (!cleaned || cleaned === oldName || cleaned in derived) return;
+  const renameField = (oldName: string, newName: string): RenameResult => {
+    const cleaned = sanitizeFieldName(newName);
+    if (!cleaned) return { ok: false, reason: "ID can't be empty." };
+    if (cleaned === oldName) return { ok: true };
+    if (cleaned in derived) {
+      return { ok: false, reason: `"${cleaned}" already exists.` };
+    }
     const next: Record<string, string> = {};
     for (const [k, v] of Object.entries(derived)) {
       next[k === oldName ? cleaned : k] = v;
     }
     writeDerived(next);
+    return { ok: true };
   };
 
   return (
@@ -525,9 +537,10 @@ function ComputedFieldsEditor({
             marginBottom: "var(--space-xs)",
           }}
         >
-          <input
+          <IdRenameInput
             value={name}
-            onChange={(e) => renameField(name, e.target.value)}
+            sanitize={sanitizeFieldName}
+            onCommit={(next) => renameField(name, next)}
             placeholder="name"
             style={{ width: 160, fontFamily: "var(--font-mono)" }}
           />

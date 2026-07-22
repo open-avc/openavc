@@ -6,6 +6,7 @@ import type {
   DriverParamDef,
 } from "../../api/types";
 import { EnumValuesEditor } from "../shared/EnumValuesEditor";
+import { IdRenameInput, type RenameResult } from "./IdRenameInput";
 import { OscArgsEditor } from "./OscArgsEditor";
 
 interface CommandBuilderProps {
@@ -77,14 +78,19 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
     });
   };
 
-  const renameCommand = (oldName: string, newName: string) => {
-    if (!newName || newName === oldName || newName in commands) return;
+  const renameCommand = (oldName: string, newName: string): RenameResult => {
+    if (!newName) return { ok: false, reason: "ID can't be empty." };
+    if (newName === oldName) return { ok: true };
+    if (newName in commands) {
+      return { ok: false, reason: `"${newName}" already exists.` };
+    }
     const next: Record<string, DriverCommandDef> = {};
     for (const [k, v] of Object.entries(commands)) {
       next[k === oldName ? newName : k] = v;
     }
     onUpdate({ commands: next });
     if (expanded === oldName) setExpanded(newName);
+    return { ok: true };
   };
 
   const labelStyle: React.CSSProperties = {
@@ -183,10 +189,10 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
                 >
                   <div>
                     <label style={labelStyle}>Command ID</label>
-                    <input
+                    <IdRenameInput
                       value={name}
-                      onChange={(e) => renameCommand(name, e.target.value)}
-                      style={{ width: "100%" }}
+                      sanitize={(raw) => raw}
+                      onCommit={(next) => renameCommand(name, next)}
                     />
                   </div>
                   <div>
