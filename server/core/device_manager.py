@@ -90,6 +90,19 @@ def get_driver_default_config(driver_id: str) -> dict[str, Any]:
     return dict(defaults)
 
 
+def get_driver_transport(driver_id: str) -> str:
+    """Return the registered driver's declared transport (``DRIVER_INFO
+    ['transport']``, defaulting to ``tcp`` like the connect path), or ``""``
+    if the driver is unknown. Used to resolve a device's effective transport
+    when its saved config omits one, so a stray ``usb_serial`` on a network
+    device can't hijack its port.
+    """
+    cls = _DRIVER_REGISTRY.get(driver_id)
+    if cls is None:
+        return ""
+    return cls.DRIVER_INFO.get("transport", "tcp")
+
+
 def get_driver_bridge_ports(driver_id: str) -> dict[str, dict[str, Any]]:
     """Return a registered bridge driver's advertised ports as
     ``{port_id: {kind, passthrough_port?, label?}}``, or ``{}`` if the driver
@@ -1304,7 +1317,8 @@ class DeviceManager:
         try:
             from server.transport.serial_transport import resolve_usb_binding
 
-            refreshed = resolve_usb_binding(driver.config)
+            driver_transport = driver.DRIVER_INFO.get("transport", "tcp")
+            refreshed = resolve_usb_binding(driver.config, driver_transport)
             if refreshed is not driver.config:
                 log.info(
                     f"[{device_id}] Serial adapter moved: port "

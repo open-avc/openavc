@@ -962,7 +962,10 @@ class Engine:
           3. ``project.connections[id]`` — connection-table overrides
              (host, port, baudrate, etc.) saved separately.
         """
-        from server.core.device_manager import get_driver_default_config
+        from server.core.device_manager import (
+            get_driver_default_config,
+            get_driver_transport,
+        )
 
         cfg = device.model_dump() if hasattr(device, "model_dump") else dict(device)
         defaults = get_driver_default_config(cfg.get("driver", ""))
@@ -979,11 +982,12 @@ class Engine:
             merged["ir_codes"] = {**default_codes, **device_codes}
         cfg["config"] = merged
         cfg["config"] = self._resolve_bridge_binding(cfg["config"])
-        cfg["config"] = self._resolve_usb_binding(cfg["config"])
+        driver_transport = get_driver_transport(cfg.get("driver", ""))
+        cfg["config"] = self._resolve_usb_binding(cfg["config"], driver_transport)
         return cfg
 
     @staticmethod
-    def _resolve_usb_binding(config: dict) -> dict:
+    def _resolve_usb_binding(config: dict, driver_transport: str = "") -> dict:
         """Rewrite a USB-serial device's volatile port from its stable adapter
         id — the local-serial analog of how ``_resolve_bridge_binding``
         resolves a bridge's host. The logic lives in the transport module
@@ -993,7 +997,7 @@ class Engine:
         """
         from server.transport.serial_transport import resolve_usb_binding
 
-        return resolve_usb_binding(config)
+        return resolve_usb_binding(config, driver_transport)
 
     def _resolve_bridge_binding(self, config: dict) -> dict:
         """Rewrite a bridge-bound device's effective connection to its bridge's port.

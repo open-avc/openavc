@@ -171,6 +171,57 @@ def test_usb_binding_skipped_for_network_and_bridge(monkeypatch):
     assert Engine._resolve_usb_binding(bridged) == bridged
 
 
+def test_stray_usb_serial_on_network_device_does_not_clobber_port(monkeypatch):
+    """A leftover/hand-edited usb_serial on a device whose driver is a network
+    (tcp) driver must not rewrite its numeric port to a serial path, even when
+    the config carries no explicit transport. The resolver consults the driver's
+    declared transport so the empty-transport case no longer passes the gate."""
+    from server.core.device_manager import register_driver, unregister_driver
+    from server.core.project_loader import DeviceConfig, ProjectConfig, ProjectMeta
+    from server.drivers.base import BaseDriver
+
+    class _NetDriver(BaseDriver):
+        DRIVER_INFO = {
+            "id": "net_only_test",
+            "transport": "tcp",
+            "default_config": {},
+            "state_variables": {},
+            "commands": {},
+        }
+
+        async def connect(self):
+            return None
+
+        async def disconnect(self):
+            return None
+
+        async def send_command(self, command, params=None):
+            return None
+
+    register_driver(_NetDriver)
+    try:
+        # An adapter with this serial IS attached — the bug would grab it.
+        monkeypatch.setattr(
+            st, "resolve_serial_port_by_serial", lambda s: "/dev/ttyUSB0"
+        )
+        engine = Engine("x.avc")
+        engine.project = ProjectConfig(
+            project=ProjectMeta(id="t", name="T"), devices=[], connections={}
+        )
+        dev = DeviceConfig(
+            id="d1",
+            driver="net_only_test",
+            name="Net",
+            config={"usb_serial": "AB12CD", "port": 23, "host": "1.2.3.4"},
+        )
+        engine.project.devices.append(dev)
+        cfg = engine.resolved_device_config(dev)["config"]
+        # Numeric TCP port preserved, not rewritten to the serial path.
+        assert cfg["port"] == 23
+    finally:
+        unregister_driver("net_only_test")
+
+
 # --- DeviceManager reconnect re-resolution ----------------------------------
 
 
@@ -184,7 +235,8 @@ def test_reconnect_refreshes_moved_usb_port(monkeypatch):
 
     dm = DeviceManager(StateStore(), EventBus())
     driver = SimpleNamespace(
-        config={"usb_serial": "AB12CD", "port": "/dev/ttyUSB0", "transport": "serial"}
+        config={"usb_serial": "AB12CD", "port": "/dev/ttyUSB0", "transport": "serial"},
+        DRIVER_INFO={"transport": "serial"},
     )
     monkeypatch.setattr(
         list_ports_mod,

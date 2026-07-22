@@ -112,7 +112,7 @@ def resolve_serial_port_by_serial(usb_serial: str) -> str | None:
     return None
 
 
-def resolve_usb_binding(config: dict) -> dict:
+def resolve_usb_binding(config: dict, driver_transport: str = "") -> dict:
     """Rewrite a USB-serial device's volatile port from its stable adapter id.
 
     A directly-attached USB-to-serial adapter is given a port name by the OS
@@ -130,11 +130,17 @@ def resolve_usb_binding(config: dict) -> dict:
     stored ``port`` is left as-is — the device then fails to connect with the
     normal serial open error rather than silently dialing the wrong port.
 
+    ``driver_transport`` is the device's driver-declared transport
+    (``DRIVER_INFO['transport']``). When the saved config omits ``transport``,
+    it stands in — so a stray ``usb_serial`` left on a tcp/http device (a hand
+    edit the IDE would have pruned) can't rewrite its numeric port to a serial
+    path just because a matching adapter happens to be attached.
+
     Returns the same dict when nothing changed, a copy with ``port`` rewritten
     when it did.
     """
     usb_serial = config.get("usb_serial")
-    transport = config.get("transport", "")
+    transport = config.get("transport") or driver_transport
     if not usb_serial or config.get("bridge") or transport not in ("", "serial"):
         return config
 
