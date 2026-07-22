@@ -1357,6 +1357,18 @@ class DeviceManager:
                 self._refresh_usb_serial_port(device_id, driver)
                 await driver.connect()
                 log.info(f"Reconnected device: {device_id}")
+                # A bridge-routed device connect()s without raising even when
+                # its bridge is down — it has no transport of its own and comes
+                # up online only if the bridge is live. Mirror the add path:
+                # re-surface bridge_offline (cleared up front above) so the card
+                # and offline_reason automation stay accurate.
+                cfg = driver.config or {}
+                if cfg.get("transport") == "bridge" and not driver.get_state(
+                    "connected"
+                ):
+                    bridge_id = cfg.get("bridge")
+                    if bridge_id:
+                        self._set_bridge_offline_reason(device_id, bridge_id)
             except Exception as e:
                 self.state.set(f"device.{device_id}.connected", False, source="device_manager")
                 log.warning(f"Reconnect failed for {device_id}: {e}")

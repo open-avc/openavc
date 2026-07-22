@@ -235,6 +235,26 @@ def test_bridge_routed_device_is_exempt_from_auto_reconnect():
     assert "tv1" not in dm._reconnect_tasks
 
 
+def test_reconnect_of_bridge_routed_device_restores_bridge_offline_reason():
+    """Manually reconnecting a bridge-routed device whose bridge is down must
+    re-surface the bridge_offline reason. reconnect_device clears the reason up
+    front, and a bridge-routed connect() returns without raising when the bridge
+    is offline, so the success branch would otherwise leave the card offline
+    with no reason (and offline_reason automation would miss the edge)."""
+    dm, _bridge, ir = _dm_with_bridge_and_ir()
+    # Bridge b1 is offline (never marked connected); the device is offline too.
+    ir.set_state("connected", False)
+    ir._connected = False
+    dm.state.set("device.tv1.offline_reason", BRIDGE_OFFLINE)
+
+    asyncio.run(dm.reconnect_device("tv1"))
+
+    assert ir.get_state("connected") is False
+    assert dm.state.get("device.tv1.offline_reason") == BRIDGE_OFFLINE
+    detail = dm.state.get("device.tv1.offline_detail")
+    assert detail and "Acme Bridge" in detail
+
+
 def test_mirror_emits_lifecycle_events_only_on_transition():
     dm, _bridge, ir = _dm_with_bridge_and_ir()
     events: list[str] = []
