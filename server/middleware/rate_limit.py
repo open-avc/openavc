@@ -1,10 +1,19 @@
 """
 Per-IP rate limiting middleware for the OpenAVC core server.
 
-Three tiers based on request path:
+Four tiers based on request path:
 - Open:     high limit for status/health endpoints (default 120/min)
 - Standard: moderate limit for general API routes   (default 60/min)
-- Strict:   low limit for expensive/sensitive ops    (default 10/min)
+- Control:  high limit for authenticated commissioning ops (default 120/min) —
+            device commands/tests, discovery, driver install, project save.
+            These are hot paths during normal commissioning from a remote
+            Programmer (a volume ramp alone can fire many commands), so they
+            must not share the strict security budget. Every route here
+            requires programmer auth, and 401s feed the brute-force counter
+            instead of the tier window, so the higher budget is only
+            reachable with valid credentials.
+- Strict:   low limit for security-sensitive ops     (default 10/min) —
+            login, cloud pairing, backup restore.
 
 Auth failures (401 responses) feed a dedicated brute-force counter that is
 checked on every request at the strict rate, regardless of the endpoint's tier
@@ -74,24 +83,29 @@ def _classify(method: str, path: str) -> str:
     if any(path.startswith(p) for p in _OPEN_PREFIXES):
         return "open"
 
-    # Strict tier: expensive or security-sensitive operations
+    # Strict tier: security-sensitive operations
     if method == "POST":
         if path == "/api/auth/session":
-            return "strict"
-        if path.startswith("/api/discovery/"):
-            return "strict"
-        if path.startswith("/api/devices/") and ("/command" in path or "/test" in path):
-            return "strict"
-        if path.endswith("/test-command"):
-            return "strict"
-        if path in ("/api/drivers/install", "/api/drivers/upload"):
             return "strict"
         if path.startswith("/api/cloud/"):
             return "strict"
         if path.startswith("/api/backups/") and "/restore" in path:
             return "strict"
+
+    # Control tier: authenticated commissioning operations. Hot during normal
+    # setup from a remote Programmer, so they get their own high budget
+    # instead of draining (or being 429'd by) the strict security window.
+    if method == "POST":
+        if path.startswith("/api/discovery/"):
+            return "control"
+        if path.startswith("/api/devices/") and ("/command" in path or "/test" in path):
+            return "control"
+        if path.endswith("/test-command"):
+            return "control"
+        if path in ("/api/drivers/install", "/api/drivers/upload"):
+            return "control"
     if method == "PUT" and path == "/api/project":
-        return "strict"
+        return "control"
 
     # Everything else on /api/ is standard
     return "standard"
@@ -140,11 +154,12 @@ class _SlidingWindow:
 
 
 class _IPBuckets:
-    __slots__ = ("open", "standard", "strict", "auth_fail", "last_seen")
+    __slots__ = ("open", "standard", "control", "strict", "auth_fail", "last_seen")
 
     def __init__(self) -> None:
         self.open = _SlidingWindow(config.RATE_LIMIT_OPEN_PER_MINUTE)
         self.standard = _SlidingWindow(config.RATE_LIMIT_STANDARD_PER_MINUTE)
+        self.control = _SlidingWindow(config.RATE_LIMIT_CONTROL_PER_MINUTE)
         self.strict = _SlidingWindow(config.RATE_LIMIT_STRICT_PER_MINUTE)
         # 401 brute-force counter: the strict rate, but checked on EVERY request
         # regardless of tier. Kept separate from the strict-tier endpoint window
@@ -156,6 +171,8 @@ class _IPBuckets:
     def get_window(self, tier: str) -> _SlidingWindow:
         if tier == "open":
             return self.open
+        if tier == "control":
+            return self.control
         if tier == "strict":
             return self.strict
         return self.standard

@@ -113,6 +113,7 @@ def _patch_config(monkeypatch):
     monkeypatch.setattr("server.config.RATE_LIMIT_ENABLED", True)
     monkeypatch.setattr("server.config.RATE_LIMIT_OPEN_PER_MINUTE", 120)
     monkeypatch.setattr("server.config.RATE_LIMIT_STANDARD_PER_MINUTE", 60)
+    monkeypatch.setattr("server.config.RATE_LIMIT_CONTROL_PER_MINUTE", 120)
     monkeypatch.setattr("server.config.RATE_LIMIT_STRICT_PER_MINUTE", 10)
 
 
@@ -145,16 +146,22 @@ def test_classify_open():
 
 
 def test_classify_strict():
-    assert _classify("POST", "/api/devices/proj1/command") == "strict"
-    assert _classify("POST", "/api/devices/proj1/test") == "strict"
-    assert _classify("POST", "/api/driver-definitions/d1/test-command") == "strict"
-    assert _classify("POST", "/api/drivers/install") == "strict"
-    assert _classify("POST", "/api/drivers/upload") == "strict"
-    assert _classify("PUT", "/api/project") == "strict"
+    """Security-sensitive ops keep the low strict budget."""
+    assert _classify("POST", "/api/auth/session") == "strict"
     assert _classify("POST", "/api/cloud/pair") == "strict"
     assert _classify("POST", "/api/cloud/unpair") == "strict"
-    assert _classify("POST", "/api/discovery/scan") == "strict"
     assert _classify("POST", "/api/backups/backup1/restore") == "strict"
+
+
+def test_classify_control():
+    """Authenticated commissioning ops get their own higher-budget tier."""
+    assert _classify("POST", "/api/devices/proj1/command") == "control"
+    assert _classify("POST", "/api/devices/proj1/test") == "control"
+    assert _classify("POST", "/api/driver-definitions/d1/test-command") == "control"
+    assert _classify("POST", "/api/drivers/install") == "control"
+    assert _classify("POST", "/api/drivers/upload") == "control"
+    assert _classify("PUT", "/api/project") == "control"
+    assert _classify("POST", "/api/discovery/scan") == "control"
 
 
 def test_classify_standard():
@@ -210,9 +217,9 @@ def test_strict_tier_limit():
     with patch("server.config.RATE_LIMIT_STRICT_PER_MINUTE", 2):
         _reset_state()
         for _ in range(2):
-            r = client.post("/api/devices/d1/command")
+            r = client.post("/api/cloud/pair")
             assert r.status_code == 200
-        r = client.post("/api/devices/d1/command")
+        r = client.post("/api/cloud/pair")
         assert r.status_code == 429
 
 
@@ -225,9 +232,9 @@ def test_strict_exceeded_blocks_only_strict():
         _reset_state()
         # Exhaust strict tier
         for _ in range(2):
-            client.post("/api/devices/d1/command")
+            client.post("/api/cloud/pair")
         # Strict tier should be blocked
-        r = client.post("/api/devices/d1/command")
+        r = client.post("/api/cloud/pair")
         assert r.status_code == 429
         # Standard tier should still work
         r = client.get("/api/devices")
@@ -251,6 +258,8 @@ def test_auth_failure_throttles_every_tier_at_strict_rate():
             r = client.get("/api/protected")
             assert r.status_code == 401
         # Strict-tier endpoint is blocked...
+        assert client.post("/api/cloud/pair").status_code == 429
+        # ...the control tier too...
         assert client.post("/api/devices/d1/command").status_code == 429
         # ...and so is the standard tier (the M-293 fix — brute-force protection
         # is no longer confined to strict-tier endpoints).
@@ -284,10 +293,10 @@ def test_legit_strict_usage_does_not_trip_brute_force_counter():
     with patch("server.config.RATE_LIMIT_STRICT_PER_MINUTE", 2):
         _reset_state()
         for _ in range(2):
-            assert client.post("/api/devices/d1/command").status_code == 200
+            assert client.post("/api/cloud/pair").status_code == 200
         # Strict endpoint now blocked, but standard/open still work — the 200s
         # went to the strict window, not the brute-force counter.
-        assert client.post("/api/devices/d1/command").status_code == 429
+        assert client.post("/api/cloud/pair").status_code == 429
         assert client.get("/api/devices").status_code == 200
         assert client.get("/api/status").status_code == 200
 
@@ -335,6 +344,40 @@ def test_options_not_limited():
         # OPTIONS should still work
         r = client.options("/api/devices")
         assert r.status_code != 429
+
+
+def test_commissioning_traffic_does_not_share_the_strict_bucket():
+    """Device commands are commissioning traffic, not security ops: exhausting
+    the strict (security) window must not 429 device command/test calls, and
+    command bursts must not drain the strict window for security ops."""
+    app = _make_app()
+    client = TestClient(app)
+
+    with patch("server.config.RATE_LIMIT_STRICT_PER_MINUTE", 2):
+        _reset_state()
+        # Exhaust the strict/security window
+        for _ in range(2):
+            assert client.post("/api/cloud/pair").status_code == 200
+        assert client.post("/api/cloud/pair").status_code == 429
+        # Commissioning ops still flow
+        assert client.post("/api/devices/d1/command").status_code == 200
+        assert client.post("/api/devices/d1/test").status_code == 200
+        assert client.put("/api/project").status_code == 200
+
+
+def test_control_tier_has_its_own_limit():
+    """The control tier is still bounded — by its own (higher) window."""
+    app = _make_app()
+    client = TestClient(app)
+
+    with patch("server.config.RATE_LIMIT_CONTROL_PER_MINUTE", 3):
+        _reset_state()
+        for _ in range(3):
+            assert client.post("/api/devices/d1/command").status_code == 200
+        assert client.post("/api/devices/d1/command").status_code == 429
+        # Exceeding control does not block security or standard tiers
+        assert client.post("/api/cloud/pair").status_code == 200
+        assert client.get("/api/devices").status_code == 200
 
 
 def test_tiers_are_independent():
