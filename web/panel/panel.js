@@ -3435,7 +3435,10 @@ class PanelApp {
         // postMessage API: send initial config + theme + state snapshot
         // when iframe loads. The state snapshot is filtered to the plugin's
         // own namespace (plugin.<id>.*) so iframes don't see unrelated keys.
-        iframe.addEventListener('load', async () => {
+        // Also re-run on demand ('openavc:request-init' from the iframe) so a
+        // long-lived plugin iframe can recover a fresh ext token after its
+        // TTL expires — wall panels outlive the token lifetime by design.
+        const sendInit = async () => {
             loadingIndicator.remove();
             const themeVars = {};
             const root = document.documentElement;
@@ -3470,7 +3473,8 @@ class PanelApp {
                 elementId: element.id,
                 ext_token: extToken,
             }, '*');  // sandboxed iframe has opaque origin; source check provides security
-        });
+        };
+        iframe.addEventListener('load', sendInit);
 
         // Listen for messages from plugin iframe
         const handler = (event) => {
@@ -3515,6 +3519,14 @@ class PanelApp {
                             value: msg.value,
                         }));
                     }
+                    break;
+                }
+                case 'openavc:request-init': {
+                    // Re-send openavc:init (with a freshly-fetched ext token
+                    // when the plugin declares ext_auth). A plugin iframe
+                    // calls this when an /ext/* request starts returning 401
+                    // mid-session — its token expired.
+                    sendInit();
                     break;
                 }
                 case 'openavc:navigate':

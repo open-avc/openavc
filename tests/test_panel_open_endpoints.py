@@ -106,10 +106,12 @@ async def test_ext_token_does_not_401_an_unauthenticated_panel(claimed_client):
     resp = claimed_client.get("/api/plugins/audio_player/ext-token")
     assert resp.status_code == 200
     body = resp.json()
-    # No privileged token for an unauthenticated caller, but the request itself
-    # succeeds so the browser never prompts.
+    # No privileged token for an unauthenticated caller (this plugin declared
+    # no panel-reachable paths), but the request itself succeeds so the
+    # browser never prompts.
     assert body["token"] == ""
     assert body["auth_required"] is True
+    assert body["scope"] == ""
     assert "www-authenticate" not in {k.lower() for k in resp.headers}
 
 
@@ -122,6 +124,48 @@ async def test_ext_token_minted_for_authenticated_caller(claimed_client):
     body = resp.json()
     assert body["token"]  # non-empty
     assert body["auth_required"] is True
+    assert body["scope"] == "full"
+
+
+async def test_ext_token_panel_scope_when_plugin_declares_panel_paths(claimed_client):
+    """A standalone panel gets a PANEL-scoped token (not a full plugin token)
+    when the running plugin declared panel-reachable ext paths — that token
+    opens only the declared routes, so plugin CRUD stays programmer-only."""
+    from fastapi import APIRouter
+
+    from server.api.plugin_ext import (
+        mount_plugin_router,
+        unmount_plugin_router,
+        verify_panel_token,
+        verify_plugin_token,
+    )
+    from server.main import app as main_app
+
+    router = APIRouter()
+
+    @router.get("/media")
+    async def media():
+        return {}
+
+    mount_plugin_router(main_app, "audio_player", router, ["GET /media"])
+    try:
+        resp = claimed_client.get("/api/plugins/audio_player/ext-token")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["token"]
+        assert body["auth_required"] is True
+        assert body["scope"] == "panel"
+        assert verify_panel_token(body["token"], "audio_player")
+        # Never a full plugin token for an unauthenticated caller.
+        assert not verify_plugin_token(body["token"], "audio_player")
+        # And the token actually opens the declared route on the live app.
+        media_resp = claimed_client.get(
+            "/api/plugins/audio_player/ext/media",
+            headers={"x-openavc-plugin-token": body["token"]},
+        )
+        assert media_resp.status_code == 200
+    finally:
+        unmount_plugin_router(main_app, "audio_player")
 
 
 # --- Control: management endpoints on the same prefix stay protected ---

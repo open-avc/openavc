@@ -501,8 +501,10 @@ class PluginLoader:
     def set_router_hooks(self, mount_fn, unmount_fn, mount_guest_fn=None, unmount_guest_fn=None):
         """Set callbacks that mount/unmount a plugin's registered HTTP routers.
 
-        mount_fn(plugin_id, router) is called after a plugin that called
-        api.register_router() starts; unmount_fn(plugin_id) is called on stop.
+        mount_fn(plugin_id, router, panel_paths) is called after a plugin that
+        called api.register_router() starts (panel_paths is the plugin's
+        panel-reachable pattern list or None); unmount_fn(plugin_id) is called
+        on stop.
         mount_guest_fn(plugin_id, router, alias)/unmount_guest_fn(plugin_id)
         are the same pair for the open guest router (api.register_guest_router);
         alias is the plugin's validated PLUGIN_INFO guest_alias or None. Wired
@@ -928,7 +930,11 @@ class PluginLoader:
             # Mount any HTTP router the plugin registered during start()
             if registry.http_router is not None and self._mount_router_fn:
                 try:
-                    self._mount_router_fn(plugin_id, registry.http_router)
+                    self._mount_router_fn(
+                        plugin_id,
+                        registry.http_router,
+                        registry.panel_ext_paths or None,
+                    )
                 except Exception:  # Don't let a mount failure abort a started plugin
                     log.exception(
                         f"Failed to mount HTTP router for plugin '{plugin_id}'"

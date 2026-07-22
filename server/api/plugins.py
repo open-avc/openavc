@@ -578,10 +578,11 @@ async def get_plugin_data_info_endpoint(plugin_id: str) -> dict[str, Any]:
 
 
 # Open router (no auth) so a standalone room panel can fetch it without a 401 —
-# a 401 here would pop the browser's native Basic dialog. The token itself is
-# still only minted for an authenticated caller; an unauthenticated panel gets
-# an empty token (200), and the plugin's /ext/* routes independently reject an
-# empty/invalid token, so nothing leaks.
+# a 401 here would pop the browser's native Basic dialog. A full plugin token is
+# still only minted for an authenticated caller; an unauthenticated panel gets a
+# panel-scoped token that the /ext/* guard honors only for routes the plugin
+# declared panel-reachable (or an empty token when it declared none), so the
+# rest of the plugin's ext surface stays programmer-only.
 @open_router.get("/plugins/{plugin_id}/ext-token")
 async def get_plugin_ext_token(
     plugin_id: str,
@@ -597,19 +598,39 @@ async def get_plugin_ext_token(
 
     - Open instance (no auth): empty token, `auth_required: false`.
     - Claimed instance, authenticated caller (Programmer IDE, or a panel
-      embedded in it): a real token.
-    - Claimed instance, unauthenticated caller (standalone room panel): empty
-      token with `auth_required: true` and a 200 — never a 401, so the browser
-      stays quiet. The iframe simply has no privileged token, which is correct.
+      embedded in it): a full plugin token (`scope: "full"`).
+    - Claimed instance, unauthenticated caller (standalone room panel): a
+      panel-scoped token (`scope: "panel"`) when the plugin declared
+      panel-reachable ext paths — the guard only honors it for those routes.
+      Otherwise an empty token with `auth_required: true` and a 200 — never a
+      401, so the browser stays quiet.
     """
-    from server.api.plugin_ext import auth_required, mint_plugin_token
+    from server.api.plugin_ext import (
+        auth_required,
+        has_panel_paths,
+        mint_panel_token,
+        mint_plugin_token,
+    )
 
     if not auth_required():
-        return {"token": "", "expires_at": 0, "auth_required": False}
+        return {"token": "", "expires_at": 0, "auth_required": False, "scope": ""}
     if programmer_auth_satisfied(request, credentials):
         token, expires_at = mint_plugin_token(plugin_id)
-        return {"token": token, "expires_at": expires_at, "auth_required": True}
-    return {"token": "", "expires_at": 0, "auth_required": True}
+        return {
+            "token": token,
+            "expires_at": expires_at,
+            "auth_required": True,
+            "scope": "full",
+        }
+    if has_panel_paths(plugin_id):
+        token, expires_at = mint_panel_token(plugin_id)
+        return {
+            "token": token,
+            "expires_at": expires_at,
+            "auth_required": True,
+            "scope": "panel",
+        }
+    return {"token": "", "expires_at": 0, "auth_required": True, "scope": ""}
 
 
 @router.delete("/plugins/{plugin_id}")

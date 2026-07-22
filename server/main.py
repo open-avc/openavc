@@ -299,7 +299,9 @@ from server.api.plugin_ext import (
     unmount_plugin_router,
 )
 engine.plugin_loader.set_router_hooks(
-    lambda plugin_id, router: mount_plugin_router(app, plugin_id, router),
+    lambda plugin_id, router, panel_paths=None: mount_plugin_router(
+        app, plugin_id, router, panel_paths
+    ),
     lambda plugin_id: unmount_plugin_router(app, plugin_id),
     lambda plugin_id, router, alias=None: mount_plugin_guest_router(app, plugin_id, router, alias),
     lambda plugin_id: unmount_plugin_guest_router(app, plugin_id),

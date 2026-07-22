@@ -292,7 +292,7 @@ class PluginAPI:
 
     # ──── HTTP Endpoints ────
 
-    def register_router(self, router) -> None:
+    def register_router(self, router, panel_paths: list[str] | None = None) -> None:
         """Mount a FastAPI ``APIRouter`` under ``/api/plugins/<id>/ext/*``.
 
         Requires: http_endpoints.
@@ -307,6 +307,18 @@ class PluginAPI:
         paths are accepted automatically; the plugin author writes ordinary
         route handlers.
 
+        ``panel_paths`` additionally marks specific routes reachable from a
+        **standalone room panel** (wall tablet, kiosk — unauthenticated by
+        design) on a claimed instance. Without it, panel elements that call
+        ``/ext/*`` only work where the panel is embedded in the authenticated
+        Programmer IDE. Each entry is a path glob relative to the mount
+        point, optionally method-scoped: ``"/whep/*"`` (any method),
+        ``"GET /streams"`` (that method only). ``*`` crosses ``/``. Declare
+        only what panel elements actually need — typically read-only media
+        and signaling paths — because a matching route becomes reachable by
+        anything that can load the panel. Keep configuration CRUD routes
+        undeclared; they stay programmer-only.
+
         Define routes relative to the mount point — a handler decorated
         ``@router.post("/whep/{stream_id}")`` is served at
         ``/api/plugins/<id>/ext/whep/{stream_id}``.
@@ -314,12 +326,19 @@ class PluginAPI:
         self._require("http_endpoints")
         from fastapi import APIRouter
 
+        from server.api.plugin_ext import parse_panel_paths
+
         if not isinstance(router, APIRouter):
             raise TypeError(
                 "register_router expects a fastapi.APIRouter, "
                 f"got {type(router).__name__}"
             )
+        if panel_paths is not None:
+            # Validate eagerly so a malformed pattern fails the plugin's
+            # start() with a clear error instead of surfacing at mount time.
+            parse_panel_paths(panel_paths)
         self._registry.http_router = router
+        self._registry.panel_ext_paths = list(panel_paths or [])
 
     def register_guest_router(self, router) -> None:
         """Mount a FastAPI ``APIRouter`` under ``/api/plugins/<id>/guest/*``.

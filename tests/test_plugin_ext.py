@@ -555,7 +555,7 @@ class TestLoaderRouterHooks:
         mount_calls = []
         unmount_calls = []
         loader.set_router_hooks(
-            lambda pid, router: mount_calls.append((pid, router)),
+            lambda pid, router, panel_paths=None: mount_calls.append((pid, router)),
             lambda pid: unmount_calls.append(pid),
         )
 
@@ -593,7 +593,9 @@ class TestLoaderRouterHooks:
 
         register_plugin_class(NoRouterPlugin)
         mount_calls = []
-        loader.set_router_hooks(lambda pid, r: mount_calls.append(pid), lambda pid: None)
+        loader.set_router_hooks(
+            lambda pid, r, panel_paths=None: mount_calls.append(pid), lambda pid: None
+        )
         await loader.start_plugin("no_router", {})
         assert mount_calls == []
 
@@ -689,3 +691,306 @@ def test_panel_element_capabilities_default_empty():
     loader._instances = {"ncp": NoCapPlugin()}
     panel_elements = loader.get_all_extensions()["panel_elements"]
     assert panel_elements[0]["capabilities"] == []
+
+
+# ═══════════════════════════════════════════════════════════
+#  8. Panel tokens + panel-reachable ext paths (claimed-instance panels)
+# ═══════════════════════════════════════════════════════════
+
+
+from server.api.plugin_ext import (  # noqa: E402
+    has_panel_paths,
+    mint_guest_token,
+    mint_panel_token,
+    panel_path_allowed,
+    parse_panel_paths,
+    verify_panel_token,
+)
+
+
+def _media_router():
+    """Router shaped like a real media plugin: CRUD + media on shared paths."""
+    router = APIRouter()
+
+    @router.get("/streams")
+    async def list_streams():
+        return {"streams": []}
+
+    @router.post("/streams")
+    async def add_stream():
+        return {"added": True}
+
+    @router.get("/status")
+    async def status():
+        return {"ok": True}
+
+    @router.post("/whep/{stream_id}")
+    async def whep_offer(stream_id: str):
+        return {"offer": stream_id}
+
+    @router.delete("/whep/{stream_id}/{secret}")
+    async def whep_teardown(stream_id: str, secret: str):
+        return {"gone": True}
+
+    return router
+
+
+PANEL_PATTERNS = ["GET /streams", "/whep/*"]
+
+
+def _client_with_panel_paths(plugin_id="vp", panel_paths=PANEL_PATTERNS):
+    app = FastAPI()
+    mount_plugin_router(app, plugin_id, _media_router(), panel_paths)
+    return TestClient(app), app
+
+
+class TestPanelToken:
+    def test_valid_token_verifies(self):
+        token, expires_at = mint_panel_token("vp")
+        assert verify_panel_token(token, "vp")
+        assert expires_at > 0
+
+    def test_token_is_plugin_scoped(self):
+        token, _ = mint_panel_token("vp")
+        assert not verify_panel_token(token, "other")
+
+    def test_expired_token_rejected(self):
+        token, _ = mint_panel_token("vp", ttl=-10)
+        assert not verify_panel_token(token, "vp")
+
+    def test_tampered_signature_rejected(self):
+        token, _ = mint_panel_token("vp")
+        msg_b64, sig_b64 = token.split(".", 1)
+        bad = msg_b64 + "." + ("A" + sig_b64[1:] if sig_b64[0] != "A" else "B" + sig_b64[1:])
+        assert not verify_panel_token(bad, "vp")
+
+    def test_garbage_token_rejected(self):
+        assert not verify_panel_token("not-a-token", "vp")
+        assert not verify_panel_token("", "vp")
+
+    def test_domain_separation_from_plugin_tokens(self):
+        """A panel token must never verify as a full plugin token, and a full
+        plugin token must never verify as a panel token — the families carry
+        different privileges."""
+        panel_token, _ = mint_panel_token("vp")
+        plugin_token, _ = mint_plugin_token("vp")
+        assert not verify_plugin_token(panel_token, "vp")
+        assert not verify_panel_token(plugin_token, "vp")
+
+    def test_domain_separation_from_guest_tokens(self):
+        guest_token, _ = mint_guest_token("vp", "scope1")
+        assert not verify_panel_token(guest_token, "vp")
+
+    def test_not_credential_bound(self, monkeypatch):
+        """Unlike plugin tokens, a panel token survives a password change:
+        it authenticates the panel surface, not a credential — a programmer
+        password change must not kill wall-panel media."""
+        _set_auth(monkeypatch, password="old")
+        token, _ = mint_panel_token("vp")
+        _set_auth(monkeypatch, password="new")
+        assert verify_panel_token(token, "vp")
+
+
+class TestParsePanelPaths:
+    def test_bare_path(self):
+        assert parse_panel_paths(["/whep/*"]) == ((None, "/whep/*"),)
+
+    def test_method_scoped(self):
+        assert parse_panel_paths(["GET /streams"]) == (("GET", "/streams"),)
+
+    def test_lowercase_method_normalized(self):
+        assert parse_panel_paths(["get /streams"]) == (("GET", "/streams"),)
+
+    def test_missing_leading_slash_normalized(self):
+        assert parse_panel_paths(["status"]) == ((None, "/status"),)
+
+    def test_non_list_raises(self):
+        with pytest.raises(ValueError):
+            parse_panel_paths("/whep/*")
+
+    def test_empty_entry_raises(self):
+        with pytest.raises(ValueError):
+            parse_panel_paths(["  "])
+
+    def test_unknown_method_raises(self):
+        with pytest.raises(ValueError):
+            parse_panel_paths(["FETCH /streams"])
+
+
+class TestPanelPathAllowed:
+    def test_matching_and_scoping(self):
+        app = FastAPI()
+        mount_plugin_router(app, "vp", _media_router(), PANEL_PATTERNS)
+        try:
+            assert panel_path_allowed("vp", "GET", "/streams")
+            assert not panel_path_allowed("vp", "POST", "/streams")
+            # Glob crosses path depth.
+            assert panel_path_allowed("vp", "POST", "/whep/s1")
+            assert panel_path_allowed("vp", "DELETE", "/whep/s1/secret9")
+            assert not panel_path_allowed("vp", "GET", "/status")
+            assert not panel_path_allowed("other_plugin", "GET", "/streams")
+        finally:
+            unmount_plugin_router(app, "vp")
+
+    def test_unmount_clears_reachability(self):
+        app = FastAPI()
+        mount_plugin_router(app, "vp", _media_router(), PANEL_PATTERNS)
+        assert has_panel_paths("vp")
+        unmount_plugin_router(app, "vp")
+        assert not has_panel_paths("vp")
+
+    def test_remount_without_panel_paths_clears(self):
+        app = FastAPI()
+        mount_plugin_router(app, "vp", _media_router(), PANEL_PATTERNS)
+        mount_plugin_router(app, "vp", _media_router())
+        try:
+            assert not has_panel_paths("vp")
+        finally:
+            unmount_plugin_router(app, "vp")
+
+
+class TestPanelAccessDependency:
+    """Claimed instance: the panel token opens ONLY declared routes."""
+
+    def _headers(self, plugin_id="vp"):
+        token, _ = mint_panel_token(plugin_id)
+        return {PLUGIN_TOKEN_HEADER: token}
+
+    def test_panel_token_reaches_declared_route(self, monkeypatch):
+        _set_auth(monkeypatch, password="secret")
+        client, app = _client_with_panel_paths()
+        try:
+            resp = client.get("/api/plugins/vp/ext/streams", headers=self._headers())
+            assert resp.status_code == 200
+        finally:
+            unmount_plugin_router(app, "vp")
+
+    def test_method_scope_enforced(self, monkeypatch):
+        """GET /streams is declared; POST /streams (CRUD) stays locked."""
+        _set_auth(monkeypatch, password="secret")
+        client, app = _client_with_panel_paths()
+        try:
+            resp = client.post("/api/plugins/vp/ext/streams", headers=self._headers())
+            assert resp.status_code == 401
+        finally:
+            unmount_plugin_router(app, "vp")
+
+    def test_glob_covers_nested_paths(self, monkeypatch):
+        _set_auth(monkeypatch, password="secret")
+        client, app = _client_with_panel_paths()
+        try:
+            assert client.post(
+                "/api/plugins/vp/ext/whep/s1", headers=self._headers()
+            ).status_code == 200
+            assert client.delete(
+                "/api/plugins/vp/ext/whep/s1/tok123", headers=self._headers()
+            ).status_code == 200
+        finally:
+            unmount_plugin_router(app, "vp")
+
+    def test_undeclared_route_stays_locked(self, monkeypatch):
+        _set_auth(monkeypatch, password="secret")
+        client, app = _client_with_panel_paths()
+        try:
+            resp = client.get("/api/plugins/vp/ext/status", headers=self._headers())
+            assert resp.status_code == 401
+        finally:
+            unmount_plugin_router(app, "vp")
+
+    def test_wrong_plugin_panel_token_rejected(self, monkeypatch):
+        _set_auth(monkeypatch, password="secret")
+        client, app = _client_with_panel_paths()
+        try:
+            resp = client.get(
+                "/api/plugins/vp/ext/streams", headers=self._headers("other")
+            )
+            assert resp.status_code == 401
+        finally:
+            unmount_plugin_router(app, "vp")
+
+    def test_expired_panel_token_rejected(self, monkeypatch):
+        _set_auth(monkeypatch, password="secret")
+        token, _ = mint_panel_token("vp", ttl=-10)
+        client, app = _client_with_panel_paths()
+        try:
+            resp = client.get(
+                "/api/plugins/vp/ext/streams", headers={PLUGIN_TOKEN_HEADER: token}
+            )
+            assert resp.status_code == 401
+        finally:
+            unmount_plugin_router(app, "vp")
+
+    def test_full_plugin_token_reaches_undeclared_routes(self, monkeypatch):
+        _set_auth(monkeypatch, password="secret")
+        token, _ = mint_plugin_token("vp")
+        client, app = _client_with_panel_paths()
+        try:
+            resp = client.post(
+                "/api/plugins/vp/ext/streams", headers={PLUGIN_TOKEN_HEADER: token}
+            )
+            assert resp.status_code == 200
+        finally:
+            unmount_plugin_router(app, "vp")
+
+    def test_panel_token_useless_without_declared_paths(self, monkeypatch):
+        _set_auth(monkeypatch, password="secret")
+        client, app = _client_with_panel_paths(panel_paths=None)
+        try:
+            resp = client.get("/api/plugins/vp/ext/streams", headers=self._headers())
+            assert resp.status_code == 401
+        finally:
+            unmount_plugin_router(app, "vp")
+
+
+class TestRegisterRouterPanelPaths:
+    def test_stores_panel_paths_on_registry(self):
+        api, reg = _make_api("p", capabilities=["http_endpoints"])
+        api.register_router(_ping_router(), panel_paths=["GET /streams"])
+        assert reg.panel_ext_paths == ["GET /streams"]
+
+    def test_defaults_to_empty(self):
+        api, reg = _make_api("p", capabilities=["http_endpoints"])
+        api.register_router(_ping_router())
+        assert reg.panel_ext_paths == []
+
+    def test_invalid_panel_paths_fail_at_registration(self):
+        api, _ = _make_api("p", capabilities=["http_endpoints"])
+        with pytest.raises(ValueError):
+            api.register_router(_ping_router(), panel_paths=["FETCH /x"])
+
+
+class PanelPathsRouterPlugin:
+    PLUGIN_INFO = {
+        "id": "panel_paths_plugin",
+        "name": "Panel Paths Plugin",
+        "version": "1.0.0",
+        "author": "Test",
+        "description": "Registers an HTTP router with panel-reachable paths.",
+        "category": "utility",
+        "license": "MIT",
+        "platforms": ["all"],
+        "capabilities": ["http_endpoints"],
+    }
+
+    async def start(self, api):
+        api.register_router(_ping_router(), panel_paths=["GET /ping"])
+
+    async def stop(self):
+        pass
+
+
+class TestLoaderPanelPaths:
+    @pytest.mark.asyncio
+    async def test_loader_passes_panel_paths_to_mount_hook(self):
+        loader = _make_loader()
+        register_plugin_class(PanelPathsRouterPlugin)
+
+        mount_calls = []
+        loader.set_router_hooks(
+            lambda pid, router, panel_paths=None: mount_calls.append((pid, panel_paths)),
+            lambda pid: None,
+        )
+
+        assert await loader.start_plugin("panel_paths_plugin", {}) is True
+        assert mount_calls == [("panel_paths_plugin", ["GET /ping"])]
+        await loader.stop_plugin("panel_paths_plugin")

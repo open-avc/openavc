@@ -32,6 +32,7 @@ log file or journald.
 from __future__ import annotations
 
 import base64
+import fnmatch
 import hashlib
 import hmac
 import logging
@@ -226,6 +227,121 @@ def verify_guest_token(token: str, plugin_id: str, scope: str) -> bool:
     return expires_at >= int(time.time())
 
 
+# ---------------------------------------------------------------------------
+# Panel tokens + panel-reachable ext paths
+# ---------------------------------------------------------------------------
+# A third token family so a STANDALONE room panel (wall tablet, kiosk, panel
+# app — unauthenticated by design) can reach the plugin ext routes its panel
+# elements need on a claimed instance, without downgrading the rest of the
+# plugin's ext surface: the token only passes the guard for routes the plugin
+# explicitly declared panel-reachable via ``register_router(panel_paths=...)``.
+# CRUD/admin ext routes stay programmer-only.
+#
+# Panel tokens sign with the bare per-process ``_SECRET`` (like guest tokens,
+# domain-separated by the "panel:" prefix): they authenticate the panel
+# *surface*, not a credential, so a programmer password change must not kill
+# wall-panel media. Restart still kills them; panels re-fetch per iframe init
+# and can be re-inited via ``openavc:request-init``.
+
+_PANEL_TOKEN_PREFIX = "panel"
+
+# Methods a panel-path pattern may scope to.
+_PANEL_PATH_METHODS = {
+    "GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS",
+}
+
+# plugin_id -> ((method_or_None, path_glob), ...) for running plugins that
+# declared panel-reachable ext paths. Maintained by mount/unmount.
+_panel_reachable: dict[str, tuple[tuple[str | None, str], ...]] = {}
+
+
+def mint_panel_token(plugin_id: str, ttl: int = _DEFAULT_TTL_SECONDS) -> tuple[str, int]:
+    """Mint a panel-scoped token for one plugin. Returns (token, expires_at)."""
+    expires_at = int(time.time()) + int(ttl)
+    msg = f"{_PANEL_TOKEN_PREFIX}:{plugin_id}:{expires_at}".encode("utf-8")
+    sig = hmac.new(_SECRET, msg, hashlib.sha256).digest()
+    return f"{_b64(msg)}.{_b64(sig)}", expires_at
+
+
+def verify_panel_token(token: str, plugin_id: str) -> bool:
+    """Validate a panel token's signature, plugin binding, and expiry."""
+    try:
+        msg_b64, sig_b64 = token.split(".", 1)
+        msg = _unb64(msg_b64)
+        sig = _unb64(sig_b64)
+    except (ValueError, TypeError):  # binascii.Error subclasses ValueError
+        return False
+    expected = hmac.new(_SECRET, msg, hashlib.sha256).digest()
+    if not hmac.compare_digest(sig, expected):
+        return False
+    try:
+        head, exp_str = msg.decode("utf-8").rsplit(":", 1)
+        expires_at = int(exp_str)
+    except (ValueError, UnicodeDecodeError):
+        return False
+    if head != f"{_PANEL_TOKEN_PREFIX}:{plugin_id}":
+        return False
+    return expires_at >= int(time.time())
+
+
+def parse_panel_paths(panel_paths) -> tuple[tuple[str | None, str], ...]:
+    """Validate + normalize ``panel_paths`` entries into (method, glob) pairs.
+
+    Each entry is ``"/path/glob"`` (any method) or ``"METHOD /path/glob"``.
+    Globs are fnmatch patterns matched against the route path relative to the
+    ``/ext`` mount (``*`` crosses ``/``, so ``/whep/*`` covers every depth).
+    Raises ValueError on a malformed entry — plugin authors should fail loudly
+    at registration, not silently expose nothing.
+    """
+    if not isinstance(panel_paths, (list, tuple)):
+        raise ValueError("panel_paths must be a list of path patterns")
+    parsed: list[tuple[str | None, str]] = []
+    for raw in panel_paths:
+        if not isinstance(raw, str) or not raw.strip():
+            raise ValueError(f"panel_paths entry must be a non-empty string, got {raw!r}")
+        entry = raw.strip()
+        method: str | None = None
+        if " " in entry:
+            method_part, _, path_part = entry.partition(" ")
+            method = method_part.upper()
+            if method not in _PANEL_PATH_METHODS:
+                raise ValueError(
+                    f"panel_paths entry {raw!r}: unknown HTTP method '{method_part}'"
+                )
+            entry = path_part.strip()
+        if not entry.startswith("/"):
+            entry = "/" + entry
+        parsed.append((method, entry))
+    return tuple(parsed)
+
+
+def has_panel_paths(plugin_id: str) -> bool:
+    """True when a running plugin declared panel-reachable ext paths."""
+    return bool(_panel_reachable.get(plugin_id))
+
+
+def panel_path_allowed(plugin_id: str, method: str, path_suffix: str) -> bool:
+    """True when ``method path_suffix`` matches a declared panel pattern."""
+    for pat_method, pat_path in _panel_reachable.get(plugin_id, ()):
+        if pat_method is not None and pat_method != method.upper():
+            continue
+        if fnmatch.fnmatchcase(path_suffix, pat_path):
+            return True
+    return False
+
+
+def _ext_path_suffix(plugin_id: str, full_path: str) -> str:
+    """The request path relative to the plugin's ``/ext`` mount.
+
+    Located by marker rather than a fixed slice so a reverse-proxy / tunnel
+    prefix ahead of ``/api`` doesn't break matching.
+    """
+    marker = _ext_prefix(plugin_id)
+    idx = full_path.find(marker)
+    suffix = full_path[idx + len(marker):] if idx >= 0 else full_path
+    return suffix or "/"
+
+
 def require_plugin_access(plugin_id: str):
     """Build a FastAPI dependency guarding one plugin's ``/ext/*`` routes."""
 
@@ -239,6 +355,17 @@ def require_plugin_access(plugin_id: str):
             PLUGIN_TOKEN_QUERY, ""
         )
         if token and verify_plugin_token(token, plugin_id):
+            return
+        # Panel token: only for routes the plugin declared panel-reachable.
+        if (
+            token
+            and verify_panel_token(token, plugin_id)
+            and panel_path_allowed(
+                plugin_id,
+                request.method,
+                _ext_path_suffix(plugin_id, request.url.path),
+            )
+        ):
             return
         # No WWW-Authenticate challenge: the only browser-usable auth here is the
         # injected token, not HTTP Basic, so advertising a Basic challenge would
@@ -256,9 +383,16 @@ def _ext_prefix(plugin_id: str) -> str:
     return f"/api/plugins/{plugin_id}/ext"
 
 
-def mount_plugin_router(app, plugin_id: str, router) -> None:
-    """Mount a plugin's APIRouter under ``/api/plugins/{id}/ext/*`` (idempotent)."""
+def mount_plugin_router(app, plugin_id: str, router, panel_paths=None) -> None:
+    """Mount a plugin's APIRouter under ``/api/plugins/{id}/ext/*`` (idempotent).
+
+    ``panel_paths``: optional patterns (see :func:`parse_panel_paths`) marking
+    routes reachable with a panel token from a standalone, unauthenticated
+    room panel on a claimed instance.
+    """
     prefix = _ext_prefix(plugin_id)
+    # Parse before touching the app so a malformed pattern fails atomically.
+    parsed_panel = parse_panel_paths(panel_paths) if panel_paths else ()
     # Drop any previously-mounted routes for this plugin first so a
     # stop→start (e.g. config change) doesn't leave stale duplicates.
     unmount_plugin_router(app, plugin_id)
@@ -267,11 +401,19 @@ def mount_plugin_router(app, plugin_id: str, router) -> None:
         prefix=prefix,
         dependencies=[Depends(require_plugin_access(plugin_id))],
     )
-    log.info("Mounted plugin '%s' HTTP router at %s/*", plugin_id, prefix)
+    if parsed_panel:
+        _panel_reachable[plugin_id] = parsed_panel
+        log.info(
+            "Mounted plugin '%s' HTTP router at %s/* (%d panel-reachable pattern(s))",
+            plugin_id, prefix, len(parsed_panel),
+        )
+    else:
+        log.info("Mounted plugin '%s' HTTP router at %s/*", plugin_id, prefix)
 
 
 def unmount_plugin_router(app, plugin_id: str) -> None:
     """Remove all routes previously mounted under this plugin's ``/ext`` prefix."""
+    _panel_reachable.pop(plugin_id, None)
     _unmount_prefix(app, plugin_id, _ext_prefix(plugin_id))
 
 

@@ -316,7 +316,7 @@ class TestLoaderGuestRouterHooks:
         mount_calls = []
         guest_mount_calls = []
         loader.set_router_hooks(
-            lambda pid, router: mount_calls.append(pid),
+            lambda pid, router, panel_paths=None: mount_calls.append(pid),
             lambda pid: None,
             lambda pid, router, alias=None: guest_mount_calls.append(pid),
             lambda pid: None,
