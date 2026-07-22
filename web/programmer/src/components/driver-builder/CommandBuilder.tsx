@@ -312,6 +312,12 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
                   childTypes={Object.keys(draft.child_entity_types ?? {})}
                   onChange={(params) => updateCommand(name, { params })}
                 />
+
+                <CommandSemanticsEditor
+                  cmd={cmd}
+                  draft={draft}
+                  onUpdate={(partial) => updateCommand(name, partial)}
+                />
               </div>
             )}
           </div>
@@ -333,6 +339,328 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
       >
         <Plus size={14} /> Add Command
       </button>
+    </div>
+  );
+}
+
+/** Authoring UI for a command's declared semantics: `sets` (the state
+ *  variables this command changes — each to a literal or a "{param}"
+ *  reference taking that parameter's value) and `query_for` (the state
+ *  variable a status query's reply reports). The auto-generated simulator
+ *  consumes both, so declaring them is what makes Live Test / simulation
+ *  reflect the command instead of guessing from its name. On a command with
+ *  exactly one child_id parameter the names may also come from that child
+ *  type's state variables — the effect then applies to the addressed child
+ *  (child variables win when a name exists in both scopes). */
+function CommandSemanticsEditor({
+  cmd,
+  draft,
+  onUpdate,
+}: {
+  cmd: DriverCommandDef;
+  draft: DriverDefinition;
+  onUpdate: (partial: Partial<DriverCommandDef>) => void;
+}) {
+  const deviceVars = draft.state_variables ?? {};
+  const params = cmd.params ?? {};
+  const paramNames = Object.keys(params);
+
+  // Child variant (mirrors the loader): with exactly ONE child_id param whose
+  // child type is declared, the command may also name that type's variables.
+  const childParamTypes = Object.values(params)
+    .filter((p) => p && typeof p === "object" && p.type === "child_id")
+    .map((p) => p.child_type);
+  const singleChildType =
+    childParamTypes.length === 1 ? childParamTypes[0] : undefined;
+  const childType =
+    singleChildType !== undefined &&
+    (draft.child_entity_types ?? {})[singleChildType]
+      ? singleChildType
+      : null;
+  const childVars =
+    childType !== null
+      ? (draft.child_entity_types?.[childType]?.state_variables ?? {})
+      : {};
+  // Child-first resolution at runtime: a name declared in both scopes lands
+  // on the addressed child, so don't offer the shadowed device-level entry.
+  const deviceVarNames = Object.keys(deviceVars).filter(
+    (v) => !(v in childVars),
+  );
+  const childVarNames = Object.keys(childVars);
+  const allVarNames = [...deviceVarNames, ...childVarNames];
+
+  const sets: Record<string, string | number | boolean> =
+    cmd.sets && typeof cmd.sets === "object" && !Array.isArray(cmd.sets)
+      ? cmd.sets
+      : {};
+  const setRows = Object.entries(sets);
+  const queryFor = typeof cmd.query_for === "string" ? cmd.query_for : "";
+
+  if (allVarNames.length === 0 && setRows.length === 0 && !queryFor) {
+    // Nothing to declare against and nothing authored — keep the card lean.
+    return null;
+  }
+
+  /** Declared type of a state variable (child-first, matching the runtime's
+   *  resolution) — drives literal coercion and the value placeholder. */
+  const varType = (varName: string): string | undefined =>
+    (childVars as Record<string, { type?: string }>)[varName]?.type ??
+    (deviceVars as Record<string, { type?: string }>)[varName]?.type;
+
+  /** Coerce a typed literal to the target variable's declared type:
+   *  "true"/"false" become booleans, plain numbers become numbers. Anything
+   *  else is kept as the typed string. */
+  const coerceLiteral = (
+    raw: string,
+    varName: string,
+  ): string | number | boolean => {
+    const t = varType(varName);
+    const trimmed = raw.trim();
+    if (t === "boolean") {
+      if (trimmed === "true") return true;
+      if (trimmed === "false") return false;
+    } else if (t === "integer") {
+      if (/^-?\d+$/.test(trimmed)) return parseInt(trimmed, 10);
+    } else if (t === "number" || t === "float") {
+      if (trimmed !== "" && Number.isFinite(Number(trimmed))) {
+        return Number(trimmed);
+      }
+    }
+    return raw;
+  };
+
+  const updateSets = (next: Record<string, string | number | boolean>) => {
+    // An emptied table removes the key entirely (updateCommand scrubs the
+    // `undefined` so no `sets: null` lands in the YAML).
+    onUpdate({ sets: Object.keys(next).length > 0 ? next : undefined });
+  };
+
+  const updateRowKey = (index: number, newKey: string) => {
+    const next: Record<string, string | number | boolean> = {};
+    setRows.forEach(([k, v], i) => {
+      next[i === index ? newKey : k] = v;
+    });
+    updateSets(next);
+  };
+
+  const updateRowValue = (
+    index: number,
+    value: string | number | boolean,
+  ) => {
+    const next: Record<string, string | number | boolean> = {};
+    setRows.forEach(([k, v], i) => {
+      next[k] = i === index ? value : v;
+    });
+    updateSets(next);
+  };
+
+  const removeRow = (index: number) => {
+    const next: Record<string, string | number | boolean> = {};
+    setRows.forEach(([k, v], i) => {
+      if (i !== index) next[k] = v;
+    });
+    updateSets(next);
+  };
+
+  const usedKeys = new Set(Object.keys(sets));
+  const addRow = () => {
+    const key = allVarNames.find((v) => !usedKeys.has(v));
+    if (!key) return;
+    // Seed with the first parameter's value when the command has one — the
+    // common case is "this command sets the variable to what was passed".
+    updateSets({
+      ...sets,
+      [key]: paramNames.length > 0 ? `{${paramNames[0]}}` : "",
+    });
+  };
+
+  /** Options for a variable select: device vars, then (when the command is
+   *  child-addressed) the child type's vars in their own group, plus the
+   *  current value when it isn't declared so the select doesn't lie. */
+  const renderVarOptions = (
+    current: string,
+    exclude?: Set<string>,
+    format: (v: string) => string = (v) => v,
+  ) => {
+    const dev = deviceVarNames.filter((v) => v === current || !exclude?.has(v));
+    const chi = childVarNames.filter((v) => v === current || !exclude?.has(v));
+    const unknown = current !== "" && !dev.includes(current) && !chi.includes(current);
+    return (
+      <>
+        {unknown && (
+          <option value={current}>{format(current)} (not declared)</option>
+        )}
+        {childType !== null ? (
+          <>
+            {dev.length > 0 && (
+              <optgroup label="Device variables">
+                {dev.map((v) => (
+                  <option key={v} value={v}>
+                    {format(v)}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            {chi.length > 0 && (
+              <optgroup label={`${childType} variables`}>
+                {chi.map((v) => (
+                  <option key={v} value={v}>
+                    {format(v)}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+          </>
+        ) : (
+          dev.map((v) => (
+            <option key={v} value={v}>
+              {format(v)}
+            </option>
+          ))
+        )}
+      </>
+    );
+  };
+
+  const labelStyle: React.CSSProperties = {
+    display: "block",
+    fontSize: "var(--font-size-sm)",
+    color: "var(--text-secondary)",
+    marginBottom: "var(--space-xs)",
+  };
+  const helpStyle: React.CSSProperties = {
+    fontSize: "11px",
+    color: "var(--text-muted)",
+    marginTop: "var(--space-xs)",
+  };
+
+  return (
+    <div style={{ marginTop: "var(--space-md)" }}>
+      <div style={{ marginBottom: "var(--space-md)" }}>
+        <label style={labelStyle}>Reports</label>
+        <select
+          value={queryFor}
+          onChange={(e) =>
+            onUpdate({ query_for: e.target.value || undefined })
+          }
+          style={{ width: "100%", fontSize: "var(--font-size-sm)" }}
+        >
+          <option value="">Reports (auto)</option>
+          {renderVarOptions(queryFor, undefined, (v) => `Reports ${v}`)}
+        </select>
+        <div style={helpStyle}>
+          For status queries: the device answers this command by reporting
+          this variable, and the simulator replies with its value — so Live
+          Test and simulation answer the query correctly.
+        </div>
+      </div>
+
+      <div>
+        <label style={labelStyle}>Sets State</label>
+        {setRows.map(([varName, value], i) => {
+          const strValue = typeof value === "string" ? value : String(value);
+          const paramRef =
+            typeof value === "string" ? /^\{(\w+)\}$/.exec(value) : null;
+          const isParamMode =
+            paramRef !== null && paramNames.includes(paramRef[1]);
+          const otherKeys = new Set(
+            Object.keys(sets).filter((k) => k !== varName),
+          );
+          return (
+            <div
+              key={i}
+              style={{
+                display: "grid",
+                gridTemplateColumns: isParamMode
+                  ? "1fr 1fr auto"
+                  : "1fr 1fr 1fr auto",
+                gap: "var(--space-sm)",
+                marginBottom: "var(--space-xs)",
+                alignItems: "center",
+              }}
+            >
+              <select
+                value={varName}
+                onChange={(e) => updateRowKey(i, e.target.value)}
+                title="State variable this command sets"
+                style={{
+                  fontSize: "var(--font-size-sm)",
+                  fontFamily: "var(--font-mono)",
+                }}
+              >
+                {renderVarOptions(varName, otherKeys)}
+              </select>
+              <select
+                value={isParamMode ? strValue : "__literal__"}
+                onChange={(e) =>
+                  updateRowValue(
+                    i,
+                    e.target.value === "__literal__" ? "" : e.target.value,
+                  )
+                }
+                title="Set it to a parameter's value, or a literal"
+                style={{
+                  fontSize: "var(--font-size-sm)",
+                  fontFamily: "var(--font-mono)",
+                }}
+              >
+                {paramNames.map((p) => (
+                  <option key={p} value={`{${p}}`}>
+                    {`{${p}}`}
+                  </option>
+                ))}
+                <option value="__literal__">literal…</option>
+              </select>
+              {!isParamMode && (
+                <input
+                  value={strValue}
+                  onChange={(e) => updateRowValue(i, e.target.value)}
+                  onBlur={(e) =>
+                    updateRowValue(i, coerceLiteral(e.target.value, varName))
+                  }
+                  placeholder={
+                    varType(varName) === "boolean" ? "true / false" : "value"
+                  }
+                  style={{
+                    fontFamily: "var(--font-mono)",
+                    fontSize: "var(--font-size-sm)",
+                  }}
+                />
+              )}
+              <button
+                onClick={() => removeRow(i)}
+                style={{ padding: "2px", color: "var(--text-muted)" }}
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          );
+        })}
+        {allVarNames.some((v) => !usedKeys.has(v)) && (
+          <button
+            onClick={addRow}
+            style={{
+              fontSize: "var(--font-size-sm)",
+              color: "var(--accent)",
+              padding: "var(--space-xs) 0",
+            }}
+          >
+            + Set a variable
+          </button>
+        )}
+        <div style={helpStyle}>
+          State variables this command sets on the device — to a parameter's
+          value or a literal. The auto-generated simulator applies these when
+          the command fires, so Live Test and simulation show the effect.
+          {childType !== null && (
+            <>
+              {" "}
+              Variables of the <code>{childType}</code> child type apply to the
+              child addressed by the command's Child ID parameter.
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

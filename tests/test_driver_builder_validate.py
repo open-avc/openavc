@@ -11,7 +11,11 @@ flagged as errors, matching-shape leftovers as warnings, the transport-switch
 scrub removes exactly the non-applicable fields (reporting authored content
 for the confirm prompt), and OSC argument values that would crash the send
 (empty / non-numeric / fractional int64) are errors before the LiveTestPanel
-ever fires them. Skips when the Node toolchain or esbuild is absent rather
+ever fires them. Also covers the declared command semantics rules mirrored
+from avcdriver_semantic.py: `sets` keys and `query_for` must name declared
+state variables (device-level, or the addressed child type's on a command
+with exactly one child_id param) and a "{param}" value must name a declared
+parameter. Skips when the Node toolchain or esbuild is absent rather
 than failing the Python-only CI gate.
 """
 from __future__ import annotations
@@ -127,6 +131,13 @@ SCENARIOS = [
     "config_default_type_mismatch_warning",
     "config_boolean_string_default_warning",
     "config_typed_defaults_ok",
+    "sem_device_sets_query_for_ok",
+    "sem_child_sets_query_for_ok",
+    "sem_sets_unknown_var_error",
+    "sem_sets_unknown_param_ref_error",
+    "sem_sets_two_child_id_params_error",
+    "sem_query_for_unknown_var_error",
+    "sem_sets_not_mapping_error",
 ]
 
 

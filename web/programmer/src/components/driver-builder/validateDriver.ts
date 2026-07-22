@@ -717,6 +717,92 @@ export function validateDriver(
         }
       });
     }
+
+    // Declared command semantics — mirror avcdriver_semantic.py. `sets` /
+    // `query_for` drive the auto-generated simulator, so a dangling name
+    // would silently declare nothing: every key must name a declared state
+    // variable, and a "{param}" value must name a declared parameter. A
+    // command addressed to exactly one child (a single child_id param whose
+    // type is declared) may name that child type's state variables instead —
+    // the effect applies to the addressed child.
+    const childParamTypes = Object.values(cmd.params ?? {})
+      .filter((p) => p && typeof p === "object" && p.type === "child_id")
+      .map((p) => p.child_type);
+    const singleChildType =
+      childParamTypes.length === 1 ? childParamTypes[0] : undefined;
+    const childTargetVars: Record<string, unknown> =
+      singleChildType !== undefined && childTypeNames.has(singleChildType)
+        ? (childTypes[singleChildType]?.state_variables ?? {})
+        : {};
+    const hasChildTargetVars = Object.keys(childTargetVars).length > 0;
+    const declaredStateVars = draft.state_variables ?? {};
+    const setsRaw = cmdRecord.sets;
+    if (
+      setsRaw != null &&
+      (typeof setsRaw !== "object" || Array.isArray(setsRaw))
+    ) {
+      issues.push({
+        severity: "error",
+        section: "behavior",
+        command: cmdName,
+        message: `Command "${cmdName}": "sets" must be a mapping of state variable to value.`,
+      });
+    } else if (setsRaw != null) {
+      for (const [varName, setValue] of Object.entries(
+        setsRaw as Record<string, unknown>,
+      )) {
+        if (
+          !(varName in declaredStateVars) &&
+          !(varName in childTargetVars)
+        ) {
+          issues.push({
+            severity: "error",
+            section: "behavior",
+            command: cmdName,
+            message: hasChildTargetVars
+              ? `Command "${cmdName}" sets "${varName}" which is not a declared state variable (device-level or of the addressed child type).`
+              : `Command "${cmdName}" sets "${varName}" which is not a declared state variable.`,
+          });
+        }
+        if (
+          typeof setValue === "string" &&
+          (setValue.includes("{") || setValue.includes("}"))
+        ) {
+          const ref = /^\{([^{}]+)\}$/.exec(setValue);
+          if (!ref || !declaredParams.has(ref[1])) {
+            issues.push({
+              severity: "error",
+              section: "behavior",
+              command: cmdName,
+              message: `Command "${cmdName}": sets.${varName} value "${setValue}" must be a literal or a bare {param} reference to a declared parameter.`,
+            });
+          }
+        }
+      }
+    }
+    const queryForRaw = cmdRecord.query_for;
+    if (queryForRaw != null) {
+      if (typeof queryForRaw !== "string" || !queryForRaw) {
+        issues.push({
+          severity: "error",
+          section: "behavior",
+          command: cmdName,
+          message: `Command "${cmdName}": "query_for" must name a state variable.`,
+        });
+      } else if (
+        !(queryForRaw in declaredStateVars) &&
+        !(queryForRaw in childTargetVars)
+      ) {
+        issues.push({
+          severity: "error",
+          section: "behavior",
+          command: cmdName,
+          message: hasChildTargetVars
+            ? `Command "${cmdName}": query_for "${queryForRaw}" is not a declared state variable (device-level or of the addressed child type).`
+            : `Command "${cmdName}": query_for "${queryForRaw}" is not a declared state variable.`,
+        });
+      }
+    }
   }
 
   // ── Device settings: write shapes follow the same routing rules ───────

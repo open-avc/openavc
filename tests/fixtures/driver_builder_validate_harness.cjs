@@ -3,8 +3,9 @@
 // fly with the esbuild already in web/programmer/node_modules) and exercises
 // the transport-shape rules: stale wire-format fields after a transport
 // switch (commands and device-setting writes), the transport-switch scrub,
-// and OSC argument value checks. Prints JSON results to stdout; the Python
-// wrapper skips when the Node toolchain or esbuild is absent.
+// OSC argument value checks, and the declared command semantics rules
+// (sets / query_for). Prints JSON results to stdout; the Python wrapper
+// skips when the Node toolchain or esbuild is absent.
 const path = require("path");
 
 const validatorPath = process.argv[2];
@@ -814,6 +815,175 @@ const configIssues = (issues) =>
     })),
   );
   results.config_typed_defaults_ok = { pass: issues.length === 0, detail: issues };
+}
+
+// --- Declared command semantics: sets / query_for -------------------------
+// Mirror avcdriver_semantic.py's per-command checks: every `sets` key and the
+// `query_for` name must be a declared state variable (device-level, or of the
+// addressed child type when the command has exactly ONE child_id param), a
+// "{param}" value must name a declared parameter, and `sets` must be a
+// mapping. A dangling name silently declares nothing to the auto-generated
+// simulator, so all of these are save-blocking errors.
+const semIssues = (issues) => issues.filter((i) => /\bsets\b|\bquery_for\b/.test(i.message));
+const semVars = {
+  power: { type: "boolean", label: "Power" },
+  volume: { type: "integer", label: "Volume" },
+};
+const zoneChild = {
+  zone: {
+    label: "Zone",
+    id_format: { type: "integer", min: 1, max: 4 },
+    state_variables: { mute: { type: "boolean", label: "Mute" } },
+  },
+};
+
+{
+  // Device-level: literal + {param} sets and a query_for naming declared
+  // variables are clean.
+  const issues = semIssues(
+    validate(baseDraft("tcp", {
+      set_volume: {
+        label: "Set Volume",
+        send: "VOL {level}\\r",
+        params: { level: { type: "integer" } },
+        sets: { volume: "{level}", power: true },
+      },
+      get_power: { label: "Get Power", send: "PWR?\\r", params: {}, query_for: "power" },
+    }, { state_variables: semVars })),
+  );
+  results.sem_device_sets_query_for_ok = { pass: issues.length === 0, detail: issues };
+}
+{
+  // Child variant: a command with exactly one child_id param may name the
+  // child type's own variables — both sets and query_for.
+  const issues = semIssues(
+    validate(baseDraft("tcp", {
+      mute_zone: {
+        label: "Mute Zone",
+        send: "MUTE {zone} {state}\\r",
+        params: {
+          zone: { type: "child_id", child_type: "zone" },
+          state: { type: "boolean" },
+        },
+        sets: { mute: "{state}" },
+      },
+      query_zone_mute: {
+        label: "Query Zone Mute",
+        send: "MUTE? {zone}\\r",
+        params: { zone: { type: "child_id", child_type: "zone" } },
+        query_for: "mute",
+      },
+    }, { state_variables: semVars, child_entity_types: zoneChild })),
+  );
+  results.sem_child_sets_query_for_ok = { pass: issues.length === 0, detail: issues };
+}
+{
+  // A sets key that names no declared state variable is an error, anchored
+  // to the command.
+  const issues = semIssues(
+    validate(baseDraft("tcp", {
+      set_bright: {
+        label: "Brightness",
+        send: "BRT 1\\r",
+        params: {},
+        sets: { brightness: 100 },
+      },
+    }, { state_variables: semVars })),
+  );
+  results.sem_sets_unknown_var_error = {
+    pass:
+      issues.length === 1 &&
+      issues[0].severity === "error" &&
+      issues[0].command === "set_bright" &&
+      /sets "brightness" which is not a declared state variable/.test(issues[0].message),
+    detail: issues,
+  };
+}
+{
+  // A "{param}" value must reference a declared parameter of the command.
+  const issues = semIssues(
+    validate(baseDraft("tcp", {
+      set_power: {
+        label: "Set Power",
+        send: "PWR {state}\\r",
+        params: { state: { type: "boolean" } },
+        sets: { power: "{level}" },
+      },
+    }, { state_variables: semVars })),
+  );
+  results.sem_sets_unknown_param_ref_error = {
+    pass:
+      issues.length === 1 &&
+      issues[0].severity === "error" &&
+      /must be a literal or a bare \{param\} reference to a declared parameter/.test(issues[0].message),
+    detail: issues,
+  };
+}
+{
+  // The child variant needs EXACTLY one child_id param — with two, child
+  // variables are out of scope and the message doesn't offer them.
+  const issues = semIssues(
+    validate(baseDraft("tcp", {
+      route: {
+        label: "Route",
+        send: "ROUTE {src} {dst}\\r",
+        params: {
+          src: { type: "child_id", child_type: "zone" },
+          dst: { type: "child_id", child_type: "zone" },
+        },
+        sets: { mute: true },
+      },
+    }, { state_variables: semVars, child_entity_types: zoneChild })),
+  );
+  results.sem_sets_two_child_id_params_error = {
+    pass:
+      issues.length === 1 &&
+      issues[0].severity === "error" &&
+      /sets "mute" which is not a declared state variable\.$/.test(issues[0].message) &&
+      !/addressed child/.test(issues[0].message),
+    detail: issues,
+  };
+}
+{
+  // query_for naming an unknown variable is an error.
+  const issues = semIssues(
+    validate(baseDraft("tcp", {
+      get_watts: {
+        label: "Get Watts",
+        send: "WATT?\\r",
+        params: {},
+        query_for: "wattage",
+      },
+    }, { state_variables: semVars })),
+  );
+  results.sem_query_for_unknown_var_error = {
+    pass:
+      issues.length === 1 &&
+      issues[0].severity === "error" &&
+      issues[0].command === "get_watts" &&
+      /query_for "wattage" is not a declared state variable/.test(issues[0].message),
+    detail: issues,
+  };
+}
+{
+  // sets must be a mapping (imported / hand-edited YAML could carry a list).
+  const issues = semIssues(
+    validate(baseDraft("tcp", {
+      set_power: {
+        label: "Set Power",
+        send: "PWR1\\r",
+        params: {},
+        sets: ["power"],
+      },
+    }, { state_variables: semVars })),
+  );
+  results.sem_sets_not_mapping_error = {
+    pass:
+      issues.length === 1 &&
+      issues[0].severity === "error" &&
+      /"sets" must be a mapping/.test(issues[0].message),
+    detail: issues,
+  };
 }
 
 process.stdout.write(JSON.stringify(results));
