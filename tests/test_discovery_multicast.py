@@ -160,9 +160,10 @@ class TestScannerEnvError:
 
     async def test_ssdp_all_sends_failed_records_env_error(self):
         scanner = SSDPScanner()
+        # M-SEARCH goes out on the dedicated ephemeral search socket.
         sock = MagicMock()
         sock.sendto.side_effect = OSError(errno.ENETUNREACH, "unreachable")
-        scanner._sock = sock
+        scanner._search_sock = sock
         scanner._send_ifaces = ["10.0.0.5", "192.168.1.7"]
 
         await scanner._send_searches()
@@ -173,7 +174,7 @@ class TestScannerEnvError:
     async def test_ssdp_successful_sends_leave_env_error_unset(self):
         scanner = SSDPScanner()
         sock = MagicMock()
-        scanner._sock = sock
+        scanner._search_sock = sock
         scanner._send_ifaces = ["10.0.0.5", "192.168.1.7"]
 
         await scanner._send_searches()

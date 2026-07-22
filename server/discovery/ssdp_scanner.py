@@ -15,6 +15,7 @@ import asyncio
 import ipaddress
 import logging
 import re
+import select
 import socket
 import struct
 from dataclasses import dataclass, field as dataclass_field
@@ -242,7 +243,18 @@ class SSDPScanner:
         Empty = OS default route. Required for the multi-NIC AV scenario
         where the control VLAN is not the default route.
         """
+        # Two sockets with distinct jobs. ``_search_sock`` is bound to an
+        # ephemeral port: it sends the M-SEARCH and receives the unicast
+        # replies. ``_sock`` is bound to the well-known SSDP port 1900 and
+        # joined to the group purely to hear passive NOTIFY beacons. They are
+        # split because a socket bound to 1900 does NOT reliably receive the
+        # unicast M-SEARCH replies on BSD-derived stacks (macOS): the reply,
+        # addressed to the querier's source port, is delivered elsewhere, so a
+        # single 1900-bound socket sees the NOTIFY beacons but misses the
+        # M-SEARCH answers — which is where the identifying device-type URNs
+        # live. An ephemeral source port receives them every time.
         self._sock: socket.socket | None = None
+        self._search_sock: socket.socket | None = None
         self._running = False
         self._results: dict[str, SSDPResult] = {}  # keyed by IP
         self._cap_warned = False
@@ -277,12 +289,24 @@ class SSDPScanner:
         self._running = True
         self.env_error = None
 
+        # The search socket carries the M-SEARCH and its replies — it is the
+        # one the scan cannot work without.
+        try:
+            self._search_sock = _create_search_socket(control_ip=self._control_ip)
+        except OSError as e:
+            log.warning("Could not create SSDP search socket: %s", e)
+            self.env_error = f"SSDP scanner unavailable: {e}"
+            return {}
+
+        # The NOTIFY-listen socket (bound to 1900, joined to the group) is
+        # best-effort: passive beacons are a bonus on top of the active
+        # M-SEARCH, and binding 1900 can fail (another SSDP stack holds it, or
+        # the group join fails). Losing it must not sink the whole scan.
         try:
             self._sock = _create_ssdp_socket(control_ip=self._control_ip)
         except OSError as e:
-            log.warning("Could not create SSDP socket: %s", e)
-            self.env_error = f"SSDP scanner unavailable: {e}"
-            return {}
+            log.debug("SSDP NOTIFY-listen socket unavailable (M-SEARCH still runs): %s", e)
+            self._sock = None
 
         # M-SEARCH goes out once per interface so it reaches every attached
         # network even without a multicast route in the main table. With a
@@ -319,8 +343,12 @@ class SSDPScanner:
         self._close_socket()
 
     async def _send_searches(self) -> None:
-        """Send M-SEARCH for each search target, once per interface."""
-        if not self._sock:
+        """Send M-SEARCH for each search target, once per interface.
+
+        Sent from the ephemeral search socket so the unicast replies come
+        back to a port that reliably receives them (see ``__init__``).
+        """
+        if not self._search_sock:
             return
 
         total_sent = 0
@@ -330,7 +358,7 @@ class SSDPScanner:
                 message = M_SEARCH_TEMPLATE.format(search_target=target)
                 total_sent += await loop.run_in_executor(
                     None, send_per_interface,
-                    self._sock, message.encode("utf-8"),
+                    self._search_sock, message.encode("utf-8"),
                     (SSDP_ADDR, SSDP_PORT), self._send_ifaces,
                 )
             except OSError as e:
@@ -345,8 +373,15 @@ class SSDPScanner:
             log.warning(self.env_error)
 
     async def _listen(self, timeout: float) -> None:
-        """Listen for SSDP responses."""
-        if not self._sock:
+        """Listen for SSDP responses on both sockets.
+
+        The ephemeral search socket carries the unicast M-SEARCH replies; the
+        1900-bound socket (when available) carries passive NOTIFY beacons.
+        Both are polled together with ``select`` so one blocking recv never
+        starves the other.
+        """
+        socks = [s for s in (self._search_sock, self._sock) if s is not None]
+        if not socks:
             return
 
         loop = asyncio.get_event_loop()
@@ -358,13 +393,15 @@ class SSDPScanner:
                 break
 
             try:
-                self._sock.settimeout(min(remaining, 0.5))
-                data, addr = await loop.run_in_executor(
-                    None, lambda: self._sock.recvfrom(4096)
+                ready, _, _ = await loop.run_in_executor(
+                    None, select.select, socks, [], [], min(remaining, 0.5)
                 )
-                self._process_response(data, addr[0])
-            except socket.timeout:
-                continue
+                for sock in ready:
+                    try:
+                        data, addr = sock.recvfrom(4096)
+                    except (BlockingIOError, socket.timeout):
+                        continue
+                    self._process_response(data, addr[0])
             except OSError:
                 if self._running:
                     log.debug("SSDP socket error during listen", exc_info=True)
@@ -485,26 +522,28 @@ class SSDPScanner:
             )
 
     def _close_socket(self) -> None:
-        """Safely close the socket.
+        """Safely close both sockets.
 
-        ``shutdown`` before ``close``: the listen loop runs ``recvfrom`` in
-        the default executor, and closing the socket from another thread
-        does not wake a thread blocked in ``recvfrom`` on Linux/Windows —
-        only ``shutdown`` does. Without it, a cancel/stop leaves that pool
+        ``shutdown`` before ``close``: the listen loop runs ``select`` /
+        ``recvfrom`` in the default executor, and closing the socket from
+        another thread does not wake a thread blocked on it on Linux/Windows
+        — only ``shutdown`` does. Without it, a cancel/stop leaves that pool
         thread parked until its socket timeout, briefly starving the shared
         executor when many scanners cancel at once. ``shutdown`` raises on
         an unconnected socket (harmless), so its error is ignored.
         """
-        if self._sock:
-            try:
-                self._sock.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                pass
-            try:
-                self._sock.close()
-            except OSError:
-                pass
-            self._sock = None
+        for attr in ("_sock", "_search_sock"):
+            sock = getattr(self, attr)
+            if sock:
+                try:
+                    sock.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+                try:
+                    sock.close()
+                except OSError:
+                    pass
+                setattr(self, attr, None)
 
 
 # --- SSDP Response Parsing ---
@@ -702,37 +741,63 @@ async def _http_get(url: str, timeout: float = 3.0) -> str | None:
 
 
 def _create_ssdp_socket(control_ip: str = "") -> socket.socket:
-    """Create a UDP socket that both M-SEARCHes and listens for NOTIFY beacons.
+    """Create the passive-NOTIFY listen socket (bound to SSDP port 1900).
 
     Binding to the well-known SSDP port and joining 239.255.255.250 lets the
     socket receive unsolicited NOTIFY (ssdp:alive / ssdp:byebye) announcements
-    in addition to unicast M-SEARCH replies — matching the mDNS and AMX DDP
-    listeners (without the group join, devices that only beacon and never
-    answer M-SEARCH for the queried STs are missed). When ``control_ip`` is
-    set the group is joined via that interface only; otherwise once per
-    interface with INADDR_ANY as the fallback (see ``discovery.multicast``).
-    The outbound multicast interface is pinned per send (see
-    ``_send_searches``). Raises OSError when the group could not be joined on
-    any interface.
+    — matching the mDNS and AMX DDP listeners (without the group join, devices
+    that only beacon and never answer M-SEARCH for the queried STs are missed).
+    The M-SEARCH itself goes out on a separate ephemeral socket
+    (``_create_search_socket``) because a 1900-bound socket does not reliably
+    receive the unicast M-SEARCH replies on BSD-derived stacks. When
+    ``control_ip`` is set the group is joined via that interface only;
+    otherwise once per interface with INADDR_ANY as the fallback (see
+    ``discovery.multicast``). Raises OSError when the group could not be joined
+    on any interface.
     """
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
     set_shared_port_reuse(sock)
 
     try:
-        # Bind to the well-known port so multicast NOTIFY beacons are heard;
-        # unicast M-SEARCH replies arrive here too.
+        # Bind to the well-known port so multicast NOTIFY beacons are heard.
         sock.bind(("", SSDP_PORT))
 
         joined = join_group_on_interfaces(sock, SSDP_ADDR, control_ip=control_ip)
         if not joined:
             raise OSError(f"could not join {SSDP_ADDR} on any interface")
 
-        # TTL for outbound M-SEARCH multicast.
+        sock.setblocking(False)
+    except OSError:
+        sock.close()
+        raise
+
+    return sock
+
+
+def _create_search_socket(control_ip: str = "") -> socket.socket:
+    """Create the ephemeral M-SEARCH socket (send request + receive replies).
+
+    Unlike the NOTIFY-listen socket, this one is NOT bound to port 1900 and
+    does NOT join the multicast group: it sends the M-SEARCH from an ephemeral
+    source port and the device's unicast reply comes straight back to it. That
+    matters on BSD-derived stacks (macOS), where a socket bound to 1900
+    receives the group's NOTIFY traffic but not the unicast M-SEARCH answers —
+    so the identifying device-type URNs (which only ride the answers) would be
+    lost if the scan listened only on 1900. The outbound multicast interface
+    and TTL are pinned per send (see ``send_per_interface``). Raises OSError if
+    the socket cannot be created.
+    """
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+    # Harmless on an ephemeral bind; keeps parity with the other scanners and
+    # lets the OS pick the port via the implicit bind on first send.
+    set_shared_port_reuse(sock)
+    try:
+        # TTL for outbound M-SEARCH multicast (per-send IP_MULTICAST_IF is set
+        # by send_per_interface).
         sock.setsockopt(
             socket.IPPROTO_IP, socket.IP_MULTICAST_TTL,
             struct.pack("b", 4),
         )
-
         sock.setblocking(False)
     except OSError:
         sock.close()
