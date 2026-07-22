@@ -1309,6 +1309,7 @@ class DiscoveryEngine:
 
             companion_logger = logging.getLogger("discovery.companion.run")
             companion_tasks = []
+            companion_ids = []
             for driver_id, probe_fn in self._discovery_companions.items():
                 ctx = ProbeContext(
                     driver_id=driver_id,
@@ -1320,8 +1321,23 @@ class DiscoveryEngine:
                     hosts_by_open_port=hosts_by_open_port_frozen,
                 )
                 companion_tasks.append(run_companion(driver_id, probe_fn, ctx))
+                companion_ids.append(driver_id)
             if companion_tasks:
-                await asyncio.gather(*companion_tasks, return_exceptions=True)
+                # run_companion isolates a companion's own failures internally;
+                # an exception surfacing HERE is a runner-level fault (e.g. the
+                # worker thread failed to start). Read the results so it's
+                # logged, not swallowed by return_exceptions.
+                outcomes = await asyncio.gather(
+                    *companion_tasks, return_exceptions=True
+                )
+                for cid, outcome in zip(companion_ids, outcomes):
+                    if isinstance(outcome, BaseException) and not isinstance(
+                        outcome, asyncio.CancelledError
+                    ):
+                        log.warning(
+                            "Discovery companion %s runner failed: %r",
+                            cid, outcome,
+                        )
 
     def _get_or_create(self, ip: str) -> DiscoveredDevice:
         """Get existing device record or create a new one."""

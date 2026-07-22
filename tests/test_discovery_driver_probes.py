@@ -889,6 +889,61 @@ class TestCompanionThreadIsolation:
     abandons the thread shortly after the cap.
     """
 
+    @pytest.fixture(autouse=True)
+    def _clear_wedged(self):
+        # The wedged-thread registry is module-global; clear it around every
+        # test in this class so a companion abandoned by one test can't make
+        # the next one skip (the tests reuse the "block" driver_id). getattr
+        # keeps this a no-op if the registry doesn't exist.
+        import server.discovery.companion as companion_mod
+
+        getattr(companion_mod, "_wedged_threads", {}).clear()
+        yield
+        getattr(companion_mod, "_wedged_threads", {}).clear()
+
+    @pytest.mark.asyncio
+    async def test_wedged_companion_not_respawned_next_scan(
+        self, tmp_path, caplog,
+    ):
+        """A companion wedged in blocking I/O and abandoned must NOT get a fresh
+        worker thread on the next scan — a persistently-stuck companion would
+        otherwise leak one thread + loop + sockets per scan."""
+        (tmp_path / "block_discovery.py").write_text(_BLOCKING_COMPANION)
+        probes = load_discovery_companions([tmp_path])
+
+        async def emit(host, ev):
+            pass
+
+        def _ctx():
+            return ProbeContext(
+                driver_id="block",
+                source_ip="127.0.0.1",
+                target_subnets=(),
+                timeout_seconds=0.5,
+                log=logging.getLogger("test"),
+                _emit_for_host=emit,
+            )
+
+        def _worker_count():
+            return sum(
+                1 for t in threading.enumerate()
+                if t.name == "discovery-companion-block"
+            )
+
+        # First scan: the companion wedges and is abandoned (its worker thread
+        # stays alive in the 20s sleep).
+        await run_companion("block", probes["block"], _ctx())
+        n_after_first = _worker_count()
+        assert n_after_first >= 1
+
+        # Second scan: must skip rather than spawn another worker.
+        with caplog.at_level(logging.WARNING, logger="discovery.companion"):
+            await run_companion("block", probes["block"], _ctx())
+        assert _worker_count() == n_after_first, (
+            "a wedged companion must not spawn a second worker thread"
+        )
+        assert any("still wedged" in r.message for r in caplog.records)
+
     @pytest.mark.asyncio
     async def test_blocking_companion_keeps_event_loop_responsive(
         self, tmp_path, caplog,

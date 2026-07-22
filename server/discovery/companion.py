@@ -65,6 +65,14 @@ MAX_PROBE_TIMEOUT_SECONDS: float = 30.0
 # abandoned and its late emits dropped.
 THREAD_ABANDON_GRACE_SECONDS: float = 2.0
 
+# Daemon worker threads that wedged in un-cancellable blocking I/O and were
+# abandoned, keyed by driver_id. A Python thread stuck in a blocking C call
+# can't be killed, so the thread + its private loop + sockets can't be
+# reclaimed here — but we can stop a persistently-wedged companion from leaking
+# a NEW worker on every subsequent scan by skipping it until its old thread (if
+# ever) returns. Self-heals: a dead entry is cleared on the next run.
+_wedged_threads: dict[str, threading.Thread] = {}
+
 
 @dataclass
 class ProbeContext:
@@ -304,6 +312,20 @@ async def run_companion(
     late emits dropped. Cancellation (scan timeout, user stop_scan)
     takes effect immediately the same way.
     """
+    prior = _wedged_threads.get(driver_id)
+    if prior is not None:
+        if prior.is_alive():
+            log.warning(
+                "Discovery companion %s is still wedged in blocking I/O from a "
+                "previous scan; skipping it rather than leaking another worker "
+                "thread",
+                driver_id,
+            )
+            return
+        # The abandoned thread finally returned — reclaim the slot so this
+        # scan spawns a fresh one.
+        del _wedged_threads[driver_id]
+
     cap = min(max(ctx.timeout_seconds, 0.5), MAX_PROBE_TIMEOUT_SECONDS)
     engine_loop = asyncio.get_running_loop()
     abandoned = threading.Event()
@@ -358,6 +380,9 @@ async def run_companion(
         )
     except asyncio.TimeoutError:
         abandoned.set()
+        # Remember the abandoned thread so the next scan skips this driver
+        # instead of spawning another worker on top of the wedged one.
+        _wedged_threads[driver_id] = thread
         log.warning(
             "Discovery companion %s is stuck in blocking I/O past its "
             "%.1fs timeout; abandoning its worker thread",
