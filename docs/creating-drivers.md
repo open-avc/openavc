@@ -874,6 +874,29 @@ connect_host:
 
 These constraints are checked by the runtime, so they hold no matter how the command is sent (Send Command, a macro, the API). The IDE mirrors them as you author so you catch a bad value before sending.
 
+**Declared state effects (`sets` / `query_for`).** The device simulator normally infers what a command does from its name (`power_on` sets `power`, `set_volume` sets `volume`). When a command's name doesn't line up with the state variable it affects — or a status query's text says nothing about what it returns — declare it (requires platform 0.24.0):
+
+```yaml
+set_volume:
+  send: "MVL{level:02X}"
+  params:
+    level: { type: integer, required: true, min: 0, max: 100 }
+  sets: { master_volume: "{level}" }   # param value → state variable
+
+blank_screen:
+  send: "OSDBLK1"
+  sets: { video_mute: true }           # literal value
+
+get_status:
+  send: "STA?"
+  query_for: power                     # the reply reports this variable
+```
+
+- `sets`: a map of state variable → value applied when the command runs in simulation. A value written as `"{param}"` takes that parameter's value (format specs in the send template are honored, so a hex-formatted `{level:02X}` decodes back to the number); anything else is a literal. Keys must name declared state variables.
+- `query_for`: names the state variable the device reports in answer to this command, so the simulator replies with its current value.
+
+Declared semantics always beat name inference. Commands whose names already follow the conventions need nothing.
+
 #### `quick_actions` and `actions` (Quick Action buttons)
 
 Every command appears in the device view's "Send Command" list. For a device
@@ -1028,6 +1051,8 @@ on_connect:
 
 Many AV devices can push state changes in real-time (volume knob turned, input switched from front panel) but only after the controller enables feedback mode. Without `on_connect`, the driver relies entirely on polling and misses changes between poll cycles.
 
+An initial-status step can also be written as `{ send: "STATUS?\r", query_for: power }` — the same declared state pairing as a polling query — so the device simulator answers it with the named variable's current value (requires platform 0.24.0).
+
 #### `auth` section
 
 For Telnet-style devices that present `Username:` / `Password:` prompts before accepting commands. The handshake runs after the TCP connection is established and before `on_connect` commands are sent. Add `username` and `password` fields to `default_config` and `config_schema` so the user can enter credentials in the Add Device dialog.
@@ -1069,6 +1094,8 @@ If the device's auth scheme isn't a prompt-and-response Telnet login (for exampl
 ```
 
 - `queries`: Command strings sent each cycle.
+
+A query may also be written in mapping form to carry extra semantics: `{ send: "V\r", when: enable_meters }` gates it on a config field (see `when:` under child polling), and `{ send: "V\r", query_for: volume }` names the state variable the reply reports so the device simulator answers the query with that variable's current value instead of guessing from command names (requires platform 0.24.0; `query_for` must name a declared state variable).
 
 The poll cadence is **not** set in the `polling` block — it comes from `default_config.poll_interval` (in seconds), which device config can override per-instance. Set `poll_interval: 0` to disable polling. A top-level `polling.interval` is inert (the runtime never reads it) and is rejected by the community-catalog build, so don't add one.
 

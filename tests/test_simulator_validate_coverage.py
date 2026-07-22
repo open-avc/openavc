@@ -638,3 +638,41 @@ def test_http_raw_path_poll_query_without_handler_still_errors(tmp_path):
     """)
     msgs = _messages(r, "poll_coverage", "error")
     assert len(msgs) == 1 and "/Status/Unanswered" in msgs[0], msgs
+
+
+def test_declared_query_for_poll_entry_counts_as_covered(tmp_path):
+    """A poll entry with a declared query_for is answered by the auto-sim's
+    query handler — no explicit simulator handler needed."""
+    r = _validate(tmp_path, """\
+        id: acme_widget
+        transport: tcp
+        state_variables:
+          input: {type: integer, min: 1, max: 8}
+        responses:
+          - match: 'In(\\d+) All'
+            set: {input: "$1"}
+        polling:
+          queries:
+            - {send: "I", query_for: input}
+    """)
+    assert not _messages(r, "poll_coverage", "error")
+
+
+def test_undeclared_bare_poll_query_still_errors(tmp_path):
+    """The same bare query without a declaration (and without a matching
+    command or handler) is still flagged — the retired built-in letter map
+    no longer papers over it."""
+    r = _validate(tmp_path, """\
+        id: acme_widget
+        transport: tcp
+        state_variables:
+          input: {type: integer, min: 1, max: 8}
+        responses:
+          - match: 'In(\\d+) All'
+            set: {input: "$1"}
+        polling:
+          queries:
+            - "I"
+    """)
+    msgs = _messages(r, "poll_coverage", "error")
+    assert any("'I'" in m for m in msgs), msgs

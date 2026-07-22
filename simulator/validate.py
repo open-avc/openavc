@@ -476,6 +476,12 @@ def _check_poll_coverage(
     for query in queries:
         if isinstance(query, dict):
             query_text = query.get("send", "")
+            qf = query.get("query_for")
+            if isinstance(qf, str) and qf:
+                # Declared pairing: the auto-generated simulator builds a
+                # query handler that answers this with the named state
+                # variable's value — covered by declaration.
+                continue
         else:
             query_text = str(query)
 

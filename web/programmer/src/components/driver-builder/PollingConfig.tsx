@@ -4,6 +4,7 @@ import {
   buildQueryEntry,
   gateFieldNames,
   isEachChild,
+  queryQueryFor,
   queryWhen,
   querySend,
   type QueryEntry,
@@ -21,6 +22,7 @@ export function PollingConfig({ draft, onUpdate }: PollingConfigProps) {
   const queries = (polling.queries ?? []) as PollQuery[];
   const childTypeNames = Object.keys(draft.child_entity_types ?? {});
   const gateFields = gateFieldNames(draft);
+  const stateVarNames = Object.keys(draft.state_variables ?? {});
   const defaultConfig = (draft.default_config ?? {}) as Record<string, unknown>;
   const pollIntervalRaw = defaultConfig.poll_interval;
   const pollInterval =
@@ -127,6 +129,7 @@ export function PollingConfig({ draft, onUpdate }: PollingConfigProps) {
           const eachChild = isEachChild(query);
           const send = querySend(query);
           const when = queryWhen(query);
+          const queryFor = queryQueryFor(query);
           return (
             <div
               key={i}
@@ -141,7 +144,10 @@ export function PollingConfig({ draft, onUpdate }: PollingConfigProps) {
                 <select
                   value={eachChild ? query.each_child : ""}
                   onChange={(e) =>
-                    updateQuery(i, buildQueryEntry(send, e.target.value, when))
+                    updateQuery(
+                      i,
+                      buildQueryEntry(send, e.target.value, when, undefined, queryFor),
+                    )
                   }
                   title="Send once, or once per registered child of a type"
                   style={{ width: 130, fontSize: "var(--font-size-sm)" }}
@@ -163,6 +169,8 @@ export function PollingConfig({ draft, onUpdate }: PollingConfigProps) {
                       e.target.value,
                       eachChild ? query.each_child : "",
                       when,
+                      undefined,
+                      queryFor,
                     ),
                   )
                 }
@@ -189,6 +197,8 @@ export function PollingConfig({ draft, onUpdate }: PollingConfigProps) {
                         send,
                         eachChild ? query.each_child : "",
                         e.target.value,
+                        undefined,
+                        queryFor,
                       ),
                     )
                   }
@@ -199,6 +209,27 @@ export function PollingConfig({ draft, onUpdate }: PollingConfigProps) {
                   {gateFields.map((f) => (
                     <option key={f} value={f}>
                       Only if {f}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {!eachChild && draft.transport !== "osc" &&
+                stateVarNames.length > 0 && (
+                <select
+                  value={queryFor}
+                  onChange={(e) =>
+                    updateQuery(
+                      i,
+                      buildQueryEntry(send, "", when, undefined, e.target.value),
+                    )
+                  }
+                  title="Which state variable the device's reply reports — lets the simulator answer this query without guessing from command names"
+                  style={{ width: 150, fontSize: "var(--font-size-sm)" }}
+                >
+                  <option value="">Reports (auto)</option>
+                  {stateVarNames.map((v) => (
+                    <option key={v} value={v}>
+                      Reports {v}
                     </option>
                   ))}
                 </select>

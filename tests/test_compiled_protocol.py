@@ -296,3 +296,30 @@ def test_compile_driver_skips_invalid_regex_and_keeps_rule_order():
     }
     compiled = compile_driver(definition, {})
     assert [p.pattern for p, _m, _c, _t in compiled.responses] == ["OK(\\d+)"]
+
+
+# ── send_param_groups ──
+
+
+def test_send_param_groups_follow_template_order():
+    from server.drivers.compiled_protocol import send_param_groups
+
+    params = {"inp": {"type": "integer"}, "out": {"type": "integer"}}
+    # Template references out first — groups number by template position.
+    assert send_param_groups("{out}*{inp}!", params) == {"out": 1, "inp": 2}
+
+
+def test_send_param_groups_repeated_param_uses_first_occurrence():
+    from server.drivers.compiled_protocol import send_param_groups
+
+    params = {"n": {"type": "integer"}, "m": {"type": "integer"}}
+    groups = send_param_groups("{n}+{m}={n}", params)
+    # {n} appears twice (groups 1 and 3); its value reads from the first.
+    assert groups == {"n": 1, "m": 2}
+
+
+def test_send_param_groups_ignores_absent_params():
+    from server.drivers.compiled_protocol import send_param_groups
+
+    params = {"used": {"type": "string"}, "unused": {"type": "string"}}
+    assert send_param_groups("GO {used}", params) == {"used": 1}

@@ -279,6 +279,23 @@ export interface DriverCommandDef {
   args?: DriverOscArg[];
   /** Parameter definitions, keyed by {placeholder} name. */
   params: Record<string, DriverParamDef>;
+  /**
+   * Declared state effect: the state variables this command sets on the
+   * device, e.g. {power: true} or {master_volume: "{level}"}. A "{param}"
+   * value takes that command parameter's value; anything else is a literal.
+   * The auto-generated simulator applies these instead of guessing from the
+   * command name; keys must name declared state variables. Requires platform
+   * 0.24.0.
+   */
+  sets?: Record<string, string | number | boolean>;
+  /**
+   * Declares this command as a status query: the device answers it by
+   * reporting the named state variable. The auto-generated simulator replies
+   * with that variable's current value instead of inferring one from the
+   * command name. Must name a declared state variable. Requires platform
+   * 0.24.0.
+   */
+  query_for?: string;
 }
 
 export interface DriverResponseMapping {
@@ -403,12 +420,14 @@ export interface DriverEachChildQuery {
 }
 
 /**
- * A plain query in mapping form so it can carry a gate: it runs only while the
- * named config field is truthy. Use it to arm a chatty subscription (a level-
- * meter stream) behind an integrator checkbox instead of forcing it on every
- * site.
+ * A plain query in mapping form so it can carry extra semantics a bare string
+ * cannot: when: gates it on a config field (arm a chatty subscription behind
+ * an integrator checkbox), and query_for: names the state variable the reply
+ * reports so the auto-generated simulator answers it without name-guessing. At
+ * least one of the two must be present — a mapping with only send: is just a
+ * string query written the long way.
  */
-export interface DriverGatedQuery {
+export interface DriverQueryEntry {
   /**
    * Query sent as authored — a raw protocol string on tcp/serial, a command
    * name or path on http/udp.
@@ -418,7 +437,12 @@ export interface DriverGatedQuery {
    * Config field gating this entry. Must name a field declared in
    * config_schema / default_config. Requires platform 0.23.0.
    */
-  when: string;
+  when?: string;
+  /**
+   * State variable the device reports in answer to this query. Must name a
+   * declared state variable. Requires platform 0.24.0.
+   */
+  query_for?: string;
 }
 
 /**
@@ -1156,15 +1180,16 @@ export interface DriverDefinition {
    * TCP/serial/UDP; {address, args} mappings for OSC (args carry typed OSC
    * values for a value-setting bring-up message); {each_child, send} templates
    * expand to one query per registered child. Any mapping entry may add when:
-   * <config_field> to run only while that field is on.
+   * <config_field> to run only while that field is on, and a {send} entry may
+   * add query_for: <state_var> to name the state variable its reply reports.
    */
-  on_connect?: (string | DriverEachChildQuery | DriverGatedQuery | DriverOscConnectItem | Record<string, unknown>)[];
+  on_connect?: (string | DriverEachChildQuery | DriverQueryEntry | DriverOscConnectItem | Record<string, unknown>)[];
   /**
    * Periodic status query configuration. NOTE: a polling.interval key is inert
    * and rejected by the catalog validator; set the cadence via
    * default_config.poll_interval instead.
    */
-  polling: { queries?: (string | DriverEachChildQuery | DriverGatedQuery)[] };
+  polling: { queries?: (string | DriverEachChildQuery | DriverQueryEntry)[] };
   auth?: DriverAuthDef;
   liveness?: DriverLivenessDef;
   push?: DriverPushDef;

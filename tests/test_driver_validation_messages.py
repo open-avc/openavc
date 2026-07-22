@@ -199,6 +199,41 @@ CASES: dict[str, Any] = {
     "command_osc_arg_unknown_type": _d(
         transport="osc", commands={"beep": {"address": "/beep", "args": [{"type": "z"}]}}
     ),
+    # --- declared command semantics (sets / query_for) ---
+    "command_sets_not_mapping": _d(commands={"go": {"send": "GO", "sets": ["power"]}}),
+    "command_sets_undeclared_var": _d(
+        commands={"go": {"send": "GO", "sets": {"ghost": True}}}
+    ),
+    "command_sets_undeclared_param_ref": _d(
+        commands={"go": {
+            "send": "GO {n}",
+            "params": {"n": {"type": "integer"}},
+            "sets": {"power": "{ghost}"},
+        }}
+    ),
+    "command_sets_partial_brace_value": _d(
+        commands={"go": {
+            "send": "GO {n}",
+            "params": {"n": {"type": "integer"}},
+            "sets": {"power": "on-{n}"},
+        }}
+    ),
+    "command_query_for_empty": _d(commands={"chk": {"send": "S?", "query_for": ""}}),
+    "command_query_for_undeclared_var": _d(
+        commands={"chk": {"send": "S?", "query_for": "ghost"}}
+    ),
+    "query_entry_query_for_empty": _d(
+        polling={"queries": [{"send": "I", "query_for": ""}]}
+    ),
+    "query_entry_query_for_undeclared_var": _d(
+        polling={"queries": [{"send": "I", "query_for": "ghost"}]}
+    ),
+    "query_entry_query_for_on_each_child": _d(
+        child_entity_types=dict(_CHILD_TYPES),
+        polling={"queries": [
+            {"each_child": "zone", "send": "Z{child_id}?", "query_for": "power"},
+        ]},
+    ),
     # --- command params (pickers / free-text aids) ---
     "param_pattern_redos": _param(type="string", pattern="(a+)+$"),
     "param_min_not_number": _param(type="number", min="low"),

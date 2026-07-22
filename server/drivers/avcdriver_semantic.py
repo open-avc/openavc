@@ -602,6 +602,8 @@ def validate_driver_definition(
     if not isinstance(commands, dict):
         errors.append("commands: must be a mapping")
         commands = {}
+    declared_vars = driver_def.get("state_variables")
+    declared_vars = declared_vars if isinstance(declared_vars, dict) else {}
     for cmd_name, cmd_def in commands.items():
         if not isinstance(cmd_def, dict):
             errors.append(f"Command '{cmd_name}': must be a dict")
@@ -620,6 +622,43 @@ def validate_driver_definition(
         _validate_param_option_providers(
             f"Command '{cmd_name}'", cmd_def.get("params"), errors,
         )
+        # Declared command semantics: `sets` / `query_for` drive the
+        # auto-generated simulator, so a dangling reference would silently
+        # declare nothing — enforce that every name they use exists.
+        sets_def = cmd_def.get("sets")
+        if sets_def is not None and not isinstance(sets_def, dict):
+            errors.append(f"Command '{cmd_name}': 'sets' must be a mapping")
+        elif isinstance(sets_def, dict):
+            cmd_params = cmd_def.get("params")
+            cmd_params = cmd_params if isinstance(cmd_params, dict) else {}
+            for var_name, set_value in sets_def.items():
+                if var_name not in declared_vars:
+                    errors.append(
+                        f"Command '{cmd_name}': sets '{var_name}' which is "
+                        f"not a declared state variable"
+                    )
+                if isinstance(set_value, str) and (
+                    "{" in set_value or "}" in set_value
+                ):
+                    ref = re.fullmatch(r"\{([^{}]+)\}", set_value)
+                    if not ref or ref.group(1) not in cmd_params:
+                        errors.append(
+                            f"Command '{cmd_name}': sets.{var_name} value "
+                            f"{set_value!r} must be a literal or a bare "
+                            f"{{param}} reference to a declared parameter"
+                        )
+        query_for = cmd_def.get("query_for")
+        if query_for is not None:
+            if not isinstance(query_for, str) or not query_for:
+                errors.append(
+                    f"Command '{cmd_name}': 'query_for' must name a state "
+                    f"variable"
+                )
+            elif query_for not in declared_vars:
+                errors.append(
+                    f"Command '{cmd_name}': query_for '{query_for}' is not "
+                    f"a declared state variable"
+                )
 
     # Opt-in send-side command framing: a constant prefix/suffix wraps every
     # byte-stream command. Both must be strings when present.
@@ -632,8 +671,7 @@ def validate_driver_definition(
     # runtime raises NotImplementedError without one) and its state_key must
     # name a declared state variable. A typo'd state_key used to load fine
     # and just show "(not set)" forever while writes silently fired.
-    declared_vars = driver_def.get("state_variables")
-    declared_vars = declared_vars if isinstance(declared_vars, dict) else {}
+    # (`declared_vars` is hoisted above the command loop.)
     valid_setting_types = set(VALUE_TYPES)
     device_settings = driver_def.get("device_settings")
     if device_settings is not None and not isinstance(device_settings, dict):
@@ -1411,15 +1449,36 @@ def validate_driver_definition(
                         f"config field (config_schema / default_config / "
                         f"config_derived)"
                     )
+            # `query_for: <state_var>` declares which state variable the
+            # reply reports (drives the auto-generated simulator). Only the
+            # plain {send} form carries it — a dangling name would silently
+            # declare nothing, so verify it exists.
+            if "query_for" in q:
+                qf = q.get("query_for")
+                if "each_child" in q or "address" in q:
+                    errors.append(
+                        f"{name}[{i}]: 'query_for' is only valid on a "
+                        f"plain {{send}} query entry"
+                    )
+                elif not isinstance(qf, str) or not qf:
+                    errors.append(
+                        f"{name}[{i}]: 'query_for' must name a state variable"
+                    )
+                elif qf not in declared_vars:
+                    errors.append(
+                        f"{name}[{i}]: query_for '{qf}' is not a declared "
+                        f"state variable"
+                    )
             if "each_child" not in q:
                 if allow_osc_dict and "address" in q:
                     continue  # OSC on_connect {address, args} form
                 send = q.get("send")
                 if isinstance(send, str) and send:
-                    continue  # plain {send, when} query — dict form only for `when`
+                    continue  # plain {send, when/query_for} query
                 errors.append(
                     f"{name}[{i}]: mapping entries must be "
-                    f"{{each_child, send}} or {{send, when}}"
+                    f"{{each_child, send}} or {{send, when}} or "
+                    f"{{send, query_for}}"
                     + (" or {address, args}" if allow_osc_dict else "")
                 )
                 continue

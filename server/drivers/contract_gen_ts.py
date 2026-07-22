@@ -38,7 +38,7 @@ DEF_TS_NAMES: dict[str, str] = {
     "responseEntry": "DriverResponseDef",
     "childSetEntry": "DriverChildSetEntry",
     "eachChildQuery": "DriverEachChildQuery",
-    "gatedQuery": "DriverGatedQuery",
+    "queryEntry": "DriverQueryEntry",
     "actionEntry": "DriverActionDef",
     "visibleWhen": "DriverVisibleWhen",
     "visibleWhenCondition": "DriverVisibleWhenCondition",
@@ -234,8 +234,8 @@ INTERFACES: tuple[tuple[str, Callable[[], dict], dict[str, dict], dict], ...] = 
         _D(),
     ),
     (
-        "DriverGatedQuery",
-        lambda: spec.DEFS["gatedQuery"],
+        "DriverQueryEntry",
+        lambda: spec.DEFS["queryEntry"],
         {},
         _D(),
     ),
@@ -468,12 +468,12 @@ INTERFACES: tuple[tuple[str, Callable[[], dict], dict[str, dict], dict], ...] = 
             "actions": _D(type="DriverActionDef[]"),
             "responses": _D(req=True, type="DriverResponseDef[]"),
             "on_connect": _D(type=(
-                "(string | DriverEachChildQuery | DriverGatedQuery | "
+                "(string | DriverEachChildQuery | DriverQueryEntry | "
                 "DriverOscConnectItem | Record<string, unknown>)[]"
             )),
             "polling": _D(req=True, type=(
                 "{ queries?: (string | DriverEachChildQuery | "
-                "DriverGatedQuery)[] }"
+                "DriverQueryEntry)[] }"
             )),
             "frame_parser": _D(type=_FRAME_SHAPE),
             "send_frame": _D(type=_FRAME_SHAPE),

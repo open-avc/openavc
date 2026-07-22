@@ -1738,6 +1738,126 @@
   },
   "transport": "tcp"
  },
+ "command_query_for_empty": {
+  "commands": {
+   "chk": {
+    "query_for": "",
+    "send": "S?"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "command_query_for_undeclared_var": {
+  "commands": {
+   "chk": {
+    "query_for": "ghost",
+    "send": "S?"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "command_sets_not_mapping": {
+  "commands": {
+   "go": {
+    "send": "GO",
+    "sets": [
+     "power"
+    ]
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "command_sets_partial_brace_value": {
+  "commands": {
+   "go": {
+    "params": {
+     "n": {
+      "type": "integer"
+     }
+    },
+    "send": "GO {n}",
+    "sets": {
+     "power": "on-{n}"
+    }
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "command_sets_undeclared_param_ref": {
+  "commands": {
+   "go": {
+    "params": {
+     "n": {
+      "type": "integer"
+     }
+    },
+    "send": "GO {n}",
+    "sets": {
+     "power": "{ghost}"
+    }
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "command_sets_undeclared_var": {
+  "commands": {
+   "go": {
+    "send": "GO",
+    "sets": {
+     "ghost": true
+    }
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
  "command_suffix_not_string": {
   "command_suffix": [
    "\r"
@@ -4865,6 +4985,97 @@
   "name": "Acme Widget",
   "push": {
    "type": "carrier_pigeon"
+  },
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "query_entry_query_for_empty": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "polling": {
+   "queries": [
+    {
+     "query_for": "",
+     "send": "I"
+    }
+   ]
+  },
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "query_entry_query_for_on_each_child": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "polling": {
+   "queries": [
+    {
+     "each_child": "zone",
+     "query_for": "power",
+     "send": "Z{child_id}?"
+    }
+   ]
+  },
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "query_entry_query_for_undeclared_var": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "polling": {
+   "queries": [
+    {
+     "query_for": "ghost",
+     "send": "I"
+    }
+   ]
   },
   "state_variables": {
    "power": {

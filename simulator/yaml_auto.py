@@ -35,7 +35,9 @@ from server.drivers.compiled_protocol import (
     decode_delimiter,
     emit_literal,
     emit_template,
+    infer_state_var,
     safe_substitute,
+    send_param_groups,
     send_param_specs,
     send_regex,
     spec_int_base,
@@ -1260,21 +1262,27 @@ class YAMLAutoSimulator(TCPSimulator):
 
         # Apply state changes
         for state_key, source in handler.state_changes.items():
-            if isinstance(source, int) and not isinstance(source, bool):
+            if isinstance(source, tuple) and source[0] == "literal":
+                # Declared literal from a command's sets: block — wrapped so
+                # an integer literal can't read as a capture-group index.
+                value: Any = self._coerce_value(state_key, source[1])
+            elif isinstance(source, int) and not isinstance(source, bool):
                 # Capture group index
-                value: Any = m.group(source)
+                value = m.group(source)
                 base = handler.group_bases.get(source)
-                if base:
+                if base and self._numeric_state_var(state_key):
                     # The wire value was formatted with a non-decimal spec —
                     # decode it back before coercion, or an integer var would
-                    # end up holding the raw hex string.
+                    # end up holding the raw hex string. String-typed vars
+                    # keep the wire form: hex-code protocols (eISCP) declare
+                    # the code itself as the state value.
                     try:
                         value = int(value, base)
                     except ValueError:
                         pass
                 value = self._coerce_value(state_key, value)
             else:
-                # Literal value
+                # Literal value (heuristic booleans arrive bare)
                 value = source
             self.set_state(state_key, value)
 
@@ -1466,48 +1474,86 @@ class YAMLAutoSimulator(TCPSimulator):
             specs = send_param_specs(send_template, params)
             group_bases: dict[int, int] = {}
 
-            # Heuristic 1: param name matches state variable
-            group_idx = 1
-            for param_name, param_def in params.items():
-                ptype = (
-                    param_def.get("type", "string")
-                    if isinstance(param_def, dict)
-                    else "string"
-                )
-                if ptype in ("integer", "child_id"):
-                    # A non-decimal format spec ({level:02X}) put hex on the
-                    # wire; remember the base so the capture decodes back to
-                    # the number the driver sent.
-                    base = spec_int_base(specs.get(param_name, ""))
-                    if base:
-                        group_bases[group_idx] = base
-                if param_name in state_vars:
-                    state_changes[param_name] = group_idx  # capture group
-                    if not response_var:
-                        response_var = param_name
-                group_idx += 1
+            declared_sets = cmd_def.get("sets")
+            declared_query_for = cmd_def.get("query_for")
+            if isinstance(declared_sets, dict) or declared_query_for:
+                # Declared semantics: the driver says what this command does,
+                # so wire the handler exactly as authored — no name-guessing.
+                # Group indices come from placeholder order in the template
+                # (that's how send_regex numbers its captures).
+                param_groups = send_param_groups(send_template, params)
+                for param_name, param_def in params.items():
+                    ptype = (
+                        param_def.get("type", "string")
+                        if isinstance(param_def, dict)
+                        else "string"
+                    )
+                    if ptype in ("integer", "child_id"):
+                        base = spec_int_base(specs.get(param_name, ""))
+                        if base and param_name in param_groups:
+                            group_bases[param_groups[param_name]] = base
+                if isinstance(declared_sets, dict):
+                    for var_name, set_value in declared_sets.items():
+                        ref = (
+                            re.fullmatch(r"\{([^{}]+)\}", set_value)
+                            if isinstance(set_value, str)
+                            else None
+                        )
+                        if ref:
+                            group = param_groups.get(ref.group(1))
+                            if group:
+                                state_changes[var_name] = group  # capture group
+                            # An unresolvable "{param}" reference declares
+                            # nothing (the validator flags it at load).
+                        else:
+                            # Literal, wrapped so an integer literal can't be
+                            # mistaken for a capture-group index.
+                            state_changes[var_name] = ("literal", set_value)
+                response_var = declared_query_for or next(iter(state_changes), None)
+            else:
+                # Heuristic 1: param name matches state variable
+                group_idx = 1
+                for param_name, param_def in params.items():
+                    ptype = (
+                        param_def.get("type", "string")
+                        if isinstance(param_def, dict)
+                        else "string"
+                    )
+                    if ptype in ("integer", "child_id"):
+                        # A non-decimal format spec ({level:02X}) put hex on the
+                        # wire; remember the base so the capture decodes back to
+                        # the number the driver sent.
+                        base = spec_int_base(specs.get(param_name, ""))
+                        if base:
+                            group_bases[group_idx] = base
+                    if param_name in state_vars:
+                        state_changes[param_name] = group_idx  # capture group
+                        if not response_var:
+                            response_var = param_name
+                    group_idx += 1
 
-            # Heuristic 2: command name patterns
-            if not state_changes:
-                target = _infer_state_var(cmd_name, state_vars)
-                if target:
-                    response_var = target
-                    if cmd_name.endswith("_on") or cmd_name.startswith("enable_"):
-                        state_changes[target] = True
-                    elif cmd_name.endswith("_off") or cmd_name.startswith("disable_"):
-                        state_changes[target] = False
-                    elif cmd_name.endswith("_toggle"):
-                        # Toggle handled specially — for now, just report current
-                        pass
-                    elif params:
-                        # set_X with params → first param is the value
-                        state_changes[target] = 1  # capture group 1
+                # Heuristic 2: command name patterns
+                if not state_changes:
+                    target = infer_state_var(cmd_name, state_vars)
+                    if target:
+                        response_var = target
+                        if cmd_name.endswith("_on") or cmd_name.startswith("enable_"):
+                            state_changes[target] = True
+                        elif cmd_name.endswith("_off") or cmd_name.startswith("disable_"):
+                            state_changes[target] = False
+                        elif cmd_name.endswith("_toggle"):
+                            # Toggle handled specially — for now, just report current
+                            pass
+                        elif params:
+                            # set_X with params → first param is the value
+                            state_changes[target] = 1  # capture group 1
 
-            # Heuristic 3: if still no response var, try command name for queries
-            if not response_var and not params:
-                target = _infer_state_var(cmd_name, state_vars)
-                if target:
-                    response_var = target
+                # Heuristic 3: if still no response var, try command name
+                # for queries
+                if not response_var and not params:
+                    target = infer_state_var(cmd_name, state_vars)
+                    if target:
+                        response_var = target
 
             handler = CommandHandler(
                 name=cmd_name,
@@ -1525,7 +1571,14 @@ class YAMLAutoSimulator(TCPSimulator):
                 )
 
     def _build_query_handlers(self) -> None:
-        """Build query handlers from polling.queries section."""
+        """Build query handlers from polling.queries (+ declared on_connect).
+
+        A mapping entry's declared ``query_for`` names the state variable
+        the reply reports and wins outright. Otherwise the query text is
+        matched to a command with the same send template and the variable
+        comes from that command's declared ``query_for`` or, failing that,
+        its name (the shared inference fallback).
+        """
         polling = self._driver_def.get("polling", {})
         queries = polling.get("queries", [])
         state_vars = set(self._driver_def.get("state_variables", {}).keys())
@@ -1534,34 +1587,58 @@ class YAMLAutoSimulator(TCPSimulator):
         commands = self._driver_def.get("commands", {})
 
         for query in queries:
+            declared = None
             if isinstance(query, dict):
                 query_text = query.get("send", "")
+                qf = query.get("query_for")
+                if isinstance(qf, str) and qf:
+                    declared = qf
             else:
                 query_text = str(query)
 
             if not query_text:
                 continue
 
-            # Find which state variable this query is for
-            # Look for a command with this exact send template
-            response_var = None
-            for cmd_name, cmd_def in commands.items():
-                if cmd_def.get("send") == query_text and not cmd_def.get("params"):
-                    target = _infer_state_var(cmd_name, state_vars)
-                    if target:
-                        response_var = target
-                        break
-
-            # If we couldn't match via command name, try matching the query text
-            # to a response pattern
+            response_var = declared
             if not response_var:
-                response_var = self._infer_query_response_var(query_text)
+                # Look for a command with this exact send template
+                for cmd_name, cmd_def in commands.items():
+                    if cmd_def.get("send") == query_text and not cmd_def.get("params"):
+                        cmd_qf = cmd_def.get("query_for")
+                        target = (
+                            cmd_qf
+                            if isinstance(cmd_qf, str) and cmd_qf
+                            else infer_state_var(cmd_name, state_vars)
+                        )
+                        if target:
+                            response_var = target
+                            break
 
             if response_var:
                 pattern = re.compile(f"^{re.escape(query_text)}$")
                 self._query_handlers.append(QueryHandler(
                     pattern=pattern,
                     response_var=response_var,
+                ))
+
+        # on_connect entries participate only when they declare query_for —
+        # an initial-status query the device should answer in simulation too.
+        # No name inference here: on_connect never fed the handler table, so
+        # only declared semantics add to it.
+        for entry in self._driver_def.get("on_connect", []) or []:
+            if not isinstance(entry, dict) or "each_child" in entry:
+                continue
+            qf = entry.get("query_for")
+            send = entry.get("send", "")
+            if (
+                isinstance(qf, str) and qf
+                and isinstance(send, str) and send
+                and "address" not in entry
+            ):
+                pattern = re.compile(f"^{re.escape(send)}$")
+                self._query_handlers.append(QueryHandler(
+                    pattern=pattern,
+                    response_var=qf,
                 ))
 
     def _build_inline_response_handlers(self) -> None:
@@ -1643,21 +1720,6 @@ class YAMLAutoSimulator(TCPSimulator):
                 self._osc_state_to_address[state_key] = (
                     addr_pattern, arg_idx, tag, reverse_map,
                 )
-
-    def _infer_query_response_var(self, query_text: str) -> str | None:
-        """Try to figure out which state var a query returns.
-
-        Simple heuristic: if a single-character query exists and a response
-        pattern sets a state var, see if there's a conventional mapping.
-        """
-        # Common AV protocol query mappings
-        query_map = {
-            "I": "input",
-            "V": "volume",
-            "Z": "mute",
-            "P": "power",
-        }
-        return query_map.get(query_text.strip())
 
     # ── Merge explicit simulator: section ──
 
@@ -1960,6 +2022,14 @@ class YAMLAutoSimulator(TCPSimulator):
             return ""
         return decode_delimiter(self._driver_def.get("delimiter", "\r\n"))
 
+    def _numeric_state_var(self, state_key: str) -> bool:
+        """True when the state variable's declared type is numeric."""
+        var_def = self._driver_def.get("state_variables", {}).get(state_key)
+        vtype = (
+            var_def.get("type", "string") if isinstance(var_def, dict) else "string"
+        )
+        return vtype in ("integer", "number", "float")
+
     def _coerce_value(self, state_key: str, value: Any) -> Any:
         """Coerce a value to the state variable's declared type and clamp to range."""
         state_vars = self._driver_def.get("state_variables", {})
@@ -2185,47 +2255,6 @@ class StateResponse:
 
 
 # ── Utility functions ──
-
-def _infer_state_var(cmd_name: str, state_vars: set[str]) -> str | None:
-    """Infer which state variable a command targets from its name.
-
-    Examples:
-        "set_volume" → "volume"
-        "mute_on" → "mute"
-        "power_off" → "power"
-        "query_input" → "input"
-        "route_all" → "input" (if "input" in state_vars, best guess for routing)
-    """
-    # Strip common prefixes/suffixes
-    name = cmd_name
-    for prefix in ("set_", "get_", "query_", "enable_", "disable_"):
-        if name.startswith(prefix):
-            name = name[len(prefix):]
-            break
-    for suffix in ("_on", "_off", "_toggle"):
-        if name.endswith(suffix):
-            name = name[: -len(suffix)]
-            break
-
-    # Direct match
-    if name in state_vars:
-        return name
-
-    # Common AV aliases
-    aliases = {
-        "route": "input",
-        "route_all": "input",
-        "unmute": "mute",
-        "vol": "volume",
-        "video_mute": "video_mute",
-        "audio_mute": "mute",
-    }
-    alias_target = aliases.get(name) or aliases.get(cmd_name)
-    if alias_target and alias_target in state_vars:
-        return alias_target
-
-    return None
-
 
 class OSCScriptHandler:
     """Script handler for OSC simulator: command_handlers with address pattern."""

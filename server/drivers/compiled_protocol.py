@@ -200,6 +200,75 @@ def send_param_specs(template: str, params: dict[str, Any]) -> dict[str, str]:
     return specs
 
 
+def send_param_groups(template: str, params: dict[str, Any]) -> dict[str, int]:
+    """Map each declared param to the capture-group index its first
+    placeholder occurrence gets in ``send_regex``'s inversion.
+
+    ``send_regex`` turns every placeholder occurrence into one capture
+    group, numbered in template order — which is not necessarily the
+    order the params dict declares them in. A consumer resolving a
+    declared ``sets: {var: "{param}"}`` reference needs the group that
+    actually holds the param's wire value."""
+    occurrences: list[tuple[int, str]] = []
+    for name in params:
+        for m in _placeholder_re(name).finditer(template):
+            occurrences.append((m.start(), name))
+    occurrences.sort()
+    groups: dict[str, int] = {}
+    for idx, (_, name) in enumerate(occurrences, start=1):
+        groups.setdefault(name, idx)
+    return groups
+
+
+# ── Command semantics: name-inference fallback ──
+#
+# When a command declares no `sets:` / `query_for:`, consumers fall back to
+# inferring the target state variable from the command's name. This is the
+# ONE shared copy of that heuristic (the auto-generated simulator uses it;
+# declared semantics always win over it).
+
+
+def infer_state_var(cmd_name: str, state_vars: set[str]) -> str | None:
+    """Infer which state variable a command targets from its name.
+
+    Examples:
+        "set_volume" → "volume"
+        "mute_on" → "mute"
+        "power_off" → "power"
+        "query_input" → "input"
+        "route_all" → "input" (if "input" in state_vars, best guess for routing)
+    """
+    # Strip common prefixes/suffixes
+    name = cmd_name
+    for prefix in ("set_", "get_", "query_", "enable_", "disable_"):
+        if name.startswith(prefix):
+            name = name[len(prefix):]
+            break
+    for suffix in ("_on", "_off", "_toggle"):
+        if name.endswith(suffix):
+            name = name[: -len(suffix)]
+            break
+
+    # Direct match
+    if name in state_vars:
+        return name
+
+    # Common AV aliases
+    aliases = {
+        "route": "input",
+        "route_all": "input",
+        "unmute": "mute",
+        "vol": "volume",
+        "video_mute": "video_mute",
+        "audio_mute": "mute",
+    }
+    alias_target = aliases.get(name) or aliases.get(cmd_name)
+    if alias_target and alias_target in state_vars:
+        return alias_target
+
+    return None
+
+
 # ── Emit-template inversion (response regex → reply text) ──
 #
 # The auto-generated simulator answers a query by reconstructing the reply

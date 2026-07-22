@@ -651,3 +651,235 @@ def test_http_delay_defaults_to_auto_seed():
 def test_http_delay_uses_command_response():
     sim = _make_http_sim({"command_response": 0.5})
     assert sim._http_response_delay() == 0.5
+
+
+# ===========================================================================
+# Declared command semantics (sets: / query_for:) drive the auto-sim;
+# name inference is only the fallback, and the old built-in single-letter
+# query map (I/V/Z/P) is gone in favor of declarations.
+# ===========================================================================
+
+
+def test_declared_sets_applies_literals_and_param_refs():
+    definition = {
+        "id": "acme_declared",
+        "name": "Acme Declared",
+        "transport": "tcp",
+        "state_variables": {
+            "power": {"type": "boolean"},
+            "input": {"type": "integer", "min": 1, "max": 8},
+        },
+        "commands": {
+            "warmup": {
+                # Name matches nothing; declaration carries the semantics.
+                "send": "GO",
+                "sets": {"power": True},
+            },
+            "pick": {
+                "send": "IN{inp}!",
+                "params": {"inp": {"type": "integer", "min": 1, "max": 8}},
+                "sets": {"input": "{inp}"},
+            },
+        },
+        "responses": [],
+    }
+    sim = _make_sim(definition)
+    sim._dispatch_command(b"GO")
+    assert sim._state["power"] is True
+    sim._dispatch_command(b"IN5!")
+    assert sim._state["input"] == 5
+
+
+def test_declared_sets_integer_literal_is_not_a_group_index():
+    definition = {
+        "id": "acme_intlit",
+        "name": "Acme Int Literal",
+        "transport": "tcp",
+        "state_variables": {"input": {"type": "integer", "min": 1, "max": 8}},
+        "commands": {
+            # No params at all — a bare int literal must land verbatim, not
+            # be read as "capture group 5" (which doesn't exist).
+            "preset_five": {"send": "P5!", "sets": {"input": 5}},
+        },
+        "responses": [],
+    }
+    sim = _make_sim(definition)
+    sim._dispatch_command(b"P5!")
+    assert sim._state["input"] == 5
+
+
+def test_declared_sets_param_refs_use_template_order_groups():
+    definition = {
+        "id": "acme_order",
+        "name": "Acme Order",
+        "transport": "tcp",
+        "state_variables": {
+            "input": {"type": "integer", "min": 1, "max": 99},
+            "output": {"type": "integer", "min": 1, "max": 99},
+        },
+        "commands": {
+            "route": {
+                "send": "{out}*{inp}!",
+                # Params declared in the OPPOSITE order of the template —
+                # the capture groups must follow the template, not the dict.
+                "params": {
+                    "inp": {"type": "integer", "min": 1, "max": 99},
+                    "out": {"type": "integer", "min": 1, "max": 99},
+                },
+                "sets": {"input": "{inp}", "output": "{out}"},
+            },
+        },
+        "responses": [],
+    }
+    sim = _make_sim(definition)
+    sim._dispatch_command(b"3*7!")
+    assert sim._state["output"] == 3
+    assert sim._state["input"] == 7
+
+
+def test_declared_sets_decodes_hex_spec_param():
+    definition = {
+        "id": "acme_hexset",
+        "name": "Acme Hex Sets",
+        "transport": "tcp",
+        "state_variables": {
+            "master_volume": {"type": "integer", "min": 0, "max": 100},
+        },
+        "commands": {
+            # The param name does NOT match the state var — exactly the case
+            # name inference can never connect; the declaration does.
+            "set_volume": {
+                "send": "MVL{level:02X}",
+                "params": {"level": {"type": "integer", "min": 0, "max": 100}},
+                "sets": {"master_volume": "{level}"},
+            },
+        },
+        "responses": [],
+    }
+    sim = _make_sim(definition)
+    sim._dispatch_command(b"MVL1A")
+    assert sim._state["master_volume"] == 26
+
+
+def test_declared_sets_beats_name_inference():
+    definition = {
+        "id": "acme_contra",
+        "name": "Acme Contradiction",
+        "transport": "tcp",
+        "state_variables": {
+            "power": {"type": "boolean"},
+            "mute": {"type": "boolean"},
+        },
+        "commands": {
+            # The name says power_on; the declaration says it mutes. The
+            # declaration wins outright — no heuristic mixing.
+            "power_on": {"send": "X1", "sets": {"mute": True}},
+        },
+        "responses": [],
+    }
+    sim = _make_sim(definition)
+    sim._dispatch_command(b"X1")
+    assert sim._state["mute"] is True
+    assert sim._state.get("power") is not True
+
+
+def test_declared_query_for_on_command_answers_with_state():
+    definition = {
+        "id": "acme_qcmd",
+        "name": "Acme Query Command",
+        "transport": "tcp",
+        "state_variables": {"level": {"type": "integer", "min": 0, "max": 99}},
+        "commands": {
+            # "check" infers to nothing by name; the declaration pairs it.
+            "check": {"send": "STA?", "query_for": "level"},
+        },
+        "responses": [
+            {"match": r"LVL(\d+)", "set": {"level": "$1"}},
+        ],
+        "simulator": {"initial_state": {"level": 42}},
+    }
+    sim = _make_sim(definition)
+    reply = sim._dispatch_command(b"STA?")
+    assert reply is not None
+    assert reply.decode().strip() == "LVL42"
+
+
+def test_declared_query_for_on_polling_dict_entry():
+    definition = {
+        "id": "acme_qdict",
+        "name": "Acme Query Dict",
+        "transport": "tcp",
+        "state_variables": {"input": {"type": "integer", "min": 1, "max": 8}},
+        "commands": {},
+        "responses": [
+            {"match": r"In(\d+) All", "set": {"input": "$1"}},
+        ],
+        "polling": {"queries": [{"send": "I", "query_for": "input"}]},
+        "simulator": {"initial_state": {"input": 3}},
+    }
+    sim = _make_sim(definition)
+    reply = sim._dispatch_command(b"I")
+    assert reply is not None
+    assert reply.decode().strip() == "In3 All"
+
+
+def test_single_letter_query_map_is_retired():
+    # "V" used to be answered via a built-in vendor-flavored map
+    # (I/V/Z/P → input/volume/mute/power). Without a declaration the
+    # simulator no longer invents the pairing.
+    definition = {
+        "id": "acme_nomap",
+        "name": "Acme No Map",
+        "transport": "tcp",
+        "state_variables": {"volume": {"type": "integer", "min": 0, "max": 100}},
+        "commands": {},
+        "responses": [
+            {"match": r"Vol(\d+)", "set": {"volume": "$1"}},
+        ],
+        "polling": {"queries": ["V"]},
+        "simulator": {"initial_state": {"volume": 50}},
+    }
+    sim = _make_sim(definition)
+    assert sim._dispatch_command(b"V") is None
+
+
+def test_on_connect_query_for_registers_query_handler():
+    definition = {
+        "id": "acme_onconn",
+        "name": "Acme On Connect",
+        "transport": "tcp",
+        "state_variables": {"temp": {"type": "integer", "min": 0, "max": 200}},
+        "commands": {},
+        "responses": [
+            {"match": r"TEMP(\d+)", "set": {"temp": "$1"}},
+        ],
+        "on_connect": [{"send": "STATUS?", "query_for": "temp"}],
+        "simulator": {"initial_state": {"temp": 71}},
+    }
+    sim = _make_sim(definition)
+    reply = sim._dispatch_command(b"STATUS?")
+    assert reply is not None
+    assert reply.decode().strip() == "TEMP71"
+
+
+def test_declared_sets_keeps_wire_form_for_string_var():
+    # Hex-code protocols (eISCP-style) declare the 2-digit code itself as
+    # the state value: the var is a string, so the wire capture is kept
+    # verbatim rather than decoded to a number.
+    definition = {
+        "id": "acme_hexcode",
+        "name": "Acme Hex Code",
+        "transport": "tcp",
+        "state_variables": {"volume_code": {"type": "string"}},
+        "commands": {
+            "set_volume": {
+                "send": "MVL{level:02X}",
+                "params": {"level": {"type": "integer", "min": 0, "max": 100}},
+                "sets": {"volume_code": "{level}"},
+            },
+        },
+        "responses": [],
+    }
+    sim = _make_sim(definition)
+    sim._dispatch_command(b"MVL1A")
+    assert sim._state["volume_code"] == "1A"

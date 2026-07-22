@@ -183,6 +183,24 @@
  "command_prefix_not_string": [
   "command_prefix: must be a string"
  ],
+ "command_query_for_empty": [
+  "Command 'chk': 'query_for' must name a state variable"
+ ],
+ "command_query_for_undeclared_var": [
+  "Command 'chk': query_for 'ghost' is not a declared state variable"
+ ],
+ "command_sets_not_mapping": [
+  "Command 'go': 'sets' must be a mapping"
+ ],
+ "command_sets_partial_brace_value": [
+  "Command 'go': sets.power value 'on-{n}' must be a literal or a bare {param} reference to a declared parameter"
+ ],
+ "command_sets_undeclared_param_ref": [
+  "Command 'go': sets.power value '{ghost}' must be a literal or a bare {param} reference to a declared parameter"
+ ],
+ "command_sets_undeclared_var": [
+  "Command 'go': sets 'ghost' which is not a declared state variable"
+ ],
  "command_suffix_not_string": [
   "command_suffix: must be a string"
  ],
@@ -340,7 +358,7 @@
   "Driver definition must be a mapping"
  ],
  "on_connect_bad_mapping_osc_variant": [
-  "on_connect[0]: mapping entries must be {each_child, send} or {send, when} or {address, args}"
+  "on_connect[0]: mapping entries must be {each_child, send} or {send, when} or {send, query_for} or {address, args}"
  ],
  "osc_child_set_entry_not_mapping": [
   "Response 0: child_set[0]: must be a mapping"
@@ -448,7 +466,7 @@
   "polling: must be a mapping"
  ],
  "polling_query_bad_mapping": [
-  "polling.queries[0]: mapping entries must be {each_child, send} or {send, when}"
+  "polling.queries[0]: mapping entries must be {each_child, send} or {send, when} or {send, query_for}"
  ],
  "polling_when_not_string": [
   "polling.queries[0]: 'when' must name a config field"
@@ -530,6 +548,15 @@
  ],
  "push_unknown_type": [
   "push: missing or unknown 'type' (supported: multicast, sse, tcp_listener, http_listener)"
+ ],
+ "query_entry_query_for_empty": [
+  "polling.queries[0]: 'query_for' must name a state variable"
+ ],
+ "query_entry_query_for_on_each_child": [
+  "polling.queries[0]: 'query_for' is only valid on a plain {send} query entry"
+ ],
+ "query_entry_query_for_undeclared_var": [
+  "polling.queries[0]: query_for 'ghost' is not a declared state variable"
  ],
  "quick_action_entry_empty": [
   "quick_actions[0]: must be a non-empty command id string"

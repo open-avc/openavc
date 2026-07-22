@@ -1,8 +1,8 @@
 import type {
   DriverDefinition,
   DriverEachChildQuery,
-  DriverGatedQuery,
   DriverOscConnectItem,
+  DriverQueryEntry,
 } from "../../api/types";
 
 /**
@@ -13,6 +13,7 @@ import type {
  *   "PWR?\r"                                        plain wire string
  *   { each_child, send }                            one query per child
  *   { send, when }                                  gated on a config field
+ *   { send, query_for }                             declared state pairing
  *   { each_child, send, when }                      both
  *   { address, args }                               OSC message with typed args
  *   { address, args, when }                         OSC args, gated
@@ -20,6 +21,10 @@ import type {
  * `when: <config_field>` runs the entry only while that config field is truthy
  * — how a driver arms a chatty subscription (a level-meter stream) behind an
  * integrator checkbox instead of forcing it on every site.
+ *
+ * `query_for: <state_var>` names the state variable the reply reports, so the
+ * auto-generated simulator answers the query without name-guessing. Only the
+ * plain `{send}` form carries it.
  *
  * OSC on_connect items with arguments are keyed on `address` (paired with
  * `args`); every other form keys the wire content on `send` (or is a bare
@@ -29,7 +34,7 @@ import type {
 export type QueryEntry =
   | string
   | DriverEachChildQuery
-  | DriverGatedQuery
+  | DriverQueryEntry
   | DriverOscConnectItem
   | Record<string, unknown>;
 
@@ -37,12 +42,12 @@ export function isEachChild(q: QueryEntry): q is DriverEachChildQuery {
   return typeof q === "object" && q !== null && "each_child" in q;
 }
 
-export function isGated(q: QueryEntry): q is DriverGatedQuery {
+export function isGated(q: QueryEntry): q is DriverQueryEntry {
   return (
     typeof q === "object" &&
     q !== null &&
     !("each_child" in q) &&
-    typeof (q as DriverGatedQuery).send === "string"
+    typeof (q as DriverQueryEntry).send === "string"
   );
 }
 
@@ -79,6 +84,13 @@ export function queryWhen(q: QueryEntry): string {
   return "";
 }
 
+/** Declared state pairing on a plain `{send}` entry ("" when absent — the
+ *  each_child and OSC forms don't carry one). */
+export function queryQueryFor(q: QueryEntry): string {
+  if (!isEachChild(q) && isGated(q)) return q.query_for ?? "";
+  return "";
+}
+
 /** Typed OSC args on an entry, or `undefined` when it isn't an OSC args item.
  *  Bare strings, each_child, and gated entries have no args. */
 export function queryArgs(
@@ -89,14 +101,17 @@ export function queryArgs(
 }
 
 /** Rebuild an entry from its parts, collapsing to the simplest form that can
- *  carry them: a plain string when it needs neither a child type, a gate, nor
- *  args. OSC args force the `{address, args}` form (each_child is address-only,
- *  so args are dropped when a child type is chosen). */
+ *  carry them: a plain string when it needs neither a child type, a gate, a
+ *  state pairing, nor args. OSC args force the `{address, args}` form
+ *  (each_child is address-only, so args are dropped when a child type is
+ *  chosen); a `query_for` pairing only fits the plain form, so it is dropped
+ *  when a child type or args force a form that can't carry it. */
 export function buildQueryEntry(
   send: string,
   eachChild: string,
   when: string,
   args?: { type: string; value: string }[],
+  queryFor?: string,
 ): QueryEntry {
   if (eachChild) {
     return when
@@ -106,7 +121,13 @@ export function buildQueryEntry(
   if (args && args.length) {
     return when ? { address: send, args, when } : { address: send, args };
   }
-  return when ? { send, when } : send;
+  if (when || queryFor) {
+    const entry: DriverQueryEntry = { send };
+    if (when) entry.when = when;
+    if (queryFor) entry.query_for = queryFor;
+    return entry;
+  }
+  return send;
 }
 
 /** Config fields a `when:` gate can name — declared in either block, deduped.

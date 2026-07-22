@@ -8,6 +8,7 @@ import {
   isOpaque,
   isOscItem,
   queryArgs,
+  queryQueryFor,
   queryWhen,
   querySend,
   type QueryEntry,
@@ -133,6 +134,7 @@ export function LifecycleEditor({ draft, onUpdate }: LifecycleEditorProps) {
           isOpaque(item) || (transport !== "osc" && isOscItem(item));
         const send = querySend(item);
         const when = queryWhen(item);
+        const queryFor = queryQueryFor(item);
         const args = queryArgs(item);
         const childKey = eachChild ? item.each_child : "";
         // OSC args are only authorable on a "send once" item — the runtime
@@ -162,7 +164,10 @@ export function LifecycleEditor({ draft, onUpdate }: LifecycleEditorProps) {
                 <select
                   value={childKey}
                   onChange={(e) =>
-                    updateItem(i, buildQueryEntry(send, e.target.value, when, args))
+                    updateItem(
+                      i,
+                      buildQueryEntry(send, e.target.value, when, args, queryFor),
+                    )
                   }
                   title="Send once, or once per registered child of a type"
                   style={{ width: 130, fontSize: "var(--font-size-sm)" }}
@@ -179,7 +184,10 @@ export function LifecycleEditor({ draft, onUpdate }: LifecycleEditorProps) {
                 value={opaque ? JSON.stringify(item) : send}
                 disabled={opaque}
                 onChange={(e) =>
-                  updateItem(i, buildQueryEntry(e.target.value, childKey, when, args))
+                  updateItem(
+                    i,
+                    buildQueryEntry(e.target.value, childKey, when, args, queryFor),
+                  )
                 }
                 placeholder={eachChild ? "e.g., ?VOUT{child_id}\\r" : placeholder}
                 style={{
@@ -192,7 +200,10 @@ export function LifecycleEditor({ draft, onUpdate }: LifecycleEditorProps) {
                 <select
                   value={when}
                   onChange={(e) =>
-                    updateItem(i, buildQueryEntry(send, childKey, e.target.value, args))
+                    updateItem(
+                    i,
+                    buildQueryEntry(send, childKey, e.target.value, args, queryFor),
+                  )
                   }
                   title="Only send this step while a config field is on — e.g. arm a level-meter subscription behind an 'Enable Meters' checkbox"
                   style={{ width: 150, fontSize: "var(--font-size-sm)" }}
@@ -218,7 +229,7 @@ export function LifecycleEditor({ draft, onUpdate }: LifecycleEditorProps) {
                 <OscArgsEditor
                   args={args ?? []}
                   onChange={(newArgs) =>
-                    updateItem(i, buildQueryEntry(send, "", when, newArgs))
+                    updateItem(i, buildQueryEntry(send, "", when, newArgs, queryFor))
                   }
                 />
               </div>

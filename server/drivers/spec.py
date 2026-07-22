@@ -520,7 +520,7 @@ FIELDS = {
     },
     'on_connect': {
         'type': 'array',
-        'doc': 'Commands sent immediately after connect, before polling. Strings for TCP/serial/UDP; {address, args} mappings for OSC (args carry typed OSC values for a value-setting bring-up message); {each_child, send} templates expand to one query per registered child. Any mapping entry may add when: <config_field> to run only while that field is on.',
+        'doc': 'Commands sent immediately after connect, before polling. Strings for TCP/serial/UDP; {address, args} mappings for OSC (args carry typed OSC values for a value-setting bring-up message); {each_child, send} templates expand to one query per registered child. Any mapping entry may add when: <config_field> to run only while that field is on, and a {send} entry may add query_for: <state_var> to name the state variable its reply reports.',
         'items': {
             'one_of': (
                 {
@@ -530,7 +530,7 @@ FIELDS = {
                     'ref': 'eachChildQuery',
                 },
                 {
-                    'ref': 'gatedQuery',
+                    'ref': 'queryEntry',
                 },
                 {
                     'type': 'object',
@@ -561,7 +561,7 @@ FIELDS = {
         'fields': {
             'queries': {
                 'type': 'array',
-                'doc': 'Query strings (or command names) sent each poll cycle; {each_child, send} templates expand to one query per registered child; when: <config_field> gates an entry on a config field. Cadence comes from default_config.poll_interval.',
+                'doc': 'Query strings (or command names) sent each poll cycle; {each_child, send} templates expand to one query per registered child; when: <config_field> gates an entry on a config field; query_for: <state_var> on a mapping entry names the state variable the reply reports (drives the auto-generated simulator). Cadence comes from default_config.poll_interval.',
                 'items': {
                     'one_of': (
                         {
@@ -571,7 +571,7 @@ FIELDS = {
                             'ref': 'eachChildQuery',
                         },
                         {
-                            'ref': 'gatedQuery',
+                            'ref': 'queryEntry',
                         },
                     ),
                 },
@@ -985,9 +985,9 @@ DEFS = {
         'required': ('each_child', 'send'),
         'extra': False,
     },
-    'gatedQuery': {
+    'queryEntry': {
         'type': 'object',
-        'doc': 'A plain query in mapping form so it can carry a gate: it runs only while the named config field is truthy. Use it to arm a chatty subscription (a level-meter stream) behind an integrator checkbox instead of forcing it on every site.',
+        'doc': 'A plain query in mapping form so it can carry extra semantics a bare string cannot: when: gates it on a config field (arm a chatty subscription behind an integrator checkbox), and query_for: names the state variable the reply reports so the auto-generated simulator answers it without name-guessing. At least one of the two must be present — a mapping with only send: is just a string query written the long way.',
         'fields': {
             'send': {
                 'type': 'string',
@@ -997,8 +997,20 @@ DEFS = {
                 'type': 'string',
                 'doc': 'Config field gating this entry. Must name a field declared in config_schema / default_config. Requires platform 0.23.0.',
             },
+            'query_for': {
+                'type': 'string',
+                'doc': 'State variable the device reports in answer to this query. Must name a declared state variable. Requires platform 0.24.0.',
+            },
         },
-        'required': ('send', 'when'),
+        'required': ('send',),
+        'any_of': (
+            {
+                'required': ('when',),
+            },
+            {
+                'required': ('query_for',),
+            },
+        ),
         'extra': False,
     },
     'paramEntry': {
@@ -1180,6 +1192,17 @@ DEFS = {
                 'extra': {
                     'ref': 'paramEntry',
                 },
+            },
+            'sets': {
+                'type': 'object',
+                'doc': 'Declared state effect: the state variables this command sets on the device, e.g. {power: true} or {master_volume: "{level}"}. A "{param}" value takes that command parameter\'s value; anything else is a literal. The auto-generated simulator applies these instead of guessing from the command name; keys must name declared state variables. Requires platform 0.24.0.',
+                'extra': {
+                    'type': ['string', 'integer', 'number', 'boolean'],
+                },
+            },
+            'query_for': {
+                'type': 'string',
+                'doc': 'Declares this command as a status query: the device answers it by reporting the named state variable. The auto-generated simulator replies with that variable\'s current value instead of inferring one from the command name. Must name a declared state variable. Requires platform 0.24.0.',
             },
         },
         'extra': True,
