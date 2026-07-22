@@ -705,6 +705,75 @@ class TestPanelElementSandboxSanitization:
         assert card.get("sandbox_permissions") == ["allow-top-navigation"]
 
 
+class TestPluginLevelSandboxSurface:
+    """list_plugins() / get_plugin_info() surface the plugin-level union of
+    sanitized sandbox tokens so the IDE can show the grant alongside
+    capabilities (declaring allow-same-origin is part of the trust granted
+    at install time)."""
+
+    def _register(self, panel_elements):
+        class SandboxPlugin:
+            PLUGIN_INFO = {
+                "id": "sandbox_plug",
+                "name": "Sandbox Plug",
+                "version": "1.0.0",
+                "author": "Test",
+                "description": "Sandbox surface test plugin.",
+                "category": "utility",
+                "license": "MIT",
+            }
+            EXTENSIONS = {"panel_elements": panel_elements}
+            async def start(self, api): pass
+            async def stop(self): pass
+        register_plugin_class(SandboxPlugin)
+        return SandboxPlugin
+
+    def test_list_plugins_surfaces_sanitized_union(self, loader):
+        self._register([
+            {
+                "type": "viewer", "label": "V", "renderer": "iframe",
+                "sandbox_permissions": ["allow-same-origin", "allow-top-navigation"],
+            },
+            {
+                "type": "editor", "label": "E", "renderer": "iframe",
+                "sandbox_permissions": ["allow-forms", "allow-same-origin"],
+            },
+        ])
+        entry = next(
+            p for p in loader.list_plugins() if p["plugin_id"] == "sandbox_plug"
+        )
+        # Union across elements, whitelist-filtered, declaration order, deduped
+        assert entry["sandbox_permissions"] == ["allow-same-origin", "allow-forms"]
+
+    def test_get_plugin_info_surfaces_sanitized_union(self, loader):
+        self._register([
+            {
+                "type": "viewer", "label": "V", "renderer": "iframe",
+                "sandbox_permissions": ["allow-same-origin", "allow-pointer-lock"],
+            },
+        ])
+        info = loader.get_plugin_info("sandbox_plug")
+        assert info["sandbox_permissions"] == ["allow-same-origin"]
+
+    def test_plugin_without_panel_elements_gets_empty_list(self, loader):
+        register_plugin_class(SamplePlugin)  # no EXTENSIONS at all
+        entry = next(
+            p for p in loader.list_plugins() if p["plugin_id"] == "sample"
+        )
+        assert entry["sandbox_permissions"] == []
+        assert loader.get_plugin_info("sample")["sandbox_permissions"] == []
+
+    def test_malformed_extensions_shapes_get_empty_list(self, loader):
+        cls = self._register("not a list")  # panel_elements is not a list
+        entry = next(
+            p for p in loader.list_plugins() if p["plugin_id"] == "sandbox_plug"
+        )
+        assert entry["sandbox_permissions"] == []
+        # Non-dict EXTENSIONS entirely
+        cls.EXTENSIONS = "bogus"
+        assert loader.get_plugin_info("sandbox_plug")["sandbox_permissions"] == []
+
+
 # ═══════════════════════════════════════════════════════════
 #  PluginLoader Tests
 # ═══════════════════════════════════════════════════════════

@@ -147,6 +147,8 @@ By default, plugin iframes get only `sandbox="allow-scripts"` and no `allow` att
 
 Tokens that would let an iframe escape the sandbox (`allow-popups-to-escape-sandbox`, `allow-top-navigation`, `allow-pointer-lock`) are deliberately excluded.
 
+**`allow-same-origin` is a trust grant, not a routine flag.** Combined with the always-present `allow-scripts`, it gives your element's UI the same origin as the panel page itself — the panel's storage, its cookies, credentialed fetches against the server — which effectively removes the iframe sandbox boundary in the browser. That is an accepted posture: a plugin is already arbitrary Python running on the server, so the iframe sandbox is defense-in-depth, not the trust boundary. It does mean the grant is part of the trust a user extends when installing your plugin: the Programmer IDE shows each plugin's sandbox permissions in its details alongside capabilities, and reviewers will expect a plugin declaring `allow-same-origin` to clearly need it (same-origin fetches or storage). If your element works without it, don't declare it.
+
 **`allow_features`** — Permissions-Policy tokens:
 
 | Token | What it enables |

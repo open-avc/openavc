@@ -374,6 +374,12 @@ export interface PluginInfo {
   status: string; // "running" | "stopped" | "error" | "missing" | "incompatible"
   platforms: string[];
   capabilities: string[];
+  /**
+   * Iframe sandbox tokens granted to the plugin's panel elements (union
+   * across elements, server-sanitized). "allow-same-origin" means the
+   * plugin's panel UI runs with full page access — shown as a trust grant.
+   */
+  sandbox_permissions?: string[];
   /** Top-level short route for the plugin's guest router (e.g. "present" -> /present). */
   guest_alias?: string;
   installed: boolean;

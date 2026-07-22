@@ -1221,6 +1221,9 @@ class PluginLoader:
                 "status": status,
                 "platforms": info.get("platforms", ["all"]),
                 "capabilities": info.get("capabilities", []),
+                "sandbox_permissions": self._collect_sandbox_permissions(
+                    plugin_id, plugin_class
+                ),
                 "guest_alias": info.get("guest_alias", ""),
                 "installed": True,
                 "compatible": self.is_platform_compatible(plugin_class),
@@ -1290,6 +1293,9 @@ class PluginLoader:
             "status": status,
             "platforms": info.get("platforms", ["all"]),
             "capabilities": info.get("capabilities", []),
+            "sandbox_permissions": self._collect_sandbox_permissions(
+                plugin_id, plugin_class
+            ),
             "dependencies": info.get("dependencies", []),
             "installed": True,
             "compatible": self.is_platform_compatible(plugin_class),
@@ -1505,6 +1511,38 @@ class PluginLoader:
                     "Failed to collect extensions for plugin '%s'", plugin_id
                 )
 
+        return result
+
+    def _collect_sandbox_permissions(
+        self, plugin_id: str, plugin_class: type
+    ) -> list[str]:
+        """Plugin-level union of the sanitized iframe sandbox tokens across
+        the plugin's panel elements.
+
+        Surfaced by list_plugins()/get_plugin_info() so the IDE can show the
+        grant alongside capabilities — declaring ``allow-same-origin`` means
+        the plugin's panel UI runs with full page access, part of the trust
+        granted at install time. Filtered against the same whitelist as
+        get_all_extensions(), so the UI reports what the panel runtime would
+        actually apply, not the raw declaration.
+        """
+        extensions = getattr(plugin_class, "EXTENSIONS", None)
+        if not isinstance(extensions, dict):
+            return []
+        ext_list = extensions.get("panel_elements", [])
+        if not isinstance(ext_list, list):
+            return []
+        result: list[str] = []
+        for ext in ext_list:
+            if not isinstance(ext, dict):
+                continue
+            for token in self._sanitize_token_list(
+                ext.get("sandbox_permissions"),
+                _ALLOWED_SANDBOX_PERMISSIONS,
+                plugin_id, "sandbox_permissions",
+            ):
+                if token not in result:
+                    result.append(token)
         return result
 
     @staticmethod

@@ -727,11 +727,12 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
 
       {/* Developer-facing metadata, tucked away */}
       {((info.capabilities && info.capabilities.length > 0) ||
+        (info.sandbox_permissions && info.sandbox_permissions.length > 0) ||
         (info.platforms && info.platforms.length > 0) ||
         !!info.guest_alias) && (
         <CollapsibleSection
           title="Plugin Details"
-          subtitle="Granted capabilities and supported platforms"
+          subtitle="Granted capabilities, permissions, and supported platforms"
           defaultOpen={false}
         >
           {info.guest_alias && (
@@ -771,6 +772,42 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
                   </span>
                 ))}
               </div>
+            </div>
+          )}
+          {info.sandbox_permissions && info.sandbox_permissions.length > 0 && (
+            <div style={{ marginBottom: "var(--space-md)" }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", marginBottom: "var(--space-xs)" }}>
+                Panel Sandbox Permissions
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-xs)" }}>
+                {info.sandbox_permissions.map((perm) => (
+                  <span
+                    key={perm}
+                    style={{
+                      padding: "2px var(--space-sm)",
+                      borderRadius: "var(--border-radius)",
+                      background:
+                        perm === "allow-same-origin"
+                          ? "var(--color-warning-bg)"
+                          : "var(--bg-hover)",
+                      fontSize: 11,
+                      color:
+                        perm === "allow-same-origin"
+                          ? "var(--color-warning)"
+                          : "var(--text-muted)",
+                    }}
+                  >
+                    {perm}
+                  </span>
+                ))}
+              </div>
+              {info.sandbox_permissions.includes("allow-same-origin") && (
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
+                  This plugin's touch panel UI runs with full page access
+                  (allow-same-origin) — a trust grant that comes with
+                  installing the plugin.
+                </div>
+              )}
             </div>
           )}
           {info.platforms && info.platforms.length > 0 && (
