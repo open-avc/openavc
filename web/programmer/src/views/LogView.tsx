@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { Trash2, Pause, Play } from "lucide-react";
+import { Trash2, Pause, Play, Download } from "lucide-react";
 import { ViewContainer } from "../components/layout/ViewContainer";
 import { useConnectionStore } from "../store/connectionStore";
 import { useLogStore } from "../store/logStore";
 import * as api from "../api/restClient";
 import { useProjectStore } from "../store/projectStore";
-import { deviceFilterPredicate } from "./logViewHelpers";
+import { deviceFilterPredicate, formatLogsForExport, logExportFilename } from "./logViewHelpers";
 
 type TabId = "log" | "state";
 
@@ -132,6 +132,19 @@ function SystemLogTab() {
     return d.toLocaleTimeString(undefined, { hour12: false });
   };
 
+  // Save the currently-loaded, currently-filtered log lines to a .txt file a
+  // user can attach to a bug report. Frontend-only — exports what's in view.
+  const handleDownload = () => {
+    const text = formatLogsForExport(filtered);
+    const blob = new Blob([text], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = logExportFilename(new Date());
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", gap: "var(--space-sm)" }}>
       {/* Filter bar */}
@@ -181,6 +194,14 @@ function SystemLogTab() {
         <button onClick={() => setPaused(!paused)} style={actionBtnStyle(paused)}>
           {paused ? <Play size={14} /> : <Pause size={14} />}
           {paused ? "Resume" : "Pause"}
+        </button>
+        <button
+          onClick={handleDownload}
+          disabled={filtered.length === 0}
+          title="Download the shown log lines as a text file"
+          style={{ ...actionBtnStyle(false), opacity: filtered.length === 0 ? 0.5 : 1, cursor: filtered.length === 0 ? "default" : "pointer" }}
+        >
+          <Download size={14} /> Download
         </button>
         <button onClick={clearEntries} style={actionBtnStyle(false)}>
           <Trash2 size={14} /> Clear

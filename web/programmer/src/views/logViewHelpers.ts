@@ -26,3 +26,34 @@ export function deviceFilterPredicate(
   return (entry) =>
     entry.device.toLowerCase() === id || mention.test(entry.message);
 }
+
+/**
+ * Render loaded log entries to plain text for the "Download logs" button.
+ * One line per entry: an ISO timestamp, the level, the source category, then
+ * the message. Exports exactly what it is given — the caller passes the
+ * currently-filtered set, so the Source/Level/Device filters carry through to
+ * the file a user attaches to a bug report.
+ */
+export function formatLogsForExport(
+  entries: Array<Pick<LogEntry, "timestamp" | "level" | "category" | "message">>,
+): string {
+  return entries
+    .map((e) => {
+      const ts = new Date(e.timestamp * 1000).toISOString();
+      return `[${ts}] ${e.level} ${e.category}: ${e.message}`;
+    })
+    .join("\n");
+}
+
+/**
+ * A filesystem-safe, sortable name for a downloaded log file, e.g.
+ * "openavc-log-20260722-143005.txt". `now` is passed in (not read from the
+ * clock) so the helper stays pure and testable.
+ */
+export function logExportFilename(now: Date): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  const stamp =
+    `${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}` +
+    `-${p(now.getHours())}${p(now.getMinutes())}${p(now.getSeconds())}`;
+  return `openavc-log-${stamp}.txt`;
+}
