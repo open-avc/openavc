@@ -56,6 +56,8 @@ The Simulator UI shows your virtual devices and lets you interact with them from
 - **Audio/DSPs** — Level meters, level slider, mute
 - **Cameras** — Tally light, zoom slider, power
 
+**Children** — a device whose driver declares child entities (a matrix's outputs, an amp's zones) gets a collapsible Children section listing each child with its own state values. Edit a value to change that child's state directly; drivers polling per-child status pick the change up on the next cycle.
+
 **Protocol log** at the bottom shows raw protocol traffic between your drivers and the simulated devices, with timestamps and direction indicators.
 
 **Network conditions** dropdown in the header lets you simulate degraded network connections (latency, packet drops, jitter) using presets from "Perfect" to "Barely Working."

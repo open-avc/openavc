@@ -323,3 +323,37 @@ def test_send_param_groups_ignores_absent_params():
 
     params = {"used": {"type": "string"}, "unused": {"type": "string"}}
     assert send_param_groups("GO {used}", params) == {"used": 1}
+
+
+def test_emit_template_multi_substitutes_every_targeted_group():
+    from server.drivers.compiled_protocol import emit_template_multi
+
+    assert emit_template_multi(
+        r"^Out(\d+) In(\d+) Vid$", {1: "{child_id}", 2: "{value}"}
+    ) == "Out{child_id} In{value} Vid"
+    # A literal at a targeted group pins one mapped wire token in place.
+    assert emit_template_multi(
+        r"^ZM (\d+) (ON|OFF)$", {1: "{child_id}", 2: "ON"}
+    ) == "ZM {child_id} ON"
+    # Id slot only: the rest emits representative members.
+    assert emit_template_multi(
+        r"^HdcpI(\d+)\*2$", {1: "{child_id}"}
+    ) == "HdcpI{child_id}*2"
+
+
+def test_emit_template_multi_optional_target_survives_and_missing_fails():
+    from server.drivers.compiled_protocol import emit_template_multi
+
+    # An optional atom carrying a target is kept, never dropped.
+    assert emit_template_multi(
+        r"^A(\d+)(?: B(\d+))?$", {1: "{child_id}", 2: "{value}"}
+    ) == "A{child_id} B{value}"
+    # A targeted group the pattern does not have.
+    assert emit_template_multi(r"^A(\d+)$", {1: "{child_id}", 3: "{value}"}) is None
+
+
+def test_emit_template_multi_single_group_matches_emit_template():
+    from server.drivers.compiled_protocol import emit_template, emit_template_multi
+
+    for pattern in (r"In(\d+) All", r"^VOL([0-9A-F]{2})$", r"^Sig([01])\b"):
+        assert emit_template_multi(pattern, {1: "{value}"}) == emit_template(pattern)

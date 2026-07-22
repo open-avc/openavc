@@ -981,6 +981,10 @@ DEFS = {
                 'type': 'string',
                 'doc': 'Config field gating this entry: it runs only while that field is truthy. Must name a field declared in config_schema / default_config. Requires platform 0.23.0.',
             },
+            'query_for': {
+                'type': 'string',
+                'doc': "State variable each reply reports, from the child type's state_variables. Lets the auto-generated simulator answer the query from that child's own state instead of leaving it unmodeled. Requires platform 0.24.0.",
+            },
         },
         'required': ('each_child', 'send'),
         'extra': False,
@@ -1195,14 +1199,14 @@ DEFS = {
             },
             'sets': {
                 'type': 'object',
-                'doc': 'Declared state effect: the state variables this command sets on the device, e.g. {power: true} or {master_volume: "{level}"}. A "{param}" value takes that command parameter\'s value; anything else is a literal. The auto-generated simulator applies these instead of guessing from the command name; keys must name declared state variables. Requires platform 0.24.0.',
+                'doc': 'Declared state effect: the state variables this command sets on the device, e.g. {power: true} or {master_volume: "{level}"}. A "{param}" value takes that command parameter\'s value; anything else is a literal. The auto-generated simulator applies these instead of guessing from the command name; keys must name declared state variables. On a command with exactly one child_id parameter, a key may instead name a state variable of that parameter\'s child type — the effect then applies to the addressed child. Requires platform 0.24.0.',
                 'extra': {
                     'type': ['string', 'integer', 'number', 'boolean'],
                 },
             },
             'query_for': {
                 'type': 'string',
-                'doc': 'Declares this command as a status query: the device answers it by reporting the named state variable. The auto-generated simulator replies with that variable\'s current value instead of inferring one from the command name. Must name a declared state variable. Requires platform 0.24.0.',
+                'doc': 'Declares this command as a status query: the device answers it by reporting the named state variable. The auto-generated simulator replies with that variable\'s current value instead of inferring one from the command name. Must name a declared state variable; on a command with exactly one child_id parameter it may instead name a state variable of that parameter\'s child type. Requires platform 0.24.0.',
             },
         },
         'extra': True,

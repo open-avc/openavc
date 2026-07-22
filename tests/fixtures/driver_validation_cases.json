@@ -1738,6 +1738,47 @@
   },
   "transport": "tcp"
  },
+ "command_query_for_child_var_neither": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "zq": {
+    "params": {
+     "zone": {
+      "child_type": "zone",
+      "type": "child_id"
+     }
+    },
+    "query_for": "ghost",
+    "send": "ZQ {zone}"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
  "command_query_for_empty": {
   "commands": {
    "chk": {
@@ -1760,6 +1801,52 @@
    "chk": {
     "query_for": "ghost",
     "send": "S?"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "command_sets_child_var_neither": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "zl": {
+    "params": {
+     "n": {
+      "type": "integer"
+     },
+     "zone": {
+      "child_type": "zone",
+      "type": "child_id"
+     }
+    },
+    "send": "ZL {zone} {n}",
+    "sets": {
+     "ghost": "{n}"
+    }
    }
   },
   "id": "acme_widget",
@@ -3142,6 +3229,28 @@
   "on_connect": [
    {
     "foo": 1
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "osc"
+ },
+ "on_connect_query_for_on_address": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "on_connect": [
+   {
+    "address": "/status",
+    "query_for": "power"
    }
   ],
   "state_variables": {
@@ -4994,31 +5103,7 @@
   },
   "transport": "tcp"
  },
- "query_entry_query_for_empty": {
-  "commands": {
-   "noop": {
-    "send": "NOOP\r"
-   }
-  },
-  "id": "acme_widget",
-  "name": "Acme Widget",
-  "polling": {
-   "queries": [
-    {
-     "query_for": "",
-     "send": "I"
-    }
-   ]
-  },
-  "state_variables": {
-   "power": {
-    "label": "Power",
-    "type": "string"
-   }
-  },
-  "transport": "tcp"
- },
- "query_entry_query_for_on_each_child": {
+ "query_entry_query_for_each_child_not_child_var": {
   "child_entity_types": {
    "zone": {
     "id_format": {
@@ -5050,6 +5135,30 @@
      "each_child": "zone",
      "query_for": "power",
      "send": "Z{child_id}?"
+    }
+   ]
+  },
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "query_entry_query_for_empty": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "polling": {
+   "queries": [
+    {
+     "query_for": "",
+     "send": "I"
     }
    ]
   },

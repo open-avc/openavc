@@ -228,11 +228,34 @@ CASES: dict[str, Any] = {
     "query_entry_query_for_undeclared_var": _d(
         polling={"queries": [{"send": "I", "query_for": "ghost"}]}
     ),
-    "query_entry_query_for_on_each_child": _d(
+    "query_entry_query_for_each_child_not_child_var": _d(
         child_entity_types=dict(_CHILD_TYPES),
         polling={"queries": [
             {"each_child": "zone", "send": "Z{child_id}?", "query_for": "power"},
         ]},
+    ),
+    "on_connect_query_for_on_address": _d(
+        transport="osc",
+        on_connect=[{"address": "/status", "query_for": "power"}],
+    ),
+    "command_sets_child_var_neither": _d(
+        child_entity_types=dict(_CHILD_TYPES),
+        commands={"zl": {
+            "send": "ZL {zone} {n}",
+            "params": {
+                "zone": {"type": "child_id", "child_type": "zone"},
+                "n": {"type": "integer"},
+            },
+            "sets": {"ghost": "{n}"},
+        }},
+    ),
+    "command_query_for_child_var_neither": _d(
+        child_entity_types=dict(_CHILD_TYPES),
+        commands={"zq": {
+            "send": "ZQ {zone}",
+            "params": {"zone": {"type": "child_id", "child_type": "zone"}},
+            "query_for": "ghost",
+        }},
     ),
     # --- command params (pickers / free-text aids) ---
     "param_pattern_redos": _param(type="string", pattern="(a+)+$"),

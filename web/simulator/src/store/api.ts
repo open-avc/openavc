@@ -107,6 +107,17 @@ export interface DeviceInfo {
   /** v0.5.0 child entities: { child_type: { padded_id: { label, config } } }.
    *  Present only when the device declares children. */
   child_entities?: Record<string, Record<string, { label?: string; config?: Record<string, unknown> }>>;
+  /** Modeled child roster (auto-generated simulators): per child type, the
+   *  live children and which state props each carries. Values live in the
+   *  flat state dict under "<type>.<id>.<prop>" keys — read them there so
+   *  per-key WS updates keep the panel current. */
+  children?: Record<string, ChildTypeInfo>;
+}
+
+export interface ChildTypeInfo {
+  label: string;
+  entries: { id: string; label: string }[];
+  props: string[];
 }
 
 export interface LogEntry {

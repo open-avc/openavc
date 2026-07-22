@@ -6,7 +6,17 @@ interface Props {
 }
 
 export function GenericPanel({ device, onStateChange }: Props) {
-  const entries = Object.entries(device.state);
+  // Keys owned by the modeled child roster render in the Children panel;
+  // keep the raw list to the device-level state.
+  const childKeys = new Set<string>();
+  for (const [type, info] of Object.entries(device.children ?? {})) {
+    for (const entry of info.entries) {
+      for (const prop of info.props) {
+        childKeys.add(`${type}.${entry.id}.${prop}`);
+      }
+    }
+  }
+  const entries = Object.entries(device.state).filter(([key]) => !childKeys.has(key));
 
   return (
     <>

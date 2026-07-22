@@ -716,12 +716,13 @@ Poll each child with an `each_child:` entry in `polling.queries` (also allowed i
 
 ```yaml
 polling:
-  interval: 10
   queries:
     - "PWR?\r"                                  # sent once
-    - { each_child: output, send: "?VOUT{child_id}\r" }   # sent once per output
+    - { each_child: output, send: "?VOUT{child_id}\r", query_for: input }   # once per output
     - { each_child: channel, send: "/ch/{child_id:02d}/mix/fader" }  # OSC, zero-padded
 ```
+
+`query_for:` on an `each_child` entry names which of the **child type's** state variables the reply reports (requires platform 0.24.0). It drives the device simulator: with the pairing declared, the auto-generated simulator models every child's state independently and answers each expanded query from that child's own values — without it, per-child queries go unanswered in simulation unless you script them by hand.
 
 ##### Gating a query on a config field (`when:`)
 
@@ -894,6 +895,8 @@ get_status:
 
 - `sets`: a map of state variable → value applied when the command runs in simulation. A value written as `"{param}"` takes that parameter's value (format specs in the send template are honored, so a hex-formatted `{level:02X}` decodes back to the number); anything else is a literal. Keys must name declared state variables.
 - `query_for`: names the state variable the device reports in answer to this command, so the simulator replies with its current value.
+
+On a command with exactly one `child_id` parameter, `sets` keys and `query_for` may instead name state variables **of that parameter's child type** — the simulator then applies the effect to the addressed child's own state and answers from it, so a `set_zone_level` command moves only the zone it names. Names the child type doesn't declare still resolve against the device-level variables.
 
 Declared semantics always beat name inference. Commands whose names already follow the conventions need nothing.
 

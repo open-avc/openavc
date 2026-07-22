@@ -164,9 +164,11 @@ export function LifecycleEditor({ draft, onUpdate }: LifecycleEditorProps) {
                 <select
                   value={childKey}
                   onChange={(e) =>
+                    // Changing the scope invalidates a declared state pairing
+                    // (device-level vs child-level variables) — drop it.
                     updateItem(
                       i,
-                      buildQueryEntry(send, e.target.value, when, args, queryFor),
+                      buildQueryEntry(send, e.target.value, when, args, ""),
                     )
                   }
                   title="Send once, or once per registered child of a type"

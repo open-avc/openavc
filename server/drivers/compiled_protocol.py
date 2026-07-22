@@ -389,9 +389,9 @@ def _parse_group(src: str, i: int, ctx: dict) -> tuple[str | None, int]:
     if j >= len(src) or src[j] != ")":
         raise _Unsupported
     j += 1
-    if capturing and this_no == ctx["target"]:
-        ctx["found"] = True
-        return "{value}", j
+    if capturing and this_no in ctx["targets"]:
+        ctx["found"].add(this_no)
+        return ctx["targets"][this_no], j
     return emission, j
 
 
@@ -434,11 +434,11 @@ def _parse_seq(src: str, i: int, ctx: dict, depth: int) -> tuple[str | None, int
         reps = 1
         if quant:
             reps, i = quant
-        if piece is not None and "{value}" in piece:
+        if piece is not None and _has_target(piece, ctx):
             if reps != 1:
                 if reps > 1:
-                    raise _Unsupported  # {value}{2} would duplicate the field
-                reps = 1  # never drop the target capture
+                    raise _Unsupported  # a repeated target would duplicate the field
+                reps = 1  # never drop a target capture
         if reps == 0:
             continue
         pieces.append(piece if reps == 1 else (None if piece is None else piece * reps))
@@ -447,10 +447,15 @@ def _parse_seq(src: str, i: int, ctx: dict, depth: int) -> tuple[str | None, int
     return "".join(pieces), i  # type: ignore[arg-type]
 
 
+def _has_target(piece: str, ctx: dict) -> bool:
+    """True when a targeted group's placeholder text survives in ``piece``."""
+    return any(ph in piece for ph in ctx["targets"].values())
+
+
 def _parse_branches(src: str, i: int, ctx: dict, depth: int) -> tuple[str | None, int]:
     """Emit an alternation: all branches are parsed (group numbering must
-    stay exact), the emission comes from the first branch carrying {value},
-    else the first representable branch."""
+    stay exact), the emission comes from the first branch carrying a target
+    placeholder, else the first representable branch."""
     branches: list[str | None] = []
     while True:
         emission, i = _parse_seq(src, i, ctx, depth)
@@ -459,13 +464,37 @@ def _parse_branches(src: str, i: int, ctx: dict, depth: int) -> tuple[str | None
             i += 1
             continue
         break
-    with_value = [b for b in branches if b is not None and "{value}" in b]
+    with_value = [b for b in branches if b is not None and _has_target(b, ctx)]
     if with_value:
         return with_value[0], i
     for b in branches:
         if b is not None:
             return b, i
     return None, i
+
+
+def emit_template_multi(pattern: str, placeholders: dict[int, str]) -> str | None:
+    """Reconstruct the reply text a response pattern matches, substituting
+    each capture group in ``placeholders`` with its placeholder text.
+
+    The multi-slot core behind ``emit_template``: a child-addressed reply
+    needs the child id group AND the value group templated in one emission
+    (``'Out(\\d+) In(\\d+) Vid'`` with ``{1: '{child_id}', 2: '{value}'}`` →
+    ``'Out{child_id} In{value} Vid'``). Every targeted group must survive
+    into the final emission; returns None when the pattern can't be modeled.
+    """
+    ctx = {"n": 0, "targets": dict(placeholders), "found": set()}
+    try:
+        emission, i = _parse_branches(pattern, 0, ctx, depth=0)
+    except _Unsupported:
+        return None
+    if i != len(pattern) or emission is None:
+        return None
+    if ctx["found"] != set(placeholders):
+        return None
+    if any(ph not in emission for ph in placeholders.values()):
+        return None
+    return emission
 
 
 def emit_template(pattern: str, group: int = 1) -> str | None:
@@ -478,16 +507,7 @@ def emit_template(pattern: str, group: int = 1) -> str | None:
     pattern can't be modeled — the caller falls back rather than emitting
     garbage the driver's own regex would reject.
     """
-    ctx = {"n": 0, "target": group, "found": False}
-    try:
-        emission, i = _parse_branches(pattern, 0, ctx, depth=0)
-    except _Unsupported:
-        return None
-    if i != len(pattern) or emission is None:
-        return None
-    if not ctx["found"] or "{value}" not in emission:
-        return None
-    return emission
+    return emit_template_multi(pattern, {group: "{value}"})
 
 
 def emit_literal(pattern: str) -> str | None:
@@ -496,7 +516,7 @@ def emit_literal(pattern: str) -> str | None:
     capturing group (a fixed literal can't represent a captured field) or
     a construct the reconstruction can't model.
     """
-    ctx = {"n": 0, "target": 0, "found": False}
+    ctx = {"n": 0, "targets": {}, "found": set()}
     try:
         emission, i = _parse_branches(pattern, 0, ctx, depth=0)
     except _Unsupported:

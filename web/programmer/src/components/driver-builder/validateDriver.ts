@@ -1162,6 +1162,19 @@ export function validateDriver(
           message: `${fieldName} entry ${i + 1}: the send template must contain {child_id} so each child gets its own query (a format spec like {child_id:02d} works too).`,
         });
       }
+      // `query_for` on a per-child entry names one of that child type's own
+      // state variables — each child answers the query from its own state.
+      if ("query_for" in entry && typeof ctype === "string" && childTypeNames.has(ctype)) {
+        const qf = entry.query_for;
+        const childVars = childTypes[ctype]?.state_variables ?? {};
+        if (typeof qf !== "string" || !qf || !(qf in childVars)) {
+          issues.push({
+            severity: "error",
+            section: "behavior",
+            message: `${fieldName} entry ${i + 1}: "Reports" must name a state variable of child type "${ctype}".`,
+          });
+        }
+      }
     });
   };
   checkEachChildEntries("Poll query", draft.polling?.queries, false);

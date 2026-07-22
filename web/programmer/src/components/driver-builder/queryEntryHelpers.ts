@@ -23,8 +23,10 @@ import type {
  * integrator checkbox instead of forcing it on every site.
  *
  * `query_for: <state_var>` names the state variable the reply reports, so the
- * auto-generated simulator answers the query without name-guessing. Only the
- * plain `{send}` form carries it.
+ * auto-generated simulator answers the query without name-guessing. On the
+ * plain `{send}` form it names a device-level variable; on an `each_child`
+ * form it names one of that child type's state variables (each child answers
+ * from its own state). The OSC args form doesn't carry one.
  *
  * OSC on_connect items with arguments are keyed on `address` (paired with
  * `args`); every other form keys the wire content on `send` (or is a bare
@@ -84,10 +86,10 @@ export function queryWhen(q: QueryEntry): string {
   return "";
 }
 
-/** Declared state pairing on a plain `{send}` entry ("" when absent — the
- *  each_child and OSC forms don't carry one). */
+/** Declared state pairing on a plain `{send}` or each_child entry ("" when
+ *  absent — the OSC args form doesn't carry one). */
 export function queryQueryFor(q: QueryEntry): string {
-  if (!isEachChild(q) && isGated(q)) return q.query_for ?? "";
+  if (isEachChild(q) || isGated(q)) return q.query_for ?? "";
   return "";
 }
 
@@ -104,8 +106,8 @@ export function queryArgs(
  *  carry them: a plain string when it needs neither a child type, a gate, a
  *  state pairing, nor args. OSC args force the `{address, args}` form
  *  (each_child is address-only, so args are dropped when a child type is
- *  chosen); a `query_for` pairing only fits the plain form, so it is dropped
- *  when a child type or args force a form that can't carry it. */
+ *  chosen); a `query_for` pairing rides both the plain and each_child forms,
+ *  and is dropped only when args force the OSC form that can't carry it. */
 export function buildQueryEntry(
   send: string,
   eachChild: string,
@@ -114,9 +116,10 @@ export function buildQueryEntry(
   queryFor?: string,
 ): QueryEntry {
   if (eachChild) {
-    return when
-      ? { each_child: eachChild, send, when }
-      : { each_child: eachChild, send };
+    const entry: DriverEachChildQuery = { each_child: eachChild, send };
+    if (when) entry.when = when;
+    if (queryFor) entry.query_for = queryFor;
+    return entry;
   }
   if (args && args.length) {
     return when ? { address: send, args, when } : { address: send, args };

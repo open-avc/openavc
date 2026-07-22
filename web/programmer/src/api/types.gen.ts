@@ -284,16 +284,19 @@ export interface DriverCommandDef {
    * device, e.g. {power: true} or {master_volume: "{level}"}. A "{param}"
    * value takes that command parameter's value; anything else is a literal.
    * The auto-generated simulator applies these instead of guessing from the
-   * command name; keys must name declared state variables. Requires platform
-   * 0.24.0.
+   * command name; keys must name declared state variables. On a command with
+   * exactly one child_id parameter, a key may instead name a state variable of
+   * that parameter's child type — the effect then applies to the addressed
+   * child. Requires platform 0.24.0.
    */
   sets?: Record<string, string | number | boolean>;
   /**
    * Declares this command as a status query: the device answers it by
    * reporting the named state variable. The auto-generated simulator replies
    * with that variable's current value instead of inferring one from the
-   * command name. Must name a declared state variable. Requires platform
-   * 0.24.0.
+   * command name. Must name a declared state variable; on a command with
+   * exactly one child_id parameter it may instead name a state variable of
+   * that parameter's child type. Requires platform 0.24.0.
    */
   query_for?: string;
 }
@@ -417,6 +420,12 @@ export interface DriverEachChildQuery {
    * platform 0.23.0.
    */
   when?: string;
+  /**
+   * State variable each reply reports, from the child type's state_variables.
+   * Lets the auto-generated simulator answer the query from that child's own
+   * state instead of leaving it unmodeled. Requires platform 0.24.0.
+   */
+  query_for?: string;
 }
 
 /**

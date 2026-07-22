@@ -624,19 +624,39 @@ def validate_driver_definition(
         )
         # Declared command semantics: `sets` / `query_for` drive the
         # auto-generated simulator, so a dangling reference would silently
-        # declare nothing — enforce that every name they use exists.
+        # declare nothing — enforce that every name they use exists. A command
+        # addressed to exactly one child (a single child_id param) may name
+        # that child type's state variables instead — the simulator routes
+        # the effect to the addressed child's own state.
+        cmd_params = cmd_def.get("params")
+        cmd_params = cmd_params if isinstance(cmd_params, dict) else {}
+        child_param_types = [
+            p.get("child_type")
+            for p in cmd_params.values()
+            if isinstance(p, dict) and p.get("type") == "child_id"
+        ]
+        child_target_vars: dict[str, Any] = {}
+        if len(child_param_types) == 1 and child_param_types[0] in child_types_map:
+            _tdef = child_types_map.get(child_param_types[0])
+            _cvars = _tdef.get("state_variables") if isinstance(_tdef, dict) else None
+            child_target_vars = _cvars if isinstance(_cvars, dict) else {}
         sets_def = cmd_def.get("sets")
         if sets_def is not None and not isinstance(sets_def, dict):
             errors.append(f"Command '{cmd_name}': 'sets' must be a mapping")
         elif isinstance(sets_def, dict):
-            cmd_params = cmd_def.get("params")
-            cmd_params = cmd_params if isinstance(cmd_params, dict) else {}
             for var_name, set_value in sets_def.items():
-                if var_name not in declared_vars:
-                    errors.append(
-                        f"Command '{cmd_name}': sets '{var_name}' which is "
-                        f"not a declared state variable"
-                    )
+                if var_name not in declared_vars and var_name not in child_target_vars:
+                    if child_target_vars:
+                        errors.append(
+                            f"Command '{cmd_name}': sets '{var_name}' which is "
+                            f"not a declared state variable (device-level or "
+                            f"of the addressed child type)"
+                        )
+                    else:
+                        errors.append(
+                            f"Command '{cmd_name}': sets '{var_name}' which is "
+                            f"not a declared state variable"
+                        )
                 if isinstance(set_value, str) and (
                     "{" in set_value or "}" in set_value
                 ):
@@ -654,11 +674,18 @@ def validate_driver_definition(
                     f"Command '{cmd_name}': 'query_for' must name a state "
                     f"variable"
                 )
-            elif query_for not in declared_vars:
-                errors.append(
-                    f"Command '{cmd_name}': query_for '{query_for}' is not "
-                    f"a declared state variable"
-                )
+            elif query_for not in declared_vars and query_for not in child_target_vars:
+                if child_target_vars:
+                    errors.append(
+                        f"Command '{cmd_name}': query_for '{query_for}' is not "
+                        f"a declared state variable (device-level or of the "
+                        f"addressed child type)"
+                    )
+                else:
+                    errors.append(
+                        f"Command '{cmd_name}': query_for '{query_for}' is not "
+                        f"a declared state variable"
+                    )
 
     # Opt-in send-side command framing: a constant prefix/suffix wraps every
     # byte-stream command. Both must be strings when present.
@@ -1450,20 +1477,37 @@ def validate_driver_definition(
                         f"config_derived)"
                     )
             # `query_for: <state_var>` declares which state variable the
-            # reply reports (drives the auto-generated simulator). Only the
-            # plain {send} form carries it — a dangling name would silently
-            # declare nothing, so verify it exists.
+            # reply reports (drives the auto-generated simulator). On a plain
+            # {send} entry it names a device-level variable; on an each_child
+            # entry it names one of that child type's state variables. A
+            # dangling name would silently declare nothing, so verify it
+            # exists either way.
             if "query_for" in q:
                 qf = q.get("query_for")
-                if "each_child" in q or "address" in q:
+                if "address" in q:
                     errors.append(
                         f"{name}[{i}]: 'query_for' is only valid on a "
-                        f"plain {{send}} query entry"
+                        f"plain {{send}} or each_child query entry"
                     )
                 elif not isinstance(qf, str) or not qf:
                     errors.append(
                         f"{name}[{i}]: 'query_for' must name a state variable"
                     )
+                elif "each_child" in q:
+                    _ec = q.get("each_child")
+                    _ec_def = (
+                        child_types_map.get(_ec)
+                        if isinstance(_ec, str) else None
+                    )
+                    _ec_vars = (
+                        _ec_def.get("state_variables")
+                        if isinstance(_ec_def, dict) else None
+                    )
+                    if not (isinstance(_ec_vars, dict) and qf in _ec_vars):
+                        errors.append(
+                            f"{name}[{i}]: query_for '{qf}' is not a state "
+                            f"variable of child type {_ec!r}"
+                        )
                 elif qf not in declared_vars:
                     errors.append(
                         f"{name}[{i}]: query_for '{qf}' is not a declared "

@@ -7,6 +7,7 @@ import { SwitcherPanel } from "./devices/SwitcherPanel";
 import { AudioPanel } from "./devices/AudioPanel";
 import { CameraPanel } from "./devices/CameraPanel";
 import { GenericPanel } from "./devices/GenericPanel";
+import { ChildEntitiesPanel } from "./ChildEntitiesPanel";
 import { DynamicControls } from "./controls/DynamicControls";
 import {
   Projector,
@@ -74,9 +75,11 @@ export function DeviceCard({ device }: { device: DeviceInfo }) {
         {device.push_state ? "Pushes state changes" : "Poll-only (no push)"}
       </div>
 
-      {/* Child entities (v0.5.0) — read-only summary; per-child wire modeling
-          is up to a Python _sim.py (the auto-generator doesn't model it yet). */}
-      {device.child_entities && Object.keys(device.child_entities).length > 0 && (
+      {/* Child entities (v0.5.0) — read-only summary badges. Shown only when
+          no modeled roster exists (Python _sim.py devices); auto-generated
+          simulators model children and get the full panel below instead. */}
+      {!(device.children && Object.keys(device.children).length > 0) &&
+        device.child_entities && Object.keys(device.child_entities).length > 0 && (
         <div style={{ padding: "2px 8px", fontSize: 10, color: "var(--text-muted)", display: "flex", flexWrap: "wrap", gap: 6 }}>
           {Object.entries(device.child_entities).map(([type, children]) => {
             const items = Object.entries(children);
@@ -103,6 +106,8 @@ export function DeviceCard({ device }: { device: DeviceInfo }) {
         ) : (
           <Panel device={device} onStateChange={handleStateChange} />
         )}
+        {/* Per-child state (auto-generated simulators model children) */}
+        <ChildEntitiesPanel device={device} onStateChange={handleStateChange} />
       </div>
 
       {/* Error injection */}

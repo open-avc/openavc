@@ -35,6 +35,7 @@ from server.drivers.compiled_protocol import (
     decode_delimiter,
     emit_literal,
     emit_template,
+    emit_template_multi,
     infer_state_var,
     safe_substitute,
     send_param_groups,
@@ -251,6 +252,21 @@ class YAMLAutoSimulator(TCPSimulator):
         sim_section = driver_def.get("simulator", {})
         if sim_section:
             self._merge_simulator_section(sim_section)
+
+        # v0.5.0 child entities: per-child state lives in the flat state dict
+        # under dotted keys "<type>.<id>.<prop>" (the sim-side mirror of the
+        # runtime's device.<id>.<type>.<id>.<prop> convention). The roster
+        # unions three sources: declared instances: blocks resolved against
+        # this instance's config, dotted keys seeded by the simulator:
+        # section, and the project child_entities the manager delivers via
+        # set_child_entities() after construction.
+        self._child_roster: dict[str, list[str]] = {}
+        self._child_state_responses: dict[tuple[str, str], ChildStateResponse] = {}
+        self._child_query_handlers: list[ChildQueryHandler] = []
+        self._build_child_state_responses()
+        self._seed_declared_children()
+        self._adopt_dotted_state_children()
+        self._build_child_query_handlers()
 
         # push_state: whether this simulator pushes state changes to connected
         # drivers (matching real device behavior). Set in simulator: section.
@@ -1228,6 +1244,18 @@ class YAMLAutoSimulator(TCPSimulator):
             if m:
                 return self._with_remainder(text, m, self._apply_inline_response(text, m, set_dict))
 
+        # Child-addressed poll queries answer from the addressed child's own
+        # state. They dispatch ahead of the auto command handlers on purpose:
+        # a protocol whose bare per-output view collides with a single-output
+        # command form (SIS "1Z") resolves by roster — children modeled means
+        # the matrix dialect wins, exactly like the real hardware.
+        for handler in self._child_query_handlers:
+            m = handler.pattern.match(text)
+            if m:
+                return self._with_remainder(
+                    text, m, self._execute_child_query_handler(handler)
+                )
+
         # Try auto-generated command handlers
         for handler in self._command_handlers:
             m = handler.pattern.match(text)
@@ -1312,6 +1340,9 @@ class YAMLAutoSimulator(TCPSimulator):
         for pattern, _set_dict in self._inline_response_handlers:
             if pattern.fullmatch(text):
                 return True
+        for handler in self._child_query_handlers:
+            if handler.pattern.fullmatch(text):
+                return True
         for handler in self._command_handlers:
             if handler.pattern.fullmatch(text):
                 return True
@@ -1327,17 +1358,44 @@ class YAMLAutoSimulator(TCPSimulator):
         if self._state_machines and self._fire_state_machine_triggers(handler.name):
             return None
 
+        # A child-addressed command resolves the captured id to a rostered
+        # child; an id the roster doesn't know goes unanswered (the device
+        # analog of addressing a port that isn't there).
+        child_id: str | None = None
+        if handler.child_type:
+            try:
+                raw_id = m.group(handler.child_id_group)
+            except (IndexError, re.error):
+                raw_id = None
+            if raw_id is None:
+                return None
+            raw_id = str(raw_id).strip()
+            if handler.child_wire_map is not None:
+                raw_id = handler.child_wire_map.get(raw_id, raw_id)
+            child_id = str(int(raw_id)) if raw_id.isdigit() else raw_id
+            if child_id not in self._child_roster.get(handler.child_type, []):
+                logger.debug(
+                    "%s: %s addressed unknown %s %r",
+                    self.device_id, handler.name, handler.child_type, child_id,
+                )
+                return None
+
         # Apply state changes
         for state_key, source in handler.state_changes.items():
+            target_key = (
+                f"{handler.child_type}.{child_id}.{state_key}"
+                if child_id is not None and state_key in handler.child_state_keys
+                else state_key
+            )
             if isinstance(source, tuple) and source[0] == "literal":
                 # Declared literal from a command's sets: block — wrapped so
                 # an integer literal can't read as a capture-group index.
-                value: Any = self._coerce_value(state_key, source[1])
+                value: Any = self._coerce_value(target_key, source[1])
             elif isinstance(source, int) and not isinstance(source, bool):
                 # Capture group index
                 value = m.group(source)
                 base = handler.group_bases.get(source)
-                if base and self._numeric_state_var(state_key):
+                if base and self._numeric_state_var(target_key):
                     # The wire value was formatted with a non-decimal spec —
                     # decode it back before coercion, or an integer var would
                     # end up holding the raw hex string. String-typed vars
@@ -1347,13 +1405,25 @@ class YAMLAutoSimulator(TCPSimulator):
                         value = int(value, base)
                     except ValueError:
                         pass
-                value = self._coerce_value(state_key, value)
+                value = self._coerce_value(target_key, value)
             else:
                 # Literal value (heuristic booleans arrive bare)
                 value = source
-            self.set_state(state_key, value)
+            self.set_state(target_key, value)
 
         # Generate response for the primary state variable
+        if handler.response_var and handler.response_is_child and child_id is not None:
+            resp = self._child_state_responses.get(
+                (handler.child_type, handler.response_var)
+            )
+            if resp is not None:
+                value = self._state.get(
+                    f"{handler.child_type}.{child_id}.{handler.response_var}"
+                )
+                response_text = resp.format(child_id, value)
+                if response_text is not None:
+                    return (response_text + delimiter).encode()
+            return None
         if handler.response_var and handler.response_var in self._state_responses:
             resp = self._state_responses[handler.response_var]
             response_text = resp.format(self._state.get(handler.response_var))
@@ -1535,9 +1605,37 @@ class YAMLAutoSimulator(TCPSimulator):
                 logger.warning("Invalid regex from command '%s': %s", cmd_name, pattern_str)
                 continue
 
+            # A command carrying exactly one child_id param is addressed to
+            # that child: its state effect routes to the child's own dotted
+            # state, with the flat variables as fallback for anything the
+            # child type doesn't declare. Two child_id params (a router's
+            # input AND output) are ambiguous — no child routing.
+            child_id_params = [
+                (pname, pdef) for pname, pdef in params.items()
+                if isinstance(pdef, dict)
+                and pdef.get("type") == "child_id"
+                and pdef.get("child_type") in self._child_types()
+            ]
+            child_ctype: str | None = None
+            child_param_name: str | None = None
+            child_wire_map: dict[str, str] | None = None
+            child_vars: dict[str, dict] = {}
+            if len(child_id_params) == 1:
+                child_param_name, cpdef = child_id_params[0]
+                child_ctype = cpdef.get("child_type")
+                child_vars = self._child_vars(child_ctype)
+                raw_map = cpdef.get("map")
+                if isinstance(raw_map, dict) and raw_map:
+                    # Param map: local id -> wire token; the sim sees the
+                    # wire token and needs the local id back.
+                    child_wire_map = {str(v): str(k) for k, v in raw_map.items()}
+
             # Determine state changes
             state_changes: dict[str, int | Any] = {}
+            child_state_keys: set[str] = set()
             response_var: str | None = None
+            response_is_child = False
+            child_id_group = 0
             specs = send_param_specs(send_template, params)
             group_bases: dict[int, int] = {}
 
@@ -1549,6 +1647,8 @@ class YAMLAutoSimulator(TCPSimulator):
                 # Group indices come from placeholder order in the template
                 # (that's how send_regex numbers its captures).
                 param_groups = send_param_groups(send_template, params)
+                if child_param_name:
+                    child_id_group = param_groups.get(child_param_name, 0)
                 for param_name, param_def in params.items():
                     ptype = (
                         param_def.get("type", "string")
@@ -1561,6 +1661,11 @@ class YAMLAutoSimulator(TCPSimulator):
                             group_bases[param_groups[param_name]] = base
                 if isinstance(declared_sets, dict):
                     for var_name, set_value in declared_sets.items():
+                        # On a child-addressed command the child type's own
+                        # variables win the name; flat vars stay reachable
+                        # for names the child type doesn't declare.
+                        if child_ctype and var_name in child_vars:
+                            child_state_keys.add(var_name)
                         ref = (
                             re.fullmatch(r"\{([^{}]+)\}", set_value)
                             if isinstance(set_value, str)
@@ -1577,8 +1682,17 @@ class YAMLAutoSimulator(TCPSimulator):
                             # mistaken for a capture-group index.
                             state_changes[var_name] = ("literal", set_value)
                 response_var = declared_query_for or next(iter(state_changes), None)
+                response_is_child = bool(
+                    child_ctype
+                    and response_var is not None
+                    and (
+                        response_var in child_state_keys
+                        or (declared_query_for and response_var in child_vars)
+                    )
+                )
             else:
-                # Heuristic 1: param name matches state variable
+                # Heuristic 1: param name matches a state variable — the
+                # addressed child type's variables first, flat second.
                 group_idx = 1
                 for param_name, param_def in params.items():
                     ptype = (
@@ -1593,17 +1707,33 @@ class YAMLAutoSimulator(TCPSimulator):
                         base = spec_int_base(specs.get(param_name, ""))
                         if base:
                             group_bases[group_idx] = base
-                    if param_name in state_vars:
+                    if param_name == child_param_name:
+                        child_id_group = group_idx
+                    elif child_ctype and param_name in child_vars:
+                        state_changes[param_name] = group_idx
+                        child_state_keys.add(param_name)
+                        if not response_var:
+                            response_var = param_name
+                            response_is_child = True
+                    elif param_name in state_vars:
                         state_changes[param_name] = group_idx  # capture group
                         if not response_var:
                             response_var = param_name
                     group_idx += 1
 
-                # Heuristic 2: command name patterns
+                # Heuristic 2: command name patterns (against the addressed
+                # child type's variables when the command targets a child)
                 if not state_changes:
-                    target = infer_state_var(cmd_name, state_vars)
+                    target = infer_state_var(
+                        cmd_name, set(child_vars) if child_ctype else state_vars
+                    )
+                    if not target and child_ctype:
+                        target = infer_state_var(cmd_name, state_vars)
                     if target:
                         response_var = target
+                        response_is_child = bool(child_ctype and target in child_vars)
+                        if response_is_child:
+                            child_state_keys.add(target)
                         if cmd_name.endswith("_on") or cmd_name.startswith("enable_"):
                             state_changes[target] = True
                         elif cmd_name.endswith("_off") or cmd_name.startswith("disable_"):
@@ -1612,8 +1742,21 @@ class YAMLAutoSimulator(TCPSimulator):
                             # Toggle handled specially — for now, just report current
                             pass
                         elif params:
-                            # set_X with params → first param is the value
-                            state_changes[target] = 1  # capture group 1
+                            # set_X with params → first non-child-id param is
+                            # the value
+                            value_group = next(
+                                (
+                                    idx
+                                    for idx, pname in enumerate(params, start=1)
+                                    if pname != child_param_name
+                                ),
+                                0,
+                            )
+                            if value_group:
+                                state_changes[target] = value_group
+                            else:
+                                state_changes.pop(target, None)
+                                child_state_keys.discard(target)
 
                 # Heuristic 3: if still no response var, try command name
                 # for queries
@@ -1622,12 +1765,28 @@ class YAMLAutoSimulator(TCPSimulator):
                     if target:
                         response_var = target
 
+            # A child-addressed handler needs the id capture to route by;
+            # without it, fall back to plain flat behavior.
+            if not child_id_group:
+                child_ctype = None
+                child_wire_map = None
+                if child_state_keys:
+                    for var_name in child_state_keys:
+                        state_changes.pop(var_name, None)
+                    child_state_keys = set()
+                    response_is_child = False
+
             handler = CommandHandler(
                 name=cmd_name,
                 pattern=pattern,
                 state_changes=state_changes,
                 response_var=response_var,
                 group_bases=group_bases,
+                child_type=child_ctype if child_state_keys or response_is_child else None,
+                child_id_group=child_id_group,
+                child_wire_map=child_wire_map,
+                child_state_keys=child_state_keys,
+                response_is_child=response_is_child,
             )
             self._command_handlers.append(handler)
 
@@ -1656,6 +1815,11 @@ class YAMLAutoSimulator(TCPSimulator):
         for query in queries:
             declared = None
             if isinstance(query, dict):
+                if "each_child" in query:
+                    # Per-child queries build per-child handlers instead
+                    # (_build_child_query_handlers) — a flat handler from a
+                    # {child_id} template could never match a real wire.
+                    continue
                 query_text = query.get("send", "")
                 qf = query.get("query_for")
                 if isinstance(qf, str) and qf:
@@ -1721,6 +1885,356 @@ class YAMLAutoSimulator(TCPSimulator):
             merged.update(self.config or {})
             query_text = safe_substitute(query_text, merged)
         return decode_delimiter(query_text).strip()
+
+    # ── Child-entity modeling ──
+
+    def _child_types(self) -> dict[str, dict]:
+        types = self._driver_def.get("child_entity_types")
+        return types if isinstance(types, dict) else {}
+
+    def _child_vars(self, ctype: str) -> dict[str, dict]:
+        tdef = self._child_types().get(ctype)
+        cvars = tdef.get("state_variables") if isinstance(tdef, dict) else None
+        return cvars if isinstance(cvars, dict) else {}
+
+    @staticmethod
+    def _default_child_value(var_def: dict) -> Any:
+        """Default for a child state variable — same rules as the flat
+        initial_state seeding in _build_info."""
+        var_type = var_def.get("type", "string") if isinstance(var_def, dict) else "string"
+        if var_type == "integer":
+            min_num = _as_number(var_def.get("min"))
+            return math.ceil(min_num) if min_num is not None else 0
+        if var_type == "number":
+            return 0.0
+        if var_type == "boolean":
+            return False
+        if var_type == "enum":
+            values = var_def.get("values", [])
+            return values[0] if values else ""
+        return ""
+
+    def _register_sim_children(self, ctype: str, ids: list) -> None:
+        """Add children to the sim roster and seed their state defaults.
+
+        Ids are stored as unpadded strings — the wire form a regex capture
+        or an expanded {child_id} query carries. Existing state (a dotted
+        simulator: initial_state seed) is never overwritten.
+        """
+        cvars = self._child_vars(ctype)
+        roster = self._child_roster.setdefault(ctype, [])
+        for local_id in ids:
+            cid = str(local_id)
+            if cid not in roster:
+                roster.append(cid)
+            for var, var_def in cvars.items():
+                key = f"{ctype}.{cid}.{var}"
+                if key not in self._state:
+                    self._state[key] = self._default_child_value(var_def)
+
+    def _seed_declared_children(self) -> None:
+        """Resolve each child type's ``instances:`` roster against this
+        instance's config — the sim-side twin of the driver's
+        _register_declared_children (count_from_state is skipped: the sim IS
+        the device, there is no reported count to read yet)."""
+        merged = dict(self._driver_def.get("default_config") or {})
+        merged.update(self.config or {})
+        for ctype, tdef in self._child_types().items():
+            if not isinstance(tdef, dict):
+                continue
+            inst = tdef.get("instances")
+            if not isinstance(inst, dict):
+                continue
+            ids: list[Any] = []
+            if isinstance(inst.get("ids"), list):
+                ids = [i for i in inst["ids"] if isinstance(i, (str, int)) and not isinstance(i, bool)]
+            elif "count" in inst or "count_from" in inst or "count_from_state" in inst:
+                raw = inst.get("count")
+                if raw is None and inst.get("count_from"):
+                    raw = merged.get(inst.get("count_from"), "")
+                try:
+                    n = int(str(raw).strip()) if str(raw).strip() != "" else 0
+                except (TypeError, ValueError):
+                    n = 0
+                ids = list(range(1, n + 1))
+            elif isinstance(inst.get("ids_from"), str):
+                raw_list = str(merged.get(inst["ids_from"], "") or "")
+                ids = [t.strip() for t in raw_list.split(",") if t.strip()]
+            if ids:
+                self._register_sim_children(ctype, ids)
+
+    def _adopt_dotted_state_children(self) -> None:
+        """A simulator: section that seeds dotted child keys
+        ("output.2.input: 5") implies those children exist — adopt them into
+        the roster so their queries answer even with default config counts."""
+        child_types = self._child_types()
+        if not child_types:
+            return
+        for key in list(self._state):
+            parts = key.split(".")
+            if len(parts) != 3:
+                continue
+            ctype, cid, prop = parts
+            if ctype in child_types and prop in self._child_vars(ctype):
+                self._register_sim_children(ctype, [cid])
+
+    def set_child_entities(self, child_entities: dict[str, dict[str, dict]]) -> None:
+        """Project children extend the roster (labels ride along for the UI).
+
+        The manager calls this after construction with the padded ids the
+        platform uses in state keys; the roster stores the unpadded wire form.
+        """
+        super().set_child_entities(child_entities)
+        for ctype, entries in (child_entities or {}).items():
+            if ctype not in self._child_types() or not isinstance(entries, dict):
+                continue
+            id_format = (self._child_types().get(ctype) or {}).get("id_format") or {}
+            ids = []
+            for padded in entries:
+                if id_format.get("type", "integer") == "integer":
+                    try:
+                        ids.append(int(str(padded).strip()))
+                        continue
+                    except (TypeError, ValueError):
+                        pass
+                ids.append(str(padded))
+            self._register_sim_children(ctype, ids)
+        self._build_child_query_handlers()
+
+    def to_info_dict(self) -> dict:
+        """Extend the base payload with the modeled child roster so the UI
+        can group the dotted per-child state keys into a Children section.
+        Values are NOT duplicated here — the UI reads them live from the
+        state dict, which the per-key WS updates keep current."""
+        info = super().to_info_dict()
+        if not self._child_roster:
+            return info
+        children: dict[str, Any] = {}
+        for ctype, ids in self._child_roster.items():
+            tdef = self._child_types().get(ctype) or {}
+            cvars = self._child_vars(ctype)
+            inst = tdef.get("instances") if isinstance(tdef.get("instances"), dict) else {}
+            label_template = inst.get("label") if isinstance(inst.get("label"), str) else None
+            type_label = tdef.get("label") or ctype.replace("_", " ").title()
+            # Project labels are keyed by the padded id form; normalize
+            # integer ids so "001" finds roster entry "1".
+            project_labels: dict[str, str] = {}
+            for pid, meta in (self._child_entities.get(ctype) or {}).items():
+                label = meta.get("label") if isinstance(meta, dict) else None
+                if not label:
+                    continue
+                pid_norm = str(pid).strip()
+                if pid_norm.isdigit():
+                    pid_norm = str(int(pid_norm))
+                project_labels[pid_norm] = str(label)
+            entries = []
+            for cid in ids:
+                label = project_labels.get(cid)
+                if not label and label_template:
+                    label = label_template.replace("{id}", cid)
+                entries.append({"id": cid, "label": label or f"{type_label} {cid}"})
+            children[ctype] = {
+                "label": type_label,
+                "entries": entries,
+                "props": list(cvars.keys()),
+            }
+        info["children"] = children
+        return info
+
+    def _build_child_state_responses(self) -> None:
+        """Derive per-(child type, variable) reply formatting from the
+        driver's ``child_set:`` response rules — the child twin of
+        _build_state_responses.
+
+        Two passes: rules whose child_set touches exactly one property bind
+        first (a per-property view reply like "Out2 In1 Vid"), then broader
+        rules fill remaining gaps ("Out2 In1 All" sets input AND
+        audio_input). Only capture-ref ids derive anything — a literal id
+        rule serves one hardwired child and has no generic form.
+        """
+        responses = self._driver_def.get("responses", [])
+        child_types = self._child_types()
+        if not child_types or not isinstance(responses, list):
+            return
+        for exact_only in (True, False):
+            for resp in responses:
+                if not isinstance(resp, dict):
+                    continue
+                raw = resp.get("child_set")
+                pattern = resp.get("match", "")
+                if not isinstance(raw, list) or not pattern:
+                    continue
+                for entry in raw:
+                    if not isinstance(entry, dict):
+                        continue
+                    ctype = entry.get("type")
+                    state_map = entry.get("state")
+                    if ctype not in child_types or not isinstance(state_map, dict):
+                        continue
+                    if exact_only != (len(state_map) == 1):
+                        continue
+                    id_group, wire_id_map = self._child_set_id_group(entry)
+                    if id_group is None:
+                        continue
+                    for prop, expr in state_map.items():
+                        self._absorb_child_rule(
+                            ctype, prop, pattern, id_group, wire_id_map, expr
+                        )
+
+    @staticmethod
+    def _child_set_id_group(entry: dict) -> tuple[int | None, dict[str, str] | None]:
+        """The capture group holding a child_set rule's child id, plus the
+        local-id -> wire-id map (the reverse of the rule's wire -> local
+        ``map:``) a reply must apply to put the device's own id form back on
+        the wire."""
+        cid = entry.get("id")
+        wire_map: dict[str, str] | None = None
+        if isinstance(cid, dict):
+            gref = cid.get("group")
+            if isinstance(gref, str) and gref.startswith("$"):
+                gref = gref[1:]
+            try:
+                group = int(gref)
+            except (TypeError, ValueError):
+                return None, None
+            raw_map = cid.get("map")
+            if isinstance(raw_map, dict) and raw_map:
+                wire_map = {str(v): str(k) for k, v in raw_map.items()}
+            return group, wire_map
+        if isinstance(cid, str) and cid.startswith("$"):
+            try:
+                return int(cid[1:]), None
+            except ValueError:
+                return None, None
+        return None, None
+
+    def _absorb_child_rule(
+        self,
+        ctype: str,
+        prop: str,
+        pattern: str,
+        id_group: int,
+        wire_id_map: dict[str, str] | None,
+        expr: Any,
+    ) -> None:
+        """Fold one child_set property expression into the (ctype, prop)
+        reply table: a capture ref becomes the {value} template, a mapped
+        capture becomes one value_map entry per mapped value, and a static
+        value becomes a whole-reply value_map entry."""
+        key = (ctype, prop)
+        if key not in self._child_state_responses:
+            self._child_state_responses[key] = ChildStateResponse(ctype, prop)
+        sr = self._child_state_responses[key]
+
+        def norm(value: Any) -> str:
+            return str(value).lower() if isinstance(value, bool) else str(value)
+
+        if isinstance(expr, str) and expr.startswith("$"):
+            try:
+                group = int(expr[1:])
+            except ValueError:
+                return
+            if sr.template is None:
+                template = emit_template_multi(
+                    pattern, {id_group: "{child_id}", group: "{value}"}
+                )
+                if template:
+                    sr.template = template
+                    sr.id_wire_map = wire_id_map
+            return
+        if isinstance(expr, dict):
+            if "group" in expr:
+                try:
+                    group = int(expr["group"])
+                except (TypeError, ValueError):
+                    return
+                value_map = expr.get("map")
+                if isinstance(value_map, dict) and value_map:
+                    for wire_tok, value in value_map.items():
+                        vkey = norm(value)
+                        if vkey in sr.value_map:
+                            continue
+                        reply = emit_template_multi(
+                            pattern,
+                            {id_group: "{child_id}", group: str(wire_tok)},
+                        )
+                        if reply:
+                            sr.value_map[vkey] = reply
+                            if sr.id_wire_map is None:
+                                sr.id_wire_map = wire_id_map
+                elif sr.template is None:
+                    template = emit_template_multi(
+                        pattern, {id_group: "{child_id}", group: "{value}"}
+                    )
+                    if template:
+                        sr.template = template
+                        sr.id_wire_map = wire_id_map
+                return
+            if "value" in expr:
+                expr = expr["value"]
+            else:
+                return
+        # Static value (bare or {value: ...}): the whole reply is a literal
+        # carrying only the child id slot.
+        vkey = norm(expr)
+        if vkey not in sr.value_map:
+            reply = emit_template_multi(pattern, {id_group: "{child_id}"})
+            if reply:
+                sr.value_map[vkey] = reply
+                if sr.id_wire_map is None:
+                    sr.id_wire_map = wire_id_map
+
+    def _build_child_query_handlers(self) -> None:
+        """One handler per (each_child query x rostered child). Declared
+        semantics only: the entry's ``query_for`` names which child variable
+        the reply reports — without it there is nothing to derive."""
+        self._child_query_handlers = []
+        entries: list[Any] = []
+        polling = self._driver_def.get("polling")
+        if isinstance(polling, dict) and isinstance(polling.get("queries"), list):
+            entries += polling["queries"]
+        if isinstance(self._driver_def.get("on_connect"), list):
+            entries += self._driver_def["on_connect"]
+        for q in entries:
+            if not isinstance(q, dict) or "each_child" not in q:
+                continue
+            ctype = q.get("each_child")
+            template = q.get("send")
+            qf = q.get("query_for")
+            if not (
+                isinstance(ctype, str)
+                and isinstance(template, str) and template
+                and isinstance(qf, str) and qf
+            ):
+                continue
+            for cid in self._child_roster.get(ctype, []):
+                sub: Any = int(cid) if cid.isdigit() else cid
+                wire = self._query_wire_line(
+                    safe_substitute(template, {"child_id": sub})
+                )
+                if not wire:
+                    continue
+                self._child_query_handlers.append(ChildQueryHandler(
+                    pattern=re.compile(f"^{re.escape(wire)}$"),
+                    child_type=ctype,
+                    child_id=cid,
+                    response_var=qf,
+                ))
+
+    def _execute_child_query_handler(self, handler: ChildQueryHandler) -> bytes | None:
+        """Answer a per-child query from the addressed child's own state."""
+        resp = self._child_state_responses.get(
+            (handler.child_type, handler.response_var)
+        )
+        if resp is None:
+            return None
+        value = self._state.get(
+            f"{handler.child_type}.{handler.child_id}.{handler.response_var}"
+        )
+        text = resp.format(handler.child_id, value)
+        if text is None:
+            return None
+        return (text + self._get_delimiter()).encode()
 
     def _build_inline_response_handlers(self) -> None:
         """Compile (pattern, set) handlers from the merged inline responses.
@@ -1915,6 +2429,11 @@ class YAMLAutoSimulator(TCPSimulator):
     _explicit_handlers: list[ExplicitHandler] = []
     _script_handlers: list[ScriptHandler] = []
     _notification_map: dict[str, dict[str, str]] = {}
+    # ...and the child tables before __init__ reaches their assignment
+    # (set_state can fire during construction).
+    _child_roster: dict[str, list[str]] = {}
+    _child_state_responses: dict[tuple[str, str], ChildStateResponse] = {}
+    _child_query_handlers: list[ChildQueryHandler] = []
 
     # ── State change notifications ──
 
@@ -1927,8 +2446,7 @@ class YAMLAutoSimulator(TCPSimulator):
         # bound inward (ceil a lower bound, floor an upper bound) so the clamped
         # value still respects the bound instead of truncating past it.
         if isinstance(value, (int, float)) and not isinstance(value, bool):
-            state_vars = self._driver_def.get("state_variables", {})
-            var_def = state_vars.get(key, {})
+            var_def = self._var_def_for_key(key)
             v_min = _as_number(var_def.get("min"))
             v_max = _as_number(var_def.get("max"))
             if v_min is not None and value < v_min:
@@ -1959,12 +2477,10 @@ class YAMLAutoSimulator(TCPSimulator):
             and not self._is_osc
             and not self._handling_command
             and self._clients
-            and key in self._state_responses
+            and (push_text := self._format_state_reply(key, value)) is not None
         ):
-            resp = self._state_responses[key]
-            response_text = resp.format(value)
             delimiter = self._get_delimiter()
-            push_data = (response_text + delimiter).encode()
+            push_data = (push_text + delimiter).encode()
             asyncio.ensure_future(self.push(push_data))
         elif (
             self._is_udp
@@ -1972,12 +2488,10 @@ class YAMLAutoSimulator(TCPSimulator):
             and not self._handling_command
             and self._last_udp_client
             and self._udp_transport
-            and key in self._state_responses
+            and (push_text := self._format_state_reply(key, value)) is not None
         ):
-            resp = self._state_responses[key]
-            response_text = resp.format(value)
             delimiter = self._get_delimiter()
-            push_data = (response_text + delimiter).encode()
+            push_data = (push_text + delimiter).encode()
             self._udp_transport.sendto(push_data, self._last_udp_client)
             self.log_protocol("out", push_data)
 
@@ -2091,6 +2605,19 @@ class YAMLAutoSimulator(TCPSimulator):
         self._udp_transport.sendto(data, self._last_osc_client)
         self.log_protocol("out", data)
 
+    def _format_state_reply(self, key: str, value: Any) -> str | None:
+        """Reply/push text for a state key — flat keys through their
+        StateResponse, dotted child keys through the (type, prop) child
+        table. None when nothing derivable represents the value."""
+        if key in self._state_responses:
+            return self._state_responses[key].format(value)
+        parts = key.split(".")
+        if len(parts) == 3:
+            resp = self._child_state_responses.get((parts[0], parts[2]))
+            if resp is not None and parts[1] in self._child_roster.get(parts[0], []):
+                return resp.format(parts[1], value)
+        return None
+
     # ── Helpers ──
 
     def _get_delimiter(self) -> str:
@@ -2103,18 +2630,25 @@ class YAMLAutoSimulator(TCPSimulator):
             return ""
         return decode_delimiter(self._driver_def.get("delimiter", "\r\n"))
 
+    def _var_def_for_key(self, state_key: str) -> dict:
+        """Variable definition for a flat key, or for a dotted child key
+        ("<type>.<id>.<prop>") the child type's own declaration."""
+        parts = state_key.split(".")
+        if len(parts) == 3:
+            var_def = self._child_vars(parts[0]).get(parts[2])
+            if isinstance(var_def, dict):
+                return var_def
+        var_def = self._driver_def.get("state_variables", {}).get(state_key)
+        return var_def if isinstance(var_def, dict) else {}
+
     def _numeric_state_var(self, state_key: str) -> bool:
         """True when the state variable's declared type is numeric."""
-        var_def = self._driver_def.get("state_variables", {}).get(state_key)
-        vtype = (
-            var_def.get("type", "string") if isinstance(var_def, dict) else "string"
-        )
+        vtype = self._var_def_for_key(state_key).get("type", "string")
         return vtype in ("integer", "number", "float")
 
     def _coerce_value(self, state_key: str, value: Any) -> Any:
         """Coerce a value to the state variable's declared type and clamp to range."""
-        state_vars = self._driver_def.get("state_variables", {})
-        var_def = state_vars.get(state_key, {})
+        var_def = self._var_def_for_key(state_key)
         var_type = var_def.get("type", "string")
 
         if var_type == "integer":
@@ -2258,6 +2792,11 @@ class CommandHandler:
         state_changes: dict,
         response_var: str | None,
         group_bases: dict[int, int] | None = None,
+        child_type: str | None = None,
+        child_id_group: int = 0,
+        child_wire_map: dict[str, str] | None = None,
+        child_state_keys: set[str] | None = None,
+        response_is_child: bool = False,
     ):
         self.name = name
         self.pattern = pattern
@@ -2266,6 +2805,15 @@ class CommandHandler:
         # Capture groups whose wire form is non-decimal ({level:02X}),
         # mapped to the int base that decodes them.
         self.group_bases = group_bases or {}
+        # Child-addressed command (exactly one child_id param): the capture
+        # group holding the child id, the wire->local id translation from the
+        # param's map:, and which state_changes keys are the child's own
+        # variables (routed to its dotted state) vs flat fallbacks.
+        self.child_type = child_type
+        self.child_id_group = child_id_group
+        self.child_wire_map = child_wire_map
+        self.child_state_keys = child_state_keys or set()
+        self.response_is_child = response_is_child
 
 
 class QueryHandler:
@@ -2273,6 +2821,55 @@ class QueryHandler:
     def __init__(self, pattern: re.Pattern, response_var: str):
         self.pattern = pattern
         self.response_var = response_var
+
+
+class ChildQueryHandler:
+    """Auto-generated handler for one child's each_child poll query."""
+    def __init__(
+        self,
+        pattern: re.Pattern,
+        child_type: str,
+        child_id: str,
+        response_var: str,
+    ):
+        self.pattern = pattern
+        self.child_type = child_type
+        self.child_id = child_id          # unpadded id, as the wire carries it
+        self.response_var = response_var  # a child state variable
+
+
+class ChildStateResponse:
+    """Reply formatting for one (child type, state variable) pair, derived
+    from the driver's child_set: response rules. The template carries a
+    {child_id} slot alongside {value}; value_map entries carry {child_id}
+    inside each mapped reply."""
+
+    def __init__(self, child_type: str, var: str):
+        self.child_type = child_type
+        self.var = var
+        self.template: str | None = None     # e.g. "Out{child_id} In{value} Vid"
+        self.value_map: dict[str, str] = {}  # e.g. {"true": "Vmt{child_id}*1"}
+        # local id -> wire id, from the child_set rule's id map: reversed —
+        # a device that reports 0-based ids must answer with them too.
+        self.id_wire_map: dict[str, str] | None = None
+
+    def format(self, child_id: str, value: Any) -> str | None:
+        """Reply text for this child/value, or None when nothing derivable
+        represents the value (unlike flat replies, a bare value with no id
+        slot would be garbage on the wire)."""
+        wire_id = child_id
+        if self.id_wire_map is not None:
+            wire_id = self.id_wire_map.get(str(child_id), str(child_id))
+        value_str = str(value).lower() if isinstance(value, bool) else str(value)
+        if value_str in self.value_map:
+            return self.value_map[value_str].replace("{child_id}", str(wire_id))
+        if self.template:
+            return (
+                self.template
+                .replace("{child_id}", str(wire_id))
+                .replace("{value}", str(value))
+            )
+        return None
 
 
 class ExplicitHandler:

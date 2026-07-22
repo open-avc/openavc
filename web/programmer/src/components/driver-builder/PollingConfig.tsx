@@ -144,9 +144,11 @@ export function PollingConfig({ draft, onUpdate }: PollingConfigProps) {
                 <select
                   value={eachChild ? query.each_child : ""}
                   onChange={(e) =>
+                    // Changing the scope invalidates a declared state pairing
+                    // (device-level vs child-level variables) — drop it.
                     updateQuery(
                       i,
-                      buildQueryEntry(send, e.target.value, when, undefined, queryFor),
+                      buildQueryEntry(send, e.target.value, when, undefined, ""),
                     )
                   }
                   title="Send once, or once per registered child of a type"
@@ -213,27 +215,44 @@ export function PollingConfig({ draft, onUpdate }: PollingConfigProps) {
                   ))}
                 </select>
               )}
-              {!eachChild && draft.transport !== "osc" &&
-                stateVarNames.length > 0 && (
-                <select
-                  value={queryFor}
-                  onChange={(e) =>
-                    updateQuery(
-                      i,
-                      buildQueryEntry(send, "", when, undefined, e.target.value),
+              {draft.transport !== "osc" && (() => {
+                // Device-level variables on a plain query; the child type's
+                // own variables on a per-child query (each child answers
+                // from its own state).
+                const reportOptions = eachChild
+                  ? Object.keys(
+                      draft.child_entity_types?.[query.each_child]
+                        ?.state_variables ?? {},
                     )
-                  }
-                  title="Which state variable the device's reply reports — lets the simulator answer this query without guessing from command names"
-                  style={{ width: 150, fontSize: "var(--font-size-sm)" }}
-                >
-                  <option value="">Reports (auto)</option>
-                  {stateVarNames.map((v) => (
-                    <option key={v} value={v}>
-                      Reports {v}
-                    </option>
-                  ))}
-                </select>
-              )}
+                  : stateVarNames;
+                if (reportOptions.length === 0) return null;
+                return (
+                  <select
+                    value={queryFor}
+                    onChange={(e) =>
+                      updateQuery(
+                        i,
+                        buildQueryEntry(
+                          send,
+                          eachChild ? query.each_child : "",
+                          when,
+                          undefined,
+                          e.target.value,
+                        ),
+                      )
+                    }
+                    title="Which state variable the device's reply reports — lets the simulator answer this query without guessing from command names"
+                    style={{ width: 150, fontSize: "var(--font-size-sm)" }}
+                  >
+                    <option value="">Reports (auto)</option>
+                    {reportOptions.map((v) => (
+                      <option key={v} value={v}>
+                        Reports {v}
+                      </option>
+                    ))}
+                  </select>
+                );
+              })()}
               <button
                 onClick={() => removeQuery(i)}
                 style={{ padding: "2px", color: "var(--text-muted)" }}

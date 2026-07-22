@@ -17,6 +17,10 @@ corpus idioms between them:
                 command_prefix framing, declared literal sets, bare poll
                 queries answered through the QueryHandler path, on_connect
                 query_for
+  acme_zone_amp controller-of-children (declared instances: roster, child_id
+                params, child_set response rules with a value map, each_child
+                polling with query_for) — every child modeled independently
+                on both sides
 """
 
 import asyncio
@@ -151,6 +155,98 @@ def _matrix_def() -> dict:
     }
 
 
+def _zone_amp_def() -> dict:
+    return {
+        "id": "acme_zone_amp",
+        "name": "Acme Zone Amp",
+        "manufacturer": "Acme",
+        "category": "audio",
+        "version": "1.0.0",
+        "transport": "tcp",
+        "delimiter": "\r\n",
+        "command_suffix": "\r",
+        "default_config": {"host": "", "port": 6000, "zone_count": 2},
+        "config_schema": {
+            "host": {"type": "string", "required": True, "label": "IP Address"},
+            "port": {"type": "integer", "default": 6000, "label": "Port"},
+            "zone_count": {"type": "integer", "default": 2, "label": "Zones"},
+        },
+        "state_variables": {
+            "power": {"type": "boolean", "label": "Power"},
+        },
+        "child_entity_types": {
+            "zone": {
+                "label": "Zone",
+                "label_plural": "Zones",
+                "id_format": {"type": "integer", "min": 1, "max": 8},
+                "state_variables": {
+                    "level": {"type": "integer", "min": 0, "max": 100, "label": "Level"},
+                    "mute": {"type": "boolean", "label": "Mute"},
+                },
+                "instances": {"count_from": "zone_count", "label": "Zone {id}"},
+            },
+        },
+        "commands": {
+            "power_on": {"send": "PWR ON", "sets": {"power": True}, "query_for": "power"},
+            "power_off": {"send": "PWR OFF", "sets": {"power": False}, "query_for": "power"},
+            "set_zone_level": {
+                "send": "ZL {zone} {level}",
+                "params": {
+                    "zone": {"type": "child_id", "child_type": "zone", "required": True},
+                    "level": {"type": "integer", "min": 0, "max": 100, "required": True},
+                },
+                "sets": {"level": "{level}"},
+                "query_for": "level",
+            },
+            "zone_mute_on": {
+                "send": "ZM {zone} 1",
+                "params": {
+                    "zone": {"type": "child_id", "child_type": "zone", "required": True},
+                },
+                "sets": {"mute": True},
+                "query_for": "mute",
+            },
+            "zone_mute_off": {
+                "send": "ZM {zone} 0",
+                "params": {
+                    "zone": {"type": "child_id", "child_type": "zone", "required": True},
+                },
+                "sets": {"mute": False},
+                "query_for": "mute",
+            },
+        },
+        "responses": [
+            {"match": "^PWR ON$", "set": {"power": True}},
+            {"match": "^PWR OFF$", "set": {"power": False}},
+            {
+                "match": r"^ZL (\d+) (\d+)$",
+                "child_set": [
+                    {"type": "zone", "id": "$1", "state": {"level": "$2"}},
+                ],
+            },
+            {
+                "match": r"^ZM (\d+) (ON|OFF)$",
+                "child_set": [
+                    {
+                        "type": "zone",
+                        "id": "$1",
+                        "state": {
+                            "mute": {"group": 2, "map": {"ON": "true", "OFF": "false"}},
+                        },
+                    },
+                ],
+            },
+        ],
+        "polling": {
+            "queries": [
+                {"send": "PWR?\r", "query_for": "power"},
+                {"each_child": "zone", "send": "ZL? {child_id}\r", "query_for": "level"},
+                {"each_child": "zone", "send": "ZM? {child_id}\r", "query_for": "mute"},
+            ],
+        },
+    }
+
+
 def _make_driver(definition: dict, port: int, device_id: str = "dev1"):
     cls = create_configurable_driver_class(definition)
     state = StateStore()
@@ -185,7 +281,9 @@ def _assert_parity(drv, sim, var_names) -> None:
         )
 
 
-@pytest.mark.parametrize("definition", [_display_def(), _matrix_def()])
+@pytest.mark.parametrize(
+    "definition", [_display_def(), _matrix_def(), _zone_amp_def()]
+)
 def test_fixture_definitions_are_valid(definition):
     assert validate_driver_definition(definition) == []
 
@@ -363,6 +461,108 @@ async def test_matrix_back_to_back_bare_wires_stay_separate():
         writer.close()
     finally:
         await sim.stop()
+
+
+# ===========================================================================
+# Controller-of-children (acme_zone_amp)
+# ===========================================================================
+
+
+def _assert_child_parity(drv, sim, child_type, child_ids, var_names) -> None:
+    """Both sides agree on every exercised child variable, per child."""
+    for cid in child_ids:
+        for name in var_names:
+            key = f"{child_type}.{cid}.{name}"
+            assert drv.get_state(key) == sim.get_state(key), (
+                f"child parity broken for {key!r}: "
+                f"driver={drv.get_state(key)!r} sim={sim.get_state(key)!r}"
+            )
+
+
+async def test_zone_amp_child_command_round_trips():
+    """A child-addressed command updates exactly the addressed child on both
+    sides — the other child's state never moves (the shared-flat-state bug
+    class the per-child model exists to prevent)."""
+    definition = _zone_amp_def()
+    sim, port = await _start_sim(definition)
+    drv = _make_driver(definition, port)
+    try:
+        # connect() registers the declared roster (zone_count = 2).
+        await drv.connect()
+        assert drv.list_children("zone") == [1, 2]
+        assert sim._child_roster.get("zone") == ["1", "2"]
+
+        await drv.send_command("set_zone_level", {"zone": 2, "level": 55})
+        await _wait_for(lambda: drv.get_state("zone.2.level") == 55)
+        assert sim.get_state("zone.2.level") == 55
+        assert sim.get_state("zone.1.level") == 0
+        assert drv.get_state("zone.1.level") == 0
+
+        # Value-mapped child reply ("ZM 1 ON" <-> mute True).
+        await drv.send_command("zone_mute_on", {"zone": 1})
+        await _wait_for(lambda: drv.get_state("zone.1.mute") is True)
+        assert sim.get_state("zone.1.mute") is True
+        assert sim.get_state("zone.2.mute") is False
+
+        await drv.send_command("zone_mute_off", {"zone": 1})
+        await _wait_for(lambda: drv.get_state("zone.1.mute") is False)
+
+        # Flat fallback keeps working alongside the child model.
+        await drv.send_command("power_on")
+        await _wait_for(lambda: drv.get_state("power") is True)
+
+        _assert_parity(drv, sim, ["power"])
+        _assert_child_parity(drv, sim, "zone", ["1", "2"], ["level", "mute"])
+    finally:
+        await drv.disconnect()
+        await sim.stop()
+
+
+async def test_zone_amp_each_child_poll_reports_per_child_state():
+    """each_child poll queries answer from each child's own state — two
+    children with distinct values arrive distinctly."""
+    definition = _zone_amp_def()
+    sim, port = await _start_sim(definition)
+    sim.set_state("zone.1.level", 11)
+    sim.set_state("zone.2.level", 22)
+    sim.set_state("zone.1.mute", True)
+    sim.set_state("zone.2.mute", False)
+    sim.set_state("power", True)
+    drv = _make_driver(definition, port)
+    try:
+        await drv.connect()
+        await drv.poll()
+        await _wait_for(
+            lambda: drv.get_state("zone.1.level") == 11
+            and drv.get_state("zone.2.level") == 22
+        )
+        await _wait_for(
+            lambda: drv.get_state("zone.1.mute") is True
+            and drv.get_state("zone.2.mute") is False
+        )
+        await _wait_for(lambda: drv.get_state("power") is True)
+        _assert_parity(drv, sim, ["power"])
+        _assert_child_parity(drv, sim, "zone", ["1", "2"], ["level", "mute"])
+    finally:
+        await drv.disconnect()
+        await sim.stop()
+
+
+def test_zone_amp_child_tables():
+    """Table-level pins: per-child query handlers exist per rostered child,
+    and the reply formats derive from the child_set rules."""
+    definition = _zone_amp_def()
+    sim = YAMLAutoSimulator("acme_zone_amp", config={}, driver_def=definition)
+    assert sim._child_roster == {"zone": ["1", "2"]}
+    patterns = sorted(h.pattern.pattern for h in sim._child_query_handlers)
+    assert len(patterns) == 4  # 2 queries x 2 zones
+    level_resp = sim._child_state_responses[("zone", "level")]
+    assert level_resp.template == "ZL {child_id} {value}"
+    mute_resp = sim._child_state_responses[("zone", "mute")]
+    assert mute_resp.value_map == {
+        "true": "ZM {child_id} ON",
+        "false": "ZM {child_id} OFF",
+    }
 
 
 # ===========================================================================
