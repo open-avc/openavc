@@ -173,6 +173,71 @@ def test_orphan_driver_resolves_with_empty_defaults(engine_with_project):
     assert resolved["config"] == {"host": "192.0.2.99"}
 
 
+@pytest.fixture
+def fake_ir_driver():
+    """A YAML IR driver shipping a default code-set (community-driver stand-in).
+
+    Synthetic invented device (core-test rule): the ``ir_codes`` opt-in plus a
+    populated ``default_config.ir_codes`` is exactly how a community IR driver
+    ships its codes.
+    """
+    definition = {
+        "id": "fake_ir_test",
+        "name": "Fake IR (test)",
+        "manufacturer": "TestCo",
+        "category": "display",
+        "version": "1.0.0",
+        "transport": "bridge",
+        "ir_codes": True,
+        "default_config": {
+            "ir_codes": {
+                "power_on": {"label": "Power", "pronto": "0000 006D 0000 0001 0060 0018", "repeat": 1},
+                "mute": {"label": "Mute", "pronto": "0000 006D 0000 0001 0040 0018", "repeat": 1},
+            }
+        },
+        "config_schema": {},
+        "state_variables": {},
+        "commands": {},
+        "responses": [],
+    }
+    cls = create_configurable_driver_class(definition)
+    register_driver(cls)
+    yield cls
+    unregister_driver("fake_ir_test")
+
+
+def test_device_ir_codes_overlay_driver_defaults(engine_with_project, fake_ir_driver):
+    """A device that authors one IR code overlays it onto the driver's shipped
+    set per code, rather than the shallow merge replacing the whole map. Without
+    the overlay, one IrCodesEditor save (which persists just the edited code)
+    would wipe every code the driver ships.
+    """
+    engine = engine_with_project
+    device = DeviceConfig(
+        id="tv1",
+        driver="fake_ir_test",
+        name="TV",
+        config={
+            "ir_codes": {
+                "power_on": {
+                    "label": "Power (custom)",
+                    "pronto": "0000 006D 0000 0001 0099 0018",
+                    "repeat": 3,
+                }
+            }
+        },
+    )
+    engine.project.devices.append(device)
+
+    codes = engine.resolved_device_config(device)["config"]["ir_codes"]
+    # The device-authored code wins for its key...
+    assert codes["power_on"]["repeat"] == 3
+    assert codes["power_on"]["label"] == "Power (custom)"
+    # ...and the driver's other shipped codes survive (the bug wiped them).
+    assert "mute" in codes
+    assert codes["mute"]["repeat"] == 1
+
+
 # ---------------------------------------------------------------------------
 # BaseDriver._required_port hardening
 # ---------------------------------------------------------------------------

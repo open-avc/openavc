@@ -87,7 +87,10 @@ def test_device_config_codes_override_driver_default_codes():
             "mute": {"label": "Mute", "pronto": "0000 006D 0000 0001 0040 0018", "repeat": 1},
         }
     )
-    # Simulate resolved_device_config layering (defaults < device config).
+    # This test covers command-surfacing from an already-resolved ir_codes map;
+    # the per-code overlay itself (device codes layered onto the driver default,
+    # not replacing it) is exercised against the real merge in
+    # test_resolved_device_config.py::test_device_ir_codes_overlay_driver_defaults.
     default_codes = cls.DRIVER_INFO["default_config"]["ir_codes"]
     device_codes = {"power_on": {"label": "Power (custom)", "pronto": "0000 006D 0000 0001 0099 0018", "repeat": 3}}
     merged = {**default_codes, **device_codes}

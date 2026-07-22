@@ -966,8 +966,18 @@ class Engine:
 
         cfg = device.model_dump() if hasattr(device, "model_dump") else dict(device)
         defaults = get_driver_default_config(cfg.get("driver", ""))
+        device_config = cfg.get("config", {})
         conn = self.project.connections.get(cfg["id"], {})
-        cfg["config"] = {**defaults, **cfg.get("config", {}), **conn}
+        merged = {**defaults, **device_config, **conn}
+        # ir_codes overlays per code on top of the driver's shipped default set
+        # rather than the shallow merge's whole-map replace: a device that
+        # authors a single code (one IrCodesEditor save persists just that code)
+        # must not wipe every code the driver ships.
+        default_codes = defaults.get("ir_codes")
+        device_codes = device_config.get("ir_codes")
+        if isinstance(default_codes, dict) and isinstance(device_codes, dict):
+            merged["ir_codes"] = {**default_codes, **device_codes}
+        cfg["config"] = merged
         cfg["config"] = self._resolve_bridge_binding(cfg["config"])
         cfg["config"] = self._resolve_usb_binding(cfg["config"])
         return cfg
