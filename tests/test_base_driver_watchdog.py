@@ -165,6 +165,50 @@ async def test_dry_polls_reset_on_recovery() -> None:
 
 
 @pytest.mark.asyncio
+async def test_watchdog_classifies_specific_fault_from_poll_error() -> None:
+    """A plain ConnectionError whose message names a specific cause is
+    classified (connection_refused) rather than defaulting to no_response, so a
+    state-change trigger sees the right offline edge."""
+    from server.core.connection_fault import CONNECTION_REFUSED
+
+    drv = _make_driver()
+    drv.config["host"] = "192.0.2.1"
+    drv.config["port"] = 4000
+    drv._connected = True
+    drv.set_state("connected", True)
+    drv.poll_raises = ConnectionError("connection refused")
+
+    await drv.start_polling(0.01)
+    await asyncio.sleep(0.2)
+
+    assert drv.get_state("connected") is False
+    assert drv.last_fault is not None
+    assert drv.last_fault.code == CONNECTION_REFUSED
+
+
+@pytest.mark.asyncio
+async def test_watchdog_uses_no_response_for_a_generic_drop() -> None:
+    """A poll error with no specific signature keeps the stopped-answering
+    no_response wording (the classifier's generic transport_disconnected
+    fallback would read as 'connection dropped', which is less accurate for a
+    device that was answering and then went quiet)."""
+    from server.core.connection_fault import NO_RESPONSE
+
+    drv = _make_driver()
+    drv._connected = True
+    drv.set_state("connected", True)
+    drv.poll_raises = OSError("boom")
+
+    await drv.start_polling(0.01)
+    await asyncio.sleep(0.2)
+
+    assert drv.get_state("connected") is False
+    assert drv.last_fault is not None
+    assert drv.last_fault.code == NO_RESPONSE
+    assert "stopped answering" in drv.last_fault.message
+
+
+@pytest.mark.asyncio
 async def test_verify_reachable_returns_true_for_localhost() -> None:
     """_verify_reachable returns True when a listener accepts."""
     drv = _make_driver()

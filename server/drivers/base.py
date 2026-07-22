@@ -25,10 +25,11 @@ from typing import Any
 
 from server.core.connection_fault import (
     NO_RESPONSE,
+    TRANSPORT_DISCONNECTED,
     ConnectionFault,
     ConnectionFaultError,
+    classify_connection_fault,
     default_fault_message,
-    typed_fault_from_exc,
 )
 from server.core.event_bus import EventBus
 from server.core.state_store import StateStore
@@ -1974,13 +1975,35 @@ class BaseDriver(ABC):
                     # shows the generic "connection dropped". A typed fault
                     # raised by poll() itself wins; otherwise this is the
                     # canonical stopped-answering case.
-                    self._last_fault = typed_fault_from_exc(
-                        last_poll_exc
-                    ) or ConnectionFault(
-                        NO_RESPONSE,
-                        f"Connected, but the device stopped answering "
-                        f"({dry_polls} poll cycles without a response).",
-                    )
+                    # Classify the specific cause from the last poll error when
+                    # it's more informative than the generic stopped-answering
+                    # wording: a plain ConnectionError that really means
+                    # "connection refused" should surface as connection_refused,
+                    # not no_response. The classifier's generic codes
+                    # (no_response, transport_disconnected) fall through to the
+                    # poll-cycle message below — it says the device WAS answering
+                    # and then stopped, which reads better than either.
+                    fault: ConnectionFault | None = None
+                    if last_poll_exc is not None:
+                        classified = classify_connection_fault(
+                            last_error=None,
+                            exc=last_poll_exc,
+                            host=self.config.get("host", ""),
+                            port=self.config.get("port"),
+                            transport=self.config.get("transport", ""),
+                        )
+                        if classified.code not in (
+                            NO_RESPONSE,
+                            TRANSPORT_DISCONNECTED,
+                        ):
+                            fault = classified
+                    if fault is None:
+                        fault = ConnectionFault(
+                            NO_RESPONSE,
+                            f"Connected, but the device stopped answering "
+                            f"({dry_polls} poll cycles without a response).",
+                        )
+                    self._last_fault = fault
                     self._handle_transport_disconnect()
                     return
 
