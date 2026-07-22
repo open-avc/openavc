@@ -1205,4 +1205,229 @@ const jsonVars = {
   };
 }
 
+// --- Phase 4 blind fields: transports / bridge / config_derived / ir_codes --
+const transportsIssues = (issues) => issues.filter((i) => i.field === "transports");
+const bridgeIssues = (issues) => issues.filter((i) => i.field === "bridge");
+const derivedIssues = (issues) =>
+  issues.filter((i) => String(i.field || "").startsWith("config_derived"));
+const irIssues = (issues) => issues.filter((i) => i.field === "ir_codes");
+
+{
+  // "bridge" is a routing sentinel, not a medium — the schema's items enum
+  // (INTERCHANGEABLE_TRANSPORTS) excludes it.
+  const issues = validate(baseDraft("tcp", {}, { transports: ["tcp", "bridge"] }));
+  const hits = transportsIssues(issues);
+  results.p4_transports_bad_entry_error = {
+    pass:
+      hits.length === 1 &&
+      hits[0].severity === "error" &&
+      /not an interchangeable transport/.test(hits[0].message),
+    detail: hits,
+  };
+}
+{
+  // The corpus form: primary included, all entries from the allowed set.
+  const issues = validate(baseDraft("tcp", {}, { transports: ["tcp", "serial"] }));
+  results.p4_transports_valid_ok = {
+    pass: transportsIssues(issues).length === 0,
+    detail: transportsIssues(issues),
+  };
+}
+{
+  // Schema requires id + kind on every port.
+  const issues = validate(
+    baseDraft("tcp", {}, { bridge: { ports: [{ id: "serial:1" }] } }),
+  );
+  const hits = bridgeIssues(issues);
+  results.p4_bridge_port_missing_kind_error = {
+    pass:
+      hits.length === 1 &&
+      hits[0].severity === "error" &&
+      /needs a kind/.test(hits[0].message),
+    detail: hits,
+  };
+}
+{
+  // passthrough_port carries the schema's 1-65535 integer bounds.
+  const issues = validate(
+    baseDraft("tcp", {}, {
+      bridge: {
+        ports: [{ id: "serial:1", kind: "serial", passthrough_port: 70000 }],
+      },
+    }),
+  );
+  const hits = bridgeIssues(issues);
+  results.p4_bridge_passthrough_range_error = {
+    pass:
+      hits.length === 1 &&
+      hits[0].severity === "error" &&
+      /between 1 and 65535/.test(hits[0].message),
+    detail: hits,
+  };
+}
+{
+  // Neither the schema nor the runtime rejects duplicate port ids — the
+  // runtime's id-keyed dict silently keeps the last one — so a warning.
+  const issues = validate(
+    baseDraft("tcp", {}, {
+      bridge: {
+        ports: [
+          { id: "ir:1", kind: "ir" },
+          { id: "ir:1", kind: "ir" },
+        ],
+      },
+    }),
+  );
+  const hits = bridgeIssues(issues);
+  results.p4_bridge_duplicate_port_id_warning = {
+    pass:
+      hits.length === 1 &&
+      hits[0].severity === "warning" &&
+      /duplicates another port/.test(hits[0].message),
+    detail: hits,
+  };
+}
+{
+  // A well-formed bridge block produces no bridge issues.
+  const issues = validate(
+    baseDraft("tcp", {}, {
+      bridge: {
+        ports: [
+          { id: "serial:1", kind: "serial", passthrough_port: 4999, label: "Serial 1" },
+          { id: "ir:1", kind: "ir", label: "IR Emitter 1" },
+          { id: "relay:1", kind: "relay" },
+        ],
+      },
+    }),
+  );
+  results.p4_bridge_valid_ok = {
+    pass: bridgeIssues(issues).length === 0,
+    detail: bridgeIssues(issues),
+  };
+}
+{
+  // An unknown {token} makes the computed value silently always "" at
+  // runtime (derive_config treats missing fields as empty) — flagged here.
+  const issues = validate(
+    baseDraft("tcp", {}, {
+      config_schema: { workspace_id: { type: "string", label: "Workspace" } },
+      config_derived: { ws: "/workspace/{workspace_idd}" },
+    }),
+  );
+  const hits = derivedIssues(issues);
+  results.p4_config_derived_unknown_placeholder_warning = {
+    pass:
+      hits.length === 1 &&
+      hits[0].severity === "warning" &&
+      /\{workspace_idd\}/.test(hits[0].message),
+    detail: hits,
+  };
+}
+{
+  // A computed name colliding with a declared config field silently
+  // overwrites the configured value when the device connects. The backend
+  // doesn't reject it, so a warning.
+  const issues = validate(
+    baseDraft("tcp", {}, {
+      config_schema: { zone: { type: "string", label: "Zone" } },
+      config_derived: { zone: "Z{host}" },
+    }),
+  );
+  const hits = derivedIssues(issues);
+  results.p4_config_derived_name_collision_warning = {
+    pass:
+      hits.length === 1 &&
+      hits[0].severity === "warning" &&
+      /same name as a config field/.test(hits[0].message),
+    detail: hits,
+  };
+}
+{
+  // Valid templates: config_schema keys, default_config keys, baseline
+  // injected keys, earlier computed names, and {name:format} specs all count.
+  const issues = validate(
+    baseDraft("tcp", {}, {
+      config_schema: { workspace_id: { type: "string", label: "Workspace" } },
+      default_config: { unit: 1 },
+      config_derived: {
+        ws: "/workspace/{workspace_id}",
+        target: "{ws}@{host}:{unit:02d}",
+      },
+    }),
+  );
+  results.p4_config_derived_valid_ok = {
+    pass: derivedIssues(issues).length === 0,
+    detail: derivedIssues(issues),
+  };
+}
+{
+  // Mirror avcdriver_semantic.py: the IR code-set flag must be a boolean.
+  const issues = validate(baseDraft("tcp", {}, { ir_codes: "yes" }));
+  const hits = irIssues(issues);
+  results.p4_ir_codes_non_boolean_error = {
+    pass:
+      hits.length === 1 &&
+      hits[0].severity === "error" &&
+      /true or false/.test(hits[0].message),
+    detail: hits,
+  };
+}
+{
+  // The field doc says use transport "bridge" with ir_codes; the backend
+  // doesn't enforce it, so a mismatch warns rather than errors.
+  const issues = validate(baseDraft("tcp", {}, { ir_codes: true }));
+  const hits = irIssues(issues);
+  results.p4_ir_codes_non_bridge_warning = {
+    pass:
+      hits.length === 1 &&
+      hits[0].severity === "warning" &&
+      /bridge/i.test(hits[0].message),
+    detail: hits,
+  };
+}
+{
+  // The generic_ir shape: transport bridge + ir_codes true is clean.
+  const issues = validate(baseDraft("bridge", {}, { ir_codes: true }));
+  const hits = [...irIssues(issues), ...transportsIssues(issues), ...bridgeIssues(issues)];
+  results.p4_ir_bridge_driver_ok = { pass: hits.length === 0, detail: hits };
+}
+{
+  // All the surfaced fields together on one valid driver: interchangeable
+  // transports, bridge ports, computed config referenced from a command,
+  // help.connection, catalog-stamped discovery.requires, and the advanced
+  // simulator blocks. Zero errors.
+  const issues = validate(
+    baseDraft(
+      "tcp",
+      {
+        power_on: { label: "On", send: "PWR1 {ws}\\r", params: {} },
+      },
+      {
+        transports: ["tcp", "serial"],
+        bridge: {
+          ports: [
+            { id: "serial:1", kind: "serial", passthrough_port: 4999 },
+            { id: "ir:1", kind: "ir" },
+          ],
+        },
+        config_schema: { workspace_id: { type: "string", label: "Workspace" } },
+        config_derived: { ws: "/workspace/{workspace_id}" },
+        help: {
+          overview: "Test.",
+          setup: "Plug it in.",
+          connection: "Enable remote control in the device menu first.",
+        },
+        discovery: { requires: "0.23.0", mdns: ["_acme._tcp.local."] },
+        simulator: {
+          state_machines: { warmup: { steps: [] } },
+          notifications: { power: "PWR {value}\\r" },
+        },
+        ir_codes: false,
+      },
+    ),
+  );
+  const errors = errorsOf(issues);
+  results.p4_full_featured_driver_ok = { pass: errors.length === 0, detail: errors };
+}
+
 process.stdout.write(JSON.stringify(results));

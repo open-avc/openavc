@@ -114,7 +114,7 @@ const writePython = (fp: DriverDiscoveryPython) =>
 // Schema fields the update() function below knows how to persist. Keep in
 // sync with DriverDiscoveryConfig in api/types.ts.
 const KNOWN_DISCOVERY_KEYS: ReadonlySet<string> = new Set([
-  "mdns", "ssdp", "amx_ddp", "tcp_probe", "udp_probe", "python",
+  "requires", "mdns", "ssdp", "amx_ddp", "tcp_probe", "udp_probe", "python",
   "oui", "hostname", "port_open", "manufacturer_alias", "snmp_pen",
 ]);
 
@@ -144,6 +144,9 @@ export function DiscoveryHintsEditor({
       }
     }
     const t: DriverDiscoveryConfig = {};
+    // `requires` is catalog-stamped, not authored here — but it must survive
+    // edits to the other discovery fields (this rebuild used to drop it).
+    if (next.requires) t.requires = next.requires;
     if (next.mdns?.length) t.mdns = next.mdns;
     if (next.ssdp?.length) t.ssdp = next.ssdp;
     if (next.amx_ddp?.length) t.amx_ddp = next.amx_ddp;
@@ -161,6 +164,21 @@ export function DiscoveryHintsEditor({
 
   return (
     <div>
+      {/* Read-only — stamped by the catalog build (scripts/build_index.py)
+          when a fingerprint needs a newer discovery parser; older platforms
+          skip the block cleanly. No authoring control on purpose. */}
+      {cfg.requires && (
+        <div
+          style={{
+            fontSize: "var(--font-size-sm)",
+            color: "var(--text-muted)",
+            marginBottom: "var(--space-md)",
+          }}
+        >
+          Requires platform {cfg.requires} — stamped by the driver catalog,
+          not hand-edited.
+        </div>
+      )}
       <FingerprintsSection cfg={cfg} update={update} />
       <HintsSection cfg={cfg} update={update} />
       <AdvancedSection />

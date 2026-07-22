@@ -224,6 +224,62 @@ export function SimulatorEditor({ draft, onUpdate }: SimulatorEditorProps) {
           </div>
         )}
       </div>
+
+      {/* State machines + notifications — advanced simulator behavior with
+          no form UI. Shown read-only when present (they survive edits via
+          the update() spread); authored in the YAML view. */}
+      <AdvancedSimBlockSummary
+        title="State Machines"
+        entries={sim.state_machines}
+        singular="state machine"
+        description="Timed multi-step transitions (e.g. a projector's warmup ramp)."
+      />
+      <AdvancedSimBlockSummary
+        title="Notifications"
+        entries={sim.notifications as Record<string, unknown> | undefined}
+        singular="notification"
+        description="Unsolicited messages emitted on state change, keyed by state variable."
+      />
+    </div>
+  );
+}
+
+/** Read-only summary for an advanced simulator block (count + names) with a
+ *  pointer at the YAML view. Rendered only when the block exists. */
+function AdvancedSimBlockSummary({
+  title,
+  entries,
+  singular,
+  description,
+}: {
+  title: string;
+  entries: Record<string, unknown> | undefined;
+  singular: string;
+  description: string;
+}) {
+  const names = Object.keys(entries ?? {});
+  if (names.length === 0) return null;
+  return (
+    <div style={{ marginBottom: "var(--space-md)" }}>
+      <h3 style={{ fontSize: "var(--font-size-base)", marginBottom: "var(--space-sm)" }}>
+        {title}
+      </h3>
+      <div
+        style={{
+          background: "var(--bg-hover)",
+          padding: "var(--space-sm) var(--space-md)",
+          borderRadius: "var(--border-radius)",
+          fontSize: "var(--font-size-sm)",
+          color: "var(--text-muted)",
+        }}
+      >
+        {names.length} {singular}
+        {names.length === 1 ? "" : "s"}:{" "}
+        <span style={{ fontFamily: "var(--font-mono)" }}>
+          {names.join(", ")}
+        </span>
+        . {description} Edit via the YAML view — advanced simulator behavior.
+      </div>
     </div>
   );
 }

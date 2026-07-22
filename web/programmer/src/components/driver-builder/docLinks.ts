@@ -19,6 +19,7 @@ export const DOCS = {
 
   // Connection tab sub-sections
   transport: `${DOCS_BASE}/creating-drivers/#step-by-step-walkthrough`,
+  bridge: `${DOCS_BASE}/creating-drivers/#multi-transport-drivers-and-bridges`,
   auth: `${DOCS_BASE}/creating-drivers/#auth-section`,
   push: `${DOCS_BASE}/creating-drivers/#push-section`,
   liveness: `${DOCS_BASE}/creating-drivers/#liveness-section`,

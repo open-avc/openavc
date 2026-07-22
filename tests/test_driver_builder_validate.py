@@ -15,8 +15,14 @@ ever fires them. Also covers the declared command semantics rules mirrored
 from avcdriver_semantic.py: `sets` keys and `query_for` must name declared
 state variables (device-level, or the addressed child type's on a command
 with exactly one child_id param) and a "{param}" value must name a declared
-parameter. Skips when the Node toolchain or esbuild is absent rather
-than failing the Python-only CI gate.
+parameter. Also covers the top-level field rules the Builder surfaces:
+`transports` entries must come from the interchangeable set, bridge ports
+need id/kind with passthrough_port bounds (duplicate ids warn — the runtime
+silently keeps the last), config_derived templates must reference declared
+config fields (unknown tokens and name collisions warn), and ir_codes must
+be a boolean (warning when true off the bridge transport). Skips when the
+Node toolchain or esbuild is absent rather than failing the Python-only CI
+gate.
 """
 from __future__ import annotations
 
@@ -150,6 +156,19 @@ SCENARIOS = [
     "json_no_fields_error",
     "json_empty_path_error",
     "json_on_osc_transport_error",
+    "p4_transports_bad_entry_error",
+    "p4_transports_valid_ok",
+    "p4_bridge_port_missing_kind_error",
+    "p4_bridge_passthrough_range_error",
+    "p4_bridge_duplicate_port_id_warning",
+    "p4_bridge_valid_ok",
+    "p4_config_derived_unknown_placeholder_warning",
+    "p4_config_derived_name_collision_warning",
+    "p4_config_derived_valid_ok",
+    "p4_ir_codes_non_boolean_error",
+    "p4_ir_codes_non_bridge_warning",
+    "p4_ir_bridge_driver_ok",
+    "p4_full_featured_driver_ok",
 ]
 
 

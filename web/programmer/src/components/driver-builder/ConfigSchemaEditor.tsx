@@ -429,6 +429,144 @@ export function ConfigSchemaEditor({ draft, onUpdate }: ConfigSchemaEditorProps)
       >
         <Plus size={14} /> Add Config Field
       </button>
+
+      <ComputedFieldsEditor draft={draft} onUpdate={onUpdate} />
+    </div>
+  );
+}
+
+/**
+ * Edits the optional `config_derived` map — computed config values, each a
+ * template substituted from other config fields when the device connects
+ * (e.g. ws: "/workspace/{workspace_id}"). If any {field} a template
+ * references is empty or missing, the computed value is "" — so an optional
+ * prefixed address segment simply disappears. Computed values are visible to
+ * every command, on_connect entry, response, and poll query, just like a
+ * real config field.
+ */
+function ComputedFieldsEditor({
+  draft,
+  onUpdate,
+}: {
+  draft: DriverDefinition;
+  onUpdate: (partial: Partial<DriverDefinition>) => void;
+}) {
+  const derived = draft.config_derived ?? {};
+  const names = Object.keys(derived);
+
+  // An empty map drops the key entirely so minimal YAML stays minimal.
+  const writeDerived = (next: Record<string, string>) => {
+    onUpdate({
+      config_derived: Object.keys(next).length > 0 ? next : undefined,
+    });
+  };
+
+  const addField = () => {
+    let counter = names.length + 1;
+    let name = `computed_${counter}`;
+    while (name in derived) {
+      counter++;
+      name = `computed_${counter}`;
+    }
+    writeDerived({ ...derived, [name]: "" });
+  };
+
+  const removeField = (name: string) => {
+    const next = { ...derived };
+    delete next[name];
+    writeDerived(next);
+  };
+
+  // Rename in place, preserving declaration order — templates may reference
+  // earlier computed names, so order matters at runtime.
+  const renameField = (oldName: string, newName: string) => {
+    const cleaned = newName.replace(/[^a-zA-Z0-9_]/g, "").toLowerCase();
+    if (!cleaned || cleaned === oldName || cleaned in derived) return;
+    const next: Record<string, string> = {};
+    for (const [k, v] of Object.entries(derived)) {
+      next[k === oldName ? cleaned : k] = v;
+    }
+    writeDerived(next);
+  };
+
+  return (
+    <div style={{ marginTop: "var(--space-xl)" }}>
+      <h4
+        style={{
+          fontSize: "var(--font-size-sm)",
+          fontWeight: 600,
+          marginBottom: "var(--space-xs)",
+        }}
+      >
+        Computed Fields
+      </h4>
+      <p
+        style={{
+          fontSize: "11px",
+          color: "var(--text-muted)",
+          marginBottom: "var(--space-sm)",
+        }}
+      >
+        Optional values computed from other config fields when the device
+        connects — each is a template like{" "}
+        <code>{"/workspace/{workspace_id}"}</code>. If a referenced field is
+        empty or missing, the computed value is <code>&quot;&quot;</code>, so
+        an optional prefixed segment simply disappears. Use a computed field
+        in commands, responses, and queries exactly like a config field.
+      </p>
+
+      {names.map((name) => (
+        <div
+          key={name}
+          style={{
+            display: "flex",
+            gap: "var(--space-sm)",
+            alignItems: "center",
+            marginBottom: "var(--space-xs)",
+          }}
+        >
+          <input
+            value={name}
+            onChange={(e) => renameField(name, e.target.value)}
+            placeholder="name"
+            style={{ width: 160, fontFamily: "var(--font-mono)" }}
+          />
+          <span style={{ color: "var(--text-muted)", fontSize: "11px" }}>
+            =
+          </span>
+          <input
+            value={derived[name] ?? ""}
+            onChange={(e) =>
+              writeDerived({ ...derived, [name]: e.target.value })
+            }
+            placeholder={"e.g. /workspace/{workspace_id}"}
+            style={{ flex: 1, fontFamily: "var(--font-mono)" }}
+          />
+          <button
+            onClick={() => removeField(name)}
+            title="Remove this computed field"
+            style={{ padding: "2px", color: "var(--text-muted)" }}
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
+      ))}
+
+      <button
+        onClick={addField}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "var(--space-xs)",
+          padding: "var(--space-sm) var(--space-md)",
+          borderRadius: "var(--border-radius)",
+          background: "var(--bg-hover)",
+          fontSize: "var(--font-size-sm)",
+          marginTop: "var(--space-xs)",
+        }}
+      >
+        <Plus size={14} /> Add Computed Field
+      </button>
     </div>
   );
 }

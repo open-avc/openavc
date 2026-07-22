@@ -10,8 +10,10 @@ import {
   ACTION_AVAILABILITIES,
   ACTION_KINDS_YAML,
   AUTH_TRANSPORTS,
+  BRIDGE_PORT_KINDS,
   DISALLOWED_OPEN_PORTS,
   FRAME_HEADER_SIZES,
+  INTERCHANGEABLE_TRANSPORTS,
   LENGTH_ENDIANS,
   LIVENESS_TRANSPORTS,
   PUSH_FRAME_PARSER_TYPES,
@@ -316,10 +318,13 @@ export function validateDriver(
   // ── Child entity types ───────────────────────────────────────────────
   const childTypes = draft.child_entity_types ?? {};
   const childTypeNames = new Set(Object.keys(childTypes));
-  // Config fields a query's `when:` gate may name (either block declares them).
+  // Config fields a query's `when:` gate may name. Mirrors the backend's
+  // CONFIG_FIELD_SOURCES: config_derived keys resolve into config at
+  // runtime, so a gate may name them like any declared field.
   const gateFieldNames = new Set([
     ...Object.keys(draft.config_schema ?? {}),
     ...Object.keys(draft.default_config ?? {}),
+    ...Object.keys(draft.config_derived ?? {}),
   ]);
   for (const [typeName, typeDef] of Object.entries(childTypes)) {
     if (!CHILD_ID_RE.test(typeName)) {
@@ -574,8 +579,13 @@ export function validateDriver(
   }
 
   // ── Commands: param-name legality + placeholder coverage ─────────────
+  // Substitutable config tokens mirror the runtime's config dict: declared
+  // schema fields, default_config-only keys, computed (config_derived)
+  // values, and the baseline transport keys the runtime injects.
   const configKeys = new Set([
     ...Object.keys(draft.config_schema ?? {}),
+    ...Object.keys(draft.default_config ?? {}),
+    ...Object.keys(draft.config_derived ?? {}),
     ...BASELINE_CONFIG_KEYS,
   ]);
 
@@ -1436,6 +1446,14 @@ export function validateDriver(
   //    tab at author time. At runtime a bad push block silently never
   //    delivers a frame, and a bad liveness block either never arms or tears
   //    healthy devices down. ────────────────────────────────────────────────
+  // ── Interchangeable transports, bridge ports, computed config values, and
+  //    the IR code-set flag — mirror the schema constraints (spec.py) and the
+  //    runtime's silent-failure modes so they surface at author time. ───────
+  validateTransports(draft, issues);
+  validateBridge(draft, issues);
+  validateConfigDerived(draft, issues);
+  validateIrCodes(draft, issues);
+
   // ── Actions, quick actions, and web_ui — mirror avcdriver_semantic.py's
   //    validate_actions so a bad promotion shows in the Behavior tab at
   //    author time instead of as a save-time 422. ─────────────────────────
@@ -1470,6 +1488,232 @@ function isMulticastGroup(value: string): boolean {
   return octets[0] >= 224 && octets[0] <= 239;
 }
 
+/** Mirror the schema's `transports:` items enum (spec.py
+ *  INTERCHANGEABLE_TRANSPORTS): every entry must be a real medium — "bridge"
+ *  is a routing sentinel, not a medium, so it can't appear in the list. */
+function validateTransports(
+  draft: DriverDefinition,
+  issues: ValidationIssue[],
+): void {
+  const list = draft.transports;
+  if (list === undefined) return;
+  if (!Array.isArray(list)) {
+    issues.push({
+      severity: "error",
+      section: "connection",
+      field: "transports",
+      message: "Interchangeable transports must be a list of transport names.",
+    });
+    return;
+  }
+  const allowed = INTERCHANGEABLE_TRANSPORTS as readonly string[];
+  const seen = new Set<string>();
+  for (const entry of list) {
+    const key = typeof entry === "string" ? entry : String(entry);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (typeof entry !== "string" || !allowed.includes(entry)) {
+      issues.push({
+        severity: "error",
+        section: "connection",
+        field: "transports",
+        message: `"${key}" is not an interchangeable transport — use ${allowed.join(", ")}.`,
+      });
+    }
+  }
+}
+
+/** Mirror the schema's bridge block (spec.py): a ports list whose entries
+ *  require id + kind, kind from BRIDGE_PORT_KINDS, passthrough_port in
+ *  1-65535. Duplicate port ids are a warning, not an error: neither the
+ *  schema nor the runtime rejects them — get_driver_bridge_ports keys a
+ *  dict by id, so the last declaration silently wins. */
+function validateBridge(
+  draft: DriverDefinition,
+  issues: ValidationIssue[],
+): void {
+  const bridge = draft.bridge;
+  if (bridge === undefined) return;
+  const ports = (bridge as { ports?: unknown } | null)?.ports;
+  if (
+    !bridge ||
+    typeof bridge !== "object" ||
+    Array.isArray(bridge) ||
+    !Array.isArray(ports)
+  ) {
+    issues.push({
+      severity: "error",
+      section: "connection",
+      field: "bridge",
+      message:
+        "A bridge declaration needs a ports list — the typed ports other devices connect through.",
+    });
+    return;
+  }
+  const seenIds = new Set<string>();
+  ports.forEach((entry, i) => {
+    let label = `Bridge port ${i + 1}`;
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      issues.push({
+        severity: "error",
+        section: "connection",
+        field: "bridge",
+        message: `${label} must be a mapping with an id and a kind.`,
+      });
+      return;
+    }
+    const port = entry as Record<string, unknown>;
+    const id = port.id;
+    if (typeof id !== "string" || !id.trim()) {
+      issues.push({
+        severity: "error",
+        section: "connection",
+        field: "bridge",
+        message: `${label} needs an id (e.g. "serial:1") — downstream devices reference it as their bridge port.`,
+      });
+    } else {
+      label = `Bridge port "${id}"`;
+      if (seenIds.has(id)) {
+        issues.push({
+          severity: "warning",
+          section: "connection",
+          field: "bridge",
+          message: `${label} duplicates another port's id — the runtime keeps only the last declaration.`,
+        });
+      }
+      seenIds.add(id);
+    }
+    const kind = port.kind;
+    if (
+      typeof kind !== "string" ||
+      !(BRIDGE_PORT_KINDS as readonly string[]).includes(kind)
+    ) {
+      issues.push({
+        severity: "error",
+        section: "connection",
+        field: "bridge",
+        message: `${label} needs a kind — ${(BRIDGE_PORT_KINDS as readonly string[]).join(", ")}.`,
+      });
+    }
+    const passthrough = port.passthrough_port;
+    if (
+      passthrough !== undefined &&
+      (typeof passthrough !== "number" ||
+        !Number.isInteger(passthrough) ||
+        passthrough < 1 ||
+        passthrough > 65535)
+    ) {
+      issues.push({
+        severity: "error",
+        section: "connection",
+        field: "bridge",
+        message: `${label} pass-through port must be a whole number between 1 and 65535.`,
+      });
+    }
+  });
+}
+
+/** Computed config values (`config_derived`). The schema requires string
+ *  templates; beyond that the runtime fails silently — an unknown {token}
+ *  makes the computed value always "" (derive_config treats a missing field
+ *  as empty), and a name that collides with a declared config field silently
+ *  overwrites the configured value when the device connects — so both are
+ *  warnings here. Valid template tokens are the same set link URLs use:
+ *  declared config fields, baseline injected keys, plus other computed
+ *  names (entries resolve in declaration order). */
+function validateConfigDerived(
+  draft: DriverDefinition,
+  issues: ValidationIssue[],
+): void {
+  const derived = draft.config_derived;
+  if (derived === undefined) return;
+  if (!derived || typeof derived !== "object" || Array.isArray(derived)) {
+    issues.push({
+      severity: "error",
+      section: "connection",
+      field: "config_derived",
+      message: "Computed fields must be a map of name to template string.",
+    });
+    return;
+  }
+  const declared = new Set([
+    ...Object.keys(draft.config_schema ?? {}),
+    ...Object.keys(draft.default_config ?? {}),
+  ]);
+  const tokenKeys = new Set([
+    ...declared,
+    ...BASELINE_CONFIG_KEYS,
+    ...Object.keys(derived),
+  ]);
+  for (const [name, template] of Object.entries(derived)) {
+    if (typeof template !== "string") {
+      issues.push({
+        severity: "error",
+        section: "connection",
+        field: `config_derived.${name}`,
+        message: `Computed field "${name}" must be a template string (e.g. "/workspace/{workspace_id}").`,
+      });
+      continue;
+    }
+    if (declared.has(name) || BASELINE_CONFIG_KEYS.has(name)) {
+      issues.push({
+        severity: "warning",
+        section: "connection",
+        field: `config_derived.${name}`,
+        message: `Computed field "${name}" has the same name as a config field — the computed value silently replaces the configured one when the device connects. Rename one of them.`,
+      });
+    }
+    // Templates accept {name} and {name:format_spec} — same token shape the
+    // runtime substitutes (compiled_protocol.derive_config).
+    const re = /\{(\w+)(?::[^{}]*)?\}/g;
+    const seen = new Set<string>();
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(template))) {
+      const token = m[1];
+      if (seen.has(token) || tokenKeys.has(token)) continue;
+      seen.add(token);
+      issues.push({
+        severity: "warning",
+        section: "connection",
+        field: `config_derived.${name}`,
+        message: `Computed field "${name}" references {${token}}, but no config field or computed field of that name exists — the computed value would always be empty.`,
+      });
+    }
+  }
+}
+
+/** The IR code-set opt-in. Mirror avcdriver_semantic.py: the flag must be a
+ *  boolean (the codes themselves live in default_config.ir_codes / the
+ *  device config). The transport pairing is advice the backend doesn't
+ *  enforce — the field doc says use transport "bridge" — so a mismatch is
+ *  a warning. */
+function validateIrCodes(
+  draft: DriverDefinition,
+  issues: ValidationIssue[],
+): void {
+  const flag = draft.ir_codes as unknown;
+  if (flag === undefined) return;
+  if (typeof flag !== "boolean") {
+    issues.push({
+      severity: "error",
+      section: "general",
+      field: "ir_codes",
+      message:
+        "The IR code-set flag must be true or false — the code-set itself lives in the device config / default config ir_codes map.",
+    });
+    return;
+  }
+  if (flag && draft.transport !== "bridge") {
+    issues.push({
+      severity: "warning",
+      section: "general",
+      field: "ir_codes",
+      message:
+        "An IR code-set device emits through an IR bridge port and has no address of its own — set the transport to Bridge so it's added from a bridge's IR port.",
+    });
+  }
+}
+
 /** Mirror server/drivers/avcdriver_semantic.py's validate_actions: the
  *  `actions` + `quick_actions` promotion blocks and the `web_ui` flag. A bad
  *  entry either 422s at save (loader-validated) or renders a button that
@@ -1484,10 +1728,13 @@ function validateActions(
   const commandIds = new Set(Object.keys(draft.commands ?? {}));
 
   // Keys a link URL / web_ui template may substitute: declared config fields
-  // plus the runtime-injected connection keys (host, port, ...).
+  // (computed config_derived values included — the runtime substitutes from
+  // the driver's live config dict) plus the runtime-injected connection keys
+  // (host, port, ...).
   const urlKeys = new Set([
     ...Object.keys(draft.config_schema ?? {}),
     ...Object.keys(draft.default_config ?? {}),
+    ...Object.keys(draft.config_derived ?? {}),
     ...BASELINE_CONFIG_KEYS,
   ]);
   const checkUrlTemplate = (where: string, field: string, template: string) => {

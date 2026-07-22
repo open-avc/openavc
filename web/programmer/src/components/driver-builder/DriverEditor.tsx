@@ -6,6 +6,7 @@ import { useProjectStore } from "../../store/projectStore";
 import { useDriverBuilderStore } from "../../store/driverBuilderStore";
 import { DRIVER_CATEGORIES } from "./driverCategories";
 import { TransportPicker } from "./TransportPicker";
+import { BridgePortsEditor } from "./BridgePortsEditor";
 import { CommandBuilder } from "./CommandBuilder";
 import { ActionsEditor } from "./ActionsEditor";
 import { ResponseBuilder } from "./ResponseBuilder";
@@ -163,6 +164,9 @@ export function DriverEditor({
         "inter_command_delay",
       ].includes(k),
   ).length;
+  const derivedFieldCount = Object.keys(draft.config_derived ?? {}).length;
+  const bridgeEnabled = draft.bridge !== undefined;
+  const bridgePortCount = (draft.bridge?.ports ?? []).length;
   const onConnectCount = (draft.on_connect ?? []).length;
   const authEnabled = !!draft.auth;
   const pushEnabled = !!draft.push;
@@ -435,6 +439,27 @@ export function DriverEditor({
                 Enter a Driver ID and Name to save your driver.
               </div>
             )}
+            {/* Informational only — inline_protocol is reserved for the
+                built-in generic drivers and has no authoring control. The
+                flag survives edits via the draft spread. */}
+            {!!draft.inline_protocol && (
+              <div
+                style={{
+                  padding: "var(--space-sm) var(--space-md)",
+                  marginBottom: "var(--space-md)",
+                  borderRadius: "var(--border-radius)",
+                  background: "var(--bg-hover)",
+                  fontSize: "var(--font-size-sm)",
+                  color: "var(--text-secondary)",
+                }}
+              >
+                This driver uses the no-code device-page protocol editor
+                (built-in generic drivers only). Commands, responses, and
+                state variables authored on the device page merge into it at
+                runtime — community drivers ship theirs in the driver file
+                instead.
+              </div>
+            )}
             <div style={rowStyle}>
               <label style={labelStyle}>Driver ID</label>
               <input
@@ -578,6 +603,40 @@ export function DriverEditor({
               />
             </div>
 
+            <div style={rowStyle}>
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "var(--space-xs)",
+                  fontSize: "var(--font-size-sm)",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={draft.ir_codes === true}
+                  onChange={(e) =>
+                    onUpdate({ ir_codes: e.target.checked || undefined })
+                  }
+                />
+                IR code-set device
+              </label>
+              <div
+                style={{
+                  fontSize: "11px",
+                  color: "var(--text-muted)",
+                  marginTop: "var(--space-xs)",
+                }}
+              >
+                A device controlled by an infrared remote through an IR
+                bridge. Codes are authored on the device page (learn, paste
+                Pronto hex, type a sendir string, or search a code database)
+                and sent through an IR bridge port — each code becomes a
+                device command. A community IR driver ships its code-set in
+                default config. Use the Bridge transport with this.
+              </div>
+            </div>
+
             <HelpFieldsSection draft={draft} onUpdate={onUpdate} />
 
             <PublishingSection draft={draft} onUpdate={onUpdate} />
@@ -594,6 +653,16 @@ export function DriverEditor({
               helpHref={DOCS.transport}
             >
               <TransportPicker draft={draft} onUpdate={onUpdate} />
+            </CollapsibleSection>
+
+            <CollapsibleSection
+              title="Bridge Ports"
+              subtitle="Optional — declares this device as a bridge others connect through (a serial-to-Ethernet or IR bridge) and the typed ports it advertises."
+              meta={bridgeEnabled ? countMeta(bridgePortCount, "port") : "disabled"}
+              defaultOpen={bridgeEnabled}
+              helpHref={DOCS.bridge}
+            >
+              <BridgePortsEditor draft={draft} onUpdate={onUpdate} />
             </CollapsibleSection>
 
             {isByteStream && (
@@ -673,8 +742,12 @@ export function DriverEditor({
             <CollapsibleSection
               title="Configuration Fields"
               subtitle="Per-device settings users fill in (display IDs, instance tags, custom passwords). Become {placeholders} in commands."
-              meta={countMeta(configFieldCount, "field")}
-              defaultOpen={configFieldCount > 0}
+              meta={
+                derivedFieldCount > 0
+                  ? `${countMeta(configFieldCount, "field")} + ${derivedFieldCount} computed`
+                  : countMeta(configFieldCount, "field")
+              }
+              defaultOpen={configFieldCount > 0 || derivedFieldCount > 0}
               helpHref={DOCS.configSchema}
             >
               <ConfigSchemaEditor draft={draft} onUpdate={onUpdate} />
@@ -902,7 +975,9 @@ function HelpFieldsSection({
         Markdown shown to integrators in the Add Device dialog. Overview is a
         short pitch (what does this device do, who's it for). Setup is the
         step-by-step the user follows to get it talking — IP setup, pairing,
-        physical button presses, anything device-specific.
+        physical button presses, anything device-specific. Connection
+        troubleshooting appears on the device's offline banner when it can't
+        connect.
       </p>
 
       <div style={{ marginBottom: "var(--space-md)" }}>
@@ -921,7 +996,7 @@ function HelpFieldsSection({
         />
       </div>
 
-      <div>
+      <div style={{ marginBottom: "var(--space-md)" }}>
         <label style={sectionLabelStyle}>Setup Instructions (markdown)</label>
         <textarea
           value={help.setup ?? ""}
@@ -939,6 +1014,35 @@ function HelpFieldsSection({
             resize: "vertical",
           }}
         />
+      </div>
+
+      <div>
+        <label style={sectionLabelStyle}>Connection Troubleshooting</label>
+        <textarea
+          value={help.connection ?? ""}
+          onChange={(e) => update({ connection: e.target.value })}
+          placeholder={
+            "Enable Telnet control in the device's network settings, then power-cycle it..."
+          }
+          rows={3}
+          style={{
+            width: "100%",
+            fontFamily: "var(--font-mono)",
+            fontSize: "var(--font-size-sm)",
+            resize: "vertical",
+          }}
+        />
+        <div
+          style={{
+            fontSize: "11px",
+            color: "var(--text-muted)",
+            marginTop: "var(--space-xs)",
+          }}
+        >
+          Optional short hint shown on the device&apos;s offline banner when
+          it can&apos;t connect — e.g. a remote-access setting that must be
+          enabled on the device first.
+        </div>
       </div>
     </div>
   );

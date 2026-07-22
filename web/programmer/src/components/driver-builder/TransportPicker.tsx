@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { DriverDefinition } from "../../api/types";
+import { INTERCHANGEABLE_TRANSPORTS } from "../../api/types";
 import { scrubForTransport } from "./validateDriver";
 import { KeyValueList } from "./CommandBuilder";
 import {
@@ -68,8 +69,20 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
     // runtime. Scrub them, confirming first when authored content would
     // be removed.
     const scrub = scrubForTransport(draft, next);
-    if (scrub.removals.length > 0) {
-      const detail = scrub.removals
+    const removals = [...scrub.removals];
+    // The interchangeable-transports list only applies to a real medium — a
+    // bridge device owns no transport, and a leftover list would wrongly
+    // offer network/serial connection modes in the Add Device dialog.
+    const dropTransports =
+      next === "bridge" && (draft.transports ?? []).length > 0;
+    if (dropTransports) {
+      removals.push({
+        name: "also usable over",
+        fields: draft.transports ?? [],
+      });
+    }
+    if (removals.length > 0) {
+      const detail = removals
         .map((r) => `  ${r.name}: ${r.fields.join(", ")}`)
         .join("\n");
       const ok = window.confirm(
@@ -81,6 +94,7 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
       transport: next,
       commands: scrub.commands,
       ...(scrub.device_settings ? { device_settings: scrub.device_settings } : {}),
+      ...(dropTransports ? { transports: undefined } : {}),
     });
   };
 
@@ -98,6 +112,7 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
           <option value="serial">Serial</option>
           <option value="http">HTTP / REST API</option>
           <option value="osc">OSC (Open Sound Control)</option>
+          <option value="bridge">Bridge (no address of its own)</option>
         </select>
         <div
           style={{
@@ -112,11 +127,17 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
             ? "Choose UDP for devices that use datagram-based protocols (JSON-over-UDP, video wall controllers, etc.). Each command is sent as a single packet."
             : draft.transport === "osc"
             ? "Choose OSC for devices controlled via Open Sound Control (mixing consoles, show control, lighting, media servers). Commands use OSC address paths and typed arguments."
-            : "Choose TCP for network devices, UDP for datagram protocols, Serial for RS-232/RS-485, HTTP for REST APIs, or OSC for Open Sound Control."}
+            : draft.transport === "bridge"
+            ? "For a device with no address of its own that emits through a live bridge instance (e.g. an IR device on an emitter port). It opens no socket — commands route via the bridge, and the device is online whenever its bridge is."
+            : "Choose TCP for network devices, UDP for datagram protocols, Serial for RS-232/RS-485, HTTP for REST APIs, or OSC for Open Sound Control. Bridge is for devices that only exist behind another device (IR devices on an emitter port)."}
         </div>
       </div>
 
-      {draft.transport !== "http" && draft.transport !== "udp" && draft.transport !== "osc" && <div style={rowStyle}>
+      {draft.transport !== "bridge" && (
+        <AlsoUsableOver draft={draft} onUpdate={onUpdate} />
+      )}
+
+      {draft.transport !== "http" && draft.transport !== "udp" && draft.transport !== "osc" && draft.transport !== "bridge" && <div style={rowStyle}>
         <label style={labelStyle}>Message Delimiter</label>
         <select
           value={delimiter}
@@ -555,8 +576,9 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
         </>
       )}
 
-      {/* Inter-command delay — TCP, UDP, and serial */}
-      {draft.transport !== "http" && <div style={rowStyle}>
+      {/* Inter-command delay — TCP, UDP, serial, and OSC. A bridge device
+          owns no transport of its own, so pacing is the bridge's job. */}
+      {draft.transport !== "http" && draft.transport !== "bridge" && <div style={rowStyle}>
         <label style={labelStyle}>Inter-Command Delay (seconds)</label>
         <input
           type="number"
@@ -578,6 +600,110 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
           command flooding (e.g., Extron recommends 0.1s).
         </div>
       </div>}
+    </div>
+  );
+}
+
+const TRANSPORT_LABELS: Record<string, string> = {
+  tcp: "TCP",
+  serial: "Serial",
+  udp: "UDP",
+  http: "HTTP",
+  osc: "OSC",
+};
+
+/**
+ * Edits the optional `transports:` interchangeable list — the transports this
+ * driver can use interchangeably because its command/response strings are
+ * byte-identical across the listed media (e.g. the same text protocol over
+ * the network or a serial line). The per-device connection picks the actual
+ * transport; listing Serial makes the device offerable over a direct serial
+ * port or through a bridge.
+ *
+ * Corpus convention (mirrored here): the list names every usable transport,
+ * the primary included — `transport: tcp` + `transports: [tcp, serial]`.
+ * The primary is kept in the list implicitly; the checkboxes cover the rest.
+ * No boxes checked = the key is removed so minimal YAML stays minimal.
+ */
+function AlsoUsableOver({
+  draft,
+  onUpdate,
+}: {
+  draft: DriverDefinition;
+  onUpdate: (partial: Partial<DriverDefinition>) => void;
+}) {
+  const declared = draft.transports ?? [];
+  const others = INTERCHANGEABLE_TRANSPORTS.filter(
+    (t) => t !== draft.transport,
+  );
+
+  const toggle = (transport: string, on: boolean) => {
+    const chosen = new Set(declared);
+    if (on) chosen.add(transport);
+    else chosen.delete(transport);
+    // The primary is implicit — rebuilding below re-adds it in front, so
+    // drop it here to decide whether anything beyond it remains.
+    chosen.delete(draft.transport);
+    if (chosen.size === 0) {
+      onUpdate({ transports: undefined });
+      return;
+    }
+    // Canonical order: primary first (corpus convention), the known
+    // interchangeable transports next, then any unrecognized entries from a
+    // hand-authored file preserved verbatim (validation flags them).
+    const known = INTERCHANGEABLE_TRANSPORTS.filter((t) => chosen.has(t));
+    const unknown = [...chosen].filter(
+      (t) => !(INTERCHANGEABLE_TRANSPORTS as readonly string[]).includes(t),
+    );
+    onUpdate({ transports: [draft.transport, ...known, ...unknown] });
+  };
+
+  return (
+    <div style={{ marginBottom: "var(--space-md)" }}>
+      <label
+        style={{
+          display: "block",
+          fontSize: "var(--font-size-sm)",
+          color: "var(--text-secondary)",
+          marginBottom: "var(--space-xs)",
+        }}
+      >
+        Also Usable Over
+      </label>
+      <div style={{ display: "flex", gap: "var(--space-lg)", flexWrap: "wrap" }}>
+        {others.map((t) => (
+          <label
+            key={t}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--space-xs)",
+              fontSize: "var(--font-size-sm)",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={declared.includes(t)}
+              onChange={(e) => toggle(t, e.target.checked)}
+            />
+            {TRANSPORT_LABELS[t] ?? t}
+          </label>
+        ))}
+      </div>
+      <div
+        style={{
+          fontSize: "11px",
+          color: "var(--text-muted)",
+          marginTop: "var(--space-xs)",
+        }}
+      >
+        Opt-in, for protocols whose command and response strings are
+        byte-identical across the listed media (e.g. the same text protocol
+        over the network or a serial line). The per-device connection picks
+        the actual transport; listing Serial makes the device offerable over
+        a direct serial port or through a bridge. Only declare it when the
+        strings really are identical.
+      </div>
     </div>
   );
 }
