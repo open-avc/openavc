@@ -867,6 +867,46 @@ export function validateDriver(
         message: `${label} throttle must be a positive number of seconds.`,
       });
     }
+    // `require:` scopes a json rule to bodies carrying the named key(s) —
+    // mirror avcdriver_semantic.py: it only applies to json: true rules, and
+    // a blank entry would silently disable the rule (never matches).
+    const isJsonRule = !!(resp as { json?: unknown }).json;
+    const requireVal = (resp as { require?: unknown }).require;
+    if (requireVal !== undefined && requireVal !== null) {
+      if (!isJsonRule) {
+        issues.push({
+          severity: "error",
+          section: "behavior",
+          message: `${label}: "require" only applies to JSON body rules — remove it, or switch the rule to JSON body.`,
+        });
+      }
+      if (typeof requireVal === "string") {
+        if (!requireVal.trim()) {
+          issues.push({
+            severity: "error",
+            section: "behavior",
+            message: `${label}: "require" must name a JSON key.`,
+          });
+        }
+      } else if (Array.isArray(requireVal)) {
+        if (
+          requireVal.length === 0 ||
+          !requireVal.every((k) => typeof k === "string" && k.trim())
+        ) {
+          issues.push({
+            severity: "error",
+            section: "behavior",
+            message: `${label}: "require" entries must be non-empty JSON key names.`,
+          });
+        }
+      } else {
+        issues.push({
+          severity: "error",
+          section: "behavior",
+          message: `${label}: "require" must be a JSON key name or a list of them.`,
+        });
+      }
+    }
     if (resp.address !== undefined) {
       if (draft.transport && draft.transport !== "osc") {
         issues.push({
@@ -881,20 +921,99 @@ export function validateDriver(
           message: `${label} OSC address must start with "/" (e.g. /main/volume).`,
         });
       }
-    } else if ((resp as { json?: boolean }).json) {
+    } else if (isJsonRule) {
       // json-body rules parse the whole reply as JSON and map fields by
-      // key/path — no regex pattern (mirror driver_loader.py). They need a
-      // set map or mappings list to do anything.
+      // key/path — no regex pattern (mirror avcdriver_semantic.py). They
+      // need a set map or mappings list to do anything.
+      const setVal = (resp as { set?: unknown }).set;
       const hasSet =
-        typeof (resp as { set?: unknown }).set === "object" &&
-        (resp as { set?: unknown }).set !== null;
-      const hasMappings = Array.isArray((resp as { mappings?: unknown }).mappings);
+        typeof setVal === "object" && setVal !== null && !Array.isArray(setVal);
+      const mappingsVal = (resp as { mappings?: unknown }).mappings;
+      const hasMappings = Array.isArray(mappingsVal);
+      // The runtime dispatches OSC transports by address before json rules
+      // are ever consulted (configurable.py handle_data), so a json rule on
+      // an OSC driver never fires.
+      if (draft.transport === "osc") {
+        issues.push({
+          severity: "error",
+          section: "behavior",
+          message: `${label} is a JSON body rule but the driver transport is OSC — the runtime reads OSC messages by address, so this rule never matches.`,
+        });
+      }
       if (!hasSet && !hasMappings) {
         issues.push({
           severity: "error",
           section: "behavior",
           message: `${label} is a JSON response but maps no fields — add a set map (state variable to JSON key/path) or a mappings list.`,
         });
+      } else {
+        // Row checks against what the runtime will actually read
+        // (build_json_mappings: a non-empty mappings list wins, else set).
+        // A dangling state name or blank field path makes the row silently
+        // do nothing, and an unknown type coerces as plain string.
+        const declaredVars = draft.state_variables ?? {};
+        const checkJsonRow = (state: string, path: string, type: unknown) => {
+          if (!state || !(state in declaredVars)) {
+            issues.push({
+              severity: "error",
+              section: "behavior",
+              message: `${label}: JSON field row sets "${state || "(none)"}", which isn't a declared state variable.`,
+            });
+          }
+          if (!path.trim()) {
+            issues.push({
+              severity: "error",
+              section: "behavior",
+              message: `${label}: row for "${state || "(none)"}" reads no JSON field — add the field path (e.g. status.power).`,
+            });
+          }
+          if (
+            type !== undefined &&
+            (typeof type !== "string" || !STATE_VAR_TYPES.has(type))
+          ) {
+            issues.push({
+              severity: "error",
+              section: "behavior",
+              message: `${label}: row for "${state || "(none)"}" has unknown type "${String(type)}".`,
+            });
+          }
+        };
+        const mappingRows = hasMappings ? (mappingsVal as unknown[]) : [];
+        const setEntries = hasSet
+          ? Object.entries(setVal as Record<string, unknown>)
+          : [];
+        if (mappingRows.length > 0) {
+          for (const m of mappingRows) {
+            if (typeof m !== "object" || m === null) continue;
+            const row = m as { state?: unknown; key?: unknown; type?: unknown };
+            checkJsonRow(
+              typeof row.state === "string" ? row.state : "",
+              row.key == null ? "" : String(row.key),
+              row.type,
+            );
+          }
+        } else if (setEntries.length > 0) {
+          for (const [state, spec] of setEntries) {
+            if (
+              spec !== null &&
+              typeof spec === "object" &&
+              !Array.isArray(spec)
+            ) {
+              const s = spec as { key?: unknown; path?: unknown; type?: unknown };
+              // The runtime defaults a missing key/path to the state name.
+              const path = s.key ?? s.path ?? state;
+              checkJsonRow(state, String(path), s.type);
+            } else {
+              checkJsonRow(state, String(spec), undefined);
+            }
+          }
+        } else {
+          issues.push({
+            severity: "error",
+            section: "behavior",
+            message: `${label} is a JSON response but maps no fields — add at least one row.`,
+          });
+        }
       }
     } else if (!resp.pattern?.trim() && !resp.match?.trim()) {
       issues.push({
@@ -1047,7 +1166,7 @@ export function validateDriver(
         });
         return;
       }
-      if ((resp as { json?: boolean }).json) {
+      if (isJsonRule) {
         issues.push({
           severity: "error",
           section: "behavior",

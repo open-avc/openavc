@@ -312,4 +312,186 @@ const results = {};
   };
 }
 
+// --- json: true rules: row loading + minimal re-serialization ---------------
+// Mirrors build_json_mappings (compiled_protocol.py): a non-empty mappings
+// list wins; set values are string paths (type = declared) or {key|path,
+// type, map} specs; the mappings form defaults type to "string".
+const jsonVars = {
+  power: { type: "boolean" },
+  volume: { type: "integer" },
+  name: { type: "string" },
+  level: { type: "number" },
+};
+
+{
+  // String-path set form loads with the declared type.
+  const got = H.getJsonRows(
+    { json: true, set: { power: "status.power" } },
+    jsonVars,
+  );
+  results.json_rows_from_string_set = {
+    pass: eq(got, [{ state: "power", path: "status.power", type: "boolean" }]),
+    detail: got,
+  };
+}
+{
+  // Object specs: `key` read, `path` alias honored, a bare {} defaults the
+  // path to the state name — all mirroring the runtime's defaults.
+  const got = H.getJsonRows(
+    {
+      json: true,
+      set: {
+        power: { key: "status.power", type: "string", map: { "1": "on" } },
+        volume: { path: "status.vol" },
+        name: {},
+      },
+    },
+    jsonVars,
+  );
+  results.json_rows_from_object_set = {
+    pass: eq(got, [
+      { state: "power", path: "status.power", type: "string", map: { "1": "on" } },
+      { state: "volume", path: "status.vol", type: "integer" },
+      { state: "name", path: "name", type: "string" },
+    ]),
+    detail: got,
+  };
+}
+{
+  // A non-empty mappings list wins over set, and its type default is
+  // "string" (NOT the declared type — that default is set-form only).
+  const got = H.getJsonRows(
+    { json: true, mappings: [{ state: "volume", key: "vol" }], set: { power: "p" } },
+    jsonVars,
+  );
+  results.json_rows_from_mappings = {
+    pass: eq(got, [{ state: "volume", path: "vol", type: "string" }]),
+    detail: got,
+  };
+}
+{
+  // Minimal re-serialization: type matches declared + no map -> string form.
+  const rebuilt = H.buildJsonResponse(
+    { json: true, set: {} },
+    [{ state: "power", path: "status.power", type: "boolean" }],
+    [],
+    jsonVars,
+  );
+  results.json_minimal_string_form = {
+    pass: eq(rebuilt, { json: true, set: { power: "status.power" } }),
+    detail: rebuilt,
+  };
+}
+{
+  // A type override serializes as {key, type}; a value map (with the
+  // declared type) as {key, map} — each row picks its own minimal form.
+  const rebuilt = H.buildJsonResponse(
+    { json: true },
+    [
+      { state: "power", path: "p", type: "string" },
+      { state: "volume", path: "v", type: "integer", map: { "0": "0" } },
+    ],
+    [],
+    jsonVars,
+  );
+  results.json_object_form_when_needed = {
+    pass: eq(rebuilt, {
+      json: true,
+      set: {
+        power: { key: "p", type: "string" },
+        volume: { key: "v", map: { "0": "0" } },
+      },
+    }),
+    detail: rebuilt,
+  };
+}
+{
+  // Round trip: an object form that carries only redundant info (type ==
+  // declared) collapses to the minimal string form, while unknown extra
+  // keys on the rule, throttle, and the require scope survive verbatim.
+  const original = {
+    json: true,
+    set: { power: { key: "status.power", type: "boolean" } },
+    note: "keep-me",
+    throttle: 0.5,
+    require: "status",
+  };
+  const rebuilt = H.buildJsonResponse(
+    original,
+    H.getJsonRows(original, jsonVars),
+    H.requireToList(original.require),
+    jsonVars,
+  );
+  results.json_roundtrip_minimizes_and_preserves = {
+    pass:
+      rebuilt.json === true &&
+      eq(rebuilt.set, { power: "status.power" }) &&
+      rebuilt.note === "keep-me" &&
+      rebuilt.throttle === 0.5 &&
+      rebuilt.require === "status" &&
+      Object.keys(rebuilt).length === 5,
+    detail: rebuilt,
+  };
+}
+{
+  // require shapes: one key -> string, several -> list, none -> absent;
+  // requireToList/parseRequireText normalize both directions.
+  const one = H.buildJsonResponse({ json: true }, [], ["status"], {});
+  const two = H.buildJsonResponse({ json: true }, [], ["a", "b"], {});
+  const none = H.buildJsonResponse({ json: true, require: "old" }, [], [], {});
+  results.json_require_shapes = {
+    pass:
+      eq(H.requireToList("status"), ["status"]) &&
+      eq(H.requireToList(["a", "b"]), ["a", "b"]) &&
+      eq(H.requireToList(undefined), []) &&
+      eq(H.parseRequireText(" a , b ,, "), ["a", "b"]) &&
+      one.require === "status" &&
+      eq(two.require, ["a", "b"]) &&
+      !("require" in none),
+    detail: { one, two, none },
+  };
+}
+{
+  // Duplicate (or blank) state names can't live in a set map — fall back to
+  // the explicit mappings list, spelling out the type (whose mappings-form
+  // default is "string", not the declared type).
+  const rebuilt = H.buildJsonResponse(
+    { json: true },
+    [
+      { state: "volume", path: "a", type: "integer" },
+      { state: "volume", path: "b", type: "integer" },
+    ],
+    [],
+    jsonVars,
+  );
+  results.json_duplicate_states_fall_back_to_mappings = {
+    pass:
+      !("set" in rebuilt) &&
+      eq(rebuilt.mappings, [
+        { state: "volume", key: "a", type: "integer" },
+        { state: "volume", key: "b", type: "integer" },
+      ]),
+    detail: rebuilt,
+  };
+}
+{
+  // "number"/"float" (and "enum"/"string") coerce identically at runtime,
+  // so a float row on a number-declared variable still takes the minimal
+  // string form.
+  const rebuilt = H.buildJsonResponse(
+    { json: true },
+    [{ state: "level", path: "lvl", type: "float" }],
+    [],
+    jsonVars,
+  );
+  results.json_number_float_equivalence = {
+    pass:
+      eq(rebuilt, { json: true, set: { level: "lvl" } }) &&
+      H.coercionTypesEquivalent("number", "float") &&
+      H.coercionTypesEquivalent("enum", "string") &&
+      !H.coercionTypesEquivalent("integer", "float"),
+    detail: rebuilt,
+  };
+}
+
 process.stdout.write(JSON.stringify(results));

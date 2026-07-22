@@ -95,6 +95,15 @@ SCENARIOS = [
     "osc_child_id_shapes",
     "osc_child_prop_shapes",
     "osc_rebuild_carries_child_set",
+    "json_rows_from_string_set",
+    "json_rows_from_object_set",
+    "json_rows_from_mappings",
+    "json_minimal_string_form",
+    "json_object_form_when_needed",
+    "json_roundtrip_minimizes_and_preserves",
+    "json_require_shapes",
+    "json_duplicate_states_fall_back_to_mappings",
+    "json_number_float_equivalence",
 ]
 
 

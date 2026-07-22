@@ -10,19 +10,30 @@ import type {
 import { IdRenameInput, type RenameResult } from "./IdRenameInput";
 import {
   addValueMapEntry,
+  buildJsonResponse,
   buildResponse,
   checkValueMapKeyRename,
   childIdFromParts,
   childIdMap,
   childIdToText,
+  declaredStateType,
+  getJsonRows,
   getMappings,
   getPattern,
   oscChildIdFromParts,
   oscChildIdToText,
   oscChildPropFromText,
   oscChildPropToText,
+  parseRequireText,
   renameValueMapKey,
+  requireToList,
+  type JsonRuleRow,
 } from "./responseBuilderHelpers";
+
+/** Coercion types offered on a JSON field row (what coerce_json_value
+ *  distinguishes). A loaded rule may carry another spelling ("number",
+ *  "enum") — the select shows it as an extra option rather than lying. */
+const JSON_ROW_TYPES = ["string", "integer", "float", "boolean"];
 
 function _ordinal(n: number): string {
   if (n === 1) return "1st";
@@ -68,6 +79,73 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
     onUpdate({ responses: next });
   };
 
+  /** Rebuild a json rule from edited rows, keeping its require scope. */
+  const updateJsonRows = (index: number, rows: JsonRuleRow[]) => {
+    const resp = responses[index];
+    updateResponse(
+      index,
+      buildJsonResponse(resp, rows, requireToList(resp.require), stateVars),
+    );
+  };
+
+  /** Convert a rule between text (regex) and JSON body, confirming before
+   *  authored content is dropped. Throttle survives the switch; child_set
+   *  does not survive to JSON (the runtime rejects it there). */
+  const switchKind = (index: number, kind: string) => {
+    const resp = responses[index];
+    const wasJson = resp.address === undefined && !!resp.json;
+    if (kind === "json" && !wasJson) {
+      const dropped: string[] = [];
+      if ((resp.match ?? resp.pattern ?? "").trim()) {
+        dropped.push("its match pattern");
+      }
+      if (
+        (resp.mappings?.length ?? 0) > 0 ||
+        Object.keys(resp.set ?? {}).length > 0
+      ) {
+        dropped.push("its capture mappings");
+      }
+      if ((resp.child_set?.length ?? 0) > 0) {
+        dropped.push("its child entity routing (not supported on JSON rules)");
+      }
+      if (
+        dropped.length > 0 &&
+        !window.confirm(
+          `Switching this rule to JSON body drops ${dropped.join(", ")}. Continue?`,
+        )
+      ) {
+        return;
+      }
+      const next: DriverResponseDef = { json: true, set: {} };
+      if (resp.throttle !== undefined) next.throttle = resp.throttle;
+      updateResponse(index, next);
+    } else if (kind === "regex" && wasJson) {
+      const dropped: string[] = [];
+      if (getJsonRows(resp, stateVars).length > 0) {
+        dropped.push("its JSON field rows");
+      }
+      if (requireToList(resp.require).length > 0) {
+        dropped.push("its body-key scope");
+      }
+      if (
+        dropped.length > 0 &&
+        !window.confirm(
+          `Switching this rule to text matching drops ${dropped.join(" and ")}. Continue?`,
+        )
+      ) {
+        return;
+      }
+      const next = buildResponse(
+        "",
+        [{ group: 1, state: "", type: "string" }],
+        {},
+        stateVars,
+      );
+      if (resp.throttle !== undefined) next.throttle = resp.throttle;
+      updateResponse(index, next);
+    }
+  };
+
   const labelStyle: React.CSSProperties = {
     display: "block",
     fontSize: "var(--font-size-sm)",
@@ -87,8 +165,10 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
           marginBottom: "var(--space-md)",
         }}
       >
-        Define patterns to match device responses and extract values into state
-        variables. Use parentheses to capture the parts you want to extract.
+        Define rules that turn device responses into state variable values. A
+        text rule matches with a regex — use parentheses to capture the parts
+        you want. A JSON body rule parses the whole reply as JSON and reads
+        fields from it (common for HTTP devices).
       </p>
       <div
         style={{
@@ -112,8 +192,12 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
       </div>
 
       {responses.map((resp, i) => {
+        // Rule kind mirrors the runtime's dispatch order (compile_driver):
+        // an address is OSC first, then json: true, then regex.
+        const isJson = resp.address === undefined && !!resp.json;
         const pattern = getPattern(resp);
-        const mappings = getMappings(resp, stateVars);
+        const mappings = isJson ? [] : getMappings(resp, stateVars);
+        const jsonRows = isJson ? getJsonRows(resp, stateVars) : [];
         return (
         <div
           key={i}
@@ -133,14 +217,33 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
               marginBottom: "var(--space-sm)",
             }}
           >
-            <span
+            <div
               style={{
-                fontSize: "var(--font-size-sm)",
-                fontWeight: 600,
+                display: "flex",
+                alignItems: "center",
+                gap: "var(--space-sm)",
               }}
             >
-              Response Pattern {i + 1}
-            </span>
+              <span
+                style={{
+                  fontSize: "var(--font-size-sm)",
+                  fontWeight: 600,
+                }}
+              >
+                Response Rule {i + 1}
+              </span>
+              {draft.transport !== "osc" && (
+                <select
+                  value={isJson ? "json" : "regex"}
+                  onChange={(e) => switchKind(i, e.target.value)}
+                  title="How this rule reads the reply: match text with a regex pattern, or parse the whole body as JSON and read fields from it"
+                  style={{ fontSize: "var(--font-size-sm)" }}
+                >
+                  <option value="regex">Text (regex)</option>
+                  <option value="json">JSON body</option>
+                </select>
+              )}
+            </div>
             <button
               onClick={() => removeResponse(i)}
               style={{ padding: "2px", color: "var(--text-muted)" }}
@@ -149,7 +252,151 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
             </button>
           </div>
 
-          {draft.transport === "osc" ? (
+          {isJson ? (
+            <div style={{ marginBottom: "var(--space-md)" }}>
+              <div
+                style={{
+                  fontSize: "var(--font-size-sm)",
+                  color: "var(--text-secondary)",
+                  marginBottom: "var(--space-xs)",
+                }}
+              >
+                The whole reply is parsed as a JSON object; each row reads one
+                field into a state variable:
+              </div>
+              {jsonRows.map((row, ri) => (
+                <div
+                  key={ri}
+                  style={{
+                    display: "flex",
+                    gap: "var(--space-sm)",
+                    marginBottom: "var(--space-xs)",
+                    alignItems: "center",
+                  }}
+                >
+                  <input
+                    value={row.path}
+                    onChange={(e) =>
+                      updateJsonRows(
+                        i,
+                        jsonRows.map((r, j) =>
+                          j === ri ? { ...r, path: e.target.value } : r,
+                        ),
+                      )
+                    }
+                    placeholder="status.power"
+                    title="The JSON field to read — dot-separated keys and list indices (status.power, data.0)"
+                    style={{
+                      width: 150,
+                      fontFamily: "var(--font-mono)",
+                      fontSize: "var(--font-size-sm)",
+                    }}
+                  />
+                  <span
+                    style={{
+                      fontSize: "var(--font-size-sm)",
+                      color: "var(--text-muted)",
+                    }}
+                  >
+                    →
+                  </span>
+                  <select
+                    value={row.state}
+                    onChange={(e) => {
+                      const state = e.target.value;
+                      updateJsonRows(
+                        i,
+                        jsonRows.map((r, j) =>
+                          j === ri
+                            ? {
+                                ...r,
+                                state,
+                                type: declaredStateType(stateVars, state),
+                              }
+                            : r,
+                        ),
+                      );
+                    }}
+                    style={{ flex: 1, fontSize: "var(--font-size-sm)" }}
+                  >
+                    <option value="">Select state variable...</option>
+                    {stateVarNames.map((sv) => (
+                      <option key={sv} value={sv}>
+                        {sv}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={row.type}
+                    onChange={(e) =>
+                      updateJsonRows(
+                        i,
+                        jsonRows.map((r, j) =>
+                          j === ri ? { ...r, type: e.target.value } : r,
+                        ),
+                      )
+                    }
+                    style={{ width: 90, fontSize: "var(--font-size-sm)" }}
+                  >
+                    {!JSON_ROW_TYPES.includes(row.type) && (
+                      <option value={row.type}>{row.type}</option>
+                    )}
+                    <option value="string">String</option>
+                    <option value="integer">Integer</option>
+                    <option value="float">Float</option>
+                    <option value="boolean">Boolean</option>
+                  </select>
+                  <button
+                    onClick={() =>
+                      updateJsonRows(
+                        i,
+                        jsonRows.filter((_, j) => j !== ri),
+                      )
+                    }
+                    style={{ padding: "2px", color: "var(--text-muted)" }}
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                  <ValueMapEditor
+                    mapping={{ group: 0, state: row.state, map: row.map }}
+                    onChange={(updated) =>
+                      updateJsonRows(
+                        i,
+                        jsonRows.map((r, j) =>
+                          j === ri ? { ...r, map: updated.map } : r,
+                        ),
+                      )
+                    }
+                  />
+                </div>
+              ))}
+              <button
+                onClick={() =>
+                  updateJsonRows(i, [
+                    ...jsonRows,
+                    { state: "", path: "", type: "string" },
+                  ])
+                }
+                style={{
+                  fontSize: "var(--font-size-sm)",
+                  color: "var(--accent)",
+                  padding: "var(--space-xs) 0",
+                }}
+              >
+                + Add Field
+              </button>
+              <RequireInput
+                key={requireToList(resp.require).join(",")}
+                value={requireToList(resp.require)}
+                onCommit={(keys) =>
+                  updateResponse(
+                    i,
+                    buildJsonResponse(resp, jsonRows, keys, stateVars),
+                  )
+                }
+              />
+            </div>
+          ) : draft.transport === "osc" ? (
             <div style={{ marginBottom: "var(--space-md)" }}>
               <label style={labelStyle}>OSC Address Pattern</label>
               <input
@@ -202,6 +449,8 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
             </div>
           )}
 
+          {!isJson && (
+          <>
           <div
             style={{
               fontSize: "var(--font-size-sm)",
@@ -317,6 +566,8 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
           >
             + Add Mapping
           </button>
+          </>
+          )}
           <div
             style={{
               display: "flex",
@@ -358,7 +609,7 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
               telemetry frames (meters). Leave blank for normal responses.
             </span>
           </div>
-          {Object.keys(draft.child_entity_types ?? {}).length > 0 && (
+          {!isJson && Object.keys(draft.child_entity_types ?? {}).length > 0 && (
             <ChildSetEditor
               mode={draft.transport === "osc" ? "osc" : "regex"}
               entries={resp.child_set ?? []}
@@ -396,6 +647,59 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
   );
 }
 
+
+/** Comma-separated `require:` scope for a json rule — the rule only applies
+ *  to bodies carrying every named key. Committed on blur/Enter so a comma
+ *  the user just typed isn't eaten by re-normalization mid-keystroke. */
+function RequireInput({
+  value,
+  onCommit,
+}: {
+  value: string[];
+  onCommit: (keys: string[]) => void;
+}) {
+  const [text, setText] = useState(value.join(", "));
+  const commit = () => {
+    const keys = parseRequireText(text);
+    if (keys.join(",") !== value.join(",")) onCommit(keys);
+    setText(keys.join(", "));
+  };
+  return (
+    <div
+      style={{
+        display: "flex",
+        gap: "var(--space-sm)",
+        alignItems: "center",
+        marginTop: "var(--space-sm)",
+      }}
+    >
+      <label
+        style={{
+          fontSize: "var(--font-size-sm)",
+          color: "var(--text-muted)",
+          whiteSpace: "nowrap",
+        }}
+      >
+        Only when body has key(s)
+      </label>
+      <input
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
+        }}
+        placeholder="serialNumber, status"
+        title="Apply this rule only to bodies carrying every named JSON key (comma-separated; dot paths allowed). Leave blank to apply to any JSON body — scope it when different endpoints reuse a field name."
+        style={{
+          flex: 1,
+          fontFamily: "var(--font-mono)",
+          fontSize: "var(--font-size-sm)",
+        }}
+      />
+    </div>
+  );
+}
 
 /** Route captures into child-entity state: one row per child_set entry —
  *  pick the child type, say which capture (or literal) is the child ID, and

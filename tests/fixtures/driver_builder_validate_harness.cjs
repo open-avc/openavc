@@ -986,4 +986,223 @@ const zoneChild = {
   };
 }
 
+// --- JSON body response rules (mirror avcdriver_semantic.py + runtime) ----
+// A json: true rule parses the whole reply body as JSON; set values are JSON
+// field paths (string) or {key, type, map} specs. `require:` scopes the rule
+// to bodies carrying the named key(s) and is json-only.
+const jsonVars = {
+  power: { type: "boolean", label: "Power" },
+  volume: { type: "integer", label: "Volume" },
+};
+
+{
+  // String-path set form (+ require as a single string) is clean.
+  const issues = responseIssues(
+    validate(baseDraft("http", {}, {
+      state_variables: jsonVars,
+      responses: [
+        { json: true, set: { power: "status.power" }, require: "status" },
+      ],
+    })),
+  );
+  results.json_set_string_path_ok = { pass: issues.length === 0, detail: issues };
+}
+{
+  // {key, type, map} object form (+ require as a list) is clean; throttle
+  // stays available on json rules.
+  const issues = responseIssues(
+    validate(baseDraft("http", {}, {
+      state_variables: jsonVars,
+      responses: [
+        {
+          json: true,
+          throttle: 0.5,
+          require: ["status", "serialNumber"],
+          set: {
+            power: { key: "status.power", type: "string", map: { "1": "on" } },
+            volume: { path: "status.vol" },
+          },
+        },
+      ],
+    })),
+  );
+  results.json_set_object_form_ok = { pass: issues.length === 0, detail: issues };
+}
+{
+  // Explicit mappings-list form ({state, key, type}) is clean too.
+  const issues = responseIssues(
+    validate(baseDraft("tcp", {}, {
+      state_variables: jsonVars,
+      responses: [
+        { json: true, mappings: [{ state: "volume", key: "vol", type: "integer" }] },
+      ],
+    })),
+  );
+  results.json_mappings_form_ok = { pass: issues.length === 0, detail: issues };
+}
+{
+  // require on a non-json (regex) rule is rejected — it only scopes
+  // JSON body rules.
+  const issues = responseIssues(
+    validate(baseDraft("tcp", {}, {
+      state_variables: jsonVars,
+      responses: [
+        { match: "VOL=(\\d+)", set: { volume: "$1" }, require: "status" },
+      ],
+    })),
+  );
+  results.json_require_without_json_error = {
+    pass:
+      issues.length === 1 &&
+      issues[0].severity === "error" &&
+      /only applies to JSON body rules/.test(issues[0].message),
+    detail: issues,
+  };
+}
+{
+  // Blank require entries would silently disable the rule: a blank string
+  // and a list with a blank entry are both rejected.
+  const blankStr = responseIssues(
+    validate(baseDraft("http", {}, {
+      state_variables: jsonVars,
+      responses: [{ json: true, set: { power: "p" }, require: "   " }],
+    })),
+  );
+  const blankList = responseIssues(
+    validate(baseDraft("http", {}, {
+      state_variables: jsonVars,
+      responses: [{ json: true, set: { power: "p" }, require: ["status", ""] }],
+    })),
+  );
+  results.json_require_blank_error = {
+    pass:
+      blankStr.length === 1 &&
+      /must name a JSON key/.test(blankStr[0].message) &&
+      blankList.length === 1 &&
+      /non-empty JSON key names/.test(blankList[0].message),
+    detail: { blankStr, blankList },
+  };
+}
+{
+  // A non-string, non-list require (hand-edited YAML) is rejected.
+  const issues = responseIssues(
+    validate(baseDraft("http", {}, {
+      state_variables: jsonVars,
+      responses: [{ json: true, set: { power: "p" }, require: 5 }],
+    })),
+  );
+  results.json_require_bad_type_error = {
+    pass:
+      issues.length === 1 &&
+      /JSON key name or a list of them/.test(issues[0].message),
+    detail: issues,
+  };
+}
+{
+  // A row targeting an undeclared state variable silently does nothing.
+  const issues = responseIssues(
+    validate(baseDraft("http", {}, {
+      state_variables: jsonVars,
+      responses: [{ json: true, set: { brightness: "status.bright" } }],
+    })),
+  );
+  results.json_unknown_state_var_error = {
+    pass:
+      issues.length === 1 &&
+      issues[0].severity === "error" &&
+      /"brightness", which isn't a declared state variable/.test(issues[0].message),
+    detail: issues,
+  };
+}
+{
+  // An unknown coercion type falls back to plain string at runtime —
+  // flag it instead of silently ignoring the author's choice.
+  const issues = responseIssues(
+    validate(baseDraft("http", {}, {
+      state_variables: jsonVars,
+      responses: [
+        { json: true, set: { power: { key: "status.power", type: "widget" } } },
+      ],
+    })),
+  );
+  results.json_unknown_row_type_error = {
+    pass: issues.length === 1 && /unknown type "widget"/.test(issues[0].message),
+    detail: issues,
+  };
+}
+{
+  // child_set is rejected on json rules (no capture groups to route by).
+  const issues = responseIssues(
+    validate(baseDraft("http", {}, {
+      state_variables: jsonVars,
+      responses: [
+        {
+          json: true,
+          set: { power: "status.power" },
+          child_set: [{ type: "zone", id: "$1", state: { mute: "$2" } }],
+        },
+      ],
+    })),
+  );
+  results.json_child_set_error = {
+    pass:
+      issues.length === 1 &&
+      /child entity routing isn't supported on JSON responses/.test(issues[0].message),
+    detail: issues,
+  };
+}
+{
+  // A json rule with no set/mappings — and the empty-set seed — map no
+  // fields, so they do nothing at runtime.
+  const noFields = responseIssues(
+    validate(baseDraft("http", {}, {
+      state_variables: jsonVars,
+      responses: [{ json: true }],
+    })),
+  );
+  const emptySet = responseIssues(
+    validate(baseDraft("http", {}, {
+      state_variables: jsonVars,
+      responses: [{ json: true, set: {} }],
+    })),
+  );
+  results.json_no_fields_error = {
+    pass:
+      noFields.length === 1 &&
+      /maps no fields/.test(noFields[0].message) &&
+      emptySet.length === 1 &&
+      /maps no fields/.test(emptySet[0].message),
+    detail: { noFields, emptySet },
+  };
+}
+{
+  // A blank field path makes the row silently do nothing.
+  const issues = responseIssues(
+    validate(baseDraft("http", {}, {
+      state_variables: jsonVars,
+      responses: [{ json: true, set: { power: "" } }],
+    })),
+  );
+  results.json_empty_path_error = {
+    pass: issues.length === 1 && /reads no JSON field/.test(issues[0].message),
+    detail: issues,
+  };
+}
+{
+  // The runtime dispatches OSC by address before json rules are consulted,
+  // so a json rule on an OSC driver never fires.
+  const issues = responseIssues(
+    validate(baseDraft("osc", {}, {
+      state_variables: jsonVars,
+      responses: [{ json: true, set: { power: "status.power" } }],
+    })),
+  );
+  results.json_on_osc_transport_error = {
+    pass:
+      issues.length === 1 &&
+      /transport is OSC/.test(issues[0].message),
+    detail: issues,
+  };
+}
+
 process.stdout.write(JSON.stringify(results));

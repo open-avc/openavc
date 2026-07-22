@@ -149,6 +149,154 @@ export function buildResponse(
   return { match: pattern, mappings, ...childSet, ...carry };
 }
 
+// ── json: true rules ──
+// A json rule parses the whole reply body as a JSON object; every set /
+// mappings entry reads one field from it (dot path). The runtime half is
+// build_json_mappings + _apply_json_responses (compiled_protocol.py /
+// configurable.py) — these helpers mirror the exact shapes it accepts.
+
+/** One editable row of a `json: true` rule: state variable ← JSON field. */
+export interface JsonRuleRow {
+  /** Target state variable. */
+  state: string;
+  /** JSON field to read: dot-separated keys / list indices ("status.power"). */
+  path: string;
+  /** Effective coercion type (what the runtime will actually apply). */
+  type: string;
+  /** Optional lookup table translating raw values to friendly values. */
+  map?: Record<string, string>;
+}
+
+/** True when two coercion type names behave identically at runtime: the
+ *  coercers fold "number" into the float branch and treat "enum" like
+ *  "string" (coerce_json_value / coerce_value in compiled_protocol.py).
+ *  Used to pick the minimal serialization without changing behavior. */
+export function coercionTypesEquivalent(a: string, b: string): boolean {
+  const norm = (t: string) =>
+    t === "number" ? "float" : t === "enum" ? "string" : t;
+  return norm(a) === norm(b);
+}
+
+/** Read the rows of a `json: true` rule, mirroring the runtime's
+ *  build_json_mappings: a non-empty `mappings` list wins (entries carry
+ *  {state, key, type?, map?}; type defaults to "string" there); otherwise
+ *  each `set` entry is a string JSON path or a {key|path, type, map} spec
+ *  whose path defaults to the state name and whose type defaults to the
+ *  state variable's DECLARED type. */
+export function getJsonRows(
+  resp: DriverResponseDef,
+  stateVariables: Record<string, StateVarDefLike | undefined>,
+): JsonRuleRow[] {
+  const rows: JsonRuleRow[] = [];
+  const mappings = resp.mappings;
+  if (Array.isArray(mappings) && mappings.length > 0) {
+    for (const m of mappings) {
+      const entry = m as { state?: string; key?: unknown; type?: string; map?: Record<string, string> };
+      rows.push({
+        state: entry.state ?? "",
+        path: entry.key == null ? "" : String(entry.key),
+        type: entry.type ?? "string",
+        ...(entry.map ? { map: entry.map } : {}),
+      });
+    }
+    return rows;
+  }
+  const set = resp.set;
+  if (!set || typeof set !== "object" || Array.isArray(set)) return rows;
+  for (const [state, spec] of Object.entries(set)) {
+    const declared = declaredStateType(stateVariables, state);
+    if (spec !== null && typeof spec === "object" && !Array.isArray(spec)) {
+      const s = spec as { key?: unknown; path?: unknown; type?: unknown; map?: unknown };
+      const path = s.key ?? s.path ?? state;
+      rows.push({
+        state,
+        path: String(path),
+        type: typeof s.type === "string" ? s.type : declared,
+        ...(s.map && typeof s.map === "object"
+          ? { map: s.map as Record<string, string> }
+          : {}),
+      });
+    } else {
+      rows.push({ state, path: String(spec), type: declared });
+    }
+  }
+  return rows;
+}
+
+/** Rebuild a `json: true` rule from its edited rows + require keys, always
+ *  choosing the minimal serialization: a row with no value map whose type
+ *  matches the declared state type becomes the string form
+ *  (`set: {var: "path"}`); a row needing a type override or map becomes a
+ *  {key, type?, map?} object; blank/duplicate state names (which a set map
+ *  can't carry) fall back to the explicit mappings list with type spelled
+ *  out (the mappings form defaults to "string", not the declared type).
+ *  Unknown keys on the original rule (and throttle) ride through verbatim;
+ *  child_set is dropped — the runtime rejects it on json rules. */
+export function buildJsonResponse(
+  original: DriverResponseDef,
+  rows: JsonRuleRow[],
+  requireKeys: string[],
+  stateVariables: Record<string, StateVarDefLike | undefined>,
+): DriverResponseDef {
+  const next: DriverResponseDef = { ...original, json: true };
+  delete next.match;
+  delete next.pattern;
+  delete next.address;
+  delete next.set;
+  delete next.mappings;
+  delete next.require;
+  delete next.child_set;
+
+  if (requireKeys.length === 1) next.require = requireKeys[0];
+  else if (requireKeys.length > 1) next.require = [...requireKeys];
+
+  const canUseSet =
+    rows.every((r) => r.state) &&
+    new Set(rows.map((r) => r.state)).size === rows.length;
+  if (canUseSet) {
+    const set: Record<string, unknown> = {};
+    for (const r of rows) {
+      const declared = declaredStateType(stateVariables, r.state);
+      const hasMap = r.map !== undefined && Object.keys(r.map).length > 0;
+      if (!hasMap && coercionTypesEquivalent(r.type, declared)) {
+        set[r.state] = r.path;
+      } else {
+        set[r.state] = {
+          key: r.path,
+          ...(coercionTypesEquivalent(r.type, declared) ? {} : { type: r.type }),
+          ...(hasMap ? { map: r.map } : {}),
+        };
+      }
+    }
+    next.set = set;
+  } else {
+    next.mappings = rows.map((r) => ({
+      state: r.state,
+      key: r.path,
+      type: r.type,
+      ...(r.map && Object.keys(r.map).length > 0 ? { map: r.map } : {}),
+    })) as unknown as DriverResponseMapping[];
+  }
+  return next;
+}
+
+/** The require: scope as a list for editing (string → one entry). */
+export function requireToList(require: unknown): string[] {
+  if (typeof require === "string") return require.trim() ? [require] : [];
+  if (Array.isArray(require)) {
+    return require.map((k) => String(k)).filter((k) => k.trim());
+  }
+  return [];
+}
+
+/** Parse the comma-separated require input into clean key names. */
+export function parseRequireText(text: string): string[] {
+  return text
+    .split(",")
+    .map((k) => k.trim())
+    .filter((k) => k);
+}
+
 /** Validate renaming a value-map raw key against its sibling keys. Renaming
  *  onto an existing key would merge the two rows in the backing record,
  *  silently dropping one, so it's rejected instead. */

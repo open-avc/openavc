@@ -138,6 +138,18 @@ SCENARIOS = [
     "sem_sets_two_child_id_params_error",
     "sem_query_for_unknown_var_error",
     "sem_sets_not_mapping_error",
+    "json_set_string_path_ok",
+    "json_set_object_form_ok",
+    "json_mappings_form_ok",
+    "json_require_without_json_error",
+    "json_require_blank_error",
+    "json_require_bad_type_error",
+    "json_unknown_state_var_error",
+    "json_unknown_row_type_error",
+    "json_child_set_error",
+    "json_no_fields_error",
+    "json_empty_path_error",
+    "json_on_osc_transport_error",
 ]
 
 
