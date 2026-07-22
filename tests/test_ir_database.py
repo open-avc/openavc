@@ -3,9 +3,14 @@
 Only the pure, offline helpers are exercised here (index/CSV parsing and the
 per-function render annotation). The network fetch and cache are not — those hit
 an external service and are covered by live validation, not the core suite. All
-inputs are synthetic.
+inputs are synthetic. The /ir-db route tests below stub the database client so
+they stay offline too.
 """
 
+import pytest
+from fastapi import HTTPException
+
+import server.api.routes.ir_db as ir_db_routes
 from server.core.ir_database import parse_csv, parse_index, render_function
 
 
@@ -70,3 +75,41 @@ def test_render_function_unsupported_protocol():
     assert out["supported"] is False
     assert out["pronto"] is None
     assert "RCA-38" in out["error"]
+
+
+# --- /ir-db/devices reachability ------------------------------------------
+
+
+async def test_ir_db_devices_503_when_index_unreachable(monkeypatch):
+    """An empty device list with an UNREACHABLE index is a connectivity
+    failure, not 'brand has no devices'. It must 503 like /ir-db/brands, not
+    return an empty 200 the UI reads as a real empty result."""
+    async def _no_devices(brand):
+        return []
+
+    async def _unavailable():
+        return False
+
+    monkeypatch.setattr(ir_db_routes._db, "devices", _no_devices)
+    monkeypatch.setattr(ir_db_routes._db, "available", _unavailable)
+
+    with pytest.raises(HTTPException) as exc:
+        await ir_db_routes.ir_db_devices(brand="Acme")
+    assert exc.value.status_code == 503
+
+
+async def test_ir_db_devices_empty_200_when_brand_has_no_codes(monkeypatch):
+    """A REACHABLE index where the brand simply has no code sets returns a
+    normal empty 200 — not a false 503."""
+    async def _no_devices(brand):
+        return []
+
+    async def _available():
+        return True
+
+    monkeypatch.setattr(ir_db_routes._db, "devices", _no_devices)
+    monkeypatch.setattr(ir_db_routes._db, "available", _available)
+
+    result = await ir_db_routes.ir_db_devices(brand="Acme")
+    assert result["brand"] == "Acme"
+    assert result["devices"] == []

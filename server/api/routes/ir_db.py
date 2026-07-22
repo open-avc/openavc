@@ -45,6 +45,16 @@ async def ir_db_devices(brand: str) -> dict[str, Any]:
         devices = await _db.devices(brand)
     except Exception as e:  # noqa: BLE001
         raise _api_error(503, "Could not reach the IR code database", e)
+    if not devices and not await _db.available():
+        # An empty result with an unreachable index is a connectivity failure,
+        # not a real "brand has no devices" — surface it like /ir-db/brands does
+        # so the UI shows "database unreachable" instead of "no devices".
+        raise _api_error(
+            503,
+            "Could not reach the IR code database. Check the server's internet "
+            "connection and try again.",
+            ConnectionError("irdb index empty"),
+        )
     return {"brand": brand, "devices": devices, **_META}
 
 
