@@ -1213,32 +1213,32 @@ class YAMLAutoSimulator(TCPSimulator):
         for handler in self._explicit_handlers:
             m = handler.pattern.match(text)
             if m:
-                return self._execute_explicit_handler(handler, m)
+                return self._with_remainder(text, m, self._execute_explicit_handler(handler, m))
 
         # Try script handlers (match: + handler: with inline Python)
         for handler in self._script_handlers:
             m = handler.pattern.match(text)
             if m:
-                return self._execute_script_handler(handler, m)
+                return self._with_remainder(text, m, self._execute_script_handler(handler, m))
 
         # Inline (Generic) devices: match the incoming string against the
         # response patterns and apply their state changes + echo a confirmation.
         for pattern, set_dict in self._inline_response_handlers:
             m = pattern.match(text)
             if m:
-                return self._apply_inline_response(text, m, set_dict)
+                return self._with_remainder(text, m, self._apply_inline_response(text, m, set_dict))
 
         # Try auto-generated command handlers
         for handler in self._command_handlers:
             m = handler.pattern.match(text)
             if m:
-                return self._execute_command_handler(handler, m)
+                return self._with_remainder(text, m, self._execute_command_handler(handler, m))
 
         # Try query handlers
         for handler in self._query_handlers:
             m = handler.pattern.match(text)
             if m:
-                return self._execute_query_handler(handler)
+                return self._with_remainder(text, m, self._execute_query_handler(handler))
 
         # A registration command with no handler of its own still succeeds —
         # the empty body means "204-style ack" (real dial-back devices answer
@@ -1247,8 +1247,75 @@ class YAMLAutoSimulator(TCPSimulator):
         if was_registration:
             return b""
 
+        # Nothing matched the whole line. Unterminated protocols are
+        # self-delimiting, and with no terminator on the wire back-to-back
+        # writes can coalesce into one line ("N?*R4") whose first command's
+        # end-anchored pattern then never matches. If the entire line
+        # decomposes into known commands, dispatch each piece; plain garbage
+        # does not decompose and stays unrecognized.
+        segments = self._plan_segments(text) if len(text) <= 256 else None
+        if segments and len(segments) > 1:
+            replies = [self._dispatch_command(s.encode()) for s in segments]
+            parts = [r for r in replies if r]
+            return b"".join(parts) if parts else b""
+
         logger.debug("%s: unrecognized command: %r", self.device_id, text)
         return None
+
+    def _with_remainder(self, text: str, m: re.Match, head: bytes | None) -> bytes | None:
+        """Dispatch whatever a prefix-matching handler left unconsumed.
+
+        Handlers whose patterns aren't end-anchored (an explicit `match: 'I'`)
+        legitimately claim just the front of a coalesced line; the rest of the
+        line is the next command, not junk to swallow. Recursing keeps
+        first-match-wins order per piece. Trailing text that matches nothing
+        dispatches to None and the head's reply stands alone, exactly as
+        before.
+        """
+        end = m.end()
+        if end <= 0 or end >= len(text):
+            return head
+        rest = text[end:].strip()
+        if not rest:
+            return head
+        tail = self._dispatch_command(rest.encode())
+        if head and tail:
+            return head + tail
+        return tail if tail else head
+
+    def _plan_segments(self, text: str, _depth: int = 0) -> list[str] | None:
+        """Decompose a line into a sequence of fully-matchable commands.
+
+        Longest-prefix-first with backtracking; every byte must land in some
+        segment (full decomposition or None). fullmatch keeps a segment from
+        claiming trailing characters a shorter split needs.
+        """
+        if not text:
+            return []
+        if _depth > 16:
+            return None
+        for end in range(len(text), 0, -1):
+            prefix = text[:end]
+            if self._any_handler_fullmatch(prefix):
+                rest = self._plan_segments(text[end:], _depth + 1)
+                if rest is not None:
+                    return [prefix, *rest]
+        return None
+
+    def _any_handler_fullmatch(self, text: str) -> bool:
+        for handler in self._explicit_handlers:
+            if handler.pattern.fullmatch(text):
+                return True
+        for handler in self._script_handlers:
+            if handler.pattern.fullmatch(text):
+                return True
+        for pattern, _set_dict in self._inline_response_handlers:
+            if pattern.fullmatch(text):
+                return True
+        for handler in self._command_handlers:
+            if handler.pattern.fullmatch(text):
+                return True
+        return any(h.pattern.fullmatch(text) for h in self._query_handlers)
 
     def _execute_command_handler(self, handler: CommandHandler, m: re.Match) -> bytes | None:
         """Execute a command handler: update state and generate response."""

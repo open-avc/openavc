@@ -109,12 +109,6 @@ def _matrix_def() -> dict:
         "default_config": {
             "host": "",
             "port": 5000,
-            # Bare unterminated wires ride the simulator's quiet-window
-            # flush; pacing keeps two bare queries from landing in the same
-            # window and merging into one unparseable line — the same
-            # setting an unterminated protocol needs against real hardware
-            # that parses on inter-character timeout.
-            "inter_command_delay": 0.4,
         },
         "config_schema": {
             "host": {"type": "string", "required": True, "label": "IP Address"},
@@ -170,8 +164,7 @@ def _make_driver(definition: dict, port: int, device_id: str = "dev1"):
 async def _start_sim(definition: dict) -> tuple[YAMLAutoSimulator, int]:
     sim = YAMLAutoSimulator(definition["id"], config={}, driver_def=definition)
     await sim.start(0)
-    port = sim._server.sockets[0].getsockname()[1]
-    return sim, port
+    return sim, sim.port
 
 
 async def _wait_for(predicate, timeout: float = 3.0) -> None:
@@ -257,7 +250,7 @@ async def test_display_poll_reports_simulator_state():
 
 
 async def test_display_fragmented_command_still_one_message():
-    """A line split across TCP writes inside the quiet window coalesces."""
+    """A terminated line split across TCP writes coalesces into one message."""
     definition = _display_def()
     sim, port = await _start_sim(definition)
     sim.set_state("input", 5)
@@ -265,7 +258,7 @@ async def test_display_fragmented_command_still_one_message():
         reader, writer = await asyncio.open_connection("127.0.0.1", port)
         writer.write(b"INP")
         await writer.drain()
-        await asyncio.sleep(0.05)
+        await asyncio.sleep(0.02)
         writer.write(b"?\r\n")
         await writer.drain()
         data = await asyncio.wait_for(reader.read(256), timeout=2.0)
@@ -324,6 +317,8 @@ async def test_matrix_command_round_trips():
 
 
 async def test_matrix_bare_poll_queries_answered():
+    """poll() writes its bare queries back-to-back with no pacing; each
+    write must dispatch as its own message, not merge with the next."""
     definition = _matrix_def()
     sim, port = await _start_sim(definition)
     sim.set_state("route", 12)
@@ -338,6 +333,35 @@ async def test_matrix_bare_poll_queries_answered():
         _assert_parity(drv, sim, ["route", "locked"])
     finally:
         await drv.disconnect()
+        await sim.stop()
+
+
+async def test_matrix_back_to_back_bare_wires_stay_separate():
+    """Two unterminated commands written moments apart on one connection
+    are answered individually (one message per client write)."""
+    definition = _matrix_def()
+    sim, port = await _start_sim(definition)
+    sim.set_state("route", 3)
+    sim.set_state("locked", True)
+    try:
+        reader, writer = await asyncio.open_connection("127.0.0.1", port)
+        writer.write(b"R?")
+        await writer.drain()
+        await asyncio.sleep(0.01)
+        writer.write(b"L?")
+        await writer.drain()
+        received = b""
+        deadline = asyncio.get_event_loop().time() + 2.0
+        while (
+            b"ROUTE 3\r" not in received or b"LOCKED\r" not in received
+        ) and asyncio.get_event_loop().time() < deadline:
+            try:
+                received += await asyncio.wait_for(reader.read(256), timeout=0.5)
+            except asyncio.TimeoutError:
+                continue
+        assert b"ROUTE 3\r" in received and b"LOCKED\r" in received, received
+        writer.close()
+    finally:
         await sim.stop()
 
 

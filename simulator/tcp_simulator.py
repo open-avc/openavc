@@ -108,13 +108,16 @@ class TCPSimulator(BaseSimulator):
     # ── Lifecycle ──
 
     async def start(self, port: int) -> None:
-        """Start the TCP server."""
-        self._port = port
+        """Start the TCP server. Port 0 binds an ephemeral port; the real
+        bound port is read back so ``self.port`` is always meaningful."""
         self._server = await asyncio.start_server(
             self._handle_client,
             host="127.0.0.1",
             port=port,
         )
+        if port == 0 and self._server.sockets:
+            port = self._server.sockets[0].getsockname()[1]
+        self._port = port
         self._running = True
         logger.info(
             "%s started on port %d (driver: %s)",
@@ -170,24 +173,32 @@ class TCPSimulator(BaseSimulator):
             # sends \r but response delimiter is \r\n).
             if buffer is None:
                 buffer = bytearray()
+            # Each read() result is remembered as its own chunk so a
+            # quiet-window flush can dispatch one message per client write.
+            chunks: list[bytes] = [bytes(buffer)] if buffer else []
             while True:
                 # With bytes already buffered, read with a short quiet window
                 # instead of the long idle timeout: some text protocols are
                 # genuinely unterminated (single-character queries with no
                 # CR), and holding those bytes until more data arrives means
-                # they never dispatch at all. A fragmented line still
-                # coalesces — its remaining bytes arrive well inside the
-                # window — while a wire that stays quiet flushes the buffer
-                # as one complete message.
+                # they never dispatch at all. The window sits below the
+                # command pacing unterminated protocols configure (e.g.
+                # 100 ms) and far above genuine TCP fragmentation gaps.
                 try:
                     raw = await asyncio.wait_for(
-                        reader.read(4096), timeout=0.25 if buffer else 30.0
+                        reader.read(4096), timeout=0.08 if buffer else 30.0
                     )
                 except asyncio.TimeoutError:
                     if buffer:
-                        complete = bytes(buffer)
+                        # No terminator ever arrived. A fragmented line that
+                        # HAS a terminator completes through the delimiter
+                        # branch below before this fires; what's left here is
+                        # an unterminated protocol, where the client's write
+                        # boundary is the only message boundary there is.
+                        # Dispatch one message per original write so
+                        # back-to-back bare commands don't merge.
                         buffer.clear()
-                        return [p for p in re.split(rb"[\r\n]+", complete) if p]
+                        return [c for c in chunks if c]
                     return []
                 if not raw:
                     return None
@@ -195,6 +206,7 @@ class TCPSimulator(BaseSimulator):
                 # doesn't end with a delimiter, the trailing bytes stay in the
                 # buffer so we don't fragment a command across read boundaries.
                 buffer.extend(raw)
+                chunks.append(raw)
                 # Find the last delimiter byte; everything after it is partial
                 # and waits for the next read (or the quiet-window flush).
                 last_delim = max(buffer.rfind(b"\r"), buffer.rfind(b"\n"))
