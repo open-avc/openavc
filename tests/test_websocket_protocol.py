@@ -491,8 +491,46 @@ def test_panel_allowed_types_includes_expected():
 
 def test_programmer_only_types_excluded_from_panel():
     """Verify programmer-only message types are NOT in the panel allowed set."""
-    for msg_type in ["project.reload", "isc.send", "isc.broadcast"]:
+    for msg_type in ["project.reload", "isc.send", "isc.broadcast",
+                     "log.subscribe", "log.unsubscribe"]:
         assert msg_type not in _PANEL_ALLOWED_TYPES
+
+
+# ── Log stream gating ──
+# The log buffer captures verbatim transport TX/RX, which can include device
+# login credentials. Panel clients are unauthenticated, so the log stream is
+# programmer-only.
+
+
+@pytest.mark.asyncio
+async def test_panel_cannot_subscribe_to_logs():
+    """Panel log.subscribe is rejected: no history, no subscription started."""
+    from server.api.ws import _log_subscriptions
+
+    ws = FakeWS()
+    engine = _make_engine()
+    with patch("server.api._engine._engine", engine):
+        await _handle_message(ws, {"type": "log.subscribe"}, "panel")
+    assert id(ws) not in _log_subscriptions
+    assert len(ws.sent) == 1
+    assert ws.sent[0]["type"] == "error"
+    assert all(m["type"] != "log.history" for m in ws.sent)
+
+
+@pytest.mark.asyncio
+async def test_programmer_can_subscribe_to_logs():
+    """Programmer log.subscribe still gets history and a live subscription."""
+    from server.api.ws import _cleanup_log_subscription, _log_subscriptions
+
+    ws = FakeWS()
+    engine = _make_engine()
+    with patch("server.api._engine._engine", engine):
+        await _handle_message(ws, {"type": "log.subscribe"}, "programmer")
+    try:
+        assert ws.sent[0]["type"] == "log.history"
+        assert id(ws) in _log_subscriptions
+    finally:
+        _cleanup_log_subscription(id(ws))
 
 
 # ── ui.submit / ui.route value validation ──

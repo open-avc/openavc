@@ -317,7 +317,7 @@ Failed authentication attempts are throttled at the strict (10/min) rate on ever
 | Project configuration (devices, macros, UI layouts) | `project.avc` (JSON) | Low. Contains device IP addresses and connection parameters. |
 | System configuration | `system.json` | Medium. May contain auth passwords and API keys in plaintext. Protect with filesystem permissions. |
 | Persistent variables | `state.json` | Low. Key-value pairs for automation state. |
-| Application logs | `logs/` directory | Low. Standard application logs. Configurable rotation (default: 50 MB, 5 files). |
+| Application logs | `logs/` directory | Low. Standard application logs at INFO level. Device protocol traffic (which can include device credentials) is never written to disk — it is held in a fixed-size in-memory buffer, visible only in the live log view behind an authenticated Programmer login. Configurable rotation (default: 50 MB, 5 files). |
 | Cloud pairing data | `cloud.json` | High. Contains system key for cloud authentication. Protect with filesystem permissions. |
 
 ### What is NOT stored

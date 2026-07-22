@@ -266,13 +266,14 @@ def _is_flat_primitive(value: Any) -> bool:
 
 
 # Message types that panel clients are allowed to send.
-# Panel can interact with UI elements, navigate pages, subscribe to logs,
-# execute macros (presets), and set state (plugin iframes).
+# Panel can interact with UI elements, navigate pages, execute macros
+# (presets), and set state (plugin iframes). The log stream is programmer-only:
+# the buffer carries verbatim transport TX/RX, which can include device
+# credentials, and panel clients are unauthenticated.
 _PANEL_ALLOWED_TYPES = frozenset({
     "ui.press", "ui.release", "ui.hold", "ui.toggle_off", "ui.change",
     "ui.select", "ui.route", "ui.submit",
-    "ui.page", "command", "macro.execute", "state.set",
-    "log.subscribe", "log.unsubscribe", "pong",
+    "ui.page", "command", "macro.execute", "state.set", "pong",
 })
 
 # Key namespaces panel clients are allowed to write via state.set.
