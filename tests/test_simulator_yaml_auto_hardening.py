@@ -433,6 +433,109 @@ def test_value_map_hits_boolean_state_values():
 
 
 # ===========================================================================
+# Canonical mappings: response rules (the form the Driver Builder persists)
+# feed the same query-reply machinery as the set: shorthand
+# ===========================================================================
+
+
+def test_mappings_rule_builds_same_template_as_set_rule():
+    """A mappings-form rule with a group produces the identical reply
+    template the equivalent set-form rule does."""
+    base = {
+        "id": "acme_switcher",
+        "name": "Acme Switcher",
+        "transport": "tcp",
+        "state_variables": {"input": {"type": "integer", "min": 1, "max": 8}},
+        "commands": {"query_input": {"send": "INP?"}},
+    }
+    sim_set = _make_sim({
+        **base,
+        "responses": [{"match": r"In(\d+) All", "set": {"input": "$1"}}],
+    })
+    sim_map = _make_sim({
+        **base,
+        "responses": [
+            {"match": r"In(\d+) All",
+             "mappings": [{"state": "input", "group": 1, "type": "integer"}]},
+        ],
+    }, device_id="dev2")
+    assert sim_map._state_responses["input"].template == "In{value} All"
+    assert (
+        sim_map._state_responses["input"].template
+        == sim_set._state_responses["input"].template
+    )
+
+
+def test_mappings_map_builds_reverse_value_map():
+    """A mapping's map: (raw wire token -> friendly state value) is reversed
+    for emission: the friendly value keys the wire text carrying the raw
+    token, so the friendly text never lands on the wire."""
+    definition = {
+        "id": "acme_display",
+        "name": "Acme Display",
+        "transport": "tcp",
+        "state_variables": {"power": {"type": "boolean"}},
+        "commands": {"query_power": {"send": "PWR?", "query_for": "power"}},
+        "responses": [
+            {"match": r"PWR=(\d)",
+             "mappings": [{"state": "power", "group": 1, "type": "boolean",
+                           "map": {"1": True, "0": False}}]},
+        ],
+    }
+    sim = _make_sim(definition)
+    sr = sim._state_responses["power"]
+    # Bool friendly values normalize lowercase, matching format()'s lookup.
+    assert sr.value_map["true"] == "PWR=1"
+    assert sr.value_map["false"] == "PWR=0"
+
+
+def test_query_round_trip_from_mappings_rule():
+    """query_for + a mappings rule answers the query with the current
+    state's wire form (the send half and reply half both work for a
+    Builder-authored driver)."""
+    definition = {
+        "id": "acme_projector",
+        "name": "Acme Projector",
+        "transport": "tcp",
+        "state_variables": {"power": {"type": "string"}},
+        "commands": {"query_power": {"send": "PWR?", "query_for": "power"}},
+        "responses": [
+            {"match": "PWR=(ON|OFF)",
+             "mappings": [{"state": "power", "group": 1,
+                           "map": {"ON": "on", "OFF": "off"}}]},
+        ],
+    }
+    sim = _make_sim(definition)
+    sim.set_state("power", "off")
+    assert sim._dispatch_command(b"PWR?") == b"PWR=OFF\r\n"
+    sim.set_state("power", "on")
+    assert sim._dispatch_command(b"PWR?") == b"PWR=ON\r\n"
+
+
+def test_osc_address_and_json_mappings_rules_build_no_state_responses():
+    """OSC address rules and json rules keep producing zero state-response
+    entries (address handlers / explicit simulators cover those)."""
+    definition = {
+        "id": "acme_console",
+        "name": "Acme Console",
+        "transport": "osc",
+        "state_variables": {"mute": {"type": "boolean"},
+                            "level": {"type": "float"}},
+        "commands": {},
+        "responses": [
+            {"address": "/acme/mute",
+             "mappings": [{"state": "mute", "arg": 0, "type": "boolean",
+                           "map": {"1": True, "0": False}}]},
+            {"json": True, "match": r"(\{.*\})",
+             "mappings": [{"state": "level", "group": 1,
+                           "json_path": "level", "type": "float"}]},
+        ],
+    }
+    sim = _make_sim(definition)
+    assert sim._state_responses == {}
+
+
+# ===========================================================================
 # M-067 — child_id command params capture digits, not greedy (.+)
 # ===========================================================================
 

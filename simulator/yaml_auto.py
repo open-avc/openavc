@@ -1532,6 +1532,27 @@ class YAMLAutoSimulator(TCPSimulator):
             match_pattern = resp_def.get("match", "")
             set_dict = resp_def.get("set", {})
 
+            # Canonical mappings: form (what the Driver Builder persists) —
+            # derive the set shorthand so those rules feed the same loop
+            # below. OSC address rules carry no match pattern (they're built
+            # into address handlers instead), so they're skipped here.
+            map_reversals: list[dict] = []
+            mappings = resp_def.get("mappings")
+            if (
+                not set_dict
+                and match_pattern
+                and not resp_def.get("address")
+                and isinstance(mappings, list)
+            ):
+                set_dict = _mappings_to_set(mappings)
+                map_reversals = [
+                    m for m in mappings
+                    if isinstance(m, dict)
+                    and m.get("state")
+                    and "value" not in m
+                    and isinstance(m.get("map"), dict)
+                ]
+
             for state_key, set_value in set_dict.items():
                 # Normalize like StateResponse.format() normalizes its lookup
                 # key, or a YAML bare `true` (Python True) stores a "True"
@@ -1572,6 +1593,34 @@ class YAMLAutoSimulator(TCPSimulator):
                     literal = emit_literal(match_pattern)
                     if literal:
                         sr.value_map[set_value_str] = literal
+
+            # A mapping's map: stores the friendly value in state (raw wire
+            # token → friendly), so emitting the template with the state value
+            # would put the friendly text on the wire. Reverse each pair
+            # instead: friendly value → the wire text with the raw token at
+            # the mapping's group. First writer wins, like the template guard.
+            for mapping in map_reversals:
+                try:
+                    group = int(mapping.get("group", 1))
+                except (TypeError, ValueError):
+                    continue
+                template = (
+                    emit_template(match_pattern, group) if group > 0 else None
+                )
+                if not template:
+                    continue
+                sr = self._state_responses.get(str(mapping["state"]))
+                if sr is None:
+                    continue
+                for raw, friendly in mapping["map"].items():
+                    key = (
+                        str(friendly).lower()
+                        if isinstance(friendly, bool)
+                        else str(friendly)
+                    )
+                    sr.value_map.setdefault(
+                        key, template.replace("{value}", str(raw))
+                    )
 
     def _build_command_handlers(self) -> None:
         """Build command handlers from commands: section."""
