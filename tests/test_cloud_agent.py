@@ -1275,6 +1275,7 @@ class TestAgentCapabilityGating:
 
         agent = CloudAgent.__new__(CloudAgent)
         agent._session = None  # Skip signature verification path
+        agent._connected = False  # Refusal NACKs no-op in send_message
         agent._enabled_capabilities = enabled_capabilities
 
         # Spy handlers — record calls without actually doing anything
@@ -1419,6 +1420,138 @@ class TestAgentCapabilityGating:
             "payload": {"target_version": "1.2.3"},
         })
         assert agent._command_handler.called == "software_update"
+
+
+# ===========================================================================
+# NACK on refused dispatch — a capability-gated or subsystem-missing request
+# is answered with its own typed failure result (command_result, project_data,
+# diagnostic_result, ai_tool_result, tunnel_failed) so the cloud resolves the
+# pending operation immediately instead of burning its request timeout. The
+# cloud has no generic-error path into those futures.
+# ===========================================================================
+
+
+class TestAgentRefusalNacks:
+    """Tests for CloudAgent._nack_undispatched wiring in _handle_message."""
+
+    def _make_agent(self, enabled_capabilities, with_handlers=True):
+        from server.cloud.agent import CloudAgent
+
+        agent = CloudAgent.__new__(CloudAgent)
+        agent._session = None
+        agent._connected = False
+        agent._enabled_capabilities = enabled_capabilities
+        agent._command_handler = object() if with_handlers else None
+        agent._ai_tool_handler = object() if with_handlers else None
+        agent._tunnel_handler = object() if with_handlers else None
+        agent.sent = []
+
+        async def spy_send(msg_type, payload):
+            agent.sent.append((msg_type, payload))
+
+        agent.send_message = spy_send
+        return agent
+
+    @pytest.mark.asyncio
+    async def test_gated_command_nacks_command_result(self):
+        agent = self._make_agent(enabled_capabilities=["monitoring"])
+        await agent._handle_message({
+            "type": "command",
+            "payload": {"request_id": "r1", "device_id": "d1", "command": "noop"},
+        })
+        assert len(agent.sent) == 1
+        msg_type, payload = agent.sent[0]
+        assert msg_type == "command_result"
+        assert payload["request_id"] == "r1"
+        assert payload["success"] is False
+        assert "capability_disabled" in payload["error"]
+        assert "remote_access" in payload["error"]
+
+    @pytest.mark.asyncio
+    async def test_gated_diagnostic_nacks_diagnostic_result(self):
+        agent = self._make_agent(enabled_capabilities=["monitoring"])
+        await agent._handle_message({
+            "type": "diagnostic",
+            "payload": {"request_id": "r2", "action": "ping", "target": "1.2.3.4"},
+        })
+        assert agent.sent == [(
+            "diagnostic_result",
+            {
+                "request_id": "r2",
+                "success": False,
+                "error": agent.sent[0][1]["error"],
+            },
+        )]
+        assert "capability_disabled" in agent.sent[0][1]["error"]
+
+    @pytest.mark.asyncio
+    async def test_gated_tunnel_open_nacks_tunnel_failed(self):
+        agent = self._make_agent(enabled_capabilities=["monitoring"])
+        await agent._handle_message({
+            "type": "tunnel_open",
+            "payload": {"tunnel_id": "t1"},
+        })
+        assert len(agent.sent) == 1
+        msg_type, payload = agent.sent[0]
+        assert msg_type == "tunnel_failed"
+        assert payload["tunnel_id"] == "t1"
+        assert "capability_disabled" in payload["reason"]
+
+    @pytest.mark.asyncio
+    async def test_gated_request_without_request_id_sends_nothing(self):
+        agent = self._make_agent(enabled_capabilities=["monitoring"])
+        await agent._handle_message({
+            "type": "software_update",
+            "payload": {"target_version": "1.2.3"},
+        })
+        assert agent.sent == []
+
+    @pytest.mark.asyncio
+    async def test_gated_cert_renew_due_sends_nothing(self):
+        """cert_renew_due is a nudge with no cloud-side future — no NACK."""
+        agent = self._make_agent(enabled_capabilities=["monitoring"])
+        await agent._handle_message({
+            "type": "cert_renew_due",
+            "payload": {"domain": "example.com"},
+        })
+        assert agent.sent == []
+
+    @pytest.mark.asyncio
+    async def test_missing_command_handler_nacks_command_result(self):
+        agent = self._make_agent(
+            enabled_capabilities=["remote_access"], with_handlers=False
+        )
+        await agent._handle_message({
+            "type": "command",
+            "payload": {"request_id": "r3", "device_id": "d1", "command": "noop"},
+        })
+        assert len(agent.sent) == 1
+        msg_type, payload = agent.sent[0]
+        assert msg_type == "command_result"
+        assert payload["request_id"] == "r3"
+        assert payload["success"] is False
+        assert "subsystem_unavailable" in payload["error"]
+
+    @pytest.mark.asyncio
+    async def test_missing_command_handler_get_project_nacks_project_data(self):
+        agent = self._make_agent(enabled_capabilities=[], with_handlers=False)
+        await agent._handle_message({
+            "type": "get_project",
+            "payload": {"request_id": "r4"},
+        })
+        assert agent.sent[0][0] == "project_data"
+        assert agent.sent[0][1]["success"] is False
+
+    @pytest.mark.asyncio
+    async def test_missing_ai_handler_nacks_ai_tool_result(self):
+        agent = self._make_agent(enabled_capabilities=[], with_handlers=False)
+        await agent._handle_message({
+            "type": "ai_tool_call",
+            "payload": {"request_id": "r5", "tool": "get_project_state"},
+        })
+        assert agent.sent[0][0] == "ai_tool_result"
+        assert agent.sent[0][1]["request_id"] == "r5"
+        assert agent.sent[0][1]["success"] is False
 
 
 # ===========================================================================

@@ -27,6 +27,8 @@ from server.cloud.protocol import (
     SOFTWARE_UPDATE, TUNNEL_OPEN, TUNNEL_CLOSE, ALERT_RULES_UPDATE,
     AI_TOOL_CALL, GAP_REPORT, GET_PROJECT, GET_DEVICE_COMMANDS,
     CERT_RESULT, CERT_RENEW_DUE,
+    COMMAND_RESULT, PROJECT_DATA, DEVICE_COMMANDS_DATA,
+    DIAGNOSTIC_RESULT, AI_TOOL_RESULT, TUNNEL_FAILED,
     build_pong, build_signed_message,
     parse_message, is_handshake_message,
     extract_payload, ProtocolError,
@@ -101,6 +103,24 @@ _CAPABILITY_GATED: dict[str, str] = {
     # answers a request this agent chose to send, and without the in-memory
     # pending key a pushed chain can't install anything anyway.
     "cert_renew_due": "trusted_certs",
+}
+
+# Typed failure replies for request messages the agent refuses to dispatch
+# (capability not negotiated, or the owning subsystem isn't wired). The cloud
+# resolves each pending operation from the request's own result type -- it has
+# no generic-error path into those futures -- so a refusal must answer in kind
+# or the portal burns the full request timeout on a message the agent already
+# dropped. Types absent here (cert_renew_due, tunnel_close, config/alert
+# updates) have no cloud-side future waiting; dropping them stays silent.
+_DROP_NACK_TYPES: dict[str, str] = {
+    COMMAND: COMMAND_RESULT,
+    CONFIG_PUSH: COMMAND_RESULT,
+    RESTART: COMMAND_RESULT,
+    SOFTWARE_UPDATE: COMMAND_RESULT,
+    GET_PROJECT: PROJECT_DATA,
+    GET_DEVICE_COMMANDS: DEVICE_COMMANDS_DATA,
+    DIAGNOSTIC: DIAGNOSTIC_RESULT,
+    AI_TOOL_CALL: AI_TOOL_RESULT,
 }
 
 
@@ -759,14 +779,21 @@ class CloudAgent:
         if self._session and seq is not None:
             self._session.check_rotation(seq)
 
-        # Capability gating: silently drop messages the cloud sent for features
-        # this session didn't negotiate. Spec §13.8 line 1216: "If `tunnel` is
-        # not enabled, the agent does not listen for `tunnel_open` messages."
+        # Capability gating: refuse messages the cloud sent for features this
+        # session didn't negotiate. Spec §13.8 line 1216: "If `tunnel` is not
+        # enabled, the agent does not listen for `tunnel_open` messages." The
+        # refusal answers with the request's typed failure result so the cloud
+        # fails fast instead of burning its request timeout.
         required = _CAPABILITY_GATED.get(msg_type)
         if required and required not in self._enabled_capabilities:
             log.warning(
                 f"Cloud agent: dropping {msg_type} — '{required}' capability "
                 f"not enabled for this session (enabled: {self._enabled_capabilities})"
+            )
+            await self._nack_undispatched(
+                msg,
+                f"capability_disabled: the '{required}' capability is not "
+                f"enabled for this system",
             )
             return
 
@@ -792,11 +819,15 @@ class CloudAgent:
         elif msg_type in (COMMAND, CONFIG_PUSH, RESTART, DIAGNOSTIC, GET_PROJECT, GET_DEVICE_COMMANDS):
             if self._command_handler:
                 await self._command_handler.handle(msg)
+            else:
+                log.info(f"Cloud agent: received {msg_type} but no command handler")
+                await self._nack_undispatched(msg, "subsystem_unavailable: command handler not running")
         elif msg_type == AI_TOOL_CALL:
             if self._ai_tool_handler:
                 await self._ai_tool_handler.handle(msg)
             else:
                 log.info("Cloud agent: received ai_tool_call but no AI tool handler")
+                await self._nack_undispatched(msg, "subsystem_unavailable: AI tool handler not running")
         elif msg_type == ALERT_RULES_UPDATE:
             await self._handle_alert_rules_update(msg)
         elif msg_type == TUNNEL_OPEN:
@@ -804,6 +835,7 @@ class CloudAgent:
                 await self._tunnel_handler.handle_tunnel_open(msg)
             else:
                 log.info("Cloud agent: received tunnel_open but no tunnel handler")
+                await self._nack_undispatched(msg, "subsystem_unavailable: tunnel handler not running")
         elif msg_type == TUNNEL_CLOSE:
             if self._tunnel_handler:
                 await self._tunnel_handler.handle_tunnel_close(msg)
@@ -814,6 +846,7 @@ class CloudAgent:
                 await self._command_handler.handle(msg)
             else:
                 log.info(f"Cloud agent: received {msg_type} but no command handler")
+                await self._nack_undispatched(msg, "subsystem_unavailable: command handler not running")
         elif msg_type == CERT_RESULT:
             if self._cert_manager:
                 await self._cert_manager.handle_cert_result(msg)
@@ -828,6 +861,32 @@ class CloudAgent:
             log.warning(f"Cloud agent: unknown message type '{msg_type}'")
 
     # --- Message Handlers ---
+
+    async def _nack_undispatched(self, msg: dict[str, Any], error: str) -> None:
+        """Answer a request the agent refuses to dispatch with its typed
+        failure result, so the cloud resolves the pending operation right away
+        instead of waiting out its request timeout. Message types with no
+        cloud-side future (and requests without a request_id) send nothing.
+        """
+        msg_type = msg.get("type", "")
+        payload = extract_payload(msg)
+        if msg_type == TUNNEL_OPEN:
+            tunnel_id = payload.get("tunnel_id", "")
+            if tunnel_id:
+                await self.send_message(TUNNEL_FAILED, {
+                    "tunnel_id": tunnel_id,
+                    "reason": error,
+                })
+            return
+        result_type = _DROP_NACK_TYPES.get(msg_type)
+        request_id = payload.get("request_id", "")
+        if not result_type or not request_id:
+            return
+        await self.send_message(result_type, {
+            "request_id": request_id,
+            "success": False,
+            "error": error,
+        })
 
     async def _handle_ping(self, msg: dict[str, Any]) -> None:
         """Respond to a ping with a signed pong."""
