@@ -198,7 +198,14 @@ def build_authenticate(system_id: str, timestamp: str, proof: str) -> dict[str, 
 def build_resume(
     last_ack_seq: int, buffered_count: int, disconnected_at: str
 ) -> dict[str, Any]:
-    """Build a resume message sent after re-handshake on reconnection."""
+    """Build a resume message sent after re-handshake on reconnection.
+
+    The payload fields are diagnostics (they show up in cloud logs), not
+    negotiation inputs: the cloud always replies resume_from with
+    replay_from_seq=1 — replay the entire unacked buffer, re-numbered into
+    the new session. Delivery is at-least-once; upstream consumers are
+    expected to tolerate re-delivery.
+    """
     return {
         "type": RESUME,
         "ts": _now_iso(),

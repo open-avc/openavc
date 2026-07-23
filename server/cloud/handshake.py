@@ -268,6 +268,10 @@ class Handshake:
         """
         Send a resume message after re-handshake on reconnection.
 
+        The three payload fields are diagnostics for the cloud's log line;
+        the cloud always replies with replay_from_seq=1 (full replay of the
+        unacked buffer — see build_resume).
+
         Args:
             send: Send function.
             recv: Receive function.
@@ -276,10 +280,11 @@ class Handshake:
             disconnected_at: ISO timestamp of when the disconnection occurred.
 
         Returns:
-            The sequence number to replay from (from server's resume_from response).
+            The sequence number to replay from (from the server's resume_from
+            response; 1 in practice).
 
         Raises:
-            HandshakeError: If the resume negotiation fails.
+            HandshakeError: If the resume exchange fails.
         """
         resume_msg = build_resume(last_ack_seq, buffered_count, disconnected_at)
         log.debug(f"Handshake: sending resume (last_ack_seq={last_ack_seq}, buffered={buffered_count})")
