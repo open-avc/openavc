@@ -64,6 +64,7 @@ def _bare_agent() -> CloudAgent:
     agent._connection_loop_task = None
     agent._recv_task = None
     agent._heartbeat_task = None
+    agent._watchdog_task = None
     agent._throttles = {}
     agent._throttle_tasks = {}
     agent._throttle_deadlines = {}

@@ -51,6 +51,16 @@ BACKOFF_INITIAL = 5
 BACKOFF_MULTIPLIER = 2
 BACKOFF_MAX = 300  # 5 minutes
 
+# How long the agent tolerates total downstream silence before declaring the
+# connection dead and reconnecting. Under traffic the cloud acks every ~5s;
+# idle, it pings every 60s — so 150s of silence spans two missed ping cycles
+# and is decisive, while a single dropped frame can never trigger it. Without
+# this deadline a half-open connection (NAT timeout, dropped VPN) is only
+# noticed when a heartbeat send fails at the TCP layer, which can take many
+# minutes — during which system.cloud.status stays "connected".
+DOWNSTREAM_SILENCE_TIMEOUT = 150
+_WATCHDOG_CHECK_INTERVAL = 15
+
 # Upper bound on a cloud-supplied throttle retry_after (defense in depth: the
 # value crosses the trust boundary, so a hostile/buggy cloud can't pin a
 # message type off forever). 1 hour is far beyond any legitimate backpressure.
@@ -188,6 +198,7 @@ class CloudAgent:
         # Tasks
         self._recv_task: asyncio.Task | None = None
         self._heartbeat_task: asyncio.Task | None = None
+        self._watchdog_task: asyncio.Task | None = None
         self._connection_loop_task: asyncio.Task | None = None
         self._running = False
         self._stopping = False
@@ -196,6 +207,10 @@ class CloudAgent:
         # Consecutive downstream signature-verification failures (reset on any
         # successful verify). A persistent run forces a session teardown.
         self._sig_failure_count = 0
+
+        # Monotonic time of the last downstream frame; the liveness watchdog
+        # reconnects when it goes stale past DOWNSTREAM_SILENCE_TIMEOUT.
+        self._last_downstream_at: float = 0.0
 
         # Reconnection
         self._backoff = BACKOFF_INITIAL
@@ -321,7 +336,7 @@ class CloudAgent:
                 pass
 
         # Cancel tasks
-        for task in [self._recv_task, self._heartbeat_task]:
+        for task in [self._recv_task, self._heartbeat_task, self._watchdog_task]:
             if task and not task.done():
                 task.cancel()
                 try:
@@ -572,8 +587,10 @@ class CloudAgent:
             log.info("Cloud agent: connected and authenticated")
 
             # Start steady-state tasks
+            self._last_downstream_at = _time.monotonic()
             self._recv_task = asyncio.create_task(self._receive_loop())
             self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+            self._watchdog_task = asyncio.create_task(self._liveness_watchdog())
 
             # Start state relay if enabled
             if self._state_relay and self._config["features"].get("state_forwarding"):
@@ -591,7 +608,9 @@ class CloudAgent:
             # Run until either steady-state task finishes (a clean disconnect
             # returns from the receive loop; an error raises), then re-raise the
             # first real error to drive reconnect.
-            await self._await_steady_state(self._recv_task, self._heartbeat_task)
+            await self._await_steady_state(
+                self._recv_task, self._heartbeat_task, self._watchdog_task
+            )
 
         finally:
             # Clean up on disconnect — stop subsystems so they re-initialize
@@ -610,18 +629,18 @@ class CloudAgent:
                 self._ws = None
 
     @staticmethod
-    async def _await_steady_state(recv_task: asyncio.Task, heartbeat_task: asyncio.Task) -> None:
+    async def _await_steady_state(*tasks: asyncio.Task) -> None:
         """Wait for the first steady-state task to finish, then tear down.
 
-        ``asyncio.gather`` would leave the surviving sibling running against the
-        closing socket (and its exception unretrieved) if the other task raised.
-        Instead wait for FIRST_COMPLETED, cancel + await the still-pending
-        sibling, then re-raise the first real exception so reconnect is driven by
-        the original error (a clean return from the receive loop raises nothing
-        and the caller reconnects normally).
+        ``asyncio.gather`` would leave the surviving siblings running against
+        the closing socket (and their exceptions unretrieved) if one task
+        raised. Instead wait for FIRST_COMPLETED, cancel + await the
+        still-pending siblings, then re-raise the first real exception so
+        reconnect is driven by the original error (a clean return from the
+        receive loop raises nothing and the caller reconnects normally).
         """
         done, pending = await asyncio.wait(
-            {recv_task, heartbeat_task},
+            set(tasks),
             return_when=asyncio.FIRST_COMPLETED,
         )
         for task in pending:
@@ -707,6 +726,7 @@ class CloudAgent:
         try:
             while self._running and self._ws:
                 raw = await self._recv_raw()
+                self._last_downstream_at = _time.monotonic()
                 try:
                     msg = parse_message(raw)
                     await self._handle_message(msg)
@@ -1043,6 +1063,40 @@ class CloudAgent:
             await mgr.apply_update_policy(policy or {})
 
     # --- Heartbeat ---
+
+    async def _liveness_watchdog(self) -> None:
+        """Reconnect when the cloud has been silent past the deadline.
+
+        Detects half-open connections where the socket looks connected but
+        nothing arrives (the cloud acks every ~5s under traffic and pings
+        every 60s idle, so real sessions are never silent for long). Closing
+        the socket makes the receive loop exit, which drives the normal
+        reconnect path. A separate task rather than a heartbeat-loop check on
+        purpose: on a dead connection the heartbeat send itself can block at
+        the TCP layer, which would stall any check living in that loop.
+        """
+        try:
+            while self._running and self._connected:
+                await asyncio.sleep(_WATCHDOG_CHECK_INTERVAL)
+                if not self._connected:
+                    return
+                silence = _time.monotonic() - self._last_downstream_at
+                if silence < DOWNSTREAM_SILENCE_TIMEOUT:
+                    continue
+                log.warning(
+                    f"Cloud agent: no downstream traffic for {silence:.0f}s "
+                    f"(deadline {DOWNSTREAM_SILENCE_TIMEOUT}s) — closing dead "
+                    f"connection to force a reconnect"
+                )
+                ws = self._ws
+                if ws:
+                    try:
+                        await asyncio.wait_for(ws.close(), timeout=10)
+                    except Exception:
+                        pass
+                return
+        except asyncio.CancelledError:
+            return
 
     async def _heartbeat_loop(self) -> None:
         """Send periodic heartbeats at the server-configured interval."""

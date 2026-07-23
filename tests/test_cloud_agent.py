@@ -1884,3 +1884,90 @@ class TestDiagnosticActions:
         await handler.handle(msg)
         assert sent[0][1]["success"] is False
         assert "snorgle" in sent[0][1]["error"]
+
+
+# ===========================================================================
+# Downstream-silence liveness watchdog — during a silent partition (NAT
+# timeout, dropped VPN, firewall state loss) nothing arrives but the socket
+# still looks connected; the watchdog closes it so the normal reconnect path
+# takes over instead of the status staying "connected" for minutes.
+# ===========================================================================
+
+
+class TestLivenessWatchdog:
+    """Tests for CloudAgent._liveness_watchdog."""
+
+    def _make_agent(self, silence_seconds: float):
+        import time
+
+        from server.cloud.agent import CloudAgent
+
+        agent = CloudAgent.__new__(CloudAgent)
+        agent._running = True
+        agent._connected = True
+        agent._last_downstream_at = time.monotonic() - silence_seconds
+
+        class FakeWS:
+            def __init__(self):
+                self.closed = False
+
+            async def close(self):
+                self.closed = True
+
+        agent._ws = FakeWS()
+        return agent
+
+    @pytest.mark.asyncio
+    async def test_watchdog_closes_connection_after_silence(self, monkeypatch):
+        import server.cloud.agent as agent_mod
+
+        monkeypatch.setattr(agent_mod, "_WATCHDOG_CHECK_INTERVAL", 0.01)
+        agent = self._make_agent(
+            silence_seconds=agent_mod.DOWNSTREAM_SILENCE_TIMEOUT + 5
+        )
+
+        await asyncio.wait_for(agent._liveness_watchdog(), timeout=2)
+
+        assert agent._ws.closed is True
+
+    @pytest.mark.asyncio
+    async def test_watchdog_quiet_while_traffic_is_fresh(self, monkeypatch):
+        import server.cloud.agent as agent_mod
+
+        monkeypatch.setattr(agent_mod, "_WATCHDOG_CHECK_INTERVAL", 0.01)
+        agent = self._make_agent(silence_seconds=0)
+
+        task = asyncio.create_task(agent._liveness_watchdog())
+        await asyncio.sleep(0.1)
+        assert agent._ws.closed is False
+
+        agent._connected = False  # let the watchdog exit
+        await asyncio.wait_for(task, timeout=2)
+        assert agent._ws.closed is False
+
+    @pytest.mark.asyncio
+    async def test_receive_loop_records_downstream_traffic(self):
+        from websockets.exceptions import ConnectionClosed
+
+        from server.cloud.agent import CloudAgent
+
+        agent = CloudAgent.__new__(CloudAgent)
+        agent._running = True
+        agent._connected = True
+        agent._session = None
+        agent._enabled_capabilities = []
+        agent._ws = object()
+        agent._last_downstream_at = 0.0
+
+        frames = [json.dumps({"type": "pong", "payload": {}})]
+
+        async def fake_recv():
+            if frames:
+                return frames.pop(0)
+            raise ConnectionClosed(None, None)
+
+        agent._recv_raw = fake_recv
+
+        await agent._receive_loop()
+
+        assert agent._last_downstream_at > 0.0
