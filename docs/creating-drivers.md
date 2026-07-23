@@ -2144,45 +2144,85 @@ class SamsungMDCDriver(BaseDriver):
 - `_resolve_delimiter()` returns `None` because there's no text delimiter.
 - `on_data_received()` gets complete binary frames (header and checksum already stripped by the parser).
 
-### Custom connect(): Authentication Handshake
+### Customizing the connection: lifecycle hooks
 
-If a device requires a handshake on connect (like PJLink's greeting), override `connect()`:
+`BaseDriver.connect()` runs the whole connection lifecycle in a fixed order: reset the previous attempt's fault state, build the transport, run the handshake, declare the device connected (state key + `device.connected.<id>` event), subscribe push, run the initial sync, then start polling and the liveness watchdog. **Don't override `connect()` to customize one stage** — a copy has to reproduce every other stage by hand, and the ones that quietly go missing (the fault reset, the watchdog restart) only show up as misclassified offline reasons or devices that never notice a dead link. Override the hook for the stage you need instead:
+
+| Hook | When it runs | Typical use |
+|------|--------------|-------------|
+| `_pre_connect()` | After the clean-slate reset, before the transport exists | Arm a buffer for a login prompt that arrives the instant the socket opens |
+| `_transport_kwargs(type, kwargs)` | As the platform builds the transport | Drop the delimiter for a raw byte stream, raise a timeout, force a frame parser |
+| `_create_transport(type)` | Builds `self.transport` | Override wholesale only for a driver-owned session (see below) |
+| `_post_connect()` | Transport up, device **not yet** marked connected | Login / greeting handshakes, protocol negotiation; raise to fail the attempt |
+| `_initial_sync()` | Marked connected, before polling starts | Identity reads, child-roster registration, an initial `poll()`, starting keep-alive loops |
+| `_liveness_probe()` | Every `HEALTH_INTERVAL_S` while connected | Awaited "are you there?" for links that die silently |
+| `_close_session()` | Every teardown path | Close driver-owned clients/sockets that live outside `self.transport` |
+| `_link_alive()` | Whenever `connected` is evaluated | Report a driver-owned session's health instead of the transport's |
+
+A greeting/authentication handshake (like PJLink's) belongs in `_post_connect()` — the transport is up, but `connected` isn't declared until the hook returns, so a wrong password fails the connect attempt instead of flapping the device online and off:
 
 ```python
-async def connect(self) -> None:
-    from server.transport.tcp import TCPTransport
-
-    host = self.config.get("host", "")
-    port = self.config.get("port", 4352)
-
-    self.transport = await TCPTransport.create(
-        host=host,
-        port=port,
-        on_data=self.on_data_received,
-        on_disconnect=self._handle_transport_disconnect,
-        delimiter=b"\r",
-        name=self.device_id,  # identifies this device in the log
-    )
-
+async def _post_connect(self) -> None:
     # Wait for the device's greeting message
     await asyncio.sleep(0.1)
 
-    # Send authentication if needed
     password = self.config.get("password", "")
     if password:
         await self.transport.send(f"AUTH {password}\r".encode())
         await asyncio.sleep(0.1)
-
-    self._connected = True
-    self.set_state("connected", True)
-    await self.events.emit(f"device.connected.{self.device_id}")
-
-    poll_interval = self.config.get("poll_interval", 15)
-    if poll_interval > 0:
-        await self.start_polling(poll_interval)
 ```
 
-**Important**: Always pass `name=self.device_id` when creating a transport manually. This ensures all sent and received data appears in the device log with the correct device name for filtering.
+A protocol that needs different transport settings keeps the platform's construction (log naming, disconnect wiring, the control-interface binding) and adjusts only what differs:
+
+```python
+def _transport_kwargs(self, transport_type, kwargs):
+    kwargs["delimiter"] = None   # raw byte stream — no line framing
+    return kwargs
+```
+
+Initialization that must run *after* the device is connected but *before* the first poll — reading a serial number, registering child entities, starting a keep-alive loop — goes in `_initial_sync()`:
+
+```python
+async def _initial_sync(self) -> None:
+    await self._identify()      # model / firmware / serial reads
+    await self.poll()           # seed state before the first poll interval
+```
+
+### Driver-owned HTTP sessions (httpx)
+
+REST devices with real session semantics (cookies, tokens, digest auth, connection pooling quirks) are best served by the driver owning an `httpx.AsyncClient` directly — this is the standard pattern for Python HTTP drivers. Build the client in `_create_transport()` and leave `self.transport` as `None`, then give the platform the three pieces it can't infer:
+
+```python
+class RestDeviceDriver(BaseDriver):
+    _client: httpx.AsyncClient | None = None   # _close_session runs before
+                                               # the first connect, so it
+                                               # must find something to read
+
+    async def _create_transport(self, transport_type: str) -> None:
+        host = self.config.get("host", "")
+        # Fail fast against an unreachable host instead of declaring a
+        # phantom connection the watchdog has to time out.
+        if not await self._verify_reachable(host, self.config.get("port", 443)):
+            raise ConnectionError(f"{host} is not responding")
+        self._client = httpx.AsyncClient(base_url=f"https://{host}", verify=False)
+
+    async def _post_connect(self) -> None:
+        # Authenticate and prove the device answers before `connected`
+        # is declared — a rejected login fails the attempt with a clean error.
+        await self._login()
+
+    def _link_alive(self) -> bool:
+        return self._client is not None
+
+    async def _close_session(self) -> None:
+        client, self._client = self._client, None
+        if client is not None:
+            await client.aclose()
+```
+
+Everything else — the clean-slate reset, the connected declare and event, polling, the liveness watchdog, teardown on every failure path — comes from the base class. Your `poll()` must propagate `httpx` errors (see [The `poll()` contract](#the-poll-contract)); the platform counts them toward the missed-poll watchdog. `HTTPClientTransport` (`transport: "http"` with no overrides) remains the engine for YAML drivers and is fine for simple Python drivers that just GET a status page.
+
+**Important**: If you do build a platform transport by hand anywhere, always pass `name=self.device_id` so sent and received data appears in the device log under the right device.
 
 ### Custom Transport: UDP / Wake-on-LAN
 

@@ -483,9 +483,7 @@ class BaseDriver(ABC):
             return False
         if self._bridge_routed:
             return True
-        if self.transport is None:
-            return False
-        return getattr(self.transport, "connected", False)
+        return self._link_alive()
 
     @property
     def last_transport_error(self) -> str:
@@ -576,19 +574,45 @@ class BaseDriver(ABC):
 
     async def connect(self) -> None:
         """
-        Establish connection to the device using auto-transport.
+        Establish connection to the device — the one place the connection
+        lifecycle lives.
 
-        Reads DRIVER_INFO["transport"] and self.config to create the
-        appropriate transport (TCP or serial). Override this method for
-        custom connection logic (e.g., greeting handshakes).
+        Stages, in order:
+
+        1. Clean slate: reset fault classification, drop stale push
+           subscriptions / driver sessions / transports from a previous
+           attempt.
+        2. Resolve the transport type (config override, then DRIVER_INFO);
+           bridge-routed devices mirror their bridge and return early.
+        3. Establish: _pre_connect() hook, then _create_transport() builds
+           ``self.transport`` (constructor kwargs pass through
+           _transport_kwargs(); drivers that own their session override
+           _create_transport() and leave ``self.transport`` None).
+        4. Verify: connectionless transports (OSC/HTTP) probe reachability
+           before the device may report connected.
+        5. Handshake: _post_connect() runs logins/negotiation before
+           `connected` is declared; then the canonical declare — internal
+           flag, ``connected`` state key, the ``device.connected.<id>``
+           event.
+        6. Tail: push subscription, _initial_sync() hook (identity reads,
+           rosters, keep-alive loops), then polling and the liveness
+           watchdog.
+
+        Prefer overriding the hooks over overriding this method — a driver
+        that re-implements connect() must keep every stage above by hand
+        (clean-slate reset, the canonical event topic, watchdog restart),
+        and history shows most copies drop some of them.
         """
         # Start each attempt with a clean slate so a previous failure's cause
         # can't be misattributed to this one by the fault classifier.
         self._last_transport_error = ""
         self._last_fault = None
         # A reconnect attempt may arrive with a stale push subscription if the
-        # async cleanup hasn't run yet; drop it so we never hold two.
+        # async cleanup hasn't run yet; drop it so we never hold two. Same for
+        # a driver-owned session (an httpx client, a secondary socket) left
+        # behind by a previous attempt.
         await self._stop_push()
+        await self._close_session()
         if self.transport:
             try:
                 await self.transport.close()
@@ -635,209 +659,10 @@ class BaseDriver(ABC):
                 )
             return
 
-        frame_parser = self._create_frame_parser()
-        delimiter = self._resolve_delimiter()
-
-        # Get control interface binding (if configured)
-        from server.system_config import get_system_config
-        control_ip = get_system_config().get("network", "control_interface")
-
-        if transport_type == "tcp":
-            from server.transport.tcp import TCPTransport
-
-            host = self.config.get("host", "")
-            port = self._required_port()
-            delay = self.config.get("inter_command_delay", 0.0)
-
-            # Forward TLS + connect-timeout from config so a declarative driver
-            # can talk to a device on TLS-wrapped TCP with `ssl: true` instead
-            # of overriding connect(). Same config vocabulary as the http
-            # branch (`ssl` to enable, `verify_ssl` for cert checking); the
-            # defaults match TCPTransport.create() so plain-TCP devices that
-            # set none of these are unaffected.
-            self.transport = await TCPTransport.create(
-                host=host,
-                port=port,
-                on_data=self.on_data_received,
-                on_disconnect=self._handle_transport_disconnect,
-                delimiter=delimiter,
-                frame_parser=frame_parser,
-                inter_command_delay=delay,
-                name=self.device_id,
-                local_addr=(control_ip, 0) if control_ip else None,
-                timeout=self.config.get("timeout", 5.0),
-                ssl=self.config.get("ssl", False),
-                ssl_verify=self.config.get("verify_ssl", True),
-                keepalive=bool(self.config.get("tcp_keepalive", False)),
-            )
-        elif transport_type == "serial":
-            from server.transport.serial_transport import SerialTransport
-
-            serial_port = self.config.get("port", "")
-            delay = self.config.get("inter_command_delay", 0.0)
-            baudrate, bytesize, parity, stopbits, rtscts, xonxoff = (
-                self._coerce_serial_params(self.config)
-            )
-
-            self.transport = await SerialTransport.create(
-                port=serial_port,
-                baudrate=baudrate,
-                on_data=self.on_data_received,
-                on_disconnect=self._handle_transport_disconnect,
-                delimiter=delimiter,
-                frame_parser=frame_parser,
-                inter_command_delay=delay,
-                bytesize=bytesize,
-                parity=parity,
-                stopbits=stopbits,
-                rtscts=rtscts,
-                xonxoff=xonxoff,
-                name=self.device_id,
-            )
-        elif transport_type == "udp":
-            from server.transport.udp import UDPTransport
-
-            host = self.config.get("host", "")
-            port = self._required_port()
-            delay = self.config.get("inter_command_delay", 0.0)
-
-            self.transport = UDPTransport(
-                host=host,
-                port=port,
-                on_data=self.on_data_received,
-                on_disconnect=self._handle_transport_disconnect,
-                inter_command_delay=delay,
-                name=self.device_id,
-            )
-            await self.transport.open(
-                local_addr=control_ip or None,
-            )
-        elif transport_type == "osc":
-            from server.transport.osc import OSCTransport
-
-            host = self.config.get("host", "")
-            port = self._required_port()
-            listen_port = self.config.get("listen_port", 0)
-            delay = self.config.get("inter_command_delay", 0.0)
-            # OSC over TCP+SLIP when the device opts in (e.g. QLab's reliable
-            # large-reply path). Defaults to UDP, so existing OSC drivers that
-            # don't set transport_mode are unaffected.
-            osc_tcp = str(
-                self.config.get("transport_mode", "udp")
-            ).lower() == "tcp"
-
-            self.transport = OSCTransport(
-                host=host,
-                port=port,
-                listen_port=listen_port,
-                on_data=self.on_data_received,
-                on_disconnect=self._handle_transport_disconnect,
-                inter_command_delay=delay,
-                name=self.device_id,
-                tcp=osc_tcp,
-            )
-            await self.transport.open(
-                local_addr=control_ip or None,
-            )
-        elif transport_type == "http":
-            from server.transport.http_client import HTTPClientTransport
-
-            host = self.config.get("host", "")
-            # Don't use .get("port", 80) — the sentinel-default makes an
-            # explicit `port: 80, ssl: true` indistinguishable from "not set",
-            # so the next branch silently rewrites it to 443 (A66). Read
-            # without a default and apply the scheme-appropriate fallback only
-            # when port is genuinely missing.
-            port = self.config.get("port")
-            use_ssl = self.config.get("ssl", False)
-            scheme = "https" if use_ssl else "http"
-            if port is None:
-                port = 443 if use_ssl else 80
-            base_url = f"{scheme}://{host}:{port}"
-
-            # Build credentials from config
-            auth_type = self.config.get("auth_type", "none")
-            credentials = {}
-            if auth_type in ("basic", "digest"):
-                credentials["username"] = self.config.get("username", "")
-                credentials["password"] = self.config.get("password", "")
-            elif auth_type == "bearer":
-                credentials["token"] = self.config.get("token", "")
-            elif auth_type == "api_key":
-                credentials["header"] = self.config.get("api_key_header", "X-API-Key")
-                credentials["key"] = self.config.get("api_key", "")
-
-            self.transport = HTTPClientTransport(
-                base_url=base_url,
-                auth_type=auth_type,
-                credentials=credentials,
-                verify_ssl=self.config.get("verify_ssl", True),
-                default_headers=self.config.get("default_headers", {}),
-                timeout=self.config.get("timeout", 10.0),
-                name=self.device_id,
-                local_address=control_ip or None,
-                max_response_bytes=self._http_max_response_bytes(),
-            )
-            await self.transport.open()
-        elif transport_type == "ssh":
-            from server.transport.ssh import SSHTransport
-
-            host = self.config.get("host", "")
-            port = int(self.config.get("port", 22) or 22)
-            username = self.config.get("username", "")
-            auth_method = self.config.get("ssh_auth_method", "key")
-            known_hosts = self.config.get("known_hosts_path")
-            if not known_hosts:
-                from server.system_config import get_data_dir
-                known_hosts = str(get_data_dir() / "ssh" / "known_hosts")
-
-            self.transport = await SSHTransport.create(
-                host=host,
-                port=port,
-                username=username,
-                on_data=self.on_data_received,
-                on_disconnect=self._handle_transport_disconnect,
-                auth_method=auth_method,
-                password=self.config.get("password") or None,
-                key_path=self.config.get("key_path") or None,
-                known_hosts_path=known_hosts,
-                host_key_policy=self.config.get("host_key_policy", "accept-new"),
-                connect_timeout=float(self.config.get("connect_timeout", 15.0)),
-                inter_command_delay=self.config.get("inter_command_delay", 0.0),
-                name=self.device_id,
-            )
-        elif transport_type == "mqtt":
-            from server.transport.mqtt import MQTTTransport
-
-            host = self.config.get("host", "")
-            port = int(self.config.get("port", 1883) or 1883)
-
-            # Pub/sub, not a byte stream: inbound messages arrive topic-tagged
-            # via on_mqtt_message (subscribe in _post_connect). TLS vocabulary
-            # matches the tcp/http branches (`ssl`, `verify_ssl`); MQTT also
-            # accepts a client certificate for devices that require one.
-            self.transport = await MQTTTransport.create(
-                host=host,
-                port=port,
-                client_id=self.config.get("client_id") or None,
-                username=self.config.get("username") or None,
-                password=self.config.get("password") or None,
-                use_tls=bool(
-                    self.config.get("ssl", self.config.get("use_tls", False))
-                ),
-                verify_ssl=bool(self.config.get("verify_ssl", True)),
-                client_cert=self.config.get("client_cert") or None,
-                client_key=self.config.get("client_key") or None,
-                ca_cert=self.config.get("ca_cert") or None,
-                ciphers=self.config.get("ciphers") or None,
-                keepalive=int(self.config.get("keepalive", 60) or 60),
-                protocol_version=str(self.config.get("mqtt_version", "3.1.1")),
-                on_message=self.on_mqtt_message,
-                on_disconnect=self._handle_transport_disconnect,
-                name=self.device_id,
-            )
-        else:
-            raise ValueError(f"Unsupported transport type: {transport_type}")
+        # Stage 3 — establishment: driver-owned setup hook, then the
+        # transport (or driver-owned session) itself.
+        await self._pre_connect()
+        await self._create_transport(transport_type)
 
         # For connectionless transports (OSC, HTTP), verify the remote host
         # is actually reachable before reporting connected. TCP and serial
@@ -885,6 +710,7 @@ class BaseDriver(ABC):
             if self.transport:
                 await self.transport.close()
                 self.transport = None
+            await self._close_session()
             self._connected = False
             raise
 
@@ -894,6 +720,37 @@ class BaseDriver(ABC):
         # freshly-armed device sends. Failure is non-fatal (logged inside);
         # polling still covers the device.
         await self._start_push()
+
+        # Stage 6 — driver-specific initial sync (identity reads, roster
+        # registration, keep-alive loops), after `connected` is declared and
+        # push is armed but BEFORE polling starts, so the first poll cycle
+        # sees a fully-initialized device. A raise here tears the whole
+        # connection back down — the device was briefly connected, so the
+        # disconnect event is emitted for symmetry. A driver that prefers a
+        # degraded-but-connected outcome catches inside its override.
+        try:
+            await self._initial_sync()
+        except Exception:
+            self._stash_transport_error()
+            await self._stop_push()
+            transport = self.transport
+            self.transport = None
+            if transport is not None:
+                try:
+                    await transport.close()
+                except Exception:
+                    pass
+            await self._close_session()
+            self._connected = False
+            self.set_state("connected", False)
+            try:
+                await self.events.emit(f"device.disconnected.{self.device_id}")
+            except Exception:
+                log.debug(
+                    f"[{self.device_id}] Failed to emit disconnect event",
+                    exc_info=True,
+                )
+            raise
 
         # Start polling if configured
         poll_interval = self.config.get("poll_interval", 0)
@@ -909,6 +766,245 @@ class BaseDriver(ABC):
         if self._health_enabled():
             self._start_health_loop()
 
+    async def _create_transport(self, transport_type: str) -> None:
+        """Build ``self.transport`` for the resolved transport type.
+
+        The platform ladder covers every declarative transport; each
+        constructor's keyword arguments pass through _transport_kwargs()
+        so a driver can adjust them (drop the delimiter for a raw byte
+        stream, raise a timeout) without re-implementing the ladder.
+        Override this method wholesale only when the driver owns its
+        session outright (a raw httpx client, a websocket library) —
+        set up the session here and leave ``self.transport`` as None,
+        then override _link_alive() and _close_session() so the
+        connected property, the health loop, and every teardown path
+        see the driver-owned session instead of a platform transport.
+        """
+        frame_parser = self._create_frame_parser()
+        delimiter = self._resolve_delimiter()
+
+        # Get control interface binding (if configured)
+        from server.system_config import get_system_config
+        control_ip = get_system_config().get("network", "control_interface")
+
+        if transport_type == "tcp":
+            from server.transport.tcp import TCPTransport
+
+            host = self.config.get("host", "")
+            port = self._required_port()
+            delay = self.config.get("inter_command_delay", 0.0)
+
+            # Forward TLS + connect-timeout from config so a declarative driver
+            # can talk to a device on TLS-wrapped TCP with `ssl: true` instead
+            # of overriding connect(). Same config vocabulary as the http
+            # branch (`ssl` to enable, `verify_ssl` for cert checking); the
+            # defaults match TCPTransport.create() so plain-TCP devices that
+            # set none of these are unaffected.
+            kwargs = dict(
+                host=host,
+                port=port,
+                on_data=self.on_data_received,
+                on_disconnect=self._handle_transport_disconnect,
+                delimiter=delimiter,
+                frame_parser=frame_parser,
+                inter_command_delay=delay,
+                name=self.device_id,
+                local_addr=(control_ip, 0) if control_ip else None,
+                timeout=self.config.get("timeout", 5.0),
+                ssl=self.config.get("ssl", False),
+                ssl_verify=self.config.get("verify_ssl", True),
+                keepalive=bool(self.config.get("tcp_keepalive", False)),
+            )
+            self.transport = await TCPTransport.create(
+                **self._transport_kwargs(transport_type, kwargs)
+            )
+        elif transport_type == "serial":
+            from server.transport.serial_transport import SerialTransport
+
+            serial_port = self.config.get("port", "")
+            delay = self.config.get("inter_command_delay", 0.0)
+            baudrate, bytesize, parity, stopbits, rtscts, xonxoff = (
+                self._coerce_serial_params(self.config)
+            )
+
+            kwargs = dict(
+                port=serial_port,
+                baudrate=baudrate,
+                on_data=self.on_data_received,
+                on_disconnect=self._handle_transport_disconnect,
+                delimiter=delimiter,
+                frame_parser=frame_parser,
+                inter_command_delay=delay,
+                bytesize=bytesize,
+                parity=parity,
+                stopbits=stopbits,
+                rtscts=rtscts,
+                xonxoff=xonxoff,
+                name=self.device_id,
+            )
+            self.transport = await SerialTransport.create(
+                **self._transport_kwargs(transport_type, kwargs)
+            )
+        elif transport_type == "udp":
+            from server.transport.udp import UDPTransport
+
+            host = self.config.get("host", "")
+            port = self._required_port()
+            delay = self.config.get("inter_command_delay", 0.0)
+
+            kwargs = dict(
+                host=host,
+                port=port,
+                on_data=self.on_data_received,
+                on_disconnect=self._handle_transport_disconnect,
+                inter_command_delay=delay,
+                name=self.device_id,
+            )
+            self.transport = UDPTransport(
+                **self._transport_kwargs(transport_type, kwargs)
+            )
+            await self.transport.open(
+                local_addr=control_ip or None,
+            )
+        elif transport_type == "osc":
+            from server.transport.osc import OSCTransport
+
+            host = self.config.get("host", "")
+            port = self._required_port()
+            listen_port = self.config.get("listen_port", 0)
+            delay = self.config.get("inter_command_delay", 0.0)
+            # OSC over TCP+SLIP when the device opts in (e.g. QLab's reliable
+            # large-reply path). Defaults to UDP, so existing OSC drivers that
+            # don't set transport_mode are unaffected.
+            osc_tcp = str(
+                self.config.get("transport_mode", "udp")
+            ).lower() == "tcp"
+
+            kwargs = dict(
+                host=host,
+                port=port,
+                listen_port=listen_port,
+                on_data=self.on_data_received,
+                on_disconnect=self._handle_transport_disconnect,
+                inter_command_delay=delay,
+                name=self.device_id,
+                tcp=osc_tcp,
+            )
+            self.transport = OSCTransport(
+                **self._transport_kwargs(transport_type, kwargs)
+            )
+            await self.transport.open(
+                local_addr=control_ip or None,
+            )
+        elif transport_type == "http":
+            from server.transport.http_client import HTTPClientTransport
+
+            host = self.config.get("host", "")
+            # Don't use .get("port", 80) — the sentinel-default makes an
+            # explicit `port: 80, ssl: true` indistinguishable from "not set",
+            # so the next branch silently rewrites it to 443 (A66). Read
+            # without a default and apply the scheme-appropriate fallback only
+            # when port is genuinely missing.
+            port = self.config.get("port")
+            use_ssl = self.config.get("ssl", False)
+            scheme = "https" if use_ssl else "http"
+            if port is None:
+                port = 443 if use_ssl else 80
+            base_url = f"{scheme}://{host}:{port}"
+
+            # Build credentials from config
+            auth_type = self.config.get("auth_type", "none")
+            credentials = {}
+            if auth_type in ("basic", "digest"):
+                credentials["username"] = self.config.get("username", "")
+                credentials["password"] = self.config.get("password", "")
+            elif auth_type == "bearer":
+                credentials["token"] = self.config.get("token", "")
+            elif auth_type == "api_key":
+                credentials["header"] = self.config.get("api_key_header", "X-API-Key")
+                credentials["key"] = self.config.get("api_key", "")
+
+            kwargs = dict(
+                base_url=base_url,
+                auth_type=auth_type,
+                credentials=credentials,
+                verify_ssl=self.config.get("verify_ssl", True),
+                default_headers=self.config.get("default_headers", {}),
+                timeout=self.config.get("timeout", 10.0),
+                name=self.device_id,
+                local_address=control_ip or None,
+                max_response_bytes=self._http_max_response_bytes(),
+            )
+            self.transport = HTTPClientTransport(
+                **self._transport_kwargs(transport_type, kwargs)
+            )
+            await self.transport.open()
+        elif transport_type == "ssh":
+            from server.transport.ssh import SSHTransport
+
+            host = self.config.get("host", "")
+            port = int(self.config.get("port", 22) or 22)
+            username = self.config.get("username", "")
+            auth_method = self.config.get("ssh_auth_method", "key")
+            known_hosts = self.config.get("known_hosts_path")
+            if not known_hosts:
+                from server.system_config import get_data_dir
+                known_hosts = str(get_data_dir() / "ssh" / "known_hosts")
+
+            kwargs = dict(
+                host=host,
+                port=port,
+                username=username,
+                on_data=self.on_data_received,
+                on_disconnect=self._handle_transport_disconnect,
+                auth_method=auth_method,
+                password=self.config.get("password") or None,
+                key_path=self.config.get("key_path") or None,
+                known_hosts_path=known_hosts,
+                host_key_policy=self.config.get("host_key_policy", "accept-new"),
+                connect_timeout=float(self.config.get("connect_timeout", 15.0)),
+                inter_command_delay=self.config.get("inter_command_delay", 0.0),
+                name=self.device_id,
+            )
+            self.transport = await SSHTransport.create(
+                **self._transport_kwargs(transport_type, kwargs)
+            )
+        elif transport_type == "mqtt":
+            from server.transport.mqtt import MQTTTransport
+
+            host = self.config.get("host", "")
+            port = int(self.config.get("port", 1883) or 1883)
+
+            # Pub/sub, not a byte stream: inbound messages arrive topic-tagged
+            # via on_mqtt_message (subscribe in _post_connect). TLS vocabulary
+            # matches the tcp/http branches (`ssl`, `verify_ssl`); MQTT also
+            # accepts a client certificate for devices that require one.
+            kwargs = dict(
+                host=host,
+                port=port,
+                client_id=self.config.get("client_id") or None,
+                username=self.config.get("username") or None,
+                password=self.config.get("password") or None,
+                use_tls=bool(
+                    self.config.get("ssl", self.config.get("use_tls", False))
+                ),
+                verify_ssl=bool(self.config.get("verify_ssl", True)),
+                client_cert=self.config.get("client_cert") or None,
+                client_key=self.config.get("client_key") or None,
+                ca_cert=self.config.get("ca_cert") or None,
+                ciphers=self.config.get("ciphers") or None,
+                keepalive=int(self.config.get("keepalive", 60) or 60),
+                protocol_version=str(self.config.get("mqtt_version", "3.1.1")),
+                on_message=self.on_mqtt_message,
+                on_disconnect=self._handle_transport_disconnect,
+                name=self.device_id,
+            )
+            self.transport = await MQTTTransport.create(
+                **self._transport_kwargs(transport_type, kwargs)
+            )
+        else:
+            raise ValueError(f"Unsupported transport type: {transport_type}")
+
     async def disconnect(self) -> None:
         """
         Gracefully close the connection.
@@ -922,6 +1018,7 @@ class BaseDriver(ABC):
         if self.transport:
             await self.transport.close()
             self.transport = None
+        await self._close_session()
         self._connected = False
         self.set_state("connected", False)
         await self.events.emit(f"device.disconnected.{self.device_id}")
@@ -1177,14 +1274,83 @@ class BaseDriver(ABC):
         indicate the device is reachable but not in a queryable state.
         """
 
+    async def _pre_connect(self) -> None:
+        """Hook: runs after the clean-slate reset, before the transport (or
+        driver-owned session) is created.
+
+        The place to arm anything that must be ready the instant the link
+        opens — e.g. an auth-capture buffer for a device that emits its login
+        prompt immediately on connect, or seeding a protocol parameter from
+        config before the first byte flows. Default: no-op.
+        """
+
+    def _transport_kwargs(
+        self, transport_type: str, kwargs: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Hook: adjust the platform transport's constructor arguments.
+
+        Called by _create_transport() with the resolved transport type and the
+        fully-assembled keyword arguments just before the transport is built.
+        Override to tweak them — drop the delimiter for a raw byte-stream
+        protocol (``kwargs["delimiter"] = None``), raise a timeout, force a
+        frame parser — while keeping the rest of the platform's construction
+        (disconnect wiring, control-interface binding, TLS vocabulary) intact.
+        Mutate and return ``kwargs``. Covers constructor arguments only; the
+        udp/osc ``open(local_addr=...)`` call is fixed — override
+        _create_transport() wholesale if you need to change that. Default:
+        returns ``kwargs`` unchanged.
+        """
+        return kwargs
+
     async def _post_connect(self) -> None:
         """Hook for device-specific session setup after the transport opens and
         before the device is marked connected.
 
         CLI-over-SSH/telnet drivers override this to read the login banner,
-        enter privileged mode, and disable output paging. Raising aborts the
-        connection (the caller closes the transport). Default: no-op.
+        enter privileged mode, and disable output paging; drivers that own
+        their session (httpx, websockets) authenticate and verify the device
+        actually answers here, so `connected` never lies. Raising aborts the
+        connection (the caller closes the transport and the driver session).
+        Default: no-op.
         """
+
+    async def _initial_sync(self) -> None:
+        """Hook: one-time initialization after the device is declared
+        connected — identity reads, child-roster registration, an initial
+        poll(), starting driver-specific keep-alive loops.
+
+        Runs after `connected` is True and push is subscribed, but before
+        polling and the liveness watchdog start, so the first poll cycle sees
+        a fully-initialized device. Raising tears the connection back down
+        and fails the connect attempt; catch inside the override if a failed
+        sync should leave the device connected anyway. Default: no-op.
+        """
+
+    async def _close_session(self) -> None:
+        """Hook: close driver-owned connections that live outside
+        ``self.transport`` — an httpx client, a secondary status socket, a
+        websocket.
+
+        Called on every teardown path (fresh connect attempts, failed
+        handshakes, graceful disconnect, the transport-drop cleanup), so an
+        override must tolerate being called when nothing is open and must
+        null its references (the health loop keeps running until
+        _link_alive() goes false). Default: no-op.
+        """
+
+    def _link_alive(self) -> bool:
+        """Predicate: is the underlying link (platform transport or
+        driver-owned session) still up?
+
+        Backs the `connected` property and keeps the liveness watchdog
+        running. The default reads the platform transport; a driver that owns
+        its session (httpx client, websocket) overrides this to report that
+        session instead — without it, `connected` is permanently False and
+        the health loop exits immediately for such drivers.
+        """
+        if self.transport is None:
+            return False
+        return bool(getattr(self.transport, "connected", False))
 
     # --- Liveness watchdog (opt-in awaited probe) ---
 
@@ -1237,14 +1403,9 @@ class BaseDriver(ABC):
         timeout = float(self.HEALTH_TIMEOUT_S)
         max_failures = max(int(self.HEALTH_MAX_FAILURES), 1)
         try:
-            while self.transport is not None and getattr(
-                self.transport, "connected", False
-            ):
+            while self._link_alive():
                 await asyncio.sleep(interval)
-                if not (
-                    self.transport is not None
-                    and getattr(self.transport, "connected", False)
-                ):
+                if not self._link_alive():
                     return
                 try:
                     await asyncio.wait_for(self._liveness_probe(), timeout)
@@ -1868,6 +2029,14 @@ class BaseDriver(ABC):
                     f"[{self.device_id}] Error closing transport on disconnect",
                     exc_info=True,
                 )
+        try:
+            await self._close_session()
+        except Exception:
+            log.debug(
+                f"[{self.device_id}] Error closing driver session on "
+                f"disconnect",
+                exc_info=True,
+            )
         try:
             await self.events.emit(f"device.disconnected.{self.device_id}")
         except Exception:
