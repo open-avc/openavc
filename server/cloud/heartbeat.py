@@ -14,6 +14,7 @@ from __future__ import annotations
 import time
 from typing import Any, TYPE_CHECKING
 
+from server.cloud.protocol import build_heartbeat_payload
 from server.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -73,22 +74,17 @@ class HeartbeatCollector:
         Returns:
             Dict matching the heartbeat payload schema.
         """
-        metrics: dict[str, Any] = {
-            "uptime_seconds": int(time.time() - self._start_time),
-            "cpu_percent": self._get_cpu_percent(),
-            "memory_percent": self._get_memory_percent(),
-            "disk_percent": self._get_disk_percent(),
-            "device_count": self._get_device_count(),
-            "devices_connected": self._get_devices_connected(),
-            "devices_error": self._get_devices_error(),
-            "active_ws_clients": self._get_ws_client_count(),
-        }
-
-        temp = self._get_temperature()
-        if temp is not None:
-            metrics["temperature_celsius"] = temp
-
-        return metrics
+        return build_heartbeat_payload(
+            uptime_seconds=int(time.time() - self._start_time),
+            cpu_percent=self._get_cpu_percent(),
+            memory_percent=self._get_memory_percent(),
+            disk_percent=self._get_disk_percent(),
+            device_count=self._get_device_count(),
+            devices_connected=self._get_devices_connected(),
+            devices_error=self._get_devices_error(),
+            active_ws_clients=self._get_ws_client_count(),
+            temperature_celsius=self._get_temperature(),
+        )
 
     # --- System Metrics ---
 

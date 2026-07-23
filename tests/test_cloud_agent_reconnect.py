@@ -413,9 +413,11 @@ class TestSessionManagement:
         session.check_rotation(6)
         assert session.session_token == token_after
 
-    def test_rotation_updates_session_id(self):
-        """Rotation updates the session_id if new_session_id is provided."""
-        session, _, _ = self._make_session(session_id="old-session")
+    def test_rotation_keeps_session_id(self):
+        """Rotation replaces token and signing key only — the session_id is
+        stable for the life of the session (the cloud derives the rotated key
+        with the unchanged session_id, so the agent must too)."""
+        session, _, system_key = self._make_session(session_id="old-session")
 
         new_salt = generate_nonce(32)
         rotate_msg = {
@@ -423,13 +425,17 @@ class TestSessionManagement:
             "payload": {
                 "new_session_token": "rotated-token",
                 "new_signing_key_salt": new_salt,
+                # A stray field must not change the derivation input
                 "new_session_id": "new-session",
                 "switch_at_seq": 1,
             },
         }
         session.handle_session_rotate(rotate_msg)
         session.check_rotation(1)
-        assert session.session_id == "new-session"
+        assert session.session_id == "old-session"
+        assert session.signing_key == derive_signing_key(
+            system_key, bytes.fromhex(new_salt), "old-session"
+        )
 
     def test_rotation_missing_fields_ignored(self):
         """Rotation message with missing required fields is ignored."""

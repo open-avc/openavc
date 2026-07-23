@@ -29,13 +29,17 @@ from server.cloud.protocol import (
     PROTOCOL_VERSION,
     HELLO, CHALLENGE, AUTHENTICATE, SESSION_START,
     AUTH_FAILED, VERSION_MISMATCH, RESUME, RESUME_FROM,
-    HEARTBEAT, STATE_BATCH, ALERT, PONG, SESSION_ROTATE, SESSION_INVALID, COMMAND,
+    HEARTBEAT, STATE_BATCH, ALERT, SESSION_ROTATE, SESSION_INVALID, COMMAND,
     COMMAND_RESULT,
     HANDSHAKE_TYPES, UPSTREAM_TYPES, DOWNSTREAM_TYPES,
     MESSAGE_PRIORITY,
     build_hello, build_authenticate, build_resume,
-    build_signed_message, build_heartbeat, build_state_batch,
-    build_pong, build_command_result,
+    build_signed_message,
+    UPSTREAM_PAYLOAD_BUILDERS,
+    build_heartbeat_payload, build_state_batch_payload,
+    build_pong_payload, build_command_result_payload,
+    build_project_data_payload, build_device_commands_data_payload,
+    build_cert_request_payload,
     parse_message, is_handshake_message,
     verify_steady_state_message, extract_payload,
     ProtocolError,
@@ -227,16 +231,21 @@ class TestProtocol:
 
     def test_build_hello(self):
         msg = build_hello(
-            system_id="sys-1", version="1.0", hostname="test",
-            project_name="Room", capabilities=["monitoring"],
+            system_id="sys-1", version="1.0", capabilities=["monitoring"],
             os_info="Linux", hardware="Pi", deployment_mode="appliance",
-            python_version="3.11",
         )
         assert msg["type"] == HELLO
         assert "ts" in msg
         assert msg["payload"]["protocol_version"] == PROTOCOL_VERSION
         assert msg["payload"]["system_id"] == "sys-1"
         assert msg["payload"]["capabilities"] == ["monitoring"]
+        # The payload carries exactly what the cloud persists — no
+        # speculative fields (hostname/project_name/python_version were
+        # sent for years and never read).
+        assert set(msg["payload"]) == {
+            "protocol_version", "system_id", "version",
+            "capabilities", "os", "hardware", "deployment_mode",
+        }
         # Handshake messages should NOT have seq/session/sig
         assert "seq" not in msg
         assert "session" not in msg
@@ -264,38 +273,80 @@ class TestProtocol:
         # Verify the signature
         assert verify_message_signature(key, msg, msg["sig"])
 
-    def test_build_heartbeat(self):
-        key = hkdf_sha256(b"key", b"salt", b"info", 32)
-        msg = build_heartbeat(
-            seq=5, session_token="tok", signing_key=key,
-            uptime_seconds=3600, cpu_percent=12.345, memory_percent=34.1,
+    def test_payload_builders_cover_every_upstream_type(self):
+        """protocol.py is the payload contract: every steady-state upstream
+        type has exactly one payload builder."""
+        assert set(UPSTREAM_PAYLOAD_BUILDERS) == UPSTREAM_TYPES
+
+    def test_result_shaped_builders_accept_nack_keywords(self):
+        """Refusal NACKs are built generically from the request's typed
+        result — every result-shaped builder must accept these keywords."""
+        for result_type in (
+            "command_result", "diagnostic_result", "ai_tool_result",
+            "project_data", "device_commands_data",
+        ):
+            payload = UPSTREAM_PAYLOAD_BUILDERS[result_type](
+                request_id="req-1", success=False, error="capability_disabled: x"
+            )
+            assert payload["request_id"] == "req-1"
+            assert payload["success"] is False
+            assert payload["error"] == "capability_disabled: x"
+
+    def test_build_heartbeat_payload(self):
+        payload = build_heartbeat_payload(
+            uptime_seconds=3600, cpu_percent=12.3, memory_percent=34.1,
             disk_percent=22.7, device_count=5, devices_connected=4,
             devices_error=1, active_ws_clients=2, temperature_celsius=52.3,
         )
-        assert msg["type"] == HEARTBEAT
-        assert msg["payload"]["cpu_percent"] == 12.3  # Rounded
-        assert msg["payload"]["temperature_celsius"] == 52.3
-        assert "sig" in msg
+        assert payload["cpu_percent"] == 12.3
+        assert payload["temperature_celsius"] == 52.3
+        # No sensor → the key is omitted entirely
+        no_temp = build_heartbeat_payload(
+            uptime_seconds=0, cpu_percent=0, memory_percent=0,
+            disk_percent=0, device_count=0, devices_connected=0,
+            devices_error=0, active_ws_clients=0,
+        )
+        assert "temperature_celsius" not in no_temp
 
-    def test_build_state_batch(self):
-        key = hkdf_sha256(b"key", b"salt", b"info", 32)
+    def test_build_state_batch_payload(self):
         changes = [{"key": "device.proj.power", "value": "on", "ts": "..."}]
-        msg = build_state_batch(1, "tok", key, changes)
-        assert msg["type"] == STATE_BATCH
-        assert msg["payload"]["changes"] == changes
+        assert build_state_batch_payload(changes) == {"changes": changes}
+        # snapshot flag present only when set (first chunk of a session)
+        assert build_state_batch_payload([], snapshot=True) == {
+            "changes": [], "snapshot": True,
+        }
 
-    def test_build_pong(self):
-        key = hkdf_sha256(b"key", b"salt", b"info", 32)
-        msg = build_pong(10, "tok", key, "nonce-123")
-        assert msg["type"] == PONG
-        assert msg["payload"]["nonce"] == "nonce-123"
+    def test_build_pong_payload(self):
+        assert build_pong_payload("nonce-123") == {"nonce": "nonce-123"}
 
-    def test_build_command_result(self):
-        key = hkdf_sha256(b"key", b"salt", b"info", 32)
-        msg = build_command_result(1, "tok", key, "req-1", True, result="OK")
-        assert msg["type"] == COMMAND_RESULT
-        assert msg["payload"]["success"] is True
-        assert msg["payload"]["request_id"] == "req-1"
+    def test_build_command_result_payload(self):
+        payload = build_command_result_payload("req-1", True, result="OK")
+        assert payload == {
+            "request_id": "req-1", "success": True, "result": "OK", "error": None,
+        }
+
+    def test_build_project_data_payload_shapes(self):
+        """Success carries project_json; failure carries error — never both."""
+        ok = build_project_data_payload("r1", True, project_json={"version": "0.7.0"})
+        assert ok == {
+            "request_id": "r1", "success": True,
+            "project_json": {"version": "0.7.0"},
+        }
+        fail = build_project_data_payload("r1", False, error="not found")
+        assert fail == {"request_id": "r1", "success": False, "error": "not found"}
+
+    def test_build_device_commands_data_payload_shapes(self):
+        ok = build_device_commands_data_payload("r1", True, devices=[{"id": "d1"}])
+        assert ok == {
+            "request_id": "r1", "success": True, "devices": [{"id": "d1"}],
+        }
+        fail = build_device_commands_data_payload("r1", False, error="boom")
+        assert fail == {"request_id": "r1", "success": False, "error": "boom"}
+
+    def test_build_cert_request_payload_shapes(self):
+        """Empty payload asks for enrollment; csr_pem asks for issuance."""
+        assert build_cert_request_payload() == {}
+        assert build_cert_request_payload("PEM") == {"csr_pem": "PEM"}
 
     def test_parse_message_valid(self):
         raw = json.dumps({"type": "heartbeat", "ts": "...", "payload": {}})
@@ -367,8 +418,6 @@ class TestHandshake:
             system_id=system_id,
             system_key=system_key,
             version="1.0.0",
-            hostname="test-host",
-            project_name="Test Room",
             capabilities=["monitoring"],
         ), system_key, system_id
 
@@ -1474,11 +1523,14 @@ class TestAgentRefusalNacks:
             "type": "diagnostic",
             "payload": {"request_id": "r2", "action": "ping", "target": "1.2.3.4"},
         })
+        # The NACK is the request's own typed result in its canonical
+        # shape (result key present and None), same as a direct failure.
         assert agent.sent == [(
             "diagnostic_result",
             {
                 "request_id": "r2",
                 "success": False,
+                "result": None,
                 "error": agent.sent[0][1]["error"],
             },
         )]

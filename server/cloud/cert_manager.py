@@ -31,7 +31,10 @@ import time
 from datetime import datetime, timezone
 from typing import Any
 
-from server.cloud.protocol import CERT_REQUEST, CERT_STATUS, extract_payload
+from server.cloud.protocol import (
+    CERT_REQUEST, CERT_STATUS,
+    build_cert_request_payload, build_cert_status_payload, extract_payload,
+)
 from server.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -275,7 +278,7 @@ class CertificateManager:
         self._last_attempt_at = datetime.now(timezone.utc).isoformat()
         self._set_state("requesting", "")
         self._arm_watchdog()
-        await self._agent.send_message(CERT_REQUEST, {})
+        await self._agent.send_message(CERT_REQUEST, build_cert_request_payload())
 
     async def _on_enrollment(self, payload: dict[str, Any]) -> None:
         if self._phase != "enrolling":
@@ -296,7 +299,7 @@ class CertificateManager:
         self._phase = "issuing"
         self._arm_watchdog()  # fresh window for the ACME round-trip
         log.info("Trusted certificate: requesting issuance for *.%s", self._hostname_suffix)
-        await self._agent.send_message(CERT_REQUEST, {"csr_pem": csr_pem})
+        await self._agent.send_message(CERT_REQUEST, build_cert_request_payload(csr_pem))
 
     async def _on_issued(self, payload: dict[str, Any]) -> None:
         if self._phase != "issuing" or not self._pending_key_pem:
@@ -478,6 +481,8 @@ class CertificateManager:
 
     async def _send_status(self, state_str: str) -> None:
         try:
-            await self._agent.send_message(CERT_STATUS, {"state": state_str})
+            await self._agent.send_message(
+                CERT_STATUS, build_cert_status_payload(state_str)
+            )
         except Exception:
             log.debug("Trusted certificate: cert_status send failed", exc_info=True)

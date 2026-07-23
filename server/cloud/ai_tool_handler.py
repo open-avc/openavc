@@ -15,7 +15,9 @@ import time
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
-from server.cloud.protocol import AI_TOOL_RESULT, extract_payload
+from server.cloud.protocol import (
+    AI_TOOL_RESULT, build_ai_tool_result_payload, extract_payload,
+)
 from server.core.condition_eval import _OPERATOR_ALIASES as _COND_ALIASES
 from server.utils.logger import get_logger
 
@@ -1141,9 +1143,6 @@ class AIToolHandler(
                 json.dumps(result)
             except (TypeError, ValueError):
                 result = str(result)
-        await self._agent.send_message(AI_TOOL_RESULT, {
-            "request_id": request_id,
-            "success": success,
-            "result": result,
-            "error": error,
-        })
+        await self._agent.send_message(AI_TOOL_RESULT, build_ai_tool_result_payload(
+            request_id, success, result=result, error=error,
+        ))

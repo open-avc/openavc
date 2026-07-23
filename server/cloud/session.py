@@ -60,7 +60,6 @@ class Session:
         self._pending_token: str | None = None
         self._pending_signing_key: bytes | None = None
         self._pending_expires: str | None = None
-        self._pending_session_id: str | None = None
         self._rotate_at_downstream_seq: int | None = None
 
         self._valid = True
@@ -151,16 +150,16 @@ class Session:
             # the old key after the cloud believes rotation occurred).
             log.warning("session_rotate has a malformed signing-key salt, ignoring")
             return
-        # Use new session_id for key derivation if provided, otherwise keep current
-        new_session_id = payload.get("new_session_id", self.session_id)
+        # Rotation replaces the token and signing key only — the session_id
+        # is stable for the life of the session on both sides (the cloud's
+        # rotate_session derives the new key with the unchanged session_id).
         new_signing_key = derive_signing_key(
-            self._system_key, new_salt, new_session_id
+            self._system_key, new_salt, self.session_id
         )
 
         self._pending_token = new_token
         self._pending_signing_key = new_signing_key
         self._pending_expires = new_expires
-        self._pending_session_id = new_session_id
         self._rotate_at_downstream_seq = switch_at_seq
 
         log.info(
@@ -189,14 +188,11 @@ class Session:
             self.signing_key = self._pending_signing_key
             if self._pending_expires:
                 self.session_expires = self._pending_expires
-            if self._pending_session_id:
-                self.session_id = self._pending_session_id
 
             # Clear pending
             self._pending_token = None
             self._pending_signing_key = None
             self._pending_expires = None
-            self._pending_session_id = None
             self._rotate_at_downstream_seq = None
 
             log.info(

@@ -15,7 +15,10 @@ import uuid
 from fnmatch import fnmatch
 from typing import Any, TYPE_CHECKING
 
-from server.cloud.protocol import ALERT, ALERT_RESOLVED
+from server.cloud.protocol import (
+    ALERT, ALERT_RESOLVED,
+    build_alert_payload, build_alert_resolved_payload,
+)
 from server.utils.logger import get_logger
 from server.utils.regex_safety import regex_safety_error
 
@@ -164,24 +167,24 @@ class AlertMonitor:
             alert_id = str(uuid.uuid4())
             self._active_alerts[alert_key] = alert_id
             device_id = _extract_device_id(key)
-            self._queue_send(ALERT, {
-                "alert_id": alert_id,
-                "rule_id": rule["id"],
-                "severity": rule.get("severity", "warning"),
-                "category": rule.get("category", "device"),
-                "device_id": device_id,
-                "message": _clip_message(
+            self._queue_send(ALERT, build_alert_payload(
+                alert_id=alert_id,
+                rule_id=rule["id"],
+                severity=rule.get("severity", "warning"),
+                category=rule.get("category", "device"),
+                device_id=device_id,
+                message=_clip_message(
                     f"{rule['name']}: {key} {operator} {threshold} (current: {value})"
                 ),
-                "detail": {"rule_id": rule["id"], "key": key, "value": value, "threshold": threshold},
-            })
+                detail={"rule_id": rule["id"], "key": key, "value": value, "threshold": threshold},
+            ))
         elif not triggered and alert_key in self._active_alerts:
             # Hysteresis: use resolve_value if set, otherwise same as threshold
             resolve_value = condition.get("resolve_value", threshold)
             resolved = _check_resolved(value, operator, resolve_value)
             if resolved:
                 resolved_id = self._active_alerts.pop(alert_key)
-                self._queue_send(ALERT_RESOLVED, {"alert_id": resolved_id})
+                self._queue_send(ALERT_RESOLVED, build_alert_resolved_payload(resolved_id))
 
     def _evaluate_pattern(self, rule: dict, key: str, value: Any) -> None:
         """Check pattern rules (value matches for N seconds)."""
@@ -203,7 +206,7 @@ class AlertMonitor:
             self._pattern_timers.pop(alert_key, None)
             if alert_key in self._active_alerts:
                 resolved_id = self._active_alerts.pop(alert_key)
-                self._queue_send(ALERT_RESOLVED, {"alert_id": resolved_id})
+                self._queue_send(ALERT_RESOLVED, build_alert_resolved_payload(resolved_id))
 
     # --- Periodic Check Loop ---
 
@@ -243,15 +246,15 @@ class AlertMonitor:
                 alert_id = str(uuid.uuid4())
                 self._active_alerts[alert_key] = alert_id
                 device_id = _extract_device_id(alert_key.split(":", 2)[-1])
-                await self._agent.send_message(ALERT, {
-                    "alert_id": alert_id,
-                    "rule_id": rule["id"],
-                    "severity": rule.get("severity", "warning"),
-                    "category": rule.get("category", "device"),
-                    "device_id": device_id,
-                    "message": _clip_message(f"{rule['name']}: condition held for {duration}s"),
-                    "detail": {"rule_id": rule["id"], "duration_seconds": duration},
-                })
+                await self._agent.send_message(ALERT, build_alert_payload(
+                    alert_id=alert_id,
+                    rule_id=rule["id"],
+                    severity=rule.get("severity", "warning"),
+                    category=rule.get("category", "device"),
+                    device_id=device_id,
+                    message=_clip_message(f"{rule['name']}: condition held for {duration}s"),
+                    detail={"rule_id": rule["id"], "duration_seconds": duration},
+                ))
 
         # Prune stale device entries. The horizon must outlast the largest
         # absence threshold, or a device would be evicted before its absence
@@ -298,20 +301,20 @@ class AlertMonitor:
                     alert_id = str(uuid.uuid4())
                     self._active_alerts[alert_key] = alert_id
                     elapsed = int(now - last_time)
-                    await self._agent.send_message(ALERT, {
-                        "alert_id": alert_id,
-                        "rule_id": rule["id"],
-                        "severity": rule.get("severity", "warning"),
-                        "category": "device",
-                        "device_id": device_id,
-                        "message": _clip_message(
+                    await self._agent.send_message(ALERT, build_alert_payload(
+                        alert_id=alert_id,
+                        rule_id=rule["id"],
+                        severity=rule.get("severity", "warning"),
+                        category="device",
+                        device_id=device_id,
+                        message=_clip_message(
                             f"{rule['name']}: {device_id} not reporting for {elapsed}s"
                         ),
-                        "detail": {"rule_id": rule["id"], "threshold_seconds": threshold_secs},
-                    })
+                        detail={"rule_id": rule["id"], "threshold_seconds": threshold_secs},
+                    ))
                 elif now - last_time <= threshold_secs and alert_key in self._active_alerts:
                     resolved_id = self._active_alerts.pop(alert_key)
-                    await self._agent.send_message(ALERT_RESOLVED, {"alert_id": resolved_id})
+                    await self._agent.send_message(ALERT_RESOLVED, build_alert_resolved_payload(resolved_id))
 
     # --- Send Loop (processes queued sends from sync callback) ---
 
@@ -362,7 +365,7 @@ class AlertMonitor:
             parts = alert_key.split(":")
             if len(parts) >= 2 and parts[0] == "rule" and parts[1] in deleted_ids:
                 resolved_id = self._active_alerts.pop(alert_key)
-                self._queue_send(ALERT_RESOLVED, {"alert_id": resolved_id})
+                self._queue_send(ALERT_RESOLVED, build_alert_resolved_payload(resolved_id))
 
         # Clear pattern timers for deleted rules
         for alert_key in list(self._pattern_timers.keys()):

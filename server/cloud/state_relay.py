@@ -34,7 +34,7 @@ import threading
 import time
 from typing import Any, TYPE_CHECKING
 
-from server.cloud.protocol import STATE_BATCH
+from server.cloud.protocol import STATE_BATCH, build_state_batch_payload
 from server.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -226,7 +226,7 @@ class StateRelay:
         # there are no state keys, so the cloud clears stale data.
         if not changes:
             await self._agent.send_message(
-                STATE_BATCH, {"changes": [], "snapshot": True}
+                STATE_BATCH, build_state_batch_payload([], snapshot=True)
             )
         else:
             await self._send_changes_chunked(changes, snapshot=True)
@@ -497,9 +497,7 @@ class StateRelay:
 
         for i in range(0, len(changes), max_size):
             chunk = changes[i:i + max_size]
-            payload: dict[str, Any] = {"changes": chunk}
-            if snapshot and i == 0:
-                payload["snapshot"] = True
+            payload = build_state_batch_payload(chunk, snapshot=(snapshot and i == 0))
             await self._agent.send_message(STATE_BATCH, payload)
             if paced and i != last_chunk_start and pace_delay > 0:
                 await asyncio.sleep(pace_delay)

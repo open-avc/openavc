@@ -28,8 +28,10 @@ from server.cloud.protocol import (
     AI_TOOL_CALL, GAP_REPORT, GET_PROJECT, GET_DEVICE_COMMANDS,
     CERT_RESULT, CERT_RENEW_DUE,
     COMMAND_RESULT, PROJECT_DATA, DEVICE_COMMANDS_DATA,
-    DIAGNOSTIC_RESULT, AI_TOOL_RESULT, TUNNEL_FAILED,
-    build_pong, build_signed_message,
+    DIAGNOSTIC_RESULT, AI_TOOL_RESULT, TUNNEL_FAILED, HEARTBEAT, PONG,
+    UPSTREAM_PAYLOAD_BUILDERS,
+    build_pong_payload, build_gap_report_payload,
+    build_heartbeat_payload, build_tunnel_failed_payload,
     parse_message, is_handshake_message,
     extract_payload, ProtocolError,
     _now_iso,
@@ -166,8 +168,6 @@ class CloudAgent:
             "heartbeat_interval": cloud_config.get("heartbeat_interval", 30),
             "state_batch_interval": cloud_config.get("state_batch_interval", 2),
             "state_batch_max_size": cloud_config.get("state_batch_max_size", 500),
-            "log_level_filter": cloud_config.get("log_level_filter", "warning"),
-            "max_logs_per_minute": 100,
             "max_alerts_per_minute": 10,
             "max_messages_per_minute": 300,
             "buffer_size": cloud_config.get("buffer_size", 1000),
@@ -175,7 +175,6 @@ class CloudAgent:
             "compression": "none",
             "features": {
                 "alerts_enabled": True,
-                "log_forwarding": True,
                 "state_forwarding": True,
             },
         }
@@ -465,15 +464,10 @@ class CloudAgent:
 
         try:
             # Perform handshake
-            hostname = self.state.get("system.hostname", "openavc")
-            project_name = self.state.get("system.project_name", "Unknown")
-
             handshake = Handshake(
                 system_id=self._system_id,
                 system_key=self._system_key,
                 version=self._version,
-                hostname=str(hostname),
-                project_name=str(project_name),
                 capabilities=DEFAULT_CAPABILITIES,
             )
 
@@ -680,7 +674,22 @@ class CloudAgent:
             log.debug(f"Cloud agent: message type {msg_type} is throttled, dropping")
             return
 
-        # Build message
+        await self._send_signed(msg_type, payload)
+
+    async def _send_signed(self, msg_type: str, payload: dict[str, Any]) -> None:
+        """Envelope, sequence, sign, and send — the one live wire path for
+        steady-state upstream messages (build_signed_message is the same
+        envelope in pure-function form for tests; here the seq comes from
+        the sequencer, which also buffers the message for replay).
+
+        Unlike send_message this skips the connected/throttle gates, so
+        pong and gap_report replies still flow while the agent is throttled
+        — the cloud's liveness check reaps a connection whose ping gets no
+        nonce-matched pong and no other inbound traffic.
+        """
+        if not self._session:
+            return
+
         msg = {
             "type": msg_type,
             "ts": _now_iso(),
@@ -779,21 +788,16 @@ class CloudAgent:
         if seq is not None and not self._sequencer.validate_downstream_seq(seq):
             return  # Duplicate or out-of-order
 
-        # Report any detected sequence gaps to the cloud
+        # Report any detected sequence gaps to the cloud (via _send_signed
+        # so the report still flows while the agent is throttled)
         if seq is not None:
             gap = self._sequencer.pop_gap()
             if gap:
                 gap_start, gap_end = gap
                 log.info(f"Cloud agent: reporting gap — missing seqs {gap_start}–{gap_end}")
-                gap_msg = build_signed_message(
-                    GAP_REPORT,
-                    {"missing_from": gap_start, "missing_to": gap_end},
-                    seq=self._sequencer.next_seq,
-                    session_token=self._session.session_token if self._session else "",
-                    signing_key=self._session.signing_key if self._session else b"",
+                await self._send_signed(
+                    GAP_REPORT, build_gap_report_payload(gap_start, gap_end)
                 )
-                self._sequencer.assign_seq(gap_msg)
-                await self._send_raw(gap_msg)
 
         # Check for session rotation trigger
         if self._session and seq is not None:
@@ -893,38 +897,28 @@ class CloudAgent:
         if msg_type == TUNNEL_OPEN:
             tunnel_id = payload.get("tunnel_id", "")
             if tunnel_id:
-                await self.send_message(TUNNEL_FAILED, {
-                    "tunnel_id": tunnel_id,
-                    "reason": error,
-                })
+                await self.send_message(
+                    TUNNEL_FAILED, build_tunnel_failed_payload(tunnel_id, error)
+                )
             return
         result_type = _DROP_NACK_TYPES.get(msg_type)
         request_id = payload.get("request_id", "")
         if not result_type or not request_id:
             return
-        await self.send_message(result_type, {
-            "request_id": request_id,
-            "success": False,
-            "error": error,
-        })
+        # Every result-shaped payload builder accepts these keywords, so the
+        # NACK is built by the request's own typed-result builder.
+        build_payload = UPSTREAM_PAYLOAD_BUILDERS[result_type]
+        await self.send_message(
+            result_type,
+            build_payload(request_id=request_id, success=False, error=error),
+        )
 
     async def _handle_ping(self, msg: dict[str, Any]) -> None:
-        """Respond to a ping with a signed pong."""
+        """Respond to a ping with a signed pong (via _send_signed so the
+        liveness reply still flows while the agent is throttled)."""
         payload = extract_payload(msg)
         nonce = payload.get("nonce", "")
-        if self._session:
-            pong = build_pong(
-                seq=self._sequencer.next_seq,
-                session_token=self._session.session_token,
-                signing_key=self._session.signing_key,
-                nonce=nonce,
-            )
-            self._sequencer.assign_seq(pong)
-            # Pong is already signed by build_pong, but we need the correct seq
-            # Re-sign with the assigned seq
-            pong.pop("sig", None)
-            self._session.sign_outgoing(pong)
-            await self._send_raw(pong)
+        await self._send_signed(PONG, build_pong_payload(nonce))
 
     async def _handle_config_update(self, msg: dict[str, Any]) -> None:
         """Apply a mid-session config update from the server."""
@@ -1117,21 +1111,21 @@ class CloudAgent:
                                 f"system.{metric_key}", metrics[metric_key],
                                 source="heartbeat",
                             )
-                    await self.send_message("heartbeat", metrics)
+                    await self.send_message(HEARTBEAT, metrics)
                     self._last_heartbeat_at = _time.time()
                 else:
                     # Minimal heartbeat without collector — get device count from state
                     device_count = self.state.get("system.device_count", 0) if self.state else 0
-                    await self.send_message("heartbeat", {
-                        "uptime_seconds": 0,
-                        "cpu_percent": 0,
-                        "memory_percent": 0,
-                        "disk_percent": 0,
-                        "device_count": device_count,
-                        "devices_connected": 0,
-                        "devices_error": 0,
-                        "active_ws_clients": 0,
-                    })
+                    await self.send_message(HEARTBEAT, build_heartbeat_payload(
+                        uptime_seconds=0,
+                        cpu_percent=0,
+                        memory_percent=0,
+                        disk_percent=0,
+                        device_count=device_count,
+                        devices_connected=0,
+                        devices_error=0,
+                        active_ws_clients=0,
+                    ))
                     self._last_heartbeat_at = _time.time()
         except asyncio.CancelledError:
             return

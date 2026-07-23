@@ -16,6 +16,8 @@ from server.cloud.protocol import (
     GET_PROJECT, GET_DEVICE_COMMANDS,
     COMMAND_RESULT, PROJECT_DATA, DEVICE_COMMANDS_DATA,
     DIAGNOSTIC_RESULT,
+    build_command_result_payload, build_diagnostic_result_payload,
+    build_project_data_payload, build_device_commands_data_payload,
     extract_payload,
 )
 from server.utils.logger import get_logger
@@ -81,25 +83,28 @@ class CommandHandler:
         payload = extract_payload(msg)
         request_id = payload.get("request_id", "")
 
-        # Audit log
-        _user_id = payload.get("user_id", "")
+        # Audit attribution: the display name plus the durable user id, so
+        # local logs identify the cloud user unambiguously even if the name
+        # changes or collides.
+        user_id = payload.get("user_id", "")
         user_name = payload.get("user_name", "")
+        actor = f"{user_name} ({user_id})" if user_id else user_name
 
         try:
             if msg_type == COMMAND:
-                await self._handle_device_command(payload, request_id, user_name)
+                await self._handle_device_command(payload, request_id, actor)
             elif msg_type == CONFIG_PUSH:
-                await self._handle_config_push(payload, request_id, user_name)
+                await self._handle_config_push(payload, request_id, actor)
             elif msg_type == RESTART:
-                await self._handle_restart(payload, request_id, user_name)
+                await self._handle_restart(payload, request_id, actor)
             elif msg_type == DIAGNOSTIC:
-                await self._handle_diagnostic(payload, request_id, user_name)
+                await self._handle_diagnostic(payload, request_id, actor)
             elif msg_type == SOFTWARE_UPDATE:
-                await self._handle_software_update(payload, request_id, user_name)
+                await self._handle_software_update(payload, request_id, actor)
             elif msg_type == GET_PROJECT:
-                await self._handle_get_project(payload, request_id, user_name)
+                await self._handle_get_project(payload, request_id, actor)
             elif msg_type == GET_DEVICE_COMMANDS:
-                await self._handle_get_device_commands(payload, request_id, user_name)
+                await self._handle_get_device_commands(payload, request_id, actor)
             else:
                 await self._send_result(request_id, False, error=f"Unknown command type: {msg_type}")
         except Exception as e:
@@ -108,7 +113,7 @@ class CommandHandler:
             await self._send_result(request_id, False, error=str(e))
 
     async def _handle_device_command(
-        self, payload: dict[str, Any], request_id: str, user_name: str
+        self, payload: dict[str, Any], request_id: str, actor: str
     ) -> None:
         """Handle a device command."""
         device_id = payload.get("device_id", "")
@@ -116,7 +121,7 @@ class CommandHandler:
         params = payload.get("params", {})
 
         log.info(
-            f"Cloud command: {user_name} → {device_id}.{command}"
+            f"Cloud command: {actor} → {device_id}.{command}"
             f"({params})"
         )
 
@@ -124,7 +129,8 @@ class CommandHandler:
             "device_id": device_id,
             "command": command,
             "params": params,
-            "user_name": user_name,
+            "user_name": payload.get("user_name", ""),
+            "user_id": payload.get("user_id", ""),
             "request_id": request_id,
         })
 
@@ -136,16 +142,17 @@ class CommandHandler:
             await self._send_result(request_id, False, error=str(e))
 
     async def _handle_config_push(
-        self, payload: dict[str, Any], request_id: str, user_name: str
+        self, payload: dict[str, Any], request_id: str, actor: str
     ) -> None:
         """Handle a project config push."""
         mode = payload.get("mode", "full_replace")
         project_json = payload.get("project_json")
-        log.info(f"Cloud config push: {user_name} → mode={mode}")
+        log.info(f"Cloud config push: {actor} → mode={mode}")
 
         await self._events.emit("cloud.config_push", {
             "mode": mode,
-            "user_name": user_name,
+            "user_name": payload.get("user_name", ""),
+            "user_id": payload.get("user_id", ""),
             "request_id": request_id,
         })
 
@@ -214,7 +221,7 @@ class CommandHandler:
     _last_restart_time: float = 0
 
     async def _handle_restart(
-        self, payload: dict[str, Any], request_id: str, user_name: str
+        self, payload: dict[str, Any], request_id: str, actor: str
     ) -> None:
         """Handle a restart request."""
         import time as _time
@@ -224,11 +231,12 @@ class CommandHandler:
             return
         self._last_restart_time = now
         mode = payload.get("mode", "graceful")
-        log.info(f"Cloud restart: {user_name} → mode={mode}")
+        log.info(f"Cloud restart: {actor} → mode={mode}")
 
         await self._events.emit("cloud.restart", {
             "mode": mode,
-            "user_name": user_name,
+            "user_name": payload.get("user_name", ""),
+            "user_id": payload.get("user_id", ""),
             "request_id": request_id,
         })
 
@@ -239,7 +247,7 @@ class CommandHandler:
         await self._events.emit("system.restart_requested", {"mode": mode, "source": "cloud"})
 
     async def _handle_diagnostic(
-        self, payload: dict[str, Any], request_id: str, user_name: str
+        self, payload: dict[str, Any], request_id: str, actor: str
     ) -> None:
         """Handle a network diagnostic request from the cloud.
 
@@ -249,12 +257,13 @@ class CommandHandler:
         action = payload.get("action", "")
         target = payload.get("target", "")
         params = payload.get("params") or {}
-        log.info(f"Cloud diagnostic: {user_name} → {action} {target}")
+        log.info(f"Cloud diagnostic: {actor} → {action} {target}")
 
         await self._events.emit("cloud.diagnostic", {
             "action": action,
             "target": target,
-            "user_name": user_name,
+            "user_name": payload.get("user_name", ""),
+            "user_id": payload.get("user_id", ""),
             "request_id": request_id,
         })
 
@@ -286,15 +295,13 @@ class CommandHandler:
         """Send a diagnostic_result message (separate from generic command_result)."""
         if not request_id:
             return
-        await self._agent.send_message(DIAGNOSTIC_RESULT, {
-            "request_id": request_id,
-            "success": success,
-            "result": result,
-            "error": error,
-        })
+        await self._agent.send_message(
+            DIAGNOSTIC_RESULT,
+            build_diagnostic_result_payload(request_id, success, result=result, error=error),
+        )
 
     async def _handle_software_update(
-        self, payload: dict[str, Any], request_id: str, user_name: str
+        self, payload: dict[str, Any], request_id: str, actor: str
     ) -> None:
         """Handle a software update request from the cloud.
 
@@ -307,13 +314,14 @@ class CommandHandler:
         update_url = payload.get("update_url", "")
         checksum_sha256 = payload.get("checksum_sha256")
         log.info(
-            f"Cloud software update: {user_name} → version={target_version}"
+            f"Cloud software update: {actor} → version={target_version}"
         )
 
         await self._events.emit("cloud.software_update", {
             "target_version": target_version,
             "auto_restart": auto_restart,
-            "user_name": user_name,
+            "user_name": payload.get("user_name", ""),
+            "user_id": payload.get("user_id", ""),
             "request_id": request_id,
         })
 
@@ -404,17 +412,15 @@ class CommandHandler:
             )
 
     async def _handle_get_project(
-        self, payload: dict[str, Any], request_id: str, user_name: str
+        self, payload: dict[str, Any], request_id: str, actor: str
     ) -> None:
         """Handle a get_project request — read the current project file and send it back."""
-        log.info(f"Cloud get_project: {user_name}")
+        log.info(f"Cloud get_project: {actor}")
 
         if not self._project_path:
-            await self._agent.send_message(PROJECT_DATA, {
-                "request_id": request_id,
-                "success": False,
-                "error": "Project path not configured",
-            })
+            await self._agent.send_message(PROJECT_DATA, build_project_data_payload(
+                request_id, False, error="Project path not configured",
+            ))
             return
 
         try:
@@ -423,32 +429,26 @@ class CommandHandler:
 
             project_path = Path(self._project_path)
             if not project_path.exists():
-                await self._agent.send_message(PROJECT_DATA, {
-                    "request_id": request_id,
-                    "success": False,
-                    "error": "Project file not found",
-                })
+                await self._agent.send_message(PROJECT_DATA, build_project_data_payload(
+                    request_id, False, error="Project file not found",
+                ))
                 return
 
             project_json = json.loads(project_path.read_text(encoding="utf-8"))
-            await self._agent.send_message(PROJECT_DATA, {
-                "request_id": request_id,
-                "success": True,
-                "project_json": project_json,
-            })
+            await self._agent.send_message(PROJECT_DATA, build_project_data_payload(
+                request_id, True, project_json=project_json,
+            ))
         except Exception as e:
             log.exception("Error reading project file")
-            await self._agent.send_message(PROJECT_DATA, {
-                "request_id": request_id,
-                "success": False,
-                "error": str(e),
-            })
+            await self._agent.send_message(PROJECT_DATA, build_project_data_payload(
+                request_id, False, error=str(e),
+            ))
 
     async def _handle_get_device_commands(
-        self, payload: dict[str, Any], request_id: str, user_name: str
+        self, payload: dict[str, Any], request_id: str, actor: str
     ) -> None:
         """Handle a get_device_commands request — return device list with available commands."""
-        log.info(f"Cloud get_device_commands: {user_name}")
+        log.info(f"Cloud get_device_commands: {actor}")
 
         try:
             devices = self._devices.list_devices()
@@ -476,18 +476,16 @@ class CommandHandler:
                     entry["commands"] = {}
                 result_devices.append(entry)
 
-            await self._agent.send_message(DEVICE_COMMANDS_DATA, {
-                "request_id": request_id,
-                "success": True,
-                "devices": result_devices,
-            })
+            await self._agent.send_message(
+                DEVICE_COMMANDS_DATA,
+                build_device_commands_data_payload(request_id, True, devices=result_devices),
+            )
         except Exception as e:
             log.exception("Error getting device commands")
-            await self._agent.send_message(DEVICE_COMMANDS_DATA, {
-                "request_id": request_id,
-                "success": False,
-                "error": str(e),
-            })
+            await self._agent.send_message(
+                DEVICE_COMMANDS_DATA,
+                build_device_commands_data_payload(request_id, False, error=str(e)),
+            )
 
     async def _send_result(
         self, request_id: str, success: bool,
@@ -497,12 +495,10 @@ class CommandHandler:
         if not request_id:
             return
 
-        await self._agent.send_message(COMMAND_RESULT, {
-            "request_id": request_id,
-            "success": success,
-            "result": result,
-            "error": error,
-        })
+        await self._agent.send_message(
+            COMMAND_RESULT,
+            build_command_result_payload(request_id, success, result=result, error=error),
+        )
 
 
 # --- Diagnostic action implementations (module-level so they're easy to test) ---

@@ -8,7 +8,7 @@ import pytest
 from server.cloud.ai_tool_handler import AIToolHandler
 from server.cloud.protocol import (
     AI_TOOL_CALL, AI_TOOL_RESULT,
-    build_ai_tool_result, _now_iso,
+    build_ai_tool_result_payload, _now_iso,
 )
 
 
@@ -307,20 +307,18 @@ def test_ai_tool_call_in_downstream_types():
     assert AI_TOOL_CALL in DOWNSTREAM_TYPES
 
 
-def test_build_ai_tool_result():
-    msg = build_ai_tool_result(
-        seq=1,
-        session_token="test",
-        signing_key=b"key_32_bytes____________________",
+def test_build_ai_tool_result_payload():
+    payload = build_ai_tool_result_payload(
         request_id="req-abc",
         success=True,
         result={"devices": []},
     )
-    assert msg["type"] == AI_TOOL_RESULT
-    assert msg["payload"]["request_id"] == "req-abc"
-    assert msg["payload"]["success"] is True
-    assert msg["payload"]["result"] == {"devices": []}
-    assert "sig" in msg
+    assert payload == {
+        "request_id": "req-abc",
+        "success": True,
+        "result": {"devices": []},
+        "error": None,
+    }
 
 
 # ===========================================================================

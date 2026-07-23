@@ -361,7 +361,7 @@ The OpenAVC Cloud platform provides remote monitoring, fleet management, and AI-
 
 The cloud connection uses a multi-step challenge-response handshake. The system's secret key never crosses the network.
 
-1. Device sends a `hello` message identifying itself (system ID, version, hostname)
+1. Device sends a `hello` message identifying itself (system ID, software version, OS, hardware, deployment type)
 2. Cloud responds with a random 32-byte challenge nonce
 3. Device computes an HMAC-SHA256 proof using a locally-derived authentication key (HKDF-SHA256 from the system key) and sends it back
 4. Cloud independently derives the same key from the stored key hash and verifies the proof

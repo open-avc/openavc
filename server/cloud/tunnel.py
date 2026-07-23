@@ -148,8 +148,10 @@ class TunnelHandler:
             conn.recv_task = asyncio.create_task(self._data_receive_loop(conn))
 
             # Send tunnel_ready on main WS
-            from server.cloud.protocol import TUNNEL_READY
-            await self._agent.send_message(TUNNEL_READY, {"tunnel_id": tunnel_id})
+            from server.cloud.protocol import TUNNEL_READY, build_tunnel_ready_payload
+            await self._agent.send_message(
+                TUNNEL_READY, build_tunnel_ready_payload(tunnel_id)
+            )
 
             log.info(f"Tunnel {tunnel_id} ready")
 
@@ -160,11 +162,10 @@ class TunnelHandler:
             self._tunnels.pop(tunnel_id, None)
             # Notify cloud so it doesn't show the tunnel as active
             try:
-                from server.cloud.protocol import TUNNEL_FAILED
-                await self._agent.send_message(TUNNEL_FAILED, {
-                    "tunnel_id": tunnel_id,
-                    "reason": str(e),
-                })
+                from server.cloud.protocol import TUNNEL_FAILED, build_tunnel_failed_payload
+                await self._agent.send_message(
+                    TUNNEL_FAILED, build_tunnel_failed_payload(tunnel_id, str(e))
+                )
             except Exception:
                 pass  # Best-effort notification
 

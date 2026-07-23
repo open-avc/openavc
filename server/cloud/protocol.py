@@ -44,7 +44,6 @@ HEARTBEAT = "heartbeat"
 STATE_BATCH = "state_batch"
 ALERT = "alert"
 ALERT_RESOLVED = "alert_resolved"
-LOG = "log"
 COMMAND_RESULT = "command_result"
 TUNNEL_READY = "tunnel_ready"
 TUNNEL_FAILED = "tunnel_failed"
@@ -87,7 +86,7 @@ HANDSHAKE_TYPES = {
 }
 
 UPSTREAM_TYPES = {
-    HEARTBEAT, STATE_BATCH, ALERT, ALERT_RESOLVED, LOG,
+    HEARTBEAT, STATE_BATCH, ALERT, ALERT_RESOLVED,
     COMMAND_RESULT, TUNNEL_READY, TUNNEL_FAILED, DIAGNOSTIC_RESULT, PONG,
     AI_TOOL_RESULT, PROJECT_DATA, DEVICE_COMMANDS_DATA, GAP_REPORT,
     CERT_REQUEST, CERT_STATUS,
@@ -104,7 +103,6 @@ DOWNSTREAM_TYPES = {
 # Message priority for buffer overflow (lower = dropped first)
 MESSAGE_PRIORITY = {
     STATE_BATCH: 0,
-    LOG: 1,
     HEARTBEAT: 2,
     ALERT_RESOLVED: 3,
     ALERT: 4,
@@ -155,15 +153,17 @@ def _now_iso() -> str:
 def build_hello(
     system_id: str,
     version: str,
-    hostname: str,
-    project_name: str,
     capabilities: list[str],
     os_info: str,
     hardware: str,
     deployment_mode: str,
-    python_version: str,
 ) -> dict[str, Any]:
-    """Build a hello handshake message."""
+    """Build a hello handshake message.
+
+    Carries exactly what the cloud persists on the System record (version,
+    os, hardware, deployment_mode, capabilities) plus the identity and
+    protocol version the handshake needs — nothing speculative.
+    """
     return {
         "type": HELLO,
         "ts": _now_iso(),
@@ -171,13 +171,10 @@ def build_hello(
             "protocol_version": PROTOCOL_VERSION,
             "system_id": system_id,
             "version": version,
-            "hostname": hostname,
-            "project_name": project_name,
             "capabilities": capabilities,
             "os": os_info,
             "hardware": hardware,
             "deployment_mode": deployment_mode,
-            "python_version": python_version,
         },
     }
 
@@ -253,10 +250,16 @@ def build_signed_message(
     return msg
 
 
-def build_heartbeat(
-    seq: int,
-    session_token: str,
-    signing_key: bytes,
+# --- Steady-State Payload Builders (the upstream payload contract) ---
+#
+# Every steady-state upstream message the agent sends is assembled from one
+# of these builders; CloudAgent envelopes, sequences, and signs it at send
+# time (seq comes from the sequencer, which also buffers for replay — that is
+# why these build payloads, not full messages). The cloud reads exactly these
+# shapes: change one only together with its cloud-side reader and spec §13.
+
+
+def build_heartbeat_payload(
     uptime_seconds: int,
     cpu_percent: float,
     memory_percent: float,
@@ -267,134 +270,176 @@ def build_heartbeat(
     active_ws_clients: int,
     temperature_celsius: float | None = None,
 ) -> dict[str, Any]:
-    """Build a signed heartbeat message."""
+    """Heartbeat metrics payload. temperature_celsius is omitted when the
+    platform exposes no sensor."""
     payload: dict[str, Any] = {
         "uptime_seconds": uptime_seconds,
-        "cpu_percent": round(cpu_percent, 1),
-        "memory_percent": round(memory_percent, 1),
-        "disk_percent": round(disk_percent, 1),
+        "cpu_percent": cpu_percent,
+        "memory_percent": memory_percent,
+        "disk_percent": disk_percent,
         "device_count": device_count,
         "devices_connected": devices_connected,
         "devices_error": devices_error,
         "active_ws_clients": active_ws_clients,
     }
     if temperature_celsius is not None:
-        payload["temperature_celsius"] = round(temperature_celsius, 1)
-    return build_signed_message(HEARTBEAT, payload, seq, session_token, signing_key)
+        payload["temperature_celsius"] = temperature_celsius
+    return payload
 
 
-def build_state_batch(
-    seq: int,
-    session_token: str,
-    signing_key: bytes,
-    changes: list[dict[str, Any]],
+def build_state_batch_payload(
+    changes: list[dict[str, Any]], snapshot: bool = False
 ) -> dict[str, Any]:
-    """Build a signed state_batch message."""
-    return build_signed_message(
-        STATE_BATCH,
-        {"changes": changes},
-        seq,
-        session_token,
-        signing_key,
-    )
+    """State-change batch. The first batch of a session sets snapshot=True
+    (only on its first chunk) so the cloud clears stale keys."""
+    payload: dict[str, Any] = {"changes": changes}
+    if snapshot:
+        payload["snapshot"] = True
+    return payload
 
 
-def build_alert_resolved(
-    seq: int,
-    session_token: str,
-    signing_key: bytes,
+def build_alert_payload(
     alert_id: str,
-) -> dict[str, Any]:
-    """Build a signed alert_resolved message."""
-    return build_signed_message(
-        ALERT_RESOLVED,
-        {"alert_id": alert_id},
-        seq,
-        session_token,
-        signing_key,
-    )
-
-
-def build_log_message(
-    seq: int,
-    session_token: str,
-    signing_key: bytes,
-    level: str,
-    source: str,
+    rule_id: str,
+    severity: str,
+    category: str,
+    device_id: str | None,
     message: str,
+    detail: dict[str, Any],
 ) -> dict[str, Any]:
-    """Build a signed log message."""
-    return build_signed_message(
-        LOG,
-        {"level": level, "source": source, "message": message},
-        seq,
-        session_token,
-        signing_key,
-    )
+    """Alert-fired payload."""
+    return {
+        "alert_id": alert_id,
+        "rule_id": rule_id,
+        "severity": severity,
+        "category": category,
+        "device_id": device_id,
+        "message": message,
+        "detail": detail,
+    }
 
 
-def build_command_result(
-    seq: int,
-    session_token: str,
-    signing_key: bytes,
+def build_alert_resolved_payload(alert_id: str) -> dict[str, Any]:
+    """Alert-resolved payload."""
+    return {"alert_id": alert_id}
+
+
+def _request_result_payload(
+    request_id: str, success: bool, result: Any, error: str | None
+) -> dict[str, Any]:
+    return {
+        "request_id": request_id,
+        "success": success,
+        "result": result,
+        "error": error,
+    }
+
+
+def build_command_result_payload(
+    request_id: str, success: bool, result: Any = None, error: str | None = None
+) -> dict[str, Any]:
+    """Result payload for command / config_push / restart / software_update."""
+    return _request_result_payload(request_id, success, result, error)
+
+
+def build_diagnostic_result_payload(
+    request_id: str, success: bool, result: Any = None, error: str | None = None
+) -> dict[str, Any]:
+    """Result payload for a diagnostic request."""
+    return _request_result_payload(request_id, success, result, error)
+
+
+def build_ai_tool_result_payload(
+    request_id: str, success: bool, result: Any = None, error: str | None = None
+) -> dict[str, Any]:
+    """Result payload for an ai_tool_call."""
+    return _request_result_payload(request_id, success, result, error)
+
+
+def build_project_data_payload(
     request_id: str,
     success: bool,
-    result: str | None = None,
+    project_json: Any = None,
     error: str | None = None,
 ) -> dict[str, Any]:
-    """Build a signed command_result message."""
-    return build_signed_message(
-        COMMAND_RESULT,
-        {
-            "request_id": request_id,
-            "success": success,
-            "result": result,
-            "error": error,
-        },
-        seq,
-        session_token,
-        signing_key,
-    )
+    """Result payload for get_project: project_json on success, error otherwise."""
+    payload: dict[str, Any] = {"request_id": request_id, "success": success}
+    if success:
+        payload["project_json"] = project_json
+    else:
+        payload["error"] = error
+    return payload
 
 
-def build_pong(
-    seq: int,
-    session_token: str,
-    signing_key: bytes,
-    nonce: str,
-) -> dict[str, Any]:
-    """Build a signed pong response to a ping."""
-    return build_signed_message(
-        PONG,
-        {"nonce": nonce},
-        seq,
-        session_token,
-        signing_key,
-    )
-
-
-def build_ai_tool_result(
-    seq: int,
-    session_token: str,
-    signing_key: bytes,
+def build_device_commands_data_payload(
     request_id: str,
     success: bool,
-    result: Any = None,
+    devices: list[dict[str, Any]] | None = None,
     error: str | None = None,
 ) -> dict[str, Any]:
-    """Build a signed ai_tool_result message (agent → cloud)."""
-    return build_signed_message(
-        AI_TOOL_RESULT,
-        {
-            "request_id": request_id,
-            "success": success,
-            "result": result,
-            "error": error,
-        },
-        seq,
-        session_token,
-        signing_key,
-    )
+    """Result payload for get_device_commands: devices on success, error otherwise."""
+    payload: dict[str, Any] = {"request_id": request_id, "success": success}
+    if success:
+        payload["devices"] = devices if devices is not None else []
+    else:
+        payload["error"] = error
+    return payload
+
+
+def build_pong_payload(nonce: str) -> dict[str, Any]:
+    """Pong payload echoing the ping's nonce (the cloud's liveness check
+    only accepts a nonce-matched pong)."""
+    return {"nonce": nonce}
+
+
+def build_tunnel_ready_payload(tunnel_id: str) -> dict[str, Any]:
+    """Tunnel established acknowledgment."""
+    return {"tunnel_id": tunnel_id}
+
+
+def build_tunnel_failed_payload(tunnel_id: str, reason: str) -> dict[str, Any]:
+    """Tunnel failure (or refusal) with a human-readable reason."""
+    return {"tunnel_id": tunnel_id, "reason": reason}
+
+
+def build_gap_report_payload(missing_from: int, missing_to: int) -> dict[str, Any]:
+    """Downstream sequence-gap report (inclusive range of missing seqs)."""
+    return {"missing_from": missing_from, "missing_to": missing_to}
+
+
+def build_cert_request_payload(csr_pem: str | None = None) -> dict[str, Any]:
+    """Trusted-certificate request: empty payload asks for enrollment
+    (label/zone assignment); csr_pem asks for issuance."""
+    return {"csr_pem": csr_pem} if csr_pem is not None else {}
+
+
+def build_cert_status_payload(state: str) -> dict[str, Any]:
+    """Trusted-certificate status report (e.g. 'installed', 'disabled')."""
+    return {"state": state}
+
+
+# Payload builder per upstream steady-state type. Complete by construction —
+# a test asserts this covers UPSTREAM_TYPES exactly. The result-shaped
+# entries (command_result, diagnostic_result, ai_tool_result, project_data,
+# device_commands_data) all accept (request_id, success, error) keywords, so
+# refusal NACKs can be built generically from the result type alone.
+UPSTREAM_PAYLOAD_BUILDERS = {
+    HEARTBEAT: build_heartbeat_payload,
+    STATE_BATCH: build_state_batch_payload,
+    ALERT: build_alert_payload,
+    ALERT_RESOLVED: build_alert_resolved_payload,
+    COMMAND_RESULT: build_command_result_payload,
+    DIAGNOSTIC_RESULT: build_diagnostic_result_payload,
+    AI_TOOL_RESULT: build_ai_tool_result_payload,
+    PROJECT_DATA: build_project_data_payload,
+    DEVICE_COMMANDS_DATA: build_device_commands_data_payload,
+    PONG: build_pong_payload,
+    TUNNEL_READY: build_tunnel_ready_payload,
+    TUNNEL_FAILED: build_tunnel_failed_payload,
+    GAP_REPORT: build_gap_report_payload,
+    CERT_REQUEST: build_cert_request_payload,
+    CERT_STATUS: build_cert_status_payload,
+}
 
 
 # --- Message Parsing and Validation ---

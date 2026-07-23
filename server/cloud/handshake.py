@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import asyncio
 import platform
-import sys
 from dataclasses import dataclass
 from typing import Any, Callable, Awaitable
 
@@ -69,15 +68,11 @@ class Handshake:
         system_id: str,
         system_key: bytes,
         version: str,
-        hostname: str,
-        project_name: str,
         capabilities: list[str],
     ):
         self.system_id = system_id
         self.system_key = system_key
         self.version = version
-        self.hostname = hostname
-        self.project_name = project_name
         self.capabilities = capabilities
 
         # Derive the auth key once (stable for a given system_key + system_id)
@@ -122,7 +117,6 @@ class Handshake:
         # Step 1: Send hello
         os_info = f"{platform.system()} {platform.release()} {platform.machine()}"
         hardware = platform.node()
-        python_ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
 
         # Detect deployment type for cloud-managed updates
         try:
@@ -134,13 +128,10 @@ class Handshake:
         hello_msg = build_hello(
             system_id=self.system_id,
             version=self.version,
-            hostname=self.hostname,
-            project_name=self.project_name,
             capabilities=self.capabilities,
             os_info=os_info,
             hardware=hardware,
             deployment_mode=deployment_type,
-            python_version=python_ver,
         )
         log.debug("Handshake: sending hello")
         await send(hello_msg)
