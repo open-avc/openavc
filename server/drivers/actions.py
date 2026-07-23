@@ -75,6 +75,19 @@ _WEB_UI_ACTION_ID = "open_web_ui"
 _DEFAULT_AVAILABILITY = "online"
 
 
+def _command_availability(cmd: Any) -> str:
+    """Availability for a button that promotes a command.
+
+    A command declared ``available_offline`` runs with no live connection, so
+    its button stays live regardless of connection state (``always``);
+    otherwise the button follows the default and hides while offline. Used for
+    both promotion styles (an explicit ``kind: command`` action that doesn't
+    set its own availability, and ``quick_actions`` sugar).
+    """
+    if isinstance(cmd, dict) and cmd.get("available_offline"):
+        return "always"
+    return _DEFAULT_AVAILABILITY
+
 
 def resolve_device_actions(
     driver_info: dict[str, Any],
@@ -149,7 +162,7 @@ def resolve_device_actions(
                 "icon": None,
                 "confirm": None,
                 "visible_when": None,
-                "availability": _DEFAULT_AVAILABILITY,
+                "availability": _command_availability(cmd),
                 "params": params if isinstance(params, dict) else {},
             })
             seen.add(cmd_id)
@@ -221,9 +234,10 @@ def _resolve_action_entry(
     icon = entry.get("icon")
     confirm = entry.get("confirm")
     visible_when = entry.get("visible_when")
-    availability = entry.get("availability")
-    if availability not in AVAILABILITIES:
-        availability = _DEFAULT_AVAILABILITY
+    explicit_availability = entry.get("availability")
+    if explicit_availability not in AVAILABILITIES:
+        explicit_availability = None
+    availability = explicit_availability or _DEFAULT_AVAILABILITY
 
     resolved: dict[str, Any] = {
         "id": action_id,
@@ -251,13 +265,17 @@ def _resolve_action_entry(
         if not isinstance(params, dict):
             params = cmd.get("params")
         resolved["params"] = params if isinstance(params, dict) else {}
+        # An available_offline command keeps its button live regardless of
+        # connection state, unless the action pinned an explicit availability.
+        if explicit_availability is None:
+            resolved["availability"] = _command_availability(cmd)
     elif kind == "link":
         url = entry.get("url")
         resolved["url"] = url if isinstance(url, str) and url else _DEFAULT_WEB_UI_URL
         resolved["params"] = {}
         # A link opens client-side and doesn't touch the device — default to
         # always-visible unless the driver scoped it otherwise.
-        if entry.get("availability") not in AVAILABILITIES:
+        if explicit_availability is None:
             resolved["availability"] = "always"
     else:  # setup
         params = entry.get("params")

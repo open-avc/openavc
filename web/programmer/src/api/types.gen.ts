@@ -297,6 +297,17 @@ export interface DriverCommandDef {
    * that parameter's child type. Requires platform 0.24.0.
    */
   query_for?: string;
+  /**
+   * Let this command run while the device is offline (no live connection).
+   * Default false: the platform blocks commands to a disconnected device. Set
+   * true only for a command whose handler needs no connection — the canonical
+   * case is a Wake-on-LAN power_on that sends a magic packet instead of
+   * talking to the device over its (dead) control link. Param validation still
+   * runs; the driver's handler must not assume a live transport. When such a
+   * command is promoted to a Quick Action button, the button stays available
+   * regardless of connection state. Requires platform 0.24.0.
+   */
+  available_offline?: boolean;
 }
 
 export interface DriverResponseMapping {

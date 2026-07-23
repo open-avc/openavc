@@ -475,7 +475,14 @@ class DeviceManager:
         driver = self._devices.get(device_id)
         if driver is None:
             raise ValueError(f"Device '{device_id}' not found")
-        if not driver.get_state("connected"):
+        # The connected-gate is skipped for commands the driver declares
+        # available_offline — a handler that needs no live connection (e.g. a
+        # Wake-on-LAN power_on) so a macro, panel button, or schedule can wake a
+        # device that has gone fully off the network. Param validation below
+        # still runs for every command.
+        if not driver.get_state("connected") and not self._command_available_offline(
+            driver, command
+        ):
             raise ConnectionError(f"Device '{device_id}' is not connected")
         try:
             params = self._coerce_child_id_params(driver, command, params)
@@ -487,6 +494,19 @@ class DeviceManager:
                 {"device_id": device_id, "error": str(exc)},
             )
             raise
+
+    @staticmethod
+    def _command_available_offline(driver: BaseDriver, command: str) -> bool:
+        """True when the command declares ``available_offline`` — it may run
+        with no live connection.
+
+        Reads the instance-level DRIVER_INFO so runtime-populated command sets
+        are covered too. An unknown command, or one without the flag, is not
+        offline-capable (the connected-gate applies).
+        """
+        info = getattr(driver, "DRIVER_INFO", {}) or {}
+        cmd_def = (info.get("commands") or {}).get(command)
+        return isinstance(cmd_def, dict) and bool(cmd_def.get("available_offline"))
 
     @staticmethod
     def _validate_command_params(

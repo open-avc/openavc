@@ -1137,6 +1137,10 @@
         "query_for": {
           "type": "string",
           "description": "Declares this command as a status query: the device answers it by reporting the named state variable. The auto-generated simulator replies with that variable's current value instead of inferring one from the command name. Must name a declared state variable; on a command with exactly one child_id parameter it may instead name a state variable of that parameter's child type. Requires platform 0.24.0."
+        },
+        "available_offline": {
+          "type": "boolean",
+          "description": "Let this command run while the device is offline (no live connection). Default false: the platform blocks commands to a disconnected device. Set true only for a command whose handler needs no connection — the canonical case is a Wake-on-LAN power_on that sends a magic packet instead of talking to the device over its (dead) control link. Param validation still runs; the driver's handler must not assume a live transport. When such a command is promoted to a Quick Action button, the button stays available regardless of connection state. Requires platform 0.24.0."
         }
       },
       "additionalProperties": true,
