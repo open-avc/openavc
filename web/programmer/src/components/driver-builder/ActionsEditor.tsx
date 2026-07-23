@@ -109,6 +109,7 @@ export function ActionsEditor({ draft, onUpdate }: ActionsEditorProps) {
 
   const webUi = draft.web_ui;
   const webUiEnabled = webUi !== undefined && webUi !== false;
+  const webUiMode = webUi === false ? "never" : webUiEnabled ? "always" : "auto";
 
   return (
     <div>
@@ -126,33 +127,37 @@ export function ActionsEditor({ draft, onUpdate }: ActionsEditorProps) {
         device&apos;s own web interface) in a new tab.
       </p>
 
-      {/* web_ui — the zero-effort way to get an Open Web UI button. */}
+      {/* web_ui — auto-detect by default; Always/Never are explicit overrides. */}
       <div style={{ marginBottom: "var(--space-lg)" }}>
-        <label
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "var(--space-sm)",
-            fontSize: "var(--font-size-sm)",
+        <label style={labelStyle}>Open Web UI button</label>
+        <select
+          value={webUiMode}
+          onChange={(e) => {
+            const mode = e.target.value;
+            onUpdate({
+              web_ui:
+                mode === "always" ? true : mode === "never" ? false : undefined,
+            });
           }}
+          style={{ width: "100%" }}
         >
-          <input
-            type="checkbox"
-            checked={webUiEnabled}
-            onChange={(e) =>
-              onUpdate({ web_ui: e.target.checked ? true : undefined })
-            }
-          />
-          Device has a web interface (adds an Open Web UI button)
-        </label>
-        {webUiEnabled && (
-          <div style={{ marginTop: "var(--space-sm)", marginLeft: 24 }}>
+          <option value="auto">Auto-detect (default)</option>
+          <option value="always">Always show</option>
+          <option value="never">Never show</option>
+        </select>
+        <div style={helpStyle}>
+          Auto-detect adds the button when the device serves a web page (it
+          answers on port 80, 443, or 8080 — or, for HTTP devices, from its
+          connection settings). Choose <strong>Always show</strong> to force it
+          on, <strong>Never show</strong> to suppress it. Requires OpenAVC 0.24.0
+          or newer.
+        </div>
+        {webUiMode === "always" && (
+          <div style={{ marginTop: "var(--space-sm)" }}>
             <label style={labelStyle}>URL Template (optional)</label>
             <input
               value={typeof webUi === "string" ? webUi : ""}
-              onChange={(e) =>
-                onUpdate({ web_ui: e.target.value || true })
-              }
+              onChange={(e) => onUpdate({ web_ui: e.target.value || true })}
               placeholder="https://{host}"
               style={{ width: "100%", fontFamily: "var(--font-mono)" }}
             />
@@ -161,8 +166,7 @@ export function ActionsEditor({ draft, onUpdate }: ActionsEditorProps) {
               <code>{"{host}"}</code>, <code>{"{port}"}</code>, and any{" "}
               <code>{"{config_field}"}</code> are substituted from the
               device&apos;s connection settings. Declaring an explicit link
-              action below replaces the automatic button. Requires OpenAVC
-              0.24.0 or newer.
+              action below replaces the automatic button.
             </div>
           </div>
         )}

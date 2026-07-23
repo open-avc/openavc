@@ -413,7 +413,7 @@ FIELDS = {
     },
     'web_ui': {
         'type': ['boolean', 'string'],
-        'doc': 'The device exposes a browser-reachable web interface. true auto-adds an \'Open Web UI\' button (opens https://{host}); a string is used as the URL template (e.g. "http://{host}:8080") with {host}/{port}/{config_key} substitution. Requires platform >= 0.24.0.',
+        'doc': 'Controls the \'Open Web UI\' button. Leave unset for auto-detect: the platform finds a reachable web URL (HTTP devices from config, others from a port probe / discovery scan) and adds the button on its own. true forces it on (opens https://{host}); a string forces it on with that URL template (e.g. "http://{host}:8080") with {host}/{port}/{config_key} substitution; false forces it off. Requires platform >= 0.24.0.',
     },
     'min_platform_version': {
         'type': ['string', 'null'],

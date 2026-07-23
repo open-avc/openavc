@@ -25,9 +25,13 @@ def core():
 
 
 @pytest.fixture
-def dm(core):
+async def dm(core):
     state, events = core
-    return DeviceManager(state, events)
+    manager = DeviceManager(state, events)
+    yield manager
+    # Tear down so background work (auto-reconnect, web-UI probes) doesn't
+    # outlive the test's event loop. Idempotent with an explicit call in-test.
+    await manager.disconnect_all()
 
 
 @needs_pjlink

@@ -242,6 +242,12 @@ class DeviceManager:
         self._orphaned_devices: dict[str, dict[str, Any]] = {}  # devices with missing drivers
         self._intentional_disconnect: set[str] = set()  # suppress auto-reconnect
         self._pause_expiry_tasks: dict[str, asyncio.Task] = {}  # pause TTL backstops
+        # Auto-detected Open Web UI URLs, keyed by device id (see web_ui_probe).
+        # Ephemeral by design — re-detected on add/connect, never persisted.
+        self._detected_web_ui_urls: dict[str, str] = {}
+        # In-flight web-UI probes, keyed by device id — holds a task reference
+        # (so it isn't GC'd) and dedupes the add-time and connect-time triggers.
+        self._web_ui_probe_tasks: dict[str, asyncio.Task] = {}
 
         # Auto-reconnect when a device transport drops mid-session
         self.events.on(
@@ -343,6 +349,11 @@ class DeviceManager:
             else:
                 self._start_reconnect(device_id)
 
+        # Auto-detect an Open Web UI for the device. Runs whether or not the
+        # control protocol connected — a device can be offline for control yet
+        # still serve a reachable admin page.
+        self._schedule_web_ui_probe(device_id)
+
     async def _prepare_bridge_for(
         self, device_id: str, config: dict[str, Any]
     ) -> None:
@@ -417,6 +428,12 @@ class DeviceManager:
         self._orphaned_devices.pop(device_id, None)
 
         self._device_configs.pop(device_id, None)
+        # Drop the detected web UI URL so a re-add under the same id re-detects
+        # (config may have changed the host/scheme), and cancel any in-flight probe.
+        self._detected_web_ui_urls.pop(device_id, None)
+        probe = self._web_ui_probe_tasks.pop(device_id, None)
+        if probe is not None:
+            probe.cancel()
 
         # Clear all state keys for this device
         device_keys = self.state.get_namespace(f"device.{device_id}.")
@@ -597,7 +614,11 @@ class DeviceManager:
             # own config — the connection-merged dict it connects with. The
             # project-level entry here nests that under "config" and has no
             # host at its top level, so it can't substitute anything.
-            "actions": resolve_device_actions(driver.DRIVER_INFO, driver.config),
+            "actions": resolve_device_actions(
+                driver.DRIVER_INFO,
+                driver.config,
+                detected_web_ui_url=self._detected_web_ui_urls.get(device_id),
+            ),
             "driver_info": driver.DRIVER_INFO,
         }
 
@@ -851,6 +872,10 @@ class DeviceManager:
         # Cancel pause-TTL backstops so none fires a resume mid-shutdown
         for device_id in list(self._pause_expiry_tasks.keys()):
             self._cancel_pause_expiry(device_id)
+        # Cancel any in-flight web-UI probes so they don't outlive shutdown.
+        for task in list(self._web_ui_probe_tasks.values()):
+            task.cancel()
+        self._web_ui_probe_tasks.clear()
 
         for device_id, driver in self._devices.items():
             try:
@@ -1143,6 +1168,59 @@ class DeviceManager:
         deps = self._bridge_routed_dependents(device_id)
         if deps:
             await self._mirror_bridge_state(device_id, True, deps)
+        # A device that was unreachable at add time may only now be serving its
+        # web UI; the probe's own "already detected" guard makes this idempotent.
+        self._schedule_web_ui_probe(device_id)
+
+    def _schedule_web_ui_probe(self, device_id: str) -> None:
+        """Kick off a one-shot Open Web UI probe for an auto-mode device.
+
+        Idempotent and cheap to call at add time and on every (re)connect. Skips
+        when the driver forced ``web_ui`` on or off, when a URL was already
+        detected, when the device has no host to reach, or when it's an
+        HTTP-transport device (its URL comes straight from config in the action
+        resolver — no probe needed). The detected URL is stashed on
+        ``_detected_web_ui_urls`` and surfaced by ``get_device_info``.
+        """
+        driver = self._devices.get(device_id)
+        if driver is None or driver.DRIVER_INFO.get("web_ui") is not None:
+            return
+        if device_id in self._detected_web_ui_urls or device_id in self._web_ui_probe_tasks:
+            return
+        config = getattr(driver, "config", None) or {}
+        host = config.get("host")
+        if not host:
+            return
+        transport = config.get("transport") or driver.DRIVER_INFO.get("transport")
+        if transport == "http":
+            return
+        task = asyncio.create_task(self._run_web_ui_probe(device_id, str(host)))
+        self._web_ui_probe_tasks[device_id] = task
+        task.add_done_callback(lambda t, d=device_id: self._web_ui_probe_tasks.pop(d, None))
+        task.add_done_callback(_log_task_exception)
+
+    async def _run_web_ui_probe(self, device_id: str, host: str) -> None:
+        """Probe the device's host for a web UI and record any URL found."""
+        from server.core.web_ui_probe import probe_web_ui
+
+        url = await probe_web_ui(host)
+        # Guard against a device removed while the probe was in flight, and don't
+        # clobber a URL that arrived first (e.g. a discovery seed).
+        if url and device_id in self._devices and device_id not in self._detected_web_ui_urls:
+            self._detected_web_ui_urls[device_id] = url
+
+    def seed_web_ui_url(self, device_id: str, url: str) -> None:
+        """Record a web UI URL detected outside the probe (e.g. from a discovery
+        scan's already-known open ports), so the button shows immediately.
+
+        Only when the driver is in auto-detect mode (``web_ui`` unset); first
+        writer wins, so a probe already in flight doesn't override it.
+        """
+        driver = self._devices.get(device_id)
+        if driver is None or driver.DRIVER_INFO.get("web_ui") is not None:
+            return
+        if url:
+            self._detected_web_ui_urls.setdefault(device_id, url)
 
     def _bridge_routed_dependents(self, bridge_id: str) -> list[str]:
         """Live device ids that route their commands through ``bridge_id`` and

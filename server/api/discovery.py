@@ -481,6 +481,16 @@ async def add_device(req: AddDeviceRequest) -> dict[str, Any]:
     except Exception as e:
         raise _api_error(500, f"Failed to add device '{device_id}'", e)
 
+    # Seed the Open Web UI URL from the ports the scan already found open, so the
+    # button shows immediately without waiting on (or repeating) the add-time
+    # probe. Only helps in auto-detect mode — seed_web_ui_url no-ops otherwise.
+    if discovered and discovered.open_ports:
+        from server.core.web_ui_probe import web_ui_url_from_open_ports
+
+        seed_url = web_ui_url_from_open_ports(req.ip, discovered.open_ports)
+        if seed_url:
+            _app_engine.devices.seed_web_ui_url(device_id, seed_url)
+
     return {
         "status": "ok",
         "device_id": device_id,

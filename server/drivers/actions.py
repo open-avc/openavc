@@ -21,12 +21,21 @@ provisioning-wizard mechanism; ``kind: "command"`` is the invocable runtime
 action; ``kind: "link"`` opens a URL (the device's own web interface) in a new
 tab, entirely client-side — nothing is sent to the device.
 
-**Open Web UI.** Any device whose driver declares a browser-reachable web
-interface gets an "Open" button with no per-driver action needed: set
-``web_ui: true`` (default URL ``https://{host}``) or ``web_ui: "http://{host}:8080"``
-at the top level of DRIVER_INFO and the platform auto-adds an ``open_web_ui``
-link action. A driver that wants a custom label/icon can instead declare an
-explicit ``{kind: link, url: ...}`` action; the auto-add then stands down.
+**Open Web UI.** Any device with a browser-reachable web interface gets an
+"Open" button with no per-driver action needed. ``web_ui`` is a three-way
+switch at the top level of DRIVER_INFO:
+
+* unset (the default) — **auto-detect**. The platform works out a reachable web
+  URL for the device (HTTP-transport devices from their own config, others from
+  a light port probe / discovery scan — see ``core/web_ui_probe.py``) and adds
+  the button when one is found. The resolved URL arrives here as
+  ``detected_web_ui_url``.
+* ``true`` (default URL ``https://{host}``) or ``"http://{host}:8080"`` — force
+  the button on with that URL, skipping detection.
+* ``false`` — force the button off (the device has no web UI worth surfacing).
+
+A driver that wants a custom label/icon can instead declare an explicit
+``{kind: link, url: ...}`` action; the auto-add then stands down.
 ``{host}`` / ``{port}`` / ``{config_key}`` in a link URL are substituted from
 the device's connection config when the device is served.
 
@@ -51,6 +60,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from server.core.web_ui_probe import web_ui_url_for_http_config
 from server.drivers.avcdriver_semantic import validate_actions as validate_actions
 from server.drivers.spec import ACTION_KINDS, AVAILABILITIES
 from server.utils.logger import get_logger
@@ -67,7 +77,9 @@ _DEFAULT_AVAILABILITY = "online"
 
 
 def resolve_device_actions(
-    driver_info: dict[str, Any], config: dict[str, Any] | None = None,
+    driver_info: dict[str, Any],
+    config: dict[str, Any] | None = None,
+    detected_web_ui_url: str | None = None,
 ) -> list[dict[str, Any]]:
     """Fold a driver's ``actions`` + ``quick_actions`` into one resolved list.
 
@@ -98,11 +110,13 @@ def resolve_device_actions(
             resolved.append(action)
             seen.add(action["id"])
 
-    # Auto-add Open Web UI from the `web_ui` flag when the driver didn't declare
-    # its own link action — so every web-capable device gets the button for free.
-    web_ui = driver_info.get("web_ui")
-    if web_ui and not any(a["kind"] == "link" for a in resolved) and _WEB_UI_ACTION_ID not in seen:
-        url = web_ui if isinstance(web_ui, str) and web_ui else _DEFAULT_WEB_UI_URL
+    # Auto-add Open Web UI when the driver didn't declare its own link action —
+    # so every web-capable device gets the button for free. `web_ui` is the
+    # three-way switch (unset = auto-detect, truthy = force on, False = off).
+    url = _resolve_web_ui_url(
+        driver_info.get("web_ui"), driver_info, config, detected_web_ui_url
+    )
+    if url and not any(a["kind"] == "link" for a in resolved) and _WEB_UI_ACTION_ID not in seen:
         resolved.append({
             "id": _WEB_UI_ACTION_ID,
             "kind": "link",
@@ -146,6 +160,34 @@ def resolve_device_actions(
                 action["url"] = _substitute_url(action["url"], config)
 
     return resolved
+
+
+def _resolve_web_ui_url(
+    web_ui: Any,
+    driver_info: dict[str, Any],
+    config: dict[str, Any] | None,
+    detected_web_ui_url: str | None,
+) -> str | None:
+    """Resolve the Open Web UI URL from the three-way ``web_ui`` switch.
+
+    ``False`` forces the button off. A truthy value forces it on (a string is
+    the URL template, ``True`` uses ``https://{host}``). Unset means auto-detect:
+    prefer a URL the runtime already detected (port probe / discovery), then
+    fall back to deriving one straight from an HTTP-transport device's config
+    (its control endpoint is already a web server).
+    """
+    if web_ui is False:
+        return None
+    if isinstance(web_ui, str) and web_ui:
+        return web_ui
+    if web_ui:  # True, or any other truthy non-string
+        return _DEFAULT_WEB_UI_URL
+    # Auto-detect (web_ui unset).
+    if detected_web_ui_url:
+        return detected_web_ui_url
+    if config and driver_info.get("transport") == "http":
+        return web_ui_url_for_http_config(config)
+    return None
 
 
 def _substitute_url(template: str, config: dict[str, Any]) -> str:

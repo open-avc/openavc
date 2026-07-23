@@ -108,6 +108,8 @@ Some drivers promote the commands you reach for most to a row of **Quick Action*
 
 Which buttons appear is up to the driver. A button may also be hidden until it's relevant — for example, only showing while the device is offline. If a driver doesn't declare any, there's simply no strip. Driver authors add them with `quick_actions` / `actions` (see [Creating Drivers](creating-drivers.md)).
 
+One button shows up on its own: if the device has its own web page (it answers on a standard web port), an **Open Web UI** button appears and opens that page in a new browser tab. No driver setup is needed for most equipment.
+
 ## Device State
 
 Every device exposes state variables at `device.<id>.<property>`. Examples:

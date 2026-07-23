@@ -310,6 +310,52 @@ def test_get_device_info_substitutes_link_url_from_connection_config():
     assert link["url"] == "https://192.0.2.10"
 
 
+def _dm_with_device(web_ui_extra):
+    """A DeviceManager holding one live YAML device, driver built from
+    web_ui_extra (e.g. {} for auto-detect, {"web_ui": True} for forced-on)."""
+    state = StateStore()
+    events = EventBus()
+    state.set_event_bus(events)
+    dm = DeviceManager(state, events)
+    cls = create_configurable_driver_class(_yaml_driver(**web_ui_extra))
+    driver = cls("dev1", {"host": "192.0.2.20"}, state, events)
+    dm._devices["dev1"] = driver
+    dm._device_configs["dev1"] = {
+        "id": "dev1", "name": "Dev 1", "driver": "acme_yaml",
+        "config": {"host": "192.0.2.20"},
+    }
+    return dm
+
+
+def test_get_device_info_surfaces_detected_web_ui_url():
+    """A URL detected by the probe/discovery surfaces as the Open Web UI link."""
+    dm = _dm_with_device({})  # auto-detect (no web_ui declared)
+    dm._detected_web_ui_urls["dev1"] = "http://192.0.2.20"
+    info = dm.get_device_info("dev1")
+    link = next(a for a in info["actions"] if a["kind"] == "link")
+    assert link["url"] == "http://192.0.2.20"
+
+
+def test_seed_web_ui_url_records_in_auto_mode():
+    dm = _dm_with_device({})
+    dm.seed_web_ui_url("dev1", "http://192.0.2.20")
+    assert dm._detected_web_ui_urls["dev1"] == "http://192.0.2.20"
+
+
+def test_seed_web_ui_url_noops_when_driver_forces_web_ui():
+    """A driver that set web_ui explicitly owns the URL — no seeding over it."""
+    dm = _dm_with_device({"web_ui": True})
+    dm.seed_web_ui_url("dev1", "http://192.0.2.20")
+    assert "dev1" not in dm._detected_web_ui_urls
+
+
+def test_seed_web_ui_url_first_writer_wins():
+    dm = _dm_with_device({})
+    dm._detected_web_ui_urls["dev1"] = "http://first"
+    dm.seed_web_ui_url("dev1", "http://second")
+    assert dm._detected_web_ui_urls["dev1"] == "http://first"
+
+
 # --- Invoke endpoint -------------------------------------------------------
 
 
@@ -471,6 +517,75 @@ def test_missing_placeholder_left_intact():
     )
     link = next(a for a in actions if a["kind"] == "link")
     assert link["url"] == "http://9.9.9.9:{webport}"
+
+
+# --- web_ui auto-detect (unset = detect, false = off) ----------------------
+
+
+def test_web_ui_unset_adds_no_button_without_detection():
+    """Auto-detect mode (web_ui unset) with nothing detected → no button."""
+    actions = resolve_device_actions(
+        _driver_info_with(transport="tcp"), {"host": "10.0.0.5"}
+    )
+    assert not [a for a in actions if a["kind"] == "link"]
+
+
+def test_web_ui_auto_uses_detected_url():
+    """A URL the runtime detected (probe/discovery) drives the button."""
+    actions = resolve_device_actions(
+        _driver_info_with(transport="tcp"),
+        {"host": "10.0.0.5"},
+        detected_web_ui_url="http://10.0.0.5:8080",
+    )
+    link = next(a for a in actions if a["kind"] == "link")
+    assert link["id"] == "open_web_ui"
+    assert link["url"] == "http://10.0.0.5:8080"
+
+
+def test_web_ui_false_suppresses_even_with_detected_url():
+    """web_ui: false forces the button off regardless of detection."""
+    actions = resolve_device_actions(
+        _driver_info_with(web_ui=False, transport="tcp"),
+        {"host": "10.0.0.5"},
+        detected_web_ui_url="http://10.0.0.5",
+    )
+    assert not [a for a in actions if a["kind"] == "link"]
+
+
+def test_web_ui_false_suppresses_http_transport_button():
+    actions = resolve_device_actions(
+        _driver_info_with(web_ui=False, transport="http"), {"host": "10.0.0.5"}
+    )
+    assert not [a for a in actions if a["kind"] == "link"]
+
+
+def test_web_ui_auto_http_transport_derives_url_from_config():
+    """An HTTP device in auto mode gets the button from its own config, no probe."""
+    actions = resolve_device_actions(
+        _driver_info_with(transport="http"), {"host": "10.0.0.5"}
+    )
+    link = next(a for a in actions if a["kind"] == "link")
+    assert link["url"] == "http://10.0.0.5"
+
+
+def test_web_ui_auto_http_transport_honors_ssl_and_port():
+    actions = resolve_device_actions(
+        _driver_info_with(transport="http"),
+        {"host": "10.0.0.5", "ssl": True, "port": 8443},
+    )
+    link = next(a for a in actions if a["kind"] == "link")
+    assert link["url"] == "https://10.0.0.5:8443"
+
+
+def test_web_ui_explicit_true_wins_over_detected_url():
+    """An explicit web_ui beats a detected URL — the author declared intent."""
+    actions = resolve_device_actions(
+        _driver_info_with(web_ui=True, transport="tcp"),
+        {"host": "10.0.0.5"},
+        detected_web_ui_url="http://10.0.0.5:8080",
+    )
+    link = next(a for a in actions if a["kind"] == "link")
+    assert link["url"] == "https://10.0.0.5"
 
 
 def test_validate_link_action_ok():

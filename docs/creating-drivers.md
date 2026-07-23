@@ -170,7 +170,7 @@ A response rule can also switch its kind to **JSON body** for devices that reply
 
 **Polling** — periodic queries that keep state fresh on devices that don't push updates. List the command names (or raw query strings) to send each cycle. The cadence (seconds) is the **Poll Interval** field, stored as `default_config.poll_interval`.
 
-**Actions** — promote commands to one-click buttons at the top of the device view. Each action picks a command (or opens a URL for a `link` action), with optional label, icon, confirmation prompt, availability (online / offline / always), input-field overrides, and visibility conditions. The **web interface** checkbox adds an automatic **Open Web UI** button for devices with a browser page (optionally with a URL template like `http://{host}:8080`). Drivers using the older flat `quick_actions` list show it here read-only with a one-click conversion into full actions.
+**Actions** — promote commands to one-click buttons at the top of the device view. Each action picks a command (or opens a URL for a `link` action), with optional label, icon, confirmation prompt, availability (online / offline / always), input-field overrides, and visibility conditions. The **Open Web UI button** setting is auto-detect by default — a device with a browser page gets the button on its own — with **Always show** (optionally a URL template like `http://{host}:8080`) and **Never show** as overrides. Drivers using the older flat `quick_actions` list show it here read-only with a one-click conversion into full actions.
 
 **Device Settings** — writable values stored on the device hardware (labels, IDs, lock codes). Pending writes queue while the device is offline and replay on reconnect. Less common than state variables — most drivers don't need this.
 
@@ -947,12 +947,14 @@ Each promoted command id must name a declared command.
 
 #### `web_ui` (Open Web UI button)
 
-If the device has its own browser interface, declare it at the top level of the driver and the device view gets an "Open Web UI" button for free — no action entry needed:
+Most networked devices have their own browser interface, so this is **automatic** — you usually don't declare anything. If a device answers on a web port (80, 443, or 8080), or it's an HTTP driver, the device view gets an "Open Web UI" button on its own, pointing at the right address. Set `web_ui` only to override that:
 
 ```yaml
-web_ui: true                        # button opens https://<device host>
-# or, when the interface isn't on https/443:
-web_ui: "http://{host}:8080/admin"  # {host}/{port}/{config_key} substituted
+# (nothing) — auto-detect. The button appears when a web interface is found.
+
+web_ui: true                        # force on; button opens https://<device host>
+web_ui: "http://{host}:8080/admin"  # force on with a URL template ({host}/{port}/{config_key} substituted)
+web_ui: false                       # force off; no button even if a web port is open
 ```
 
 The button opens the URL in a new browser tab; nothing is sent to the device. Declaring your own `kind: link` action replaces the auto-added button (use that when you want a custom label or icon). Available on platform 0.24.0 and later.
