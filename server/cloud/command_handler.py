@@ -15,7 +15,7 @@ from server.cloud.protocol import (
     COMMAND, CONFIG_PUSH, RESTART, DIAGNOSTIC, SOFTWARE_UPDATE,
     GET_PROJECT, GET_DEVICE_COMMANDS,
     COMMAND_RESULT, PROJECT_DATA, DEVICE_COMMANDS_DATA,
-    DIAGNOSTIC_RESULT,
+    DIAGNOSTIC_RESULT, MAX_EMBED_BYTES,
     build_command_result_payload, build_diagnostic_result_payload,
     build_project_data_payload, build_device_commands_data_payload,
     extract_payload,
@@ -173,6 +173,25 @@ class CommandHandler:
                         previous_json = json.loads(project_path.read_text(encoding="utf-8"))
                 except (OSError, json.JSONDecodeError, ValueError):
                     pass  # Best-effort: previous config capture is optional for rollback
+
+                # The rollback snapshot travels back inside the command_result,
+                # which must fit the 1 MB wire cap. Refuse BEFORE applying:
+                # applying first and then failing to report would leave the
+                # fleet operation stranded on a system already running the new
+                # config, with no rollback snapshot on either side.
+                if previous_json is not None:
+                    snapshot_size = len(json.dumps(previous_json))
+                    if snapshot_size > MAX_EMBED_BYTES:
+                        await self._send_result(
+                            request_id, False,
+                            error=(
+                                f"rollback_snapshot_too_large: current project "
+                                f"serializes to {snapshot_size} bytes, which exceeds "
+                                f"the {MAX_EMBED_BYTES}-byte cloud message limit; "
+                                f"config push refused so rollback stays possible"
+                            ),
+                        )
+                        return
 
                 if project_json:
                     if self._apply_fn is None:
@@ -435,6 +454,21 @@ class CommandHandler:
                 return
 
             project_json = json.loads(project_path.read_text(encoding="utf-8"))
+
+            # The reply must fit the 1 MB wire cap or the cloud drops it and
+            # the ProjectFetcher burns its full timeout with no explanation.
+            # Measure the embed as it will actually serialize on the wire.
+            embed_size = len(json.dumps(project_json))
+            if embed_size > MAX_EMBED_BYTES:
+                await self._agent.send_message(PROJECT_DATA, build_project_data_payload(
+                    request_id, False,
+                    error=(
+                        f"project_too_large: project serializes to {embed_size} bytes, "
+                        f"which exceeds the {MAX_EMBED_BYTES}-byte cloud message limit"
+                    ),
+                ))
+                return
+
             await self._agent.send_message(PROJECT_DATA, build_project_data_payload(
                 request_id, True, project_json=project_json,
             ))

@@ -30,6 +30,7 @@ from server.cloud.protocol import (
     COMMAND_RESULT, PROJECT_DATA, DEVICE_COMMANDS_DATA,
     DIAGNOSTIC_RESULT, AI_TOOL_RESULT, TUNNEL_FAILED, HEARTBEAT, PONG,
     UPSTREAM_PAYLOAD_BUILDERS,
+    MAX_MESSAGE_BYTES, MESSAGE_SIZE_MARGIN,
     build_pong_payload, build_gap_report_payload,
     build_heartbeat_payload, build_tunnel_failed_payload,
     parse_message, is_handshake_message,
@@ -463,7 +464,7 @@ class CloudAgent:
             ping_interval=None,  # We handle our own ping/pong
             ping_timeout=None,
             close_timeout=10,
-            max_size=2**20,  # 1MB max message
+            max_size=MAX_MESSAGE_BYTES,  # 1 MB — the shared wire cap
         )
 
         try:
@@ -696,6 +697,21 @@ class CloudAgent:
             "ts": _now_iso(),
             "payload": payload,
         }
+
+        # Size backstop BEFORE the sequencer touches the message: an oversize
+        # frame would be rejected by the cloud's 1 MB inbound cap, but once
+        # buffered it replays and is re-rejected on every reconnect forever
+        # (high-priority types are near-immune to eviction). Callers that can
+        # legitimately produce big payloads (project embeds) pre-check against
+        # MAX_EMBED_BYTES and reply with a typed error instead; this guard is
+        # the last resort for everything else, so it drops rather than raises.
+        if len(json.dumps(msg)) + MESSAGE_SIZE_MARGIN > MAX_MESSAGE_BYTES:
+            log.error(
+                "Cloud agent: refusing to send oversize %s message "
+                "(payload exceeds the %d-byte wire limit)",
+                msg_type, MAX_MESSAGE_BYTES,
+            )
+            return
 
         # Assign sequence number and buffer
         self._sequencer.assign_seq(msg)

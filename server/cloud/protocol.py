@@ -25,6 +25,26 @@ from server.cloud.crypto import sign_message, verify_message_signature
 PROTOCOL_VERSION = 1
 
 
+# --- Wire Size Limits ---
+
+# Hard cap on a single wire message, enforced on BOTH sides' inbound paths
+# (agent: websockets max_size closes the connection; cloud: app-level check
+# drops the message with a message_too_large error). Mirrors
+# openavc-cloud/api/ws/handler.py MAX_MESSAGE_SIZE — keep them identical.
+MAX_MESSAGE_BYTES = 2**20  # 1 MB
+
+# Headroom subtracted when a sender pre-checks a payload against the cap:
+# covers the envelope fields added after the check (seq, session, sig, ts)
+# and result-wrapper keys around an embedded document.
+MESSAGE_SIZE_MARGIN = 8192
+
+# Largest embedded document (e.g. a project JSON) a sender may put in one
+# message. Anything bigger must be refused with a typed error BEFORE it is
+# sequenced — an oversize message in the replay buffer would be re-sent and
+# re-rejected on every reconnect forever.
+MAX_EMBED_BYTES = MAX_MESSAGE_BYTES - MESSAGE_SIZE_MARGIN
+
+
 # --- Message Type Constants ---
 
 # Handshake (agent → cloud)

@@ -2141,3 +2141,150 @@ class TestFeatureSwitchboard:
         agent._alert_monitor = None
 
         await agent._sync_feature_subsystems()
+
+
+# ===========================================================================
+# Wire size limits — oversize embeds get typed errors, never a poisoned buffer
+# ===========================================================================
+
+
+class TestMessageSizeLimits:
+    def _make_send_agent(self):
+        """Agent with a real sequencer and a recording raw-send."""
+        from server.cloud.agent import CloudAgent
+        from server.cloud.sequencer import Sequencer
+
+        agent = CloudAgent.__new__(CloudAgent)
+        agent._sequencer = Sequencer(100)
+        agent.raw_sent = []
+
+        class StubSession:
+            def sign_outgoing(self, msg):
+                msg["session"] = "sess-1"
+                msg["sig"] = "f" * 64
+
+        agent._session = StubSession()
+
+        async def spy_raw(raw):
+            agent.raw_sent.append(raw)
+
+        agent._send_raw_str = spy_raw
+        return agent
+
+    @pytest.mark.asyncio
+    async def test_send_signed_refuses_oversize_and_does_not_buffer(self):
+        """An over-cap message is dropped BEFORE sequencing — if it entered
+        the replay buffer it would be re-sent and re-rejected on every
+        reconnect forever (the poisoned-buffer failure mode)."""
+        from server.cloud.protocol import MAX_MESSAGE_BYTES
+
+        agent = self._make_send_agent()
+        big = "x" * (MAX_MESSAGE_BYTES + 1)
+
+        await agent._send_signed("command_result", {"request_id": "r1", "result": big})
+
+        assert agent.raw_sent == []
+        assert agent._sequencer.buffer_count == 0
+
+        # The agent is not wedged: a normal message still flows.
+        await agent._send_signed("heartbeat", {"metrics": {}})
+        assert len(agent.raw_sent) == 1
+        assert agent._sequencer.buffer_count == 1
+
+    @pytest.mark.asyncio
+    async def test_get_project_replies_typed_error_when_project_too_large(self, tmp_path):
+        """An over-cap project answers project_data success=false instead of
+        an oversize send the cloud would drop (opaque fetcher timeout)."""
+        import json as _json
+        from server.core.state_store import StateStore
+        from server.core.event_bus import EventBus
+        from server.core.device_manager import DeviceManager
+        from server.cloud.command_handler import CommandHandler
+        from server.cloud.protocol import MAX_EMBED_BYTES
+
+        state = StateStore()
+        events = EventBus()
+        devices = DeviceManager(state, events)
+
+        sent = []
+
+        class MockAgent:
+            async def send_message(self, msg_type, payload):
+                sent.append((msg_type, payload))
+
+        project_path = tmp_path / "project.avc"
+        big_project = {
+            "openavc_version": "0.7.0",
+            "project": {"id": "big", "name": "Big"},
+            "padding": "x" * (MAX_EMBED_BYTES + 1),
+        }
+        project_path.write_text(_json.dumps(big_project), encoding="utf-8")
+
+        handler = CommandHandler(
+            MockAgent(), devices, events, project_path=str(project_path),
+        )
+        await handler._handle_get_project({}, "req-gp", "tech@x.com")
+
+        assert len(sent) == 1
+        msg_type, payload = sent[0]
+        assert msg_type == "project_data"
+        assert payload["success"] is False
+        assert payload["error"].startswith("project_too_large:")
+        assert "project_json" not in payload or not payload.get("project_json")
+
+    @pytest.mark.asyncio
+    async def test_config_push_refused_when_rollback_snapshot_too_large(self, tmp_path):
+        """If the CURRENT project can't travel back as the rollback snapshot,
+        the push is refused BEFORE applying — otherwise the fleet target
+        strands on a system already running the new config with the
+        rollback snapshot lost."""
+        import json as _json
+        from server.core.state_store import StateStore
+        from server.core.event_bus import EventBus
+        from server.core.device_manager import DeviceManager
+        from server.cloud.command_handler import CommandHandler
+        from server.cloud.protocol import MAX_EMBED_BYTES
+
+        state = StateStore()
+        events = EventBus()
+        devices = DeviceManager(state, events)
+
+        sent = []
+
+        class MockAgent:
+            async def send_message(self, msg_type, payload):
+                sent.append((msg_type, payload))
+
+        project_path = tmp_path / "project.avc"
+        previous = {
+            "openavc_version": "0.7.0",
+            "project": {"id": "old", "name": "Old"},
+            "padding": "x" * (MAX_EMBED_BYTES + 1),
+        }
+        original_text = _json.dumps(previous)
+        project_path.write_text(original_text, encoding="utf-8")
+
+        applied = []
+
+        async def apply_fn(project, **kwargs):
+            applied.append(kwargs)
+            return 1
+
+        handler = CommandHandler(
+            MockAgent(), devices, events,
+            apply_fn=apply_fn, project_path=str(project_path),
+        )
+
+        pushed = {"openavc_version": "0.7.0", "project": {"id": "new", "name": "New"}}
+        await handler._handle_config_push(
+            {"project_json": pushed, "mode": "full_replace"}, "req-cp", "tech@x.com",
+        )
+
+        assert len(sent) == 1
+        msg_type, payload = sent[0]
+        assert msg_type == "command_result"
+        assert payload["success"] is False
+        assert "rollback_snapshot_too_large" in payload["error"]
+        # Nothing was applied and the on-disk project is untouched.
+        assert applied == []
+        assert project_path.read_text(encoding="utf-8") == original_text
