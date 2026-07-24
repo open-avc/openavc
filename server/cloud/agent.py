@@ -173,9 +173,13 @@ class CloudAgent:
             "buffer_size": cloud_config.get("buffer_size", 1000),
             "ack_interval": 10,
             "compression": "none",
+            # Feature switchboard for the agent-initiated push subsystems.
+            # Keys mirror the cloud's DEFAULT_AGENT_CONFIG["features"]
+            # (openavc-cloud/api/ws/handler.py) — downstream request/response
+            # features are gated by capabilities (§13.8), not listed here.
             "features": {
-                "alerts_enabled": True,
                 "state_forwarding": True,
+                "alerts": True,
             },
         }
 
@@ -586,13 +590,10 @@ class CloudAgent:
             self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
             self._watchdog_task = asyncio.create_task(self._liveness_watchdog())
 
-            # Start state relay if enabled
-            if self._state_relay and self._config["features"].get("state_forwarding"):
-                await self._state_relay.start()
-
-            # Start alert monitor if enabled
-            if self._alert_monitor and self._config["features"].get("alerts_enabled"):
-                await self._alert_monitor.start()
+            # Start the push subsystems the feature switchboard enables
+            # (state relay / alert monitor) — same sync used mid-session
+            # when a config_update flips a flag.
+            await self._sync_feature_subsystems()
 
             # Trusted-certificate connect-time self-check (renews certs for
             # instances that were offline through their renewal window).
@@ -936,6 +937,36 @@ class CloudAgent:
             mgr = getattr(self._command_handler, "_update_manager", None)
             if mgr:
                 await mgr.apply_update_policy(payload.get("update_policy") or {})
+
+        # Same immediacy rule for the feature switchboard: when the update
+        # carries a `features` block, reconcile the push subsystems now —
+        # otherwise a cloud-side "disable alerts" would keep firing until the
+        # next reconnect (spec §13.9: the agent adjusts behavior immediately).
+        if isinstance(payload, dict) and isinstance(payload.get("features"), dict):
+            await self._sync_feature_subsystems()
+
+    async def _sync_feature_subsystems(self) -> None:
+        """Start/stop the push subsystems to match the feature switchboard.
+
+        `features.state_forwarding` owns the state relay and `features.alerts`
+        the alert monitor — the two agent-initiated push flows. Start/stop are
+        idempotent, so re-syncing on a no-change update is harmless. Re-enabling
+        the relay re-sends a full state snapshot (its normal start behavior),
+        which is what the cloud needs after a forwarding gap.
+        """
+        if not self._connected:
+            return
+        features = self._config.get("features") or {}
+        if self._state_relay:
+            if features.get("state_forwarding"):
+                await self._state_relay.start()
+            else:
+                await self._state_relay.stop()
+        if self._alert_monitor:
+            if features.get("alerts"):
+                await self._alert_monitor.start()
+            else:
+                await self._alert_monitor.stop()
 
     def _handle_capabilities_update(self, msg: dict[str, Any]) -> None:
         """Update enabled capabilities mid-session (e.g. plan change)."""

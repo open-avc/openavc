@@ -2023,3 +2023,121 @@ class TestLivenessWatchdog:
         await agent._receive_loop()
 
         assert agent._last_downstream_at > 0.0
+
+
+# ===========================================================================
+# Feature switchboard — config.features drives the push subsystems
+# (state relay via `state_forwarding`, alert monitor via `alerts`)
+# ===========================================================================
+
+
+class _FakeSubsystem:
+    """Records start/stop calls; mirrors the idempotent real subsystems."""
+
+    def __init__(self):
+        self.running = False
+        self.calls: list[str] = []
+
+    async def start(self):
+        if self.running:
+            return
+        self.running = True
+        self.calls.append("start")
+
+    async def stop(self):
+        self.running = False
+        self.calls.append("stop")
+
+
+class TestFeatureSwitchboard:
+    def _make_agent(self, features: dict):
+        from server.cloud.agent import CloudAgent
+
+        agent = CloudAgent.__new__(CloudAgent)
+        agent._connected = True
+        agent._config = {"features": dict(features)}
+        agent._command_handler = None
+        agent._state_relay = _FakeSubsystem()
+        agent._alert_monitor = _FakeSubsystem()
+        return agent
+
+    def test_default_features_use_cloud_vocabulary(self):
+        """The agent's default feature keys must be the ones the cloud sends.
+
+        The cloud's DEFAULT_AGENT_CONFIG["features"] block (openavc-cloud
+        api/ws/handler.py) sends exactly these keys; a renamed or extra key
+        on either side silently detaches that switch from its subsystem.
+        """
+        from server.cloud.agent import CloudAgent
+
+        agent = CloudAgent(None, None, None, {})
+        assert set(agent._config["features"]) == {"state_forwarding", "alerts"}
+
+    @pytest.mark.asyncio
+    async def test_session_config_alerts_false_keeps_monitor_stopped(self):
+        """A cloud config with alerts=false must gate the alert monitor off."""
+        agent = self._make_agent({"state_forwarding": True, "alerts": True})
+        agent._apply_config({"features": {"state_forwarding": True, "alerts": False}})
+
+        await agent._sync_feature_subsystems()
+
+        assert agent._alert_monitor.running is False
+        assert agent._state_relay.running is True
+
+    @pytest.mark.asyncio
+    async def test_config_update_disables_running_alert_monitor(self):
+        """Mid-session config_update {alerts: false} stops the monitor now."""
+        agent = self._make_agent({"state_forwarding": True, "alerts": True})
+        agent._state_relay.running = True
+        agent._alert_monitor.running = True
+
+        await agent._handle_config_update({"payload": {"features": {"alerts": False}}})
+
+        assert agent._alert_monitor.running is False
+        assert agent._alert_monitor.calls == ["stop"]
+        # state_forwarding untouched by the partial merge — relay stays up
+        assert agent._state_relay.running is True
+
+    @pytest.mark.asyncio
+    async def test_config_update_reenables_state_relay(self):
+        """Re-enabling state_forwarding mid-session restarts the relay."""
+        agent = self._make_agent({"state_forwarding": False, "alerts": True})
+        agent._alert_monitor.running = True
+
+        await agent._handle_config_update(
+            {"payload": {"features": {"state_forwarding": True}}}
+        )
+
+        assert agent._state_relay.running is True
+        assert agent._state_relay.calls == ["start"]
+
+    @pytest.mark.asyncio
+    async def test_config_update_without_features_leaves_subsystems_alone(self):
+        """A config_update not carrying features must not touch the subsystems."""
+        agent = self._make_agent({"state_forwarding": True, "alerts": True})
+        agent._state_relay.running = True
+        agent._alert_monitor.running = True
+
+        await agent._handle_config_update({"payload": {"heartbeat_interval": 60}})
+
+        assert agent._state_relay.calls == []
+        assert agent._alert_monitor.calls == []
+
+    @pytest.mark.asyncio
+    async def test_sync_is_a_noop_while_disconnected(self):
+        agent = self._make_agent({"state_forwarding": True, "alerts": True})
+        agent._connected = False
+
+        await agent._sync_feature_subsystems()
+
+        assert agent._state_relay.calls == []
+        assert agent._alert_monitor.calls == []
+
+    @pytest.mark.asyncio
+    async def test_sync_tolerates_missing_subsystems(self):
+        """Engine wiring may leave a subsystem unset — sync must not raise."""
+        agent = self._make_agent({"state_forwarding": True, "alerts": True})
+        agent._state_relay = None
+        agent._alert_monitor = None
+
+        await agent._sync_feature_subsystems()
