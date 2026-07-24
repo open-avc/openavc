@@ -1048,14 +1048,20 @@ class TestSSDPScanner:
 
     @pytest.mark.asyncio
     async def test_scan_handles_socket_error(self):
-        """Should return empty results if socket creation fails."""
+        """Should return empty results if the search socket can't be created.
+
+        The search socket is the essential one — patching the NOTIFY-listen
+        socket instead would let the scan proceed with a REAL M-SEARCH on the
+        developer's LAN, and any real SSDP device answering makes this fail.
+        """
         scanner = SSDPScanner()
         with patch(
-            "server.discovery.ssdp_scanner._create_ssdp_socket",
+            "server.discovery.ssdp_scanner._create_search_socket",
             side_effect=OSError("Permission denied"),
         ):
             results = await scanner.scan(timeout=0.1)
         assert results == {}
+        assert scanner.env_error is not None
 
     @pytest.mark.asyncio
     async def test_stop_sets_running_false(self):
