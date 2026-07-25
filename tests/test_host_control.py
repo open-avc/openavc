@@ -237,7 +237,7 @@ def test_ssh_post_enables_and_writes_request(spool, monkeypatch):
     r = client.post("/api/system/ssh", json={"enabled": True}, headers=_basic("a", "adminpass123"))
     assert r.status_code == 200
     body = r.json()
-    assert body["ok"] is True and body["enabled"] is True
+    assert body["success"] is True and body["enabled"] is True
     reqs = _requests(req_dir)
     assert reqs and reqs[0]["action"] == "set_ssh" and reqs[0]["enabled"] is True
 

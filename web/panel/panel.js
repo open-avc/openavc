@@ -155,7 +155,7 @@ class PanelApp {
             const res = await fetch(`${basePath}/api/plugins/extensions`);
             if (!res.ok) return;
             const data = await res.json();
-            const elements = data.panel_elements || [];
+            const elements = (data.extensions || {}).panel_elements || [];
             for (const ext of elements) {
                 if (!ext.plugin_id || !ext.type) continue;
                 const byType = this._pluginExtensions[ext.plugin_id] || {};

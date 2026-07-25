@@ -105,7 +105,7 @@ async def test_get_state(running_app):
     resp = running_app.get("/api/state")
     assert resp.status_code == 200
     data = resp.json()
-    assert "var.room_active" in data
+    assert "var.room_active" in data["state"]
 
 
 async def test_get_state_value(running_app):
@@ -126,7 +126,7 @@ async def test_set_state_value(running_app):
 async def test_list_devices(running_app):
     resp = running_app.get("/api/devices")
     assert resp.status_code == 200
-    devices = resp.json()
+    devices = resp.json()["devices"]
     assert len(devices) == 1
     assert devices[0]["id"] == "projector1"
 

@@ -49,12 +49,12 @@ def _safe_script_path(scripts_dir: Path, filename: str) -> Path:
 
 
 @router.get("/scripts/functions")
-async def get_script_functions() -> list[dict[str, str]]:
+async def get_script_functions() -> dict[str, Any]:
     """Return all callable functions from loaded scripts."""
     engine = _get_engine()
     if not engine.scripts:
-        return []
-    return engine.scripts.get_callable_functions()
+        return {"functions": []}
+    return {"functions": engine.scripts.get_callable_functions()}
 
 
 @router.get("/scripts/{script_id}/source")
@@ -68,7 +68,7 @@ async def get_script_source(script_id: str) -> dict[str, Any]:
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"Script file not found: {cfg['file']}")
     source = path.read_text(encoding="utf-8")
-    return {"id": script_id, "file": cfg["file"], "source": source}
+    return {"script_id": script_id, "file": cfg["file"], "source": source}
 
 
 @router.put("/scripts/{script_id}/source", dependencies=[Depends(require_claimed_auth)])
@@ -168,7 +168,7 @@ async def create_script(data: ScriptCreateRequest) -> dict[str, Any]:
         project.scripts.append(new_script)
 
     await engine.apply_project_edit(mutate)
-    return {"status": "created", "id": data.id}
+    return {"status": "created", "script_id": data.id}
 
 
 @router.delete("/scripts/{script_id}")
@@ -231,9 +231,9 @@ async def reload_single_script(script_id: str) -> dict[str, Any]:
 
 
 @router.get("/scripts/errors")
-async def get_script_errors() -> dict[str, str]:
+async def get_script_errors() -> dict[str, Any]:
     """Return load errors for scripts that failed to load."""
     engine = _get_engine()
     if not engine.scripts:
-        return {}
-    return engine.scripts.get_load_errors()
+        return {"errors": {}}
+    return {"errors": engine.scripts.get_load_errors()}

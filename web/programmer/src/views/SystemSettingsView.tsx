@@ -486,7 +486,7 @@ export function SystemSettingsView() {
     setSshBusy(true);
     try {
       const r = await api.setSsh(enabled);
-      if (r.ok) {
+      if (r.success) {
         setSsh((s) => (s ? { ...s, enabled } : s));
         showSuccess(enabled ? "SSH enabled." : "SSH disabled.");
       } else if (r.pending) {

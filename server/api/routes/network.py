@@ -42,6 +42,20 @@ async def _backend() -> host_network.NetworkBackend:
     return backend
 
 
+def _result(payload: dict[str, Any]) -> dict[str, Any]:
+    """Translate a backend result to the API's command-result shape.
+
+    ``server/system/network.py`` speaks ``ok`` internally (it mirrors the
+    privileged helper's own protocol); the REST surface says ``success`` for
+    calls that can fail without being an HTTP error. Everything else on the
+    backend result rides along untouched (``error``, ``rolled_back``, ``reboot``).
+    """
+    out = dict(payload)
+    if "ok" in out:
+        out["success"] = bool(out.pop("ok"))
+    return out
+
+
 @router.get("")
 async def network_status() -> dict[str, Any]:
     """Interfaces, active connections, addresses, hostname, capabilities."""
@@ -77,13 +91,14 @@ async def network_set_ipv4(body: NetworkIPv4Request) -> dict[str, Any]:
             raise HTTPException(status_code=400, detail=str(e))
 
     if not body.confirmed:
-        return {"valid": True, "applied": False, "warnings": warnings}
+        return {"success": True, "applied": False, "warnings": warnings}
 
     result = await backend.set_ipv4(
         body.connection, body.method, address=address, gateway=gateway, dns=dns
     )
     result["warnings"] = warnings
-    return result
+    result["applied"] = True
+    return _result(result)
 
 
 @router.post("/wifi/scan")
@@ -101,14 +116,14 @@ async def network_wifi_connect(body: WifiConnectRequest) -> dict[str, Any]:
     ssid = body.ssid.strip()
     if not ssid:
         raise HTTPException(status_code=400, detail="ssid is required.")
-    return await backend.wifi_connect(ssid, body.psk or None)
+    return _result(await backend.wifi_connect(ssid, body.psk or None))
 
 
 @router.post("/wifi/radio")
 async def network_wifi_set_radio(body: WifiRadioRequest) -> dict[str, Any]:
     """Turn the WiFi radio on or off."""
     backend = await _backend()
-    return await backend.wifi_set_enabled(body.enabled)
+    return _result(await backend.wifi_set_enabled(body.enabled))
 
 
 @router.post("/hostname")
@@ -118,4 +133,4 @@ async def network_set_hostname(body: HostnameRequest) -> dict[str, Any]:
         name = host_network.validate_hostname(body.hostname)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return await backend.set_hostname(name)
+    return _result(await backend.set_hostname(name))

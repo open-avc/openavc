@@ -131,7 +131,7 @@ def test_get_state_snapshot(client):
     engine.state.set("var.test", 42, source="test")
     resp = c.get("/api/state")
     assert resp.status_code == 200
-    assert resp.json()["var.test"] == 42
+    assert resp.json()["state"]["var.test"] == 42
 
 
 def test_get_state_value(client):
@@ -171,7 +171,7 @@ def test_list_devices_empty(client):
     c, engine = client
     resp = c.get("/api/devices")
     assert resp.status_code == 200
-    assert resp.json() == []
+    assert resp.json() == {"devices": []}
 
 
 def test_get_device_not_found(client):
@@ -217,7 +217,7 @@ def test_device_update_preserves_pending_settings(client, tmp_path):
     engine.devices.update_device = AsyncMock()
 
     with patch("server.core.project_loader.save_project"):
-        resp = c.put("/api/devices/dev1", json={"name": "Renamed"})
+        resp = c.patch("/api/devices/dev1", json={"name": "Renamed"})
 
     assert resp.status_code == 200
     updated = engine.project.devices[0]
@@ -256,7 +256,7 @@ def test_device_update_preserves_forward_compat_extra_fields(client, tmp_path):
     engine.devices.update_device = AsyncMock()
 
     with patch("server.core.project_loader.save_project"):
-        resp = c.put("/api/devices/dev1", json={"name": "Renamed"})
+        resp = c.patch("/api/devices/dev1", json={"name": "Renamed"})
 
     assert resp.status_code == 200
     updated = engine.project.devices[0]
@@ -408,7 +408,7 @@ def test_list_triggers(client):
     c, engine = client
     resp = c.get("/api/triggers")
     assert resp.status_code == 200
-    assert isinstance(resp.json(), list)
+    assert isinstance(resp.json()["triggers"], list)
 
 
 # ── Project endpoints ──
@@ -438,7 +438,7 @@ def test_logs_recent(client):
     c, engine = client
     resp = c.get("/api/logs/recent")
     assert resp.status_code == 200
-    data = resp.json()
+    data = resp.json()["logs"]
     assert isinstance(data, list)
 
 
@@ -464,7 +464,7 @@ def test_logs_recent_category_scans_whole_buffer(client):
             ))
         resp = c.get("/api/logs/recent?count=100&category=device")
         assert resp.status_code == 200
-        data = resp.json()
+        data = resp.json()["logs"]
         assert len(data) == 5
         assert all(e["category"] == "device" for e in data)
     finally:
@@ -570,4 +570,4 @@ def test_list_drivers(client):
     c, engine = client
     resp = c.get("/api/drivers")
     assert resp.status_code == 200
-    assert isinstance(resp.json(), list)
+    assert isinstance(resp.json()["drivers"], list)

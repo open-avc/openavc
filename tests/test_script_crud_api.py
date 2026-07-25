@@ -94,7 +94,7 @@ def test_get_script_source(client):
     resp = client.get("/api/scripts/test_script/source")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["id"] == "test_script"
+    assert data["script_id"] == "test_script"
     assert data["file"] == "test_script.py"
     assert 'print("hello")' in data["source"]
 
@@ -129,7 +129,7 @@ def test_create_script(client, mock_engine):
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "created"
-    assert data["id"] == "new_script"
+    assert data["script_id"] == "new_script"
     # Verify file was created
     scripts_dir = mock_engine.project_path.parent / "scripts"
     assert (scripts_dir / "new_script.py").exists()
@@ -204,4 +204,4 @@ def test_reload_scripts(client, mock_engine):
 def test_get_recent_logs(client):
     resp = client.get("/api/logs/recent?count=10")
     assert resp.status_code == 200
-    assert isinstance(resp.json(), list)
+    assert isinstance(resp.json()["logs"], list)

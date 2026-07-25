@@ -11,7 +11,7 @@ import { request } from "./base";
 // --- Devices ---
 
 export async function listDevices(): Promise<DeviceInfo[]> {
-  return request("/devices");
+  return (await request<{ devices: DeviceInfo[] }>("/devices")).devices;
 }
 
 export async function getDevice(id: string): Promise<DeviceInfo> {
@@ -119,8 +119,10 @@ export async function updateDevice(
   deviceId: string,
   data: { name?: string; driver?: string; config?: Record<string, unknown> }
 ): Promise<{ status: string; device_id: string }> {
+  // PATCH: the body is a partial edit merged into the stored device, which is
+  // what the server does — PUT would promise a full replacement.
   return request(`/devices/${deviceId}`, {
-    method: "PUT",
+    method: "PATCH",
     body: JSON.stringify(data),
   });
 }
@@ -187,7 +189,9 @@ export async function storePendingSettings(
 // --- Connection Table (Site Config) ---
 
 export async function getConnections(): Promise<Record<string, Record<string, unknown>>> {
-  return request("/connections");
+  return (
+    await request<{ connections: Record<string, Record<string, unknown>> }>("/connections")
+  ).connections;
 }
 
 export async function updateConnection(

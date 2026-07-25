@@ -235,7 +235,7 @@ def test_cloud_pair_agent_start_failure_surfaced(client, monkeypatch):
     resp = c.post("/api/cloud/pair", json={"token": "t", "cloud_api_url": "https://cloud.test"})
     assert resp.status_code == 200
     body = resp.json()
-    assert body["success"] is True
+    assert body["status"] == "paired"
     assert body["agent_started"] is False
     assert "warning" in body
 

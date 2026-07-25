@@ -89,7 +89,7 @@ async def test_plugin_extensions_is_open_without_auth(claimed_client):
         "panel plugin-extensions fetch must not require auth"
     )
     # Shape check: always returns the panel_elements bucket (empty here).
-    assert "panel_elements" in resp.json()
+    assert "panel_elements" in resp.json()["extensions"]
 
 
 async def test_no_www_authenticate_on_panel_paths(claimed_client):

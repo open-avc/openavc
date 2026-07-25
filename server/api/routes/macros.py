@@ -36,18 +36,18 @@ async def cancel_macro(macro_id: str) -> dict[str, Any]:
     engine = _get_engine()
     cancelled = await engine.macros.cancel(macro_id)
     if cancelled:
-        return {"cancelled": True}
-    return {"cancelled": False, "reason": "not_running"}
+        return {"status": "cancelled", "macro_id": macro_id}
+    return {"status": "not_running", "macro_id": macro_id}
 
 
 # --- Triggers ---
 
 
 @router.get("/triggers")
-async def list_triggers() -> list[dict[str, Any]]:
+async def list_triggers() -> dict[str, Any]:
     """List all triggers with status."""
     engine = _get_engine()
-    return engine.triggers.list_triggers()
+    return {"triggers": engine.triggers.list_triggers()}
 
 
 @router.post("/triggers/{trigger_id}/test")

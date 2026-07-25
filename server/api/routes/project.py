@@ -141,10 +141,10 @@ async def validate_drivers() -> dict[str, Any]:
 
 
 @router.get("/library")
-async def list_library() -> list[dict[str, Any]]:
+async def list_library() -> dict[str, Any]:
     """List all saved projects in the library."""
     from server.core.project_library import list_projects
-    return list_projects()
+    return {"projects": list_projects()}
 
 
 @router.get("/library/{project_id}")
@@ -155,7 +155,7 @@ async def get_library_project(project_id: str) -> dict[str, Any]:
         data, scripts = get_project(project_id)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found in library")
-    return {"id": project_id, "project": data, "scripts": scripts}
+    return {"project_id": project_id, "project": data, "scripts": scripts}
 
 
 @router.post("/library")
@@ -179,7 +179,7 @@ async def save_to_library(request: Request) -> dict[str, Any]:
     except ValueError as e:
         raise _api_error(409, f"Library project '{data.id}' already exists", e)
 
-    return {"status": "created", "id": data.id}
+    return {"status": "created", "project_id": data.id}
 
 
 @router.delete("/library/{project_id}")
@@ -189,7 +189,7 @@ async def delete_library_project(project_id: str) -> dict[str, Any]:
     deleted = delete_project(project_id)
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found in library")
-    return {"status": "deleted", "id": project_id}
+    return {"status": "deleted", "project_id": project_id}
 
 
 @router.patch("/library/{project_id}")
@@ -206,7 +206,7 @@ async def update_library_project(project_id: str, request: Request) -> dict[str,
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found in library")
 
-    return {"status": "updated", "id": project_id}
+    return {"status": "updated", "project_id": project_id}
 
 
 @router.post("/library/{project_id}/duplicate")
@@ -225,7 +225,7 @@ async def duplicate_library_project(project_id: str, request: Request) -> dict[s
     except ValueError as e:
         raise _api_error(409, f"Library project '{data.new_id}' already exists", e)
 
-    return {"status": "duplicated", "id": data.new_id}
+    return {"status": "duplicated", "project_id": data.new_id}
 
 
 @router.get("/library/{project_id}/export")
@@ -270,7 +270,7 @@ async def import_library_project(request: Request) -> dict[str, Any]:
 
     return {
         "status": "imported",
-        "id": result["id"],
+        "project_id": result["id"],
         "installed_drivers": result.get("installed_drivers", []),
         "missing_drivers": result.get("missing_drivers", []),
         "installed_plugins": result.get("installed_plugins", []),
@@ -364,23 +364,23 @@ async def create_blank(request: Request) -> dict[str, Any]:
 
 
 @router.get("/logs/recent")
-async def get_recent_logs(count: int = 100, category: str = "") -> list[dict[str, Any]]:
+async def get_recent_logs(count: int = 100, category: str = "") -> dict[str, Any]:
     """Get recent log entries, optionally filtered by category."""
-    return get_log_buffer().get_recent(count, category=category)
+    return {"logs": get_log_buffer().get_recent(count, category=category)}
 
 
 # --- Backups ---
 
 
 @router.get("/backups")
-async def list_backups_endpoint() -> list[dict[str, Any]]:
+async def list_backups_endpoint() -> dict[str, Any]:
     """List available project backups (ZIP + legacy .avc.bak)."""
     from server.core.backup_manager import list_backups
 
     engine = _get_engine()
     project_dir = engine.project_path.parent
     backups = list_backups(project_dir)
-    return [
+    return {"backups": [
         {
             "filename": b.filename,
             "reason": b.reason,
@@ -390,7 +390,7 @@ async def list_backups_endpoint() -> list[dict[str, Any]]:
             "format": b.format,
         }
         for b in backups
-    ]
+    ]}
 
 
 @router.post("/backups/create")

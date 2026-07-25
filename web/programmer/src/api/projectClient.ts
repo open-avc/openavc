@@ -149,7 +149,7 @@ export interface BackupInfo {
 }
 
 export async function listBackups(): Promise<BackupInfo[]> {
-  return request<BackupInfo[]>("/backups");
+  return (await request<{ backups: BackupInfo[] }>("/backups")).backups;
 }
 
 export async function createBackup(
@@ -170,7 +170,7 @@ export async function restoreBackup(
 // --- Project Library ---
 
 export async function listLibrary(): Promise<LibraryProject[]> {
-  return request("/library");
+  return (await request<{ projects: LibraryProject[] }>("/library")).projects;
 }
 
 export async function getLibraryProject(id: string): Promise<LibraryProjectDetail> {
@@ -181,7 +181,7 @@ export async function saveToLibrary(data: {
   id: string;
   name: string;
   description?: string;
-}): Promise<{ status: string; id: string }> {
+}): Promise<{ status: string; project_id: string }> {
   return request("/library", {
     method: "POST",
     body: JSON.stringify(data),
@@ -190,14 +190,14 @@ export async function saveToLibrary(data: {
 
 export async function deleteLibraryProject(
   id: string
-): Promise<{ status: string; id: string }> {
+): Promise<{ status: string; project_id: string }> {
   return request(`/library/${id}`, { method: "DELETE" });
 }
 
 export async function updateLibraryProject(
   id: string,
   data: { name?: string; description?: string }
-): Promise<{ status: string; id: string }> {
+): Promise<{ status: string; project_id: string }> {
   return request(`/library/${id}`, {
     method: "PATCH",
     body: JSON.stringify(data),
@@ -208,7 +208,7 @@ export async function duplicateLibraryProject(
   id: string,
   newId: string,
   newName: string
-): Promise<{ status: string; id: string }> {
+): Promise<{ status: string; project_id: string }> {
   return request(`/library/${id}/duplicate`, {
     method: "POST",
     body: JSON.stringify({ new_id: newId, new_name: newName }),
@@ -231,7 +231,7 @@ export async function exportLibraryProject(id: string): Promise<void> {
 }
 
 export async function importToLibrary(file: File, id?: string): Promise<{
-  status: string; id: string;
+  status: string; project_id: string;
   installed_drivers?: string[];
   missing_drivers?: { driver_id: string; driver_name: string; affected_devices: string[] }[];
   warnings?: string[];

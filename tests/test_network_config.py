@@ -334,7 +334,7 @@ async def test_wifi_radio_endpoint(with_backend):
         "/api/system/network/wifi/radio", json={"enabled": False}
     )
     assert resp.status_code == 200
-    assert resp.json() == {"ok": True, "enabled": False}
+    assert resp.json() == {"success": True, "enabled": False}
 
 
 async def test_ipv4_dry_run_returns_warnings(with_backend):

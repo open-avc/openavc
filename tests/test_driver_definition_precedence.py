@@ -98,7 +98,7 @@ def override_pair(driver_dirs) -> tuple[Path, Path]:
 
 
 async def test_listing_shows_the_user_copy_as_user_source(override_pair):
-    definitions = await list_definitions_endpoint()
+    definitions = (await list_definitions_endpoint())["definitions"]
     entries = [d for d in definitions if d["id"] == "acme_widget"]
     assert len(entries) == 1
     assert entries[0]["name"] == "User Copy"
@@ -150,7 +150,7 @@ async def test_rename_restores_the_builtin_for_the_old_id(override_pair):
     )
     result = await update_driver_definition("acme_widget", body)
 
-    assert result["id"] == "acme_custom"
+    assert result["driver_id"] == "acme_custom"
     assert (repo_dir / "acme_custom.avcdriver").exists()
     assert not (repo_dir / "acme_widget.avcdriver").exists()
     # The new id is live and the old id fell back to the shipped built-in.

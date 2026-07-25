@@ -112,10 +112,10 @@ def _enforce_driver_id_match(
 
 
 @router.get("/drivers")
-async def list_drivers() -> list[dict[str, Any]]:
+async def list_drivers() -> dict[str, Any]:
     """List all available driver types with their metadata."""
     from server.core.device_manager import get_driver_registry
-    return get_driver_registry()
+    return {"drivers": get_driver_registry()}
 
 
 @router.get("/drivers/{driver_id}/help")
@@ -1091,7 +1091,7 @@ def _get_driver_dirs() -> list[Path]:
 
 
 @router.get("/driver-definitions")
-async def list_driver_definitions() -> list[dict]:
+async def list_driver_definitions() -> dict[str, Any]:
     """List all JSON driver definitions.
 
     Adds a `source` field to each entry: `"builtin"` for drivers that ship
@@ -1113,7 +1113,7 @@ async def list_driver_definitions() -> list[dict]:
             d["source"] = "builtin" if resolved.startswith(builtin_root) else "user"
         except OSError:
             d["source"] = "user"
-    return definitions
+    return {"definitions": definitions}
 
 
 @router.get("/driver-definitions/{driver_id}")
@@ -1175,7 +1175,7 @@ async def create_driver_definition(body: DriverDefinitionRequest) -> dict:
     # it's authored (mirrors the Python hot-reload path; no full reload needed).
     reconnected = await _get_engine().devices.reload_driver(driver_def["id"])
 
-    return {"status": "created", "id": driver_def["id"], "devices_reconnected": reconnected}
+    return {"status": "created", "driver_id": driver_def["id"], "devices_reconnected": reconnected}
 
 
 @router.put("/driver-definitions/{driver_id}")
@@ -1246,7 +1246,7 @@ async def update_driver_definition(driver_id: str, body: DriverDefinitionRequest
         restore_driver_registration(driver_id, dirs)
         reconnected = reconnected + await engine.devices.reload_driver(driver_id)
 
-    return {"status": "updated", "id": driver_def["id"], "devices_reconnected": reconnected}
+    return {"status": "updated", "driver_id": driver_def["id"], "devices_reconnected": reconnected}
 
 
 def _merge_patch(current: Any, patch: Any) -> Any:
@@ -1326,7 +1326,7 @@ async def patch_driver_definition(driver_id: str, body: dict) -> dict:
     register_driver(driver_class)
     reconnected = await _get_engine().devices.reload_driver(driver_id)
 
-    return {"status": "updated", "id": driver_id, "devices_reconnected": reconnected}
+    return {"status": "updated", "driver_id": driver_id, "devices_reconnected": reconnected}
 
 
 @router.delete("/driver-definitions/{driver_id}")
@@ -1361,7 +1361,7 @@ async def delete_driver_definition_endpoint(driver_id: str) -> dict:
     if restored:
         # Reconnect devices on this driver so they pick up the restored class.
         await _get_engine().devices.reload_driver(driver_id)
-    return {"status": "deleted", "id": driver_id, "builtin_restored": restored}
+    return {"status": "deleted", "driver_id": driver_id, "builtin_restored": restored}
 
 
 @router.post("/driver-definitions/{driver_id}/test-command")
@@ -1997,7 +1997,7 @@ async def get_python_driver_source(driver_id: str) -> dict:
     except OSError as e:
         raise HTTPException(status_code=500, detail=f"Failed to read driver file: {e}")
 
-    return {"id": driver_id, "filename": filepath.name, "source": source}
+    return {"driver_id": driver_id, "filename": filepath.name, "source": source}
 
 
 @router.get("/python-drivers/{driver_id}/bundle")
@@ -2051,7 +2051,7 @@ async def save_python_driver_source(driver_id: str, body: dict) -> dict:
     except OSError as e:
         raise HTTPException(status_code=500, detail=f"Failed to save driver file: {e}")
 
-    return {"status": "saved", "id": driver_id}
+    return {"status": "saved", "driver_id": driver_id}
 
 
 @router.post("/python-drivers", dependencies=[Depends(require_claimed_auth)])
@@ -2081,7 +2081,7 @@ async def create_python_driver(body: PythonDriverCreateRequest) -> dict:
     if driver_class:
         register_driver(driver_class)
 
-    return {"status": "created", "id": body.id}
+    return {"status": "created", "driver_id": body.id}
 
 
 @router.delete("/python-drivers/{driver_id}", dependencies=[Depends(require_claimed_auth)])
@@ -2116,7 +2116,7 @@ async def delete_python_driver(driver_id: str) -> dict:
     sys.modules.pop(module_name, None)
 
     log.info(f"Deleted Python driver: {driver_id}")
-    return {"status": "deleted", "id": driver_id, "removed_companions": removed_companions}
+    return {"status": "deleted", "driver_id": driver_id, "removed_companions": removed_companions}
 
 
 @router.post("/python-drivers/{driver_id}/reload", dependencies=[Depends(require_claimed_auth)])
@@ -2210,7 +2210,7 @@ async def reload_driver_definition(driver_id: str) -> dict:
 
     return {
         "status": "reloaded",
-        "id": driver_def["id"],
+        "driver_id": driver_def["id"],
         "file": filepath.name,
         "devices_reconnected": reconnected,
     }

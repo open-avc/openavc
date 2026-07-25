@@ -19,14 +19,14 @@ def _is_flat_primitive(value: object) -> bool:
 @router.get("/state")
 async def get_state() -> dict[str, Any]:
     """Full state snapshot."""
-    return _get_engine().state.snapshot()
+    return {"state": _get_engine().state.snapshot()}
 
 
 @router.get("/state/history")
-async def get_state_history(count: int = 50) -> list[dict[str, Any]]:
+async def get_state_history(count: int = 50) -> dict[str, Any]:
     """Recent state change history."""
     engine = _get_engine()
-    return engine.state.get_history(min(count, 10000))
+    return {"history": engine.state.get_history(min(count, 10000))}
 
 
 @router.get("/state/{key:path}")

@@ -14,7 +14,7 @@ export interface CloudStatus {
 }
 
 export interface CloudPairResult {
-  success: boolean;
+  status: string;
   system_id: string;
   endpoint: string;
   agent_started?: boolean;
@@ -35,8 +35,8 @@ export async function cloudPair(
   });
 }
 
-export async function cloudUnpair(): Promise<{ success: boolean }> {
-  return request<{ success: boolean }>("/cloud/unpair", { method: "POST" });
+export async function cloudUnpair(): Promise<{ status: string }> {
+  return request<{ status: string }>("/cloud/unpair", { method: "POST" });
 }
 
 // --- Logs ---
@@ -47,7 +47,7 @@ export async function getRecentLogs(
 ): Promise<LogEntryResponse[]> {
   const params = new URLSearchParams({ count: String(count) });
   if (category) params.set("category", category);
-  return request(`/logs/recent?${params}`);
+  return (await request<{ logs: LogEntryResponse[] }>(`/logs/recent?${params}`)).logs;
 }
 
 // --- System Updates ---
@@ -109,7 +109,9 @@ export async function getUpdateStatus(): Promise<UpdateStatus> {
 }
 
 export async function getUpdateHistory(): Promise<UpdateHistoryEntry[]> {
-  return request("/system/updates/history");
+  return (
+    await request<{ history: UpdateHistoryEntry[] }>("/system/updates/history")
+  ).history;
 }
 
 // --- Assets ---
@@ -182,14 +184,14 @@ export interface ThemeDefinition {
 }
 
 export async function listThemes(): Promise<ThemeSummary[]> {
-  return request<ThemeSummary[]>("/themes");
+  return (await request<{ themes: ThemeSummary[] }>("/themes")).themes;
 }
 
 export async function getTheme(themeId: string): Promise<ThemeDefinition> {
   return request<ThemeDefinition>(`/themes/${themeId}`);
 }
 
-export async function createTheme(data: ThemeDefinition): Promise<{ status: string; id: string }> {
+export async function createTheme(data: ThemeDefinition): Promise<{ status: string; theme_id: string }> {
   return request("/themes", {
     method: "POST",
     body: JSON.stringify(data),
@@ -270,7 +272,7 @@ export async function getSystemConfig(): Promise<SystemConfig> {
 
 export async function updateSystemConfig(
   data: Partial<SystemConfig>
-): Promise<{ success: boolean; updated_sections: string[] }> {
+): Promise<{ status: string; updated_sections: string[] }> {
   return request("/system/config", {
     method: "PATCH",
     body: JSON.stringify(data),
@@ -297,7 +299,7 @@ export async function getSshStatus(): Promise<SshStatus> {
  *  submitted but unconfirmed before the server's short wait elapsed. */
 export async function setSsh(
   enabled: boolean
-): Promise<{ ok: boolean; enabled: boolean; pending?: boolean; error?: string }> {
+): Promise<{ success: boolean; enabled: boolean; pending?: boolean; error?: string }> {
   return request("/system/ssh", {
     method: "POST",
     body: JSON.stringify({ enabled }),
@@ -376,6 +378,7 @@ export async function getTlsStatus(): Promise<TlsStatus> {
 }
 
 export interface CloudCertEnableResult {
+  status: string;
   enabled: boolean;
   started: boolean;
   reason?: string;
@@ -393,8 +396,8 @@ export async function enableCloudCert(): Promise<CloudCertEnableResult> {
 
 /** Turn the trusted certificate off: stops serving it, deletes it, and
  *  notifies the cloud best-effort. Never blocked by cloud reachability. */
-export async function disableCloudCert(): Promise<{ enabled: boolean }> {
-  return request<{ enabled: boolean }>("/system/tls/cloud-cert/disable", {
+export async function disableCloudCert(): Promise<{ status: string; enabled: boolean }> {
+  return request<{ status: string; enabled: boolean }>("/system/tls/cloud-cert/disable", {
     method: "POST",
   });
 }
@@ -530,12 +533,13 @@ export interface HostNetworkStatus {
 }
 
 /** Result of POST /system/network/ipv4. With `confirmed: false` the server
- *  only validates (`applied: false`, warnings populated); with `confirmed:
- *  true` it applies — live backends roll back automatically if activation
- *  fails, reboot backends save and restart the device (`reboot: true`). */
+ *  only validates (`success: true, applied: false`, warnings populated); with
+ *  `confirmed: true` it applies (`applied: true`) — live backends roll back
+ *  automatically if activation fails, reboot backends save and restart the
+ *  device (`reboot: true`). `success: false` is a refused change, not an
+ *  HTTP error. */
 export interface HostIpv4Result {
-  ok?: boolean;
-  valid?: boolean;
+  success?: boolean;
   applied?: boolean;
   rolled_back?: boolean;
   reboot?: boolean;
@@ -575,7 +579,7 @@ export async function scanHostWifi(): Promise<{ networks: WifiNetwork[] }> {
 export async function connectHostWifi(
   ssid: string,
   psk: string | null
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string }> {
   return request("/system/network/wifi/connect", {
     method: "POST",
     body: JSON.stringify({ ssid, psk }),
@@ -584,7 +588,7 @@ export async function connectHostWifi(
 
 export async function setHostWifiRadio(
   enabled: boolean
-): Promise<{ ok: boolean; enabled?: boolean; error?: string }> {
+): Promise<{ success: boolean; enabled?: boolean; error?: string }> {
   return request("/system/network/wifi/radio", {
     method: "POST",
     body: JSON.stringify({ enabled }),
@@ -593,7 +597,7 @@ export async function setHostWifiRadio(
 
 export async function setHostHostname(
   hostname: string
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string }> {
   return request("/system/network/hostname", {
     method: "POST",
     body: JSON.stringify({ hostname }),

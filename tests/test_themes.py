@@ -49,7 +49,7 @@ async def client():
 async def test_list_themes(client):
     resp = client.get("/api/themes")
     assert resp.status_code == 200
-    data = resp.json()
+    data = resp.json()["themes"]
     assert isinstance(data, list)
     assert len(data) >= 6  # At least 6 built-in themes
     # Each theme has required fields
@@ -90,7 +90,7 @@ async def test_create_custom_theme(client):
 
     # Verify it appears in list
     resp = client.get("/api/themes")
-    ids = [t["id"] for t in resp.json()]
+    ids = [t["id"] for t in resp.json()["themes"]]
     assert theme_id in ids
 
     # Cleanup
@@ -195,8 +195,8 @@ async def test_import_new_theme(client):
     }
     resp = _import(client, theme)
     assert resp.status_code == 200
-    assert resp.json()["id"] == theme_id
-    assert theme_id in [t["id"] for t in client.get("/api/themes").json()]
+    assert resp.json()["theme_id"] == theme_id
+    assert theme_id in [t["id"] for t in client.get("/api/themes").json()["themes"]]
     client.delete(f"/api/themes/{theme_id}")
 
 

@@ -139,7 +139,7 @@ function IfaceEditor({
     setBusy(true);
     try {
       const result = await api.setHostIpv4({ ...body(), confirmed: true });
-      if (result.ok && result.reboot) {
+      if (result.success && result.reboot) {
         // Saved to the device's boot configuration; it is now restarting.
         // Skip the status refresh — the server is going down with it.
         showSuccess(
@@ -147,7 +147,7 @@ function IfaceEditor({
         );
         return;
       }
-      if (result.ok) {
+      if (result.success) {
         showSuccess(`${iface.device}: network change applied`);
       } else if (result.rolled_back) {
         showError(
@@ -298,7 +298,7 @@ function WifiPane({ onChanged }: { onChanged: () => void }) {
     setConnecting(true);
     try {
       const result = await api.connectHostWifi(network.ssid, password);
-      if (result.ok) {
+      if (result.success) {
         showSuccess(`Connected to ${network.ssid}`);
         setPick(null);
         setPsk("");
@@ -398,7 +398,7 @@ function WifiSection({
     setBusy(true);
     try {
       const result = await api.setHostWifiRadio(!on);
-      if (result.ok) {
+      if (result.success) {
         onChanged();
       } else {
         showError(result.error ?? "Could not change WiFi");
@@ -479,7 +479,7 @@ export function HostNetworkCard() {
     setHostnameBusy(true);
     try {
       const result = await api.setHostHostname(hostname.trim());
-      if (result.ok) {
+      if (result.success) {
         showSuccess(
           `Hostname changed — this device is now ${hostname.trim()}.local`
         );

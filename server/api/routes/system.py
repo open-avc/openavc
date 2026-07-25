@@ -74,7 +74,7 @@ async def auth_setup(request: Request) -> dict[str, Any]:
             status_code=400,
             detail="Password must be at least 8 characters.",
         )
-    return {"ok": True, "state": auth_state()}
+    return {"status": "claimed", "state": auth_state()}
 
 
 @open_router.post("/auth/session")
@@ -124,7 +124,7 @@ async def delete_auth_session(request: Request) -> dict[str, Any]:
 
     token = _extract_bearer(request.headers.get("authorization", ""))
     revoked = store.revoke(token) if token else False
-    return {"ok": True, "revoked": revoked}
+    return {"status": "revoked", "revoked": revoked}
 
 
 @open_router.get("/status")
@@ -184,17 +184,17 @@ async def isc_status() -> dict[str, Any]:
     """ISC status: enabled, instance info, peer summary."""
     engine = _get_engine()
     if engine.isc is None:
-        return {"enabled": False}
+        return {"status": "disabled", "enabled": False}
     return engine.isc.get_status()
 
 
 @router.get("/isc/instances")
-async def isc_instances() -> list[dict[str, Any]]:
+async def isc_instances() -> dict[str, Any]:
     """List all discovered/connected ISC peer instances."""
     engine = _get_engine()
     if engine.isc is None:
-        return []
-    return engine.isc.get_instances()
+        return {"instances": []}
+    return {"instances": engine.isc.get_instances()}
 
 
 @router.post("/isc/send")
@@ -414,7 +414,7 @@ async def cloud_pair(request: Request) -> dict[str, Any]:
     agent_started = engine.cloud_agent is not None
 
     result: dict[str, Any] = {
-        "success": True,
+        "status": "paired",
         "system_id": pair_data["system_id"],
         "endpoint": pair_data["endpoint"],
         "agent_started": agent_started,
@@ -451,7 +451,7 @@ async def cloud_unpair() -> dict[str, Any]:
         "endpoint": "",
     })
 
-    return {"success": True}
+    return {"status": "unpaired"}
 
 
 # --- System Configuration ---
@@ -592,7 +592,7 @@ async def update_system_config(request: Request) -> dict[str, Any]:
         except Exception:  # noqa: BLE001 — state mirror must never fail the save
             pass
 
-    return {"success": True, "updated_sections": updated_sections}
+    return {"status": "updated", "updated_sections": updated_sections}
 
 
 @router.post("/system/restart")
@@ -847,7 +847,7 @@ async def enable_cloud_cert() -> dict[str, Any]:
         )
 
     started, reason = await manager.enable()
-    result: dict[str, Any] = {"enabled": True, "started": started}
+    result: dict[str, Any] = {"status": "enabled", "enabled": True, "started": started}
     if not started:
         result["reason"] = reason
         result["message"] = {
@@ -1103,7 +1103,7 @@ async def set_ssh_state(request: Request) -> dict[str, Any]:
 
     SSH ships off; enabling it allows logging in as the ``openavc`` user with
     the admin password. The root helper performs the change; this waits briefly
-    for its result. Returns ``{ok, enabled, pending, error}`` — ``pending`` means
+    for its result. Returns ``{success, enabled, pending, error}`` — ``pending`` means
     the change was submitted but unconfirmed before the timeout.
     """
     from server import host_control
@@ -1117,7 +1117,14 @@ async def set_ssh_state(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=422, detail="Missing 'enabled' boolean.")
     enabled = bool(body["enabled"])
     result = await host_control.set_ssh(enabled)
-    return {**result, "enabled": enabled}
+    # host_control speaks the privileged helper's on-disk protocol ("ok"); the
+    # API surface says "success" for command-style calls that can fail at 200.
+    return {
+        "success": bool(result.get("ok")),
+        "error": result.get("error", ""),
+        "pending": bool(result.get("pending")),
+        "enabled": enabled,
+    }
 
 
 # --- Update System ---
@@ -1160,10 +1167,10 @@ async def get_update_status() -> dict[str, Any]:
 
 
 @router.get("/system/updates/history")
-async def get_update_history() -> list[dict[str, Any]]:
+async def get_update_history() -> dict[str, Any]:
     """List past updates with timestamps."""
     mgr = _get_update_manager()
-    return mgr.get_history()
+    return {"history": mgr.get_history()}
 
 
 # --- Simulation ---

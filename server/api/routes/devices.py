@@ -39,9 +39,9 @@ def _sanitize_device_name(name: str) -> str:
 
 
 @router.get("/devices")
-async def list_devices() -> list[dict[str, Any]]:
+async def list_devices() -> dict[str, Any]:
     """List all devices with status."""
-    return _get_engine().devices.list_devices()
+    return {"devices": _get_engine().devices.list_devices()}
 
 
 @router.get("/devices/missing-drivers")
@@ -160,7 +160,7 @@ async def get_device(device_id: str) -> dict[str, Any]:
         raise _api_error(404, f"Device '{device_id}' not found", e)
 
 
-@router.put("/devices/{device_id}")
+@router.patch("/devices/{device_id}")
 async def update_device(device_id: str, body: DeviceUpdateRequest) -> dict[str, Any]:
     """Update a device's name, driver, or config. Hot-swaps the runtime device."""
     engine = _get_engine()
@@ -1065,12 +1065,12 @@ def _split_known_connection_ids(
 
 
 @router.get("/connections")
-async def get_connections() -> dict[str, dict[str, Any]]:
+async def get_connections() -> dict[str, Any]:
     """Get the full connection table (site-specific device connection overrides)."""
     engine = _get_engine()
     if not engine.project:
         raise HTTPException(status_code=503, detail="No project loaded")
-    return dict(engine.project.connections)
+    return {"connections": dict(engine.project.connections)}
 
 
 @router.put("/connections/{device_id}")

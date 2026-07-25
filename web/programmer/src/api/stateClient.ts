@@ -4,13 +4,15 @@ import { request } from "./base";
 // --- State ---
 
 export async function getState(): Promise<Record<string, unknown>> {
-  return request("/state");
+  return (await request<{ state: Record<string, unknown> }>("/state")).state;
 }
 
 export async function getStateHistory(
   count = 50
 ): Promise<StateHistoryEntry[]> {
-  return request(`/state/history?count=${count}`);
+  return (
+    await request<{ history: StateHistoryEntry[] }>(`/state/history?count=${count}`)
+  ).history;
 }
 
 export async function setStateValue(
@@ -41,7 +43,7 @@ export async function executeMacro(
 
 export async function cancelMacro(
   macroId: string
-): Promise<{ cancelled: boolean; reason?: string }> {
+): Promise<{ status: string; macro_id: string }> {
   return request(`/macros/${macroId}/cancel`, { method: "POST" });
 }
 
@@ -55,7 +57,7 @@ export async function testTrigger(
 
 export async function getScriptSource(
   id: string
-): Promise<{ id: string; file: string; source: string }> {
+): Promise<{ script_id: string; file: string; source: string }> {
   return request(`/scripts/${id}/source`);
 }
 
@@ -107,7 +109,7 @@ export async function reloadScript(id: string): Promise<{
 }
 
 export async function getScriptErrors(): Promise<Record<string, string>> {
-  return request("/scripts/errors");
+  return (await request<{ errors: Record<string, string> }>("/scripts/errors")).errors;
 }
 
 export async function getScriptReferences(): Promise<ScriptReference[]> {
@@ -122,5 +124,5 @@ export interface ScriptFunction {
 }
 
 export async function getScriptFunctions(): Promise<ScriptFunction[]> {
-  return request<ScriptFunction[]>("/scripts/functions");
+  return (await request<{ functions: ScriptFunction[] }>("/scripts/functions")).functions;
 }

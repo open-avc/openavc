@@ -4,7 +4,7 @@ import { request } from "./base";
 // --- Plugins ---
 
 export async function listPlugins(): Promise<PluginInfo[]> {
-  return request<PluginInfo[]>("/plugins");
+  return (await request<{ plugins: PluginInfo[] }>("/plugins")).plugins;
 }
 
 export async function getPlugin(pluginId: string): Promise<PluginInfo> {
@@ -61,7 +61,17 @@ export async function getPluginExtensions(): Promise<{
   context_actions: PluginExtension[];
   panel_elements: PluginExtension[];
 }> {
-  return request("/plugins/extensions");
+  return (
+    await request<{
+      extensions: {
+        views: PluginExtension[];
+        device_panels: PluginExtension[];
+        status_cards: PluginExtension[];
+        context_actions: PluginExtension[];
+        panel_elements: PluginExtension[];
+      };
+    }>("/plugins/extensions")
+  ).extensions;
 }
 
 export async function emitContextAction(

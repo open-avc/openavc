@@ -690,7 +690,7 @@ export interface LibraryProject {
 }
 
 export interface LibraryProjectDetail {
-  id: string;
+  project_id: string;
   project: ProjectConfig;
   scripts: Record<string, string>;
 }

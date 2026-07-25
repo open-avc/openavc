@@ -1,6 +1,6 @@
 """Regression test for the device-edit data-loss bug (audit C1 + C2).
 
-``PUT /devices/{id}`` and the cloud AI ``update_device`` tool both rebuild a
+``PATCH /devices/{id}`` and the cloud AI ``update_device`` tool both rebuild a
 device's ``DeviceConfig`` from the edit payload. Before the fix they dropped
 ``child_entities`` (user labels / per-child config) on every edit, and the AI
 tool additionally dropped ``pending_settings`` and skipped the
@@ -149,9 +149,9 @@ def _assert_survived_at_runtime(engine) -> dict:
     return cfg
 
 
-async def test_rest_put_preserves_children_and_pending(child_engine):
+async def test_rest_patch_preserves_children_and_pending(child_engine):
     client, engine = child_engine
-    resp = client.put("/api/devices/ctrl1", json={"name": "Renamed via REST"})
+    resp = client.patch("/api/devices/ctrl1", json={"name": "Renamed via REST"})
     assert resp.status_code == 200
 
     _assert_survived_on_disk(engine, expected_name="Renamed via REST")

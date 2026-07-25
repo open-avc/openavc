@@ -549,7 +549,7 @@ def test_enable_cloud_cert_starts_enrollment(client, monkeypatch, fake_engine):
     _set_cfg(monkeypatch, "tls", enabled=True)
     resp = client.post("/api/system/tls/cloud-cert/enable")
     assert resp.status_code == 200
-    assert resp.json() == {"enabled": True, "started": True}
+    assert resp.json() == {"status": "enabled", "enabled": True, "started": True}
     assert fake_engine.cloud_agent.cert_manager.enable_calls == 1
 
 

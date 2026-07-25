@@ -117,7 +117,7 @@ def _validate_theme(data: dict) -> None:
 
 
 @router.get("/themes")
-async def list_themes() -> list[dict[str, Any]]:
+async def list_themes() -> dict[str, Any]:
     """List all available themes (built-in + project custom).
 
     Includes the full `variables` map so the Theme Studio picker can render
@@ -127,7 +127,7 @@ async def list_themes() -> list[dict[str, Any]]:
     sections.
     """
     themes = _list_all_themes()
-    return [
+    return {"themes": [
         {
             "id": t["id"],
             "name": t["name"],
@@ -139,7 +139,7 @@ async def list_themes() -> list[dict[str, Any]]:
             "source": t.get("_source", "custom"),
         }
         for t in themes
-    ]
+    ]}
 
 
 @open_router.get("/themes/{theme_id}")
@@ -180,7 +180,7 @@ async def create_theme(data: dict[str, Any]) -> dict[str, Any]:
 
     atomic_write_text(custom_path, json.dumps(data, indent=4, ensure_ascii=False))
     log.info(f"Created custom theme: {theme_id}")
-    return {"status": "created", "id": theme_id}
+    return {"status": "created", "theme_id": theme_id}
 
 
 @router.put("/themes/{theme_id}")
@@ -197,7 +197,7 @@ async def update_theme(theme_id: str, data: dict[str, Any]) -> dict[str, Any]:
     data["id"] = theme_id  # Prevent ID change via PUT
     atomic_write_text(custom_path, json.dumps(data, indent=4, ensure_ascii=False))
     log.info(f"Updated custom theme: {theme_id}")
-    return {"status": "updated", "id": theme_id}
+    return {"status": "updated", "theme_id": theme_id}
 
 
 @router.delete("/themes/{theme_id}")
@@ -212,7 +212,7 @@ async def delete_theme(theme_id: str) -> dict[str, str]:
 
     custom_path.unlink()
     log.info(f"Deleted custom theme: {theme_id}")
-    return {"status": "deleted", "id": theme_id}
+    return {"status": "deleted", "theme_id": theme_id}
 
 
 @router.get("/themes/{theme_id}/export")
@@ -279,4 +279,4 @@ async def import_theme(
 
     atomic_write_text(custom_path, json.dumps(data, indent=4, ensure_ascii=False))
     log.info(f"Imported theme: {theme_id} (overwrite={overwrite})")
-    return {"status": "imported", "id": theme_id, "name": data.get("name", "")}
+    return {"status": "imported", "theme_id": theme_id, "name": data.get("name", "")}

@@ -108,7 +108,7 @@ async def rev_engine(tmp_path):
 async def test_device_update_bumps_revision(rev_engine):
     client, engine = rev_engine
     before = engine._project_revision
-    resp = client.put("/api/devices/ctrl1", json={"name": "Renamed"})
+    resp = client.patch("/api/devices/ctrl1", json={"name": "Renamed"})
     assert resp.status_code == 200
     assert engine._project_revision > before
     assert load_project(engine.project_path).devices[0].name == "Renamed"

@@ -68,10 +68,10 @@ def _get_engine():
 
 
 @router.get("/plugins")
-async def list_plugins() -> list[dict[str, Any]]:
+async def list_plugins() -> dict[str, Any]:
     """List all plugins (installed, missing, incompatible) with status."""
     engine = _get_engine()
-    return engine.plugin_loader.list_plugins()
+    return {"plugins": engine.plugin_loader.list_plugins()}
 
 
 # ──── Browse / Install / Uninstall ────
@@ -109,7 +109,7 @@ async def list_installed() -> dict[str, Any]:
 async def get_all_extensions() -> dict[str, Any]:
     """Get all UI extensions from running plugins."""
     engine = _get_engine()
-    return engine.plugin_loader.get_all_extensions()
+    return {"extensions": engine.plugin_loader.get_all_extensions()}
 
 
 @router.get("/plugins/macro-actions")

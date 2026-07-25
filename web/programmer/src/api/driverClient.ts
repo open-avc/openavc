@@ -10,13 +10,15 @@ import { BASE, request } from "./base";
 // --- Drivers ---
 
 export async function listDrivers(): Promise<DriverInfo[]> {
-  return request("/drivers");
+  return (await request<{ drivers: DriverInfo[] }>("/drivers")).drivers;
 }
 
 // --- Driver Definitions ---
 
 export async function listDriverDefinitions(): Promise<DriverDefinition[]> {
-  return request("/driver-definitions");
+  return (
+    await request<{ definitions: DriverDefinition[] }>("/driver-definitions")
+  ).definitions;
 }
 
 export async function getDriverDefinition(
@@ -27,7 +29,7 @@ export async function getDriverDefinition(
 
 export async function createDriverDefinition(
   definition: DriverDefinition
-): Promise<{ status: string; id: string }> {
+): Promise<{ status: string; driver_id: string }> {
   return request("/driver-definitions", {
     method: "POST",
     body: JSON.stringify(definition),
@@ -37,7 +39,7 @@ export async function createDriverDefinition(
 export async function updateDriverDefinition(
   id: string,
   definition: DriverDefinition
-): Promise<{ status: string; id: string }> {
+): Promise<{ status: string; driver_id: string }> {
   return request(`/driver-definitions/${id}`, {
     method: "PUT",
     body: JSON.stringify(definition),
@@ -46,7 +48,7 @@ export async function updateDriverDefinition(
 
 export async function deleteDriverDefinition(
   id: string
-): Promise<{ status: string; id: string }> {
+): Promise<{ status: string; driver_id: string }> {
   return request(`/driver-definitions/${id}`, { method: "DELETE" });
 }
 
@@ -123,7 +125,7 @@ export async function getPythonDrivers(): Promise<{ drivers: PythonDriverInfo[] 
 
 export async function getPythonDriverSource(
   id: string
-): Promise<{ id: string; filename: string; source: string }> {
+): Promise<{ driver_id: string; filename: string; source: string }> {
   return request(`/python-drivers/${id}/source`);
 }
 
@@ -140,7 +142,7 @@ export async function savePythonDriverSource(
 export async function createPythonDriver(data: {
   id: string;
   source: string;
-}): Promise<{ status: string; id: string }> {
+}): Promise<{ status: string; driver_id: string }> {
   return request("/python-drivers", {
     method: "POST",
     body: JSON.stringify(data),
