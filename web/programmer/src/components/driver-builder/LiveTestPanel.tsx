@@ -15,6 +15,7 @@ import type {
 import * as api from "../../api/restClient";
 import { normalizeOptionList } from "../shared/paramOptions";
 import { BASE } from "../../api/base";
+import { ApiError } from "../../api/errors";
 import type {
   TestCommandResult,
   TestPanelConflict,
@@ -400,7 +401,7 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
       // A82 — distinguish "throttled by our own rate limiter" from
       // protocol or transport errors. Start a visible countdown on Send and
       // tag the result row so the user understands it isn't a device fail.
-      const throttled = message.includes("API 429");
+      const throttled = e instanceof ApiError && e.status === 429;
       if (throttled) {
         setCooldownUntil(Date.now() + 2000);
       }

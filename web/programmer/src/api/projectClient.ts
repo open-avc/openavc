@@ -4,6 +4,7 @@ import type {
   LibraryProjectDetail,
 } from "./types";
 import { BASE, request } from "./base";
+import { ApiError } from "./errors";
 
 // --- Project ---
 
@@ -55,7 +56,7 @@ export async function getProject(): Promise<ProjectConfig & { _etag?: string }> 
   });
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`API ${res.status}: ${body}`);
+    throw new ApiError(res.status, body);
   }
   const etag = res.headers.get("etag") ?? undefined;
   const text = await res.text();
@@ -124,7 +125,7 @@ export async function saveProject(
   }
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`API ${res.status}: ${body}`);
+    throw new ApiError(res.status, body);
   }
 
   const result = await res.json();
@@ -244,7 +245,7 @@ export async function importToLibrary(file: File, id?: string): Promise<{
   });
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`API ${res.status}: ${body}`);
+    throw new ApiError(res.status, body);
   }
   return res.json();
 }

@@ -2,6 +2,7 @@
 // at /api/plugins/video_panel/ext/*. These are only reachable when the plugin
 // is enabled for the current project; callers gate the UI on that.
 import { request, BASE } from "./base";
+import { ApiError } from "./errors";
 
 export interface Stream {
   stream_id: string;
@@ -87,7 +88,7 @@ export async function fetchSnapshot(streamId: string): Promise<string> {
   );
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`API ${res.status}: ${body}`);
+    throw new ApiError(res.status, body);
   }
   return URL.createObjectURL(await res.blob());
 }

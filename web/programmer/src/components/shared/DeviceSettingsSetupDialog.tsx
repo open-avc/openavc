@@ -1,5 +1,6 @@
 import { useState } from "react";
 import * as api from "../../api/restClient";
+import { ApiError, parseApiError } from "../../api/errors";
 import type { DriverInfo } from "../../api/types";
 import { validateSettingValue } from "../driver-builder/deviceSettingsHelpers";
 import { normalizeOptionList } from "./paramOptions";
@@ -103,13 +104,14 @@ export function DeviceSettingsSetupDialog({
         await api.setDeviceSetting(deviceId, key, coercedValues[key]);
         newResults[key] = { success: true };
       } catch (e) {
-        const errStr = String(e);
-        const isConnectionError = errStr.includes("503") || errStr.includes("not connected");
+        // 503 = "device not connected": stash the value to push once it's back
+        // online (see storePendingSettings below), rather than reporting a fail.
+        const isConnectionError = e instanceof ApiError && e.status === 503;
         if (isConnectionError) {
           failedSettings[key] = coercedValues[key];
           newResults[key] = { success: true, pending: true };
         } else {
-          newResults[key] = { success: false, error: errStr };
+          newResults[key] = { success: false, error: parseApiError(e) };
         }
       }
     }

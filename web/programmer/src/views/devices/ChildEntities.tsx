@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChevronDown, ChevronRight, Pencil, RefreshCw } from "lucide-react";
 import * as api from "../../api/restClient";
+import { ApiError, parseApiError } from "../../api/errors";
 import { useConnectionStore } from "../../store/connectionStore";
 import type {
   ChildEntitiesListResponse,
@@ -44,7 +45,7 @@ export function ChildEntities({
   const [loading, setLoading] = useState(false);
   const [activeType, setActiveType] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [refreshError, setRefreshError] = useState<unknown>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -78,7 +79,7 @@ export function ChildEntities({
       // children disappear from the list.
       await reload();
     } catch (err) {
-      setRefreshError(String(err));
+      setRefreshError(err);
     } finally {
       setRefreshing(false);
     }
@@ -186,13 +187,13 @@ export function ChildEntities({
         </button>
       </div>
 
-      {refreshError && (
+      {refreshError != null && (
         <div style={{ ...errorStyle, marginBottom: "var(--space-sm)" }}>
-          {refreshError.includes("501")
+          {refreshError instanceof ApiError && refreshError.status === 501
             ? "This driver doesn't support re-discovering its children from the device."
-            : refreshError.includes("503")
+            : refreshError instanceof ApiError && refreshError.status === 503
             ? "Device is not connected — cannot refresh."
-            : `Refresh failed: ${refreshError}`}
+            : `Refresh failed: ${parseApiError(refreshError)}`}
         </div>
       )}
 
