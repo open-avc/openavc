@@ -614,109 +614,40 @@ class DeviceToolsMixin:
                 return d
         return {"error": f"Driver definition '{driver_id}' not found"}
 
-    @staticmethod
-    def _platform_too_old(required: str) -> bool:
-        """True when the running OpenAVC is older than ``required`` (semver).
-
-        Non-raising counterpart of the REST ``_enforce_min_platform_version``
-        (which raises HTTPException) for the dict-returning tool layer.
-        """
-        from server.version import __version__
-
-        def _parse(v: str) -> tuple:
-            return tuple(int(x) for x in v.split(".")[:3] if x.isdigit())
-
-        try:
-            return _parse(__version__) < _parse(required)
-        except (ValueError, AttributeError):
-            return False
-
     async def _install_community_driver(self, input: dict) -> Any:
-        from urllib.parse import urlparse
+        """Install a community driver through the canonical REST install path.
 
-        from server.core.device_manager import register_driver
-        from server.drivers.driver_loader import load_driver_file, load_python_driver_file
-        from server.drivers.configurable import create_configurable_driver_class
-        # Reuse the REST install's GitHub allowlist + YAML peek so both install
-        # paths stay on one source of truth.
-        from server.api.routes.drivers import _GITHUB_HOSTS, _peek_min_platform_version
+        Delegating (rather than reimplementing) is the whole point: the shared
+        ``/api/drivers/install`` handler also fetches a YAML driver's declared
+        Python companion and a Python driver's ``_sim.py`` / ``_discovery.py``
+        siblings, refreshes device matches, and promotes any devices that were
+        orphaned waiting on this driver — none of which the old forked copy did,
+        so an AI-chat install looked complete but wasn't. The REST layer raises
+        ``HTTPException`` on every failure (bad host, min-version gate,
+        id-mismatch guard, download/load errors); the tool layer returns
+        ``{"error": ...}`` dicts, so translate at the boundary.
+        """
+        from fastapi import HTTPException
 
-        driver_id = input.get("driver_id", "")
-        file_url = input.get("file_url", "")
-        if not file_url:
+        from server.api.models import CommunityDriverInstallRequest
+        from server.api.routes.drivers import install_community_driver
+
+        if not input.get("file_url"):
             return {"error": "No file_url provided"}
 
-        # SSRF guard: the AI is semi-trusted and fetches from the agent's network
-        # position. Restrict to GitHub hosts (the community repo) so the AI path
-        # can't be steered at intranet or cloud-metadata endpoints — parity with
-        # the REST /api/drivers/install allowlist.
-        parsed_url = urlparse(file_url)
-        if not parsed_url.hostname or parsed_url.hostname not in _GITHUB_HOSTS:
-            return {"error": f"Driver URL must be from GitHub ({', '.join(sorted(_GITHUB_HOSTS))})"}
-
-        # min_platform_version gate (parity with REST): block a driver declaring a
-        # newer platform than we run. Enforced from the request field up front,
-        # then again from the YAML itself after download.
-        req_min = input.get("min_platform_version")
-        if req_min and self._platform_too_old(req_min):
-            return {"error": f"This driver requires OpenAVC {req_min} or later. Update OpenAVC first."}
-
-        driver_repo = self._get_driver_repo_dir()
-        driver_repo.mkdir(parents=True, exist_ok=True)
-
-        ext = ".avcdriver" if file_url.endswith(".avcdriver") else ".py" if file_url.endswith(".py") else ""
-        if not ext:
-            return {"error": "URL must point to a .avcdriver or .py file"}
-
-        safe_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in driver_id)
-        filepath = driver_repo / f"{safe_id}{ext}"
-
         try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                resp = await client.get(file_url)
-                resp.raise_for_status()
-                text = resp.text
-                filepath.write_text(text, encoding="utf-8")
-        except (httpx.HTTPError, OSError) as e:
-            return {"error": f"Download failed: {e}"}
-
-        # Authoritative min-version gate from the file itself (independent of the
-        # request field, so a caller can't skip it by omitting the field).
-        if ext == ".avcdriver":
-            yaml_min = _peek_min_platform_version(text)
-            if yaml_min and self._platform_too_old(yaml_min):
-                filepath.unlink(missing_ok=True)
-                return {"error": f"This driver requires OpenAVC {yaml_min} or later. Update OpenAVC first."}
-
-        try:
-            if ext == ".avcdriver":
-                driver_def = load_driver_file(filepath)
-                if driver_def is None:
-                    filepath.unlink(missing_ok=True)
-                    return {"error": "Invalid driver definition file"}
-                driver_class = create_configurable_driver_class(driver_def)
-            else:
-                driver_class = load_python_driver_file(filepath)
-                if driver_class is None:
-                    filepath.unlink(missing_ok=True)
-                    return {"error": "No valid driver class found in Python file"}
-            # The registry keys on the file's own DRIVER_INFO id, but the
-            # filename and the listing/edit/delete tools key on the requested
-            # driver_id. If they diverge, later edit/delete can't find the driver
-            # and a mismatched id can silently overwrite an unrelated registered
-            # driver — require them to agree before registering.
-            info = getattr(driver_class, "DRIVER_INFO", None)
-            internal_id = info.get("id") if isinstance(info, dict) else None
-            if internal_id and internal_id != driver_id:
-                filepath.unlink(missing_ok=True)
-                return {"error": f"Downloaded driver declares id '{internal_id}', not the requested '{driver_id}'. Install it under id '{internal_id}'."}
-            register_driver(driver_class)
+            body = CommunityDriverInstallRequest(
+                driver_id=input.get("driver_id", ""),
+                file_url=input.get("file_url", ""),
+                min_platform_version=input.get("min_platform_version"),
+            )
         except Exception as e:
-            # Catch-all: driver loading can fail with YAML, import, or validation errors
-            filepath.unlink(missing_ok=True)
-            return {"error": f"Failed to load driver: {e}"}
+            return {"error": f"Invalid install request: {e}"}
 
-        return {"status": "installed", "driver_id": driver_id, "file": filepath.name}
+        try:
+            return await install_community_driver(body)
+        except HTTPException as e:
+            return {"error": str(e.detail)}
 
     async def _create_driver_definition(self, input: dict) -> Any:
         from server.drivers.driver_loader import list_driver_definitions, save_driver_definition, validate_driver_definition

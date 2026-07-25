@@ -77,6 +77,37 @@ def _peek_min_platform_version(yaml_text: str) -> str | None:
     return None
 
 
+def _enforce_driver_id_match(
+    driver_class: Any,
+    expected_id: str,
+    main_path: Path,
+    companion_path: Path | None = None,
+) -> None:
+    """Raise HTTPException 422 if the driver's own DRIVER_INFO id differs from
+    the requested ``expected_id``.
+
+    The registry keys on the file's own DRIVER_INFO id, but the filename and the
+    listing/edit/delete surfaces key on the requested id. If they diverge, a
+    later edit/delete can't find the driver and a mismatched id can silently
+    overwrite an unrelated registered driver — require them to agree before
+    registering. Rolls back the downloaded file(s) on mismatch so the install
+    stays atomic.
+    """
+    info = getattr(driver_class, "DRIVER_INFO", None)
+    internal_id = info.get("id") if isinstance(info, dict) else None
+    if internal_id and internal_id != expected_id:
+        main_path.unlink(missing_ok=True)
+        if companion_path:
+            companion_path.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Downloaded driver declares id '{internal_id}', not the "
+                f"requested '{expected_id}'. Install it under id '{internal_id}'."
+            ),
+        )
+
+
 # --- Drivers ---
 
 
@@ -415,12 +446,14 @@ async def install_community_driver(body: CommunityDriverInstallRequest) -> dict[
                     companion_filepath.unlink(missing_ok=True)
                 raise HTTPException(status_code=422, detail="Invalid driver definition file")
             driver_class = create_configurable_driver_class(driver_def)
+            _enforce_driver_id_match(driver_class, body.driver_id, filepath, companion_filepath)
             register_driver(driver_class)
         else:
             driver_class = load_python_driver_file(filepath)
             if driver_class is None:
                 filepath.unlink(missing_ok=True)
                 raise HTTPException(status_code=422, detail="No valid driver class found in Python file")
+            _enforce_driver_id_match(driver_class, body.driver_id, filepath)
             register_driver(driver_class)
     except HTTPException:
         raise

@@ -11,6 +11,7 @@ Covers the audit findings fixed in the server/cloud/tools/device_tools.py group:
   L-054 install_community_driver rejects an id that diverges from the file
   L-055 set_device_setting rejects a non-primitive value
   L-056 test_device_connection reports a missing port instead of probing :23
+  V-API-008 install_community_driver delegates to the canonical REST install
 """
 from __future__ import annotations
 
@@ -148,6 +149,72 @@ async def test_install_rejects_id_divergence(tmp_path, monkeypatch) -> None:
     assert "real_acme" in result.get("error", "")
     # The mismatched file must not linger in the repo.
     assert not (repo / "wrong_id.avcdriver").exists()
+
+
+# ---------------------------------------------------------------------------
+# install_community_driver delegates to the canonical REST path — V-API-008
+# ---------------------------------------------------------------------------
+
+async def test_ai_install_completes_via_rest_path(tmp_path, monkeypatch) -> None:
+    """V-API-008: the AI install tool routes through the shared REST install
+    handler, so a YAML driver's declared Python companion is fetched too (the
+    old forked tool wrote only the .avcdriver, silently breaking discovery) and
+    the result reports the devices the shared path promotes from orphaned."""
+    from unittest.mock import AsyncMock
+
+    repo = tmp_path / "driver_repo"
+    repo.mkdir()
+    # The REST handler reads its repo dir + engine wiring, so target those.
+    monkeypatch.setattr("server.api.routes.drivers._get_driver_repo_dir", lambda: repo)
+    monkeypatch.setattr("server.core.device_manager.register_driver", lambda cls: None)
+    monkeypatch.setattr(
+        "server.api.discovery.refresh_all_device_matches",
+        AsyncMock(return_value=None),
+        raising=False,
+    )
+    # A live engine whose orphan promotion the shared path runs + reports.
+    fake_engine = MagicMock()
+    fake_engine.devices.retry_all_orphans = AsyncMock(return_value=["waiting_dev"])
+    rest.set_engine(fake_engine)
+
+    yaml_text = (
+        "id: acme_widget\n"
+        "name: Acme Widget\n"
+        "transport: tcp\n"
+        "commands:\n  power_on:\n    label: 'On'\n    send: \"P\\r\"\n    params: {}\n"
+        "responses:\n  - match: OK\n    mappings:\n      - group: 0\n        state: ok\n"
+        "state_variables:\n  ok:\n    type: string\n    label: OK\n"
+        "discovery:\n  python:\n    file: ./acme_widget_discovery.py\n    cross_vendor: true\n"
+    )
+    companion_text = "async def probe(ctx):\n    pass\n"
+
+    yaml_resp = MagicMock(text=yaml_text)
+    yaml_resp.raise_for_status = MagicMock()
+    companion_resp = MagicMock(text=companion_text)
+    companion_resp.raise_for_status = MagicMock()
+    client = MagicMock()
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+    # Two fetches across the YAML download + companion download contexts.
+    client.get = AsyncMock(side_effect=[yaml_resp, companion_resp])
+    monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **k: client)
+
+    url = "https://raw.githubusercontent.com/open-avc/openavc-drivers/main/acme_widget.avcdriver"
+    handler = _pure_handler()
+    try:
+        result = await handler._install_community_driver(
+            {"driver_id": "acme_widget", "file_url": url}
+        )
+    finally:
+        rest.set_engine(None)
+
+    assert result["status"] == "installed"
+    assert result["driver_id"] == "acme_widget"
+    # The declared companion landed — the whole point of routing through REST.
+    assert (repo / "acme_widget.avcdriver").exists()
+    assert (repo / "acme_widget_discovery.py").read_text(encoding="utf-8") == companion_text
+    # Orphaned devices waiting on this driver are promoted and reported.
+    assert result["activated_devices"] == ["waiting_dev"]
 
 
 # ---------------------------------------------------------------------------
