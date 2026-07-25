@@ -45,6 +45,7 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -331,6 +332,13 @@ app.include_router(pair_routes.router)
 app.include_router(setup_routes.router)
 app.include_router(root_routes.router)
 app.include_router(network_routes.router)
+
+# Return request-validation (422) failures as a single-string {"detail": ...}
+# instead of FastAPI's raw list-of-dicts body, so a malformed request reads like
+# every other API error instead of a wall of Pydantic JSON.
+from server.api.errors import request_validation_exception_handler
+
+app.add_exception_handler(RequestValidationError, request_validation_exception_handler)
 
 # CORS — allow same-origin and localhost by default.
 # Additional origins can be set via OPENAVC_CORS_ORIGINS (comma-separated).
