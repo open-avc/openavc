@@ -714,8 +714,16 @@ export function validateDriver(
     // OSC argument values: numeric tags crash the send on an empty or
     // non-numeric value (the builder seeds new args with value "").
     if (draft.transport === "osc" && commandRoute(cmd) === "osc") {
-      (cmd.args ?? []).forEach((arg, i) => {
-        const problem = oscArgValueIssue(arg.type, arg.value);
+      if (cmd.args !== undefined && !Array.isArray(cmd.args)) {
+        issues.push({
+          severity: "error",
+          section: "behavior",
+          command: cmdName,
+          message: `Command "${cmdName}" args must be a list of OSC arguments.`,
+        });
+      }
+      (Array.isArray(cmd.args) ? cmd.args : []).forEach((arg, i) => {
+        const problem = oscArgValueIssue(arg?.type, arg?.value);
         if (problem) {
           issues.push({
             severity: "error",
@@ -860,8 +868,30 @@ export function validateDriver(
   //    save-time 422. An `address` response is OSC-only — flag one left on a
   //    non-OSC transport (it would never match), and require the '/'-rooted
   //    path the runtime demands. ────────────────────────────────────────────
-  (draft.responses ?? []).forEach((resp, i) => {
+  //    A definition typed by hand (imported, pasted, or AI-written) can carry
+  //    the wrong container type entirely — `responses:` as a mapping rather
+  //    than a list. Say so, rather than letting `.forEach` throw: the caller
+  //    catches the throw and shows a raw JavaScript message, which tells the
+  //    author nothing about what to fix.
+  if (draft.responses !== undefined && !Array.isArray(draft.responses)) {
+    issues.push({
+      severity: "error",
+      section: "behavior",
+      message: "Responses must be a list of response rules.",
+    });
+  }
+  (Array.isArray(draft.responses) ? draft.responses : []).forEach((resp, i) => {
     const label = `Response ${i + 1}`;
+    // Each entry must be a mapping too — a bare string or number here would
+    // otherwise reach a `.trim()` further down and throw.
+    if (resp === null || typeof resp !== "object" || Array.isArray(resp)) {
+      issues.push({
+        severity: "error",
+        section: "behavior",
+        message: `${label} must be a mapping of response fields.`,
+      });
+      return;
+    }
     const tn = (draft.transport || "tcp").toUpperCase();
     // Throttle (any response kind): the runtime rejects a zero/negative/
     // non-numeric value, since it would silently disable either the rule or

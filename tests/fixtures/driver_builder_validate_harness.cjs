@@ -7,8 +7,12 @@
 // (sets / query_for). Prints JSON results to stdout; the Python wrapper
 // skips when the Node toolchain or esbuild is absent.
 const path = require("path");
+const fs = require("fs");
 
 const validatorPath = process.argv[2];
+// The shared rejection corpus (driver_validation_cases.json), replayed at the
+// end of this file.
+const corpusPath = process.argv[3];
 
 const esbuild = require("esbuild");
 const built = esbuild.buildSync({
@@ -1428,6 +1432,38 @@ const irIssues = (issues) => issues.filter((i) => i.field === "ir_codes");
   );
   const errors = errorsOf(issues);
   results.p4_full_featured_driver_ok = { pass: errors.length === 0, detail: errors };
+}
+
+// --- The shared rejection corpus ----------------------------------------
+// Every definition in driver_validation_cases.json is one the loader refuses.
+// The community driver catalog already replays this corpus against its
+// vendored copy of the Python rules; the Builder's validator is the consumer
+// that was never wired to it, so a rule the loader enforces can be missing
+// here and nothing notices until an author hits a save-time rejection.
+//
+// Emitted as raw verdicts, one per case. The Python side decides which are
+// expected to pass, so the known gaps live in one reviewable list there
+// instead of scattered through this file.
+{
+  const cases = JSON.parse(fs.readFileSync(corpusPath, "utf8"));
+  const corpus = {};
+  for (const [name, draft] of Object.entries(cases)) {
+    try {
+      const issues = validate(draft) || [];
+      corpus[name] = {
+        rejected: errorsOf(issues).length > 0,
+        threw: null,
+        messages: issues.map((i) => `${i.severity}: ${i.message}`),
+      };
+    } catch (e) {
+      corpus[name] = {
+        rejected: false,
+        threw: String(e && e.message ? e.message : e),
+        messages: [],
+      };
+    }
+  }
+  results.corpus = corpus;
 }
 
 process.stdout.write(JSON.stringify(results));

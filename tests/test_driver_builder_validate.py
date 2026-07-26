@@ -20,9 +20,19 @@ parameter. Also covers the top-level field rules the Builder surfaces:
 need id/kind with passthrough_port bounds (duplicate ids warn — the runtime
 silently keeps the last), config_derived templates must reference declared
 config fields (unknown tokens and name collisions warn), and ir_codes must
-be a boolean (warning when true off the bridge transport). Skips when the
-Node toolchain or esbuild is absent rather than failing the Python-only CI
-gate.
+be a boolean (warning when true off the bridge transport).
+
+Finally, it replays the whole shared rejection corpus
+(``tests/fixtures/driver_validation_cases.json``) — every definition the
+driver loader refuses — and asserts the Builder reports an error for each
+one. The hand-written scenarios above cover authoring rules the loader has
+no opinion on, which the corpus cannot reach; the corpus covers the loader's
+rules, which hand-written scenarios kept missing. Cases the Builder does not
+flag yet are listed in ``TS_CORPUS_GAPS`` as strict xfails, so implementing
+a rule forces its entry out of the list.
+
+Skips when the Node toolchain or esbuild is absent — unless the run promised
+Node (see tests/gates.py), in which case it fails instead.
 """
 from __future__ import annotations
 
@@ -51,6 +61,10 @@ VALIDATOR = (
 )
 NODE_MODULES = OPENAVC_ROOT / "web" / "programmer" / "node_modules"
 ESBUILD_DIR = NODE_MODULES / "esbuild"
+# The shared rejection corpus: every definition the loader refuses, generated
+# from the same rules the community catalog vendors (see
+# test_driver_validation_messages.py).
+CASES_FIXTURE = OPENAVC_ROOT / "tests" / "fixtures" / "driver_validation_cases.json"
 
 
 def _toolchain_reason() -> str | None:
@@ -71,7 +85,7 @@ def validate_results() -> dict:
     if reason:
         gates.skip_or_fail(gates.NODE, reason)
     proc = subprocess.run(
-        ["node", str(HARNESS), str(VALIDATOR)],
+        ["node", str(HARNESS), str(VALIDATOR), str(CASES_FIXTURE)],
         capture_output=True,
         text=True,
         cwd=str(OPENAVC_ROOT),
@@ -179,3 +193,127 @@ def test_driver_builder_validate(validate_results: dict, scenario: str) -> None:
     assert scenario in validate_results, f"harness did not report {scenario}"
     outcome = validate_results[scenario]
     assert outcome["pass"], f"{scenario} failed: detail={outcome.get('detail')!r}"
+
+
+# ── The shared rejection corpus ───────────────────────────────────────────
+# Every definition in driver_validation_cases.json is one the driver loader
+# refuses. The community driver catalog already replays this corpus against
+# its vendored copy of the Python rules; the Builder's validator is the one
+# consumer that was never wired to it. Without this, a rule the loader
+# enforces can be missing from the Builder and nobody finds out until an
+# author fills in a form, hits Save, and gets rejected by the server.
+#
+# Known gaps: cases the loader rejects and the Builder does not flag yet.
+# They are marked xfail(strict=True), so the moment the Builder learns a
+# rule its case fails as an unexpected pass and the entry has to come out.
+# The list only shrinks; adding to it needs a reason in review.
+TS_CORPUS_GAPS = {
+    "action_confirm_bad_type",
+    "action_icon_not_string",
+    "action_label_not_string",
+    "action_param_pattern_redos",
+    "action_params_not_mapping",
+    "auth_redos_pattern",
+    "child_state_variable_bad_cloud_priority",
+    "child_state_variable_control_not_bool",
+    "child_state_variable_not_mapping",
+    "child_state_variable_unit_not_string",
+    "child_state_variable_unknown_type",
+    "child_type_def_not_mapping",
+    "command_prefix_not_string",
+    "command_suffix_not_string",
+    "device_setting_min_greater_than_max",
+    "device_setting_state_key_undeclared",
+    "device_setting_unknown_type",
+    "discovery_invalid_block",
+    "instances_count_from_state_not_string",
+    "instances_count_from_state_undeclared",
+    "instances_ids_non_scalar",
+    "instances_label_not_string",
+    "liveness_expect_not_string",
+    "liveness_expect_redos",
+    "param_decimals_negative",
+    "param_min_greater_than_max",
+    "param_min_not_number",
+    "param_options_from_bad_source",
+    "param_options_from_not_mapping",
+    "param_options_from_param_missing",
+    "param_options_from_param_not_sibling",
+    "param_options_from_sibling_not_child_id",
+    "param_options_state_empty",
+    "param_pattern_redos",
+    "param_trim_not_bool",
+    "param_type_from_not_mapping",
+    "param_type_from_param_missing",
+    "param_type_from_param_not_sibling",
+    "param_type_from_sibling_not_cascade",
+    "polling_interval_inert",
+    "polling_not_mapping",
+    "query_entry_query_for_empty",
+    "query_entry_query_for_undeclared_var",
+    "response_redos_pattern",
+    "send_frame_header_not_string",
+    "send_frame_not_mapping",
+    "state_variable_bad_cloud_priority",
+    "state_variable_control_not_bool",
+    "state_variable_not_dict",
+    "state_variable_unit_not_string",
+    "state_variables_not_mapping",
+    "unsupported_transport",
+}
+
+CORPUS_CASES = sorted(json.loads(CASES_FIXTURE.read_text(encoding="utf-8")))
+
+CORPUS_PARAMS = [
+    pytest.param(
+        name,
+        marks=pytest.mark.xfail(
+            strict=True,
+            reason="the Builder has no rule for this yet (TS_CORPUS_GAPS)",
+        ),
+    )
+    if name in TS_CORPUS_GAPS
+    else name
+    for name in CORPUS_CASES
+]
+
+
+def _corpus(validate_results: dict) -> dict:
+    corpus = validate_results.get("corpus")
+    assert corpus, "harness did not replay the rejection corpus"
+    return corpus
+
+
+@pytest.mark.parametrize("case", CORPUS_PARAMS)
+def test_builder_flags_what_the_loader_rejects(
+    validate_results: dict, case: str
+) -> None:
+    """A definition the loader refuses must be an error in the Builder too."""
+    verdict = _corpus(validate_results)[case]
+    assert verdict["rejected"], (
+        f"{case}: the loader rejects this definition and the Builder reports "
+        f"no error. Issues raised: {verdict['messages'] or 'none'}"
+    )
+
+
+@pytest.mark.parametrize("case", CORPUS_CASES)
+def test_builder_survives_every_corpus_definition(
+    validate_results: dict, case: str
+) -> None:
+    """A malformed definition must produce a message, never a crash.
+
+    A thrown TypeError is caught upstream and shown as a raw JavaScript
+    string, which tells the author nothing — and it aborts the whole pass,
+    so every rule after it is skipped for that draft.
+    """
+    verdict = _corpus(validate_results)[case]
+    assert verdict["threw"] is None, (
+        f"{case}: validateDriver threw instead of reporting an issue: "
+        f"{verdict['threw']}"
+    )
+
+
+def test_every_corpus_case_was_replayed(validate_results: dict) -> None:
+    """The harness must report on all of them — a silent drop hides a gap."""
+    missing = sorted(set(CORPUS_CASES) - set(_corpus(validate_results)))
+    assert not missing, f"harness did not replay: {missing}"
