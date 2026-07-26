@@ -336,9 +336,18 @@ app.include_router(network_routes.router)
 # Return request-validation (422) failures as a single-string {"detail": ...}
 # instead of FastAPI's raw list-of-dicts body, so a malformed request reads like
 # every other API error instead of a wall of Pydantic JSON.
-from server.api.errors import request_validation_exception_handler
+from server.api.errors import (
+    StructuredApiError,
+    request_validation_exception_handler,
+    structured_api_error_handler,
+)
 
 app.add_exception_handler(RequestValidationError, request_validation_exception_handler)
+
+# The few errors that carry machine-readable fields put them *beside* the string
+# detail rather than inside it, so every client still finds a readable sentence
+# at {"detail": ...}. See server/api/errors.py for the contract.
+app.add_exception_handler(StructuredApiError, structured_api_error_handler)
 
 # CORS — allow same-origin and localhost by default.
 # Additional origins can be set via OPENAVC_CORS_ORIGINS (comma-separated).

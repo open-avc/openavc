@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import JSONResponse
 
 from server.api.auth import require_programmer_auth
+from server.api.errors import StructuredApiError
 from server.system_config import THEMES_DIR as BUILTIN_THEMES_DIR
 from server.utils.fileio import atomic_write_text
 from server.utils.paths import safe_path_within
@@ -267,14 +268,14 @@ async def import_theme(
 
     custom_path = _custom_themes_dir() / f"{theme_id}.json"
     if custom_path.exists() and not overwrite:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "code": "theme_exists",
-                "id": theme_id,
-                "name": data.get("name", theme_id),
-                "message": f"A custom theme with id '{theme_id}' already exists.",
-            },
+        # The UI turns this one into an "overwrite?" prompt, so it needs the id
+        # and name as data — hence the sibling fields beside the readable detail.
+        raise StructuredApiError(
+            409,
+            f"A custom theme with id '{theme_id}' already exists.",
+            code="theme_exists",
+            theme_id=theme_id,
+            name=data.get("name", theme_id),
         )
 
     atomic_write_text(custom_path, json.dumps(data, indent=4, ensure_ascii=False))

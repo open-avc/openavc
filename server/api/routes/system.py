@@ -980,10 +980,7 @@ async def upload_tls_cert(
     try:
         tls_dir.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=f"TLS data directory is not writable: {tls_dir} ({exc})",
-        ) from exc
+        raise _api_error(500, "The TLS data directory is not writable.", exc) from None
 
     cert_path = tls_dir / "user-cert.pem"
     key_path = tls_dir / "user-key.pem"
@@ -999,10 +996,7 @@ async def upload_tls_cert(
         # Best-effort cleanup of any partial temps.
         cert_tmp.unlink(missing_ok=True)
         key_tmp.unlink(missing_ok=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Could not write certificate files: {exc}",
-        ) from exc
+        raise _api_error(500, "Could not write the certificate files.", exc) from None
 
     if os.name == "posix":
         try:

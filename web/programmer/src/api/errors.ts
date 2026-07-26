@@ -8,16 +8,17 @@
 // "API <status>: <body>" form so existing `String(e)` / `.message` consumers
 // keep rendering the same text.
 
-/** Pull the human-readable detail out of a JSON error body, if it has one. */
+/**
+ * Pull the human-readable detail out of a JSON error body, if it has one.
+ *
+ * The server's contract is that `detail` is always a string carrying the whole
+ * message; anything a client branches on rides in sibling top-level keys (see
+ * `server/api/errors.py`), so there is exactly one place to look for the text.
+ */
 function extractDetail(body: string): string | null {
   try {
-    const parsed = JSON.parse(body);
-    const detail = parsed?.detail;
+    const detail = JSON.parse(body)?.detail;
     if (typeof detail === "string") return detail;
-    if (detail?.message) {
-      const errors: string[] = detail.errors ?? [];
-      return errors.length ? `${detail.message}:\n${errors.join("\n")}` : detail.message;
-    }
   } catch {
     /* not JSON, fall through */
   }

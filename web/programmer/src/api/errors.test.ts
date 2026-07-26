@@ -27,9 +27,19 @@ describe("ApiError", () => {
     expect(new ApiError(500, '{"detail":"boom"}').detail).toBe("boom");
   });
 
-  it("extracts a {message, errors} detail into a joined string", () => {
-    const err = new ApiError(422, '{"detail":{"message":"Invalid","errors":["a","b"]}}');
-    expect(err.detail).toBe("Invalid:\na\nb");
+  it("reads the whole message from detail when structured fields ride alongside", () => {
+    // The server's contract: detail is a complete readable string even when
+    // machine-readable siblings (here, `errors`) are present.
+    const err = new ApiError(
+      422,
+      '{"detail":"2 validation error(s) in driver definition:\\na\\nb","errors":["a","b"]}',
+    );
+    expect(err.detail).toBe("2 validation error(s) in driver definition:\na\nb");
+  });
+
+  it("falls back to the raw body when detail is not a string", () => {
+    const body = '{"detail":{"message":"Invalid"}}';
+    expect(new ApiError(422, body).detail).toBe(body);
   });
 
   it("falls back to the raw body when it is not JSON", () => {

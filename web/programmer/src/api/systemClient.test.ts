@@ -43,7 +43,12 @@ describe("importTheme", () => {
     mockFetch({
       ok: false,
       status: 409,
-      json: () => ({ detail: { code: "theme_exists", id: "midnight", name: "Midnight" } }),
+      json: () => ({
+        detail: "A custom theme with id 'midnight' already exists.",
+        code: "theme_exists",
+        theme_id: "midnight",
+        name: "Midnight",
+      }),
     });
     await expect(importTheme(file)).rejects.toBeInstanceOf(ThemeExistsError);
     try {

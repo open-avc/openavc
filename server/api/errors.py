@@ -1,4 +1,20 @@
-"""Shared API error helpers."""
+"""Shared API error helpers.
+
+The error contract, in one place so it stays one contract:
+
+* ``detail`` is **always** a JSON string — a sentence a person can read. Anything
+  a client needs to branch on rides in sibling top-level keys, via
+  :class:`StructuredApiError`, so the readable half never has to be dug out of
+  an object.
+* A 500 never carries raw exception text. Route it through :func:`api_error`,
+  which logs the real exception server-side and hands the caller a stable
+  sentence instead of a stack-trace fragment or a filesystem path.
+* A 4xx says what the caller got wrong, in their words. Passing an exception's
+  message straight through is fine there when our own validation code raised it
+  with that message written for the user.
+"""
+
+from typing import Any
 
 from fastapi import HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -14,6 +30,42 @@ def api_error(status_code: int, message: str, exc: Exception | None = None) -> H
     if exc is not None:
         log.error(f"API error ({status_code}): {message} — {type(exc).__name__}: {exc}")
     return HTTPException(status_code=status_code, detail=message)
+
+
+class StructuredApiError(HTTPException):
+    """An error that carries machine-readable fields *beside* the string detail.
+
+    A few failures need more than a sentence — the theme-import collision the UI
+    turns into an "overwrite?" prompt, the driver-definition save that has a list
+    of validation errors to show. The temptation is to make ``detail`` an object
+    and hide the sentence inside it, which is what the API used to do; then every
+    error extractor needs a special case, and the ones that don't have it show
+    the user raw JSON.
+
+    So the extra data goes alongside instead::
+
+        raise StructuredApiError(409, "A theme named 'Midnight' already exists.",
+                                 code="theme_exists", theme_id="midnight")
+        → 409 {"detail": "A theme named 'Midnight' already exists.",
+               "code": "theme_exists", "theme_id": "midnight"}
+
+    Every client still finds a readable string at ``detail``; the ones that care
+    read the sibling keys. Rendered by ``structured_api_error_handler``,
+    registered once on the app in ``main.py``.
+    """
+
+    def __init__(self, status_code: int, detail: str, **fields: Any) -> None:
+        super().__init__(status_code=status_code, detail=detail)
+        self.fields = fields
+
+
+async def structured_api_error_handler(request: Request, exc: StructuredApiError) -> JSONResponse:
+    """Render a :class:`StructuredApiError` as ``{"detail": <str>, **fields}``."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail, **exc.fields},
+        headers=exc.headers,
+    )
 
 
 def format_request_validation_errors(errors: list) -> str:

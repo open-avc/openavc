@@ -231,12 +231,13 @@ export async function importTheme(
   });
   if (!res.ok) {
     if (res.status === 409) {
+      // The collision 409 carries `code`/`theme_id`/`name` beside the readable
+      // `detail` string, so the overwrite prompt has the ids it needs.
       const body = await res.json().catch(() => null);
-      const detail = body?.detail;
-      if (detail && typeof detail === "object" && detail.code === "theme_exists") {
-        throw new ThemeExistsError(detail.id, detail.name || detail.id);
+      if (body?.code === "theme_exists") {
+        throw new ThemeExistsError(body.theme_id, body.name || body.theme_id);
       }
-      throw new Error(typeof detail === "string" ? detail : "Import failed");
+      throw new Error(typeof body?.detail === "string" ? body.detail : "Import failed");
     }
     const body = await res.text();
     throw new Error(`Import failed: ${body}`);

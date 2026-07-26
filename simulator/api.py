@@ -187,9 +187,11 @@ async def start_device(device_id: str, req: StartRequest):
         return sim.to_info_dict()
     except ValueError as e:
         raise HTTPException(400, str(e))
-    except Exception as e:
+    except Exception:
+        # The traceback is already in the simulator log; the caller gets a
+        # sentence rather than a fragment of it.
         logger.exception("Failed to start simulator for %s", device_id)
-        raise HTTPException(500, str(e))
+        raise HTTPException(500, f"Could not start the simulator for '{device_id}'.")
 
 
 @router.post("/devices/{device_id}/stop")

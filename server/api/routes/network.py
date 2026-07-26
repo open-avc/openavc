@@ -18,6 +18,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 
 from server.api.auth import require_local_or_programmer_auth
+from server.api.errors import api_error
 from server.api.models import (
     HostnameRequest,
     NetworkIPv4Request,
@@ -63,7 +64,7 @@ async def network_status() -> dict[str, Any]:
     try:
         return await backend.get_status()
     except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise api_error(500, "Could not read the host network configuration.", e)
 
 
 @router.post("/ipv4")
@@ -107,7 +108,7 @@ async def network_wifi_scan() -> dict[str, Any]:
     try:
         return {"networks": await backend.wifi_scan()}
     except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise api_error(500, "Could not scan for WiFi networks.", e)
 
 
 @router.post("/wifi/connect")

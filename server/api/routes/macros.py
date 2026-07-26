@@ -26,7 +26,9 @@ async def execute_macro(macro_id: str) -> dict[str, Any]:
     except ValueError as e:
         raise _api_error(404, str(e))
     except Exception as e:
-        raise _api_error(500, f"Macro execution failed: {e}", exc=e)
+        # The traceback goes to the log (which the IDE streams live) rather than
+        # into the toast — a failing step's exception is rarely a sentence.
+        raise _api_error(500, f"Macro '{macro_id}' failed to run — see the log for details.", exc=e)
     return {"status": "executed", "macro_id": macro_id}
 
 

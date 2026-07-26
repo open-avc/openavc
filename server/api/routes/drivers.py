@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from server.api._engine import _get_engine, _rate_limit_test
 from server.api.auth import require_claimed_auth
+from server.api.errors import StructuredApiError
 from server.api.errors import api_error as _api_error
 from server.api.models import (
     CommunityDriverInstallRequest,
@@ -156,6 +157,19 @@ def _get_driver_repo_dir() -> Path:
     """Get the driver_repo/ directory path."""
     from server.system_config import DRIVER_REPO_DIR
     return DRIVER_REPO_DIR
+
+
+def _definition_invalid(errors: list[str], preamble: str | None = None) -> StructuredApiError:
+    """422 for a driver definition that failed validation.
+
+    The ``detail`` string is the whole message — heading plus the errors, one per
+    line — so a client that only reads ``detail`` still shows the author every
+    problem to fix. The same list rides along in ``errors`` for anything that
+    wants to render them individually.
+    """
+    heading = preamble or f"{len(errors)} validation error(s) in driver definition"
+    detail = f"{heading}:\n" + "\n".join(errors) if errors else heading
+    return StructuredApiError(422, detail, errors=errors)
 
 
 def _companion_relpath_from_yaml(yaml_text: str) -> str | None:
@@ -1157,10 +1171,7 @@ async def create_driver_definition(body: DriverDefinitionRequest) -> dict:
     # Validate
     errors = validate_driver_definition(driver_def)
     if errors:
-        raise HTTPException(
-            status_code=422,
-            detail={"errors": errors, "message": f"{len(errors)} validation error(s) in driver definition"},
-        )
+        raise _definition_invalid(errors)
 
     # Save to driver_repo (user/community directory)
     save_dir = dirs[1]  # driver_repo/
@@ -1221,10 +1232,7 @@ async def update_driver_definition(driver_id: str, body: DriverDefinitionRequest
     # Validate
     errors = validate_driver_definition(driver_def)
     if errors:
-        raise HTTPException(
-            status_code=422,
-            detail={"errors": errors, "message": f"{len(errors)} validation error(s) in driver definition"},
-        )
+        raise _definition_invalid(errors)
 
     # Delete old and save new
     delete_driver_definition(driver_id, dirs)
@@ -1310,10 +1318,7 @@ async def patch_driver_definition(driver_id: str, body: dict) -> dict:
     # Validate merged result
     errors = validate_driver_definition(merged)
     if errors:
-        raise HTTPException(
-            status_code=422,
-            detail={"errors": errors, "message": f"{len(errors)} validation error(s) in driver definition"},
-        )
+        raise _definition_invalid(errors)
 
     # Delete old and save merged
     delete_driver_definition(driver_id, dirs)
@@ -1995,7 +2000,7 @@ async def get_python_driver_source(driver_id: str) -> dict:
     try:
         source = filepath.read_text(encoding="utf-8")
     except OSError as e:
-        raise HTTPException(status_code=500, detail=f"Failed to read driver file: {e}")
+        raise _api_error(500, f"Could not read driver '{driver_id}'.", e)
 
     return {"driver_id": driver_id, "filename": filepath.name, "source": source}
 
@@ -2049,7 +2054,7 @@ async def save_python_driver_source(driver_id: str, body: dict) -> dict:
     try:
         filepath.write_text(source, encoding="utf-8")
     except OSError as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save driver file: {e}")
+        raise _api_error(500, f"Could not save driver '{driver_id}'.", e)
 
     return {"status": "saved", "driver_id": driver_id}
 
@@ -2071,7 +2076,7 @@ async def create_python_driver(body: PythonDriverCreateRequest) -> dict:
     except FileExistsError:
         raise HTTPException(status_code=409, detail=f"Python driver '{body.id}' already exists")
     except OSError as e:
-        raise HTTPException(status_code=500, detail=f"Failed to create driver file: {e}")
+        raise _api_error(500, f"Could not create driver '{body.id}'.", e)
 
     # Try to load and register immediately
     from server.drivers.driver_loader import load_python_driver_file
@@ -2188,13 +2193,10 @@ async def reload_driver_definition(driver_id: str) -> dict:
             errors = validate_driver_definition(raw) if isinstance(raw, dict) else ["not a YAML mapping"]
         except (OSError, _yaml.YAMLError):
             errors = []
-        raise HTTPException(
-            status_code=422,
-            detail={
-                "errors": errors,
-                "message": f"Driver file '{filepath.name}' is invalid or its "
-                           f"discovery companion is missing (see server log)",
-            },
+        raise _definition_invalid(
+            errors,
+            preamble=f"Driver file '{filepath.name}' is invalid or its "
+                     f"discovery companion is missing (see server log)",
         )
 
     # Re-register, then reconnect live devices so they pick up the disk version

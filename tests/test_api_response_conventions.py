@@ -117,6 +117,104 @@ def test_no_route_echoes_a_bare_id():
     )
 
 
+def _raises_with_status_and_detail(tree: ast.AST):
+    """Yield (lineno, status, detail_node, caught_exception_names) for error raises.
+
+    Covers both spellings — a raw ``HTTPException`` and the ``api_error`` helper
+    — and walks whole modules, not just route handlers, because plenty of these
+    raises live in the module-level helpers the handlers call.
+    """
+    def walk(node, caught: tuple[str, ...]):
+        if isinstance(node, ast.ExceptHandler) and node.name:
+            caught = caught + (node.name,)
+        if isinstance(node, ast.Call):
+            name = getattr(node.func, "id", None) or getattr(node.func, "attr", None)
+            if name in ("HTTPException", "api_error", "_api_error", "StructuredApiError"):
+                status = detail = None
+                for kw in node.keywords:
+                    if kw.arg == "status_code" and isinstance(kw.value, ast.Constant):
+                        status = kw.value.value
+                    elif kw.arg == "detail":
+                        detail = kw.value
+                if status is None and node.args and isinstance(node.args[0], ast.Constant):
+                    status = node.args[0].value
+                if detail is None and len(node.args) >= 2:
+                    detail = node.args[1]
+                if detail is not None:
+                    yield node.lineno, status, detail, caught
+        for child in ast.iter_child_nodes(node):
+            yield from walk(child, caught)
+
+    yield from walk(tree, ())
+
+
+def test_error_detail_is_always_a_string():
+    """Rule 6: errors are ``{"detail": <string>}``.
+
+    An object ``detail`` hides the readable sentence inside a shape every error
+    extractor then needs a special case for — and the ones without it show the
+    user raw JSON. Machine-readable fields belong beside ``detail``, which is
+    what ``StructuredApiError`` is for.
+    """
+    offenders = []
+    for path, tree in _api_modules():
+        for lineno, _status, detail, _caught in _raises_with_status_and_detail(tree):
+            if isinstance(detail, ast.Dict):
+                offenders.append(f"{path.name}:{lineno}")
+    assert not offenders, (
+        "These raises pass a dict as 'detail'. Keep detail a readable string and "
+        "put the machine-readable fields beside it with StructuredApiError:\n  "
+        + "\n  ".join(offenders)
+    )
+
+
+def test_server_errors_do_not_leak_exception_text():
+    """Rule: a 500 reports a sentence, not the exception that caused it.
+
+    Raw exception text is a stack-trace fragment, an OS error, or a filesystem
+    path — noise to the integrator reading it and detail we would rather not
+    hand out. ``api_error(500, msg, exc)`` logs the real thing server-side and
+    returns the sentence.
+
+    Exactly 500, deliberately. Every other 5xx names a specific condition where
+    the exception message *is* the answer: a 501 carries the driver's own "this
+    device can't do that", a 502 carries what the upstream said. 4xx is exempt
+    for the same reason — there the message is usually our own validation code
+    telling the caller what they got wrong, in their words.
+    """
+    roots = list(_api_modules())
+    # The simulator serves its own REST API from a separate process; same rule.
+    sim_api = API_ROOT.parent.parent / "simulator" / "api.py"
+    roots.append((sim_api, ast.parse(sim_api.read_text(encoding="utf-8"))))
+
+    offenders = []
+    for path, tree in roots:
+        for lineno, status, detail, caught in _raises_with_status_and_detail(tree):
+            if not caught or status is None or int(status) != 500:
+                continue
+            # Reading one field off the exception is fine and often the useful
+            # part — a 502 saying `GitHub returned {e.response.status_code}`
+            # tells the user something real. Stringifying the whole exception
+            # (`str(e)`, `f"...{e}"`) is what hands out internals.
+            read_as_attribute = {
+                id(sub.value) for sub in ast.walk(detail)
+                if isinstance(sub, ast.Attribute) and isinstance(sub.value, ast.Name)
+            }
+            leaked = {
+                sub.id for sub in ast.walk(detail)
+                if isinstance(sub, ast.Name)
+                and sub.id in caught
+                and id(sub) not in read_as_attribute
+            }
+            if leaked:
+                offenders.append(f"{path.name}:{lineno} (stringifies {', '.join(sorted(leaked))})")
+    assert not offenders, (
+        "These 5xx responses interpolate the caught exception into the message. "
+        "Use api_error(status, '<what failed, in a sentence>', exc) so the real "
+        "exception is logged instead:\n  " + "\n  ".join(offenders)
+    )
+
+
 # --- Behavioral half: the conventions against the running app ---
 
 

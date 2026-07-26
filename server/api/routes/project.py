@@ -13,7 +13,6 @@ from server.core.project_loader import ProjectConfig
 from server.utils.log_buffer import get_log_buffer
 
 router = APIRouter()
-open_router = APIRouter()
 
 
 # --- Project ---

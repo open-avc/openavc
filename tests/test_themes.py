@@ -215,10 +215,12 @@ async def test_import_custom_collision_returns_409_and_preserves_existing(client
     incoming = dict(original, name="Incoming", variables={"panel_bg": "#999999"})
     resp = _import(client, incoming)
     assert resp.status_code == 409
-    detail = resp.json()["detail"]
-    assert detail["code"] == "theme_exists"
-    assert detail["id"] == theme_id
-    assert detail["name"] == "Incoming"
+    body = resp.json()
+    # detail stays a readable string; the ids the overwrite prompt needs ride beside it.
+    assert isinstance(body["detail"], str) and theme_id in body["detail"]
+    assert body["code"] == "theme_exists"
+    assert body["theme_id"] == theme_id
+    assert body["name"] == "Incoming"
 
     # The edited theme the user already had is untouched.
     kept = client.get(f"/api/themes/{theme_id}").json()

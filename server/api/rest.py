@@ -53,7 +53,6 @@ router.include_router(_project_routes.router)
 router.include_router(_system_routes.router)
 
 # Include open (unauthenticated) sub-routers
-open_router.include_router(_project_routes.open_router)
 open_router.include_router(_push_routes.open_router)
 open_router.include_router(_setup_routes.open_router)
 open_router.include_router(_system_routes.open_router)

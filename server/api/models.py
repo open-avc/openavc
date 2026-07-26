@@ -56,10 +56,6 @@ class StateSetRequest(BaseModel):
     value: Any
 
 
-class MacroExecuteRequest(BaseModel):
-    macro_id: str | None = None
-
-
 class DeviceResponse(BaseModel):
     id: str
     name: str
@@ -94,10 +90,6 @@ class DeviceUpdateRequest(BaseModel):
     # Omitted/None means "leave the existing map untouched" — the common
     # name/driver/config edit must not wipe it.
     child_entities: dict[str, Any] | None = None
-
-
-class ScriptSourceRequest(BaseModel):
-    source: str
 
 
 _SCRIPT_ID_RE = re.compile(r"^[a-z0-9_]+$")
@@ -248,11 +240,6 @@ class LibrarySaveRequest(BaseModel):
 
 class LibraryOpenRequest(BaseModel):
     library_id: str
-    project_name: str
-    project_id: str | None = None
-
-
-class BlankProjectRequest(BaseModel):
     project_name: str
     project_id: str | None = None
 
