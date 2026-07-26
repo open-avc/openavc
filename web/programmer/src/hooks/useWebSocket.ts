@@ -349,7 +349,11 @@ export function useWebSocket() {
       }
 
       if (msg.type === "discovery_complete") {
-        useDiscoveryStore.getState().setStatus("complete");
+        // The scan reports "partial" when it ran out of time or errored —
+        // the results are real but the sweep didn't finish.
+        useDiscoveryStore.getState().setStatus(
+          msg.status === "partial" ? "partial" : "complete",
+        );
         if (Array.isArray(msg.warnings)) {
           useDiscoveryStore.getState().setWarnings(msg.warnings as string[]);
         }

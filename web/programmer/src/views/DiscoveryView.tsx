@@ -223,6 +223,7 @@ export function DiscoveryPanel() {
         setDevices(r.devices);
         if (r.status === "running") setStatus("running");
         else if (r.status === "complete") setStatus("complete");
+        else if (r.status === "partial") setStatus("partial");
       }
       if (r.port_labels) setPortLabels(r.port_labels);
       if (r.warnings) setWarnings(r.warnings);
@@ -385,20 +386,23 @@ export function DiscoveryPanel() {
   }, [devices, sortBy, filterCat, avOnly, showHidden, hiddenIps]);
 
   const isRunning = status === "running";
+  // A partial scan finished the matcher and produced real results — it just
+  // didn't finish sweeping, so it ends the same way a complete scan does.
+  const isFinished = status === "complete" || status === "partial";
   const [scanCompletedAt, setScanCompletedAt] = useState<Date | null>(null);
   const prevStatusRef = useRef(status);
   useEffect(() => {
-    if (prevStatusRef.current === "running" && status === "complete") {
+    if (prevStatusRef.current === "running" && isFinished) {
       setScanCompletedAt(new Date());
     }
     prevStatusRef.current = status;
-  }, [status]);
+  }, [status, isFinished]);
 
   // Smooth progress bar interpolation
   const [displayProgress, setDisplayProgress] = useState(0);
   useEffect(() => {
     if (!isRunning) {
-      setDisplayProgress(status === "complete" ? 1 : 0);
+      setDisplayProgress(isFinished ? 1 : 0);
       return;
     }
     const interval = setInterval(() => {
@@ -409,7 +413,7 @@ export function DiscoveryPanel() {
       });
     }, 50);
     return () => clearInterval(interval);
-  }, [progress, isRunning, status]);
+  }, [progress, isRunning, isFinished]);
 
   // Static labels for each engine-emitted phase. The eight scan phases
   // come from server/discovery/engine.py:_scan_pipeline_inner; "refresh"
@@ -633,7 +637,9 @@ export function DiscoveryPanel() {
           <AlertTriangle size={16} style={{ flexShrink: 0, color: "var(--color-warning)", marginTop: 2 }} />
           <div>
             <div style={{ fontWeight: 600, marginBottom: 2 }}>
-              Scan ran with problems on this system
+              {status === "partial"
+                ? "Scan did not finish — results are incomplete"
+                : "Scan ran with problems on this system"}
             </div>
             {warnings.map((w, i) => (
               <div key={i} style={{ marginBottom: i < warnings.length - 1 ? 2 : 0 }}>
@@ -709,6 +715,11 @@ export function DiscoveryPanel() {
       {!isRunning && scanCompletedAt && Object.keys(devices).length > 0 && (
         <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: "var(--space-xs)" }}>
           Results from {scanCompletedAt.toLocaleTimeString()} ({Object.keys(devices).length} device{Object.keys(devices).length !== 1 ? "s" : ""})
+          {status === "partial" && (
+            <span style={{ color: "var(--color-warning)" }}>
+              {" "}— incomplete scan, see above
+            </span>
+          )}
         </div>
       )}
 

@@ -165,7 +165,10 @@ class ScanStatus:
 
     def __init__(self) -> None:
         self.scan_id: str = ""
-        self.status: str = "idle"  # idle, running, complete, cancelled
+        # idle, running, complete, cancelled, partial ("partial" = the scan hit
+        # its time limit or errored, so the phases below ran on a subset of the
+        # network; the accompanying warning says so).
+        self.status: str = "idle"
         self.phase: str = ""
         self.phase_number: int = 0
         self.total_phases: int = 8
@@ -546,25 +549,64 @@ class DiscoveryEngine:
             self.scan_status.duration = time.time() - self.scan_status.started_at
 
     async def _run_scan(self, subnets: list[str], timeout: float) -> None:
-        """Execute the full scan pipeline."""
+        """Execute the full scan pipeline.
+
+        The deadline covers the network-bound phases (1-7) only. Phase 8 — the
+        matcher — runs afterwards, unbudgeted, because it is CPU-only over
+        evidence already in memory and is what turns a scan into answers. A
+        truncated scan therefore still identifies everything it managed to
+        observe, and reports itself ``partial`` rather than ``complete`` so a
+        client can tell "we ran out of time" from "the network was empty".
+        """
+        truncated = False
+        cancelled = False
         try:
             await asyncio.wait_for(self._scan_pipeline(subnets), timeout=timeout)
         except asyncio.TimeoutError:
-            log.warning("Scan timed out after %.0fs", timeout)
+            truncated = True
+            phase = self.scan_status.phase or "startup"
+            log.warning("Scan timed out after %.0fs during phase %s", timeout, phase)
+            self.scan_status.warnings.append(
+                f"Scan stopped at its {timeout:.0f}s limit during "
+                f"\"{self.scan_status.message or phase}\". Devices found after that "
+                "point are missing. Scan a smaller subnet, or raise the time limit, "
+                "for complete results."
+            )
         except asyncio.CancelledError:
+            cancelled = True
             log.info("Scan cancelled")
             raise
         except Exception:  # Catch-all: isolates any scan pipeline error to ensure cleanup runs
+            truncated = True
             log.exception("Scan failed")
+            self.scan_status.warnings.append(
+                "Scan ended early after an unexpected error. Results are incomplete "
+                "— see the server log for details."
+            )
         finally:
+            # Match drivers against whatever evidence was collected, even when
+            # the phases above were cut short. Skipped only on an explicit
+            # cancel, where the user asked for no further work.
+            if not cancelled:
+                try:
+                    await self._finalize_scan()
+                except Exception:
+                    log.exception("Driver matching failed")
+                    self.scan_status.warnings.append(
+                        "Driver matching failed — devices were found but could not "
+                        "be identified. See the server log for details."
+                    )
             self.scan_status.status = (
-                "cancelled" if self.scan_status.status == "cancelled" else "complete"
+                "cancelled" if self.scan_status.status == "cancelled"
+                else "partial" if truncated
+                else "complete"
             )
             self.scan_status.duration = time.time() - self.scan_status.started_at
             self.scan_status.devices_found = len(self.results)
             await self._emit({
                 "type": "discovery_complete",
                 "scan_id": self.scan_status.scan_id,
+                "status": self.scan_status.status,
                 "total_devices": len(self.results),
                 "duration_seconds": self.scan_status.duration,
                 "warnings": list(self.scan_status.warnings),
@@ -590,7 +632,10 @@ class DiscoveryEngine:
           7: Collect passive listener results + SNMP results, port-scan
              passive-only hosts, then run driver-declared probes (UDP
              broadcasts, TCP probes, Python companions)
-          8: Run the deterministic matcher per device + finalize
+          8: Run the deterministic matcher per device + finalize —
+             NOT part of this coroutine. It lives in _finalize_scan and is
+             driven by _run_scan outside the scan deadline, so a scan that
+             runs out of time still identifies what it observed.
 
         Every signal-producing phase appends ``Evidence`` records to the
         device's ``evidence_log``. The matcher runs once at finalize and
@@ -938,44 +983,8 @@ class DiscoveryEngine:
             # before the matcher runs in phase 8.
             await self._run_custom_probes(subnets, control_ip)
 
-            # --- Phase 8: Run the matcher per device + Finalize ---
-            await self._set_phase(8, "finalize", "Matching drivers...")
-
-            finalize_total = len(self.results)
-            for i, device in enumerate(self.results.values()):
-                # Emit open-port enrichment evidence for any port that's
-                # both observed open AND referenced by at least one
-                # driver's ``port_open:`` hint. Bare openness on a
-                # generic port is too weak to emit unconditionally.
-                for port in device.open_ports:
-                    if self.signal_index.find_soft_open_port(port):
-                        device.evidence_log.append(evidence_open_port(port))
-
-                # Mine probe responses for manufacturer / make strings
-                # and append vendor_string enrichment evidence so the
-                # matcher can pick a best-fit driver via
-                # ``manufacturer_alias:`` hints — e.g. a probe response
-                # carrying ``manufacturer=<vendor>`` surfaces a driver
-                # that claims that alias without needing an OUI hit.
-                device.evidence_log.extend(
-                    extract_vendor_strings(device.evidence_log)
-                )
-
-                device.identification = self.tier_matcher.match(device.evidence_log)
-                await self._emit_device_update(device, "driver_match")
-                if finalize_total > 0:
-                    await self._update_intra_progress((i + 1) / finalize_total)
-
-            # Remove devices that were not re-discovered in this scan
-            stale_ips = [ip for ip, dev in self.results.items() if not dev.alive]
-            for ip in stale_ips:
-                del self.results[ip]
-            if stale_ips:
-                log.info(
-                    "Removed %d stale devices not found in this scan", len(stale_ips)
-                )
-
-            self.scan_status.devices_found = len(self.results)
+            # Phase 8 (the matcher) deliberately does NOT run here — it runs
+            # in _run_scan, outside the scan deadline. See _finalize_scan.
 
         finally:
             # Release the passive listeners (each holds a bound UDP socket on
@@ -988,6 +997,54 @@ class DiscoveryEngine:
             await self._cancel_background_tasks(
                 mdns_task, ssdp_task, amx_ddp_task, snmp_task,
             )
+
+    async def _finalize_scan(self) -> None:
+        """Phase 8: run the deterministic matcher per device, then finalize.
+
+        Runs OUTSIDE the scan deadline (see _run_scan). This phase is pure CPU
+        over evidence already collected in memory — it makes no network calls —
+        and it is the entire point of the scan: without it every device carries
+        ``identification: None``. Budgeting it meant a slow network spent the
+        whole allowance on phases 3-5 and then threw away the evidence it had
+        just paid for, reporting a "complete" scan with zero identifications.
+        """
+        await self._set_phase(8, "finalize", "Matching drivers...")
+
+        finalize_total = len(self.results)
+        for i, device in enumerate(self.results.values()):
+            # Emit open-port enrichment evidence for any port that's
+            # both observed open AND referenced by at least one
+            # driver's ``port_open:`` hint. Bare openness on a
+            # generic port is too weak to emit unconditionally.
+            for port in device.open_ports:
+                if self.signal_index.find_soft_open_port(port):
+                    device.evidence_log.append(evidence_open_port(port))
+
+            # Mine probe responses for manufacturer / make strings
+            # and append vendor_string enrichment evidence so the
+            # matcher can pick a best-fit driver via
+            # ``manufacturer_alias:`` hints — e.g. a probe response
+            # carrying ``manufacturer=<vendor>`` surfaces a driver
+            # that claims that alias without needing an OUI hit.
+            device.evidence_log.extend(
+                extract_vendor_strings(device.evidence_log)
+            )
+
+            device.identification = self.tier_matcher.match(device.evidence_log)
+            await self._emit_device_update(device, "driver_match")
+            if finalize_total > 0:
+                await self._update_intra_progress((i + 1) / finalize_total)
+
+        # Remove devices that were not re-discovered in this scan
+        stale_ips = [ip for ip, dev in self.results.items() if not dev.alive]
+        for ip in stale_ips:
+            del self.results[ip]
+        if stale_ips:
+            log.info(
+                "Removed %d stale devices not found in this scan", len(stale_ips)
+            )
+
+        self.scan_status.devices_found = len(self.results)
 
     async def _cancel_background_tasks(
         self, *tasks: asyncio.Task | None,

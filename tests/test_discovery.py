@@ -323,6 +323,9 @@ class TestDiscoveryEngine:
                             mock_snmp_cls.return_value = mock_snmp
 
                             await self.engine._scan_pipeline(["192.168.1.0/24"])
+                            # Matching is phase 8, which _run_scan drives
+                            # outside the scan deadline.
+                            await self.engine._finalize_scan()
 
         # Should have found both devices
         assert len(self.engine.results) == 2

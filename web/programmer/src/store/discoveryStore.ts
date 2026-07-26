@@ -8,7 +8,9 @@ interface DiscoveryState {
   /** Discovered devices keyed by IP */
   devices: Record<string, DiscoveredDevice>;
   /** Scan status */
-  status: "idle" | "running" | "complete" | "cancelled";
+  /** "partial" = the scan hit its time limit or errored partway; the
+   *  devices it did find are matched, but the sweep did not finish. */
+  status: "idle" | "running" | "complete" | "cancelled" | "partial";
   /** Current scan phase name */
   phase: string;
   /** Progress 0-1 */

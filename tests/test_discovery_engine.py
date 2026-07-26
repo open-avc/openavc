@@ -308,8 +308,12 @@ class TestRunScan:
         assert self.engine.scan_status.status == "complete"
         assert self.engine.scan_status.duration >= 0
 
-    async def test_timeout_still_completes(self):
-        """If pipeline exceeds timeout, scan still completes."""
+    async def test_timeout_reports_partial_with_warning(self):
+        """A scan cut short by its deadline reports partial, not complete.
+
+        Reporting "complete" made a truncated scan indistinguishable from a
+        scan of an empty network.
+        """
         import time
         self.engine.scan_status.started_at = time.time()
         self.engine.scan_status.scan_id = "test_scan"
@@ -320,10 +324,52 @@ class TestRunScan:
         with patch.object(self.engine, "_scan_pipeline", side_effect=slow_pipeline):
             await self.engine._run_scan(["192.168.1.0/24"], timeout=0.1)
 
-        assert self.engine.scan_status.status == "complete"
+        assert self.engine.scan_status.status == "partial"
+        assert any(
+            "stopped at its" in w for w in self.engine.scan_status.warnings
+        ), self.engine.scan_status.warnings
 
-    async def test_exception_in_pipeline_still_completes(self):
-        """If pipeline raises, scan still marks complete."""
+    async def test_timeout_still_runs_the_matcher(self):
+        """The matcher runs even when the deadline cut the phases feeding it.
+
+        This is the whole point of the split: phase 8 is CPU-only over evidence
+        already in memory, so budgeting it meant a slow network produced a scan
+        with zero identifications and no indication anything went wrong.
+        """
+        import time
+        self.engine.scan_status.started_at = time.time()
+        self.engine.scan_status.scan_id = "test_scan"
+
+        async def slow_pipeline(subnets):
+            await asyncio.sleep(10)
+
+        with patch.object(self.engine, "_scan_pipeline", side_effect=slow_pipeline), \
+             patch.object(
+                 self.engine, "_finalize_scan", new_callable=AsyncMock
+             ) as finalize:
+            await self.engine._run_scan(["192.168.1.0/24"], timeout=0.1)
+
+        finalize.assert_awaited_once()
+
+    async def test_cancel_skips_the_matcher(self):
+        """An explicit stop means stop — no further work, including matching."""
+        import time
+        self.engine.scan_status.started_at = time.time()
+        self.engine.scan_status.scan_id = "test_scan"
+
+        with patch.object(
+            self.engine, "_scan_pipeline",
+            new_callable=AsyncMock, side_effect=asyncio.CancelledError()
+        ), patch.object(
+            self.engine, "_finalize_scan", new_callable=AsyncMock
+        ) as finalize:
+            with pytest.raises(asyncio.CancelledError):
+                await self.engine._run_scan(["192.168.1.0/24"], timeout=10.0)
+
+        finalize.assert_not_awaited()
+
+    async def test_exception_in_pipeline_reports_partial(self):
+        """If the pipeline raises, the scan is partial — not a clean complete."""
         import time
         self.engine.scan_status.started_at = time.time()
         self.engine.scan_status.scan_id = "test_scan"
@@ -334,7 +380,50 @@ class TestRunScan:
         ):
             await self.engine._run_scan(["192.168.1.0/24"], timeout=10.0)
 
-        assert self.engine.scan_status.status == "complete"
+        assert self.engine.scan_status.status == "partial"
+        assert any(
+            "ended early" in w for w in self.engine.scan_status.warnings
+        ), self.engine.scan_status.warnings
+
+    async def test_matcher_failure_does_not_sink_the_scan(self):
+        """A matcher crash still yields a reported scan with the devices found."""
+        import time
+        self.engine.scan_status.started_at = time.time()
+        self.engine.scan_status.scan_id = "test_scan"
+
+        events = []
+        self.engine._on_update = AsyncMock(side_effect=lambda msg: events.append(msg))
+
+        with patch.object(self.engine, "_scan_pipeline", new_callable=AsyncMock), \
+             patch.object(
+                 self.engine, "_finalize_scan",
+                 new_callable=AsyncMock, side_effect=RuntimeError("matcher boom")
+             ):
+            await self.engine._run_scan(["192.168.1.0/24"], timeout=10.0)
+
+        assert any(e["type"] == "discovery_complete" for e in events)
+        assert any(
+            "Driver matching failed" in w for w in self.engine.scan_status.warnings
+        ), self.engine.scan_status.warnings
+
+    async def test_complete_event_carries_status(self):
+        """Clients read truncation off the event, not just the status endpoint."""
+        import time
+        self.engine.scan_status.started_at = time.time()
+        self.engine.scan_status.scan_id = "test_scan"
+
+        events = []
+        self.engine._on_update = AsyncMock(side_effect=lambda msg: events.append(msg))
+
+        async def slow_pipeline(subnets):
+            await asyncio.sleep(10)
+
+        with patch.object(self.engine, "_scan_pipeline", side_effect=slow_pipeline):
+            await self.engine._run_scan(["192.168.1.0/24"], timeout=0.1)
+
+        complete = [e for e in events if e["type"] == "discovery_complete"]
+        assert len(complete) == 1
+        assert complete[0]["status"] == "partial"
 
     async def test_emits_discovery_complete(self):
         """_run_scan emits discovery_complete event."""
@@ -450,6 +539,9 @@ class TestScanPipeline:
              patch("server.discovery.engine.SNMPScanner", mock_snmp_cls), \
              patch("server.discovery.engine._resolve_hostnames", new_callable=AsyncMock, return_value={}):
             await self.engine._scan_pipeline(["192.168.1.0/24"])
+            # Stale removal is part of phase 8, which _run_scan drives
+            # separately so it survives a deadline overrun.
+            await self.engine._finalize_scan()
 
         # Stale device should have been removed
         assert "192.168.1.99" not in self.engine.results
