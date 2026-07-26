@@ -30,6 +30,19 @@ DRIVER_ID = "e2e_child_driver"
 DRIVER_NAME = "E2E Child Driver"
 
 
+def _rename_id(page: Page, testid: str, new_id: str) -> None:
+    """Type a new identifier into an ID field and commit it.
+
+    The Builder's ID inputs commit on blur or Enter rather than on every
+    keystroke: renaming per keystroke would remount the row under each
+    half-typed name. So filling one is not enough — press Enter, or the old
+    name stays and every locator keyed to the new one times out.
+    """
+    field = page.get_by_test_id(testid)
+    field.fill(new_id)
+    field.press("Enter")
+
+
 def _open_driver_builder_create(page: Page, base_url: str) -> None:
     """Navigate to Devices -> Drivers sub-tab -> Create view tab."""
     page.goto(f"{base_url}/programmer/", wait_until="domcontentloaded")
@@ -84,16 +97,19 @@ def test_declare_child_type_persists_to_yaml_and_reload(
     _expand_child_entity_types_section(page)
 
     page.get_by_test_id("add-child-type").click()
-    # New card seeds as child_type_1; rename it to "encoder" (fill fires a
-    # single input event, so the rename happens once).
-    page.get_by_test_id("child-type-id-child_type_1").fill("encoder")
+    # New card seeds as child_type_1; rename it to "encoder". The ID field
+    # commits on blur or Enter, not on every keystroke — renaming per keystroke
+    # would remount the row under a half-typed name — so press Enter to commit
+    # before anything looks for the new name.
+    _rename_id(page, "child-type-id-child_type_1", "encoder")
+
     page.get_by_test_id("child-type-label-encoder").fill("Encoder")
 
     # Declare one state field for the child type.
     page.get_by_test_id("add-child-field").click()
     field_id = page.get_by_test_id("child-field-id-field_1")
     expect(field_id).to_be_visible(timeout=EXPECT_TIMEOUT)
-    field_id.fill("signal_present")
+    _rename_id(page, "child-field-id-field_1", "signal_present")
     # Re-locate after the rename (testid tracks the field name).
     page.get_by_test_id("child-field-id-signal_present").wait_for(
         state="visible", timeout=EXPECT_TIMEOUT,
@@ -160,7 +176,7 @@ def test_command_child_id_param_persists(openavc_server, page: Page):
     # type to reference.
     _expand_child_entity_types_section(page)
     page.get_by_test_id("add-child-type").click()
-    page.get_by_test_id("child-type-id-child_type_1").fill("decoder")
+    _rename_id(page, "child-type-id-child_type_1", "decoder")
 
     # Add a command with a child_id parameter.
     page.get_by_role("button", name="Add Command").click()
