@@ -35,15 +35,21 @@ from urllib.request import urlopen
 
 import pytest
 
+from tests import gates
+
 # Playwright drives a real browser and is an optional dev dependency, so it is
-# deliberately not installed in CI. When it isn't importable (CI's unit job, or
-# any box without the dev extras) skip collecting the e2e tests entirely, so a
-# missing import doesn't abort the whole pytest run. They still run anywhere
-# Playwright is installed -- locally: `pip install -e .[dev] &&
-# python -m playwright install chromium`, then `pytest tests/e2e/`.
+# deliberately not installed in the automated test job. When it isn't
+# importable (that job, or any box without the dev extras) skip collecting the
+# e2e tests entirely, so a missing import doesn't abort the whole pytest run.
+# They still run anywhere Playwright is installed -- locally:
+# `pip install -e .[dev] && python -m playwright install chromium`, then
+# `pytest tests/e2e/`. A run that installs it says so with
+# OPENAVC_REQUIRE_E2E=1 and then a missing Playwright is an error, not a
+# silently empty directory.
 try:
     import playwright  # noqa: F401
 except ImportError:
+    gates.fail_if_required(gates.E2E, "playwright is not installed")
     collect_ignore_glob = ["test_*.py"]
 
 OPENAVC_ROOT = Path(__file__).resolve().parents[2]

@@ -33,6 +33,8 @@ from pathlib import Path
 
 import pytest
 
+from tests import gates
+
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 
 HARNESS = OPENAVC_ROOT / "tests" / "fixtures" / "routing_matrix_helpers_harness.cjs"
@@ -74,7 +76,7 @@ def _toolchain_reason() -> str | None:
 def helper_results() -> dict:
     reason = _toolchain_reason()
     if reason:
-        pytest.skip(reason)
+        gates.skip_or_fail(gates.NODE, reason)
     proc = subprocess.run(
         ["node", str(HARNESS), str(HELPERS_TS)],
         capture_output=True,

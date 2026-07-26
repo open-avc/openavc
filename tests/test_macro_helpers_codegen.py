@@ -34,6 +34,8 @@ from pathlib import Path
 
 import pytest
 
+from tests import gates
+
 from server.core.condition_eval import eval_operator
 from server.core.script_api import compare as script_compare
 
@@ -63,7 +65,7 @@ def _toolchain_reason() -> str | None:
 def generated() -> dict:
     reason = _toolchain_reason()
     if reason:
-        pytest.skip(reason)
+        gates.skip_or_fail(gates.NODE, reason)
     proc = subprocess.run(
         ["node", str(HARNESS), str(HELPERS)],
         capture_output=True,

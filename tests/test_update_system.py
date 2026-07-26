@@ -19,6 +19,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from tests import gates
+
 from server.updater.manager import UpdateManager
 from server.updater.platform import DeploymentType
 from server.updater.rollback import (
@@ -71,6 +73,7 @@ def _find_bash() -> str | None:
 
 _BASH_PATH = _find_bash()
 _BASH_AVAILABLE = _BASH_PATH is not None
+_BASH_MISSING = None if _BASH_AVAILABLE else "bash not available"
 
 
 def _build_fake_install(
@@ -138,6 +141,7 @@ def _build_update_tarball(staging_dir: Path, version: str) -> Path:
 
 _OPENSSL = shutil.which("openssl")
 _OPENSSL_AVAILABLE = _OPENSSL is not None
+_OPENSSL_MISSING = None if _OPENSSL_AVAILABLE else "openssl not available"
 
 
 def _gen_trusted_keypair(keys_dir: Path, priv: Path) -> None:
@@ -614,7 +618,7 @@ class TestWindowsInstallerCaching:
 # ===========================================================================
 
 
-@pytest.mark.skipif(not _BASH_AVAILABLE, reason="bash not available")
+@gates.skipif_missing(gates.BASH, _BASH_MISSING)
 class TestHelperScriptNoOp:
     """When no instruction files exist, the script must exit 0 and touch nothing."""
 
@@ -643,7 +647,7 @@ class TestHelperScriptNoOp:
         assert files_before == files_after
 
 
-@pytest.mark.skipif(not _BASH_AVAILABLE, reason="bash not available")
+@gates.skipif_missing(gates.BASH, _BASH_MISSING)
 class TestHelperScriptApplyUpdate:
     """Simulate ExecStartPre running after the server wrote apply-update.json."""
 
@@ -779,8 +783,8 @@ class TestHelperScriptApplyUpdate:
         assert _read_version(app_dir) == "1.0.0"
 
 
-@pytest.mark.skipif(not (_BASH_AVAILABLE and _OPENSSL_AVAILABLE),
-                    reason="bash + openssl required")
+@gates.skipif_missing(gates.BASH, _BASH_MISSING)
+@gates.skipif_missing(gates.OPENSSL, _OPENSSL_MISSING)
 class TestHelperScriptSignatureGate:
     """H-075: once trusted keys are present (signing armed), the root helper must
     verify the artifact's detached signature against a trusted key before doing
@@ -853,7 +857,7 @@ class TestHelperScriptSignatureGate:
         assert _read_version(app_dir) == "2.0.0"
 
 
-@pytest.mark.skipif(not _BASH_AVAILABLE, reason="bash not available")
+@gates.skipif_missing(gates.BASH, _BASH_MISSING)
 class TestHelperScriptRollback:
     """Simulate ExecStartPre running after _rollback_linux wrote apply-rollback."""
 
@@ -980,7 +984,7 @@ class TestHelperScriptRollback:
         assert not (data_dir / "apply-rollback").exists()
 
 
-@pytest.mark.skipif(not _BASH_AVAILABLE, reason="bash not available")
+@gates.skipif_missing(gates.BASH, _BASH_MISSING)
 class TestHelperScriptAtomicSwap:
     """A62: atomic-swap-extract guarantees that files removed in the new
     release do not linger in $APP_DIR after an update."""
@@ -1059,7 +1063,7 @@ class TestHelperScriptAtomicSwap:
 # ===========================================================================
 
 
-@pytest.mark.skipif(not _BASH_AVAILABLE, reason="bash not available")
+@gates.skipif_missing(gates.BASH, _BASH_MISSING)
 class TestFullLinuxUpdateLifecycle:
     """Simulate: User clicks Install → update applies → server starts v2."""
 
@@ -1218,8 +1222,8 @@ def _run_mac_wrapper(data_dir: Path, app: Path) -> subprocess.CompletedProcess:
     )
 
 
-@pytest.mark.skipif(not (_BASH_AVAILABLE and _OPENSSL_AVAILABLE),
-                    reason="bash + openssl required")
+@gates.skipif_missing(gates.BASH, _BASH_MISSING)
+@gates.skipif_missing(gates.OPENSSL, _OPENSSL_MISSING)
 class TestMacWrapperSignatureGate:
     """Parity with update-helper.sh's gate: once trusted keys ship in the
     installed bundle, the wrapper must verify the update tarball's detached

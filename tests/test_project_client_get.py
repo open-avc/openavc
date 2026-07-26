@@ -24,6 +24,8 @@ from pathlib import Path
 
 import pytest
 
+from tests import gates
+
 # Repo root = openavc/ (this file is openavc/tests/test_project_client_get.py).
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 
@@ -49,7 +51,7 @@ def _toolchain_reason() -> str | None:
 def helper_results() -> dict:
     reason = _toolchain_reason()
     if reason:
-        pytest.skip(reason)
+        gates.skip_or_fail(gates.NODE, reason)
     proc = subprocess.run(
         ["node", str(HARNESS), str(PROJECT_CLIENT_TS)],
         capture_output=True,

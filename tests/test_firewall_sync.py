@@ -16,12 +16,14 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
+from tests import gates
 
 SCRIPT = Path(__file__).resolve().parents[1] / "installer" / "firewall-sync.sh"
 BASH = shutil.which("bash")
 
-pytestmark = pytest.mark.skipif(BASH is None, reason="bash not available")
+pytestmark = gates.skipif_missing(
+    gates.BASH, None if BASH else "bash not available"
+)
 
 
 def run_sync(tmp_path, config=None, state=None, backend="ufw"):

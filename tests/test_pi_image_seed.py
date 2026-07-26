@@ -20,6 +20,8 @@ from pathlib import Path
 
 import pytest
 
+from tests import gates
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "release-pi.yml"
@@ -44,8 +46,9 @@ def _render_info_box(*lines: str) -> list[str]:
     characters aren't mangled by a non-UTF-8 locale default."""
     if sys.platform == "win32":
         pytest.skip("openavc-info.sh is Linux-only Pi-image tooling; no POSIX bash on Windows")
-    if shutil.which("bash") is None:
-        pytest.skip("bash not installed")
+    gates.skip_or_fail(
+        gates.BASH, None if shutil.which("bash") else "bash not installed"
+    )
     body = " ".join(f"'{line}'" for line in lines)
     proc = subprocess.run(
         ["bash", "-c", f"source '{INFO_SH}'; render_box 'OpenAVC Room Control' {body}"],
@@ -87,8 +90,9 @@ def test_no_forked_seed_is_tracked():
     A tracked copy is a fork of the canonical seed by definition — it can
     only drift. The staged copy is created at build time and gitignored.
     """
-    if shutil.which("git") is None:
-        pytest.skip("git not installed")
+    gates.skip_or_fail(
+        gates.GIT, None if shutil.which("git") else "git not installed"
+    )
     proc = subprocess.run(
         ["git", "ls-files", "installer/pi-image"],
         capture_output=True,
@@ -96,8 +100,9 @@ def test_no_forked_seed_is_tracked():
         cwd=str(REPO_ROOT),
         timeout=30,
     )
-    if proc.returncode != 0:
-        pytest.skip("not a git checkout")
+    gates.skip_or_fail(
+        gates.GIT, None if proc.returncode == 0 else "not a git checkout"
+    )
     tracked = [line for line in proc.stdout.splitlines() if line.endswith("project.avc")]
     assert not tracked, f"forked seed project committed under installer/pi-image: {tracked}"
 

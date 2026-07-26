@@ -19,6 +19,21 @@ jobs:
         os: [ubuntu-latest, windows-latest]
         python-version: ["3.12"]
 
+    # Tests that need a tool beyond the Python packages skip when it is
+    # missing, which is right on a developer's machine and wrong here: the leg
+    # that was meant to run them would skip them and still report success.
+    # Setting a variable is this leg promising the tool, and turns "missing,
+    # skip" into "missing, fail". The Linux leg installs them all and promises
+    # them; the Windows leg promises nothing, which says out loud that it does
+    # not run those tests. Everything behind these is OS-independent, so
+    # covering it once is enough. See tests/gates.py.
+    env:
+      OPENAVC_REQUIRE_NODE: ${{ matrix.os == 'ubuntu-latest' && '1' || '' }}
+      OPENAVC_REQUIRE_DRIVER_CORPUS: ${{ matrix.os == 'ubuntu-latest' && '1' || '' }}
+      OPENAVC_REQUIRE_BASH: ${{ matrix.os == 'ubuntu-latest' && '1' || '' }}
+      OPENAVC_REQUIRE_OPENSSL: ${{ matrix.os == 'ubuntu-latest' && '1' || '' }}
+      OPENAVC_REQUIRE_GIT: ${{ matrix.os == 'ubuntu-latest' && '1' || '' }}
+
     steps:
       - uses: actions/checkout@v4
 
@@ -33,12 +48,38 @@ jobs:
           pip install -r requirements.txt
           pip install -e ".[test]"
 
+      # Dozens of test files bundle the real TypeScript sources with esbuild and
+      # run them under Node, so they need web/programmer/node_modules. This job
+      # used to install Python only, and every one of those tests skipped.
+      - name: Set up Node.js
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Programmer UI dependencies
+        if: matrix.os == 'ubuntu-latest'
+        working-directory: web/programmer
+        run: npm ci
+
+      # The driver-library sweeps assert a platform property over every shipped
+      # driver, so they need the library itself. Clone it outside the checkout:
+      # inside, its 24 drivers that import from server.transport would be swept
+      # up by the tests that walk this repo's source tree. Track main rather
+      # than a pin — a genuine disagreement between the platform and the
+      # shipped drivers should go red here.
+      - name: Clone the community driver library
+        if: matrix.os == 'ubuntu-latest'
+        run: git clone --depth 1 https://github.com/open-avc/openavc-drivers.git "$RUNNER_TEMP/openavc-drivers"
+
       - name: Lint with ruff
         run: ruff check server/ tests/
 
       - name: Run tests
         # tests/perf holds wall-clock benchmarks that are unreliable on shared
         # CI runners; run them on demand with `pytest tests/perf`, not in the gate.
+        env:
+          OPENAVC_DRIVERS_ROOT: ${{ runner.temp }}/openavc-drivers
         run: pytest tests/ -v --tb=short --ignore=tests/perf
 
   build-frontend:

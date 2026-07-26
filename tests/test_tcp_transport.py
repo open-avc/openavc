@@ -11,6 +11,7 @@ from server.transport.frame_parsers import (
     LengthPrefixFrameParser,
     FixedLengthFrameParser,
 )
+from tests import gates
 
 
 # --- Fixtures ---
@@ -574,10 +575,10 @@ async def test_tls_connection_self_signed():
             ],
             capture_output=True, timeout=10,
         )
-        if result.returncode != 0:
-            pytest.skip("openssl not available for self-signed cert generation")
+        reason = None if result.returncode == 0 else "openssl could not mint a cert"
     except (FileNotFoundError, subprocess.TimeoutExpired):
-        pytest.skip("openssl not available for self-signed cert generation")
+        reason = "openssl not available for self-signed cert generation"
+    gates.skip_or_fail(gates.OPENSSL, reason)
 
     try:
         server_ctx.load_cert_chain(cert_file.name, key_file.name)
@@ -654,10 +655,10 @@ async def test_tls_refused_with_invalid_cert():
             ],
             capture_output=True, timeout=10,
         )
-        if result.returncode != 0:
-            pytest.skip("openssl not available")
+        reason = None if result.returncode == 0 else "openssl could not mint a cert"
     except (FileNotFoundError, subprocess.TimeoutExpired):
-        pytest.skip("openssl not available")
+        reason = "openssl not available"
+    gates.skip_or_fail(gates.OPENSSL, reason)
 
     try:
         server_ctx.load_cert_chain(cert_file.name, key_file.name)

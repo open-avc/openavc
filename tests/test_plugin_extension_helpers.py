@@ -33,6 +33,8 @@ from pathlib import Path
 
 import pytest
 
+from tests import gates
+
 # Repo root = openavc/ (this file is openavc/tests/test_plugin_extension_helpers.py).
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 
@@ -71,7 +73,7 @@ def _toolchain_reason() -> str | None:
 def helper_results() -> dict:
     reason = _toolchain_reason()
     if reason:
-        pytest.skip(reason)
+        gates.skip_or_fail(gates.NODE, reason)
     # A missing helpers module is the defect, not a toolchain gap.
     assert HELPERS_TS.is_file(), "pluginExtensionHelpers.ts missing"
     proc = subprocess.run(
