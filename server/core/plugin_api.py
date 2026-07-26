@@ -13,6 +13,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Callable, Coroutine
 
+from server.core.state_store import is_flat_primitive
 from server.utils.logger import get_logger
 from server.utils.net_safety import assert_safe_outbound_url
 
@@ -107,8 +108,8 @@ class PluginAPI:
         if not key.startswith(prefix):
             key = f"{prefix}{key}"
 
-        # Flat primitive enforcement
-        if value is not None and not isinstance(value, (str, int, float, bool)):
+        # Flat primitive enforcement (shared definition, see state_store)
+        if not is_flat_primitive(value):
             raise PluginPermissionError(
                 f"Plugin state values must be flat primitives, got {type(value).__name__}"
             )
@@ -130,7 +131,7 @@ class PluginAPI:
         deleted out from under the project.
         """
         self._require("variable_write")
-        if value is not None and not isinstance(value, (str, int, float, bool)):
+        if not is_flat_primitive(value):
             raise PluginPermissionError(
                 f"Variable values must be flat primitives, got {type(value).__name__}"
             )

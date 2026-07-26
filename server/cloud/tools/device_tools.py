@@ -5,6 +5,7 @@ from typing import Any
 import httpx
 
 from server.cloud.tools import ToolEditError, apply_tool_edit
+from server.core.state_store import is_flat_primitive
 from server.utils.paths import is_safe_script_filename, safe_path_within
 
 
@@ -358,8 +359,8 @@ class DeviceToolsMixin:
 
         # State holds flat primitives only — reject a list/dict/other before it
         # reaches the driver (which str()-ifies it into the protocol) or the
-        # state store. bool is an int subclass, so it's covered.
-        if value is not None and not isinstance(value, (str, int, float)):
+        # state store. Shared definition, see state_store.
+        if not is_flat_primitive(value):
             return {"error": "Setting value must be a string, number, boolean, or null"}
 
         try:

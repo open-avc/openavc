@@ -7,46 +7,45 @@ import pytest
 
 from server.api.ws import (
     _handle_message,
-    _is_flat_primitive,
     _send_ws,
     _PANEL_ALLOWED_TYPES,
-    _PANEL_STATE_SET_PREFIXES,
 )
+from server.core.state_store import PANEL_WRITABLE_PREFIXES, is_flat_primitive
 
 
-# ── _is_flat_primitive tests ──
+# ── is_flat_primitive tests ──
 
 
 def test_flat_primitive_none():
-    assert _is_flat_primitive(None) is True
+    assert is_flat_primitive(None) is True
 
 
 def test_flat_primitive_str():
-    assert _is_flat_primitive("hello") is True
+    assert is_flat_primitive("hello") is True
 
 
 def test_flat_primitive_int():
-    assert _is_flat_primitive(42) is True
+    assert is_flat_primitive(42) is True
 
 
 def test_flat_primitive_float():
-    assert _is_flat_primitive(3.14) is True
+    assert is_flat_primitive(3.14) is True
 
 
 def test_flat_primitive_bool():
-    assert _is_flat_primitive(True) is True
+    assert is_flat_primitive(True) is True
 
 
 def test_flat_primitive_list_rejected():
-    assert _is_flat_primitive([1, 2]) is False
+    assert is_flat_primitive([1, 2]) is False
 
 
 def test_flat_primitive_dict_rejected():
-    assert _is_flat_primitive({"a": 1}) is False
+    assert is_flat_primitive({"a": 1}) is False
 
 
 def test_flat_primitive_bytes_rejected():
-    assert _is_flat_primitive(b"data") is False
+    assert is_flat_primitive(b"data") is False
 
 
 # ── Panel restriction tests ──
@@ -184,7 +183,7 @@ async def test_programmer_can_set_any_namespace():
 
 def test_panel_state_set_prefixes_are_documented_namespaces():
     """The panel allowlist should map to var.* (user variables) and plugin.* (iframes)."""
-    assert _PANEL_STATE_SET_PREFIXES == ("var.", "plugin.")
+    assert PANEL_WRITABLE_PREFIXES == ("var.", "plugin.")
 
 
 @pytest.mark.asyncio
@@ -197,6 +196,26 @@ async def test_panel_can_execute_macro():
         await asyncio.sleep(0)  # the macro runs in a background task
     engine.macros.execute.assert_called_once()
     assert ws.sent[0]["type"] == "macro.execute.ack"
+
+
+@pytest.mark.asyncio
+async def test_repeated_panel_macro_presses_are_never_throttled():
+    """The WebSocket macro door is deliberately exempt from the debounce that
+    guards POST /api/macros/{id}/execute and the AI's run_macro tool.
+
+    Those two are operator doors — a person clicking "run" in the IDE. This one
+    carries panel button presses, so a throttle here would make a real room stop
+    responding to its own touch panel. The macro's own overlap/cooldown settings
+    are the control that belongs at this layer.
+    """
+    engine = _make_engine()
+    with patch("server.api._engine._engine", engine):
+        for _ in range(12):
+            ws = FakeWS()
+            await _handle_message(ws, {"type": "macro.execute", "macro_id": "lights"}, "panel")
+            await asyncio.sleep(0)
+            assert ws.sent[0]["type"] == "macro.execute.ack", ws.sent
+    assert engine.macros.execute.call_count == 12
 
 
 @pytest.mark.asyncio

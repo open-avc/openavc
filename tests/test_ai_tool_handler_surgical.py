@@ -595,6 +595,69 @@ async def test_update_macro_not_found(handler, mock_agent, mock_engine):
 
 
 @pytest.mark.asyncio
+async def test_add_macro_accepts_a_plugin_registered_action(handler, mock_agent, mock_engine):
+    """A plugin's macro action is as runnable as a built-in one.
+
+    The validator's action list used to be a frozen nine, so a step naming a
+    plugin action was rejected as malformed — which also made every macro
+    containing one un-editable, since update_macro revalidates the steps.
+    """
+    mock_engine.macros.plugin_action_types.return_value = frozenset({"acme.flash"})
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        msg = _make_tool_call_msg("add_macro", {
+            "id": "attention",
+            "name": "Attention",
+            "steps": [{"action": "acme.flash", "params": {"times": 3}}],
+        })
+        await handler.handle(msg)
+        await _drain()
+
+    payload = _get_result_payload(mock_agent)
+    assert payload["success"] is True, payload["result"]
+    macro = next(m for m in mock_engine.project.macros if m.id == "attention")
+    assert macro.steps[0].action == "acme.flash"
+
+
+@pytest.mark.asyncio
+async def test_add_macro_rejects_an_unregistered_action(handler, mock_agent, mock_engine):
+    """The gate still closes on a genuine typo — no plugin declares this."""
+    mock_engine.macros.plugin_action_types.return_value = frozenset()
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        msg = _make_tool_call_msg("add_macro", {
+            "id": "oops",
+            "steps": [{"action": "devicecommand", "device": "d1", "command": "on"}],
+        })
+        await handler.handle(msg)
+        await _drain()
+
+    payload = _get_result_payload(mock_agent)
+    assert payload["success"] is False
+    assert "not valid" in payload["result"]["error"]
+
+
+@pytest.mark.asyncio
+async def test_update_macro_can_edit_a_macro_using_a_plugin_action(
+    handler, mock_agent, mock_engine
+):
+    mock_engine.macros.plugin_action_types.return_value = frozenset({"acme.flash"})
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        msg = _make_tool_call_msg("update_macro", {
+            "macro_id": "all_off",
+            "steps": [
+                {"action": "acme.flash", "params": {}},
+                {"action": "delay", "seconds": 0.5},
+            ],
+        })
+        await handler.handle(msg)
+        await _drain()
+
+    payload = _get_result_payload(mock_agent)
+    assert payload["success"] is True, payload["result"]
+    macro = next(m for m in mock_engine.project.macros if m.id == "all_off")
+    assert len(macro.steps) == 2
+
+
+@pytest.mark.asyncio
 async def test_delete_macro(handler, mock_agent, mock_engine):
     with patch.object(handler, "_get_engine", return_value=mock_engine):
         with patch("server.core.project_loader.save_project"):

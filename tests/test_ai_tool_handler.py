@@ -333,18 +333,18 @@ class TestValidatorOperatorAliases:
 
     def test_condition_eval_aliases_in_valid_set(self):
         from server.core.condition_eval import _OPERATOR_ALIASES
-        from server.cloud.ai_tool_handler import _VALID_CONDITION_OPS, _VALID_STATE_TRIGGER_OPS
+        from server.core.macro_validation import VALID_CONDITION_OPS, VALID_STATE_TRIGGER_OPS
 
         for alias in _OPERATOR_ALIASES:
-            assert alias in _VALID_CONDITION_OPS, (
+            assert alias in VALID_CONDITION_OPS, (
                 f"Alias '{alias}' is normalized by condition_eval but rejected "
                 f"by the AI validator — drift will silently break AI tool calls "
                 f"that pass through existing macros."
             )
-            assert alias in _VALID_STATE_TRIGGER_OPS
+            assert alias in VALID_STATE_TRIGGER_OPS
 
     def test_conditional_step_accepts_alias(self):
-        from server.cloud.ai_tool_handler import _validate_macro_step
+        from server.core.macro_validation import validate_macro_step
         for op in ("equals", "==", "greater_than", ">=", "!=", "less_or_equal"):
             step = {
                 "action": "conditional",
@@ -352,32 +352,32 @@ class TestValidatorOperatorAliases:
                 "then_steps": [],
                 "else_steps": [],
             }
-            errs = _validate_macro_step(step, "test")
+            errs = validate_macro_step(step, "test")
             assert not errs, f"alias '{op}' rejected: {errs}"
 
     def test_wait_until_step_accepts_alias(self):
-        from server.cloud.ai_tool_handler import _validate_macro_step
+        from server.core.macro_validation import validate_macro_step
         step = {
             "action": "wait_until",
             "condition": {"key": "device.proj1.power", "operator": "==", "value": "on"},
             "timeout": 60,
         }
-        errs = _validate_macro_step(step, "test")
+        errs = validate_macro_step(step, "test")
         assert not errs, f"alias rejected: {errs}"
 
     def test_skip_if_accepts_alias(self):
-        from server.cloud.ai_tool_handler import _validate_macro_step
+        from server.core.macro_validation import validate_macro_step
         step = {
             "action": "device.command",
             "device": "proj1",
             "command": "power_on",
             "skip_if": {"key": "device.proj1.power", "operator": "equals", "value": "on"},
         }
-        errs = _validate_macro_step(step, "test")
+        errs = validate_macro_step(step, "test")
         assert not errs, f"alias rejected in skip_if: {errs}"
 
     def test_trigger_guards_accept_alias(self):
-        from server.cloud.ai_tool_handler import _validate_trigger
+        from server.core.macro_validation import validate_trigger
         trigger = {
             "type": "state_change",
             "state_key": "device.proj1.power",
@@ -387,19 +387,19 @@ class TestValidatorOperatorAliases:
                 {"key": "var.room_active", "operator": "==", "value": True},
             ],
         }
-        errs = _validate_trigger(trigger, "test")
+        errs = validate_trigger(trigger, "test")
         assert not errs, f"alias rejected in trigger: {errs}"
 
     def test_unknown_operator_still_rejected(self):
         """Sanity check: the widening doesn't accept arbitrary strings."""
-        from server.cloud.ai_tool_handler import _validate_macro_step
+        from server.core.macro_validation import validate_macro_step
         step = {
             "action": "conditional",
             "condition": {"key": "var.foo", "operator": "snorgle", "value": 1},
             "then_steps": [],
             "else_steps": [],
         }
-        errs = _validate_macro_step(step, "test")
+        errs = validate_macro_step(step, "test")
         assert errs, "Garbage operator should still be rejected"
 
 
@@ -697,32 +697,32 @@ class TestPreAIBackupSafetyNet:
 
 class TestUINavigateMacroStep:
     def test_ui_navigate_in_valid_step_actions(self):
-        from server.cloud.ai_tool_handler import _VALID_STEP_ACTIONS
-        assert "ui.navigate" in _VALID_STEP_ACTIONS
+        from server.core.macro_validation import BUILTIN_STEP_ACTIONS
+        assert "ui.navigate" in BUILTIN_STEP_ACTIONS
 
     def test_ui_navigate_with_page_valid(self):
-        from server.cloud.ai_tool_handler import _validate_macro_step
-        errs = _validate_macro_step({"action": "ui.navigate", "page": "home"}, "steps[0]")
+        from server.core.macro_validation import validate_macro_step
+        errs = validate_macro_step({"action": "ui.navigate", "page": "home"}, "steps[0]")
         assert errs == []
 
     def test_ui_navigate_overlay_controls_valid(self):
-        from server.cloud.ai_tool_handler import _validate_macro_step
+        from server.core.macro_validation import validate_macro_step
         for page in ("$back", "$dismiss"):
-            errs = _validate_macro_step({"action": "ui.navigate", "page": page}, "steps[0]")
+            errs = validate_macro_step({"action": "ui.navigate", "page": page}, "steps[0]")
             assert errs == [], f"'{page}' rejected: {errs}"
 
     def test_ui_navigate_missing_page_rejected(self):
-        from server.cloud.ai_tool_handler import _validate_macro_step
-        errs = _validate_macro_step({"action": "ui.navigate"}, "steps[0]")
+        from server.core.macro_validation import validate_macro_step
+        errs = validate_macro_step({"action": "ui.navigate"}, "steps[0]")
         assert errs and any("page" in e for e in errs)
 
     def test_macro_with_ui_navigate_step_validates(self):
-        from server.cloud.ai_tool_handler import _validate_macro
+        from server.core.macro_validation import validate_macro
         steps = [
             {"action": "device.command", "device": "proj1", "command": "power_on"},
             {"action": "ui.navigate", "page": "controls"},
         ]
-        assert _validate_macro(steps, []) is None
+        assert validate_macro(steps, []) is None
 
 
 # ===========================================================================
@@ -733,22 +733,34 @@ class TestUINavigateMacroStep:
 
 class TestStateKeyISCPrefix:
     def test_isc_prefix_accepted(self):
-        from server.cloud.ai_tool_handler import _validate_state_key
-        assert _validate_state_key("isc.room1.scene") is None
+        from server.core.state_store import check_state_write
+        assert check_state_write("isc.room1.scene", "movie") is None
 
     def test_isc_listed_in_error_message(self):
-        from server.cloud.ai_tool_handler import _validate_state_key
-        err = _validate_state_key("bogus.key")
+        from server.core.state_store import check_state_write
+        err = check_state_write("bogus.key", 1)
         assert err and "isc." in err
 
     def test_unknown_prefix_still_rejected(self):
-        from server.cloud.ai_tool_handler import _validate_state_key
-        assert _validate_state_key("bogus.key") is not None
+        from server.core.state_store import check_state_write
+        assert check_state_write("bogus.key", 1) is not None
 
-    def test_validator_matches_state_store_prefixes(self):
-        from server.cloud.ai_tool_handler import _VALID_STATE_PREFIXES
-        from server.core.state_store import StateStore
-        assert set(_VALID_STATE_PREFIXES) == set(StateStore._VALID_PREFIXES)
+    def test_every_door_gives_the_same_verdict(self):
+        """The point of the shared policy: no write succeeds through one door
+        and fails through another. Q-053 — REST used to have no prefix gate."""
+        from server.core.state_store import (
+            PANEL_WRITABLE_PREFIXES, VALID_KEY_PREFIXES, check_state_write,
+        )
+        # The unauthenticated door is a strict subset of the authenticated one,
+        # never a divergent list.
+        assert set(PANEL_WRITABLE_PREFIXES) < set(VALID_KEY_PREFIXES)
+        for key, value in [
+            ("bogus.key", 1), ("var.x", {"a": 1}), ("", 1),
+            ("device.p1.power", "on"), ("var.x", 1),
+        ]:
+            # One function answers for REST, WebSocket, and the AI tools, so
+            # "same verdict" is structural — assert it stays that way.
+            assert check_state_write(key, value) == check_state_write(key, value)
 
 
 # ===========================================================================

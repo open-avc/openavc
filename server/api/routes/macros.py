@@ -19,6 +19,13 @@ async def execute_macro(macro_id: str) -> dict[str, Any]:
     # Same runaway guard as /triggers/{id}/test: the only callers are the
     # IDE's manual "run this macro" buttons, so debounce rapid re-firing of
     # the same macro (runtime automation never uses this endpoint).
+    #
+    # The cloud AI's run_macro tool shares this bucket by key — it's the same
+    # "a person asked for this macro, twice" case. The WebSocket
+    # `macro.execute` deliberately does NOT: that one carries panel button
+    # presses, where a throttle would make a real room stop responding. So the
+    # asymmetry is the policy, not drift — this guard belongs on the operator
+    # doors, not on the macro engine where it would catch panels and triggers.
     _rate_limit_test(f"macro_execute:{macro_id}")
     engine = _get_engine()
     try:

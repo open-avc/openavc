@@ -156,12 +156,18 @@ def test_set_state_value(client):
     assert engine.state.get("var.foo") == "bar"
 
 
-def test_set_state_accepts_any_json_value(client):
-    """REST API accepts any JSON value for state (validation is at WS layer)."""
+def test_set_state_accepts_any_flat_primitive(client):
+    """Any of the primitive types the store holds is accepted.
+
+    The docstring here used to say validation lived at the WebSocket layer —
+    that gap is what let REST accept off-namespace keys and nested values. The
+    policy is shared now; see tests/test_state_write_policy.py.
+    """
     c, engine = client
-    resp = c.put("/api/state/var.test", json={"value": "hello"})
-    assert resp.status_code == 200
-    assert engine.state.get("var.test") == "hello"
+    for value in ["hello", 42, 1.5, True, None]:
+        resp = c.put("/api/state/var.test", json={"value": value})
+        assert resp.status_code == 200, value
+        assert engine.state.get("var.test") == value
 
 
 # ── Device endpoints (mock) ──

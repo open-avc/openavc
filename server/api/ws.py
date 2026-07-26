@@ -19,6 +19,7 @@ from server.api._engine import get_engine_optional
 from server.api._engine import set_engine as _shared_set_engine
 from server.api.auth import check_ws_auth, get_ws_auth_subprotocol
 from server.api.error_messages import friendly_error
+from server.core.state_store import check_state_write, is_flat_primitive
 from server.utils.log_buffer import get_log_buffer, LogEntry
 from server.utils.logger import get_logger
 
@@ -260,9 +261,7 @@ async def _send_ws_error(
     })
 
 
-def _is_flat_primitive(value: Any) -> bool:
-    """Check that a value is a flat primitive (str, int, float, bool, None)."""
-    return value is None or isinstance(value, (str, int, float, bool))
+_FLAT_PRIMITIVE_REQUIRED = "Value must be a flat primitive (str, int, float, bool, or null)"
 
 
 # Message types that panel clients are allowed to send.
@@ -275,13 +274,6 @@ _PANEL_ALLOWED_TYPES = frozenset({
     "ui.select", "ui.route", "ui.submit",
     "ui.page", "command", "macro.execute", "state.set", "pong",
 })
-
-# Key namespaces panel clients are allowed to write via state.set.
-# Panel state.set exists for plugin iframes and panel-driven user variables.
-# Panels are unauthenticated, so writes to device/system/isc/ui/trigger keys
-# (which would let a panel defeat trigger cooldowns, fool skip_if_offline guards,
-# or pollute ISC mesh state) are rejected. Programmer clients are unaffected.
-_PANEL_STATE_SET_PREFIXES = ("var.", "plugin.")
 
 
 async def _handle_message(
@@ -350,8 +342,8 @@ async def _handle_message(
             await _send_ws_error(ws, msg_type, "Missing element_id")
             return
         value = msg.get("value")
-        if not _is_flat_primitive(value):
-            await _send_ws_error(ws, msg_type, "Value must be a flat primitive (str, int, float, bool, or null)")
+        if not is_flat_primitive(value):
+            await _send_ws_error(ws, msg_type, _FLAT_PRIMITIVE_REQUIRED)
             return
         try:
             await engine.handle_ui_event("change", element_id, {"value": value})
@@ -368,8 +360,8 @@ async def _handle_message(
             await _send_ws_error(ws, msg_type, "Missing element_id")
             return
         value = msg.get("value")
-        if not _is_flat_primitive(value):
-            await _send_ws_error(ws, msg_type, "Value must be a flat primitive (str, int, float, bool, or null)")
+        if not is_flat_primitive(value):
+            await _send_ws_error(ws, msg_type, _FLAT_PRIMITIVE_REQUIRED)
             return
         try:
             await engine.handle_ui_event("select", element_id, {"value": value})
@@ -385,7 +377,7 @@ async def _handle_message(
             return
         input_idx = msg.get("input")
         output_idx = msg.get("output")
-        if not _is_flat_primitive(input_idx) or not _is_flat_primitive(output_idx):
+        if not is_flat_primitive(input_idx) or not is_flat_primitive(output_idx):
             await _send_ws_error(ws, msg_type, "Input and output must be flat primitives")
             return
         audio_flag = bool(msg.get("audio"))
@@ -420,8 +412,8 @@ async def _handle_message(
             await _send_ws_error(ws, msg_type, "Missing element_id")
             return
         value = msg.get("value")
-        if not _is_flat_primitive(value):
-            await _send_ws_error(ws, msg_type, "Value must be a flat primitive (str, int, float, bool, or null)")
+        if not is_flat_primitive(value):
+            await _send_ws_error(ws, msg_type, _FLAT_PRIMITIVE_REQUIRED)
             return
         try:
             await engine.handle_ui_event("submit", element_id, {"value": value})
@@ -474,12 +466,11 @@ async def _handle_message(
             await _send_ws_error(ws, msg_type, "Missing key")
             return
         value = msg.get("value")
-        if not _is_flat_primitive(value):
-            await _send_ws_error(ws, msg_type, "Value must be a flat primitive (str, int, float, bool, or null)")
-            return
-        if client_type == "panel" and not key.startswith(_PANEL_STATE_SET_PREFIXES):
-            allowed = ", ".join(p + "*" for p in _PANEL_STATE_SET_PREFIXES)
-            await _send_ws_error(ws, msg_type, f"Panel clients can only set keys under: {allowed}")
+        # Shared write policy — one place decides what a panel vs. a programmer
+        # client may write, so this door can't drift from REST or the AI tools.
+        reason = check_state_write(key, value, panel=client_type == "panel")
+        if reason:
+            await _send_ws_error(ws, msg_type, reason)
             return
         try:
             engine.state.set(key, value, source="ws")
@@ -499,6 +490,11 @@ async def _handle_message(
             })
 
     elif msg_type == "macro.execute":
+        # Deliberately NOT rate-limited, unlike POST /api/macros/{id}/execute
+        # and the AI's run_macro tool (which share one debounce bucket). This
+        # is the panel's preset button: a person pressing "Presentation Mode"
+        # twice, or working a room quickly, must never be throttled. The macro
+        # engine's own overlap/cooldown settings are the right control here.
         macro_id = msg.get("macro_id", "")
         if not macro_id:
             await _send_ws_error(ws, msg_type, "Missing macro_id")

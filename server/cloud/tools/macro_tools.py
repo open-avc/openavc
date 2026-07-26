@@ -11,6 +11,18 @@ log = get_logger(__name__)
 class MacroToolsMixin:
     """Macro, variable, trigger, and state management tools."""
 
+    def _plugin_action_types(self) -> frozenset[str]:
+        """Macro action types plugins have registered, for step validation.
+
+        Without these the validator would reject a step naming a plugin action
+        the engine can run perfectly well — which also blocked editing any
+        human-authored macro that used one.
+        """
+        engine = self._get_engine()
+        if engine and engine.macros:
+            return engine.macros.plugin_action_types()
+        return frozenset()
+
     async def _get_macro(self, input: dict) -> Any:
         engine = self._get_engine()
         if not engine or not engine.project:
@@ -147,14 +159,16 @@ class MacroToolsMixin:
 
         steps = input.get("steps", [])
         triggers = input.get("triggers", [])
-        from server.cloud.ai_tool_handler import _validate_macro
+        from server.core.macro_validation import validate_macro
         from server.core.project_loader import MacroConfig
 
         def mutate(project):
             if any(m.id == macro_id for m in project.macros):
                 raise ToolEditError({"error": f"Macro '{macro_id}' already exists"})
 
-            err = _validate_macro(steps, triggers, project)
+            err = validate_macro(
+                steps, triggers, project, extra_actions=self._plugin_action_types()
+            )
             if err:
                 raise ToolEditError({"error": f"Macro '{macro_id}': {err}"})
 
@@ -183,8 +197,8 @@ class MacroToolsMixin:
             return {"error": "No project loaded"}
 
         macro_id = input.get("macro_id", "")
+        from server.core.macro_validation import validate_macro
         from server.core.project_loader import MacroConfig
-        from server.cloud.ai_tool_handler import _validate_macro
         from server.cloud.tools.ui_tools import _merge_forward_compat
 
         def mutate(project):
@@ -199,10 +213,11 @@ class MacroToolsMixin:
             existing = project.macros[macro_idx]
             # Only validate fields that are being changed
             if "steps" in input or "triggers" in input:
-                err = _validate_macro(
+                err = validate_macro(
                     input.get("steps", []) if "steps" in input else [],
                     input.get("triggers", []) if "triggers" in input else [],
                     project,
+                    extra_actions=self._plugin_action_types(),
                 )
                 if err:
                     raise ToolEditError({"error": f"Macro '{macro_id}': {err}"})
@@ -272,15 +287,13 @@ class MacroToolsMixin:
 
     async def _set_state_value(self, input: dict) -> Any:
         key = input.get("key", "")
-        from server.cloud.ai_tool_handler import _validate_state_key, _validate_state_value
-        err = _validate_state_key(key)
-        if err:
-            return {"error": err}
         value = input.get("value")
+        # Shared write policy — the same verdict REST and the WebSocket give.
         # The store enforces the flat-primitive contract itself (and drops
-        # offenders), but silently — reject here so the AI gets a clear error
-        # instead of a success report for a write that never happened.
-        err = _validate_state_value(value)
+        # offenders), but silently, so the reason has to come from here or the
+        # AI would get a success report for a write that never happened.
+        from server.core.state_store import check_state_write
+        err = check_state_write(key, value)
         if err:
             return {"error": err}
         self._agent.state.set(key, value, source="ai")

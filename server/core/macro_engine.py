@@ -273,6 +273,15 @@ class MacroEngine:
         """Look up a registered plugin action. Returns (handler, plugin_id, label) or None."""
         return self._plugin_actions.get(action_type)
 
+    def plugin_action_types(self) -> frozenset[str]:
+        """Action types plugins have registered — valid steps beyond the built-ins.
+
+        Anything validating a macro needs this: the built-in nine are a static
+        list, but a step naming a plugin action is equally runnable, and only
+        this engine knows which ones are loaded right now.
+        """
+        return frozenset(self._plugin_actions)
+
     async def execute(
         self, macro_id: str, context: dict[str, Any] | None = None,
         _call_chain: frozenset[str] | None = None,

@@ -18,6 +18,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from server.core.state_store import is_flat_primitive
 from server.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -30,9 +31,6 @@ log = get_logger(__name__)
 _MISSING = object()
 
 
-def _is_flat_primitive(value: Any) -> bool:
-    """True for the only value types the state store is allowed to hold."""
-    return value is None or isinstance(value, (str, int, float, bool))
 
 
 class StatePersister:
@@ -76,7 +74,7 @@ class StatePersister:
             return {}
         clean: dict[str, Any] = {}
         for key, value in data.items():
-            if _is_flat_primitive(value):
+            if is_flat_primitive(value):
                 clean[key] = value
             else:
                 log.warning(

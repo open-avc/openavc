@@ -528,3 +528,46 @@ class TestAggregators:
         info = loader.get_plugin_info("plain")
         assert info["has_macro_actions"] is False
         assert "macro_actions" not in info
+
+
+# ──── Validators can see the registered actions ────
+
+
+class TestPluginActionTypesAccessor:
+    """Anything validating a macro needs the live action list, not the static nine.
+
+    The cloud AI tools validate macro steps before saving. Their action list was
+    the nine built-ins, so a step naming a plugin action was rejected as
+    malformed — and since update_macro revalidates steps, a macro containing one
+    could not be edited at all.
+    """
+
+    def test_registered_action_is_listed(self, macro_engine):
+        async def handler(params, context):
+            pass
+
+        assert macro_engine.plugin_action_types() == frozenset()
+        macro_engine.register_plugin_action("audio_player.play", handler, "audio_player")
+        assert macro_engine.plugin_action_types() == frozenset({"audio_player.play"})
+
+    def test_unregistering_a_plugin_drops_its_actions(self, macro_engine):
+        async def handler(params, context):
+            pass
+
+        macro_engine.register_plugin_action("audio_player.play", handler, "audio_player")
+        macro_engine.register_plugin_action("audio_player.stop", handler, "audio_player")
+        macro_engine.register_plugin_action("other.thing", handler, "other_plugin")
+        macro_engine.unregister_plugin_actions("audio_player")
+        assert macro_engine.plugin_action_types() == frozenset({"other.thing"})
+
+    def test_the_validator_accepts_a_registered_action(self, macro_engine):
+        from server.core.macro_validation import validate_macro
+
+        async def handler(params, context):
+            pass
+
+        macro_engine.register_plugin_action("audio_player.play", handler, "audio_player")
+        steps = [{"action": "audio_player.play", "params": {"file": "chime.wav"}}]
+        assert validate_macro(steps, [], extra_actions=macro_engine.plugin_action_types()) is None
+        # Without the engine's list the same step reads as malformed.
+        assert validate_macro(steps, []) is not None

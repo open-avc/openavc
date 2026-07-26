@@ -73,8 +73,11 @@ class _Sub:
 _GLOB_CHARS = "*?["
 
 
-def _is_flat_primitive(value: Any) -> bool:
+def is_flat_primitive(value: Any) -> bool:
     """True if ``value`` satisfies the store's flat-primitive invariant.
+
+    THE definition of the invariant — every entry door imports this one rather
+    than re-typing the isinstance tuple, so a change here reaches all of them.
 
     The store holds only ``str``/``int``/``float``/``bool``/``None``. A nested
     ``dict``/``list`` (or any other object) breaks every downstream consumer:
@@ -86,10 +89,58 @@ def _is_flat_primitive(value: Any) -> bool:
     return value is None or isinstance(value, (str, int, float, bool))
 
 
+# The namespaces a state key may live under. A key outside them still *works*
+# mechanically, but nothing routes it: the panel binds by namespace, the cloud
+# relay and ISC filter by it, and persistence only knows about var.*. So an
+# off-namespace key is always a typo, and the doors below reject it.
+VALID_KEY_PREFIXES = ("device.", "var.", "ui.", "system.", "isc.", "plugin.")
+
+# The subset an *unauthenticated* caller may write. Panel state.set exists for
+# plugin iframes and panel-driven user variables. Writes to device/system/isc/ui
+# keys (which would let a panel defeat trigger cooldowns, fool skip_if_offline
+# guards, or pollute ISC mesh state) are rejected.
+PANEL_WRITABLE_PREFIXES = ("var.", "plugin.")
+
+
+def check_state_write(key: str, value: Any, *, panel: bool = False) -> str | None:
+    """One policy for every remote door into the state store.
+
+    Returns a user-facing reason string, or None when the write is allowed.
+    REST turns it into a 422, the WebSocket into an error frame, the cloud AI
+    tools into an ``{"error": ...}`` result — but they all ask the same
+    question here, so the same write can't succeed through one door and fail
+    through another (it used to: REST had no prefix gate at all).
+
+    ``panel=True`` marks the one unauthenticated door (panel WebSocket
+    clients), which is held to ``PANEL_WRITABLE_PREFIXES``.
+
+    This is a pre-flight check, not the enforcement point. ``set()`` still
+    drops a non-primitive on its own — that backstop covers in-process writers
+    (drivers, scripts, macros) that have no door to report through. What the
+    doors need on top of it is a *reason* to hand back: without one they'd
+    answer "success" for a write the store silently discarded.
+    """
+    if not key:
+        return "State key cannot be empty"
+
+    allowed = PANEL_WRITABLE_PREFIXES if panel else VALID_KEY_PREFIXES
+    if not key.startswith(allowed):
+        names = ", ".join(p + "*" for p in allowed)
+        if panel:
+            return f"Panel clients can only set keys under: {names}"
+        return f"State key '{key}' must start with one of: {names}"
+
+    if not is_flat_primitive(value):
+        return (
+            f"State values must be a flat primitive (string, number, boolean, "
+            f"or null) — got {type(value).__name__}. Store structured data "
+            f"under multiple keys, or as a JSON string."
+        )
+    return None
+
+
 class StateStore:
     """Centralized reactive key-value state store with change notification."""
-
-    _VALID_PREFIXES = ("device.", "var.", "ui.", "system.", "isc.", "plugin.")
 
     def __init__(self):
         self._store: dict[str, Any] = {}
@@ -188,7 +239,7 @@ class StateStore:
         guards and corrupt change detection. It's dropped, not coerced: we
         never persist an arbitrary blob, even stringified.
         """
-        if not _is_flat_primitive(value):
+        if not is_flat_primitive(value):
             log.warning(
                 "Rejected non-primitive state write to '%s' (%s) from source=%s — "
                 "state values must be flat primitives (str, int, float, bool, None)",
@@ -196,7 +247,7 @@ class StateStore:
             )
             return
 
-        if not any(key.startswith(p) for p in self._VALID_PREFIXES):
+        if not key.startswith(VALID_KEY_PREFIXES):
             log.debug("State key '%s' has unknown namespace prefix (source=%s)", key, source)
 
         old_value = self._store.get(key)
@@ -224,7 +275,7 @@ class StateStore:
         store = self._store
         history = self._history
         for key, value in updates.items():
-            if not _is_flat_primitive(value):
+            if not is_flat_primitive(value):
                 log.warning(
                     "Rejected non-primitive state write to '%s' (%s) from source=%s — "
                     "state values must be flat primitives (str, int, float, bool, None)",

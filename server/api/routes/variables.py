@@ -7,13 +7,9 @@ from fastapi import APIRouter
 from server.api._engine import _get_engine
 from server.api.errors import api_error as _api_error
 from server.api.models import StateSetRequest
+from server.core.state_store import check_state_write
 
 router = APIRouter()
-
-
-def _is_flat_primitive(value: object) -> bool:
-    """Check that a value is a flat primitive (str, int, float, bool, None)."""
-    return value is None or isinstance(value, (str, int, float, bool))
 
 
 @router.get("/state")
@@ -40,11 +36,10 @@ async def get_state_value(key: str) -> dict[str, Any]:
 @router.put("/state/{key:path}")
 async def set_state_value(key: str, body: StateSetRequest) -> dict[str, Any]:
     """Set a state value."""
-    if not _is_flat_primitive(body.value):
-        raise _api_error(
-            422,
-            "Value must be a flat primitive (str, int, float, bool, or null)",
-        )
+    # Shared write policy — same verdict the WebSocket and the cloud AI tools get.
+    reason = check_state_write(key, body.value)
+    if reason:
+        raise _api_error(422, reason)
     engine = _get_engine()
     engine.state.set(key, body.value, source="api")
     return {"key": key, "value": body.value}
