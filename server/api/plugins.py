@@ -25,6 +25,7 @@ from server.core.project_loader import (
     build_default_plugin_config,
     get_plugin_setup_fields,
 )
+from server.utils.community_integrity import CommunityArtifactError
 from server.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -513,6 +514,11 @@ async def install_plugin_endpoint(plugin_id: str, request: Request) -> dict[str,
     try:
         result = await install_plugin(plugin_id, file_url)
         return result
+    except CommunityArtifactError as e:
+        # The download didn't match the published manifest. 502, not 500: the
+        # request was fine, the upstream served something else. The message
+        # names the offending file, which is the only useful thing here.
+        raise _api_error(502, str(e), e)
     except ValueError as e:
         # Validation failures (bad id, non-catalog URL, unsafe dependency) and
         # the already-installed conflict all raise ValueError; surface the

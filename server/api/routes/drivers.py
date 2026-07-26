@@ -146,11 +146,97 @@ COMMUNITY_REPO_URL = "https://raw.githubusercontent.com/open-avc/openavc-drivers
 # Hosts the install / update endpoints are allowed to fetch from. Used
 # by both the YAML download and the sibling companion download so the
 # allowlist stays consistent.
+#
+# A host check alone is NOT the gate — see _require_catalog_url below. Kept
+# for the error text and for the discovery-hint fetches that aren't installs.
 _GITHUB_HOSTS: frozenset[str] = frozenset({
     "raw.githubusercontent.com",
     "github.com",
     "api.github.com",
 })
+
+
+def _require_catalog_url(url: str, *, what: str) -> None:
+    """Reject a driver URL that isn't under the official community catalog.
+
+    A ``.py`` community driver is imported and registered — arbitrary
+    server-side code — so "is it on github.com?" is not a source check: every
+    attacker-controlled repo on GitHub answers yes. This pins installs to the
+    curated catalog repo, the same way plugin installs are already pinned.
+
+    It matters most for the callers that aren't a person clicking Install: the
+    discovery install-and-match flow and the cloud AI's install tool both reach
+    this endpoint with a URL chosen upstream.
+    """
+    from server.utils.community_integrity import (
+        DRIVERS_OWNER_REPO,
+        CommunityArtifactError,
+        validate_catalog_url,
+    )
+    try:
+        validate_catalog_url(url, owner_repo=DRIVERS_OWNER_REPO)
+    except CommunityArtifactError as e:
+        # Name the repo in every rejection, not just the wrong-path one. "It's
+        # a GitHub URL" is precisely the test that was never enough, so the
+        # message says which repo instead of which host.
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"{what} must be an https URL under the official community "
+                f"driver catalog ({DRIVERS_OWNER_REPO}) — {e}"
+            ),
+        )
+
+
+async def _catalog_hashes(driver_id: str):
+    """The catalog's declared file hashes for ``driver_id``.
+
+    Looked up server-side from the community index — never taken from the
+    request. A caller-supplied hash would be checked against bytes the same
+    caller chose, which verifies nothing.
+    """
+    from server.utils.community_integrity import ArtifactHashes
+
+    files = None
+    try:
+        from server.discovery.community_index import CommunityIndexCache
+
+        if not hasattr(get_community_drivers, "_cache"):
+            get_community_drivers._cache = CommunityIndexCache()
+        for entry in await get_community_drivers._cache.get_drivers():
+            if entry.get("id") == driver_id:
+                candidate = entry.get("files")
+                if isinstance(candidate, dict):
+                    files = candidate
+                break
+    except Exception:
+        # Catalog unreachable. The artifact download itself would normally fail
+        # too, so this is rare; treat it as "no hashes published" rather than
+        # blocking an install on a catalog hiccup.
+        log.warning("Could not read community catalog hashes for %r", driver_id)
+
+    return ArtifactHashes(
+        f"Driver '{driver_id}'", files, source="the community driver catalog"
+    )
+
+
+def _verify_against_catalog(hashes, url: str, data: bytes) -> None:
+    """Check downloaded bytes against the catalog before they reach the disk.
+
+    502 rather than 422 on a mismatch: the request was fine, the upstream
+    served something other than what the catalog says it publishes.
+    """
+    if hashes is None:
+        return
+    from server.utils.community_integrity import (
+        DRIVERS_OWNER_REPO,
+        CommunityArtifactError,
+        catalog_relpath,
+    )
+    try:
+        hashes.check(catalog_relpath(url, owner_repo=DRIVERS_OWNER_REPO), data)
+    except CommunityArtifactError as e:
+        raise HTTPException(status_code=502, detail=str(e))
 
 
 def _get_driver_repo_dir() -> Path:
@@ -210,6 +296,7 @@ async def _download_companion(
     companion_relpath: str,
     driver_repo: Path,
     driver_id: str,
+    hashes=None,
 ) -> Path:
     """Download a YAML driver's sibling Python companion.
 
@@ -262,7 +349,8 @@ async def _download_companion(
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.get(companion_url)
             resp.raise_for_status()
-            companion_filepath.write_text(resp.text, encoding="utf-8")
+            _verify_against_catalog(hashes, companion_url, resp.content)
+            companion_filepath.write_bytes(resp.content)
     except httpx.HTTPStatusError as e:
         raise HTTPException(
             status_code=502,
@@ -288,6 +376,7 @@ async def _try_download_python_companion(
     main_url: str,
     companion_filename: str,
     driver_repo: Path,
+    hashes=None,
 ) -> Path | None:
     """Best-effort fetch of a Python driver's conventional sibling companion.
 
@@ -319,7 +408,11 @@ async def _try_download_python_companion(
             if resp.status_code == 404:
                 return None  # optional companion simply isn't published
             resp.raise_for_status()
-            companion_filepath.write_text(resp.text, encoding="utf-8")
+            # A companion that fails the catalog check is NOT swallowed like a
+            # fetch error below: "optional" means it may be absent, not that a
+            # wrong-bytes copy may be installed. Raises past this handler.
+            _verify_against_catalog(hashes, companion_url, resp.content)
+            companion_filepath.write_bytes(resp.content)
     except (httpx.HTTPStatusError, httpx.RequestError, OSError) as e:
         log.warning(
             "Optional companion %s not installed: %s", companion_filename, e
@@ -382,15 +475,14 @@ async def install_community_driver(body: CommunityDriverInstallRequest) -> dict[
     driver_repo = _get_driver_repo_dir()
     driver_repo.mkdir(parents=True, exist_ok=True)
 
-    # Validate URL points to GitHub
+    # Pin the source to the official catalog repo (not merely "some GitHub URL")
     url = body.file_url
     from urllib.parse import urlparse
-    parsed_url = urlparse(url)
-    if not parsed_url.hostname or parsed_url.hostname not in _GITHUB_HOSTS:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Driver URL must be from GitHub ({', '.join(sorted(_GITHUB_HOSTS))})",
-        )
+    _require_catalog_url(url, what="Driver URL")
+
+    # The catalog's hashes for this driver, read server-side. Fetched before the
+    # download so a mismatch is caught with nothing yet written.
+    hashes = await _catalog_hashes(body.driver_id)
 
     # Determine file type from URL
     if url.endswith(".avcdriver"):
@@ -405,13 +497,16 @@ async def install_community_driver(body: CommunityDriverInstallRequest) -> dict[
     filename = f"{safe_id}{ext}"
     filepath = driver_repo / filename
 
-    # Download the file
+    # Download the file, check it against the catalog, and only then write it.
+    # Verifying after the write would mean a driver that fails the check has
+    # already landed in driver_repo/, where the loader would find it.
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.get(url)
             resp.raise_for_status()
             yaml_text = resp.text
-            filepath.write_text(yaml_text, encoding="utf-8")
+            _verify_against_catalog(hashes, url, resp.content)
+            filepath.write_bytes(resp.content)
     except httpx.HTTPStatusError as e:
         raise HTTPException(status_code=502, detail=f"GitHub returned {e.response.status_code}")
     except httpx.RequestError as e:
@@ -445,6 +540,7 @@ async def install_community_driver(body: CommunityDriverInstallRequest) -> dict[
                     companion_relpath=relpath,
                     driver_repo=driver_repo,
                     driver_id=body.driver_id,
+                    hashes=hashes,
                 )
             except HTTPException:
                 filepath.unlink(missing_ok=True)
@@ -492,6 +588,7 @@ async def install_community_driver(body: CommunityDriverInstallRequest) -> dict[
                     main_url=url,
                     companion_filename=f"{src_stem}{suffix}",
                     driver_repo=driver_repo,
+                    hashes=hashes,
                 )
 
     # Refresh discovery engine with new driver hints
@@ -967,14 +1064,10 @@ async def update_driver(driver_id: str, request: Request) -> dict[str, Any]:
 
     # Validate the new URL the same way install does — the find-old-file
     # block above was happy to accept any file_url, but the install
-    # endpoint requires a GitHub host.
-    from urllib.parse import urlparse as _urlparse
-    parsed_new_url = _urlparse(file_url)
-    if not parsed_new_url.hostname or parsed_new_url.hostname not in _GITHUB_HOSTS:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Driver URL must be from GitHub ({', '.join(sorted(_GITHUB_HOSTS))})",
-        )
+    # endpoint pins the source to the official catalog repo.
+    _require_catalog_url(file_url, what="Driver URL")
+
+    hashes = await _catalog_hashes(driver_id)
 
     # Determine file type from URL
     if file_url.endswith(".avcdriver"):
@@ -1019,10 +1112,15 @@ async def update_driver(driver_id: str, request: Request) -> dict[str, Any]:
             resp = await client.get(file_url)
             resp.raise_for_status()
             new_content = resp.text
+            new_bytes = resp.content
     except httpx.HTTPStatusError as e:
         raise HTTPException(status_code=502, detail=f"GitHub returned {e.response.status_code}")
     except httpx.RequestError as e:
         raise _api_error(502, f"Failed to download driver '{driver_id}'", e)
+
+    # Check before the swap below unregisters the driver and deletes the old
+    # file: a failed update must leave the working driver in place.
+    _verify_against_catalog(hashes, file_url, new_bytes)
 
     # For YAML drivers, also enforce the version pulled from the file itself
     # so a caller that omits min_platform_version still can't install an
@@ -1036,7 +1134,7 @@ async def update_driver(driver_id: str, request: Request) -> dict[str, Any]:
     unregister_driver(driver_id)
     if old_file != new_filepath:
         old_file.unlink(missing_ok=True)
-    new_filepath.write_text(new_content, encoding="utf-8")
+    new_filepath.write_bytes(new_bytes)
 
     # Fetch the new YAML's sibling companion (if any). If that fails,
     # roll back the new YAML and remove the old companion — the user
@@ -1052,6 +1150,7 @@ async def update_driver(driver_id: str, request: Request) -> dict[str, Any]:
                     companion_relpath=relpath,
                     driver_repo=driver_repo,
                     driver_id=driver_id,
+                    hashes=hashes,
                 )
             except HTTPException:
                 new_filepath.unlink(missing_ok=True)

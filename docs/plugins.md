@@ -25,6 +25,8 @@ Plugins extend OpenAVC with system-wide integrations, control surfaces, sensors,
 
 The plugin is downloaded and saved to `plugin_repo/`. It appears in the Installed tab as disabled.
 
+Installs come from the official plugin repository and nowhere else. A plugin installs as a directory, and every file is checked against the SHA-256 the repository publishes for it before being written: a file that doesn't match, one the repository doesn't publish, and one it publishes that never arrives all stop the install, leaving nothing behind. A plugin runs inside the server with the capabilities it declares, so read what those are before enabling one — see the [network and security guide](it-network-guide.md) for what the check does and does not prove.
+
 ### Category Filters
 
 | Category | What It Contains |

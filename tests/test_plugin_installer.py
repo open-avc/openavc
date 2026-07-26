@@ -67,6 +67,19 @@ def _stream_cm(resp):
     return cm
 
 
+def _empty_manifest_response():
+    """The manifest fetch every install now makes, answering "no hashes".
+
+    Prepended to a test's client.get queue so the install still exercises the
+    real fetch rather than a stub. Integrity behaviour itself is covered in
+    test_community_artifact_integrity.py.
+    """
+    resp = MagicMock()
+    resp.raise_for_status = MagicMock()
+    resp.json.return_value = {"plugins": {}}
+    return resp
+
+
 def _download_client(*, stream=None, get=None):
     """Build a mock httpx.AsyncClient for the install paths.
 
@@ -492,7 +505,7 @@ class GenericPlugin:
         # Directory listing is fetched via client.get (JSON); the per-file
         # contents are streamed via client.stream (_download_capped).
         mock_client = _download_client(
-            get=api_response,
+            get=[_empty_manifest_response(), api_response],
             stream=[valid_plugin_source.encode(), b'{"some": "config"}'],
         )
 

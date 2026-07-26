@@ -205,6 +205,19 @@ The following features require outbound internet access if enabled:
 
 If your network policy blocks outbound HTTPS, all local functionality is unaffected. Update checks will fail silently, and the cloud agent (if enabled) will retry with exponential backoff up to a 5-minute interval, then remain dormant until connectivity is restored.
 
+### Integrity of downloaded code
+
+Community drivers and plugins are code. A Python driver is imported and run by the server, and a plugin runs in the server process with the capabilities its manifest declares. Installing one is a decision to trust it, the same as installing any software.
+
+What OpenAVC checks when you install one:
+
+- **Source.** Downloads are pinned to the two official catalog repositories (`open-avc/openavc-drivers`, `open-avc/openavc-plugins`) over HTTPS. A URL pointing anywhere else is refused, including elsewhere on GitHub.
+- **Contents.** Both catalogs publish a SHA-256 for every file an install fetches. OpenAVC hashes what it received and compares before writing anything to disk. A file that doesn't match, or that the catalog doesn't publish, is refused and nothing is installed. For plugins, which install as a directory, a file listed in the catalog but not delivered is refused as well.
+
+What that does **not** cover, stated plainly so you can weigh it: the hashes are published by the same repositories the files come from, so they are a check on the download, not proof of who wrote it. They would not detect a change made in the catalog repository itself, and no automated check can tell you that reviewed code is safe code. Community drivers and plugins are reviewed by maintainers before they are published; treat that review, and your own reading of a driver or plugin, as the real control. Platform *updates* are a separate chain with a stronger guarantee (see the release-signing section of the update documentation).
+
+Installing from a file rather than the catalog (Upload Driver, or dropping a file into the driver folder) bypasses both checks by design, because you chose the file.
+
 ---
 
 ## Inter-System Communication (ISC)

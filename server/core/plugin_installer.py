@@ -22,7 +22,7 @@ import zipfile
 from io import BytesIO
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote, urlparse
+from urllib.parse import urlparse
 
 import httpx
 
@@ -34,6 +34,13 @@ from server.core.plugin_loader import (
     unregister_plugin_class,
 )
 from server.system_config import PLUGIN_DATA_DIR, PLUGIN_REPO_DIR
+from server.utils.community_integrity import (
+    PLUGINS_OWNER_REPO,
+    ArtifactHashes,
+    CommunityArtifactError,
+    catalog_relpath,
+    validate_catalog_url,
+)
 from server.utils.logger import get_logger
 from server.utils.spawn import CREATE_NO_WINDOW
 
@@ -68,15 +75,8 @@ def _safe_zip_target(base_dir: Path, relative_path: str) -> Path | None:
 # Official community plugin catalog. Plugin *code* must come from this exact
 # repo — a hostname-only "is it GitHub?" check gives false assurance: any
 # attacker-controlled GitHub repo passes it, yet plugin code runs in-process.
-_CATALOG_OWNER_REPO = "open-avc/openavc-plugins"
-
-# For a URL to count as "from the official catalog", its host must be one of
-# these and its path must sit under the required prefix for that host.
-_CATALOG_URL_PREFIXES = {
-    "raw.githubusercontent.com": f"/{_CATALOG_OWNER_REPO}/",
-    "github.com": f"/{_CATALOG_OWNER_REPO}/",
-    "api.github.com": f"/repos/{_CATALOG_OWNER_REPO}/",
-}
+# The per-host path rules live with the shared validator.
+_CATALOG_OWNER_REPO = PLUGINS_OWNER_REPO
 
 # Download size guards (DoS defense). Generous ceilings sized for real native
 # deps (a full ffmpeg build is ~100 MB compressed / ~250 MB extracted), not
@@ -95,24 +95,15 @@ def _validate_catalog_url(url: str) -> None:
     yet plugin code is executed in-process. So we require the URL to point at
     the curated, human-reviewed catalog repo (``open-avc/openavc-plugins``),
     not merely "some GitHub URL". https-only.
+
+    The rule itself lives in ``server.utils.community_integrity`` so drivers —
+    which are equally arbitrary in-process code — are pinned by the same one.
+    ``ValueError`` is preserved for callers that already handle it.
     """
-    parsed = urlparse(url)
-    if parsed.scheme != "https":
-        raise ValueError(f"Plugin URL must use https, got: {parsed.scheme or url!r}")
-    prefix = _CATALOG_URL_PREFIXES.get(parsed.hostname or "")
-    if prefix is None:
-        raise ValueError(
-            f"Plugin URL must come from the official catalog "
-            f"({_CATALOG_OWNER_REPO}); host {parsed.hostname or url!r} is not allowed"
-        )
-    # Decode %2e%2e / %2f before the prefix + traversal check so an encoded path
-    # can't masquerade as the catalog and then resolve elsewhere on the host.
-    path = unquote(parsed.path)
-    if not path.startswith(prefix) or ".." in path.split("/"):
-        raise ValueError(
-            f"Plugin URL must be a path under {_CATALOG_OWNER_REPO}; "
-            f"path {parsed.path!r} is not"
-        )
+    try:
+        validate_catalog_url(url, owner_repo=_CATALOG_OWNER_REPO)
+    except CommunityArtifactError as e:
+        raise ValueError(str(e).replace("Community artifact URL", "Plugin URL"))
 
 
 async def _validate_download_url(url: str) -> None:
@@ -331,6 +322,37 @@ async def get_community_plugins(force: bool = False) -> tuple[list[dict], str | 
     return await _cache.get(force=force)
 
 
+async def _fetch_plugin_hashes(plugin_id: str) -> ArtifactHashes:
+    """The catalog's per-file hashes for one plugin, read server-side.
+
+    A plugin installs as a directory whose file list comes from the GitHub
+    Contents API — attacker-supplied in the threat model this defends against —
+    so a per-file manifest is the only form of hash that means anything here.
+    Fetched fresh per install rather than cached: it is one small request beside
+    a multi-file download, and a stale copy would reject a legitimately updated
+    plugin.
+    """
+    files = None
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(f"{COMMUNITY_REPO_URL}/manifest.json")
+            resp.raise_for_status()
+            data = resp.json()
+        entry = (data.get("plugins") or {}).get(plugin_id)
+        if isinstance(entry, dict) and isinstance(entry.get("files"), dict):
+            files = entry["files"]
+    except (httpx.HTTPError, OSError, ValueError, AttributeError) as e:
+        # Treated as "no hashes published", the same as a catalog that predates
+        # the manifest. See community_integrity's module docstring: this control
+        # rides the same channel as the artifact, so a fetch an attacker could
+        # suppress is one they could also rewrite.
+        log.warning("Could not read the plugin manifest for '%s': %s", plugin_id, e)
+
+    return ArtifactHashes(
+        f"Plugin '{plugin_id}'", files, source="the community plugin manifest"
+    )
+
+
 _SAFE_ID_RE = re.compile(r"^[a-z0-9_]+$")
 
 
@@ -389,12 +411,19 @@ async def _do_install(plugin_id: str, file_url: str) -> dict[str, Any]:
     if plugin_dir.exists():
         raise ValueError(f"Plugin '{plugin_id}' is already installed")
 
+    # Fetched before anything is downloaded, so a plugin whose bytes don't match
+    # the catalog is refused with nothing yet written to plugin_repo/.
+    hashes = await _fetch_plugin_hashes(plugin_id)
+
     try:
         async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
             if file_url.endswith(".py"):
                 # Single file plugin
                 content = await _download_capped(
                     client, file_url, label="plugin file"
+                )
+                hashes.check(
+                    catalog_relpath(file_url, owner_repo=_CATALOG_OWNER_REPO), content
                 )
                 plugin_dir.mkdir(parents=True, exist_ok=True)
                 filename = _sanitize_filename(Path(urlparse(file_url).path).name)
@@ -405,9 +434,14 @@ async def _do_install(plugin_id: str, file_url: str) -> dict[str, Any]:
                 log.info(f"Installed plugin '{plugin_id}' from {filename}")
 
             elif file_url.endswith(".zip"):
-                # Zip archive — extract off the event loop
+                # Zip archive — extract off the event loop. The archive is
+                # checked as one file, before extraction: an archive verified
+                # afterwards has already written its members to disk.
                 content = await _download_capped(
                     client, file_url, label="plugin archive"
+                )
+                hashes.check(
+                    catalog_relpath(file_url, owner_repo=_CATALOG_OWNER_REPO), content
                 )
                 plugin_dir.mkdir(parents=True, exist_ok=True)
                 await asyncio.to_thread(_extract_plugin_zip, content, plugin_dir)
@@ -419,8 +453,12 @@ async def _do_install(plugin_id: str, file_url: str) -> dict[str, Any]:
                 # Extract the path relative to the repo from the raw URL
                 repo_path = file_url.replace(COMMUNITY_REPO_URL + "/", "")
                 await _download_github_directory(
-                    client, repo_path, plugin_dir
+                    client, repo_path, plugin_dir, hashes=hashes
                 )
+                # The listing that drove that walk came from the network, so
+                # check it delivered the whole manifest and not a subset —
+                # per-file hashes say nothing about a file that was dropped.
+                hashes.require_complete()
                 log.info(f"Installed plugin '{plugin_id}' from directory")
 
         # Reject the install up front if the plugin needs a newer OpenAVC.
@@ -468,7 +506,8 @@ async def _do_install(plugin_id: str, file_url: str) -> dict[str, Any]:
 
 async def _download_github_directory(
     client: httpx.AsyncClient, repo_path: str, dest_dir: Path,
-    *, budget: "_DownloadBudget | None" = None, _depth: int = 0, _max_depth: int = 5,
+    *, budget: "_DownloadBudget | None" = None, hashes: ArtifactHashes | None = None,
+    _depth: int = 0, _max_depth: int = 5,
 ) -> None:
     """Recursively download a directory from GitHub using the Contents API."""
     if budget is None:
@@ -516,13 +555,22 @@ async def _download_github_directory(
                     client, download_url, label=f"plugin file {safe_name}"
                 )
                 budget.add_file(len(content))
+                # Checked before the write. The manifest is keyed by the file's
+                # real repo path, not the sanitized local name, so a listing
+                # that renames a file on the way in cannot find a hash to match.
+                if hashes is not None:
+                    hashes.check(
+                        catalog_relpath(download_url, owner_repo=_CATALOG_OWNER_REPO),
+                        content,
+                    )
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(content)
         elif entry_type == "dir":
             target.mkdir(parents=True, exist_ok=True)
             await _download_github_directory(
                 client, f"{repo_path}/{name}", target,
-                budget=budget, _depth=_depth + 1, _max_depth=_max_depth,
+                budget=budget, hashes=hashes,
+                _depth=_depth + 1, _max_depth=_max_depth,
             )
 
 

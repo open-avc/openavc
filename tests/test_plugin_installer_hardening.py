@@ -97,6 +97,19 @@ def _stream_cm(resp):
     return cm
 
 
+def _empty_manifest_response():
+    """The manifest fetch every install now makes, answering "no hashes".
+
+    Prepended to a test's client.get queue so the install still exercises the
+    real fetch rather than a stub. Integrity behaviour itself is covered in
+    test_community_artifact_integrity.py.
+    """
+    resp = MagicMock()
+    resp.raise_for_status = MagicMock()
+    resp.json.return_value = {"plugins": {}}
+    return resp
+
+
 def _download_client(*, stream=None, get=None):
     client = AsyncMock()
     client.__aenter__ = AsyncMock(return_value=client)
@@ -364,7 +377,9 @@ class TestDirectoryInstallSafety:
             {"name": "x.py", "type": "file",
              "download_url": "https://raw.githubusercontent.com/attacker/evil/main/x.py"},
         ])
-        client = _download_client(get=listing, stream=b"payload")
+        client = _download_client(
+            get=[_empty_manifest_response(), listing], stream=b"payload"
+        )
         with patch("server.core.plugin_installer.httpx.AsyncClient", return_value=client):
             with patch("server.core.plugin_installer._install_pip_deps", new_callable=AsyncMock):
                 with patch("server.core.plugin_installer._install_native_deps", new_callable=AsyncMock):
@@ -395,7 +410,8 @@ class TestDirectoryInstallSafety:
              "download_url": f"{CATALOG}/plugins/dirsafe/dirsafe_plugin.py"},
         ])
         client = _download_client(
-            get=listing, stream=_plugin_src("dirsafe").encode()
+            get=[_empty_manifest_response(), listing],
+            stream=_plugin_src("dirsafe").encode(),
         )
         with patch("server.core.plugin_installer.httpx.AsyncClient", return_value=client):
             with patch("server.core.plugin_installer._install_pip_deps", new_callable=AsyncMock):

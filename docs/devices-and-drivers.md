@@ -230,6 +230,8 @@ Search and install drivers from the [community driver library](https://github.co
 
 Available categories include projectors, displays, matrix switchers, DSPs, cameras, lighting, and more. If a driver does not exist for your equipment, you can build one.
 
+Installs come from the official driver library and nowhere else, and the download is checked against the SHA-256 the library publishes for each file before anything is written to disk. A driver whose contents don't match is refused with an error on its card rather than installed. If you see that, refresh the driver list and try again: the usual cause is that the library was updated after the list on screen was loaded. See the [network and security guide](it-network-guide.md) for what this check does and does not prove.
+
 ### Uninstalling Drivers
 
 To remove a driver you no longer need:

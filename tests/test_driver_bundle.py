@@ -73,6 +73,17 @@ def stub_engine_wiring(monkeypatch):
     monkeypatch.setattr(
         "server.api.routes.drivers._get_engine", lambda: fake_engine
     )
+
+    # Skip the install path's catalog-hash lookup. These tests drive the
+    # companion fetch with a queue of mocked responses, and the real lookup
+    # would fetch the catalog through that same mock, consuming one. Integrity
+    # behaviour has its own tests in test_community_artifact_integrity.py.
+    from server.utils.community_integrity import ArtifactHashes
+
+    async def _no_hashes(driver_id):
+        return ArtifactHashes(f"Driver '{driver_id}'", None, source="catalog")
+
+    monkeypatch.setattr("server.api.routes.drivers._catalog_hashes", _no_hashes)
     yield
 
 
@@ -113,6 +124,7 @@ def _request_with_file(filename: str | None, data: bytes = b"") -> MagicMock:
 async def test_companion_writes_on_200(tmp_path):
     main_url = "https://raw.githubusercontent.com/open-avc/openavc-drivers/main/switchers/foo.py"
     resp = MagicMock(status_code=200, text="async def probe(ctx): pass\n")
+    resp.content = resp.text.encode("utf-8")
     resp.raise_for_status = MagicMock()
     with patch("httpx.AsyncClient") as cls:
         client = AsyncMock()
@@ -175,10 +187,13 @@ async def test_companion_rejects_off_allowlist_host(tmp_path):
 
 def _mock_three(main_src: str, disc_src: str, sim_src: str) -> MagicMock:
     main_resp = MagicMock(status_code=200, text=main_src)
+    main_resp.content = main_src.encode("utf-8")
     main_resp.raise_for_status = MagicMock()
     disc_resp = MagicMock(status_code=200, text=disc_src)
+    disc_resp.content = disc_src.encode("utf-8")
     disc_resp.raise_for_status = MagicMock()
     sim_resp = MagicMock(status_code=200, text=sim_src)
+    sim_resp.content = sim_src.encode("utf-8")
     sim_resp.raise_for_status = MagicMock()
     client = AsyncMock()
     client.__aenter__ = AsyncMock(return_value=client)
@@ -218,6 +233,7 @@ async def test_install_python_driver_tolerates_missing_companions(driver_repo, m
         file_url="https://raw.githubusercontent.com/open-avc/openavc-drivers/main/utility/solo_driver.py",
     )
     main_resp = MagicMock(status_code=200, text="# main\n")
+    main_resp.content = main_resp.text.encode("utf-8")
     main_resp.raise_for_status = MagicMock()
     disc_404 = MagicMock(status_code=404)
     sim_404 = MagicMock(status_code=404)

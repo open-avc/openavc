@@ -76,7 +76,9 @@ async def test_install_rejects_cloud_metadata_url() -> None:
     result = await handler._install_community_driver(
         {"driver_id": "acme", "file_url": "http://169.254.169.254/latest/meta-data/x.avcdriver"}
     )
-    assert "GitHub" in result.get("error", "")
+    # Named by repo, not by host: "it is a GitHub URL" is exactly the test that
+    # was never enough, since any repo on that host passed it.
+    assert "open-avc/openavc-drivers" in result.get("error", "")
 
 
 async def test_install_rejects_intranet_url() -> None:
@@ -85,7 +87,7 @@ async def test_install_rejects_intranet_url() -> None:
     result = await handler._install_community_driver(
         {"driver_id": "acme", "file_url": "http://10.0.0.5/driver.py"}
     )
-    assert "GitHub" in result.get("error", "")
+    assert "open-avc/openavc-drivers" in result.get("error", "")
 
 
 async def test_install_min_platform_gate_request_field() -> None:
@@ -123,6 +125,7 @@ async def test_install_rejects_id_divergence(tmp_path, monkeypatch) -> None:
 
     class _Resp:
         text = yaml_text
+        content = yaml_text.encode("utf-8")
 
         def raise_for_status(self) -> None:
             return None
@@ -188,15 +191,21 @@ async def test_ai_install_completes_via_rest_path(tmp_path, monkeypatch) -> None
     )
     companion_text = "async def probe(ctx):\n    pass\n"
 
-    yaml_resp = MagicMock(text=yaml_text)
+    yaml_resp = MagicMock(text=yaml_text, content=yaml_text.encode("utf-8"))
     yaml_resp.raise_for_status = MagicMock()
-    companion_resp = MagicMock(text=companion_text)
+    companion_resp = MagicMock(text=companion_text, content=companion_text.encode("utf-8"))
     companion_resp.raise_for_status = MagicMock()
+    # The install path reads the catalog first, to check the download against
+    # the hashes it publishes. An empty catalog means "no hashes" — this test
+    # is about the companion landing, not integrity.
+    catalog_resp = MagicMock()
+    catalog_resp.raise_for_status = MagicMock()
+    catalog_resp.json.return_value = {"drivers": []}
     client = MagicMock()
     client.__aenter__ = AsyncMock(return_value=client)
     client.__aexit__ = AsyncMock(return_value=False)
-    # Two fetches across the YAML download + companion download contexts.
-    client.get = AsyncMock(side_effect=[yaml_resp, companion_resp])
+    # Three fetches: catalog, then the YAML download + companion download.
+    client.get = AsyncMock(side_effect=[catalog_resp, yaml_resp, companion_resp])
     monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **k: client)
 
     url = "https://raw.githubusercontent.com/open-avc/openavc-drivers/main/acme_widget.avcdriver"

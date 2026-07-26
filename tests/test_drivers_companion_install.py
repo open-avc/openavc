@@ -94,6 +94,7 @@ async def test_download_companion_writes_to_repo(tmp_path):
 
     mock_resp = MagicMock()
     mock_resp.text = "async def probe(ctx): pass\n"
+    mock_resp.content = mock_resp.text.encode("utf-8")
     mock_resp.raise_for_status = MagicMock()
 
     with patch("httpx.AsyncClient") as mock_client_cls:
@@ -203,9 +204,11 @@ def _mock_two_responses(yaml_text: str, companion_text: str) -> MagicMock:
     """Configure a patched httpx.AsyncClient that returns YAML then companion."""
     yaml_resp = MagicMock()
     yaml_resp.text = yaml_text
+    yaml_resp.content = yaml_text.encode("utf-8")
     yaml_resp.raise_for_status = MagicMock()
     companion_resp = MagicMock()
     companion_resp.text = companion_text
+    companion_resp.content = companion_text.encode("utf-8")
     companion_resp.raise_for_status = MagicMock()
 
     mock_client = AsyncMock()
@@ -225,6 +228,24 @@ def driver_repo(tmp_path, monkeypatch):
         lambda: repo,
     )
     return repo
+
+
+@pytest.fixture(autouse=True)
+def no_catalog_hashes(monkeypatch):
+    """Skip the install path's catalog-hash lookup.
+
+    These tests are about the companion fetch, and drive it with a mocked
+    AsyncClient whose responses are queued in order. The real lookup would
+    fetch the catalog through that same mock, consuming a queued response and
+    changing the call counts these tests assert on. Integrity behaviour has its
+    own tests in test_community_artifact_integrity.py.
+    """
+    from server.utils.community_integrity import ArtifactHashes
+
+    async def _none(driver_id):
+        return ArtifactHashes(f"Driver '{driver_id}'", None, source="catalog")
+
+    monkeypatch.setattr("server.api.routes.drivers._catalog_hashes", _none)
 
 
 @pytest.fixture(autouse=True)
@@ -290,6 +311,7 @@ async def test_install_yaml_without_companion_lands_only_yaml(driver_repo):
 
     yaml_resp = MagicMock()
     yaml_resp.text = yaml_text
+    yaml_resp.content = yaml_text.encode("utf-8")
     yaml_resp.raise_for_status = MagicMock()
     mock_client = AsyncMock()
     mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -321,6 +343,7 @@ async def test_install_rolls_back_yaml_when_companion_fetch_fails(driver_repo):
 
     yaml_resp = MagicMock()
     yaml_resp.text = yaml_text
+    yaml_resp.content = yaml_text.encode("utf-8")
     yaml_resp.raise_for_status = MagicMock()
 
     err_resp = MagicMock(status_code=404)
