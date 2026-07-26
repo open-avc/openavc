@@ -234,6 +234,8 @@ Installs come from the official driver library and nowhere else, and the downloa
 
 ### Uninstalling Drivers
 
+Updating a driver replaces its companion files too, so a driver's simulator and discovery logic stay in step with the driver itself. If a newer version stops shipping one, the old copy is removed rather than left behind.
+
 To remove a driver you no longer need:
 
 1. Open the **Installed** tab in Driver Library

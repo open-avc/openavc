@@ -2,7 +2,7 @@
 
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
@@ -371,13 +371,30 @@ async def _download_companion(
     return companion_filepath
 
 
+class CompanionFetch(NamedTuple):
+    """Outcome of a best-effort companion fetch.
+
+    ``published`` is the field that matters to update, and it is deliberately
+    narrow: it is ``False`` **only** when the catalog answered a definite 404,
+    meaning this version of the driver genuinely ships without that companion.
+    Every other unhappy path — a transport error, a refused hostname, a name
+    that isn't one of the two documented suffixes — leaves it ``True``, because
+    those mean "we don't know", and update deletes the local copy when it is
+    ``False``. Getting that distinction backwards would delete a working
+    simulator every time the network hiccuped.
+    """
+
+    path: Path | None
+    published: bool = True
+
+
 async def _try_download_python_companion(
     *,
     main_url: str,
     companion_filename: str,
     driver_repo: Path,
     hashes=None,
-) -> Path | None:
+) -> CompanionFetch:
     """Best-effort fetch of a Python driver's conventional sibling companion.
 
     Unlike ``_download_companion`` (YAML drivers, where the companion is
@@ -385,8 +402,7 @@ async def _try_download_python_companion(
     ``*_sim.py``) are located by naming convention and are OPTIONAL: a missing
     one must not fail the install, because the main ``.py`` controls hardware
     and auto-identifies from its inline ``tcp_probe`` without them, and the
-    simulator is a bonus. Returns the written path, or ``None`` when the
-    sibling doesn't exist (404) or can't be fetched.
+    simulator is a bonus.
     """
     import re
     import httpx
@@ -395,18 +411,20 @@ async def _try_download_python_companion(
     # Convention-named, but validate anyway: only the two documented suffixes,
     # so a redirect can't land an arbitrary .py in driver_repo.
     if not re.match(r'^[a-zA-Z0-9_\-]+_(discovery|sim)\.py$', companion_filename):
-        return None
+        return CompanionFetch(None)
     companion_url = urljoin(main_url, companion_filename)
     parsed = urlparse(companion_url)
     if not parsed.hostname or parsed.hostname not in _GITHUB_HOSTS:
-        return None
+        return CompanionFetch(None)
 
     companion_filepath = driver_repo / companion_filename
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.get(companion_url)
             if resp.status_code == 404:
-                return None  # optional companion simply isn't published
+                # The one case we can be sure about: this version ships without
+                # that companion.
+                return CompanionFetch(None, published=False)
             resp.raise_for_status()
             # A companion that fails the catalog check is NOT swallowed like a
             # fetch error below: "optional" means it may be absent, not that a
@@ -417,8 +435,8 @@ async def _try_download_python_companion(
         log.warning(
             "Optional companion %s not installed: %s", companion_filename, e
         )
-        return None
-    return companion_filepath
+        return CompanionFetch(None)
+    return CompanionFetch(companion_filepath)
 
 
 def _remove_python_companions(main_path: Path) -> list[str]:
@@ -1166,6 +1184,43 @@ async def update_driver(driver_id: str, request: Request) -> dict[str, Any]:
         and (new_companion is None or old_companion != new_companion)
     ):
         old_companion.unlink(missing_ok=True)
+
+    # Refresh a Python driver's convention companions, exactly as install
+    # fetches them. Without this the new driver code lands beside the previous
+    # version's `_sim.py` / `_discovery.py`: the simulator keeps answering with
+    # the old protocol while the driver speaks the new one, so a project tested
+    # against it passes on a stale answer, and discovery probes with logic that
+    # no longer matches the driver.
+    #
+    # Names come from the source URL's stem, the same as install — the main
+    # file is named from `driver_id` instead, so the two only agree while every
+    # catalog driver's filename matches its id. Assert rather than inherit that.
+    if ext == ".py":
+        from pathlib import PurePosixPath
+        from urllib.parse import urlparse as _up
+        src_stem = PurePosixPath(_up(file_url).path).stem
+        if src_stem:
+            for suffix in ("_discovery.py", "_sim.py"):
+                companion_name = f"{src_stem}{suffix}"
+                fetched = await _try_download_python_companion(
+                    main_url=file_url,
+                    companion_filename=companion_name,
+                    driver_repo=driver_repo,
+                    hashes=hashes,
+                )
+                if not fetched.published:
+                    # A definite 404: this version dropped the companion, so the
+                    # previous version's copy has to go with it or it outlives
+                    # its driver forever. Only on a 404 — a transport error
+                    # leaves `published` True precisely so a flaky network can't
+                    # delete a working simulator.
+                    stale = driver_repo / companion_name
+                    if stale.is_file():
+                        stale.unlink(missing_ok=True)
+                        log.info(
+                            "Removed %s — no longer published for driver '%s'",
+                            companion_name, driver_id,
+                        )
 
     # Load and register new version
     try:

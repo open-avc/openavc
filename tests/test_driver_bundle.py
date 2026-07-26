@@ -19,7 +19,9 @@ import io
 import zipfile
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
+from fastapi import HTTPException
 
 from server.api.routes.drivers import (
     _try_download_python_companion,
@@ -27,6 +29,7 @@ from server.api.routes.drivers import (
     export_python_driver_bundle,
     install_community_driver,
     uninstall_driver,
+    update_driver,
     upload_driver_bundle,
 )
 from server.api.models import CommunityDriverInstallRequest
@@ -137,12 +140,13 @@ async def test_companion_writes_on_200(tmp_path):
             companion_filename="foo_discovery.py",
             driver_repo=tmp_path,
         )
-    assert out == tmp_path / "foo_discovery.py"
-    assert out.read_text(encoding="utf-8") == "async def probe(ctx): pass\n"
+    assert out.path == tmp_path / "foo_discovery.py"
+    assert out.path.read_text(encoding="utf-8") == "async def probe(ctx): pass\n"
+    assert out.published is True
 
 
 @pytest.mark.asyncio
-async def test_companion_returns_none_on_404(tmp_path):
+async def test_companion_reports_not_published_on_404(tmp_path):
     main_url = "https://raw.githubusercontent.com/open-avc/openavc-drivers/main/switchers/foo.py"
     resp = MagicMock(status_code=404)
     with patch("httpx.AsyncClient") as cls:
@@ -156,7 +160,10 @@ async def test_companion_returns_none_on_404(tmp_path):
             companion_filename="foo_sim.py",
             driver_repo=tmp_path,
         )
-    assert out is None
+    assert out.path is None
+    # The one case update may act on: a definite 404 means this version
+    # ships without the companion, so a stale local copy should be removed.
+    assert out.published is False
     assert list(tmp_path.glob("*.py")) == []
 
 
@@ -169,7 +176,10 @@ async def test_companion_rejects_bad_filename(tmp_path):
         companion_filename="foo.py",
         driver_repo=tmp_path,
     )
-    assert out is None
+    assert out.path is None
+    # Not a 404 — we never asked. `published` stays True so update leaves any
+    # local file alone rather than deleting on a name it refused to fetch.
+    assert out.published is True
 
 
 @pytest.mark.asyncio
@@ -179,7 +189,8 @@ async def test_companion_rejects_off_allowlist_host(tmp_path):
         companion_filename="foo_discovery.py",
         driver_repo=tmp_path,
     )
-    assert out is None
+    assert out.path is None
+    assert out.published is True
 
 
 # --- install pulls Python companions --------------------------------------
@@ -416,3 +427,183 @@ async def test_uninstall_python_driver_removes_companions(driver_repo):
     assert not (driver_repo / "foo.py").exists()
     assert not (driver_repo / "foo_discovery.py").exists()
     assert not (driver_repo / "foo_sim.py").exists()
+
+
+# --- update refreshes Python companions ------------------------------------
+#
+# Install fetches a Python driver's `_discovery.py` / `_sim.py` siblings;
+# update did not, so new driver code landed beside the previous version's
+# companions. The simulator is the one that bites: it keeps answering with the
+# old protocol while the driver speaks the new one, so a project tested against
+# it passes on a stale answer.
+
+
+def _update_client(*responses):
+    """A client whose .get answers the queued responses in order."""
+    client = AsyncMock()
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+    client.get = AsyncMock(side_effect=list(responses))
+    return client
+
+
+def _ok(text: str) -> MagicMock:
+    r = MagicMock(status_code=200, text=text)
+    r.content = text.encode("utf-8")
+    r.raise_for_status = MagicMock()
+    return r
+
+
+def _missing() -> MagicMock:
+    """A definite 404 — the catalog says this version has no such companion."""
+    return MagicMock(status_code=404)
+
+
+def _seed_installed_python_driver(repo, *, sim: str = "SIM = 1\n",
+                                  disc: str | None = "DISC = 1\n"):
+    (repo / "foo.py").write_text("class Foo:\n    DRIVER_INFO = {'id': 'foo'}\n",
+                                 encoding="utf-8")
+    (repo / "foo_sim.py").write_text(sim, encoding="utf-8")
+    if disc is not None:
+        (repo / "foo_discovery.py").write_text(disc, encoding="utf-8")
+
+
+_UPDATE_URL = (
+    "https://raw.githubusercontent.com/open-avc/openavc-drivers/main/switchers/foo.py"
+)
+
+
+async def _run_update(monkeypatch, repo, client):
+    monkeypatch.setattr(
+        "server.drivers.driver_loader.load_python_driver_file",
+        lambda p: type("D", (), {"DRIVER_INFO": {"id": "foo"}}),
+    )
+    req = MagicMock()
+    req.json = AsyncMock(return_value={"file_url": _UPDATE_URL})
+    with patch("httpx.AsyncClient", return_value=client):
+        return await update_driver("foo", req)
+
+
+@pytest.mark.asyncio
+async def test_update_refreshes_python_companions(driver_repo, monkeypatch):
+    repo = driver_repo
+    _seed_installed_python_driver(repo)
+    client = _update_client(
+        _ok("class Foo:\n    DRIVER_INFO = {'id': 'foo'}\n    V = 2\n"),
+        _ok("DISC = 2\n"),
+        _ok("SIM = 2\n"),
+    )
+    result = await _run_update(monkeypatch, repo, client)
+
+    assert result["status"] == "updated"
+    assert (repo / "foo_sim.py").read_text(encoding="utf-8") == "SIM = 2\n"
+    assert (repo / "foo_discovery.py").read_text(encoding="utf-8") == "DISC = 2\n"
+
+
+@pytest.mark.asyncio
+async def test_update_removes_a_companion_the_new_version_dropped(
+    driver_repo, monkeypatch
+):
+    # A 404 is the one answer that means "this version ships without it". The
+    # stale copy has to go, or it outlives the driver it belonged to.
+    repo = driver_repo
+    _seed_installed_python_driver(repo)
+    client = _update_client(
+        _ok("class Foo:\n    DRIVER_INFO = {'id': 'foo'}\n"),
+        _missing(),   # _discovery.py dropped upstream
+        _ok("SIM = 2\n"),
+    )
+    result = await _run_update(monkeypatch, repo, client)
+
+    assert result["status"] == "updated"
+    assert not (repo / "foo_discovery.py").exists()
+    assert (repo / "foo_sim.py").read_text(encoding="utf-8") == "SIM = 2\n"
+
+
+@pytest.mark.asyncio
+async def test_update_keeps_a_companion_when_the_fetch_merely_fails(
+    driver_repo, monkeypatch
+):
+    # The failure mode worth guarding: a transport error is NOT a 404. Treating
+    # the two alike would delete a perfectly good simulator every time the
+    # network hiccuped mid-update.
+    repo = driver_repo
+    _seed_installed_python_driver(repo)
+    client = _update_client(
+        _ok("class Foo:\n    DRIVER_INFO = {'id': 'foo'}\n"),
+        httpx.RequestError("connection reset"),
+        httpx.RequestError("connection reset"),
+    )
+    result = await _run_update(monkeypatch, repo, client)
+
+    assert result["status"] == "updated"
+    assert (repo / "foo_sim.py").read_text(encoding="utf-8") == "SIM = 1\n"
+    assert (repo / "foo_discovery.py").read_text(encoding="utf-8") == "DISC = 1\n"
+
+
+@pytest.mark.asyncio
+async def test_update_refuses_a_companion_that_fails_the_catalog_hash(
+    driver_repo, monkeypatch
+):
+    # Same rule as install: a companion whose bytes don't match what the
+    # catalog publishes stops the update rather than landing quietly.
+    import hashlib
+
+    from server.utils.community_integrity import ArtifactHashes
+
+    repo = driver_repo
+    _seed_installed_python_driver(repo, disc=None)
+    main_src = "class Foo:\n    DRIVER_INFO = {'id': 'foo'}\n"
+
+    async def _hashes(driver_id):
+        return ArtifactHashes(
+            f"Driver '{driver_id}'",
+            {
+                "switchers/foo.py": hashlib.sha256(main_src.encode()).hexdigest(),
+                "switchers/foo_sim.py": hashlib.sha256(b"SIM = 2\n").hexdigest(),
+            },
+            source="the community driver catalog",
+        )
+
+    monkeypatch.setattr("server.api.routes.drivers._catalog_hashes", _hashes)
+    client = _update_client(
+        _ok(main_src),
+        _missing(),
+        _ok("SIM = 999  # not what the catalog publishes\n"),
+    )
+    with pytest.raises(HTTPException) as exc:
+        await _run_update(monkeypatch, repo, client)
+    assert exc.value.status_code == 502
+    assert "does not match" in exc.value.detail
+
+
+@pytest.mark.asyncio
+async def test_update_of_a_yaml_driver_fetches_no_python_companions(
+    driver_repo, monkeypatch
+):
+    # Regression guard: YAML drivers keep the declared-companion path they
+    # already had, and must not start convention-fetching siblings.
+    repo = driver_repo
+    yaml_text = "id: foo\nname: Foo\ntransport: tcp\n"
+    (repo / "foo.avcdriver").write_text(yaml_text, encoding="utf-8")
+    monkeypatch.setattr(
+        "server.drivers.driver_loader.load_driver_file",
+        lambda p: {"id": "foo", "name": "Foo", "transport": "tcp"},
+    )
+    monkeypatch.setattr(
+        "server.api.routes.drivers.create_configurable_driver_class",
+        lambda d: type("D", (), {"DRIVER_INFO": {"id": "foo"}}),
+        raising=False,
+    )
+    client = _update_client(_ok(yaml_text))
+    req = MagicMock()
+    req.json = AsyncMock(return_value={
+        "file_url": "https://raw.githubusercontent.com/open-avc/openavc-drivers"
+                    "/main/switchers/foo.avcdriver",
+    })
+    with patch("httpx.AsyncClient", return_value=client):
+        result = await update_driver("foo", req)
+
+    assert result["status"] == "updated"
+    # Exactly one fetch: the YAML itself. No sibling probing.
+    assert client.get.call_count == 1
