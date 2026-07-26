@@ -285,3 +285,24 @@ async def test_response_queue_overflow_does_not_disconnect():
     # Drop-newest on overflow: the earliest frame is preserved for the waiter.
     assert transport._response_queue.get_nowait() == b"frame0"
     await transport.close()
+
+
+async def test_numeric_port_is_a_typed_config_fault_not_a_crash():
+    """A serial device configured with a TCP port number must fail as a
+    permanent config error, naming the fix.
+
+    The port is a device path, so a number used to reach ``port.startswith``
+    and raise a bare AttributeError — which escapes the ConnectionError
+    handling entirely and leaves the device card showing a generic reconnect
+    instead of the real cause.
+    """
+    with pytest.raises(ConnectionFaultError) as excinfo:
+        await SerialTransport.create(
+            19900, baudrate=9600, on_data=lambda d: None,
+        )
+
+    assert excinfo.value.fault_code == INVALID_CONFIG
+    # The message has to name what a valid port looks like.
+    message = str(excinfo.value)
+    assert "19900" in message
+    assert "/dev/ttyUSB0" in message or "COM3" in message

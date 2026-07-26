@@ -200,6 +200,20 @@ class SerialTransport:
         self._xonxoff = xonxoff
         self._name = name or port
 
+        # A serial port is a device path ("COM3", "/dev/ttyUSB0", "SIM:<name>"),
+        # never a number. A numeric value means the device was configured with a
+        # TCP port — a permanent config error that used to die on the string
+        # operation below with a bare AttributeError, leaving the device card
+        # showing a generic reconnect instead of the fix.
+        if not isinstance(port, str):
+            raise ConnectionFaultError(
+                f"Serial port must be a device path such as COM3 or "
+                f"/dev/ttyUSB0, not {port!r}. Set the device's port to the "
+                f"serial device path (or use a TCP transport for a network "
+                f"device).",
+                code=INVALID_CONFIG,
+            )
+
         # Determine if we should simulate
         self._simulate = simulate or port.startswith("SIM:") or not HAS_SERIAL
 
