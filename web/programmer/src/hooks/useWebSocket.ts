@@ -177,6 +177,16 @@ export function useWebSocket() {
         showError(msg.error as string || "Failed to set state");
       }
 
+      // Generic error frame. Every message type that has no ack of its own
+      // reports failure this way — including all the ui.* events, so without
+      // this branch a failed action in the panel preview was silent.
+      // source_type is present when the server knew which message failed, and
+      // absent for connection-level failures (rate limit, malformed JSON).
+      if (msg.type === "error") {
+        const detail = (msg.message as string) || "WebSocket error";
+        showError(msg.source_type ? `${msg.source_type}: ${detail}` : detail);
+      }
+
       // Macro progress events
       if (msg.type === "macro.started") {
         useLogStore.getState().startMacroRun(msg.macro_id as string);
@@ -326,7 +336,7 @@ export function useWebSocket() {
       }
 
       // Discovery events
-      if (msg.type === "discovery_update" && msg.device) {
+      if (msg.type === "discovery.update" && msg.device) {
         useDiscoveryStore.getState().upsertDevice(msg.device as api.DiscoveredDevice);
         if (typeof msg.progress === "number") {
           useDiscoveryStore.getState().setPhase(
@@ -337,7 +347,7 @@ export function useWebSocket() {
         }
       }
 
-      if (msg.type === "discovery_phase") {
+      if (msg.type === "discovery.phase") {
         useDiscoveryStore.getState().setPhase(
           (msg.phase as string) ?? "",
           (msg.progress as number) ?? 0,
@@ -348,7 +358,7 @@ export function useWebSocket() {
         }
       }
 
-      if (msg.type === "discovery_complete") {
+      if (msg.type === "discovery.complete") {
         // The scan reports "partial" when it ran out of time or errored —
         // the results are real but the sweep didn't finish.
         useDiscoveryStore.getState().setStatus(

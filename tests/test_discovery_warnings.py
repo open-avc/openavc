@@ -128,7 +128,7 @@ class TestScanWarnings:
         status = self.engine.get_status()
         assert any("Host scan could not run" in w for w in status["warnings"])
 
-        complete = [e for e in events if e.get("type") == "discovery_complete"]
+        complete = [e for e in events if e.get("type") == "discovery.complete"]
         assert len(complete) == 1
         assert any("Host scan could not run" in w for w in complete[0]["warnings"])
 

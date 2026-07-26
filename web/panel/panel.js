@@ -505,7 +505,12 @@ class PanelApp {
                 break;
 
             case 'error':
-                console.warn(`[WS Error] ${msg.source_type}: ${msg.message}`);
+                // source_type is absent for connection-level errors (rate
+                // limit, malformed JSON) — printing it unconditionally put a
+                // literal "undefined" in front of every one of those.
+                console.warn(msg.source_type
+                    ? `[WS Error] ${msg.source_type}: ${msg.message}`
+                    : `[WS Error] ${msg.message}`);
                 break;
         }
     }

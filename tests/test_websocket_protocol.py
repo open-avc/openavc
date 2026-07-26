@@ -11,6 +11,8 @@ from server.api.ws import (
     _PANEL_ALLOWED_TYPES,
 )
 from server.core.state_store import PANEL_WRITABLE_PREFIXES, is_flat_primitive
+import server.api.ws as ws_module
+from server.api.ws import _dispatch_text
 
 
 # ── is_flat_primitive tests ──
@@ -734,3 +736,108 @@ async def test_macro_execute_failure_still_reaches_client():
     types = [m["type"] for m in ws.sent]
     assert types[0] == "macro.execute.ack"
     assert "error" in types
+
+
+# ── The error frame is one shape from one producer (Q-052) ──
+
+
+def test_send_ws_error_is_the_only_error_frame_producer():
+    """A second `{"type": "error"}` literal is how the shapes drifted apart.
+
+    Every failure on this socket goes through `_send_ws_error`, so the frame
+    can't gain a field at one site and lose it at another.
+    """
+    import ast
+    from pathlib import Path
+
+    source = Path(ws_module.__file__).read_text(encoding="utf-8")
+    producers = []
+    for node in ast.walk(ast.parse(source)):
+        if not isinstance(node, ast.Dict):
+            continue
+        for key, value in zip(node.keys, node.values):
+            if (
+                isinstance(key, ast.Constant) and key.value == "type"
+                and isinstance(value, ast.Constant) and value.value == "error"
+            ):
+                producers.append(node.lineno)
+    assert len(producers) == 1, (
+        f"Expected exactly one 'error' frame literal (inside _send_ws_error); "
+        f"found {len(producers)} at lines {producers}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_error_frame_carries_source_type_when_known():
+    ws = FakeWS()
+    engine = _make_engine()
+    with patch("server.api._engine._engine", engine):
+        await _handle_message(ws, {"type": "ui.change", "element_id": ""}, "panel")
+    assert ws.sent[0] == {
+        "type": "error",
+        "message": "Missing element_id",
+        "source_type": "ui.change",
+    }
+
+
+@pytest.mark.asyncio
+async def test_error_frame_omits_source_type_when_unknown():
+    """Omitted, not a placeholder — a client must be able to tell the
+    difference between "this message type failed" and "nothing parsed"."""
+    ws = FakeWS()
+    await ws_module._send_ws_error(ws, None, "Invalid JSON")
+    assert ws.sent[0] == {"type": "error", "message": "Invalid JSON"}
+    assert "source_type" not in ws.sent[0]
+
+
+@pytest.mark.asyncio
+async def test_handler_crash_reports_the_message_type_that_failed():
+    """The old raw send dropped it, leaving a bare "Server error" with nothing
+    to correlate against."""
+    ws = FakeWS()
+    engine = _make_engine()
+    engine.handle_ui_event = AsyncMock(side_effect=RuntimeError("boom"))
+    with patch("server.api._engine._engine", engine):
+        # ui.press swallows handler exceptions itself, so drive the loop-level
+        # catch-all the way it really happens: a handler that raises out.
+        with patch.object(ws_module, "_handle_message", side_effect=RuntimeError("boom")):
+            await _dispatch_text(ws, '{"type": "ui.press", "element_id": "b1"}', "panel")
+    err = [m for m in ws.sent if m["type"] == "error"]
+    assert err and err[0]["source_type"] == "ui.press"
+    assert "Server error" in err[0]["message"]
+
+
+@pytest.mark.asyncio
+async def test_non_object_json_is_a_clean_error_not_a_server_error():
+    """`5` and `[]` parse fine but have no type. That's the client's mistake,
+    and it used to surface as "Server error: AttributeError"."""
+    ws = FakeWS()
+    await _dispatch_text(ws, "5", "panel")
+    assert ws.sent[0]["type"] == "error"
+    assert "JSON object" in ws.sent[0]["message"]
+    assert "Server error" not in ws.sent[0]["message"]
+
+
+@pytest.mark.asyncio
+async def test_isc_send_answers_when_isc_is_disabled():
+    """Silence is not a valid answer: the client could not tell "sent" from
+    "ISC never ran"."""
+    ws = FakeWS()
+    engine = _make_engine()  # engine.isc is None
+    with patch("server.api._engine._engine", engine):
+        await _handle_message(
+            ws, {"type": "isc.send", "instance_id": "room2", "event": "scene"}, "programmer"
+        )
+    assert ws.sent[0]["type"] == "error"
+    assert "not enabled" in ws.sent[0]["message"]
+    assert ws.sent[0]["source_type"] == "isc.send"
+
+
+@pytest.mark.asyncio
+async def test_isc_broadcast_answers_when_isc_is_disabled():
+    ws = FakeWS()
+    engine = _make_engine()
+    with patch("server.api._engine._engine", engine):
+        await _handle_message(ws, {"type": "isc.broadcast", "event": "scene"}, "programmer")
+    assert ws.sent[0]["type"] == "error"
+    assert "not enabled" in ws.sent[0]["message"]

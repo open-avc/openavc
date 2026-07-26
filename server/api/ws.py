@@ -184,23 +184,13 @@ async def _run_ws_connection(
             while _msg_times and now - _msg_times[0] >= WS_RATE_LIMIT_WINDOW_SEC:
                 _msg_times.popleft()
             if len(_msg_times) >= WS_RATE_LIMIT_MAX_MESSAGES:
-                await ws.send_json({"type": "error", "message": "Rate limit exceeded"})
+                # No source_type: the limiter fires before anything is parsed,
+                # so the failing message type genuinely isn't known here.
+                await _send_ws_error(ws, None, "Rate limit exceeded")
                 continue
             _msg_times.append(now)
 
-            try:
-                msg = json.loads(text)
-                await _handle_message(ws, msg, client_type)
-            except json.JSONDecodeError:
-                log.warning(f"Invalid JSON from WebSocket: {text[:100]}")
-                await ws.send_json({"type": "error", "message": "Invalid JSON"})
-            except Exception as exc:
-                # Catch-all: isolates arbitrary message-handler errors from the connection loop
-                log.exception("Error handling WebSocket message")
-                try:
-                    await ws.send_json({"type": "error", "message": f"Server error: {type(exc).__name__}"})
-                except Exception:
-                    pass  # Catch-all: client may have disconnected during error reply
+            await _dispatch_text(ws, text, client_type)
 
     except WebSocketDisconnect:
         pass
@@ -251,14 +241,26 @@ async def _send_ws(ws: WebSocket, msg: dict[str, Any]) -> None:
 
 
 async def _send_ws_error(
-    ws: WebSocket, source_type: str, message: str
+    ws: WebSocket, source_type: str | None, message: str
 ) -> None:
-    """Send an error response back to the client."""
-    await _send_ws(ws, {
-        "type": "error",
-        "source_type": source_type,
-        "message": message,
-    })
+    """Send an error frame — THE only producer of ``type: "error"`` on this socket.
+
+    One shape: ``{type, message}`` plus ``source_type`` naming the inbound
+    message that failed, whenever that is known. It is omitted (not set to a
+    placeholder) for connection-level failures where nothing was parsed —
+    rate limiting and malformed JSON — because inventing a message type there
+    would be a lie a client can't distinguish from a real one.
+
+    Note the two other ways this socket reports a failure, both deliberate:
+    a result ack (``command.ack``/``state.set.ack``) carries ``success: false``
+    plus the correlation fields a generic error frame has no room for (which
+    device, which key); and macro *lifecycle* events carry a macro's own
+    outcome. See the WebSocket section of the API reference for the rule.
+    """
+    frame: dict[str, Any] = {"type": "error", "message": message}
+    if source_type:
+        frame["source_type"] = source_type
+    await _send_ws(ws, frame)
 
 
 _FLAT_PRIMITIVE_REQUIRED = "Value must be a flat primitive (str, int, float, bool, or null)"
@@ -274,6 +276,37 @@ _PANEL_ALLOWED_TYPES = frozenset({
     "ui.select", "ui.route", "ui.submit",
     "ui.page", "command", "macro.execute", "state.set", "pong",
 })
+
+
+async def _dispatch_text(ws: WebSocket, text: str, client_type: str) -> None:
+    """Parse one inbound frame and dispatch it, turning every failure into an
+    error frame.
+
+    Split out of the connection loop so these failure paths are reachable in a
+    test without standing up a socket — they are the ones that used to each
+    hand-roll their own error frame.
+    """
+    msg: Any = None
+    try:
+        msg = json.loads(text)
+        if not isinstance(msg, dict):
+            # A bare JSON scalar or array parses fine but has no type. Say so,
+            # rather than letting `msg.get` raise into the catch-all below and
+            # reporting the client's mistake as a server error.
+            await _send_ws_error(ws, None, "Expected a JSON object with a 'type' field")
+            return
+        await _handle_message(ws, msg, client_type)
+    except json.JSONDecodeError:
+        log.warning(f"Invalid JSON from WebSocket: {text[:100]}")
+        await _send_ws_error(ws, None, "Invalid JSON")
+    except Exception as exc:
+        # Catch-all: isolates arbitrary message-handler errors from the connection loop
+        log.exception("Error handling WebSocket message")
+        # The message parsed, so we know which type failed — the old raw send
+        # dropped that, leaving the client a bare "Server error" with nothing
+        # to correlate it to.
+        failed_type = msg.get("type") if isinstance(msg, dict) else None
+        await _send_ws_error(ws, failed_type, f"Server error: {type(exc).__name__}")
 
 
 async def _handle_message(
@@ -429,7 +462,7 @@ async def _handle_message(
             return
         await engine.events.emit(f"ui.page.{page_id}")
         # Confirm navigation to sender only — each panel manages its own page
-        await ws.send_json({"type": "ui.navigate", "page_id": page_id})
+        await _send_ws(ws, {"type": "ui.navigate", "page_id": page_id})
 
     elif msg_type == "command":
         device_id = msg.get("device_id", "")
@@ -533,7 +566,7 @@ async def _handle_message(
         _cleanup_log_subscription(ws_id)
         buf = get_log_buffer()
         # Send recent history first
-        await ws.send_json({
+        await _send_ws(ws, {
             "type": "log.history",
             "entries": buf.get_recent(100),
         })
@@ -562,6 +595,11 @@ async def _handle_message(
             except (ConnectionError, OSError) as e:
                 log.warning(f"ISC send failed: {e}")
                 await _send_ws_error(ws, msg_type, f"ISC send failed: {e}")
+        else:
+            # No ack on success (fire-and-forget to a peer), but silence on
+            # failure is not a valid answer: without this a client on an
+            # instance with ISC disabled cannot tell "sent" from "never ran".
+            await _send_ws_error(ws, msg_type, "Inter-system communication is not enabled")
 
     elif msg_type == "isc.broadcast":
         # Broadcast event to all ISC peers
@@ -576,6 +614,8 @@ async def _handle_message(
             except (ConnectionError, OSError) as e:
                 log.warning(f"ISC broadcast failed: {e}")
                 await _send_ws_error(ws, msg_type, f"ISC broadcast failed: {e}")
+        else:
+            await _send_ws_error(ws, msg_type, "Inter-system communication is not enabled")
 
     else:
         log.debug(f"Unknown WS message type: {msg_type}")

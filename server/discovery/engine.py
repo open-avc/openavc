@@ -628,7 +628,7 @@ class DiscoveryEngine:
             self.scan_status.duration = time.time() - self.scan_status.started_at
             self.scan_status.devices_found = len(self.results)
             await self._emit({
-                "type": "discovery_complete",
+                "type": "discovery.complete",
                 "scan_id": self.scan_status.scan_id,
                 "status": self.scan_status.status,
                 "total_devices": len(self.results),
@@ -1586,7 +1586,7 @@ class DiscoveryEngine:
     async def _emit_progress(self, phase: str, message: str) -> None:
         """Emit a discovery_phase event with current progress."""
         await self._emit({
-            "type": "discovery_phase",
+            "type": "discovery.phase",
             "phase": phase,
             "phase_number": self.scan_status.phase_number,
             "total_phases": self.scan_status.total_phases,
@@ -1598,7 +1598,7 @@ class DiscoveryEngine:
     async def _emit_device_update(self, device: DiscoveredDevice, phase: str) -> None:
         """Emit a device update event."""
         await self._emit({
-            "type": "discovery_update",
+            "type": "discovery.update",
             "device": device.to_dict(),
             "phase": phase,
             "progress": self.scan_status.progress,

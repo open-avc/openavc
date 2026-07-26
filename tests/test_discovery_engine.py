@@ -242,7 +242,7 @@ class TestSetPhase:
         self.engine._on_update = AsyncMock(side_effect=lambda msg: events.append(msg))
         await self.engine._set_phase(2, "passive", "Starting listeners...")
         assert len(events) == 1
-        assert events[0]["type"] == "discovery_phase"
+        assert events[0]["type"] == "discovery.phase"
         assert events[0]["phase"] == "passive"
         assert events[0]["phase_number"] == 2
 
@@ -284,7 +284,7 @@ class TestEmitDeviceUpdate:
         device = DiscoveredDevice(ip="10.0.0.1")
         await self.engine._emit_device_update(device, "ping_sweep")
         assert len(events) == 1
-        assert events[0]["type"] == "discovery_update"
+        assert events[0]["type"] == "discovery.update"
         assert events[0]["device"]["ip"] == "10.0.0.1"
         assert events[0]["phase"] == "ping_sweep"
 
@@ -467,7 +467,7 @@ class TestRunScan:
              ):
             await self.engine._run_scan(["192.168.1.0/24"], timeout=10.0)
 
-        assert any(e["type"] == "discovery_complete" for e in events)
+        assert any(e["type"] == "discovery.complete" for e in events)
         assert any(
             "Driver matching failed" in w for w in self.engine.scan_status.warnings
         ), self.engine.scan_status.warnings
@@ -487,7 +487,7 @@ class TestRunScan:
         with patch.object(self.engine, "_scan_pipeline", side_effect=slow_pipeline):
             await self.engine._run_scan(["192.168.1.0/24"], timeout=0.1)
 
-        complete = [e for e in events if e["type"] == "discovery_complete"]
+        complete = [e for e in events if e["type"] == "discovery.complete"]
         assert len(complete) == 1
         assert complete[0]["status"] == "partial"
 
@@ -503,7 +503,7 @@ class TestRunScan:
         with patch.object(self.engine, "_scan_pipeline", new_callable=AsyncMock):
             await self.engine._run_scan(["192.168.1.0/24"], timeout=10.0)
 
-        complete_events = [e for e in events if e.get("type") == "discovery_complete"]
+        complete_events = [e for e in events if e.get("type") == "discovery.complete"]
         assert len(complete_events) == 1
         assert complete_events[0]["scan_id"] == "test_scan"
 

@@ -70,7 +70,7 @@ async def refresh_all_device_matches() -> None:
         if updated and _broadcast_fn:
             try:
                 await _broadcast_fn({
-                    "type": "discovery_update",
+                    "type": "discovery.update",
                     "device": updated,
                     "phase": "refresh",
                     "progress": 1.0,
