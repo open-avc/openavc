@@ -351,6 +351,72 @@ class TestRunScan:
 
         finalize.assert_awaited_once()
 
+    async def test_timeout_recovers_passive_evidence_before_matching(self):
+        """Recovery must run, and must run BEFORE the matcher.
+
+        Merging after the matcher would be pointless — the evidence would land
+        in the log with nothing left to read it.
+        """
+        import time
+        self.engine.scan_status.started_at = time.time()
+        self.engine.scan_status.scan_id = "test_scan"
+
+        calls = []
+
+        async def slow_pipeline(subnets):
+            await asyncio.sleep(10)
+
+        async def record_merge():
+            calls.append("merge")
+            return 1
+
+        async def record_finalize():
+            calls.append("finalize")
+
+        with patch.object(self.engine, "_scan_pipeline", side_effect=slow_pipeline), \
+             patch.object(self.engine, "merge_passive_results", side_effect=record_merge), \
+             patch.object(self.engine, "_finalize_scan", side_effect=record_finalize):
+            await self.engine._run_scan(["192.168.1.0/24"], timeout=0.1)
+
+        assert calls == ["merge", "finalize"]
+
+    async def test_clean_scan_does_not_re_merge_passive_results(self):
+        """Phase 7 already merged on the success path; don't run it twice."""
+        import time
+        self.engine.scan_status.started_at = time.time()
+        self.engine.scan_status.scan_id = "test_scan"
+
+        with patch.object(self.engine, "_scan_pipeline", new_callable=AsyncMock), \
+             patch.object(
+                 self.engine, "merge_passive_results", new_callable=AsyncMock
+             ) as merge, \
+             patch.object(self.engine, "_finalize_scan", new_callable=AsyncMock):
+            await self.engine._run_scan(["192.168.1.0/24"], timeout=10.0)
+
+        merge.assert_not_awaited()
+
+    async def test_passive_recovery_failure_does_not_block_matching(self):
+        """A broken recovery must not cost us the matcher too."""
+        import time
+        self.engine.scan_status.started_at = time.time()
+        self.engine.scan_status.scan_id = "test_scan"
+
+        async def slow_pipeline(subnets):
+            await asyncio.sleep(10)
+
+        with patch.object(self.engine, "_scan_pipeline", side_effect=slow_pipeline), \
+             patch.object(
+                 self.engine, "merge_passive_results",
+                 new_callable=AsyncMock, side_effect=RuntimeError("drain boom")
+             ), \
+             patch.object(
+                 self.engine, "_finalize_scan", new_callable=AsyncMock
+             ) as finalize:
+            await self.engine._run_scan(["192.168.1.0/24"], timeout=0.1)
+
+        finalize.assert_awaited_once()
+        assert self.engine.scan_status.status == "partial"
+
     async def test_cancel_skips_the_matcher(self):
         """An explicit stop means stop — no further work, including matching."""
         import time

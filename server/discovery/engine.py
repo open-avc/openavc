@@ -262,6 +262,11 @@ class DiscoveryEngine:
         # Passive-source flood guard (see _get_or_create_passive).
         self._passive_sources_created = 0
         self._passive_cap_warned = False
+        # Live passive listeners for the current scan, so their evidence can be
+        # merged after a truncation as well as in phase 7 (see
+        # merge_passive_results), plus the (source, ip) pairs already merged.
+        self._passive_scanners: tuple[Any, Any, Any] | None = None
+        self._passive_merged: set[tuple[str, str]] = set()
         self.scan_status = ScanStatus()
         self._scan_task: asyncio.Task | None = None
         self._scan_lock = asyncio.Lock()
@@ -531,6 +536,8 @@ class DiscoveryEngine:
 
             self._passive_sources_created = 0
             self._passive_cap_warned = False
+            self._passive_scanners = None
+            self._passive_merged.clear()
 
             self._scan_task = asyncio.create_task(
                 self._run_scan(targets, timeout)
@@ -588,6 +595,23 @@ class DiscoveryEngine:
             # the phases above were cut short. Skipped only on an explicit
             # cancel, where the user asked for no further work.
             if not cancelled:
+                # Recover the passive listeners' evidence first. On a truncated
+                # scan phase 7 never collected them and the pipeline's finally
+                # has since cancelled their tasks, so this is the only chance to
+                # merge announcements that were already received and parsed —
+                # and it must happen before matching, not after, or the matcher
+                # runs without them. Idempotent, so the normal path (where phase
+                # 7 already merged) is a no-op.
+                if truncated:
+                    try:
+                        recovered = await self.merge_passive_results()
+                        if recovered:
+                            log.info(
+                                "Recovered %d passive result(s) from a truncated scan",
+                                recovered,
+                            )
+                    except Exception:
+                        log.exception("Passive result recovery failed")
                 try:
                     await self._finalize_scan()
                 except Exception:
@@ -669,6 +693,11 @@ class DiscoveryEngine:
         mdns_scanner = MDNSScanner(service_types=mdns_service_types, control_ip=control_ip)
         ssdp_scanner = SSDPScanner(control_ip=control_ip)
         amx_ddp_scanner = AMXDDPScanner(control_ip=control_ip)
+
+        # Reachable from _run_scan so a truncated scan can still merge what the
+        # listeners heard — their tasks get cancelled below, which zeroes the
+        # task results but not the scanners' own accumulated state.
+        self._passive_scanners = (mdns_scanner, ssdp_scanner, amx_ddp_scanner)
 
         # Passive listeners run throughout all active scan phases and are
         # stopped explicitly in phase 7 when we're ready to collect.
@@ -1110,8 +1139,51 @@ class DiscoveryEngine:
                 task.cancel()
             await asyncio.gather(*remaining_tasks, return_exceptions=True)
 
-        mdns_results = self._task_result(mdns_task, "mDNS")
-        for ip, mdns_result in mdns_results.items():
+        # Retrieve each listener's outcome so a crashed one is logged, and so a
+        # failed task doesn't resurface later as asyncio's "exception was never
+        # retrieved". The evidence itself comes from the scanners below, not
+        # from these results.
+        for task, label in (
+            (mdns_task, "mDNS"), (ssdp_task, "SSDP"), (amx_ddp_task, "AMX DDP"),
+        ):
+            if task.done() and not task.cancelled():
+                exc = task.exception()
+                if exc is not None:
+                    log.debug("%s listener failed", label, exc_info=exc)
+
+        await self.merge_passive_results()
+
+    async def merge_passive_results(self) -> int:
+        """Merge whatever the passive listeners have heard into ``self.results``.
+
+        Reads each scanner's in-memory ``results`` rather than its task's return
+        value. That is the same dict — every listener's coroutine ends with
+        ``return dict(self._results)`` — but reading it directly works when the
+        task was **cancelled**, which is the whole point: a scan that runs out of
+        time cancels the listeners in ``_scan_pipeline_inner``'s ``finally``, and
+        reading the task result there yields nothing. The announcements were
+        already received and parsed; discarding them threw away the strongest
+        identification signals a scan collects (mDNS/SSDP/AMX-DDP), which is why
+        a truncated scan used to return devices as ``possible`` rather than
+        ``identified``.
+
+        Idempotent per (source, ip): phase 7 calls this on the normal path and
+        ``_run_scan`` calls it again after a truncation, including a truncation
+        that landed midway through phase 7's own merge. Without the guard the
+        second pass would re-append evidence for devices already merged, growing
+        the evidence log and the "Why?" reveal with duplicates.
+
+        Returns the number of (source, ip) pairs merged by this call.
+        """
+        scanners = self._passive_scanners
+        if scanners is None:
+            return 0
+        mdns_scanner, ssdp_scanner, amx_ddp_scanner = scanners
+        merged = 0
+
+        for ip, mdns_result in mdns_scanner.results.items():
+            if not self._claim_passive_merge("mdns", ip):
+                continue
             device = self._get_or_create_passive(ip)
             if device is None:
                 continue
@@ -1121,9 +1193,11 @@ class DiscoveryEngine:
                 device.evidence_log.append(ev)
             merge_device_info(device, mdns_result.to_device_info(), "mdns")
             await self._emit_device_update(device, "mdns")
+            merged += 1
 
-        ssdp_results = self._task_result(ssdp_task, "SSDP")
-        for ip, ssdp_result in ssdp_results.items():
+        for ip, ssdp_result in ssdp_scanner.results.items():
+            if not self._claim_passive_merge("ssdp", ip):
+                continue
             device = self._get_or_create_passive(ip)
             if device is None:
                 continue
@@ -1133,9 +1207,11 @@ class DiscoveryEngine:
             device.evidence_log.extend(ssdp_result.to_evidence_records())
             merge_device_info(device, ssdp_result.to_device_info(), "ssdp")
             await self._emit_device_update(device, "ssdp")
+            merged += 1
 
-        amx_results = self._task_result(amx_ddp_task, "AMX DDP")
-        for ip, beacon in amx_results.items():
+        for ip, beacon in amx_ddp_scanner.results.items():
+            if not self._claim_passive_merge("amx_ddp", ip):
+                continue
             device = self._get_or_create_passive(ip)
             if device is None:
                 continue
@@ -1143,15 +1219,17 @@ class DiscoveryEngine:
             device.evidence_log.append(beacon.to_evidence())
             merge_device_info(device, beacon.to_device_info(), "amx_ddp")
             await self._emit_device_update(device, "amx_ddp")
+            merged += 1
 
-    def _task_result(self, task: asyncio.Task, label: str) -> dict:
-        if not task.done() or task.cancelled():
-            return {}
-        try:
-            return task.result() or {}
-        except Exception:  # Catch-all: task.result() re-raises whatever the task raised
-            log.debug("%s task failed", label, exc_info=True)
-            return {}
+        return merged
+
+    def _claim_passive_merge(self, source: str, ip: str) -> bool:
+        """True the first time this (source, ip) is merged in the current scan."""
+        key = (source, ip)
+        if key in self._passive_merged:
+            return False
+        self._passive_merged.add(key)
+        return True
 
     async def _collect_snmp_results(
         self,

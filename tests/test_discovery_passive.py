@@ -1503,9 +1503,31 @@ class TestSSDPSocketJoinsGroup:
 # ============================================================
 
 
+class _FakeScanner:
+    """Stands in for a passive listener holding what it has heard so far.
+
+    Mirrors the real scanners' contract: results accumulate on the instance and
+    are exposed as a ``results`` property, which is what the engine merges from
+    — so evidence survives the listener's task being cancelled.
+    """
+
+    def __init__(self, results=None):
+        self._results = results or {}
+
+    @property
+    def results(self):
+        return dict(self._results)
+
+
 class TestEnginePassiveIntegration:
     def setup_method(self):
         self.engine = DiscoveryEngine()
+
+    def _use_scanners(self, mdns=None, ssdp=None, amx=None):
+        """Stage what the listeners have heard for this scan."""
+        self.engine._passive_scanners = (
+            _FakeScanner(mdns), _FakeScanner(ssdp), _FakeScanner(amx),
+        )
 
     def test_total_phases_is_eight(self):
         """Engine should now have 8 phases."""
@@ -1534,6 +1556,7 @@ class TestEnginePassiveIntegration:
             ),
         }
 
+        self._use_scanners(mdns=mdns_results)
         mdns_future = asyncio.get_event_loop().create_future()
         mdns_future.set_result(mdns_results)
         ssdp_future = asyncio.get_event_loop().create_future()
@@ -1565,6 +1588,7 @@ class TestEnginePassiveIntegration:
             ),
         }
 
+        self._use_scanners(ssdp=ssdp_results)
         mdns_future = asyncio.get_event_loop().create_future()
         mdns_future.set_result({})
         ssdp_future = asyncio.get_event_loop().create_future()
@@ -1602,6 +1626,7 @@ class TestEnginePassiveIntegration:
             ),
         }
 
+        self._use_scanners(ssdp=ssdp_results)
         mdns_future = asyncio.get_event_loop().create_future()
         mdns_future.set_result({})
         ssdp_future = asyncio.get_event_loop().create_future()
@@ -1650,6 +1675,7 @@ class TestEnginePassiveIntegration:
             ),
         }
 
+        self._use_scanners(mdns=mdns_results, ssdp=ssdp_results)
         mdns_future = asyncio.get_event_loop().create_future()
         mdns_future.set_result(mdns_results)
         ssdp_future = asyncio.get_event_loop().create_future()
@@ -1665,6 +1691,77 @@ class TestEnginePassiveIntegration:
         assert device.model == "QM55R"
         assert device.serial_number == "SER999"
         assert any(e.source.startswith("mdns:") for e in device.evidence_log)
+
+    @pytest.mark.asyncio
+    async def test_merge_recovers_evidence_from_cancelled_listeners(self):
+        """A truncated scan still gets the announcements it already heard.
+
+        The listeners' tasks are cancelled by the pipeline's finally when a scan
+        runs out of time, which zeroes their task results. The evidence was
+        already received and parsed, so it is read off the scanners instead —
+        without it, a truncated scan matches on OUI and open ports alone and
+        reports devices as ``possible`` rather than ``identified``.
+        """
+        cancelled = asyncio.get_event_loop().create_future()
+        cancelled.cancel()
+
+        self._use_scanners(
+            mdns={
+                "192.168.1.72": MDNSResult(
+                    ip="192.168.1.72",
+                    hostname="projector",
+                    port=4352,
+                    service_type="_pjlink._tcp.local.",
+                    instance_name="Acme PJ",
+                ),
+            },
+        )
+
+        merged = await self.engine.merge_passive_results()
+
+        assert merged == 1
+        assert "192.168.1.72" in self.engine.results
+        assert any(
+            e.source == "mdns:_pjlink._tcp.local."
+            for e in self.engine.results["192.168.1.72"].evidence_log
+        )
+
+    @pytest.mark.asyncio
+    async def test_merge_is_idempotent_per_source_and_ip(self):
+        """Phase 7 and the post-truncation recovery can both run.
+
+        A scan truncated midway through phase 7's own merge would otherwise
+        re-append evidence for devices already merged, inflating the evidence
+        log and the "Why?" reveal with duplicates.
+        """
+        self._use_scanners(
+            mdns={
+                "192.168.1.72": MDNSResult(
+                    ip="192.168.1.72",
+                    hostname="projector",
+                    service_type="_pjlink._tcp.local.",
+                    instance_name="Acme PJ",
+                ),
+            },
+        )
+
+        first = await self.engine.merge_passive_results()
+        evidence_after_first = len(self.engine.results["192.168.1.72"].evidence_log)
+        second = await self.engine.merge_passive_results()
+
+        assert first == 1
+        assert second == 0, "second merge should claim nothing"
+        assert (
+            len(self.engine.results["192.168.1.72"].evidence_log)
+            == evidence_after_first
+        )
+
+    @pytest.mark.asyncio
+    async def test_merge_without_scanners_is_a_noop(self):
+        """Recovery runs on paths where a scan died before creating listeners."""
+        self.engine._passive_scanners = None
+        assert await self.engine.merge_passive_results() == 0
+        assert self.engine.results == {}
 
 
 # ============================================================
