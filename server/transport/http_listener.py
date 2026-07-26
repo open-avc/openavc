@@ -60,15 +60,13 @@ class HTTPListenerSubscription:
         self,
         device_id: str,
         label: str,
-        source_ips: set[str] | None,
+        source_ips: set[str],
         callback: Callable[[HTTPPushRequest], Any],
         name: str,
     ) -> None:
         self.device_id = device_id
         self.label = label
-        # None means "any local source" (loopback-host subscription where the
-        # local interface set could not be determined); otherwise the exact
-        # source addresses this subscription accepts.
+        # The exact source addresses this subscription accepts.
         self._source_ips = source_ips
         self._callback = callback
         self.name = name
@@ -81,8 +79,10 @@ class HTTPListenerSubscription:
         return f"{base}/{self.label}" if self.label else base
 
     def matches_source(self, src_ip: str) -> bool:
-        if self._source_ips is None:
-            return True
+        # No accepted set means no accepted sender. An unresolvable device
+        # host must never read as "accept anything on the network".
+        if not self._source_ips:
+            return False
         if src_ip in self._source_ips:
             return True
         # A loopback-host subscription accepts the whole loopback net: the

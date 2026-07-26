@@ -207,6 +207,75 @@ async def test_loopback_subscription_matches_local_sources():
     await sub.close()
 
 
+# ---------------------------------------------------------------------------
+# Source-set resolution — the fail-closed contract every push listener shares
+# ---------------------------------------------------------------------------
+
+
+def _break_interface_enumeration(monkeypatch, default_route=None):
+    """Make this host's own addresses undiscoverable, as on a frozen build
+    whose bundle dropped the enumeration dependency."""
+    import server.discovery.network_scanner as ns
+
+    def _boom():
+        raise RuntimeError("interface enumeration unavailable")
+
+    monkeypatch.setattr(ns, "get_interface_ips", _boom)
+    monkeypatch.setattr(ns, "get_default_route_ip", lambda: default_route)
+
+
+@pytest.mark.asyncio
+async def test_loopback_resolution_never_widens_to_any_source(monkeypatch):
+    """Failing to enumerate this host's addresses narrows the accepted set to
+    loopback. It must never resolve to "match anything" — that would turn the
+    gate every push listener leans on into a no-op for the one host shape
+    (a simulator-redirected device) that is easiest to reach."""
+    _break_interface_enumeration(monkeypatch)
+
+    ips = await ml.resolve_source_ips("127.0.0.1", "sim")
+
+    assert ips == {"127.0.0.1"}
+
+
+@pytest.mark.asyncio
+async def test_loopback_resolution_falls_back_to_default_route(monkeypatch):
+    """The routing table still names one of our own addresses when interface
+    enumeration is unavailable, so a simulator sending from the host's LAN
+    interface keeps working instead of being silently dropped."""
+    _break_interface_enumeration(monkeypatch, default_route="192.0.2.50")
+
+    ips = await ml.resolve_source_ips("127.0.0.1", "sim")
+
+    assert ips == {"127.0.0.1", "192.0.2.50"}
+
+
+@pytest.mark.asyncio
+async def test_resolution_of_a_hostless_device_stays_deny_all(monkeypatch):
+    """A device with no host matches nothing — unchanged, and the reason the
+    empty set has to keep meaning "deny", not "unknown so allow"."""
+    ips = await ml.resolve_source_ips("", "sim")
+
+    assert ips == set()
+
+
+@pytest.mark.asyncio
+async def test_unknown_source_set_denies_every_frame():
+    """Defensive: a subscription carrying no accepted source set drops frames
+    rather than accepting the whole segment."""
+    port = _free_udp_port()
+    got: list[bytes] = []
+    sub = await ml.subscribe(
+        "239.10.10.11", port, "127.0.0.1", lambda d, a: got.append(d), "sim"
+    )
+    sub._source_ips = None  # the sentinel that used to mean "match anything"
+    listener = ml._registry._listeners[port]
+
+    listener.deliver(b"spoof", ("203.0.113.7", 5000))
+
+    assert got == []
+    await sub.close()
+
+
 @pytest.mark.asyncio
 async def test_same_source_feeds_all_matching_subscriptions():
     """Two device entries for one host (e.g. two ports on one chassis) both

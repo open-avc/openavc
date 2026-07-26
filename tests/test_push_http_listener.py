@@ -167,6 +167,56 @@ async def test_loopback_subscription_accepts_local_sources():
     await sub.close()
 
 
+def _break_interface_enumeration(monkeypatch, default_route=None):
+    """Make this host's own addresses undiscoverable, as on a frozen build
+    whose bundle dropped the enumeration dependency."""
+    import server.discovery.network_scanner as ns
+
+    def _boom():
+        raise RuntimeError("interface enumeration unavailable")
+
+    monkeypatch.setattr(ns, "get_interface_ips", _boom)
+    monkeypatch.setattr(ns, "get_default_route_ip", lambda: default_route)
+
+
+@pytest.mark.asyncio
+async def test_loopback_subscription_with_failed_enumeration_still_gates(monkeypatch):
+    """The gate must narrow, not vanish, when the local address set is unknown.
+
+    A loopback host accepts this machine's own addresses because a redirected
+    simulator POSTs from a real interface. If those addresses can't be
+    determined the subscription falls back to loopback only — it must never
+    widen to "any source", which would let any host on the LAN inject state
+    for this device.
+    """
+    _break_interface_enumeration(monkeypatch)
+    got: list[hl.HTTPPushRequest] = []
+    sub = await hl.subscribe("dev1", "127.0.0.1", got.append, "dev1")
+
+    lan = hl.HTTPPushRequest(body=b"spoof", source_ip="203.0.113.7")
+    assert await hl.dispatch("dev1", "", lan) == 403
+    # The simulator's own loopback POSTs still land.
+    local = hl.HTTPPushRequest(body=b"real", source_ip="127.0.0.1")
+    assert await hl.dispatch("dev1", "", local) == 200
+
+    assert [r.body for r in got] == [b"real"]
+    await sub.close()
+
+
+@pytest.mark.asyncio
+async def test_unknown_source_set_denies_every_request():
+    """Defensive: a subscription carrying no accepted source set drops
+    requests rather than accepting the whole LAN."""
+    got: list[hl.HTTPPushRequest] = []
+    sub = await hl.subscribe("dev1", "127.0.0.1", got.append, "dev1")
+    sub._source_ips = None  # the sentinel that used to mean "match anything"
+
+    req = hl.HTTPPushRequest(body=b"spoof", source_ip="203.0.113.7")
+    assert await hl.dispatch("dev1", "", req) == 403
+    assert not got
+    await sub.close()
+
+
 @pytest.mark.asyncio
 async def test_resubscribe_replaces_previous_registration():
     """A reconnect's fresh subscription wins even when the old handle's

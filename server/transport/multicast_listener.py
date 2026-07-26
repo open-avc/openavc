@@ -61,15 +61,13 @@ class MulticastSubscription:
         self,
         listener: "_PortListener",
         group: str,
-        source_ips: set[str] | None,
+        source_ips: set[str],
         callback: Callable[[bytes, tuple[str, int]], Any],
         name: str,
     ) -> None:
         self._listener = listener
         self.group = group
-        # None means "any local source" (loopback-host subscription where the
-        # local interface set could not be determined); otherwise the exact
-        # source addresses this subscription accepts.
+        # The exact source addresses this subscription accepts.
         self._source_ips = source_ips
         self._callback = callback
         self.name = name
@@ -80,8 +78,10 @@ class MulticastSubscription:
         return self._listener.port
 
     def matches_source(self, src_ip: str) -> bool:
-        if self._source_ips is None:
-            return True
+        # No accepted set means no accepted sender. An unresolvable device
+        # host must never read as "accept the whole segment".
+        if not self._source_ips:
+            return False
         if src_ip in self._source_ips:
             return True
         # A loopback-host subscription accepts the whole loopback net: the
@@ -290,7 +290,46 @@ class _Registry:
             self._listeners.clear()
 
 
-async def resolve_source_ips(source_ip: str, name: str) -> set[str] | None:
+def _local_addresses(name: str, host: str) -> set[str]:
+    """This host's own non-loopback addresses, for a loopback subscription.
+
+    A simulator-redirected device delivers from a real interface, so those
+    addresses have to be accepted alongside loopback. Interface enumeration
+    needs ``ifaddr``, which a frozen bundle can be missing; the routing table
+    answers the same question without it, so it is the second try. When both
+    come up empty the caller is left with loopback only — narrower than
+    intended, never wider, and the warning says so because the visible
+    symptom is a simulated device's pushes 403-ing.
+    """
+    local: set[str] = set()
+    try:
+        from server.discovery.network_scanner import get_interface_ips
+
+        local = set(get_interface_ips())
+    except Exception:
+        local = set()
+    if not local:
+        # Guarded separately: enumeration blowing up is exactly the case the
+        # routing table is here to answer, so it must not skip this.
+        try:
+            from server.discovery.network_scanner import get_default_route_ip
+
+            route_ip = get_default_route_ip()
+            if route_ip:
+                local = {route_ip}
+        except Exception:
+            local = set()
+    if not local:
+        log.warning(
+            "[%s] Could not determine this host's own addresses; push frames "
+            "for local device %r will be accepted from loopback only",
+            name,
+            host,
+        )
+    return local
+
+
+async def resolve_source_ips(source_ip: str, name: str) -> set[str]:
     """Compute the accepted source-address set for a subscription.
 
     Public because the HTTP push listener (``transport/http_listener.py``)
@@ -302,6 +341,12 @@ async def resolve_source_ips(source_ip: str, name: str) -> set[str] | None:
     A hostname is resolved once at subscribe time; resolution failure falls
     back to the literal (never matches, but the warning tells the user why).
     Shared by the multicast and inbound-TCP push listener registries.
+
+    Always returns a concrete set, and an empty one denies everything. There
+    is deliberately no "couldn't tell, so accept anything" answer: the only
+    case that could produce one is a loopback host whose local addresses are
+    undiscoverable, and widening *that* to the whole segment would retire the
+    gate for the easiest device shape to point at.
     """
     host = (source_ip or "").strip()
     if not host:
@@ -312,14 +357,7 @@ async def resolve_source_ips(source_ip: str, name: str) -> set[str] | None:
         return set()
     if host in ("localhost",) or host.startswith("127."):
         ips = {"127.0.0.1", host if host != "localhost" else "127.0.0.1"}
-        try:
-            from server.discovery.network_scanner import get_interface_ips
-
-            ips.update(get_interface_ips())
-        except Exception:
-            # Interface enumeration failed — accept any local source rather
-            # than silently breaking simulation.
-            return None
+        ips.update(_local_addresses(name, host))
         return ips
     try:
         ipaddress.IPv4Address(host)

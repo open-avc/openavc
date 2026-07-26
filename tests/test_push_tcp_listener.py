@@ -291,6 +291,40 @@ async def test_connection_from_unmatched_source_is_closed_undelivered():
 
 
 @pytest.mark.asyncio
+async def test_loopback_subscription_with_failed_enumeration_still_gates(monkeypatch):
+    """A dial-back subscription for a simulator-redirected device narrows to
+    loopback when this host's own addresses can't be determined — it must not
+    start accepting dial-backs from anywhere on the segment."""
+    import server.discovery.network_scanner as ns
+
+    def _boom():
+        raise RuntimeError("interface enumeration unavailable")
+
+    monkeypatch.setattr(ns, "get_interface_ips", _boom)
+    monkeypatch.setattr(ns, "get_default_route_ip", lambda: None)
+
+    port = _free_tcp_port()
+    sub = await tl.subscribe(port, "127.0.0.1", lambda d, a: None, "cam")
+
+    assert not sub.matches_source("203.0.113.7")
+    assert sub.matches_source("127.0.0.1")
+    await sub.close()
+
+
+@pytest.mark.asyncio
+async def test_unknown_source_set_denies_every_connection():
+    """Defensive: a subscription carrying no accepted source set matches
+    nothing rather than every dialer."""
+    port = _free_tcp_port()
+    sub = await tl.subscribe(port, "127.0.0.1", lambda d, a: None, "cam")
+    sub._source_ips = None  # the sentinel that used to mean "match anything"
+
+    assert not sub.matches_source("203.0.113.7")
+    assert not sub.matches_source("127.0.0.1")
+    await sub.close()
+
+
+@pytest.mark.asyncio
 async def test_struct_frames_parsed_per_connection():
     port = _free_tcp_port()
     got: list[bytes] = []

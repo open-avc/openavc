@@ -63,15 +63,13 @@ class TcpListenerSubscription:
     def __init__(
         self,
         listener: "_PortListener",
-        source_ips: set[str] | None,
+        source_ips: set[str],
         callback: Callable[[bytes, tuple[str, int]], Any],
         frame_parser_factory: Callable[[], FrameParser | None] | None,
         name: str,
     ) -> None:
         self._listener = listener
-        # None means "any local source" (loopback-host subscription where the
-        # local interface set could not be determined); otherwise the exact
-        # source addresses this subscription accepts.
+        # The exact source addresses this subscription accepts.
         self._source_ips = source_ips
         self._callback = callback
         self._frame_parser_factory = frame_parser_factory
@@ -84,8 +82,10 @@ class TcpListenerSubscription:
         return self._listener.port
 
     def matches_source(self, src_ip: str) -> bool:
-        if self._source_ips is None:
-            return True
+        # No accepted set means no accepted dialer. An unresolvable device
+        # host must never read as "accept the whole segment".
+        if not self._source_ips:
+            return False
         if src_ip in self._source_ips:
             return True
         # A loopback-host subscription accepts the whole loopback net: the
