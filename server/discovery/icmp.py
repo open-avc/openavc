@@ -95,6 +95,10 @@ class PingSweepStats:
     alive: int = 0
     timeouts: int = 0
     errors: int = 0
+    # Addresses the sweep never sent to because the scan budget narrowed it.
+    # Distinct from a timeout (a dead host) and from an error (a broken
+    # environment): these were simply not asked.
+    skipped: int = 0
 
 
 def checksum_rfc1071(data: bytes) -> int:

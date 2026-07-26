@@ -284,10 +284,19 @@ If the suggested driver is a community driver you haven't installed yet, click *
 
 ### Scan Options
 
-- **Scan Depth.** Choose how deep the scanner goes:
+- **Scan Depth.** Choose how thorough the scan is. This sets what the scanner
+  *does*, not how long it runs — a scan takes as long as your network needs,
+  and each stage gets its own time from the number of addresses to sweep and
+  how many devices answer. A small network finishes quickly at any depth.
   - **Quick.** Fast re-scan. Ping sweep, port scanning, device probes, and short passive listening window. Skips NetBIOS name resolution and SNMP Entity MIB.
   - **Standard** (recommended). Full scan including NetBIOS/SMB for Windows device names and SNMP Entity MIB for detailed hardware info. Longer passive listening window for mDNS and SSDP devices.
-  - **Thorough.** Extended port range, longest passive listening window. Takes longer but finds everything on the network.
+  - **Thorough.** Extended port range, longest passive listening window. Finds the most, and is worth using on an unfamiliar network.
+
+  On a very large subnet a stage may not be able to cover everything in the
+  time available. When that happens the scan covers what it can, tells you
+  exactly what it skipped, and labels the results incomplete rather than
+  quietly reporting a full sweep. Scanning a smaller subnet is usually the
+  better answer than re-running the same scan.
 - **SNMP.** Enable SNMP v2c queries for richer device identification (community string configurable).
 - **Reduce network load.** Slows down the scan to reduce traffic. Use this on networks with strict IDS/IPS policies or where IT has asked you to scan carefully.
 - **Extra Subnets.** Add subnets beyond the auto-detected ones.

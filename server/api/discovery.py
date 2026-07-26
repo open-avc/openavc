@@ -130,12 +130,6 @@ async def _build_port_labels(engine: DiscoveryEngine) -> dict[str, str]:
 
 ScanDepth = Literal["quick", "standard", "thorough"]
 
-_DEPTH_TIMEOUTS: dict[str, float] = {
-    "quick": 60.0,
-    "standard": 120.0,
-    "thorough": 180.0,
-}
-
 
 class ScanRequest(BaseModel):
     subnets: list[str] | None = None
@@ -148,7 +142,11 @@ class ScanRequest(BaseModel):
     gentle_mode: bool = False
     scan_depth: ScanDepth = "standard"
     max_subnet_size: int = 20  # Min CIDR prefix (/20=4K hosts, /16=65K)
-    timeout: float | None = None  # None = auto from scan_depth
+    # None = let the scan_depth policy set the ceiling and let each phase's
+    # budget come from its own workload. An explicit value caps the whole
+    # scan; the phases then divide that cap by share rather than the early
+    # ones spending it all before the ones that identify devices run.
+    timeout: float | None = None
 
 
 class DiscoveryConfigRequest(BaseModel):
@@ -211,14 +209,12 @@ async def start_scan(req: ScanRequest) -> dict[str, Any]:
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Invalid CIDR: {subnet}")
 
-    timeout = req.timeout if req.timeout is not None else _DEPTH_TIMEOUTS.get(req.scan_depth, 120.0)
-
     try:
         scan_id = await engine.start_scan(
             subnets=req.subnets,
             extra_subnets=req.extra_subnets,
             on_update=_broadcast_fn,
-            timeout=timeout,
+            timeout=req.timeout,
         )
     except RuntimeError as e:
         raise _api_error(409, "A scan is already in progress", e)
@@ -231,6 +227,7 @@ async def start_scan(req: ScanRequest) -> dict[str, Any]:
         "status": status["status"],
         "subnets": status["subnets"],
         "started_at": status["started_at"],
+        "budget_seconds": status["budget_seconds"],
     }
 
 
@@ -332,11 +329,21 @@ async def update_config(req: DiscoveryConfigRequest) -> dict[str, str]:
 @router.get("/config")
 async def get_config() -> dict[str, Any]:
     """Get current discovery settings (community string never returned)."""
+    from server.discovery.scan_budget import depth_total_seconds
+
     config = dict(_get_engine().config)
     # The community string is a credential: report whether one is set, never
     # the value itself. A returned value (even masked) gets loaded into the
     # settings form and echoed back on save/scan, overwriting the real one.
     config["snmp_community_set"] = bool(config.pop("snmp_community", ""))
+    # Ceiling per depth, so the settings UI can say how long a depth may take
+    # without hard-coding a copy of the policy table. A scan normally finishes
+    # well inside these — each phase is budgeted from its own workload and
+    # this is only the backstop.
+    config["depth_budgets"] = {
+        depth: depth_total_seconds(depth)
+        for depth in ("quick", "standard", "thorough")
+    }
     return config
 
 

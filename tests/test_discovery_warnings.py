@@ -50,7 +50,7 @@ def _mock_passive_scanners(
 
 def _make_fake_ping(method: str, total: int, errors: int):
     async def fake_ping(subnets, *, concurrency, on_found, on_progress,
-                        min_prefix, source_ip, stats=None):
+                        min_prefix, source_ip, stats=None, max_hosts=None):
         if stats is not None:
             stats.method = method
             stats.total = total

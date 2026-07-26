@@ -76,6 +76,10 @@ export interface DiscoveryScanStatus {
   total_hosts_scanned: number;
   /** Environment problems that kept scan phases from working */
   warnings: string[];
+  /** Ceiling on the whole scan: the request's timeout, or the depth policy's. */
+  budget_seconds: number;
+  /** Deadline granted to each budgeted phase, derived from its workload. */
+  phase_budgets: Record<string, number>;
 }
 
 export type ScanDepth = "quick" | "standard" | "thorough";
@@ -88,6 +92,12 @@ export interface DiscoveryConfig {
   gentle_mode: boolean;
   scan_depth: ScanDepth;
   max_subnet_size: number;
+  /**
+   * Ceiling in seconds per depth. A scan normally finishes well inside these
+   * — every phase is budgeted from its own workload and this is only the
+   * backstop — so present it as an upper bound, not an estimate.
+   */
+  depth_budgets: Record<ScanDepth, number>;
 }
 
 export interface DiscoveryConfigUpdate {
@@ -108,7 +118,7 @@ export async function discoveryStartScan(options?: {
   scan_depth?: ScanDepth;
   max_subnet_size?: number;
   timeout?: number;
-}): Promise<{ scan_id: string; status: string; subnets: string[] }> {
+}): Promise<{ scan_id: string; status: string; subnets: string[]; budget_seconds: number }> {
   return request("/discovery/scan", {
     method: "POST",
     body: JSON.stringify(options ?? {}),

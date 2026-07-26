@@ -188,7 +188,7 @@ class TestEvidenceResetOnScanStart:
         snmp_cls.return_value = snmp_inst
 
         async def fake_ping(subnets, *, concurrency, on_found, on_progress,
-                            min_prefix, source_ip, stats=None):
+                            min_prefix, source_ip, stats=None, max_hosts=None):
             # The real ping_sweep marks each live host alive via on_found; the
             # rescan path relies on that to un-stale a persisted device.
             await on_found("10.77.0.7")

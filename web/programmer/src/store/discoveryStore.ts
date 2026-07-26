@@ -8,8 +8,10 @@ interface DiscoveryState {
   /** Discovered devices keyed by IP */
   devices: Record<string, DiscoveredDevice>;
   /** Scan status */
-  /** "partial" = the scan hit its time limit or errored partway; the
-   *  devices it did find are matched, but the sweep did not finish. */
+  /** "partial" = the scan covered less of the network than was asked for —
+   *  it hit a time limit, errored partway, or narrowed a phase's work to fit
+   *  its budget. The devices it did find are matched; the warnings say what
+   *  was left out. */
   status: "idle" | "running" | "complete" | "cancelled" | "partial";
   /** Current scan phase name */
   phase: string;

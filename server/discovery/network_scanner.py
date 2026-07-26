@@ -246,6 +246,7 @@ async def ping_sweep(
     min_prefix: int = 20,
     source_ip: str = "",
     stats: icmp.PingSweepStats | None = None,
+    max_hosts: int | None = None,
 ) -> list[str]:
     """Ping all addresses in the given subnets. Returns list of responding IPs.
 
@@ -262,6 +263,11 @@ async def ping_sweep(
         stats: Optional accounting object — filled with the selected method
             and alive/timeout/error counts so the caller can surface
             environment failures (errors are NOT dead hosts).
+        max_hosts: Stop after this many addresses. The caller's budget
+            decided the sweep could not cover the whole range in the time
+            the later phases can spare (see ``discovery.scan_budget``);
+            ``stats.skipped`` reports what was left out so the omission is
+            named rather than silent.
     """
     if stats is None:
         stats = icmp.PingSweepStats()
@@ -272,6 +278,16 @@ async def ping_sweep(
 
     if not all_ips:
         return []
+
+    if max_hosts is not None and 0 <= max_hosts < len(all_ips):
+        stats.skipped = len(all_ips) - max_hosts
+        log.info(
+            "Ping sweep limited to %d of %d addresses by the scan budget",
+            max_hosts, len(all_ips),
+        )
+        all_ips = all_ips[:max_hosts]
+        if not all_ips:
+            return []
 
     total = len(all_ips)
     stats.total = total

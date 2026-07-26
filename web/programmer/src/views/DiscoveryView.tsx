@@ -52,6 +52,25 @@ function categoryLabel(cat: string | null): string {
 }
 
 /**
+ * What each scan depth actually does. Depth is a thoroughness setting, not a
+ * stopwatch: the server budgets each phase from the real workload (address
+ * count, then how many devices answered), so a small network finishes quickly
+ * at every depth and a large one gets the time it needs.
+ */
+const DEPTH_DESCRIPTIONS: Record<api.ScanDepth, string> = {
+  quick: "Ports and protocol probes. Skips Windows name lookups and the detailed SNMP read, and listens briefly for device announcements.",
+  standard: "Everything in Quick, plus Windows name lookups, the detailed SNMP read, and a full listen for device announcements.",
+  thorough: "Everything in Standard, plus extra alternate web, streaming, and management ports, and the longest listen for announcements.",
+};
+
+/** "up to 5 min" / "up to 90s" — an upper bound, not an estimate. */
+function budgetLabel(seconds: number | undefined): string {
+  if (!seconds || seconds <= 0) return "";
+  if (seconds < 120) return `up to ${Math.round(seconds)}s`;
+  return `up to ${Math.round(seconds / 60)} min`;
+}
+
+/**
  * Whether a device's evidence_log carries any AV-specific signal. Used by the
  * "AV only" toggle to discriminate between unknown devices that look AV-like
  * (an open AV port, a curated OUI hit, an SNMP PEN match, an mDNS/SSDP
@@ -203,6 +222,11 @@ export function DiscoveryPanel() {
   const [gentleMode, setGentleMode] = useState(false);
   const [scanDepth, setScanDepth] = useState<api.ScanDepth>("standard");
   const [maxSubnetSize, setMaxSubnetSize] = useState(20);
+  // Ceiling per depth, from the server's budget policy — never hard-coded
+  // here, or the two would drift.
+  const [depthBudgets, setDepthBudgets] = useState<Record<string, number>>({});
+  // Ceiling the running scan is actually working to.
+  const [scanBudget, setScanBudget] = useState(0);
 
   // Active control interface
   const [controlInterface, setControlInterface] = useState("");
@@ -217,6 +241,7 @@ export function DiscoveryPanel() {
       setGentleMode(c.gentle_mode);
       if (c.scan_depth) setScanDepth(c.scan_depth);
       if (c.max_subnet_size) setMaxSubnetSize(c.max_subnet_size);
+      if (c.depth_budgets) setDepthBudgets(c.depth_budgets);
     }).catch(console.error);
     api.discoveryGetResults().then((r) => {
       if (r.devices.length > 0) {
@@ -259,7 +284,7 @@ export function DiscoveryPanel() {
   const handleStartScan = useCallback(async () => {
     try {
       setWarnings([]); // stale warnings from the previous scan
-      await api.discoveryStartScan({
+      const started = await api.discoveryStartScan({
         extra_subnets: extraSubnet ? [extraSubnet] : undefined,
         snmp_enabled: snmpEnabled,
         snmp_community: snmpCommunityField(snmpCommunity),
@@ -267,6 +292,7 @@ export function DiscoveryPanel() {
         scan_depth: scanDepth,
         max_subnet_size: maxSubnetSize,
       });
+      setScanBudget(started.budget_seconds || 0);
       setStatus("running");
     } catch (e) {
       setStatus("idle");
@@ -503,11 +529,26 @@ export function DiscoveryPanel() {
                 <option value="thorough">Thorough (extended scan)</option>
               </select>
               <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
-                {scanDepth === "quick" && "Basic port scan and protocol probes."}
-                {scanDepth === "standard" && "Full scan with passive listeners and broadcast probes."}
-                {scanDepth === "thorough" && "Extended ports, longer passive listen. Takes longer."}
+                {DEPTH_DESCRIPTIONS[scanDepth]}
               </span>
             </label>
+            <div
+              style={{
+                gridColumn: "1 / -1",
+                marginTop: -4,
+                fontSize: "var(--font-size-xs)",
+                color: "var(--text-muted)",
+              }}
+            >
+              How long a scan takes is set by the size of the network, not by
+              this setting. Each stage gets its own time from the number of
+              addresses to sweep and how many devices answer
+              {budgetLabel(depthBudgets[scanDepth])
+                ? `, and the whole scan is capped at ${budgetLabel(depthBudgets[scanDepth])}`
+                : ""}
+              . If a stage cannot fit, it covers less and the scan says exactly
+              what it skipped.
+            </div>
             <label style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
               <input type="checkbox" checked={snmpEnabled} onChange={(e) => setSnmpEnabled(e.target.checked)} />
               SNMP Enabled
@@ -597,7 +638,14 @@ export function DiscoveryPanel() {
         <div style={{ marginBottom: "var(--space-md)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: "var(--font-size-sm)", marginBottom: 4 }}>
             <span style={{ fontWeight: 500 }}>{phaseLabel}</span>
-            <span>{Object.keys(devices).length} found &middot; {Math.round(displayProgress * 100)}%</span>
+            <span>
+              {Object.keys(devices).length} found &middot; {Math.round(displayProgress * 100)}%
+              {budgetLabel(scanBudget) && (
+                <span style={{ color: "var(--text-muted)" }}>
+                  {" "}&middot; {budgetLabel(scanBudget)}
+                </span>
+              )}
+            </span>
           </div>
           <div
             style={{
@@ -638,7 +686,7 @@ export function DiscoveryPanel() {
           <div>
             <div style={{ fontWeight: 600, marginBottom: 2 }}>
               {status === "partial"
-                ? "Scan did not finish — results are incomplete"
+                ? "Scan did not cover everything — results are incomplete"
                 : "Scan ran with problems on this system"}
             </div>
             {warnings.map((w, i) => (

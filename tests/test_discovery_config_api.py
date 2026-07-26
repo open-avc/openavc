@@ -32,6 +32,7 @@ def _make_stub_engine(community: str = "s3cret"):
         "status": "running",
         "subnets": ["192.168.1.0/24"],
         "started_at": 0.0,
+        "budget_seconds": 300.0,
     }
     return engine
 

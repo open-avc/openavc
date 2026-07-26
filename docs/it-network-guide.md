@@ -172,7 +172,7 @@ For a network reason (connection refused, can't reach the device, no response), 
 
 ### Device discovery (on-demand only)
 
-OpenAVC includes a network discovery feature to help AV integrators find devices during initial setup. Discovery is never automatic. It runs only when a scan is explicitly started — by an integrator in the Programmer interface, or by an authenticated request to the discovery API (including from the cloud console). Default scan budgets are 60 s (Quick), 120 s (Standard), and 180 s (Thorough).
+OpenAVC includes a network discovery feature to help AV integrators find devices during initial setup. Discovery is never automatic. It runs only when a scan is explicitly started — by an integrator in the Programmer interface, or by an authenticated request to the discovery API (including from the cloud console). Each scan stage is budgeted from the work in front of it — the number of addresses to sweep, then how many hosts responded — and the scan as a whole is capped at 120 s (Quick), 300 s (Standard), or 600 s (Thorough). Those caps are upper bounds rather than typical durations: a /24 completes in well under a minute at any depth, and a full /20 (about 4,000 addresses) in roughly two minutes. A stage that cannot cover its work in the time available scans less and reports what it skipped; it does not extend the scan.
 
 During a discovery scan, OpenAVC will:
 
