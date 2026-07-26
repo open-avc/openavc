@@ -1,15 +1,18 @@
-"""Tests for the /proc/net/arp-based ARP harvest (discovery.network_scanner).
+"""Tests for the ARP harvest (discovery.network_scanner).
 
+Covers the Linux /proc/net/arp reader and the BSD/macOS ``arp -a`` parser.
 Synthetic content only — no real network or OS ARP table.
 """
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock
 
 from server.discovery import network_scanner
 from server.discovery.network_scanner import (
     _harvest_arp_linux,
+    _parse_bsd_arp,
     _parse_proc_net_arp,
     harvest_arp_table,
 )
@@ -105,8 +108,79 @@ class TestHarvestArpLinux:
             + "10.0.0.1         0x1         0x2         11:22:33:44:55:66     *        eth0\n"
         )
         monkeypatch.setattr(network_scanner, "_IS_WINDOWS", False)
+        monkeypatch.setattr(network_scanner, "_IS_MACOS", False)
         monkeypatch.setattr(network_scanner, "_PROC_NET_ARP", str(arp_file))
 
         result = await harvest_arp_table()
 
         assert result == {"10.0.0.1": "11:22:33:44:55:66"}
+
+
+# Real-shaped macOS output: unresolved hosts print "?", resolved ones print a
+# name, and octets lose their leading zeros.
+_BSD_SAMPLE = (
+    "? (192.168.4.1) at d0:cb:dd:4c:3e:4d on en0 ifscope [ethernet]\n"
+    "? (192.168.4.59) at 0:a:45:2a:f6:7 on en0 ifscope [ethernet]\n"
+    "? (192.168.4.71) at (incomplete) on en0 ifscope [ethernet]\n"
+    "? (192.168.7.255) at ff:ff:ff:ff:ff:ff on en0 ifscope [ethernet]\n"
+    "mdns.mcast.net (224.0.0.251) at 1:0:5e:0:0:fb on en0 ifscope permanent [ethernet]\n"
+)
+
+
+class TestBsdArpParser:
+    def test_parses_macos_output(self):
+        result = _parse_bsd_arp(_BSD_SAMPLE)
+        assert result == {
+            "192.168.4.1": "d0:cb:dd:4c:3e:4d",
+            # Zero-padded: without this, OUI lookup can never match.
+            "192.168.4.59": "00:0a:45:2a:f6:07",
+            "224.0.0.251": "01:00:5e:00:00:fb",
+        }
+
+    def test_zero_pads_every_short_octet(self):
+        text = "? (10.0.0.5) at 0:0:0:1:2:3 on en0 ifscope [ethernet]\n"
+        assert _parse_bsd_arp(text) == {"10.0.0.5": "00:00:00:01:02:03"}
+
+    def test_skips_incomplete_entries(self):
+        text = "? (10.0.0.9) at (incomplete) on en0 ifscope [ethernet]\n"
+        assert _parse_bsd_arp(text) == {}
+
+    def test_skips_broadcast_and_zero_macs(self):
+        text = (
+            "? (10.0.0.255) at ff:ff:ff:ff:ff:ff on en0 ifscope [ethernet]\n"
+            "? (10.0.0.7) at 0:0:0:0:0:0 on en0 ifscope [ethernet]\n"
+        )
+        assert _parse_bsd_arp(text) == {}
+
+    def test_reads_ip_from_parentheses_not_hostname(self):
+        text = "host.example.lan (10.0.0.3) at aa:bb:cc:dd:ee:ff on en0 [ethernet]\n"
+        assert _parse_bsd_arp(text) == {"10.0.0.3": "aa:bb:cc:dd:ee:ff"}
+
+    def test_uppercase_normalized(self):
+        text = "? (10.0.0.4) at AA:BB:CC:DD:EE:FF on en0 [ethernet]\n"
+        assert _parse_bsd_arp(text) == {"10.0.0.4": "aa:bb:cc:dd:ee:ff"}
+
+    def test_empty_and_garbage(self):
+        assert _parse_bsd_arp("") == {}
+        assert _parse_bsd_arp("arp: no entries\n") == {}
+
+
+class TestHarvestArpMacos:
+    async def test_harvest_arp_table_routes_darwin_to_bsd(self, monkeypatch):
+        async def fake_exec(*args, **kwargs):
+            assert args[:2] == ("arp", "-a")
+
+            class _Proc:
+                async def communicate(self):
+                    return _BSD_SAMPLE.encode(), b""
+
+            return _Proc()
+
+        monkeypatch.setattr(network_scanner, "_IS_WINDOWS", False)
+        monkeypatch.setattr(network_scanner, "_IS_MACOS", True)
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+
+        result = await harvest_arp_table()
+
+        assert result["192.168.4.59"] == "00:0a:45:2a:f6:07"
+        assert "192.168.4.71" not in result  # incomplete entry

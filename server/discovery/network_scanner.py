@@ -18,6 +18,7 @@ log = logging.getLogger("discovery.network")
 
 # Platform detection
 _IS_WINDOWS = platform.system() == "Windows"
+_IS_MACOS = platform.system() == "Darwin"
 
 
 # Adapter name patterns for virtual/non-physical interfaces.
@@ -337,6 +338,8 @@ async def harvest_arp_table() -> dict[str, str]:
     try:
         if _IS_WINDOWS:
             return await _harvest_arp_windows()
+        elif _IS_MACOS:
+            return await _harvest_arp_macos()
         else:
             return await _harvest_arp_linux()
     except Exception as exc:
@@ -370,6 +373,54 @@ async def _harvest_arp_windows() -> dict[str, str]:
         if mac != "ff:ff:ff:ff:ff:ff":
             result[ip] = mac
     return result
+
+
+# BSD `arp -a` entry: "? (192.168.1.1) at 0:a:45:2a:f6:7 on en0 ifscope [ethernet]".
+# The host column is a hostname when it resolves and "?" when it doesn't, so the
+# IP is read from the parenthesised column instead. BSD prints MAC octets without
+# leading zeros ("0:a:45" for 00:0a:45), hence the {1,2} — the octets are
+# zero-padded during normalization so OUI lookups match. Incomplete entries print
+# "at (incomplete)" and simply don't match.
+_BSD_ARP_RE = re.compile(
+    r"\((\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\)\s+at\s+"
+    r"([0-9a-fA-F]{1,2}(?::[0-9a-fA-F]{1,2}){5})(?![0-9a-fA-F:])"
+)
+
+
+def _parse_bsd_arp(text: str) -> dict[str, str]:
+    """Parse BSD/macOS ``arp -a`` output. Returns {ip: mac}.
+
+    Octets are zero-padded to two digits and lowercased, so the result matches
+    the canonical form the other platform harvesters emit. All-zero and
+    broadcast MACs are dropped, mirroring the Windows and Linux parsers.
+    """
+    result: dict[str, str] = {}
+    for match in _BSD_ARP_RE.finditer(text):
+        ip = match.group(1)
+        mac = ":".join(
+            octet.rjust(2, "0") for octet in match.group(2).lower().split(":")
+        )
+        if mac in ("00:00:00:00:00:00", "ff:ff:ff:ff:ff:ff"):
+            continue
+        result[ip] = mac
+    return result
+
+
+async def _harvest_arp_macos() -> dict[str, str]:
+    """Read the ARP table on macOS via ``arp -a``.
+
+    macOS has no /proc/net/arp and no iproute2, so the Linux path returns
+    nothing there — leaving every discovered device without a MAC, which in
+    turn disables OUI-based driver matching.
+    """
+    proc = await asyncio.create_subprocess_exec(
+        "arp", "-a",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.DEVNULL,
+        creationflags=CREATE_NO_WINDOW,
+    )
+    stdout, _ = await proc.communicate()
+    return _parse_bsd_arp(stdout.decode("utf-8", errors="replace"))
 
 
 _PROC_NET_ARP = "/proc/net/arp"
