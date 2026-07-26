@@ -19,6 +19,7 @@ import websockets
 from websockets.exceptions import ConnectionClosed, InvalidURI, InvalidHandshake
 
 from server.utils.logger import get_logger
+from server.utils.request_origin import TUNNEL_HEADER
 
 if TYPE_CHECKING:
     from server.cloud.agent import CloudAgent
@@ -299,12 +300,20 @@ class TunnelHandler:
             client = await self._get_http_client()
             body = base64.b64decode(body_b64) if body_b64 else None
 
-            # Filter headers
+            # Filter headers. The tunnel marker is dropped on the way in and
+            # re-stamped below, so whoever called the cloud can't hand us one.
             req_headers = {}
-            skip = {"host", "connection", "upgrade", "transfer-encoding"}
+            skip = {"host", "connection", "upgrade", "transfer-encoding", TUNNEL_HEADER}
             for k, v in headers.items():
                 if k.lower() not in skip:
                     req_headers[k] = v
+
+            # Mark the request as tunneled. It is about to arrive at the local
+            # server over loopback, which is the identity the console uses to
+            # configure the host network without a password — this is what
+            # keeps a remote caller from inheriting that. See
+            # server/utils/request_origin.py.
+            req_headers[TUNNEL_HEADER] = "1"
 
             max_response_size = 10 * 1024 * 1024  # 10MB
             response = await client.request(
@@ -385,10 +394,16 @@ class TunnelHandler:
             "host", "connection", "upgrade", "sec-websocket-key",
             "sec-websocket-version", "sec-websocket-extensions",
             "sec-websocket-protocol", "content-length", "transfer-encoding",
+            TUNNEL_HEADER,
         }
+        # Same marker as the HTTP path. Nothing on the WebSocket surface trusts
+        # loopback today (client type comes from the auth level, not the peer),
+        # so this is here so that stays true by construction rather than by
+        # nobody having added such a check yet.
         additional_headers = [
             (k, v) for k, v in raw_headers.items() if k.lower() not in drop
         ]
+        additional_headers.append((TUNNEL_HEADER, "1"))
 
         try:
             local_ws = await websockets.connect(

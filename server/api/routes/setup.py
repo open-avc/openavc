@@ -35,10 +35,10 @@ from server.api.auth import (
     _basic,
     auth_state,
     is_claimed,
-    is_loopback_request,
     programmer_auth_satisfied,
 )
 from server.system_config import get_system_config
+from server.utils.request_origin import is_local_console_request
 from server.version import __version__
 
 router = APIRouter()
@@ -115,8 +115,10 @@ async def setup_status(
 
     Open so the kiosk browser can poll it before the instance is claimed.
     The ``network`` block (IP, hostname, access URLs, SSH state) is included
-    only for loopback or authenticated callers — same anti-reconnaissance
-    posture as /api/status.
+    only for the device's own console or authenticated callers — same
+    anti-reconnaissance posture as /api/status. A request proxied in over a
+    cloud tunnel arrives from loopback but is not the console, so it needs
+    the credential like any other remote caller.
     """
     engine = _get_engine()
     state = auth_state()
@@ -134,7 +136,7 @@ async def setup_status(
         "network": None,
     }
 
-    if not (is_loopback_request(request) or programmer_auth_satisfied(request, credentials)):
+    if not (is_local_console_request(request) or programmer_auth_satisfied(request, credentials)):
         return payload
 
     # Re-detect rather than serve the startup cache: a device that boots

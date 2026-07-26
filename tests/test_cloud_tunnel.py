@@ -366,7 +366,12 @@ async def test_ws_open_passes_subprotocols_and_headers(tunnel_handler, mock_agen
 
 @pytest.mark.asyncio
 async def test_ws_open_no_subprotocols_no_headers(tunnel_handler, mock_agent):
-    """ws_open without subprotocols passes None to websockets.connect (default behavior)."""
+    """ws_open without subprotocols passes None for them.
+
+    Headers are never None any more: every proxied handshake carries the
+    tunnel marker so the local server can tell it from a console connection
+    (tests/test_tunnel_loopback_trust.py).
+    """
     from server.cloud.tunnel import TunnelConnection
     from unittest.mock import patch, AsyncMock as _AsyncMock
 
@@ -388,7 +393,7 @@ async def test_ws_open_no_subprotocols_no_headers(tunnel_handler, mock_agent):
         await tunnel_handler._handle_ws_open(conn, msg)
         call_kwargs = p.call_args.kwargs
         assert call_kwargs["subprotocols"] is None
-        assert call_kwargs["additional_headers"] is None
+        assert call_kwargs["additional_headers"] == [("x-openavc-tunneled", "1")]
 
     await tunnel_handler.stop()
 

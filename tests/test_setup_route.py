@@ -121,6 +121,34 @@ async def test_status_full_for_authenticated_remote(claimed, remote_client):
     assert resp.json()["network"] is not None
 
 
+async def test_status_redacted_for_tunneled_caller(claimed):
+    """A cloud-tunnel request arrives from loopback but is not the device's own
+    screen — the anti-reconnaissance gate has to tell them apart. Full contract
+    in tests/test_tunnel_loopback_trust.py."""
+    from server.utils.request_origin import TUNNEL_HEADER
+
+    transport = ASGITransport(app=app, client=("127.0.0.1", 50000))
+    async with AsyncClient(transport=transport, base_url="http://testserver") as c:
+        resp = await c.get("/api/setup/status", headers={TUNNEL_HEADER: "1"})
+    assert resp.status_code == 200
+    assert resp.json()["network"] is None
+
+
+async def test_status_full_for_authenticated_tunneled_caller(claimed):
+    """Credentials still buy the disclosure — the tunnel is remote, not blind."""
+    from server.utils.request_origin import TUNNEL_HEADER
+
+    transport = ASGITransport(app=app, client=("127.0.0.1", 50000))
+    async with AsyncClient(transport=transport, base_url="http://testserver") as c:
+        resp = await c.get(
+            "/api/setup/status",
+            headers={TUNNEL_HEADER: "1"},
+            auth=("admin", _PASSWORD),
+        )
+    assert resp.status_code == 200
+    assert resp.json()["network"] is not None
+
+
 # --- Status endpoint: multi-homed hosts ---
 
 

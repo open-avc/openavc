@@ -37,6 +37,7 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 from server.system_config import get_system_config
 from server.utils.logger import get_logger
+from server.utils.request_origin import is_local_console_request
 
 log = get_logger(__name__)
 
@@ -252,25 +253,24 @@ async def require_programmer_auth(
     )
 
 
-def is_loopback_request(request: Request) -> bool:
-    """Whether the request arrived over loopback (the device's own browser)."""
-    client = request.client
-    return client is not None and client.host in ("127.0.0.1", "::1", "localhost")
-
-
 async def require_local_or_programmer_auth(
     request: Request,
     credentials: HTTPBasicCredentials | None = Depends(_basic),
 ) -> None:
     """FastAPI dependency for on-device appliance surfaces (network config).
 
-    Loopback callers are allowed without credentials: an appliance must be
+    Console callers are allowed without credentials: an appliance must be
     configurable from its own screen before it has any network or any claim
     (the no-DHCP VLAN and WiFi-only bootstrap cases), and physical access to
     the console is the trust anchor — the same model as the /setup screen's
     network-info disclosure. Remote callers need programmer credentials.
+
+    "Console" is deliberately narrower than "arrived from 127.0.0.1": the
+    cloud remote-UI tunnel proxies remote traffic to loopback, and a remote
+    caller must not inherit a trust anchor that means *physical access*. See
+    `server/utils/request_origin.py`.
     """
-    if is_loopback_request(request):
+    if is_local_console_request(request):
         return
     if programmer_auth_satisfied(request, credentials):
         return

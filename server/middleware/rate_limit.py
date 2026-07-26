@@ -34,8 +34,13 @@ from starlette.responses import Response
 
 from server import config
 from server.utils.logger import get_logger
+from server.utils.request_origin import LOOPBACK_HOSTS, is_tunneled_request
 
 log = get_logger(__name__)
+
+# Bucket key standing in for "arrived over the cloud remote-UI tunnel". Not a
+# possible client IP, so it can never collide with a real one.
+TUNNEL_BUCKET_KEY = "cloud-tunnel"
 
 WINDOW_SECONDS = 60.0
 CLEANUP_INTERVAL = 60.0
@@ -154,6 +159,18 @@ def _classify(method: str, path: str) -> str:
 
 
 def _get_client_ip(request: Request) -> str:
+    # Cloud-tunnel traffic first: it arrives from loopback, so without this it
+    # would take the exemption below and get no limit and no brute-force
+    # counter at all — an unthrottled channel for guessing the very password
+    # it is being asked for. One key for the whole tunnel, not one per caller:
+    # everything the cloud forwards is attacker-supplied (including any
+    # X-Forwarded-For), so a per-caller key would just be a knob for spreading
+    # guesses across buckets. The budget is per-channel by design. The tunnel
+    # is one operator driving one browser, and it lands on the same standard
+    # and control tiers a remote Programmer on the LAN already lives with, so
+    # this is parity with direct remote access rather than a new ceiling.
+    if is_tunneled_request(request):
+        return TUNNEL_BUCKET_KEY
     # Only trust X-Forwarded-For when explicitly configured to sit behind a
     # known reverse proxy. Otherwise a client could set the header to spoof its
     # source IP — dodging per-IP limits AND the 127.0.0.1 rate-limit exemption
@@ -272,8 +289,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         client_ip = _get_client_ip(request)
 
-        # Exempt localhost from rate limiting — primary deployment is single-user local
-        if client_ip in ("127.0.0.1", "::1", "localhost"):
+        # Exempt localhost from rate limiting — primary deployment is single-user
+        # local. Tunneled traffic never lands here: _get_client_ip has already
+        # given it its own key.
+        if client_ip in LOOPBACK_HOSTS:
             return await call_next(request)
         buckets = _ip_buckets.get(client_ip)
         if buckets is None:
