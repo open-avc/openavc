@@ -28,7 +28,7 @@ export interface StreamInput {
 }
 
 export interface ProbeResult {
-  ok: boolean;
+  success: boolean;
   message?: string;
   codec?: string;
   profile?: string;
@@ -41,8 +41,8 @@ export interface ProbeResult {
 
 const EXT = "/plugins/video_panel/ext";
 
-export function listStreams(): Promise<Stream[]> {
-  return request<Stream[]>(`${EXT}/streams`);
+export async function listStreams(): Promise<Stream[]> {
+  return (await request<{ streams: Stream[] }>(`${EXT}/streams`)).streams;
 }
 
 export function createStream(data: StreamInput): Promise<Stream> {
@@ -59,7 +59,7 @@ export function updateStream(streamId: string, data: StreamInput): Promise<Strea
   });
 }
 
-export function deleteStream(streamId: string): Promise<{ ok: boolean; stream_id: string }> {
+export function deleteStream(streamId: string): Promise<{ status: string; stream_id: string }> {
   return request(`${EXT}/streams/${encodeURIComponent(streamId)}`, {
     method: "DELETE",
   });

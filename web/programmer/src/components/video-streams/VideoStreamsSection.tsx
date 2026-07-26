@@ -93,7 +93,7 @@ function slugify(name: string): string {
 // decide whether "auto" transcoding kicks in (HEVC -> transcode). An unknown or
 // failed probe stays "auto" (treated as passthrough).
 function codecHintFromProbe(result: ProbeResult | null): string {
-  if (!result || !result.ok || !result.codec) return "auto";
+  if (!result || !result.success || !result.codec) return "auto";
   const c = result.codec.toLowerCase();
   if (c === "hevc" || c === "h265") return "h265";
   if (c === "h264") return "h264";
@@ -111,11 +111,11 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 
 function ProbeReadout({ result }: { result: ProbeResult }) {
   let color = "var(--color-success, #2e7d32)";
-  if (!result.ok) color = "var(--color-error, #c0392b)";
+  if (!result.success) color = "var(--color-error, #c0392b)";
   else if (result.transcode_recommended) color = "var(--color-warning, #b26a00)";
 
   const dims = result.width && result.height ? `${result.width}x${result.height}` : null;
-  const summary = result.ok
+  const summary = result.success
     ? [result.codec?.toUpperCase(), result.profile, dims, result.fps ? `${result.fps} fps` : null]
         .filter(Boolean)
         .join("  -  ")
@@ -133,7 +133,7 @@ function ProbeReadout({ result }: { result: ProbeResult }) {
       }}
     >
       {summary && <div style={{ color, fontWeight: 600, marginBottom: 2 }}>{summary}</div>}
-      <div style={{ color: result.ok ? "var(--text-secondary)" : color }}>{result.advice || result.message}</div>
+      <div style={{ color: result.success ? "var(--text-secondary)" : color }}>{result.advice || result.message}</div>
     </div>
   );
 }
@@ -169,7 +169,7 @@ function StreamForm({
     try {
       result = await streamsApi.probeStream({ rtsp_url: rtspUrl, username, password });
     } catch (err) {
-      result = { ok: false, message: streamsApi.errorMessage(err) };
+      result = { success: false, message: streamsApi.errorMessage(err) };
     }
     setProbeResult(result);
     setProbing(false);

@@ -1600,7 +1600,7 @@ function NetworkDeckDialog({
   const [host, setHost] = useState("");
   const [port, setPort] = useState("5343");
   const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{ ok: boolean; error?: string } | null>(null);
+  const [testResult, setTestResult] = useState<{ success: boolean; error?: string } | null>(null);
 
   const scan = useCallback(async () => {
     setFound(null);
@@ -1653,7 +1653,7 @@ function NetworkDeckDialog({
       });
       setTestResult(await res.json());
     } catch {
-      setTestResult({ ok: false, error: "test failed" });
+      setTestResult({ success: false, error: "test failed" });
     }
     setTesting(false);
   };
@@ -1844,10 +1844,10 @@ function NetworkDeckDialog({
           <div
             style={{
               fontSize: 11,
-              color: testResult.ok ? "var(--color-success)" : "var(--color-error)",
+              color: testResult.success ? "var(--color-success)" : "var(--color-error)",
             }}
           >
-            {testResult.ok ? "Reachable — ready to add." : `Not reachable: ${testResult.error}`}
+            {testResult.success ? "Reachable — ready to add." : `Not reachable: ${testResult.error}`}
           </div>
         )}
         <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.6 }}>

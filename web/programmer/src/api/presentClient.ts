@@ -78,8 +78,8 @@ export function getStatus(): Promise<PresentStatus> {
   return request<PresentStatus>(`${EXT}/status`);
 }
 
-export function listDisplays(): Promise<PresentDisplay[]> {
-  return request<PresentDisplay[]>(`${EXT}/displays`);
+export async function listDisplays(): Promise<PresentDisplay[]> {
+  return (await request<{ displays: PresentDisplay[] }>(`${EXT}/displays`)).displays;
 }
 
 export function getOutputs(): Promise<HostOutputs> {
@@ -100,7 +100,7 @@ export function updateDisplay(displayId: string, data: DisplayInput): Promise<Pr
   });
 }
 
-export function deleteDisplay(displayId: string): Promise<{ ok: boolean; display_id: string }> {
+export function deleteDisplay(displayId: string): Promise<{ status: string; display_id: string }> {
   return request(`${EXT}/displays/${encodeURIComponent(displayId)}`, {
     method: "DELETE",
   });
