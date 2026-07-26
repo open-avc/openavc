@@ -4,6 +4,14 @@ HTTPSimulator — async HTTP server base for device simulators.
 Handles server lifecycle. Subclasses implement handle_request()
 to define API behavior. Used for REST/JSON, JSON-RPC, and SOAP/XML
 device protocols.
+
+Optional TLS: set ``"tls": True`` in SIMULATOR_INFO (or config) and the server
+mints an ephemeral self-signed cert and serves https instead of http. Devices
+whose API is HTTPS-only (a Crestron NVX, a Dante Director) have drivers with an
+https:// base URL and verification off; this lets those drivers connect to the
+simulator exactly as they do to the real device, instead of needing a
+plain-HTTP mode that never runs in the field. See
+``simulator/self_signed_tls.py``.
 """
 
 from __future__ import annotations
@@ -16,6 +24,7 @@ from abc import abstractmethod
 from aiohttp import web
 
 from simulator.base import BaseSimulator
+from simulator.self_signed_tls import build_optional_tls, remove_cert_files
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +45,7 @@ class HTTPSimulator(BaseSimulator):
         self._runner: web.AppRunner | None = None
         self._site: web.TCPSite | None = None
         self._sse_clients: set[asyncio.Queue] = set()
+        self._tls_files: tuple[str, str] | None = None
 
     # ── Override point for subclasses ──
 
@@ -80,12 +90,15 @@ class HTTPSimulator(BaseSimulator):
         # queue until the next event write fails.
         self._runner = web.AppRunner(self._app, handler_cancellation=True)
         await self._runner.setup()
-        self._site = web.TCPSite(self._runner, "127.0.0.1", port)
+        ssl_ctx, self._tls_files = build_optional_tls(
+            self.SIMULATOR_INFO, self.config, self.name
+        )
+        self._site = web.TCPSite(self._runner, "127.0.0.1", port, ssl_context=ssl_ctx)
         await self._site.start()
         self._running = True
         logger.info(
-            "%s started on port %d (driver: %s)",
-            self.name, port, self.driver_id,
+            "%s started on port %d (driver: %s, tls=%s)",
+            self.name, port, self.driver_id, ssl_ctx is not None,
         )
 
     async def stop(self) -> None:
@@ -100,6 +113,8 @@ class HTTPSimulator(BaseSimulator):
             self._runner = None
         self._app = None
         self._site = None
+        remove_cert_files(self._tls_files)
+        self._tls_files = None
         logger.info("%s stopped", self.name)
 
     # ── HTTP-callback push (push: {type: http_listener}) ──

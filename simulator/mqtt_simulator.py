@@ -19,19 +19,18 @@ generates an ephemeral self-signed cert and serves over TLS, accepting (but not
 requiring) a client certificate. This lets a driver that always uses TLS — like
 the Hisense VIDAA TVs, which serve a self-signed broker cert and want a client
 cert — connect against the simulator exactly as it would against the real
-device.
+device. The cert machinery is shared with the other server bases in
+``simulator/self_signed_tls.py``.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-import os
-import ssl
-import tempfile
 import uuid
 
 from simulator.base import BaseSimulator
+from simulator.self_signed_tls import build_optional_tls, remove_cert_files
 
 logger = logging.getLogger(__name__)
 
@@ -161,7 +160,9 @@ class MQTTSimulator(BaseSimulator):
 
     async def start(self, port: int) -> None:
         self._port = port
-        ssl_ctx = self._build_server_ssl_context()
+        ssl_ctx, self._tls_files = build_optional_tls(
+            self.SIMULATOR_INFO, self.config, self.name
+        )
         self._server = await asyncio.start_server(
             self._handle_client, host="127.0.0.1", port=port, ssl=ssl_ctx,
         )
@@ -187,13 +188,8 @@ class MQTTSimulator(BaseSimulator):
             self._server.close()
             await self._server.wait_closed()
             self._server = None
-        if self._tls_files:
-            for path in self._tls_files:
-                try:
-                    os.unlink(path)
-                except OSError:
-                    pass
-            self._tls_files = None
+        remove_cert_files(self._tls_files)
+        self._tls_files = None
         logger.info("%s stopped", self.name)
 
     # ── Connection handling ──
@@ -404,59 +400,3 @@ class MQTTSimulator(BaseSimulator):
                 raise ValueError("malformed remaining length")
         body = await reader.readexactly(remaining) if remaining else b""
         return ptype, flags, body
-
-    def _build_server_ssl_context(self) -> ssl.SSLContext | None:
-        """Build a TLS server context with an ephemeral self-signed cert.
-
-        Returns None (plain) unless TLS is requested. Accepts but does not
-        require a client cert, so a driver that presents one connects cleanly.
-        """
-        want_tls = bool(self.SIMULATOR_INFO.get("tls") or self.config.get("tls"))
-        if not want_tls:
-            return None
-        try:
-            cert_path, key_path = self._generate_self_signed()
-            self._tls_files = (cert_path, key_path)
-            ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-            ctx.load_cert_chain(certfile=cert_path, keyfile=key_path)
-            ctx.verify_mode = ssl.CERT_OPTIONAL  # accept a client cert, don't demand one
-            return ctx
-        except Exception:
-            logger.exception("%s: failed to build TLS context, serving plain", self.name)
-            return None
-
-    def _generate_self_signed(self) -> tuple[str, str]:
-        """Write an ephemeral self-signed cert + key to temp files."""
-        from datetime import datetime, timedelta, timezone
-
-        from cryptography import x509
-        from cryptography.hazmat.primitives import hashes, serialization
-        from cryptography.hazmat.primitives.asymmetric import rsa
-        from cryptography.x509.oid import NameOID
-
-        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-        name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "openavc-sim")])
-        now = datetime.now(timezone.utc)
-        cert = (
-            x509.CertificateBuilder()
-            .subject_name(name)
-            .issuer_name(name)
-            .public_key(key.public_key())
-            .serial_number(x509.random_serial_number())
-            .not_valid_before(now - timedelta(days=1))
-            .not_valid_after(now + timedelta(days=365))
-            .sign(key, hashes.SHA256())
-        )
-        cert_fd, cert_path = tempfile.mkstemp(suffix=".crt")
-        key_fd, key_path = tempfile.mkstemp(suffix=".key")
-        with os.fdopen(cert_fd, "wb") as f:
-            f.write(cert.public_bytes(serialization.Encoding.PEM))
-        with os.fdopen(key_fd, "wb") as f:
-            f.write(
-                key.private_bytes(
-                    serialization.Encoding.PEM,
-                    serialization.PrivateFormat.TraditionalOpenSSL,
-                    serialization.NoEncryption(),
-                )
-            )
-        return cert_path, key_path
