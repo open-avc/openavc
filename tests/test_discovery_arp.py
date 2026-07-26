@@ -168,7 +168,7 @@ class TestBsdArpParser:
 class TestHarvestArpMacos:
     async def test_harvest_arp_table_routes_darwin_to_bsd(self, monkeypatch):
         async def fake_exec(*args, **kwargs):
-            assert args[:2] == ("arp", "-a")
+            assert args[:2] == ("arp", "-an")
 
             class _Proc:
                 async def communicate(self):
@@ -184,3 +184,36 @@ class TestHarvestArpMacos:
 
         assert result["192.168.4.59"] == "00:0a:45:2a:f6:07"
         assert "192.168.4.71" not in result  # incomplete entry
+
+    async def test_passes_numeric_flag_to_suppress_reverse_dns(self, monkeypatch):
+        """``-n`` is a performance contract, not a formatting preference.
+
+        Without it BSD arp reverse-resolves every entry in a table the scan
+        has just filled with one entry per swept address. Measured on a /22
+        with a cold cache that cost 17.7s against 1026 entries, versus 0.02s
+        with ``-n`` and identical parsed output — the host column is never
+        read. The waste is invisible in the parsed result, so the flag is
+        only assertable here.
+        """
+        captured: list[tuple] = []
+
+        async def fake_exec(*args, **kwargs):
+            captured.append(args)
+
+            class _Proc:
+                async def communicate(self):
+                    return _BSD_SAMPLE.encode(), b""
+
+            return _Proc()
+
+        monkeypatch.setattr(network_scanner, "_IS_WINDOWS", False)
+        monkeypatch.setattr(network_scanner, "_IS_MACOS", True)
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+
+        await harvest_arp_table()
+
+        assert captured, "arp was never invoked"
+        flags = captured[0][1:]
+        assert any("n" in flag for flag in flags), (
+            f"macOS ARP harvest must suppress reverse DNS; got {captured[0]!r}"
+        )

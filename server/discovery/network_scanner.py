@@ -407,14 +407,23 @@ def _parse_bsd_arp(text: str) -> dict[str, str]:
 
 
 async def _harvest_arp_macos() -> dict[str, str]:
-    """Read the ARP table on macOS via ``arp -a``.
+    """Read the ARP table on macOS via ``arp -an``.
 
     macOS has no /proc/net/arp and no iproute2, so the Linux path returns
     nothing there — leaving every discovered device without a MAC, which in
     turn disables OUI-based driver matching.
+
+    ``-n`` (numeric) is load-bearing, not cosmetic. Without it BSD ``arp``
+    reverse-resolves a hostname for EVERY entry in the table — and a scan has
+    just populated that table with one entry per address it swept. Measured on
+    a /22 with a cold DNS cache: ``arp -a`` took 17.7s over 1026 entries where
+    ``arp -an`` took 0.02s, for identical parsed output. Every one of those
+    lookups was waste: the parser reads the IP from the parenthesised column
+    and ignores the host column entirely. The cost lands inside the scan
+    deadline, where it was the single largest phase of a /22 scan.
     """
     proc = await asyncio.create_subprocess_exec(
-        "arp", "-a",
+        "arp", "-an",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.DEVNULL,
         creationflags=CREATE_NO_WINDOW,
