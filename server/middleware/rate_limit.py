@@ -48,9 +48,54 @@ STALE_THRESHOLD = 300.0  # 5 minutes
 # delivery failures). Same trusted-VLAN posture as UDP device control.
 _SKIP_PREFIXES = ("/panel", "/programmer", "/docs", "/openapi.json", "/ws", "/isc/ws", "/api/push/")
 
-# Open tier paths (high limit, no auth needed)
-_OPEN_EXACT = {"/api/status", "/api/health", "/api/cloud/status", "/api/startup-status", "/api/auth/required", "/api/setup/status"}
+# Open tier paths (high limit, no auth needed). Every entry here is also on the
+# unauthenticated open router — tests/test_rate_limit_tiers.py holds that line,
+# because an open-tier path that *does* require auth would be handing an
+# anonymous caller the larger budget for nothing.
+_OPEN_EXACT = {
+    "/api/status",
+    "/api/health",
+    "/api/cloud/status",
+    "/api/startup-status",
+    "/api/auth/required",
+    "/api/setup/status",
+    "/api/certificate",
+}
 _OPEN_PREFIXES = ()
+
+# Control-tier request families, matched on whole leading path SEGMENTS.
+#
+# Two things this buys over the substring list it replaces. First, a tier can
+# no longer depend on a value *inside* the path: a device action named
+# "run_test" used to land in a different bucket than one named "discover",
+# purely because the classifier looked for "/test" anywhere in the string.
+# Second, a new sibling route inherits the right tier the day it is added —
+# `/api/drivers/upload-bundle` spent its whole life in the wrong bucket only
+# because it was added after the list naming its two siblings.
+#
+# Everything under these roots is a commissioning operation: firing a device,
+# testing a connection, installing or editing a driver, running a scan. They
+# are hot during setup from a remote Programmer, they all require programmer
+# auth, and their 401s feed the brute-force counter rather than this window —
+# so the higher budget is only ever reachable with valid credentials.
+_CONTROL_ROOTS = (
+    "/api/devices",             # command, test, send-raw, ir-emit, ir-import,
+                                # actions, settings, children, lifecycle
+    "/api/discovery",
+    "/api/drivers",             # install, upload, upload-bundle, update
+    "/api/driver-definitions",
+    "/api/python-drivers",
+    "/api/isc",                 # send, broadcast, command
+)
+
+
+def _under(path: str, root: str) -> bool:
+    """True when ``path`` is ``root`` itself or sits beneath it.
+
+    Segment-bounded on purpose: ``/api/drivers`` must not match a future
+    ``/api/drivers-export``.
+    """
+    return path == root or path.startswith(root + "/")
 
 # Registered prefixes outside /api/ that classify as the standard tier.
 # Plugin guest aliases (api/plugin_ext.py) register here when mounted so
@@ -95,17 +140,14 @@ def _classify(method: str, path: str) -> str:
     # Control tier: authenticated commissioning operations. Hot during normal
     # setup from a remote Programmer, so they get their own high budget
     # instead of draining (or being 429'd by) the strict security window.
-    if method == "POST":
-        if path.startswith("/api/discovery/"):
+    # Reads are left on the standard budget — it is the writes that come in
+    # bursts (a volume ramp, a driver test loop), and none of these families
+    # is polled over HTTP (scan progress arrives over the WebSocket).
+    if method != "GET":
+        if path == "/api/project" and method == "PUT":
             return "control"
-        if path.startswith("/api/devices/") and ("/command" in path or "/test" in path):
+        if any(_under(path, root) for root in _CONTROL_ROOTS):
             return "control"
-        if path.endswith("/test-command"):
-            return "control"
-        if path in ("/api/drivers/install", "/api/drivers/upload"):
-            return "control"
-    if method == "PUT" and path == "/api/project":
-        return "control"
 
     # Everything else on /api/ is standard
     return "standard"

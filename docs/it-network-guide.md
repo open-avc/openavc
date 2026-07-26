@@ -300,9 +300,9 @@ Rate limiting is enabled by default on the HTTP REST API for remote clients. Req
 
 | Tier | Limit | Applies to |
 |------|-------|-----------|
-| Open | 120 requests/min per IP | Status, health-check, and setup-state endpoints |
+| Open | 120 requests/min per IP | Status, health-check, setup-state, and CA-certificate download endpoints. These are the ones that answer without a credential. |
 | Standard | 60 requests/min per IP | General API operations (including library/catalog reads) |
-| Control | 120 requests/min per IP | Commissioning operations: device commands and tests, discovery, driver install, and project save. These all require authentication; the higher budget keeps normal setup work (command bursts, volume ramps) from being throttled. |
+| Control | 120 requests/min per IP | Commissioning operations: anything that changes a device, driver, or discovery scan, plus project save. That covers device commands and tests, raw sends, IR emit, device settings and lifecycle, driver install/upload/edit, and inter-system commands. These all require authentication; the higher budget keeps normal setup work (command bursts, volume ramps) from being throttled. |
 | Strict | 10 requests/min per IP | Security-sensitive operations: sign-in, cloud pairing, and backup restore |
 
 Failed authentication attempts are throttled at the strict (10/min) rate on every endpoint, not just strict-tier ones, so credential probing is capped wherever it is aimed. Successful control traffic is tracked separately: volume ramps, rapid command sequences, and multi-room control from the touch panel are unaffected by the brute-force limit.
