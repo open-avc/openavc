@@ -192,14 +192,13 @@ async def test_http_query_params_reach_the_request_target():
     assert result["wire"] == "GET /api/status?verbose=1&ch=3"
 
 
-async def test_a_non_json_body_drops_query_params_and_the_preview_says_so():
-    """Pins a runtime quirk rather than papering over it.
+async def test_query_params_survive_a_non_json_body():
+    """A command may carry both a text body and query params.
 
-    _send_http_command returns early when the body isn't valid JSON, before
-    it builds the query params — so a command carrying both sends the body
-    and silently no query string. No shipped driver combines the two, so
-    this is latent. The dry run must report what the runtime actually does;
-    if the send path is ever fixed, this test is the one that should fail.
+    The two used to be exclusive by accident: the sender returned early for a
+    body that wasn't JSON, before it had built the query string, so an XML or
+    form-text command silently sent no query params at all. One send site now
+    handles both bodies, so declaring both works.
     """
     definition = _definition(
         transport="http",
@@ -208,7 +207,7 @@ async def test_a_non_json_body_drops_query_params_and_the_preview_says_so():
                 "label": "Set Input",
                 "method": "POST",
                 "path": "/api/input",
-                "query_params": {"force": "1"},
+                "query_params": {"force": "1", "ch": "{input}"},
                 "body": "<Input>{input}</Input>",
                 "params": {"input": {"type": "integer"}},
             }
@@ -217,7 +216,7 @@ async def test_a_non_json_body_drops_query_params_and_the_preview_says_so():
     result = await _dry_run_command(
         _request(definition, "set_input", {"input": 4}, port=80)
     )
-    assert result["wire"] == "POST /api/input"
+    assert result["wire"] == "POST /api/input?force=1&ch=4"
     assert result["body"] == "<Input>4</Input>"
 
 

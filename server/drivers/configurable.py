@@ -1366,24 +1366,23 @@ class ConfigurableDriver(BaseDriver):
         # Substitute params in path using safe substitution
         path = self._safe_substitute(raw_path, all_params)
 
-        # Substitute params in body
+        # Substitute params in body. A body that parses as JSON is sent as
+        # JSON; anything else (XML, form text, a bare token) goes out as raw
+        # content. Both are decided here rather than in two separate sends —
+        # a second send site is how query_params came to be dropped from the
+        # raw-content path while the JSON path kept them.
         json_body = None
+        content = None
         if raw_body:
             body_str = self._safe_substitute(raw_body, all_params)
-            # Parse body as JSON
             try:
                 json_body = json.loads(body_str)
             except (json.JSONDecodeError, ValueError):
-                # Not valid JSON — send as raw string body
                 log.debug(
                     f"[{self.device_id}] Body for '{command}' is not JSON, "
                     f"sending as raw content"
                 )
-                response = await self.transport.request(
-                    method, path, content=body_str.encode("utf-8"),
-                    headers=headers,
-                )
-                return await self._process_http_response(command, response)
+                content = body_str.encode("utf-8")
 
         # Build query params if specified
         query_params = None
@@ -1398,7 +1397,7 @@ class ConfigurableDriver(BaseDriver):
 
         response = await self.transport.request(
             method, path, params=query_params, json_body=json_body,
-            headers=headers,
+            content=content, headers=headers,
         )
         return await self._process_http_response(command, response)
 
