@@ -339,6 +339,52 @@ async def test_param_wire_map_is_applied():
     assert result["wire"] == "SELB\r"
 
 
+def test_dry_run_round_trips_over_http():
+    """The flag survives the request model and the route, not just the helper.
+
+    No lifespan here on purpose: a dry run asks nothing of the engine, so it
+    answers whether or not one is running.
+    """
+    from fastapi.testclient import TestClient
+
+    from server.main import app
+
+    client = TestClient(app)
+    payload = {
+        "host": "192.0.2.10",
+        "port": 4001,
+        "transport": "tcp",
+        "definition": _definition(),
+        "command_name": "set_preset",
+        "params": {"preset": 5},
+        "dry_run": True,
+    }
+    first = client.post(
+        "/api/driver-definitions/acme_widget/test-command", json=payload
+    )
+    assert first.status_code == 200, first.text
+    assert first.json()["wire"] == "PRESET 05\r"
+
+    # Immediately again: previews are not throttled the way sends are.
+    second = client.post(
+        "/api/driver-definitions/acme_widget/test-command", json=payload
+    )
+    assert second.status_code == 200, second.text
+
+
+def test_dry_run_over_http_requires_a_command():
+    from fastapi.testclient import TestClient
+
+    from server.main import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/driver-definitions/acme_widget/test-command",
+        json={"host": "1.2.3.4", "port": 1, "transport": "tcp", "dry_run": True},
+    )
+    assert response.status_code == 422, response.text
+
+
 # --- the equality that matters ------------------------------------------------
 
 async def test_dry_run_bytes_equal_a_live_send_over_a_real_socket():

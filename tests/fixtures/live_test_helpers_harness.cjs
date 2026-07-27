@@ -1,10 +1,13 @@
 "use strict";
 // Loads the real Live Test panel helpers (liveTestHelpers.ts, bundled on the
 // fly with the esbuild already in web/programmer/node_modules) and checks the
-// wire-preview routing (presence-based, mirroring configurable.py), the
-// query_params rendering, and the transport-shape mismatch messages. Prints
-// JSON results to stdout; the Python wrapper skips when the Node toolchain or
-// esbuild is absent.
+// transport-shape mismatch messages. Prints JSON results to stdout; the
+// Python wrapper skips when the Node toolchain or esbuild is absent.
+//
+// There is no wire-preview check here any more, because the panel no longer
+// builds the wire. It asks the server for a dry run, which builds the command
+// with the real driver runtime; the tests for that live beside the runtime,
+// in test_driver_command_dry_run.py and its corpus sweep.
 const path = require("path");
 
 const helpersPath = process.argv[2];
@@ -25,88 +28,6 @@ fn(moduleObj.exports, require, moduleObj, helpersPath, path.dirname(helpersPath)
 const H = moduleObj.exports;
 
 const results = {};
-
-// --- L-091: HTTP preview includes query_params like the runtime ----------
-{
-  const cmd = {
-    label: "Status",
-    send: "",
-    method: "GET",
-    path: "/api/status",
-    query_params: { verbose: "1", ch: "{ch}" },
-    params: {},
-  };
-  const out = H.previewWire(cmd, { ch: "3" });
-  results.l091_preview_includes_query_params = {
-    pass: out.startsWith("GET /api/status?verbose=1&ch=3"),
-    detail: out,
-  };
-}
-{
-  // A path that already carries a query string gets & appended, not a
-  // second ?; headers and body still render after the request line.
-  const cmd = {
-    label: "Set",
-    send: "",
-    method: "POST",
-    path: "/api/set?mode=a",
-    query_params: { level: "{level}" },
-    headers: { "Content-Type": "text/xml" },
-    body: "<Level>{level}</Level>",
-    params: {},
-  };
-  const out = H.previewWire(cmd, { level: "7" });
-  results.l091_preview_query_appends_to_existing = {
-    pass:
-      out.split("\n")[0] === "POST /api/set?mode=a&level=7" &&
-      out.includes("Content-Type: text/xml") &&
-      out.includes("<Level>7</Level>"),
-    detail: out,
-  };
-}
-{
-  // No query_params -> request line unchanged (no stray "?").
-  const cmd = { label: "R", send: "", method: "GET", path: "/s", params: {} };
-  const out = H.previewWire(cmd, {});
-  results.l091_preview_no_query_params_unchanged = {
-    pass: out === "GET /s",
-    detail: out,
-  };
-}
-
-// --- M-154: preview routes by field PRESENCE, mirroring the runtime ------
-{
-  // configurable.py routes any command with an `address` key to the OSC
-  // sender — even an empty one. The preview must agree, not fall through
-  // to the HTTP/raw branches like the old truthiness check did.
-  const cmd = {
-    label: "Q",
-    send: "FALLBACK",
-    address: "",
-    args: [{ type: "s", value: "x" }],
-    params: {},
-  };
-  const out = H.previewWire(cmd, {});
-  results.m154_preview_routes_empty_address_as_osc = {
-    pass: out === " [s=x]",
-    detail: out,
-  };
-}
-{
-  // OSC preview substitutes params in address and args.
-  const cmd = {
-    label: "Fader",
-    send: "",
-    address: "/ch/{ch}/fader",
-    args: [{ type: "f", value: "{level}" }],
-    params: {},
-  };
-  const out = H.previewWire(cmd, { ch: "01", level: "0.5" });
-  results.m154_preview_osc_substitution = {
-    pass: out === "/ch/01/fader [f=0.5]",
-    detail: out,
-  };
-}
 
 // --- M-154: transport-shape mismatch messages ----------------------------
 {
@@ -146,5 +67,13 @@ const results = {};
     detail: { tcpOk, udpOk, oscOk, httpOk },
   };
 }
+
+// The Builder holds no protocol interpretation. Routing a command by its
+// declared fields is fine; exporting something that builds a wire out of
+// templates is what must not come back.
+results.no_wire_builder_exported = {
+  pass: typeof H.previewWire === "undefined",
+  detail: Object.keys(H),
+};
 
 process.stdout.write(JSON.stringify(results));

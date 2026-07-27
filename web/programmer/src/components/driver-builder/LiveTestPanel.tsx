@@ -17,16 +17,22 @@ import { normalizeOptionList } from "../shared/paramOptions";
 import { BASE } from "../../api/base";
 import { ApiError } from "../../api/errors";
 import type {
+  DryRunResult,
   TestCommandResult,
   TestPanelConflict,
 } from "../../api/driverClient";
-import { commandShapeMismatch, previewWire } from "./liveTestHelpers";
+import { commandShapeMismatch } from "./liveTestHelpers";
 
 // Re-pause cadence while devices stay paused. The server expires a pause
 // after its TTL (device_manager.PAUSE_TTL, 10 min) so an abandoned pause
 // can't strand a production device; refreshing well inside that window
 // keeps legitimate long test sessions paused.
 const PAUSE_KEEPALIVE_MS = 4 * 60 * 1000;
+
+// How long the author has to pause before the panel asks the server what the
+// selected command would send. Long enough that a burst of keystrokes is one
+// request, short enough that the preview feels live.
+const WIRE_PREVIEW_DEBOUNCE_MS = 200;
 
 interface LiveTestPanelProps {
   draft: DriverDefinition;
@@ -288,6 +294,72 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
     if (isSerial) return port;
     return parseInt(port) || (typeof defaultPort === "number" ? defaultPort : 23);
   };
+
+  // Wire preview. The server builds the command with the real driver runtime
+  // and reports what it handed the transport, so the preview cannot drift
+  // from the send. Debounced because it follows the author's typing, and
+  // skipped when the shape can't send on this transport — the mismatch
+  // message takes the preview's place there.
+  // Tagged with the command it describes, so switching commands never shows
+  // the previous one's wire while the new request is in flight. Within one
+  // command the last good preview stays put between keystrokes rather than
+  // blanking on every edit.
+  const [preview, setPreview] = useState<{
+    command: string;
+    result: DryRunResult | null;
+    error: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    if (selectedCommand === RAW_COMMAND || !command || shapeMismatch) {
+      setPreview(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      const overrides: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(configOverrides)) {
+        if (v !== "") overrides[k] = v;
+      }
+      api
+        .dryRunDriverCommand(draft.id || "test", {
+          host,
+          port: resolvePortForSend(),
+          transport,
+          definition: draft,
+          command_name: selectedCommand,
+          params: coerceParams(paramValues, command.params ?? {}),
+          config_overrides: overrides,
+        })
+        .then((result) => {
+          if (cancelled) return;
+          setPreview({ command: selectedCommand, result, error: null });
+        })
+        .catch((e: unknown) => {
+          if (cancelled) return;
+          setPreview({
+            command: selectedCommand,
+            result: null,
+            error: e instanceof Error ? e.message : String(e),
+          });
+        });
+    }, WIRE_PREVIEW_DEBOUNCE_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    draft,
+    selectedCommand,
+    command,
+    paramValues,
+    configOverrides,
+    host,
+    port,
+    transport,
+    shapeMismatch,
+  ]);
 
   const handlePause = async (deviceId: string) => {
     setPausingId(deviceId);
@@ -594,6 +666,12 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
           command={command}
           paramValues={paramValues}
           shapeMismatch={shapeMismatch}
+          preview={
+            preview?.command === selectedCommand ? preview.result : null
+          }
+          previewError={
+            preview?.command === selectedCommand ? preview.error : null
+          }
           onParamChange={(name, value) =>
             setParamValues((prev) => ({ ...prev, [name]: value }))
           }
@@ -1029,12 +1107,18 @@ const pillButtonStyle: React.CSSProperties = {
 
 /**
  * Render an editable preview of the selected command — params first, then
- * a transport-specific summary of what will go on the wire.
+ * what will go on the wire.
+ *
+ * The wire half is not computed here. It is the server's dry run: the real
+ * driver builds the command against a transport that records instead of
+ * transmitting, so what is shown is what would be sent, down to the byte.
  */
 function CommandPreview({
   command,
   paramValues,
   shapeMismatch,
+  preview,
+  previewError,
   onParamChange,
 }: {
   command: DriverCommandDef;
@@ -1042,6 +1126,9 @@ function CommandPreview({
   /** Set when the command's wire shape doesn't match the transport — the
    *  runtime would refuse the send, so show why instead of a bogus preview. */
   shapeMismatch: string | null;
+  /** The server's dry run; null until the first one lands. */
+  preview: DryRunResult | null;
+  previewError: string | null;
   onParamChange: (name: string, value: string) => void;
 }) {
   const params = Object.entries(command.params ?? {});
@@ -1158,19 +1245,72 @@ function CommandPreview({
               padding: "var(--space-xs) var(--space-sm)",
               color: "var(--text-primary)",
               display: "flex",
-              alignItems: "center",
+              alignItems: "flex-start",
               gap: 4,
               overflow: "auto",
             }}
           >
-            <ChevronRight size={12} />
-            <span style={{ whiteSpace: "pre" }}>
-              {previewWire(command, paramValues)}
-            </span>
+            <ChevronRight size={12} style={{ flexShrink: 0, marginTop: 3 }} />
+            <WirePreview preview={preview} error={previewError} />
           </div>
+          {preview?.wire_hex && (
+            <div
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: "10px",
+                color: "var(--text-muted)",
+                marginTop: 4,
+                wordBreak: "break-all",
+              }}
+            >
+              {preview.wire_hex}
+            </div>
+          )}
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * Show the server's dry run. Formatting only — the wire, its headers and its
+ * body arrive already built by the driver runtime.
+ */
+function WirePreview({
+  preview,
+  error,
+}: {
+  preview: DryRunResult | null;
+  error: string | null;
+}) {
+  const muted: React.CSSProperties = { color: "var(--text-muted)" };
+
+  if (error) {
+    return <span style={{ color: "var(--color-error)" }}>{error}</span>;
+  }
+  if (!preview) {
+    return <span style={muted}>Building…</span>;
+  }
+  if (!preview.success) {
+    return (
+      <span style={{ color: "var(--color-error)" }}>
+        {preview.error || "This command can't be built yet."}
+      </span>
+    );
+  }
+  if (!preview.wire && !preview.body) {
+    return <span style={muted}>This command sends nothing yet.</span>;
+  }
+
+  const headers = Object.entries(preview.headers ?? {});
+  return (
+    <span style={{ whiteSpace: "pre-wrap" }}>
+      {visibleBytes(preview.wire)}
+      {headers.map(([k, v]) => (
+        <span key={k}>{`\n${k}: ${v}`}</span>
+      ))}
+      {preview.body ? `\n${visibleBytes(preview.body)}` : ""}
+    </span>
   );
 }
 

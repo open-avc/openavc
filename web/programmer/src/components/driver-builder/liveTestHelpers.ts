@@ -31,57 +31,10 @@ export function commandShapeMismatch(
     : "This command has no HTTP method or path, so it can't be sent as an HTTP request. Set them in Behavior → Commands.";
 }
 
-/**
- * Substitute {placeholder} tokens against the param map for the wire preview.
- * Routes by field presence exactly like the runtime (commandRoute), so the
- * preview shows what configurable.py would actually build — the transport
- * doesn't influence the shape, only whether it sends (commandShapeMismatch).
- */
-export function previewWire(
-  command: DriverCommandDef,
-  paramValues: Record<string, string>,
-): string {
-  const subst = (template: string): string =>
-    template.replace(/\{(\w+)\}/g, (m, key) =>
-      paramValues[key] !== undefined && paramValues[key] !== ""
-        ? paramValues[key]
-        : m,
-    );
-
-  const route = commandRoute(command);
-
-  if (route === "osc") {
-    const addr = subst(command.address ?? "");
-    const args = (command.args ?? [])
-      .map((a) => `${a.type}=${subst(a.value)}`)
-      .join(", ");
-    return args ? `${addr} [${args}]` : addr;
-  }
-
-  if (route === "http") {
-    const method = (command.method || "GET").toUpperCase();
-    const path = subst(command.path ?? "/");
-    // The runtime passes query_params to the HTTP client, which appends
-    // them to the URL — show them the same way so the previewed request
-    // matches what actually goes out.
-    const qp = command.query_params
-      ? Object.entries(command.query_params)
-          .map(([k, v]) => `${k}=${subst(v)}`)
-          .join("&")
-      : "";
-    const pathWithQuery = qp
-      ? `${path}${path.includes("?") ? "&" : "?"}${qp}`
-      : path;
-    const headers = command.headers
-      ? Object.entries(command.headers)
-          .map(([k, v]) => `${k}: ${subst(v)}`)
-          .join("\n")
-      : "";
-    const body = command.body ? subst(command.body) : "";
-    return [`${method} ${pathWithQuery}`, headers, body]
-      .filter(Boolean)
-      .join("\n");
-  }
-
-  return subst(command.send ?? "");
-}
+// There is deliberately no wire preview here. Building the wire is the
+// runtime's job, and doing it a second time in TypeScript is how the preview
+// came to disagree with the send about format specs, command_prefix and
+// command_suffix framing, escape decoding, and computed send_frame headers.
+// The panel asks the server for a dry run instead: the real driver builds the
+// command against a transport that records rather than transmits, and the
+// panel formats what comes back.

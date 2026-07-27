@@ -1,13 +1,18 @@
 """Regression tests for the Live Test panel's pure helpers (liveTestHelpers.ts).
 
-The panel's wire preview must show what the runtime actually sends: it now
-routes by field presence exactly like configurable.py (an `address` key —
-even empty — goes to the OSC sender), renders HTTP query_params on the
-request line (the runtime appends them to the URL; the old preview dropped
-them), and a command whose shape doesn't match the driver transport gets an
-explanatory mismatch message instead of a bogus preview (the runtime's
-senders refuse mismatched shapes). Bundled with the esbuild in
-web/programmer/node_modules; skips when the Node toolchain is absent.
+A command whose shape doesn't match the driver transport gets an explanatory
+message instead of a send the runtime would refuse. That is declared-field
+routing, not protocol interpretation, so it stays in the browser.
+
+Building the wire does not. The panel used to preview it with a second,
+TypeScript implementation of the send path, which disagreed with the runtime
+about format specs, command framing, escape decoding and packet headers; the
+panel now asks the server to build the command with the real driver, and this
+harness checks the wire builder has not come back. What the preview shows is
+covered by test_driver_command_dry_run.py and its corpus sweep.
+
+Bundled with the esbuild in web/programmer/node_modules; skips when the Node
+toolchain is absent.
 """
 from __future__ import annotations
 
@@ -77,13 +82,9 @@ def helper_results() -> dict:
 
 # One pytest case per harness scenario, so a failure names the exact behaviour.
 SCENARIOS = [
-    "l091_preview_includes_query_params",
-    "l091_preview_query_appends_to_existing",
-    "l091_preview_no_query_params_unchanged",
-    "m154_preview_routes_empty_address_as_osc",
-    "m154_preview_osc_substitution",
     "m154_mismatch_detected",
     "m154_matched_shapes_pass",
+    "no_wire_builder_exported",
 ]
 
 

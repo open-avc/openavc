@@ -60,6 +60,34 @@ export interface TestCommandResult {
   error: string | null;
 }
 
+/**
+ * What a command would put on the wire, built by the real driver runtime
+ * against a transport that records instead of transmitting.
+ *
+ * Every field here is what the runtime produced. Rendering a preview means
+ * formatting these values — never substituting placeholders or applying
+ * framing in the browser, which is how the preview used to disagree with the
+ * send about format specs, prefixes, escapes and packet headers.
+ */
+export interface DryRunResult {
+  dry_run: true;
+  success: boolean;
+  error: string | null;
+  /** Which sender the command's declared fields route it to. */
+  route: "raw" | "osc" | "http" | null;
+  /**
+   * raw: the decoded bytes. osc: address and typed args, read back from the
+   * encoded packet. http: the request line.
+   */
+  wire: string;
+  /** The exact bytes, for raw and OSC. Null on the HTTP route. */
+  wire_hex: string | null;
+  /** HTTP only. */
+  headers: Record<string, string> | null;
+  /** HTTP only. */
+  body: string | null;
+}
+
 export interface TestCommandRequest {
   host: string;
   /** Numeric port for IP transports; serial port path (e.g. "COM3") for serial. */
@@ -71,6 +99,8 @@ export interface TestCommandRequest {
   command_name?: string;
   params?: Record<string, unknown>;
   config_overrides?: Record<string, unknown>;
+  /** Build the command and report the wire, without connecting or sending. */
+  dry_run?: boolean;
   /** Raw mode (legacy fallback) — only used when definition+command_name absent. */
   command_string?: string;
   delimiter?: string;
@@ -85,6 +115,17 @@ export async function testDriverCommand(
   return request(`/driver-definitions/${driverId}/test-command`, {
     method: "POST",
     body: JSON.stringify(data),
+  });
+}
+
+/** Ask what a command would send, without a device. */
+export async function dryRunDriverCommand(
+  driverId: string,
+  data: TestCommandRequest,
+): Promise<DryRunResult> {
+  return request(`/driver-definitions/${driverId}/test-command`, {
+    method: "POST",
+    body: JSON.stringify({ ...data, dry_run: true }),
   });
 }
 
