@@ -216,7 +216,7 @@ For each test:
 - **Host / Port** — for TCP, HTTP, UDP, and OSC drivers. Defaults to the driver's `default_config.port`. Override per test.
 - **Serial Port** — for serial drivers. Accepts a device path like `COM3` on Windows or `/dev/ttyUSB0` on Linux. Prefix with `SIM:` to talk to the built-in simulator.
 - **Driver Config** — fields declared in `config_schema` (credentials, instance tags) appear here so you can fill them in without saving them to defaults.
-- **Command** — pick a defined command from the dropdown. The form below shows its parameters with typed inputs, and a live wire-format preview shows the substituted string that will go on the wire.
+- **Command** — pick a defined command from the dropdown. The form below shows its parameters with typed inputs, and a live wire-format preview shows exactly what the driver would put on the wire. The preview is built by the same runtime that does the sending, so it accounts for everything the send does: parameter formats like `{level:02X}`, the driver's command prefix and suffix, escape sequences such as `\x02` (shown as bytes in the hex line beneath), and any `send_frame` packet header. OSC commands preview as the address and typed arguments from the encoded packet; HTTP commands preview as the request line, headers, and body. Building the preview contacts no device and sends nothing.
 - **Raw probe** — also available in the dropdown. Sends arbitrary bytes without auth or on_connect. Useful for one-off "what does this device say" checks.
 
 Each result shows what was sent, every received chunk (with `\r` and `\n` made visible), and any state variable changes the responses produced.
