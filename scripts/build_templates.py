@@ -132,33 +132,45 @@ def template_drivers(project: dict, builtins: set[str]) -> list[str]:
     return sorted(d for d in used if d and d not in builtins)
 
 
-def build_bundle(stem: str, catalog: dict[str, dict], builtins: set[str]) -> bytes:
-    """Assemble one template bundle and return its bytes.
+def read_source(path: Path) -> bytes:
+    """Read one source file exactly as it should appear inside a bundle.
 
-    Reads are explicitly UTF-8 and writes are the encoded bytes of that same
-    text, so the round trip cannot re-encode already-encoded text. That is the
-    exact defect this replaces -- Python read as cp1252 and written back as
-    UTF-8 turned every em dash into three garbage characters.
+    THE definition of "the bytes this source contributes". Anything comparing a
+    bundle against its sources has to ask here too, or the two answers drift --
+    which is the shape of bug this whole script exists to prevent.
+
+    Two normalizations, both deliberate:
+
+    UTF-8 in and UTF-8 straight back out, so the round trip cannot re-encode
+    text that was already encoded. That is the exact defect this replaces --
+    Python read as cp1252 and written back as UTF-8 turned every em dash into
+    three garbage characters.
+
+    Line endings collapse to LF, because ``read_text`` reads in universal-
+    newline mode. A bundle is a shipped artifact extracted verbatim onto a
+    user's disk, so its contents must not depend on the platform it was built
+    on. Git hands a Windows checkout CRLF for these same files; without this,
+    building on Windows would rewrite all four bundles with CRLF and the
+    committed artifacts would flip back and forth by whose machine ran last.
     """
+    return path.read_text(encoding="utf-8").encode("utf-8")
+
+
+def build_bundle(stem: str, catalog: dict[str, dict], builtins: set[str]) -> bytes:
+    """Assemble one template bundle and return its bytes."""
     avc_path = TEMPLATE_DIR / f"{stem}.avc"
     project = json.loads(avc_path.read_text(encoding="utf-8"))
 
-    members: list[tuple[str, bytes]] = [
-        ("project.avc", avc_path.read_text(encoding="utf-8").encode("utf-8")),
-    ]
+    members: list[tuple[str, bytes]] = [("project.avc", read_source(avc_path))]
 
     scripts_dir = TEMPLATE_DIR / f"{stem}.scripts"
     if scripts_dir.is_dir():
         for script in sorted(scripts_dir.glob("*.py")):
-            members.append(
-                (f"scripts/{script.name}", script.read_text(encoding="utf-8").encode("utf-8"))
-            )
+            members.append((f"scripts/{script.name}", read_source(script)))
 
     for driver_id in template_drivers(project, builtins):
         for path in driver_files(driver_id, catalog):
-            members.append(
-                (f"drivers/{path.name}", path.read_text(encoding="utf-8").encode("utf-8"))
-            )
+            members.append((f"drivers/{path.name}", read_source(path)))
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:

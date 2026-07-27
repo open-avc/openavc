@@ -95,10 +95,12 @@ def test_bundle_matches_its_loose_sources(bundle: Path) -> None:
     This is the drift half. The bundled driver is checked separately, because
     only that one needs the community library on disk.
     """
+    import build_templates
+
     stem = bundle.stem
     members = _bundle_members(bundle)
 
-    loose_avc = (TEMPLATE_DIR / f"{stem}.avc").read_bytes()
+    loose_avc = build_templates.read_source(TEMPLATE_DIR / f"{stem}.avc")
     assert members.get("project.avc") == loose_avc, (
         f"{bundle.name}: bundled project.avc differs from {stem}.avc. "
         "Rebuild with: python scripts/build_templates.py"
@@ -106,7 +108,7 @@ def test_bundle_matches_its_loose_sources(bundle: Path) -> None:
 
     scripts_dir = TEMPLATE_DIR / f"{stem}.scripts"
     expected = (
-        {f"scripts/{p.name}": p.read_bytes() for p in scripts_dir.glob("*.py")}
+        {f"scripts/{p.name}": build_templates.read_source(p) for p in scripts_dir.glob("*.py")}
         if scripts_dir.is_dir()
         else {}
     )
@@ -171,7 +173,7 @@ def test_bundled_drivers_are_the_full_installed_set(bundle: Path) -> None:
     expected = {}
     for driver_id in build_templates.template_drivers(project, builtins):
         for path in build_templates.driver_files(driver_id, catalog):
-            expected[f"drivers/{path.name}"] = path.read_bytes()
+            expected[f"drivers/{path.name}"] = build_templates.read_source(path)
 
     bundled = {n: b for n, b in _bundle_members(bundle).items() if n.startswith("drivers/")}
     assert bundled.keys() == expected.keys(), (
@@ -299,6 +301,29 @@ def test_template_scripts_load_from_bundle_and_loose_copy(bundle: Path, tmp_path
         f"loose copies registered {loose_handlers} -- the two have drifted apart"
     )
     assert bundle_handlers > 0, f"{bundle.name}: scripts loaded but registered no handlers"
+
+
+def test_source_reads_are_platform_independent(tmp_path: Path) -> None:
+    """A CRLF working copy contributes the same bytes as an LF one.
+
+    This repo has no .gitattributes, so git hands a Windows checkout CRLF for
+    the .avc and .py sources while the bundle stores LF. Comparing raw on-disk
+    bytes against a bundle entry therefore passed everywhere except Windows,
+    which is exactly how this first went red -- the drift check has to use the
+    same reader the build script does, and that reader has to collapse line
+    endings.
+    """
+    import build_templates
+
+    text = 'x = "a — b"\ny = 2\n'
+    lf, crlf = tmp_path / "lf.py", tmp_path / "crlf.py"
+    lf.write_bytes(text.encode("utf-8"))
+    crlf.write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
+
+    assert build_templates.read_source(crlf) == build_templates.read_source(lf)
+    assert b"\r" not in build_templates.read_source(crlf)
+    # And the UTF-8 half of the same guarantee: no re-encoding on the way through.
+    assert "—".encode("utf-8") in build_templates.read_source(crlf)
 
 
 def test_check_mode_reports_a_hand_edited_bundle(tmp_path: Path) -> None:
