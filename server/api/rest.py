@@ -10,15 +10,22 @@ from fastapi import APIRouter, Depends
 import server.api._engine as _engine_mod
 from server.api.auth import require_programmer_auth
 
+from server.api.routes import auth as _auth_routes
+from server.api.routes import cloud as _cloud_routes
 from server.api.routes import devices as _devices_routes
 from server.api.routes import drivers as _drivers_routes
+from server.api.routes import host as _host_routes
 from server.api.routes import ir_db as _ir_db_routes
+from server.api.routes import isc as _isc_routes
 from server.api.routes import macros as _macros_routes
 from server.api.routes import project as _project_routes
 from server.api.routes import push as _push_routes
 from server.api.routes import scripts as _scripts_routes
 from server.api.routes import setup as _setup_routes
+from server.api.routes import simulation as _simulation_routes
 from server.api.routes import system as _system_routes
+from server.api.routes import tls as _tls_routes
+from server.api.routes import updates as _updates_routes
 from server.api.routes import variables as _variables_routes
 
 
@@ -50,12 +57,21 @@ router.include_router(_devices_routes.router)
 router.include_router(_drivers_routes.router)
 router.include_router(_ir_db_routes.router)
 router.include_router(_project_routes.router)
+router.include_router(_isc_routes.router)
+router.include_router(_cloud_routes.router)
 router.include_router(_system_routes.router)
+router.include_router(_tls_routes.router)
+router.include_router(_host_routes.router)
+router.include_router(_updates_routes.router)
+router.include_router(_simulation_routes.router)
 
 # Include open (unauthenticated) sub-routers
 open_router.include_router(_push_routes.open_router)
 open_router.include_router(_setup_routes.open_router)
 open_router.include_router(_system_routes.open_router)
+open_router.include_router(_auth_routes.open_router)
+open_router.include_router(_cloud_routes.open_router)
+open_router.include_router(_tls_routes.open_router)
 
 # Backward compat re-export (used by server.api.discovery)
 install_community_driver = _drivers_routes.install_community_driver

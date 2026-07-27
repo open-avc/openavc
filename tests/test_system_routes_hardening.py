@@ -1,6 +1,12 @@
-"""Regression tests for server/api/routes/system.py hardening.
+"""Regression tests for the system-routes hardening.
 
-Covers the audit findings closed in the bug-fix campaign for this file:
+These were one file's findings when the routes all lived in
+``server/api/routes/system.py``; they now span the domain modules that file
+was split into (``cloud``, ``tls``, ``simulation``, and ``system`` itself).
+They are kept together because they are one campaign's regressions, and each
+still drives its endpoint through the real app.
+
+Covers the audit findings closed in the bug-fix campaign:
   - H-027  cloud_pair() partial/renamed cloud body -> clean 502 (not KeyError 500)
   - H-028  SSRF guard on cloud_api_url (link-local/loopback/bad-scheme)
   - M-048  save_cloud_config OSError -> clear 500, no silent success
@@ -22,7 +28,7 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-import server.api.routes.system as system_routes
+import server.api.routes.cloud as cloud_routes
 from server.api import rest, ws
 from server.core.event_bus import EventBus
 from server.core.state_store import StateStore
@@ -77,7 +83,7 @@ def isolated_config(tmp_path):
 
 
 def _validate(url):
-    return asyncio.run(system_routes._validate_cloud_api_url(url))
+    return asyncio.run(cloud_routes._validate_cloud_api_url(url))
 
 
 def test_ssrf_blocks_link_local_metadata():
@@ -151,7 +157,7 @@ def _pair_env(monkeypatch, *, save=None):
     async def _passthrough(url):
         return url.rstrip("/")
 
-    monkeypatch.setattr(system_routes, "_validate_cloud_api_url", _passthrough)
+    monkeypatch.setattr(cloud_routes, "_validate_cloud_api_url", _passthrough)
     monkeypatch.setattr(
         "server.cloud.config.save_cloud_config", save or (lambda cfg: None)
     )

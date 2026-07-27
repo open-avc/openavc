@@ -117,7 +117,7 @@ async def _validate_download_url(url: str) -> None:
     plugin pointing the server at 169.254.169.254). Loopback is allowed only on
     a dev checkout so local tests / mirrors work.
 
-    Mirrors routes/system.py:_validate_cloud_api_url; kept local because the
+    Mirrors routes/cloud.py:_validate_cloud_api_url; kept local because the
     policy differs (private ranges are blocked here) and to avoid a route->core
     import dependency.
     """

@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient
 
 from server import host_control as hc
 from server.api import auth
+from server.api.routes import host as host_routes
 from server.api.routes import system as system_routes
 from server.system_config import get_system_config
 
@@ -167,7 +168,10 @@ def test_claim_still_sets_password_even_if_sync_raises(spool, monkeypatch):
 def _protected_app() -> FastAPI:
     app = FastAPI()
     protected = APIRouter(prefix="/api", dependencies=[Depends(auth.require_programmer_auth)])
+    # Two routers: the password-change path is PATCH /api/system/config
+    # (system), the SSH and reboot paths are host.
     protected.include_router(system_routes.router)
+    protected.include_router(host_routes.router)
     app.include_router(protected)
     return app
 

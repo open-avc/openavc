@@ -66,7 +66,7 @@ def _basic_header(user: str, password: str) -> dict:
 
 def _make_app() -> TestClient:
     """App with the real auth/session routes plus one protected route."""
-    from server.api.routes.system import open_router
+    from server.api.routes.auth import open_router
 
     app = FastAPI()
     app.include_router(open_router, prefix="/api")

@@ -166,10 +166,10 @@ def test_code_endpoint_200_with_valid_creds():
 
 
 def _auth_api_app() -> FastAPI:
-    from server.api.routes import system as system_routes
+    from server.api.routes import auth as auth_routes
 
     app = FastAPI()
-    app.include_router(system_routes.open_router, prefix="/api")
+    app.include_router(auth_routes.open_router, prefix="/api")
     return app
 
 
