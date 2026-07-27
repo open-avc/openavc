@@ -26,6 +26,7 @@ from server.core.event_bus import EventBus
 from server.core.state_store import StateStore
 from server.drivers.actions import resolve_device_actions
 from server.drivers.base import BaseDriver, CommandParamError
+from server.drivers.configurable import create_configurable_driver_class
 
 
 class _AcmeDriver(BaseDriver):
@@ -124,6 +125,85 @@ async def test_both_commands_run_while_connected(core):
     await dm.send_command("acme2", "wake")
     await dm.send_command("acme2", "beep")
     assert driver.calls == [("wake", None), ("beep", None)]
+
+
+# ── the YAML half: the flag has to reach DRIVER_INFO to do anything ──────────
+#
+# Everything above builds DRIVER_INFO by hand, which is how a Python driver
+# works and is why this gap survived: the gate was proven, but not the path a
+# YAML driver's flag takes to reach it. A .avcdriver's commands are rendered
+# into DRIVER_INFO by _build_commands_meta, so a field it does not carry is
+# inert no matter how correct the gate is.
+
+
+_YAML_DEFINITION = {
+    "id": "acme_yaml",
+    "name": "Acme YAML Widget",
+    "manufacturer": "Acme",
+    "category": "utility",
+    "transport": "tcp",
+    "state_variables": {},
+    "commands": {
+        "wake": {"label": "Wake", "send": "WAKE", "available_offline": True},
+        "beep": {"label": "Beep", "send": "BEEP"},
+    },
+    "responses": [],
+}
+
+
+def _yaml_driver(core):
+    state, events = core
+    dm = DeviceManager(state, events)
+    cls = create_configurable_driver_class(_YAML_DEFINITION)
+    driver = cls("acme_yaml1", {}, state, events)
+    # Deliberately NOT connected.
+    dm._devices["acme_yaml1"] = driver
+    return dm, driver
+
+
+def test_yaml_driver_carries_available_offline_into_driver_info(core):
+    """The flag survives the definition → DRIVER_INFO rendering.
+
+    Without this the gate below cannot see it, and the Driver Builder's
+    checkbox writes a field that does nothing.
+    """
+    _, driver = _yaml_driver(core)
+    commands = driver.DRIVER_INFO["commands"]
+    assert commands["wake"].get("available_offline") is True
+    # A command that doesn't declare it must not gain it.
+    assert "available_offline" not in commands["beep"]
+
+
+async def test_yaml_offline_command_runs_while_offline(core):
+    dm, driver = _yaml_driver(core)
+    assert not driver.get_state("connected")
+    sent: list[str] = []
+
+    # Stub the wire so this tests the gate, not the transport: an offline
+    # device has none, which is the whole point of the flag.
+    async def _capture(command, params=None):
+        sent.append(command)
+        return True
+
+    driver.send_command = _capture
+    assert await dm.send_command("acme_yaml1", "wake") is True
+    assert sent == ["wake"]
+
+
+async def test_yaml_normal_command_still_blocked_while_offline(core):
+    dm, _ = _yaml_driver(core)
+    with pytest.raises(ConnectionError):
+        await dm.send_command("acme_yaml1", "beep")
+
+
+def test_yaml_driver_promotes_the_flag_onto_a_button(core):
+    """The other consumer of DRIVER_INFO: a promoted Quick Action stays
+    available while the device is offline."""
+    _, driver = _yaml_driver(core)
+    resolved = resolve_device_actions(driver.DRIVER_INFO)
+    by_id = {a["id"]: a for a in resolved}
+    if "wake" in by_id:
+        assert by_id["wake"]["availability"] == "always"
 
 
 # ── resolve_device_actions availability mapping ──────────────────────────────

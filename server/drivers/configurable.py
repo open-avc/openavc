@@ -78,6 +78,16 @@ def _build_commands_meta(commands_def: dict[str, Any]) -> dict[str, Any]:
     per-instance inline-protocol merge (device-config-authored commands) so
     both present identically in the IDE — same label, params, and
     transport-specific fields (HTTP method/path/body, OSC address/args).
+
+    ``available_offline`` is carried for a different reason than the rest,
+    and the difference is why it was missed: every other command field is
+    read off the raw definition at send time, but the connected-gate and a
+    promoted button's availability both read DRIVER_INFO
+    (``DeviceManager._command_available_offline``,
+    ``actions._command_availability``). A field dropped here is therefore
+    inert for a YAML driver while working for a Python one, which sets
+    DRIVER_INFO itself. Anything else those two ever read must be added here
+    too.
     """
     commands_meta: dict[str, Any] = {}
     for cmd_name, cmd_def in (commands_def or {}).items():
@@ -87,7 +97,10 @@ def _build_commands_meta(commands_def: dict[str, Any]) -> dict[str, Any]:
             "label": cmd_def.get("label", cmd_name),
             "params": cmd_def.get("params", {}),
         }
-        for key in ("method", "path", "body", "address", "args", "help"):
+        for key in (
+            "method", "path", "body", "address", "args", "help",
+            "available_offline",
+        ):
             if key in cmd_def:
                 cmd_meta[key] = cmd_def[key]
         commands_meta[cmd_name] = cmd_meta
