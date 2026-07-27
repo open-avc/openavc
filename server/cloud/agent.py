@@ -30,7 +30,7 @@ from server.cloud.protocol import (
     COMMAND_RESULT, PROJECT_DATA, DEVICE_COMMANDS_DATA,
     DIAGNOSTIC_RESULT, AI_TOOL_RESULT, TUNNEL_FAILED, HEARTBEAT, PONG,
     UPSTREAM_PAYLOAD_BUILDERS,
-    MAX_MESSAGE_BYTES, MESSAGE_SIZE_MARGIN,
+    MAX_MESSAGE_BYTES, MESSAGE_SIZE_MARGIN, SUPPORTED_PROTOCOL_VERSIONS,
     build_pong_payload, build_gap_report_payload,
     build_heartbeat_payload, build_tunnel_failed_payload,
     parse_message, is_handshake_message,
@@ -221,6 +221,13 @@ class CloudAgent:
         self._disconnect_time: str | None = None
         self._reconnect_count = 0
 
+        # Why the agent gave up, when it did. Set only on the conditions that
+        # retrying cannot fix (revoked key, no shared protocol version) so the
+        # UI can show a cause instead of a bare "Offline" that looks like a
+        # network blip the operator should wait out.
+        self._stop_reason: str = ""
+        self._stop_detail: str = ""
+
         # Tracking
         self._connected_at: float = 0  # time.time() when connected
         self._last_heartbeat_at: float = 0  # time.time() of last heartbeat sent
@@ -406,7 +413,39 @@ class CloudAgent:
                     # Fatal — don't retry, key is permanently invalid
                     log.error("Cloud agent: system key is invalid or revoked. Stopping.")
                     self._running = False
+                    self._stop_reason = "auth_failed"
+                    self._stop_detail = (
+                        "This instance's cloud key was revoked or is no longer "
+                        "recognized. Pair it with the cloud again to reconnect."
+                    )
                     self.state.set("system.cloud.status", "auth_failed", source="cloud")
+                    self.state.set(
+                        "system.cloud.status_detail", self._stop_detail, source="cloud"
+                    )
+                    return
+                if e.reason == "version_mismatch":
+                    # Also fatal, for a different reason: the two sides share no
+                    # wire protocol version, so every retry earns the identical
+                    # rejection. Left retrying, that is a whole fleet knocking on
+                    # the door every five minutes forever with nothing to show
+                    # the operator. Stop, and name the fix — updating this
+                    # instance is a person's action, not something to wait out.
+                    versions = e.detail_versions or []
+                    self._running = False
+                    self._stop_reason = "version_mismatch"
+                    self._stop_detail = (
+                        "This instance speaks cloud protocol "
+                        f"{SUPPORTED_PROTOCOL_VERSIONS}, but the cloud requires "
+                        f"{versions or 'a newer version'}. Update OpenAVC on this "
+                        "instance to reconnect."
+                    )
+                    log.error(f"Cloud agent: {self._stop_detail} Stopping.")
+                    self.state.set(
+                        "system.cloud.status", "version_mismatch", source="cloud"
+                    )
+                    self.state.set(
+                        "system.cloud.status_detail", self._stop_detail, source="cloud"
+                    )
                     return
             except (ConnectionClosed, OSError, InvalidURI, InvalidHandshake) as e:
                 log.warning(f"Cloud agent: connection error — {e}")
@@ -581,7 +620,12 @@ class CloudAgent:
             self._backoff = BACKOFF_INITIAL
             self._disconnect_time = None
             self._sig_failure_count = 0
+            # Any earlier give-up cause is history now — clear it so a stale
+            # "needs an update" can't outlive the update that fixed it.
+            self._stop_reason = ""
+            self._stop_detail = ""
             self.state.set("system.cloud.status", "connected", source="cloud")
+            self.state.set("system.cloud.status_detail", "", source="cloud")
             self.state.set("system.cloud.session_id", result.session_id, source="cloud")
             log.info("Cloud agent: connected and authenticated")
 
@@ -1263,6 +1307,8 @@ class CloudAgent:
             ).isoformat()
         return {
             "connected": self._connected,
+            "stop_reason": self._stop_reason,
+            "stop_detail": self._stop_detail,
             "endpoint": self._endpoint,
             "system_id": self._system_id,
             "session_id": self._session.session_id if self._session else None,

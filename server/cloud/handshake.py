@@ -22,7 +22,7 @@ from server.cloud.crypto import derive_auth_key, compute_auth_proof, derive_sign
 from server.cloud.protocol import (
     CHALLENGE, SESSION_START,
     AUTH_FAILED, VERSION_MISMATCH, RESUME_FROM,
-    PROTOCOL_VERSION,
+    SUPPORTED_PROTOCOL_VERSIONS,
     build_hello, build_authenticate, build_resume,
     parse_message, extract_payload, _now_iso,
 )
@@ -49,9 +49,18 @@ class HandshakeResult:
 class HandshakeError(Exception):
     """Raised when the handshake fails."""
 
-    def __init__(self, message: str, reason: str = "unknown"):
+    def __init__(
+        self,
+        message: str,
+        reason: str = "unknown",
+        detail_versions: list[int] | None = None,
+    ):
         super().__init__(message)
         self.reason = reason
+        # Only set for a version mismatch: the versions the other side said it
+        # speaks, so the connection loop can name them in the operator-facing
+        # detail rather than burying them in a log line.
+        self.detail_versions = detail_versions
 
 
 class Handshake:
@@ -151,8 +160,18 @@ class Handshake:
             payload = extract_payload(msg)
             supported = payload.get("supported_versions", [])
             message = payload.get("message", "Protocol version not supported")
-            log.error(f"Handshake: version mismatch. Server supports: {supported}")
-            raise HandshakeError(message, reason="version_mismatch")
+            # Retrying can't fix this — the cloud has dropped every version we
+            # speak, so the instance needs a software update. Carry the cloud's
+            # supported list into the error so the agent can put a real cause in
+            # front of the operator instead of a bare "disconnected".
+            log.error(
+                f"Handshake: protocol version mismatch. Cloud supports {supported}, "
+                f"this instance speaks {SUPPORTED_PROTOCOL_VERSIONS}. "
+                "Update OpenAVC on this instance to reconnect."
+            )
+            raise HandshakeError(
+                message, reason="version_mismatch", detail_versions=supported
+            )
 
         if msg_type != CHALLENGE:
             raise HandshakeError(
@@ -193,19 +212,21 @@ class Handshake:
 
         payload = extract_payload(msg)
 
-        # Validate the cloud's protocol version — symmetric to the cloud
-        # rejecting our hello.protocol_version. A cloud advertising a version we
-        # don't speak may reshape downstream payloads, so fail closed rather
-        # than silently mis-parse them. A cloud that omits the field is the
-        # pre-negotiation v1 baseline (older cloud, or one that predates this
-        # check), so treat missing as compatible — this keeps the rollout safe
-        # whichever side deploys first.
+        # session_start carries the version the cloud settled on out of the set
+        # we advertised in hello. Accept anything we actually speak, not just our
+        # newest — that is what lets a cloud running ahead of the fleet drop back
+        # to an older agent instead of rejecting it. Outside our range we fail
+        # closed: a version we don't speak may reshape downstream payloads, and
+        # mis-parsing them silently is worse than refusing the session. A cloud
+        # that omits the field is the pre-negotiation v1 baseline, so treat
+        # missing as compatible and keep the rollout safe in either order.
         cloud_version = payload.get("protocol_version")
-        if cloud_version is not None and cloud_version != PROTOCOL_VERSION:
+        if cloud_version is not None and cloud_version not in SUPPORTED_PROTOCOL_VERSIONS:
             raise HandshakeError(
-                f"Cloud protocol version {cloud_version} is not supported "
-                f"(agent speaks {PROTOCOL_VERSION})",
+                f"Cloud settled on protocol version {cloud_version}, which this "
+                f"instance does not speak (supports {SUPPORTED_PROTOCOL_VERSIONS})",
                 reason="version_mismatch",
+                detail_versions=[cloud_version],
             )
 
         # Extract session info

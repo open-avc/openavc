@@ -174,8 +174,30 @@ export function CloudSettingsView() {
               ? "Not Configured"
               : status?.connected
                 ? "Connected"
-                : "Disconnected"}
+                : status?.stop_reason === "version_mismatch"
+                  ? "Stopped — needs update"
+                  : status?.stop_reason === "auth_failed"
+                    ? "Stopped — needs pairing"
+                    : "Disconnected"}
           </div>
+
+          {/* The agent only stops when retrying is pointless. Say what happened
+              and what fixes it, right where someone would come looking. */}
+          {isPaired && !status?.connected && !!status?.stop_detail && (
+            <div
+              style={{
+                marginTop: "var(--space-sm)",
+                padding: "var(--space-sm)",
+                borderRadius: "var(--radius-sm)",
+                background: "rgba(231,76,60,0.08)",
+                border: "1px solid rgba(231,76,60,0.25)",
+                fontSize: "var(--font-size-sm)",
+                color: "var(--text-secondary)",
+              }}
+            >
+              {status.stop_detail}
+            </div>
+          )}
 
           {isPaired && (
             <>

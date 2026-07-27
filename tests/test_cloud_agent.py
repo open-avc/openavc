@@ -26,7 +26,7 @@ from server.cloud.crypto import (
     hash_system_key,
 )
 from server.cloud.protocol import (
-    PROTOCOL_VERSION,
+    PROTOCOL_VERSION, MIN_PROTOCOL_VERSION, SUPPORTED_PROTOCOL_VERSIONS,
     HELLO, CHALLENGE, AUTHENTICATE, SESSION_START,
     AUTH_FAILED, VERSION_MISMATCH, RESUME, RESUME_FROM,
     HEARTBEAT, STATE_BATCH, ALERT, SESSION_ROTATE, SESSION_INVALID, COMMAND,
@@ -243,13 +243,43 @@ class TestProtocol:
         # speculative fields (hostname/project_name/python_version were
         # sent for years and never read).
         assert set(msg["payload"]) == {
-            "protocol_version", "system_id", "version",
+            "protocol_version", "supported_versions", "system_id", "version",
             "capabilities", "os", "hardware", "deployment_mode",
         }
         # Handshake messages should NOT have seq/session/sig
         assert "seq" not in msg
         assert "session" not in msg
         assert "sig" not in msg
+
+    def test_build_hello_advertises_supported_versions(self):
+        """hello carries the full version range, not just the preferred one.
+
+        The cloud needs the list to settle on a shared version; without it, it
+        can only guess that the agent speaks exactly one.
+        """
+        msg = build_hello(
+            system_id="sys-1", version="1.0", capabilities=[],
+            os_info="Linux", hardware="Pi", deployment_mode="appliance",
+        )
+        assert msg["payload"]["supported_versions"] == SUPPORTED_PROTOCOL_VERSIONS
+        assert msg["payload"]["protocol_version"] in SUPPORTED_PROTOCOL_VERSIONS
+
+    def test_supported_versions_span_min_to_preferred(self):
+        """The advertised range is MIN..PROTOCOL inclusive, oldest first."""
+        assert SUPPORTED_PROTOCOL_VERSIONS[0] == MIN_PROTOCOL_VERSION
+        assert SUPPORTED_PROTOCOL_VERSIONS[-1] == PROTOCOL_VERSION
+        assert MIN_PROTOCOL_VERSION <= PROTOCOL_VERSION
+        assert SUPPORTED_PROTOCOL_VERSIONS == sorted(SUPPORTED_PROTOCOL_VERSIONS)
+
+    def test_version_constants_match_the_cloud(self):
+        """Mirrors openavc-cloud api/ws/protocol.py — a paired pin lives there.
+
+        Diverge these and one side rejects a hello the other considers current.
+        Bumping either is deliberate, with a written procedure; this is the
+        tripwire that keeps it from happening by accident.
+        """
+        assert PROTOCOL_VERSION == 1
+        assert MIN_PROTOCOL_VERSION == 1
 
     def test_build_authenticate(self):
         msg = build_authenticate("sys-1", "2026-01-01T00:00:00Z", "proof-hex")
@@ -526,6 +556,50 @@ class TestHandshake:
             "enabled_capabilities": [], "config": {},
         })
         assert result.session_id == "s"
+
+    @pytest.mark.asyncio
+    async def test_handshake_accepts_older_agreed_cloud_version(self, monkeypatch):
+        """A cloud that settles on an older version we speak is accepted.
+
+        This is the whole point of negotiating: the cloud updates before the
+        fleet does, so it has to be able to drop back to a version a fielded
+        agent still speaks instead of rejecting it.
+
+        Stands an agent up as if it preferred version 2 while still speaking 1,
+        then hands it a session_start that settled on 1. Under the old
+        exact-match rule that was a refused handshake.
+        """
+        import server.cloud.handshake as handshake_mod
+        monkeypatch.setattr(
+            handshake_mod, "SUPPORTED_PROTOCOL_VERSIONS", [1, 2], raising=False
+        )
+        monkeypatch.setattr(handshake_mod, "PROTOCOL_VERSION", 2, raising=False)
+        hs, system_key, system_id = self._make_handshake()
+        salt_hex = generate_nonce(32).encode("utf-8").hex()
+        result = await self._run_to_session_start(hs, {
+            "protocol_version": 1,
+            "session_id": "s", "session_token": "tok",
+            "signing_key_salt": salt_hex,
+            "enabled_capabilities": [], "config": {},
+        })
+        assert result.session_id == "s"
+
+    @pytest.mark.asyncio
+    async def test_handshake_version_mismatch_carries_cloud_versions(self):
+        """The cloud's supported list rides on the error, for the operator."""
+        hs, _, _ = self._make_handshake()
+
+        recv_queue = asyncio.Queue()
+        await recv_queue.put(json.dumps({
+            "type": VERSION_MISMATCH,
+            "ts": "...",
+            "payload": {"supported_versions": [4, 5], "message": "Update required"},
+        }))
+
+        with pytest.raises(HandshakeError) as exc_info:
+            await hs.perform(lambda m: asyncio.sleep(0), recv_queue.get)
+
+        assert exc_info.value.detail_versions == [4, 5]
 
     @pytest.mark.asyncio
     async def test_handshake_auth_failed(self):

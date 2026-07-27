@@ -11,6 +11,10 @@ export interface CloudStatus {
   session_id?: string;
   last_heartbeat?: string;
   uptime?: number;
+  /** Set when the agent stopped trying: "auth_failed" | "version_mismatch". */
+  stop_reason?: string;
+  /** Plain-language cause and fix for stop_reason, safe to show as-is. */
+  stop_detail?: string;
 }
 
 export interface CloudPairResult {

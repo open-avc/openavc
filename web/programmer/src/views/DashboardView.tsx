@@ -501,6 +501,16 @@ export function DashboardView() {
 
   const isCloudConnected = cloudStatus?.connected === true;
   const isCloudEnabled = cloudStatus?.enabled === true;
+  // The agent stops retrying when nothing about waiting would help — a revoked
+  // key, or no protocol version in common with the cloud. Say which, because
+  // both need someone to do something and a plain "Offline" reads as a blip.
+  const cloudStopReason = !isCloudConnected && isCloudEnabled ? (cloudStatus?.stop_reason || "") : "";
+  const cloudStopDetail = cloudStopReason ? (cloudStatus?.stop_detail || "") : "";
+  const cloudOfflineLabel = cloudStopReason === "version_mismatch"
+    ? "Needs update"
+    : cloudStopReason === "auth_failed"
+      ? "Needs pairing"
+      : "Offline";
 
   const uptimeSeconds = typeof (systemStatus as any)?.uptime_seconds === "number"
     ? (systemStatus as any).uptime_seconds as number
@@ -610,9 +620,17 @@ export function DashboardView() {
                 <Cloud size={14} style={{ color: isCloudConnected ? "var(--color-success)" : "var(--text-muted)" }} />
                 <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>Cloud</span>
               </div>
-              <div style={{ fontSize: "var(--font-size-xl)", fontWeight: 700, color: !isCloudEnabled ? "var(--text-muted)" : isCloudConnected ? "var(--color-success)" : "var(--color-error)" }}>
-                {!isCloudEnabled ? "—" : isCloudConnected ? "Online" : "Offline"}
+              <div
+                title={cloudStopDetail || undefined}
+                style={{ fontSize: "var(--font-size-xl)", fontWeight: 700, color: !isCloudEnabled ? "var(--text-muted)" : isCloudConnected ? "var(--color-success)" : "var(--color-error)" }}
+              >
+                {!isCloudEnabled ? "—" : isCloudConnected ? "Online" : cloudOfflineLabel}
               </div>
+              {!!cloudStopDetail && (
+                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
+                  {cloudStopDetail}
+                </div>
+              )}
             </div>
           </div>
 

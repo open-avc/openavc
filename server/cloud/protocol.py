@@ -22,7 +22,21 @@ from server.cloud.crypto import sign_message, verify_message_signature
 
 # --- Protocol Version ---
 
+# The wire-contract version this agent prefers to speak. It is a contract
+# number, not a product version — it moves only when the shape of the wire
+# changes in a way an older reader can't tolerate.
 PROTOCOL_VERSION = 1
+
+# The oldest wire version this agent still speaks. Both sides accept anything
+# in MIN_PROTOCOL_VERSION..PROTOCOL_VERSION and settle on the highest version
+# they share, so the two halves can be deployed in either order. That matters
+# because the order is never simultaneous in the field: the cloud always
+# updates first, and a fielded agent must keep working across that window.
+MIN_PROTOCOL_VERSION = 1
+
+# Advertised in hello so the cloud can pick the highest mutually-supported
+# version instead of demanding an exact match.
+SUPPORTED_PROTOCOL_VERSIONS = list(range(MIN_PROTOCOL_VERSION, PROTOCOL_VERSION + 1))
 
 
 # --- Wire Size Limits ---
@@ -189,6 +203,7 @@ def build_hello(
         "ts": _now_iso(),
         "payload": {
             "protocol_version": PROTOCOL_VERSION,
+            "supported_versions": SUPPORTED_PROTOCOL_VERSIONS,
             "system_id": system_id,
             "version": version,
             "capabilities": capabilities,

@@ -277,6 +277,10 @@ async def cloud_status() -> dict[str, Any]:
         "session_id": status.get("session_id", ""),
         "last_heartbeat": status.get("last_heartbeat", ""),
         "uptime": status.get("uptime", 0),
+        # Set only when the agent gave up on something retrying can't fix, so
+        # the UI can explain an offline instance instead of just reporting it.
+        "stop_reason": status.get("stop_reason", ""),
+        "stop_detail": status.get("stop_detail", ""),
     }
 
 

@@ -737,7 +737,9 @@ class TestHandshakeErrorClassification:
 
     # These are the fatal reasons checked in agent._connection_loop.
     # Must match the cloud platform's actual rejection codes.
-    FATAL_REASONS = ("unknown_system", "no_key", "bad_system_id")
+    FATAL_REASONS = (
+        "unknown_system", "no_key", "bad_system_id", "version_mismatch",
+    )
 
     def test_handshake_error_stores_reason(self):
         """HandshakeError stores the reason attribute."""
@@ -770,10 +772,26 @@ class TestHandshakeErrorClassification:
         err = HandshakeError("Timed out", reason="timeout")
         assert err.reason not in self.FATAL_REASONS
 
-    def test_version_mismatch_is_retriable(self):
-        """version_mismatch is NOT a fatal reason."""
+    def test_version_mismatch_is_fatal(self):
+        """version_mismatch is fatal — retrying earns the same rejection forever.
+
+        The two sides share no wire version, so no amount of waiting changes the
+        answer. Someone has to update the instance.
+        """
         err = HandshakeError("Version mismatch", reason="version_mismatch")
-        assert err.reason not in self.FATAL_REASONS
+        assert err.reason in self.FATAL_REASONS
+
+    def test_version_mismatch_carries_the_other_side_versions(self):
+        """A version mismatch carries what the other side speaks, for the UI."""
+        err = HandshakeError(
+            "Version mismatch", reason="version_mismatch", detail_versions=[2, 3]
+        )
+        assert err.detail_versions == [2, 3]
+
+    def test_handshake_error_has_no_versions_by_default(self):
+        """Only a version mismatch carries versions; everything else is None."""
+        err = HandshakeError("Not found", reason="unknown_system")
+        assert err.detail_versions is None
 
     def test_unknown_reason_is_retriable(self):
         """unknown reason is NOT fatal (default to retry)."""
@@ -786,9 +804,59 @@ class TestHandshakeErrorClassification:
         assert err.reason not in self.FATAL_REASONS
 
     def test_fatal_reasons_match_agent_code(self):
-        """The fatal reasons list matches what the agent checks."""
-        agent_fatal_set = {"unknown_system", "no_key", "bad_system_id"}
-        assert set(self.FATAL_REASONS) == agent_fatal_set
+        """The fatal reasons list matches what the agent actually stops on.
+
+        Read out of agent.py rather than restated here: the previous version of
+        this test compared two hardcoded lists in this file, so it agreed with
+        itself no matter what the agent did. The agent handles the key reasons as
+        one group and version_mismatch on its own branch (different cause,
+        different message), so the reasons are collected from every branch in
+        _connection_loop that ends the loop.
+        """
+        import ast
+        from pathlib import Path
+
+        tree = ast.parse(Path("server/cloud/agent.py").read_text())
+        loop = next(
+            n for n in ast.walk(tree)
+            if isinstance(n, ast.AsyncFunctionDef) and n.name == "_connection_loop"
+        )
+
+        def _stops_the_loop(node: ast.If) -> bool:
+            """True if this branch sets self._running = False."""
+            for sub in ast.walk(node):
+                if not isinstance(sub, ast.Assign):
+                    continue
+                for target in sub.targets:
+                    if (
+                        isinstance(target, ast.Attribute)
+                        and target.attr == "_running"
+                        and isinstance(sub.value, ast.Constant)
+                        and sub.value.value is False
+                    ):
+                        return True
+            return False
+
+        derived: set[str] = set()
+        for node in ast.walk(loop):
+            if not isinstance(node, ast.If) or not isinstance(node.test, ast.Compare):
+                continue
+            # Only branches keyed off the handshake error's reason.
+            left = node.test.left
+            if not (isinstance(left, ast.Attribute) and left.attr == "reason"):
+                continue
+            if not _stops_the_loop(node):
+                continue
+            for comparator in node.test.comparators:
+                for sub in ast.walk(comparator):
+                    if isinstance(sub, ast.Constant) and isinstance(sub.value, str):
+                        derived.add(sub.value)
+
+        assert derived == set(self.FATAL_REASONS), (
+            "The reasons the agent stops on drifted from this list. "
+            f"agent.py stops on {sorted(derived)}; "
+            f"this test expects {sorted(self.FATAL_REASONS)}."
+        )
 
 
 # ===========================================================================
@@ -834,3 +902,125 @@ class TestExceptionHandlerWiring:
             "Use the bare imported name (`except HandshakeError`). "
             f"Offenders: {bad_handlers}"
         )
+
+
+# ===========================================================================
+# 8. Protocol-version mismatch ends the loop
+# ===========================================================================
+
+
+class _StateRecorder:
+    """Minimal StateStore stand-in recording set()/get()."""
+
+    def __init__(self):
+        self.values: dict = {}
+
+    def set(self, key, value, source=None):
+        self.values[key] = value
+
+    def get(self, key, default=None):
+        return self.values.get(key, default)
+
+
+class TestVersionMismatchStopsTheLoop:
+    """A protocol-version mismatch is not something to keep retrying.
+
+    Before this, `version_mismatch` fell through to the generic retry path, so
+    a cloud the agent could no longer talk to left it knocking every 300s
+    forever — fleet-wide, with nothing on screen to say why.
+    """
+
+    def _agent_for_loop(self) -> CloudAgent:
+        agent = CloudAgent.__new__(CloudAgent)
+        agent._running = True
+        agent._stopping = False
+        agent._connected = False
+        agent._disconnect_time = None
+        agent._backoff = BACKOFF_INITIAL
+        agent._reconnect_count = 0
+        agent._stop_reason = ""
+        agent._stop_detail = ""
+        agent.state = _StateRecorder()
+        return agent
+
+    @pytest.mark.asyncio
+    async def test_loop_exits_on_version_mismatch(self):
+        agent = self._agent_for_loop()
+        attempts = 0
+
+        async def _raise_mismatch():
+            nonlocal attempts
+            attempts += 1
+            raise HandshakeError(
+                "Unsupported protocol version 1",
+                reason="version_mismatch",
+                detail_versions=[2],
+            )
+
+        agent._connect_and_run = _raise_mismatch
+
+        # No timeout guard needed: if the loop retried it would sleep on the
+        # backoff, and this await would never return — the failure mode is a
+        # hang, which is itself the signal.
+        await asyncio.wait_for(agent._connection_loop(), timeout=5)
+
+        assert attempts == 1, "the loop retried a mismatch it can never win"
+        assert agent._running is False
+
+    @pytest.mark.asyncio
+    async def test_mismatch_surfaces_a_cause_and_a_fix(self):
+        agent = self._agent_for_loop()
+
+        async def _raise_mismatch():
+            raise HandshakeError(
+                "Unsupported protocol version 1",
+                reason="version_mismatch",
+                detail_versions=[7],
+            )
+
+        agent._connect_and_run = _raise_mismatch
+        await asyncio.wait_for(agent._connection_loop(), timeout=5)
+
+        assert agent.state.values["system.cloud.status"] == "version_mismatch"
+        detail = agent.state.values["system.cloud.status_detail"]
+        # The operator needs both halves: what the cloud wants, and what to do.
+        assert "7" in detail
+        assert "update" in detail.lower()
+        assert agent._stop_reason == "version_mismatch"
+        assert agent._stop_detail == detail
+
+    @pytest.mark.asyncio
+    async def test_revoked_key_also_surfaces_a_cause(self):
+        """The pre-existing fatal stop gets the same treatment, not a bare status."""
+        agent = self._agent_for_loop()
+
+        async def _raise_unknown_system():
+            raise HandshakeError("System not found", reason="unknown_system")
+
+        agent._connect_and_run = _raise_unknown_system
+        await asyncio.wait_for(agent._connection_loop(), timeout=5)
+
+        assert agent.state.values["system.cloud.status"] == "auth_failed"
+        assert agent._stop_reason == "auth_failed"
+        assert "pair" in agent.state.values["system.cloud.status_detail"].lower()
+
+    def test_status_reports_why_the_agent_gave_up(self):
+        """get_status carries the stop cause so /api/cloud/status can show it."""
+        agent = CloudAgent.__new__(CloudAgent)
+        agent._connected = False
+        agent._connected_at = 0
+        agent._last_heartbeat_at = 0
+        agent._endpoint = "wss://cloud.openavc.com/agent/v1"
+        agent._system_id = "sys-1"
+        agent._session = None
+        agent._enabled_capabilities = []
+        agent._sequencer = Sequencer()
+        agent._reconnect_count = 3
+        agent._config = {}
+        agent._stop_reason = "version_mismatch"
+        agent._stop_detail = "Update OpenAVC on this instance to reconnect."
+
+        status = agent.get_status()
+
+        assert status["stop_reason"] == "version_mismatch"
+        assert status["stop_detail"] == agent._stop_detail
