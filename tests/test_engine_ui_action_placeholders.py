@@ -1,4 +1,4 @@
-"""Tests for engine._execute_action placeholder substitution.
+"""Tests for the UI-event runtime's placeholder substitution.
 
 The UI action executor substitutes a small set of placeholders into
 device.command params before calling devices.send_command:
@@ -43,7 +43,7 @@ async def test_input_output_placeholders_resolve(engine):
         "command": "route",
         "params": {"in": "$input", "out": "$output", "static": "x"},
     }
-    await engine._execute_action(action, {"input": 3, "output": 1}, element=None)
+    await engine.ui_events.execute_action(action, {"input": 3, "output": 1}, element=None)
     engine.devices.send_command.assert_awaited_once_with(
         "sw", "route", {"in": 3, "out": 1, "static": "x"}
     )
@@ -58,7 +58,7 @@ async def test_mute_placeholder_resolves_true(engine):
         "command": "mute",
         "params": {"output": "$output", "mute": "$mute"},
     }
-    await engine._execute_action(action, {"output": 2, "mute": True}, element=None)
+    await engine.ui_events.execute_action(action, {"output": 2, "mute": True}, element=None)
     engine.devices.send_command.assert_awaited_once_with(
         "sw", "mute", {"output": 2, "mute": True}
     )
@@ -73,7 +73,7 @@ async def test_mute_placeholder_resolves_false(engine):
         "command": "mute",
         "params": {"output": "$output", "mute": "$mute"},
     }
-    await engine._execute_action(action, {"output": 2, "mute": False}, element=None)
+    await engine.ui_events.execute_action(action, {"output": 2, "mute": False}, element=None)
     engine.devices.send_command.assert_awaited_once_with(
         "sw", "mute", {"output": 2, "mute": False}
     )

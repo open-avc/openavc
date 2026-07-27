@@ -4,6 +4,10 @@ OpenAVC Engine — the main runtime orchestrator.
 Wires together StateStore, EventBus, DeviceManager, MacroEngine, and
 the WebSocket push system. Manages the full system lifecycle:
 start, stop, and hot-reload.
+
+Runtimes it owns but does not implement, each in its own module:
+``ws_hub`` (client fan-out + batched state push), ``ui_events`` (what a
+panel interaction does), and ``device_config`` (what a device dials).
 """
 
 from __future__ import annotations
@@ -17,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from server import config, runtime_flags
+from server.core.device_config import bridge_first, resolve_device_config
 from server.core.device_manager import DeviceManager
 from server.core.event_bus import EventBus
 from server.core.macro_engine import MacroEngine
@@ -31,9 +36,10 @@ from server.core.project_loader import (
 )
 from server.core.script_engine import ScriptEngine
 from server.core.state_persister import StatePersister
-from server.core.state_store import StateStore
+from server.core.state_store import StateStore, coerce_flat_primitive
 from server.core.trigger_engine import TriggerEngine
-from server.core.value_resolver import resolve_ref
+from server.core.ui_events import UIEventRuntime
+from server.core.ws_hub import WSHub
 from server.discovery import network_scanner
 from server.utils.logger import get_logger
 from server.version import __version__
@@ -54,44 +60,10 @@ def _log_task_exception(task: asyncio.Task) -> None:
         log.error(f"Background task {task.get_name()!r} failed: {exc}", exc_info=exc)
 
 
-# Sentinel used to distinguish deleted keys (absent from the store) from
-# keys that exist with a None value. Used by _on_state_change.
-_STATE_MISSING = object()
-
-# Per-client WS send queue depth. At the state flush loop's 20 msg/s ceiling
-# this is >10s of buffered updates — a client that far behind is wedged, not
-# slow, and is dropped to reconnect with a fresh snapshot.
-_WS_SEND_QUEUE_MAX = 256
-
-# The state store documents flat primitives only (str, int, float, bool,
-# None) — WS broadcast, the ISC mesh, the cloud relay, and persistence all
-# rely on it. bool is intentionally listed though it's an int subclass.
-_FLAT_PRIMITIVE_TYPES = (str, int, float, bool, type(None))
-
 # Glob metacharacters that turn a single-key subscription into a multi-key
 # fan-in (see StateStore pattern grammar). A variable source_key must be one
 # concrete key, never a pattern.
 _GLOB_METACHARS = "*?["
-
-
-def _coerce_flat_primitive(value: Any) -> tuple[Any, bool]:
-    """Coerce a value to the flat-primitive state invariant.
-
-    A few engine write paths take author- or runtime-supplied values
-    (variable ``source_map`` results, static ``state.set`` binding values)
-    that the project schema types as ``Any``, so a list/dict could otherwise
-    reach the store and break downstream consumers that assume primitives.
-    Primitives pass through unchanged; anything else is flattened to a JSON
-    string so it stays representable.
-
-    Returns ``(coerced_value, was_coerced)`` so callers can log with context.
-    """
-    if isinstance(value, _FLAT_PRIMITIVE_TYPES):
-        return value, False
-    try:
-        return json.dumps(value, ensure_ascii=False), True
-    except (TypeError, ValueError):
-        return str(value), True
 
 
 class Engine:
@@ -107,6 +79,11 @@ class Engine:
         # Core subsystems
         self.state = StateStore()
         self.events = EventBus()
+        # WebSocket fan-out + batched state push (see ws_hub); broadcast_ws
+        # below is the engine-wide door to it.
+        self.ws = WSHub(self.state)
+        # Panel interaction runtime (peer of the macro engine, see ui_events)
+        self.ui_events = UIEventRuntime(self)
         self.devices = DeviceManager(self.state, self.events)
         self.macros = MacroEngine(self.state, self.events, self.devices, broadcast_ws=self.broadcast_ws)
         self.triggers = TriggerEngine(self.state, self.events, self.macros)
@@ -128,36 +105,6 @@ class Engine:
 
         # Wire StateStore -> EventBus
         self.state.set_event_bus(self.events)
-
-        # WebSocket clients (set of WebSocket connections)
-        self._ws_clients: set = set()
-        # Per-client namespace filters: id(ws) -> tuple of prefix strings
-        self._ws_ns_filters: dict[int, tuple[str, ...]] = {}
-        # Per-client bounded send queues + their writer tasks: id(ws) -> ...
-        # Broadcasts enqueue and return; each writer drains its own client,
-        # so one wedged client can never stall the emit path (macros,
-        # triggers, state flushes). Overflow drops the client (see
-        # broadcast_ws).
-        self._ws_send_queues: dict[int, asyncio.Queue] = {}
-        self._ws_writers: dict[int, asyncio.Task] = {}
-        # Per-client delivery gates: a writer sends nothing until its event
-        # is set. Lets the connection handler register (and start buffering)
-        # BEFORE taking the state snapshot, then release delivery once the
-        # snapshot is on the wire — closing the gap where changes flushed
-        # mid-handshake reached only already-registered clients.
-        self._ws_ready_events: dict[int, asyncio.Event] = {}
-        # Strong refs for short-lived WS cleanup tasks (socket closes,
-        # cancelled writers unwinding) — asyncio only weakly references
-        # tasks, so an unreferenced one can be GC'd before it runs.
-        self._ws_cleanup_tasks: set[asyncio.Task] = set()
-
-        # State batching for WebSocket push
-        self._state_batch: dict[str, Any] = {}
-        # Keys that were deleted (rather than set) since the last flush.
-        # Tracked separately so the flush loop can emit a state.delete WS
-        # message — clients can't tell delete from set-to-None otherwise.
-        self._state_deleted_keys: set[str] = set()
-        self._batch_task: asyncio.Task | None = None
 
         # Variable-to-state binding subscriptions
         self._var_binding_subs: list[str] = []
@@ -300,8 +247,8 @@ class Engine:
         resolved = {
             d.id: self.resolved_device_config(d) for d in self.project.devices
         }
-        # Bridges first, then their dependents (see _bridge_first).
-        for batch in self._bridge_first(list(resolved), resolved):
+        # Bridges first, then their dependents (see bridge_first).
+        for batch in bridge_first(list(resolved), resolved):
             batch_results = await asyncio.gather(
                 *(self.devices.add_device(resolved[did]) for did in batch),
                 return_exceptions=True,
@@ -310,9 +257,6 @@ class Engine:
                 if isinstance(result, Exception):
                     startup_errors.append(f"Device '{did}': {result}")
                     log.error(f"Failed to add device '{did}': {result}")
-
-        # Register UI event bindings
-        self._register_ui_bindings()
 
         # Plugin System — scan and start plugins
         try:
@@ -345,7 +289,7 @@ class Engine:
 
         # Subscribe to all state changes for WebSocket batching
         self._state_sub_ids.append(
-            self.state.subscribe("*", self._on_state_change)
+            self.state.subscribe("*", self.ws.on_state_change)
         )
 
         # Bridge macro events to WebSocket for live progress tracking
@@ -389,8 +333,7 @@ class Engine:
         await self._start_cloud_agent()
 
         # Start the batch flush task
-        self._batch_task = asyncio.create_task(self._flush_state_batch_loop())
-        self._batch_task.add_done_callback(_log_task_exception)
+        self.ws.start_state_flush()
 
         # Start periodic backup timer (every 30 min if project has changed)
         self._periodic_backup_task = asyncio.create_task(self._periodic_backup_loop())
@@ -444,44 +387,16 @@ class Engine:
         )
 
     async def _confirm_startup_after_delay(self) -> None:
-        """Clear the pending-update marker after 60 seconds of stable running.
+        """Call the update good after 60 seconds of stable running.
 
-        The marker is always cleared once we've stayed up 60s (so the rollback
-        attempts counter can't trip on a later restart), but only an update that
-        actually changed the running version is logged as a success. A marker
-        that survived a *failed* apply (e.g. the helper aborted, version
-        unchanged) must not log "confirmed successful" against the target it
-        never reached.
+        The engine owns only the timer; what the marker means and how it is
+        cleared belongs to the updater (``updater.rollback.confirm_startup``).
         """
         try:
             await asyncio.sleep(60)
             from server.system_config import get_system_config
-            from server.updater.rollback import read_pending_marker, clear_pending_marker
-            from server.version import __version__
-            data_dir = get_system_config().data_dir
-            marker = read_pending_marker(data_dir)
-            if marker:
-                clear_pending_marker(data_dir)
-                from_version = marker.get("from_version", "")
-                to_version = marker.get("to_version", "")
-                # Mirror UpdateManager._load_history: the update applied if the
-                # running version reached the target, or simply moved off the
-                # version we started from (handles release-tag/pyproject skew).
-                applied = (
-                    (bool(to_version) and __version__ == to_version)
-                    or (bool(from_version) and __version__ != from_version)
-                )
-                if applied:
-                    log.info(
-                        "Update confirmed successful after 60s (v%s -> v%s)",
-                        from_version, __version__,
-                    )
-                else:
-                    log.warning(
-                        "Update to v%s did not take effect (still running v%s); "
-                        "cleared stale pending-update marker",
-                        to_version, __version__,
-                    )
+            from server.updater.rollback import confirm_startup
+            confirm_startup(get_system_config().data_dir)
         except asyncio.CancelledError:
             pass
 
@@ -579,13 +494,8 @@ class Engine:
         # Stop all plugins
         await self.plugin_loader.stop_all()
 
-        # Stop batch task
-        if self._batch_task and not self._batch_task.done():
-            self._batch_task.cancel()
-            try:
-                await self._batch_task
-            except asyncio.CancelledError:
-                pass
+        # Stop batch task (its unwind flushes what is still batched)
+        await self.ws.stop_state_flush()
 
         # Stop periodic backup task
         if self._periodic_backup_task and not self._periodic_backup_task.done():
@@ -951,159 +861,10 @@ class Engine:
             self._register_variable_validation()
 
     def resolved_device_config(self, device) -> dict:
-        """Get device config dict with driver defaults and connection table merged in.
-
-        Layering (later wins):
-          1. ``driver.DRIVER_INFO["default_config"]`` — driver-declared
-             defaults (e.g. control-protocol port). Ensures discovery /
-             AI-tool add paths inherit the right defaults even when the
-             caller only supplied ``host``.
-          2. ``device.config`` — protocol fields saved in the project.
-          3. ``project.connections[id]`` — connection-table overrides
-             (host, port, baudrate, etc.) saved separately.
-        """
-        from server.core.device_manager import (
-            get_driver_default_config,
-            get_driver_transport,
-        )
-
-        cfg = device.model_dump() if hasattr(device, "model_dump") else dict(device)
-        defaults = get_driver_default_config(cfg.get("driver", ""))
-        device_config = cfg.get("config", {})
-        conn = self.project.connections.get(cfg["id"], {})
-        merged = {**defaults, **device_config, **conn}
-        # ir_codes overlays per code on top of the driver's shipped default set
-        # rather than the shallow merge's whole-map replace: a device that
-        # authors a single code (one IrCodesEditor save persists just that code)
-        # must not wipe every code the driver ships.
-        default_codes = defaults.get("ir_codes")
-        device_codes = device_config.get("ir_codes")
-        if isinstance(default_codes, dict) and isinstance(device_codes, dict):
-            merged["ir_codes"] = {**default_codes, **device_codes}
-        cfg["config"] = merged
-        cfg["config"] = self._resolve_bridge_binding(cfg["config"])
-        driver_transport = get_driver_transport(cfg.get("driver", ""))
-        cfg["config"] = self._resolve_usb_binding(cfg["config"], driver_transport)
-        return cfg
-
-    @staticmethod
-    def _resolve_usb_binding(config: dict, driver_transport: str = "") -> dict:
-        """Rewrite a USB-serial device's volatile port from its stable adapter
-        id — the local-serial analog of how ``_resolve_bridge_binding``
-        resolves a bridge's host. The logic lives in the transport module
-        (``resolve_usb_binding``) so the device manager can re-resolve on
-        every reconnect attempt too: the path can change when the adapter is
-        replugged mid-run.
-        """
-        from server.transport.serial_transport import resolve_usb_binding
-
-        return resolve_usb_binding(config, driver_transport)
-
-    def _resolve_bridge_binding(self, config: dict) -> dict:
-        """Rewrite a bridge-bound device's effective connection to its bridge's port.
-
-        When a device's connection carries ``bridge`` (a bridge device id) +
-        ``bridge_port`` (a port the bridge advertises), the device's bytes
-        travel *through* that bridge rather than to a host of its own. For a
-        serial pass-through port this is a pure config rewrite: point the
-        downstream at the bridge's transparent TCP pass-through endpoint
-        (``transport=tcp``, ``host=<bridge host>``, ``port=<passthrough_port>``)
-        and reuse the existing TCP transport unchanged. The serial params
-        (baudrate/parity/...) stay in the config so the bridge driver can push
-        them to the hardware via ``prepare_bridge_port`` before bytes flow.
-
-        Unresolvable bindings (unknown bridge, unknown port, missing host) are
-        left untouched and logged — the device then fails to connect with a
-        clear error rather than silently dialing the wrong place. IR / relay
-        ports are not transport rewrites (commands route through the bridge at
-        send time, Phase 2/3) and are left as-is for that path.
-        """
-        bridge_id = config.get("bridge")
-        bridge_port_id = config.get("bridge_port")
-        if not bridge_id or not bridge_port_id:
-            return config
-
-        bridge_dev = next(
-            (d for d in self.project.devices if d.id == bridge_id), None
-        )
-        if bridge_dev is None:
-            log.warning(
-                "Bridge '%s' referenced by a device's connection is not in the "
-                "project — leaving the binding unresolved", bridge_id,
-            )
-            return config
-
-        from server.core.device_manager import get_driver_bridge_ports
-        port_def = get_driver_bridge_ports(bridge_dev.driver).get(bridge_port_id)
-        if port_def is None:
-            log.warning(
-                "Bridge '%s' (driver '%s') does not advertise port '%s' — "
-                "leaving the binding unresolved",
-                bridge_id, bridge_dev.driver, bridge_port_id,
-            )
-            return config
-
-        passthrough_port = port_def.get("passthrough_port")
-        if port_def.get("kind") == "serial" and passthrough_port:
-            # Resolve the bridge's own host the same layered way every device's
-            # connection is (driver defaults < device.config < connections
-            # table). Reading the connections table alone misses a host that
-            # comes from a driver default or sits in the bridge's device.config
-            # (e.g. an imported or template project) — which would leave the
-            # binding unresolved and the downstream device wrongly offline.
-            from server.core.device_manager import get_driver_default_config
-
-            bridge_cfg = getattr(bridge_dev, "config", None) or {}
-            bridge_conn = self.project.connections.get(bridge_id, {})
-            bridge_host = {
-                **get_driver_default_config(bridge_dev.driver),
-                **bridge_cfg,
-                **bridge_conn,
-            }.get("host")
-            if not bridge_host:
-                log.warning(
-                    "Bridge '%s' has no host configured — leaving the serial "
-                    "binding for '%s' unresolved", bridge_id, bridge_port_id,
-                )
-                return config
-            resolved = dict(config)
-            resolved["transport"] = "tcp"
-            resolved["host"] = bridge_host
-            resolved["port"] = passthrough_port
-            return resolved
-
-        if port_def.get("kind") == "ir":
-            # An IR device has no transport of its own: it emits through the
-            # live bridge instance at send time (base.emit_via_bridge). Mark it
-            # bridge-routed so connect() opens no socket; the bridge/bridge_port
-            # markers stay in config for the router to resolve.
-            resolved = dict(config)
-            resolved["transport"] = "bridge"
-            return resolved
-
-        # Any other non-pass-through kind: no transport rewrite.
-        return config
-
-    @staticmethod
-    def _is_bridge_config(cfg: dict) -> bool:
-        """True if a resolved device config belongs to a bridge driver."""
-        from server.core.device_manager import get_driver_bridge_ports
-        return bool(get_driver_bridge_ports(cfg.get("driver", "")))
-
-    def _bridge_first(
-        self, device_ids: list[str], resolved: dict[str, dict]
-    ) -> list[list[str]]:
-        """Split ``device_ids`` into ``[bridges, others]`` (each batch included
-        only if non-empty), preserving order within each, so bridge devices are
-        added and connected before the devices that route through them — a
-        bridge-bound device's connect path needs its bridge live to prep the
-        port (push serial baud/parity) first.
-        """
-        bridges: list[str] = []
-        others: list[str] = []
-        for did in device_ids:
-            (bridges if self._is_bridge_config(resolved[did]) else others).append(did)
-        return [batch for batch in (bridges, others) if batch]
+        """The config this device actually dials — driver defaults, project
+        config, and the connection table layered, with bridge/USB bindings
+        resolved. See ``core.device_config``."""
+        return resolve_device_config(device, self.project)
 
     async def _sync_devices(self) -> None:
         """Sync running devices with project config (add new, remove deleted, update changed)."""
@@ -1134,7 +895,7 @@ class Engine:
         # so a bridge-bound device finds its live bridge to prep the port.
         new_device_ids = list(project_ids - running_ids)
         if new_device_ids:
-            for batch in self._bridge_first(new_device_ids, project_devices):
+            for batch in bridge_first(new_device_ids, project_devices):
                 add_results = await asyncio.gather(
                     *(self.devices.add_device(project_devices[did]) for did in batch),
                     return_exceptions=True,
@@ -1353,226 +1114,10 @@ class Engine:
     async def handle_ui_event(
         self, event_type: str, element_id: str, data: dict[str, Any] | None = None
     ) -> None:
-        """
-        Handle a UI event from a connected panel.
-
-        Looks up the element's bindings and dispatches the appropriate action.
-        """
-        data = data or {}
-
-        # Emit the raw UI event
-        event_name = f"ui.{event_type}.{element_id}"
-        await self.events.emit(event_name, {"element_id": element_id, **data})
-
-        # Find the element and its bindings
-        element = self._find_element(element_id)
-        if not element:
-            return
-
-        bindings = element.bindings
-        show = bindings.get("show") if isinstance(bindings.get("show"), dict) else {}
-        do = bindings.get("do") if isinstance(bindings.get("do"), dict) else {}
-
-        # Two-way LINK: a control whose value is bound with write_back drives the
-        # state key it reflects. Only writable keys round-trip this way; a
-        # device.* value is read-only and must be driven by a do.<interaction>
-        # device.command with $value, never written to the state mirror directly
-        # (a state.set to device.* no-ops, overwritten on the next poll). The
-        # value source for both a slider/select/text_input ("change") and a list
-        # row ("select") is show.value; the device guard here is defensive
-        # against a hand-edited / AI-authored write_back on a device key.
-        value_binding = show.get("value") if isinstance(show.get("value"), dict) else None
-        if value_binding and value_binding.get("write_back"):
-            link_key = value_binding.get("key", "")
-            if link_key and not link_key.startswith("device."):
-                # change → scale the display value to the element's output range;
-                # select → write the tapped item's value as-is (a list has no
-                # output range). Value is already a flat primitive (validated at
-                # the WS boundary). The panel reads this same key to reflect the
-                # control, so the write closes the two-way loop and lets
-                # bindings/triggers/macros react to it.
-                if event_type == "change":
-                    self.state.set(
-                        link_key,
-                        self._scale_value_forward(element, data.get("value")),
-                        source="ui",
-                    )
-                elif event_type == "select":
-                    self.state.set(link_key, data.get("value"), source="ui")
-
-        # Look up the action list for this interaction (always a list of actions)
-        binding = do.get(event_type)
-
-        # Toggle off: look for off_action inside the first press action that has one
-        if not binding and event_type == "toggle_off":
-            press_actions = do.get("press")
-            if isinstance(press_actions, dict) and "off_action" in press_actions:
-                binding = [press_actions["off_action"]]
-            elif isinstance(press_actions, list):
-                for act in press_actions:
-                    if isinstance(act, dict) and "off_action" in act:
-                        binding = [act["off_action"]]
-                        break
-
-        # Hold: look for hold_action inside the first press action that has one
-        if not binding and event_type == "hold":
-            press_actions = do.get("press")
-            if isinstance(press_actions, dict) and "hold_action" in press_actions:
-                binding = [press_actions["hold_action"]]
-            elif isinstance(press_actions, list):
-                for act in press_actions:
-                    if isinstance(act, dict) and "hold_action" in act:
-                        binding = [act["hold_action"]]
-                        break
-
-        if not binding:
-            return
-
-        # Binding is a list of actions — execute sequentially
-        if not isinstance(binding, list):
-            binding = [binding]
-        for action_item in binding:
-            if isinstance(action_item, dict):
-                await self._execute_action(action_item, data, element)
-
-    async def _execute_action(
-        self, action_def: dict[str, Any], data: dict[str, Any],
-        element: Any = None,
-    ) -> None:
-        """Execute a single UI binding action."""
-        action = action_def.get("action", "")
-
-        # The UI-event tokens a binding can reference. Built once so the
-        # device.command and state.set branches resolve them identically: $value
-        # is scaled to the element's output range; $input/$output come from
-        # matrix route bindings; $mute comes from mute_route / audio_mute_route
-        # bindings. Always all four keys so they resolve from the event, never
-        # from the state store. Any other $var/$device/$system ref falls through
-        # to the state store (the same shared resolver the macro engine uses).
-        event_ctx = {
-            "value": self._scale_value_forward(element, data.get("value")),
-            "input": data.get("input"),
-            "output": data.get("output"),
-            "mute": data.get("mute"),
-        }
-
-        if action == "value_map":
-            # Per-option action map (used by select elements).
-            element_value = str(data.get("value", ""))
-            action_map = action_def.get("map", {})
-            mapped_action = action_map.get(element_value)
-            if mapped_action:
-                await self._execute_action(mapped_action, data, element)
-
-        elif action == "macro":
-            macro_id = action_def.get("macro", "")
-            if macro_id:
-                # Run macro in background so UI doesn't block
-                task = asyncio.create_task(self.macros.execute(macro_id))
-                task.add_done_callback(_log_task_exception)
-
-        elif action == "device.command":
-            device_id = action_def.get("device", "")
-            command = action_def.get("command", "")
-            params = dict(action_def.get("params", {}))
-            # Resolve $-references in each param: the UI-event tokens above
-            # ($value scaled, $input/$output/$mute), then any $var/$device/
-            # $system ref from the state store.
-            for k, v in params.items():
-                params[k] = resolve_ref(v, state=self.state, event_ctx=event_ctx)
-            try:
-                await self.devices.send_command(device_id, command, params)
-            except Exception:  # Catch-all: driver send_command may raise arbitrary errors
-                log.exception(f"Binding command failed: {device_id}.{command}")
-
-        elif action == "state.set":
-            key = action_def.get("key", "")
-            # Support "value_from": "element" to use the element's current value
-            if action_def.get("value_from") == "element":
-                value = data.get("value")
-            else:
-                # Resolve a $-reference in the literal value, with the same
-                # event context as device.command — so $value works in a
-                # state.set value and $var/$device/$system refs resolve like the
-                # macro state.set, not pass through as a literal "$..." string.
-                value = resolve_ref(
-                    action_def.get("value"), state=self.state, event_ctx=event_ctx
-                )
-            # A hand-edited / AI-authored binding may carry a nested literal;
-            # keep the store's flat-primitive invariant.
-            value, coerced = _coerce_flat_primitive(value)
-            if coerced:
-                log.warning(
-                    "state.set binding for key '%s' had a non-primitive value; "
-                    "coerced to a JSON string", key,
-                )
-            self.state.set(key, value, source="ui")
-
-        elif action in ("page", "navigate"):
-            # Page navigation — broadcast to all panels so they can switch
-            page_id = action_def.get("page", "")
-            if page_id:
-                await self.events.emit(f"ui.page.{page_id}")
-                await self.broadcast_ws({
-                    "type": "ui.navigate",
-                    "page_id": page_id,
-                })
-
-        elif action == "script.call":
-            func_name = action_def.get("function", "")
-            if func_name:
-                await self.events.emit(f"script.call.{func_name}", data)
-
-    @staticmethod
-    def _scale_value_forward(element: Any, raw_value: Any) -> Any:
-        """Scale a display value to a device value using output_min/output_max."""
-        if raw_value is None or element is None:
-            return raw_value
-        output_min = getattr(element, "output_min", None)
-        output_max = getattr(element, "output_max", None)
-        if output_min is None or output_max is None:
-            return raw_value
-
-        val = float(raw_value)
-        if getattr(element, "scale_to_full", None) is False:
-            result = max(output_min, min(output_max, val))
-        else:
-            display_min = getattr(element, "min", None)
-            display_max = getattr(element, "max", None)
-            if display_min is None or display_max is None:
-                return raw_value
-            display_range = display_max - display_min
-            if display_range == 0:
-                return output_min
-            frac = (val - display_min) / display_range
-            result = output_min + frac * (output_max - output_min)
-
-        # Kill floating-point noise from the division so an identity/whole-number
-        # scale returns 26.0, not 25.9999996. Then, if the control steps in whole
-        # numbers over a whole-number output range and the result is whole, hand
-        # back an int — so an untyped command param renders "26", not "26.0".
-        # (A param declared type: integer coerces regardless, but this keeps the
-        # value clean for drivers that declare nothing.)
-        result = round(result, 9)
-        step = getattr(element, "step", None)
-        whole_control = (
-            (step is None or (isinstance(step, (int, float)) and float(step).is_integer()))
-            and float(output_min).is_integer()
-            and float(output_max).is_integer()
-        )
-        if whole_control and result == int(result):
-            return int(result)
-        return result
-
-    def _find_element(self, element_id: str) -> Any | None:
-        """Find a UI element by ID across all pages."""
-        if not self.project:
-            return None
-        for page in self.project.ui.pages:
-            for element in page.elements:
-                if element.id == element_id:
-                    return element
-        return None
+        """Handle a UI event from a connected panel — the door every panel
+        interaction comes through (WS handler, cloud UI tools). The binding
+        runtime itself lives in ``core.ui_events``."""
+        await self.ui_events.handle(event_type, element_id, data)
 
     def _load_project_safe(self) -> ProjectConfig:
         """Load project.avc with corruption recovery.
@@ -1708,7 +1253,7 @@ class Engine:
             value into the store and out to WS / ISC / the cloud relay.
             """
             mapped = sm.get(str(raw), raw) if sm else raw
-            value, was_coerced = _coerce_flat_primitive(mapped)
+            value, was_coerced = coerce_flat_primitive(mapped)
             if was_coerced:
                 log.warning(
                     "Variable binding %s: mapped value for source %r is not a "
@@ -1804,190 +1349,16 @@ class Engine:
             )
             self._var_validation_subs.append(sub_id)
 
-    def _register_ui_bindings(self) -> None:
-        """Walk all UI elements and log their interaction bindings for debugging."""
-        if not self.project:
-            return
-        count = 0
-        for page in self.project.ui.pages:
-            for element in page.elements:
-                do = element.bindings.get("do") if element.bindings else None
-                if isinstance(do, dict):
-                    count += sum(1 for actions in do.values() if actions)
-        log.info(f"Registered {count} UI binding(s)")
-
     # --- WebSocket Management ---
 
-    def add_ws_client(self, ws, ns_prefixes: tuple[str, ...] | None = None,
-                      *, defer_delivery: bool = False) -> None:
-        """Register a WebSocket client with optional namespace filter.
-
-        Each client gets a bounded send queue drained by its own writer
-        task, so broadcast_ws never awaits a client's TCP send directly.
-
-        With ``defer_delivery=True`` broadcasts buffer into the queue but
-        nothing is delivered until ``mark_ws_client_ready()``. The
-        connection handler registers before snapshotting so changes flushed
-        mid-handshake buffer here instead of being missed, then releases
-        delivery once the snapshot is on the wire.
-        """
-        self._ws_clients.add(ws)
-        if ns_prefixes:
-            self._ws_ns_filters[id(ws)] = ns_prefixes
-        queue: asyncio.Queue = asyncio.Queue(maxsize=_WS_SEND_QUEUE_MAX)
-        self._ws_send_queues[id(ws)] = queue
-        ready = asyncio.Event()
-        if not defer_delivery:
-            ready.set()
-        self._ws_ready_events[id(ws)] = ready
-        writer = asyncio.create_task(self._ws_send_loop(ws, queue, ready))
-        writer.add_done_callback(_log_task_exception)
-        self._ws_writers[id(ws)] = writer
-        log.info(f"WebSocket client connected ({len(self._ws_clients)} total)")
-
-    def mark_ws_client_ready(self, ws) -> None:
-        """Release a ``defer_delivery`` client's writer once its snapshot has
-        been sent. Queued updates may partially predate the snapshot; replay
-        is safe because state messages carry full per-key values (the client
-        converges on the latest, never regresses past it)."""
-        ready = self._ws_ready_events.get(id(ws))
-        if ready is not None:
-            ready.set()
-
-    def remove_ws_client(self, ws) -> None:
-        """Unregister a WebSocket client."""
-        if ws not in self._ws_clients and id(ws) not in self._ws_writers:
-            return  # Already dropped (send failure / overflow) — keep idempotent
-        self._drop_ws_client(ws, cancel_writer=True)
-        log.info(f"WebSocket client disconnected ({len(self._ws_clients)} total)")
-
-    def _drop_ws_client(self, ws, *, cancel_writer: bool) -> None:
-        """Remove a client from every registry; optionally cancel its writer.
-
-        ``cancel_writer=False`` is for the writer task removing its own
-        client on a send failure — it is about to exit on its own.
-        """
-        self._ws_clients.discard(ws)
-        self._ws_ns_filters.pop(id(ws), None)
-        self._ws_send_queues.pop(id(ws), None)
-        self._ws_ready_events.pop(id(ws), None)
-        writer = self._ws_writers.pop(id(ws), None)
-        if writer is not None and cancel_writer and not writer.done():
-            writer.cancel()
-            # Keep a strong ref while the cancelled task unwinds.
-            self._ws_cleanup_tasks.add(writer)
-            writer.add_done_callback(self._ws_cleanup_tasks.discard)
-
-    async def _ws_send_loop(
-        self, ws, queue: asyncio.Queue, ready: asyncio.Event
-    ) -> None:
-        """Drain one client's send queue for the life of its connection.
-
-        A send failure means the peer is gone or the transport broke: drop
-        the client here; the connection handler's own remove_ws_client on
-        unwind is a no-op by then.
-        """
-        try:
-            await ready.wait()
-            while True:
-                text = await queue.get()
-                try:
-                    await ws.send_text(text)
-                finally:
-                    queue.task_done()
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            self._drop_ws_client(ws, cancel_writer=False)
-            log.info(
-                f"WebSocket client dropped on send failure "
-                f"({len(self._ws_clients)} total)"
-            )
-        finally:
-            # Mark anything left undelivered as done so flush_ws_sends()
-            # joiners can't hang on a dead client's queue.
-            while True:
-                try:
-                    queue.get_nowait()
-                    queue.task_done()
-                except asyncio.QueueEmpty:
-                    break
-
-    def _close_ws_client(self, ws) -> None:
-        """Best-effort close of an overflowed client's socket (fire-and-forget)."""
-
-        async def _close() -> None:
-            try:
-                await ws.close(code=1013)  # 1013 = try again later
-            except Exception:
-                pass  # Peer already gone — nothing to close
-
-        task = asyncio.create_task(_close())
-        self._ws_cleanup_tasks.add(task)
-        task.add_done_callback(self._ws_cleanup_tasks.discard)
-
-    async def flush_ws_sends(self) -> None:
-        """Wait until every currently-queued WS message has been sent.
-
-        Used by the shutdown flush (best-effort, with a timeout) and by
-        tests that need delivery to have happened before asserting.
-        """
-        queues = list(self._ws_send_queues.values())
-        if queues:
-            await asyncio.gather(*(q.join() for q in queues))
-
     async def broadcast_ws(self, message: dict[str, Any]) -> None:
-        """Queue a JSON message for delivery to all connected WS clients.
+        """Send a message to every connected WS client (panels, IDE).
 
-        Never awaits a client send: messages go onto per-client bounded
-        queues, so a slow or wedged client can't stall the caller (macro
-        and trigger event emits, the 50ms state flush loop). A client
-        whose queue overflows is dropped and its socket closed — panels
-        auto-reconnect and resnapshot, which is cheaper than letting one
-        sick client apply backpressure engine-wide.
+        The engine-wide broadcast door — macros, triggers, discovery, and the
+        REST routes all reach panels through here. Delivery, per-client
+        queues, and namespace filtering live in ``core.ws_hub``.
         """
-        if not self._ws_clients:
-            return
-
-        msg_type = message.get("type")
-        # state.update and state.delete carry per-key payloads; a client with
-        # ns_prefixes should only receive keys under those namespaces.
-        is_filterable = msg_type in ("state.update", "state.delete")
-
-        full_text: str | None = None
-        for ws in list(self._ws_clients):
-            ns = self._ws_ns_filters.get(id(ws)) if is_filterable else None
-            if not ns:
-                if full_text is None:
-                    full_text = json.dumps(message)
-                text = full_text
-            elif msg_type == "state.update":
-                changes = message.get("changes", {})
-                filtered = {k: v for k, v in changes.items()
-                            if k.startswith(ns)}
-                if not filtered:
-                    continue
-                text = json.dumps({"type": "state.update", "changes": filtered})
-            else:  # state.delete
-                keys = message.get("keys", [])
-                filtered_keys = [k for k in keys if k.startswith(ns)]
-                if not filtered_keys:
-                    continue
-                text = json.dumps({"type": "state.delete", "keys": filtered_keys})
-
-            queue = self._ws_send_queues.get(id(ws))
-            if queue is None:
-                continue
-            try:
-                queue.put_nowait(text)
-            except asyncio.QueueFull:
-                log.warning(
-                    "WebSocket client send queue overflowed "
-                    f"({_WS_SEND_QUEUE_MAX} messages) — dropping client so it "
-                    "reconnects with a fresh snapshot"
-                )
-                self._drop_ws_client(ws, cancel_writer=True)
-                self._close_ws_client(ws)
+        await self.ws.broadcast(message)
 
     async def _on_pending_settings_applied(
         self, event: str, payload: dict[str, Any]
@@ -2038,76 +1409,6 @@ class Engine:
     async def _on_plugin_event(self, event: str, payload: dict[str, Any]) -> None:
         """Forward plugin lifecycle events to WebSocket clients."""
         await self.broadcast_ws({"type": event, **(payload or {})})
-
-    def _on_state_change(
-        self, key: str, old_value: Any, new_value: Any, source: str
-    ) -> None:
-        """Collect state changes into a batch for WebSocket push.
-
-        Safe in single-threaded asyncio: this sync callback runs atomically
-        between awaits of the flush loop. The lock is acquired in the flush
-        loop to guard the read-clear operation.
-
-        Distinguishes deletion from set-to-None by probing the store: when
-        StateStore.delete() fires the listener, the key has already been
-        removed. Deletes go to _state_deleted_keys; sets go to _state_batch.
-        Either action clears the key from the other bucket so a delete-then-set
-        (or set-then-delete) within one window resolves to the latest action.
-        """
-        is_deleted = new_value is None and self.state.get(key, _STATE_MISSING) is _STATE_MISSING
-        if is_deleted:
-            self._state_batch.pop(key, None)
-            self._state_deleted_keys.add(key)
-        else:
-            self._state_deleted_keys.discard(key)
-            self._state_batch[key] = new_value
-
-    async def _flush_state_batch_loop(self) -> None:
-        """Periodically flush batched state changes to WebSocket clients."""
-        try:
-            while self._running:
-                await asyncio.sleep(0.05)  # 50ms = max 20 updates/sec
-                if not self._state_batch and not self._state_deleted_keys:
-                    continue
-                await self._flush_state_batch()
-        except asyncio.CancelledError:
-            pass
-        finally:
-            # Best-effort flush of any remaining batch during shutdown.
-            if self._state_batch or self._state_deleted_keys:
-                try:
-                    await self._flush_state_batch()
-                    # The flush only enqueues; give the per-client writers a
-                    # moment to actually deliver before the process exits.
-                    await asyncio.wait_for(self.flush_ws_sends(), timeout=1.0)
-                except Exception:  # Errors are non-critical at shutdown
-                    pass
-
-    async def _flush_state_batch(self) -> None:
-        """Drain _state_batch and _state_deleted_keys into WS messages.
-
-        Emits a state.update for set keys and a state.delete for deleted
-        keys. Atomic swap of the buffers ensures _on_state_change calls
-        between the two broadcasts land in the next flush window.
-        """
-        # Swap out the buffers atomically — sync _on_state_change can't
-        # interleave with us between awaits, but this pattern is safe if
-        # callers ever change.
-        batch = self._state_batch
-        self._state_batch = {}
-        deleted = self._state_deleted_keys
-        self._state_deleted_keys = set()
-
-        if batch:
-            await self.broadcast_ws({
-                "type": "state.update",
-                "changes": batch,
-            })
-        if deleted:
-            await self.broadcast_ws({
-                "type": "state.delete",
-                "keys": sorted(deleted),
-            })
 
     # --- Periodic backup ---
 
@@ -2291,7 +1592,7 @@ class Engine:
             # Wire subsystems
             heartbeat = HeartbeatCollector(
                 self.state, self.devices,
-                ws_client_count_fn=lambda: len(self._ws_clients),
+                ws_client_count_fn=lambda: self.ws.client_count,
             )
             self.cloud_agent.set_heartbeat_collector(heartbeat)
 
@@ -2386,7 +1687,7 @@ class Engine:
             "script_handlers": (
                 self.scripts.handler_count() if self.scripts else 0
             ),
-            "ws_clients": len(self._ws_clients),
+            "ws_clients": self.ws.client_count,
             "isc_enabled": self.isc is not None,
             "cloud_enabled": self.cloud_agent is not None,
             "http_port": config.HTTP_PORT,

@@ -660,13 +660,13 @@ async def test_ws_client_registered_before_snapshot(tmp_path):
     eng = Engine(str(tmp_path / "no_project.avc"))
     order: list[str] = []
 
-    real_add = eng.add_ws_client
+    real_add = eng.ws.add_client
 
     def spy_add(ws, ns_prefixes=None, **kwargs):
         order.append("register")
         real_add(ws, ns_prefixes=ns_prefixes, **kwargs)
 
-    eng.add_ws_client = spy_add
+    eng.ws.add_client = spy_add
 
     class HandshakeWS:
         async def accept(self, subprotocol=None):

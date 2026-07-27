@@ -39,7 +39,6 @@ def _make_mock_engine():
     engine.plugin_loader = MagicMock()
     engine.isc = None
     engine._running = True
-    engine._ws_clients = []
     engine.get_status.return_value = {
         "version": "0.0.0-test",
         "uptime_seconds": 123,

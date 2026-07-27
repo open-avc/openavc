@@ -119,7 +119,7 @@ def test_resolve_ignores_adapters_with_no_serial(monkeypatch):
     assert st.resolve_serial_port_by_serial("") is None
 
 
-# --- Engine._resolve_usb_binding --------------------------------------------
+# --- resolve_usb_binding (called by core.device_config on every resolve) -----
 
 
 def test_usb_binding_rewrites_port_to_live_path(monkeypatch):
@@ -128,7 +128,7 @@ def test_usb_binding_rewrites_port_to_live_path(monkeypatch):
         lambda s: "COM9" if s == "AB12CD" else None,
     )
     cfg = {"transport": "serial", "usb_serial": "AB12CD", "port": "COM3"}
-    out = Engine._resolve_usb_binding(cfg)
+    out = st.resolve_usb_binding(cfg)
     assert out["port"] == "COM9"
     # Original config is not mutated.
     assert cfg["port"] == "COM3"
@@ -137,14 +137,14 @@ def test_usb_binding_rewrites_port_to_live_path(monkeypatch):
 def test_usb_binding_left_alone_when_adapter_absent(monkeypatch):
     monkeypatch.setattr(st, "resolve_serial_port_by_serial", lambda s: None)
     cfg = {"transport": "serial", "usb_serial": "AB12CD", "port": "COM3"}
-    assert Engine._resolve_usb_binding(cfg)["port"] == "COM3"
+    assert st.resolve_usb_binding(cfg)["port"] == "COM3"
 
 
 def test_usb_binding_resolves_when_transport_unset(monkeypatch):
     # A serial-default driver may carry no explicit transport; still resolve.
     monkeypatch.setattr(st, "resolve_serial_port_by_serial", lambda s: "COM9")
     cfg = {"usb_serial": "AB12CD", "port": "COM3"}
-    assert Engine._resolve_usb_binding(cfg)["port"] == "COM9"
+    assert st.resolve_usb_binding(cfg)["port"] == "COM9"
 
 
 def test_usb_binding_skipped_without_usb_serial(monkeypatch):
@@ -157,7 +157,7 @@ def test_usb_binding_skipped_without_usb_serial(monkeypatch):
 
     monkeypatch.setattr(st, "resolve_serial_port_by_serial", _spy)
     cfg = {"transport": "serial", "port": "COM3"}
-    assert Engine._resolve_usb_binding(cfg) == cfg
+    assert st.resolve_usb_binding(cfg) == cfg
     assert not called  # no enumeration when there's nothing to resolve
 
 
@@ -165,10 +165,10 @@ def test_usb_binding_skipped_for_network_and_bridge(monkeypatch):
     monkeypatch.setattr(st, "resolve_serial_port_by_serial", lambda s: "COM9")
     # Explicit network transport — a stray usb_serial must not hijack the port.
     net = {"transport": "tcp", "usb_serial": "AB12CD", "port": 23, "host": "1.2.3.4"}
-    assert Engine._resolve_usb_binding(net) == net
+    assert st.resolve_usb_binding(net) == net
     # Bridge-bound (already rewritten to tcp by the bridge resolver).
     bridged = {"usb_serial": "AB12CD", "bridge": "itach", "bridge_port": "serial:1"}
-    assert Engine._resolve_usb_binding(bridged) == bridged
+    assert st.resolve_usb_binding(bridged) == bridged
 
 
 def test_stray_usb_serial_on_network_device_does_not_clobber_port(monkeypatch):

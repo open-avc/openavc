@@ -354,7 +354,7 @@ async def test_state_set_action_coerces_nonprimitive(tmp_path):
     eng = Engine(_write_project(tmp_path))
     eng.project = load_project(eng.project_path)
 
-    await eng._execute_action(
+    await eng.ui_events.execute_action(
         {"action": "state.set", "key": "var.x", "value": {"nested": 1}},
         data={}, element=None,
     )

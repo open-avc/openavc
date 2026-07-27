@@ -201,6 +201,44 @@ def clear_pending_marker(data_dir: Path) -> None:
         log.info("Cleared pending-update marker (startup successful)")
 
 
+def confirm_startup(data_dir: Path) -> None:
+    """Clear the pending-update marker after a stable run.
+
+    Called once the server has stayed up long enough to call the update good.
+    The marker is always cleared (so the rollback attempts counter can't trip
+    on a later restart), but only an update that actually changed the running
+    version is logged as a success. A marker that survived a *failed* apply
+    (e.g. the helper aborted, version unchanged) must not log "confirmed
+    successful" against the target it never reached.
+    """
+    from server.version import __version__
+
+    marker = read_pending_marker(data_dir)
+    if not marker:
+        return
+    clear_pending_marker(data_dir)
+    from_version = marker.get("from_version", "")
+    to_version = marker.get("to_version", "")
+    # Mirror UpdateManager._load_history: the update applied if the running
+    # version reached the target, or simply moved off the version we started
+    # from (handles release-tag/pyproject skew).
+    applied = (
+        (bool(to_version) and __version__ == to_version)
+        or (bool(from_version) and __version__ != from_version)
+    )
+    if applied:
+        log.info(
+            "Update confirmed successful after startup (v%s -> v%s)",
+            from_version, __version__,
+        )
+    else:
+        log.warning(
+            "Update to v%s did not take effect (still running v%s); "
+            "cleared stale pending-update marker",
+            to_version, __version__,
+        )
+
+
 def check_rollback_needed(data_dir: Path) -> bool:
     """Check if automatic rollback should be triggered.
 

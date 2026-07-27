@@ -33,6 +33,7 @@ delete transaction, instead of one call per key.
 from __future__ import annotations
 
 import asyncio
+import json
 import uuid
 from collections import deque
 from collections.abc import Iterator
@@ -87,6 +88,29 @@ def is_flat_primitive(value: Any) -> bool:
     scalars. ``bool`` is intentionally accepted (it's an ``int`` subclass).
     """
     return value is None or isinstance(value, (str, int, float, bool))
+
+
+def coerce_flat_primitive(value: Any) -> tuple[Any, bool]:
+    """Coerce a value to the flat-primitive state invariant.
+
+    A few write paths take author- or runtime-supplied values (variable
+    ``source_map`` results, static ``state.set`` binding values) that the
+    project schema types as ``Any``, so a list/dict could otherwise reach the
+    store and break downstream consumers that assume primitives. Primitives
+    pass through unchanged; anything else is flattened to a JSON string so it
+    stays representable.
+
+    Lives beside ``is_flat_primitive`` because it enforces the same invariant —
+    a change to what counts as flat has to reach both.
+
+    Returns ``(coerced_value, was_coerced)`` so callers can log with context.
+    """
+    if is_flat_primitive(value):
+        return value, False
+    try:
+        return json.dumps(value, ensure_ascii=False), True
+    except (TypeError, ValueError):
+        return str(value), True
 
 
 # The namespaces a state key may live under. A key outside them still *works*

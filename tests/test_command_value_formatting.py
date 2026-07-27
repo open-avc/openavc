@@ -10,7 +10,7 @@ and synthetic values; no real product, driver file, or captured fixture.
 
 from types import SimpleNamespace
 
-from server.core.engine import Engine
+from server.core.ui_events import UIEventRuntime
 from server.drivers.configurable import (
     ConfigurableDriver,
     _normalize_and_validate_command_params,
@@ -82,7 +82,7 @@ def test_bad_integer_spec_on_fractional_float_left_verbatim():
     assert ConfigurableDriver._safe_substitute("X{v:d}", {"v": 26.5}) == "X{v:d}"
 
 
-# --- UI value scaling (Engine._scale_value_forward) ---------------------
+# --- UI value scaling (UIEventRuntime.scale_value_forward) --------------
 
 def _el(**kw):
     kw.setdefault("scale_to_full", True)
@@ -92,24 +92,24 @@ def _el(**kw):
 def test_identity_scale_returns_clean_int():
     # display 1..64 -> output 1..64, step 1: 26 must be int 26, not 25.9999996.
     el = _el(min=1, max=64, output_min=1, output_max=64, step=1)
-    v = Engine._scale_value_forward(el, 26)
+    v = UIEventRuntime.scale_value_forward(el, 26)
     assert v == 26 and isinstance(v, int)
 
 
 def test_fractional_output_keeps_float():
     el = _el(min=0, max=100, output_min=0, output_max=1, step=1)
-    assert Engine._scale_value_forward(el, 26) == 0.26
+    assert UIEventRuntime.scale_value_forward(el, 26) == 0.26
 
 
 def test_no_output_range_passes_value_through():
     el = _el(min=0, max=100, output_min=None, output_max=None, step=1)
-    v = Engine._scale_value_forward(el, 26)
+    v = UIEventRuntime.scale_value_forward(el, 26)
     assert v == 26 and isinstance(v, int)
 
 
 def test_fractional_step_stays_float():
     el = _el(min=0, max=64, output_min=0, output_max=64, step=0.5)
-    v = Engine._scale_value_forward(el, 26)
+    v = UIEventRuntime.scale_value_forward(el, 26)
     assert v == 26.0 and isinstance(v, float)
 
 

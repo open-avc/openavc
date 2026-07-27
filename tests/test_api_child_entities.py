@@ -151,7 +151,6 @@ def _make_engine(tmp_path: Path, *, driver_cls=_FakeControllerDriver):
     engine.plugin_loader = MagicMock()
     engine.isc = None
     engine._running = True
-    engine._ws_clients = []
     engine.get_status.return_value = {"version": "0.0.0-test"}
 
     # Real DeviceManager-shaped interface — get_driver returns the live
@@ -568,7 +567,6 @@ def dsp_client(tmp_path):
     engine.plugin_loader = MagicMock()
     engine.isc = None
     engine._running = True
-    engine._ws_clients = []
     engine.get_status.return_value = {"version": "0.0.0-test"}
     engine.devices = MagicMock()
     engine.devices.get_driver = MagicMock(return_value=driver)

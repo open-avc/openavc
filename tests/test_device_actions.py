@@ -388,7 +388,6 @@ def actions_client():
     engine.state = state
     engine.events = events
     engine._running = True
-    engine._ws_clients = []
     engine.devices = MagicMock()
     engine.devices.get_driver = MagicMock(return_value=driver)
     engine.devices.send_command = AsyncMock(return_value=True)

@@ -9,6 +9,7 @@ structures with real tarballs — no mocking of the script itself.
 """
 
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -24,6 +25,7 @@ from tests import gates
 from server.updater.manager import UpdateManager
 from server.updater.platform import DeploymentType
 from server.updater.rollback import (
+    confirm_startup,
     write_pending_marker,
     read_pending_marker,
     increment_marker_attempts,
@@ -404,6 +406,52 @@ class TestCleanShutdownResetsAttempts:
         marker = read_pending_marker(tmp_path)
         assert marker["attempts"] == 0
         assert marker["from_version"] == "1.0.0"
+
+
+class TestConfirmStartup:
+    """confirm_startup() — what the engine calls once it has stayed up long
+    enough to call the update good.
+
+    The marker is always cleared (a leftover one would let the attempts
+    counter trip on a later, unrelated restart), but only an update that
+    actually moved the running version may be logged as a success: a marker
+    that survived a failed apply must not claim it reached a target it never
+    ran."""
+
+    def test_no_marker_is_a_noop(self, tmp_path):
+        confirm_startup(tmp_path)
+        assert list(tmp_path.iterdir()) == []
+
+    def test_reaching_the_target_clears_and_logs_success(self, tmp_path, caplog):
+        write_pending_marker(tmp_path, "1.0.0", "2.0.0")
+        with patch("server.version.__version__", "2.0.0"):
+            with caplog.at_level(logging.INFO, logger="server.updater.rollback"):
+                confirm_startup(tmp_path)
+        assert read_pending_marker(tmp_path) is None
+        assert "confirmed successful" in caplog.text
+        assert "did not take effect" not in caplog.text
+
+    def test_moving_off_the_old_version_counts_as_applied(self, tmp_path, caplog):
+        """Release-tag / pyproject skew: the running version isn't the target
+        but is no longer what we updated from, so the update did apply."""
+        write_pending_marker(tmp_path, "1.0.0", "2.0.0")
+        with patch("server.version.__version__", "2.0.1"):
+            with caplog.at_level(logging.INFO, logger="server.updater.rollback"):
+                confirm_startup(tmp_path)
+        assert read_pending_marker(tmp_path) is None
+        assert "confirmed successful" in caplog.text
+
+    def test_failed_apply_clears_marker_but_warns(self, tmp_path, caplog):
+        """The helper aborted: still running the version we started from. The
+        marker must go (so it can't trip a later restart) without claiming the
+        update landed."""
+        write_pending_marker(tmp_path, "1.0.0", "2.0.0")
+        with patch("server.version.__version__", "1.0.0"):
+            with caplog.at_level(logging.INFO, logger="server.updater.rollback"):
+                confirm_startup(tmp_path)
+        assert read_pending_marker(tmp_path) is None
+        assert "did not take effect" in caplog.text
+        assert "confirmed successful" not in caplog.text
 
 
 # ===========================================================================

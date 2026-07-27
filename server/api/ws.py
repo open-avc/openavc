@@ -144,7 +144,7 @@ async def _run_ws_connection(
         # Buffered updates may partially predate the snapshot; replaying
         # them after it is safe because state messages carry full per-key
         # values — the client converges on the latest.
-        engine.add_ws_client(ws, ns_prefixes=ns_prefixes, defer_delivery=True)
+        engine.ws.add_client(ws, ns_prefixes=ns_prefixes, defer_delivery=True)
 
         full_state = engine.state.snapshot()
         if ns_prefixes:
@@ -164,7 +164,7 @@ async def _run_ws_connection(
             })
 
         # Baseline is on the wire — release queued broadcasts
-        engine.mark_ws_client_ready(ws)
+        engine.ws.mark_client_ready(ws)
 
         # Start heartbeat
         ping_task = asyncio.create_task(_ping_loop())
@@ -201,7 +201,7 @@ async def _run_ws_connection(
         if ping_task and not ping_task.done():
             ping_task.cancel()
         _cleanup_log_subscription(ws_id)
-        engine.remove_ws_client(ws)
+        engine.ws.remove_client(ws)
 
 
 def _cleanup_log_subscription(ws_id: int) -> None:

@@ -78,7 +78,7 @@ def is_driver_registered(driver_id: str) -> bool:
 def get_driver_default_config(driver_id: str) -> dict[str, Any]:
     """Return the registered driver's ``default_config``, or ``{}`` if unknown.
 
-    Used by ``Engine.resolved_device_config`` to layer driver-declared
+    Used by ``core.device_config.resolve_device_config`` to layer driver-declared
     defaults under saved device config. Unknown / orphaned drivers return
     an empty dict so a missing driver behaves the same as today (the
     device will fail to instantiate, but resolution stays well-defined).
@@ -113,7 +113,7 @@ def get_driver_bridge_ports(driver_id: str) -> dict[str, dict[str, Any]]:
     *through*. Serial ports carry a ``passthrough_port`` (the TCP port on the
     bridge host that transparently pipes that serial line, e.g. 4999); IR /
     relay ports route commands through the bridge's command socket instead and
-    omit it. Used by ``Engine.resolved_device_config`` to rewrite a
+    omit it. Used by ``core.device_config`` to rewrite a
     bridge-bound downstream device's transport, and by the device manager to
     order bridges ahead of their dependents.
     """

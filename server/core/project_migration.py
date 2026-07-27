@@ -25,11 +25,11 @@ CONNECTION_FIELDS = {
     # Bridge binding (v0.6.0): a downstream device routes its bytes through
     # another device's typed port. `bridge` is the bridge device id,
     # `bridge_port` the port id it advertises (e.g. "serial:1"). The bridge
-    # resolver (engine.resolved_device_config) reads these to rewrite the
+    # resolver (core.device_config) reads these to rewrite the
     # downstream's effective transport to the bridge's pass-through endpoint.
     "bridge", "bridge_port",
     # Local USB-to-serial stable identity: the adapter's USB serial number.
-    # `_resolve_usb_binding` (engine.resolved_device_config) resolves it to the
+    # The USB resolver (core.device_config) turns it into the
     # adapter's live OS port path so a direct serial device survives its port
     # name moving across reboot / replug.
     "usb_serial",
