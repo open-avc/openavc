@@ -11,14 +11,8 @@ from pathlib import Path
 
 import pytest
 
-from server.core.device_manager import _DRIVER_REGISTRY
 from server.core.engine import Engine
-from tests.simulators.pjlink_simulator import PJLinkSimulator
-
-needs_pjlink = pytest.mark.skipif(
-    "pjlink_class1" not in _DRIVER_REGISTRY,
-    reason="pjlink_class1 driver not installed",
-)
+from tests.simulators.acme_display_simulator import AcmeDisplaySimulator
 
 
 def _make_project(sim_port: int) -> dict:
@@ -29,8 +23,8 @@ def _make_project(sim_port: int) -> dict:
         "devices": [
             {
                 "id": "proj1",
-                "driver": "pjlink_class1",
-                "name": "Test Projector",
+                "driver": "acme_display",
+                "name": "Test Display",
                 "config": {"host": "127.0.0.1", "port": sim_port, "poll_interval": 0},
                 "enabled": True,
             },
@@ -77,8 +71,8 @@ def _make_project(sim_port: int) -> dict:
 
 @pytest.fixture
 async def sim():
-    """PJLink simulator on ephemeral port."""
-    s = PJLinkSimulator(port=0, warmup_time=0.2, cooldown_time=0.1)
+    """Invented device simulator on an ephemeral port."""
+    s = AcmeDisplaySimulator(port=0, warmup_time=0.2, cooldown_time=0.1)
     await s.start()
     yield s
     await s.stop()
@@ -104,7 +98,6 @@ async def engine_with_project(sim):
 # --- Test 1: Engine lifecycle (start → state populated → shutdown) ---
 
 
-@needs_pjlink
 async def test_engine_start_populates_state(engine_with_project):
     """Engine start loads project, initializes variables, connects devices."""
     engine = engine_with_project
@@ -119,7 +112,7 @@ async def test_engine_start_populates_state(engine_with_project):
 
     # Device connected
     assert engine.state.get("device.proj1.connected") is True
-    assert engine.state.get("device.proj1.name") == "Test Projector"
+    assert engine.state.get("device.proj1.name") == "Test Display"
 
     # Macros loaded
     assert "system_on" in engine.macros._macros
@@ -131,7 +124,6 @@ async def test_engine_start_populates_state(engine_with_project):
     assert any(t["id"] == "auto_off" for t in triggers)
 
 
-@needs_pjlink
 async def test_engine_shutdown_clean(engine_with_project):
     """Engine stop disconnects devices and cleans up."""
     engine = engine_with_project
@@ -180,7 +172,6 @@ async def test_macro_sequence(engine_with_project):
 # --- Test 3: Hot reload ---
 
 
-@needs_pjlink
 async def test_hot_reload_preserves_devices(engine_with_project, sim):
     """Reload project re-syncs config without losing healthy connections."""
     engine = engine_with_project

@@ -26,9 +26,23 @@ os.environ.setdefault(
 
 import pytest
 
+from server.core.device_manager import register_driver
 from server.core.event_bus import EventBus
 from server.core.state_store import StateStore
-from tests.simulators.pjlink_simulator import PJLinkSimulator
+from tests.drivers.acme_display import AcmeDisplayDriver
+from tests.drivers.acme_power_relay import AcmePowerRelayDriver
+from tests.simulators.acme_display_simulator import AcmeDisplaySimulator
+
+# Install the invented test drivers the moment this file is imported, before
+# any test module is collected. Tests that reach the device layer by driver id
+# (DeviceManager, Engine, the REST API) need a driver that is genuinely there,
+# and the data dir pinned above is deliberately empty — so nothing from the
+# driver library ever is, in any environment. Registering here rather than in
+# a fixture means a test module can rely on it at import time too. The driver
+# loader only ever adds to this registry, so a later Engine start leaves these
+# in place.
+register_driver(AcmeDisplayDriver)
+register_driver(AcmePowerRelayDriver)
 
 
 @pytest.fixture(autouse=True, scope="session")
@@ -136,9 +150,9 @@ def wired(state, events):
 
 
 @pytest.fixture
-async def pjlink_sim():
-    """Running PJLink simulator on a random-ish test port. Auto-cleaned up."""
-    sim = PJLinkSimulator(port=0, warmup_time=0.3, cooldown_time=0.2)
+async def acme_sim():
+    """Running Acme Display simulator on an ephemeral port. Auto-cleaned up."""
+    sim = AcmeDisplaySimulator(port=0, warmup_time=0.3, cooldown_time=0.2)
     await sim.start()
     yield sim
     await sim.stop()

@@ -7,16 +7,10 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from server.core.device_manager import _DRIVER_REGISTRY
 from server.core.engine import Engine
 from server.main import app
 from server.api import rest, ws
-from tests.simulators.pjlink_simulator import PJLinkSimulator
-
-needs_pjlink = pytest.mark.skipif(
-    "pjlink_class1" not in _DRIVER_REGISTRY,
-    reason="pjlink_class1 driver not installed",
-)
+from tests.simulators.acme_display_simulator import AcmeDisplaySimulator
 
 
 # Test project with a single device pointing at the simulator.
@@ -26,8 +20,8 @@ TEST_PROJECT = {
     "devices": [
         {
             "id": "projector1",
-            "driver": "pjlink_class1",
-            "name": "Test Projector",
+            "driver": "acme_display",
+            "name": "Test Display",
             "config": {"host": "127.0.0.1", "port": 14355},
             "enabled": True,
         },
@@ -52,7 +46,7 @@ TEST_PROJECT = {
 @pytest.fixture
 async def running_app():
     """Start simulator + engine with a known test project, yield TestClient."""
-    sim = PJLinkSimulator(port=0, warmup_time=0.3, cooldown_time=0.2)
+    sim = AcmeDisplaySimulator(port=0, warmup_time=0.3, cooldown_time=0.2)
     await sim.start()
 
     # Build project with the actual simulator port
@@ -131,12 +125,11 @@ async def test_list_devices(running_app):
     assert devices[0]["id"] == "projector1"
 
 
-@needs_pjlink
 async def test_get_device(running_app):
     resp = running_app.get("/api/devices/projector1")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["driver"] == "pjlink_class1"
+    assert data["driver"] == "acme_display"
     assert "power_on" in data["commands"]
 
 
@@ -145,7 +138,6 @@ async def test_get_device_not_found(running_app):
     assert resp.status_code == 404
 
 
-@needs_pjlink
 async def test_send_command(running_app):
     resp = running_app.post(
         "/api/devices/projector1/command",

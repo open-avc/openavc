@@ -10,12 +10,6 @@ from server.core.event_bus import EventBus
 from server.core.state_store import StateStore
 from server.drivers.base import BaseDriver, ConnectionFaultError
 
-needs_pjlink = pytest.mark.skipif(
-    "pjlink_class1" not in _DRIVER_REGISTRY,
-    reason="pjlink_class1 driver not installed",
-)
-
-
 @pytest.fixture
 def core():
     state = StateStore()
@@ -34,28 +28,26 @@ async def dm(core):
     await manager.disconnect_all()
 
 
-@needs_pjlink
-async def test_add_device(dm, core, pjlink_sim):
+async def test_add_device(dm, core, acme_sim):
     state, _ = core
     await dm.add_device({
         "id": "proj1",
-        "driver": "pjlink_class1",
-        "name": "Test Projector",
-        "config": {"host": "127.0.0.1", "port": pjlink_sim.port, "poll_interval": 0},
+        "driver": "acme_display",
+        "name": "Test Display",
+        "config": {"host": "127.0.0.1", "port": acme_sim.port, "poll_interval": 0},
     })
     assert state.get("device.proj1.connected") is True
-    assert state.get("device.proj1.name") == "Test Projector"
+    assert state.get("device.proj1.name") == "Test Display"
     await dm.disconnect_all()
 
 
-@needs_pjlink
-async def test_send_command(dm, core, pjlink_sim):
+async def test_send_command(dm, core, acme_sim):
     state, _ = core
     await dm.add_device({
         "id": "proj1",
-        "driver": "pjlink_class1",
-        "name": "Test Projector",
-        "config": {"host": "127.0.0.1", "port": pjlink_sim.port, "poll_interval": 0},
+        "driver": "acme_display",
+        "name": "Test Display",
+        "config": {"host": "127.0.0.1", "port": acme_sim.port, "poll_interval": 0},
     })
     await dm.send_command("proj1", "power_on")
     await asyncio.sleep(0.1)
@@ -68,13 +60,12 @@ async def test_send_command_unknown_device(dm):
         await dm.send_command("nonexistent", "power_on")
 
 
-@needs_pjlink
-async def test_list_devices(dm, core, pjlink_sim):
+async def test_list_devices(dm, core, acme_sim):
     await dm.add_device({
         "id": "proj1",
-        "driver": "pjlink_class1",
-        "name": "Test Projector",
-        "config": {"host": "127.0.0.1", "port": pjlink_sim.port, "poll_interval": 0},
+        "driver": "acme_display",
+        "name": "Test Display",
+        "config": {"host": "127.0.0.1", "port": acme_sim.port, "poll_interval": 0},
     })
     devices = dm.list_devices()
     assert len(devices) == 1
@@ -83,14 +74,13 @@ async def test_list_devices(dm, core, pjlink_sim):
     await dm.disconnect_all()
 
 
-@needs_pjlink
-async def test_remove_device(dm, core, pjlink_sim):
+async def test_remove_device(dm, core, acme_sim):
     state, _ = core
     await dm.add_device({
         "id": "proj1",
-        "driver": "pjlink_class1",
-        "name": "Test Projector",
-        "config": {"host": "127.0.0.1", "port": pjlink_sim.port, "poll_interval": 0},
+        "driver": "acme_display",
+        "name": "Test Display",
+        "config": {"host": "127.0.0.1", "port": acme_sim.port, "poll_interval": 0},
     })
     assert len(dm.list_devices()) == 1
     await dm.remove_device("proj1")
@@ -112,17 +102,16 @@ async def test_unknown_driver(dm):
     assert "totally_fake_driver" in devices[0]["orphan_reason"]
 
 
-@needs_pjlink
-async def test_get_device_info(dm, core, pjlink_sim):
+async def test_get_device_info(dm, core, acme_sim):
     await dm.add_device({
         "id": "proj1",
-        "driver": "pjlink_class1",
-        "name": "Test Projector",
-        "config": {"host": "127.0.0.1", "port": pjlink_sim.port, "poll_interval": 0},
+        "driver": "acme_display",
+        "name": "Test Display",
+        "config": {"host": "127.0.0.1", "port": acme_sim.port, "poll_interval": 0},
     })
     info = dm.get_device_info("proj1")
     assert info["id"] == "proj1"
-    assert info["driver"] == "pjlink_class1"
+    assert info["driver"] == "acme_display"
     assert "power_on" in info["commands"]
     await dm.disconnect_all()
 
