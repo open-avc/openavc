@@ -11,16 +11,20 @@ import {
   ACTION_KINDS_YAML,
   AUTH_TRANSPORTS,
   BRIDGE_PORT_KINDS,
+  CLOUD_PRIORITIES,
   DISALLOWED_OPEN_PORTS,
   FRAME_HEADER_SIZES,
+  INSTANCE_SOURCES,
   INTERCHANGEABLE_TRANSPORTS,
   LENGTH_ENDIANS,
   LIVENESS_TRANSPORTS,
+  PARAM_OPTIONS_FROM_SOURCES,
   PUSH_FRAME_PARSER_TYPES,
   PUSH_KEYS_BY_TYPE,
   STATE_VAR_TYPES,
   STRUCT_LENGTH_SIZES,
   VISIBLE_WHEN_OPERATORS,
+  YAML_TRANSPORTS,
 } from "../../api/types";
 
 // Re-exported for the Discovery editor, which shows the rule inline at
@@ -221,6 +225,274 @@ export function oscArgValueIssue(type: string, value: string): string | null {
   return null;
 }
 
+// ── Runaway-pattern (catastrophic backtracking) detection ────────────────
+// Mirrors the structural half of server/utils/regex_safety.py. A pattern that
+// repeats something already repeating — (a+)+ — takes exponential time on a
+// reply that doesn't match, and driver patterns run on raw device bytes while
+// the connection waits, so one garbled frame can wedge the driver for minutes.
+// The loader refuses these outright, so the Builder has to as well or the
+// author only learns about it when the save comes back rejected.
+//
+// Only the structural half is mirrored, deliberately. The Python side backs it
+// up by running the pattern in a worker thread with a time limit; there is no
+// honest equivalent in a browser — running a suspect pattern here IS the freeze
+// this check exists to prevent, and there is no thread to contain it.
+
+/** A single quantified atom inside a quantified group: (.+)+, (\d+)*, ([a-z]+)+. */
+const NESTED_QUANT_RE = /\((?:\\.|\[[^\]]*\]|[^()[\]\\*+?])[*+]\)[*+]/;
+/** A flat alternation immediately repeated — (a|a)+, (foo|foobar)*. */
+const ALT_QUANT_RE = /\(([^()]*\|[^()]*)\)[*+]/g;
+
+/** Why this pattern can run away, in the author's terms — or null when it looks
+ *  safe. `fix` names the concrete edit; the two are always shown together. */
+function runawayPatternReason(
+  pattern: string,
+): { reason: string; fix: string } | null {
+  if (NESTED_QUANT_RE.test(pattern)) {
+    return {
+      reason: "repeats a group that already repeats",
+      fix: "Use a single repeat — a+ rather than (a+)+.",
+    };
+  }
+  for (const m of pattern.matchAll(ALT_QUANT_RE)) {
+    const alts = m[1].split("|");
+    if (new Set(alts).size !== alts.length) {
+      return {
+        reason: "repeats a choice that lists the same option twice",
+        fix: "Remove the duplicate option.",
+      };
+    }
+    for (const a of alts) {
+      for (const b of alts) {
+        if (a && a !== b && b.startsWith(a)) {
+          return {
+            reason: "repeats a choice whose options overlap",
+            fix: "Make the options distinct, or drop the repeat.",
+          };
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/** The message for an unsafe pattern, or null when it looks safe.
+ *  `what` names the field in the author's words ("Response 1 match pattern"). */
+function runawayPatternMessage(what: string, pattern: unknown): string | null {
+  if (typeof pattern !== "string" || !pattern) return null;
+  const found = runawayPatternReason(pattern);
+  if (!found) return null;
+  return `${what} ${found.reason} ("${pattern}"), which can lock the driver up for minutes on a reply that doesn't match. ${found.fix}`;
+}
+
+/**
+ * The three display/relay fields every value variable carries, device-level
+ * and per-child alike (mirror avcdriver_semantic.py, which checks both the
+ * same way). None of them stops the variable working, which is the problem:
+ * a `unit` that isn't text or a `cloud_priority` typo just quietly does
+ * nothing, so the loader refuses them rather than let it look applied.
+ */
+function validateValueVariableFields(
+  varDef: Record<string, unknown>,
+  who: string,
+  push: (message: string) => void,
+): void {
+  const unit = varDef.unit;
+  if (unit !== undefined && unit !== null && typeof unit !== "string") {
+    push(`${who} has a unit of "${String(unit)}" — units are text, like dB or %.`);
+  }
+  const control = varDef.control;
+  if (control !== undefined && control !== null && typeof control !== "boolean") {
+    push(
+      `${who} has control set to "${String(control)}" — it must be true or false.`,
+    );
+  }
+  const priority = varDef.cloud_priority;
+  if (
+    priority !== undefined &&
+    priority !== null &&
+    !(CLOUD_PRIORITIES as readonly unknown[]).includes(priority)
+  ) {
+    push(
+      `${who} has cloud priority "${String(priority)}" — use ${CLOUD_PRIORITIES.join(" or ")}, or leave it out for the default.`,
+    );
+  }
+}
+
+/**
+ * Mirror avcdriver_semantic.py's `_validate_param_option_providers`, which the
+ * loader runs over every command's and every action's params. Two families:
+ * the free-text aids (`pattern`, `min`/`max`, `decimals`, `trim`) and the
+ * picker providers (`options_state`/`options_source`, `options_from`,
+ * `type_from`).
+ *
+ * All of them are authoring aids — the runtime still coerces and checks the
+ * submitted value — so a typo here never fails loudly. It just quietly leaves
+ * the operator a plain text box where a dropdown was meant to be, which is
+ * exactly why the loader refuses one.
+ *
+ * `describe` names the param in the author's words; `push` supplies the
+ * severity and inline anchors, which differ between commands and actions.
+ */
+function validateParamProviders(
+  params: unknown,
+  describe: (paramName: string) => string,
+  push: (paramName: string, message: string) => void,
+): void {
+  if (!params || typeof params !== "object" || Array.isArray(params)) return;
+  const entries = Object.entries(params as Record<string, unknown>);
+  for (const [pname, raw] of entries) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const pdef = raw as Record<string, unknown>;
+    const who = describe(pname);
+
+    // A `pattern` shape-checks free text before the command is sent. It runs
+    // on whatever the operator typed, so it gets the same runaway check as a
+    // response pattern. (Not a "does it compile" check: the runtime's regex
+    // dialect is Python's, and a pattern JavaScript can't parse is not
+    // necessarily one the driver can't use.)
+    const runaway = runawayPatternMessage(`The pattern on ${who}`, pdef.pattern);
+    if (runaway) push(pname, runaway);
+
+    const { min, max } = pdef;
+    for (const [boundName, bound] of [
+      ["minimum", min],
+      ["maximum", max],
+    ] as const) {
+      if (bound !== undefined && bound !== null && typeof bound !== "number") {
+        push(
+          pname,
+          `${who} has a ${boundName} of "${String(bound)}", which isn't a number. Enter a number or remove it.`,
+        );
+      }
+    }
+    if (typeof min === "number" && typeof max === "number" && min > max) {
+      push(
+        pname,
+        `${who} has a minimum (${min}) above its maximum (${max}) — no value would be accepted.`,
+      );
+    }
+
+    // `decimals` rounds a number param before it goes on the wire.
+    const decimals = pdef.decimals;
+    if (
+      decimals !== undefined &&
+      decimals !== null &&
+      (!Number.isInteger(decimals) || (decimals as number) < 0)
+    ) {
+      push(
+        pname,
+        `${who} rounds to "${String(decimals)}" decimal places — that must be a whole number of 0 or more.`,
+      );
+    }
+
+    // `trim: false` keeps trailing whitespace the operator typed (raw
+    // passthrough payloads where a terminator is part of the value).
+    const trim = pdef.trim;
+    if (trim !== undefined && trim !== null && typeof trim !== "boolean") {
+      push(
+        pname,
+        `${who} has trim set to "${String(trim)}" — it must be true or false.`,
+      );
+    }
+
+    for (const key of ["options_state", "options_source"] as const) {
+      const val = pdef[key];
+      if (val !== undefined && val !== null && !(typeof val === "string" && val)) {
+        push(
+          pname,
+          `${who} has an empty ${key} — name the state key holding the choices, or remove it.`,
+        );
+      }
+    }
+
+    // `options_from`: this param's choices cascade off a sibling param.
+    const ofrom = pdef.options_from;
+    if (ofrom !== undefined && ofrom !== null) {
+      if (typeof ofrom !== "object" || Array.isArray(ofrom)) {
+        push(
+          pname,
+          `${who} has an options_from that isn't a block — it needs a param (the sibling to cascade from) and a source.`,
+        );
+      } else {
+        const spec = ofrom as Record<string, unknown>;
+        const source = spec.source;
+        if (typeof source !== "string" || !PARAM_OPTIONS_FROM_SOURCES.has(source)) {
+          push(
+            pname,
+            `${who} takes its choices from "${String(source)}", which isn't a source the runtime knows. Use ${[...PARAM_OPTIONS_FROM_SOURCES].join(" or ")}.`,
+          );
+        }
+        const ref = spec.param;
+        if (typeof ref !== "string" || !ref) {
+          push(
+            pname,
+            `${who} has an options_from with no param — name the parameter its choices depend on.`,
+          );
+        } else if (!(ref in (params as Record<string, unknown>))) {
+          push(
+            pname,
+            `${who} takes its choices from parameter "${ref}", which isn't declared alongside it.`,
+          );
+        } else if (source === "child_schema") {
+          const sibling = (params as Record<string, unknown>)[ref];
+          if (
+            sibling &&
+            typeof sibling === "object" &&
+            (sibling as Record<string, unknown>).type !== "child_id"
+          ) {
+            push(
+              pname,
+              `${who} takes its choices from the child schema of parameter "${ref}", but "${ref}" isn't a Child ID parameter — a child schema cascade has to point at one.`,
+            );
+          }
+        }
+      }
+    }
+
+    // `type_from`: this param's input type comes from the control a sibling
+    // child_schema cascade landed on.
+    const tfrom = pdef.type_from;
+    if (tfrom !== undefined && tfrom !== null) {
+      if (typeof tfrom !== "object" || Array.isArray(tfrom)) {
+        push(
+          pname,
+          `${who} has a type_from that isn't a block — it needs a param naming the cascade to take the input type from.`,
+        );
+        continue;
+      }
+      const ref = (tfrom as Record<string, unknown>).param;
+      if (typeof ref !== "string" || !ref) {
+        push(
+          pname,
+          `${who} has a type_from with no param — name the cascade to take the input type from.`,
+        );
+      } else if (!(ref in (params as Record<string, unknown>))) {
+        push(
+          pname,
+          `${who} takes its input type from parameter "${ref}", which isn't declared alongside it.`,
+        );
+      } else {
+        const sibling = (params as Record<string, unknown>)[ref];
+        const siblingFrom =
+          sibling && typeof sibling === "object"
+            ? (sibling as Record<string, unknown>).options_from
+            : undefined;
+        const isCascade =
+          !!siblingFrom &&
+          typeof siblingFrom === "object" &&
+          (siblingFrom as Record<string, unknown>).source === "child_schema";
+        if (!isCascade) {
+          push(
+            pname,
+            `${who} takes its input type from parameter "${ref}", but "${ref}" isn't a child schema cascade — the type is read from the control that cascade picked.`,
+          );
+        }
+      }
+    }
+  }
+}
+
 /**
  * Validate a driver draft against the runtime contract.
  *
@@ -279,6 +551,35 @@ export function validateDriver(
     });
   }
 
+  // The transport picker can only offer supported values, but an imported or
+  // hand-edited file can name anything — and the loader refuses the driver
+  // outright, so it never appears in the device list at all.
+  if (
+    draft.transport &&
+    !(YAML_TRANSPORTS as readonly string[]).includes(draft.transport)
+  ) {
+    issues.push({
+      severity: "error",
+      section: "connection",
+      field: "transport",
+      message: `"${draft.transport}" isn't a transport the platform supports — use ${YAML_TRANSPORTS.join(", ")}.`,
+    });
+  }
+
+  // Wire framing wrapped around every command. Both are literal strings
+  // (escapes like \r are decoded at send time).
+  for (const key of ["command_prefix", "command_suffix"] as const) {
+    const value = (draft as unknown as Record<string, unknown>)[key];
+    if (value !== undefined && value !== null && typeof value !== "string") {
+      issues.push({
+        severity: "error",
+        section: "behavior",
+        field: key,
+        message: `The ${key === "command_prefix" ? "prefix" : "suffix"} added to every command must be text (got "${String(value)}").`,
+      });
+    }
+  }
+
   // ── Publish-quality warnings ──────────────────────────────────────────
   if (!draft.description?.trim()) {
     issues.push({
@@ -327,6 +628,15 @@ export function validateDriver(
     ...Object.keys(draft.config_derived ?? {}),
   ]);
   for (const [typeName, typeDef] of Object.entries(childTypes)) {
+    if (!typeDef || typeof typeDef !== "object" || Array.isArray(typeDef)) {
+      issues.push({
+        severity: "error",
+        section: "behavior",
+        field: `child_entity_types.${typeName}`,
+        message: `Child type "${typeName}" must be a block describing the child (state fields, ID format, roster), not a single value.`,
+      });
+      continue;
+    }
     if (!CHILD_ID_RE.test(typeName)) {
       issues.push({
         severity: "error",
@@ -396,6 +706,36 @@ export function validateDriver(
           message: `Field "${fieldName}" in child type "${typeName}" must use lowercase letters, digits, and underscores only.`,
         });
       }
+      // Per-child state fields take the same shape and the same display /
+      // relay fields as device-level state variables.
+      const fieldDef = (stateVars as Record<string, unknown>)[fieldName];
+      const who = `Field "${fieldName}" in child type "${typeName}"`;
+      const pushFieldIssue = (message: string) =>
+        issues.push({
+          severity: "error",
+          section: "behavior",
+          field: `child_entity_types.${typeName}.${fieldName}`,
+          message,
+        });
+      if (!fieldDef || typeof fieldDef !== "object" || Array.isArray(fieldDef)) {
+        pushFieldIssue(
+          `${who} must be a block with a label and a type, not a single value.`,
+        );
+        continue;
+      }
+      const fieldType = (fieldDef as Record<string, unknown>).type;
+      if (
+        fieldType !== undefined &&
+        fieldType !== "" &&
+        !(typeof fieldType === "string" && STATE_VAR_TYPES.has(fieldType))
+      ) {
+        pushFieldIssue(`${who} has unknown type "${String(fieldType)}".`);
+      }
+      validateValueVariableFields(
+        fieldDef as Record<string, unknown>,
+        who,
+        pushFieldIssue,
+      );
     }
 
     // summary_fields / label_field must reference declared fields. `online`
@@ -429,9 +769,46 @@ export function validateDriver(
         ...Object.keys(draft.config_schema ?? {}),
         ...Object.keys(draft.default_config ?? {}),
       ]);
-      const sources = (["count", "count_from", "ids_from", "ids"] as const).filter(
-        (k) => inst[k] !== undefined,
-      );
+      // `count_from_state` is not one of the mutually exclusive sources — it
+      // names a device-reported variable the roster follows once connected,
+      // with the config source as the offline fallback. A name that isn't
+      // declared means the roster never follows the device.
+      const countFromState = (inst as Record<string, unknown>).count_from_state;
+      if (countFromState !== undefined && countFromState !== null) {
+        if (typeof countFromState !== "string" || !countFromState) {
+          issues.push({
+            severity: "error",
+            section: "behavior",
+            field: `child_entity_types.${typeName}.instances`,
+            message: `Child type "${typeName}" instances count_from_state must name a state variable.`,
+          });
+        } else if (!(countFromState in (draft.state_variables ?? {}))) {
+          issues.push({
+            severity: "error",
+            section: "behavior",
+            field: `child_entity_types.${typeName}.instances`,
+            message: `Child type "${typeName}" instances follow state variable "${countFromState}", which isn't declared — the roster would never track the device.`,
+          });
+        }
+      }
+
+      const instLabel = (inst as Record<string, unknown>).label;
+      if (
+        instLabel !== undefined &&
+        instLabel !== null &&
+        typeof instLabel !== "string"
+      ) {
+        issues.push({
+          severity: "error",
+          section: "behavior",
+          field: `child_entity_types.${typeName}.instances`,
+          message: `Child type "${typeName}" instances label must be text (it names each child, e.g. "Zone {id}").`,
+        });
+      }
+
+      const sources = (INSTANCE_SOURCES as readonly string[]).filter(
+        (k) => (inst as Record<string, unknown>)[k] !== undefined,
+      ) as ("count" | "count_from" | "ids_from" | "ids")[];
       if (sources.length !== 1) {
         issues.push({
           severity: "error",
@@ -447,6 +824,22 @@ export function validateDriver(
             section: "behavior",
             field: `child_entity_types.${typeName}.instances`,
             message: `Child type "${typeName}" instances ids must be a non-empty list of literal child IDs.`,
+          });
+        } else if (
+          ids.some(
+            (v) =>
+              v === null ||
+              typeof v === "boolean" ||
+              (typeof v !== "string" && typeof v !== "number"),
+          )
+        ) {
+          // A nested list stringifies to something that looks fine ([1] →
+          // "1"), so the integer check below would wave it through.
+          issues.push({
+            severity: "error",
+            section: "behavior",
+            field: `child_entity_types.${typeName}.instances`,
+            message: `Child type "${typeName}" instances ids must each be a single ID — a number or a piece of text, not a list.`,
           });
         } else if (
           idf.type !== "string" &&
@@ -558,8 +951,32 @@ export function validateDriver(
   //    one (driver_loader.py) and rejects an unknown type. A cleared label or
   //    bad type otherwise only surfaces as an unanchored save-time 422, so
   //    flag it inline in the Behavior tab where the editor lives. ───────────
+  if (
+    draft.state_variables !== undefined &&
+    draft.state_variables !== null &&
+    (typeof draft.state_variables !== "object" ||
+      Array.isArray(draft.state_variables))
+  ) {
+    issues.push({
+      severity: "error",
+      section: "behavior",
+      field: "state_variables",
+      message:
+        "State variables must be a block of named variables, not a list.",
+    });
+  }
   for (const [varName, varDef] of Object.entries(draft.state_variables ?? {})) {
-    if (!varDef || typeof varDef !== "object") continue;
+    if (!varDef || typeof varDef !== "object" || Array.isArray(varDef)) {
+      // A bare `power: string` shorthand reads like it should work and
+      // doesn't — the runtime wants the full block.
+      issues.push({
+        severity: "error",
+        section: "behavior",
+        field: `state_variables.${varName}`,
+        message: `State variable "${varName}" must be a block with a label and a type, not a single value.`,
+      });
+      continue;
+    }
     if (!varDef.label?.trim()) {
       issues.push({
         severity: "error",
@@ -576,6 +993,17 @@ export function validateDriver(
         message: `State variable "${varName}" has unknown type "${varDef.type}" — use string, integer, number, boolean, enum, or float.`,
       });
     }
+    validateValueVariableFields(
+      varDef as unknown as Record<string, unknown>,
+      `State variable "${varName}"`,
+      (message) =>
+        issues.push({
+          severity: "error",
+          section: "behavior",
+          field: `state_variables.${varName}`,
+          message,
+        }),
+    );
   }
 
   // ── Commands: param-name legality + placeholder coverage ─────────────
@@ -638,6 +1066,21 @@ export function validateDriver(
         });
       }
     }
+
+    // Free-text aids + picker providers on this command's params (mirrors the
+    // loader's own per-param pass; see validateParamProviders).
+    validateParamProviders(
+      cmd.params,
+      (paramName) => `Parameter "${paramName}" in command "${cmdName}"`,
+      (paramName, message) =>
+        issues.push({
+          severity: "error",
+          section: "behavior",
+          command: cmdName,
+          param: paramName,
+          message,
+        }),
+    );
 
     // Param-name legality. The renamer used to silently strip illegal
     // characters; flag the residue so the user understands what got
@@ -826,6 +1269,47 @@ export function validateDriver(
   for (const [settingName, setting] of Object.entries(
     draft.device_settings ?? {},
   )) {
+    // Type, read-back key, and range. A setting whose state_key names nothing
+    // loads fine and shows "(not set)" forever while its writes keep firing —
+    // the reason the loader refuses it.
+    const settingRecord = setting as unknown as Record<string, unknown>;
+    const settingType = settingRecord.type;
+    if (
+      settingType !== undefined &&
+      settingType !== "" &&
+      !(typeof settingType === "string" && STATE_VAR_TYPES.has(settingType))
+    ) {
+      issues.push({
+        severity: "error",
+        section: "behavior",
+        message: `Device setting "${settingName}" has unknown type "${String(settingType)}" — use string, integer, number, boolean, enum, or float.`,
+      });
+    }
+    const stateKey = settingRecord.state_key ?? settingName;
+    if (
+      typeof stateKey !== "string" ||
+      !(stateKey in (draft.state_variables ?? {}))
+    ) {
+      issues.push({
+        severity: "error",
+        section: "behavior",
+        message: `Device setting "${settingName}" reads back from state variable "${String(stateKey)}", which isn't declared — the setting would show "(not set)" forever while its writes still fired.`,
+      });
+    }
+    const settingMin = settingRecord.min;
+    const settingMax = settingRecord.max;
+    if (
+      typeof settingMin === "number" &&
+      typeof settingMax === "number" &&
+      settingMin > settingMax
+    ) {
+      issues.push({
+        severity: "error",
+        section: "behavior",
+        message: `Device setting "${settingName}" has a minimum (${settingMin}) above its maximum (${settingMax}) — no value would be accepted.`,
+      });
+    }
+
     const write = setting.write;
     if (!write || Object.keys(write).length === 0) {
       // The runtime loader hard-requires a write block on every device
@@ -1060,6 +1544,16 @@ export function validateDriver(
         section: "behavior",
         message: `${label} has no pattern to match — add a match pattern, or an OSC address for an OSC driver.`,
       });
+    } else {
+      // Response patterns run against every inbound frame while the driver
+      // waits on the socket — a runaway one wedges it (mirror the loader).
+      const runaway = runawayPatternMessage(
+        `${label} match pattern`,
+        resp.match,
+      );
+      if (runaway) {
+        issues.push({ severity: "error", section: "behavior", message: runaway });
+      }
     }
 
     // child_set routing (mirror driver_loader.py): declared type, declared
@@ -1372,6 +1866,31 @@ export function validateDriver(
         }
       }
       if (!("each_child" in entry)) {
+        // `query_for` on a plain entry names the device-level state variable
+        // the reply reports. It drives the generated simulator, so a dangling
+        // name declares nothing and the simulated device answers nothing.
+        if ("query_for" in entry) {
+          const qf = entry.query_for;
+          if ("address" in entry) {
+            issues.push({
+              severity: "error",
+              section: "behavior",
+              message: `${fieldName} entry ${i + 1}: "Reports" applies to a send query, not an OSC address entry.`,
+            });
+          } else if (typeof qf !== "string" || !qf) {
+            issues.push({
+              severity: "error",
+              section: "behavior",
+              message: `${fieldName} entry ${i + 1}: "Reports" must name a state variable.`,
+            });
+          } else if (!(qf in (draft.state_variables ?? {}))) {
+            issues.push({
+              severity: "error",
+              section: "behavior",
+              message: `${fieldName} entry ${i + 1}: "Reports" names "${qf}", which isn't a declared state variable.`,
+            });
+          }
+        }
         if (allowOscDict && "address" in entry) return;
         if (typeof entry.send === "string" && entry.send) return;
         issues.push({
@@ -1424,6 +1943,31 @@ export function validateDriver(
       }
     });
   };
+  // ── Polling block shape ──────────────────────────────────────────────
+  // `interval:` reads like the poll cadence and isn't: the runtime takes that
+  // from the connection settings (poll_interval) and never looks here, so an
+  // interval set in this block polls at whatever the default is and the author
+  // has no way to tell. The loader rejects it for exactly that reason.
+  const polling = draft.polling as unknown;
+  if (polling !== undefined && polling !== null) {
+    if (typeof polling !== "object" || Array.isArray(polling)) {
+      issues.push({
+        severity: "error",
+        section: "behavior",
+        field: "polling",
+        message:
+          "Polling must be a block with a queries list, not a bare list of commands.",
+      });
+    } else if ("interval" in (polling as Record<string, unknown>)) {
+      issues.push({
+        severity: "error",
+        section: "behavior",
+        field: "polling.interval",
+        message:
+          "Polling has an interval, but the runtime never reads it — the poll cadence comes from the connection settings. Remove the interval and set poll_interval in Default Config instead.",
+      });
+    }
+  }
   checkEachChildEntries("Poll query", draft.polling?.queries, false);
   checkEachChildEntries("on_connect", draft.on_connect, true);
 
@@ -1467,6 +2011,26 @@ export function validateDriver(
         message:
           "Login handshake needs a password prompt to watch for, or it connects unauthenticated.",
       });
+    }
+    // Every handshake pattern is matched against raw bytes from a device that
+    // hasn't authenticated yet, so a runaway pattern here is the worst place
+    // for one — mirror the loader's check.
+    const authPatternLabels: [keyof typeof auth, string][] = [
+      ["username_prompt", "Login handshake username prompt"],
+      ["password_prompt", "Login handshake password prompt"],
+      ["success_pattern", "Login handshake success pattern"],
+      ["failure_pattern", "Login handshake failure pattern"],
+    ];
+    for (const [key, what] of authPatternLabels) {
+      const message = runawayPatternMessage(what, auth[key]);
+      if (message) {
+        issues.push({
+          severity: "error",
+          section: "connection",
+          field: `auth.${key}`,
+          message,
+        });
+      }
     }
   }
 
@@ -1910,6 +2474,64 @@ function validateActions(
         message: `${label} has a URL, but only a link action opens one — set the kind to "link" or remove the URL.`,
       });
     }
+
+    // Display fields — an imported or hand-edited file can carry the wrong
+    // type here, and the runtime renders the button from these verbatim.
+    if (a.label !== undefined && typeof a.label !== "string") {
+      issues.push({
+        severity: "error",
+        section: "behavior",
+        field: "actions",
+        message: `${label} button text must be text.`,
+      });
+    }
+    if (a.icon !== undefined && typeof a.icon !== "string") {
+      issues.push({
+        severity: "error",
+        section: "behavior",
+        field: "actions",
+        message: `${label} icon must be an icon name (text).`,
+      });
+    }
+    if (
+      a.confirm !== undefined &&
+      typeof a.confirm !== "boolean" &&
+      typeof a.confirm !== "string"
+    ) {
+      issues.push({
+        severity: "error",
+        section: "behavior",
+        field: "actions",
+        message: `${label} confirm must be true/false, or the message to show before running.`,
+      });
+    }
+
+    // Action params: same block shape and same per-param rules the loader
+    // applies to a command's params.
+    const actionParams = a.params;
+    if (
+      actionParams !== undefined &&
+      actionParams !== null &&
+      (typeof actionParams !== "object" || Array.isArray(actionParams))
+    ) {
+      issues.push({
+        severity: "error",
+        section: "behavior",
+        field: "actions",
+        message: `${label} params must be a block of named parameters, not a list.`,
+      });
+    }
+    validateParamProviders(
+      actionParams,
+      (paramName) => `${label} parameter "${paramName}"`,
+      (_paramName, message) =>
+        issues.push({
+          severity: "error",
+          section: "behavior",
+          field: "actions",
+          message,
+        }),
+    );
 
     validateVisibleWhen(label, a.visible_when, issues);
 
@@ -2363,6 +2985,16 @@ function validateLiveness(
         message:
           "Connection watchdog expect pattern can't be empty — remove it to count any inbound frame as a reply.",
       });
+    } else if (typeof liveness.expect !== "string") {
+      // An imported file can carry a number or a list here; the runtime wants
+      // a regex string and refuses anything else.
+      issues.push({
+        severity: "error",
+        section: "connection",
+        field: "liveness.expect",
+        message:
+          "Connection watchdog expect pattern must be a match pattern (text), not a number or a list.",
+      });
     } else {
       try {
         new RegExp(liveness.expect);
@@ -2372,6 +3004,18 @@ function validateLiveness(
           section: "connection",
           field: "liveness.expect",
           message: `Connection watchdog expect pattern "${liveness.expect}" isn't a valid regular expression.`,
+        });
+      }
+      const runaway = runawayPatternMessage(
+        "Connection watchdog expect pattern",
+        liveness.expect,
+      );
+      if (runaway) {
+        issues.push({
+          severity: "error",
+          section: "connection",
+          field: "liveness.expect",
+          message: runaway,
         });
       }
     }
@@ -2524,6 +3168,16 @@ function validateSendFrame(
 ): void {
   const sf = draft.send_frame;
   if (!sf) return;
+  if (typeof sf !== "object" || Array.isArray(sf)) {
+    issues.push({
+      severity: "error",
+      section: "connection",
+      field: "send_frame",
+      message:
+        "Send framing must be a block (type, length field size, byte order), not a single value.",
+    });
+    return;
+  }
   const type = sf.type ?? "length_prefix";
   if (type !== "length_prefix") {
     issues.push({
@@ -2554,6 +3208,19 @@ function validateSendFrame(
       field: "send_frame.length_endian",
       message: `Send frame length byte order must be "big" or "little" (got ${String(endian)}).`,
     });
+  }
+  // Literal bytes written before the length field and between it and the
+  // payload — escape strings like "\x02", so they have to be text.
+  for (const key of ["header", "after_length"] as const) {
+    const value = (sf as unknown as Record<string, unknown>)[key];
+    if (value !== undefined && value !== null && typeof value !== "string") {
+      issues.push({
+        severity: "error",
+        section: "connection",
+        field: `send_frame.${key}`,
+        message: `Send frame ${key === "header" ? "header" : "after-length"} bytes must be text, like "\\x02" (got ${String(value)}).`,
+      });
+    }
   }
 }
 
@@ -2616,6 +3283,21 @@ function validateDiscovery(
     ["udp_probe", disc.udp_probe],
   ] as const) {
     if (!probe) continue;
+    // The port the probe dials. A blank or non-numeric one is refused at
+    // load, which takes the whole driver down — not just its discovery.
+    const probePort = (probe as unknown as Record<string, unknown>).port;
+    if (
+      !Number.isInteger(probePort) ||
+      (probePort as number) < 1 ||
+      (probePort as number) > 65535
+    ) {
+      issues.push({
+        severity: "error",
+        section: "discovery",
+        field,
+        message: `The ${field === "tcp_probe" ? "TCP" : "UDP"} probe port must be a whole number between 1 and 65535 (got "${String(probePort)}").`,
+      });
+    }
     const declared = (["expect", "expect_regex", "expect_hex"] as const).filter(
       (k) => probe[k] !== undefined && probe[k] !== "",
     );

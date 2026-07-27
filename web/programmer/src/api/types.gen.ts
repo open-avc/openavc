@@ -35,6 +35,9 @@ export const STATE_VAR_TYPES: ReadonlySet<string> = new Set(["boolean", "enum", 
 /** Types a command/action parameter may declare. */
 export const PARAM_TYPES = ["string", "integer", "number", "boolean", "enum", "child_id"] as const;
 
+/** Sources a param's options_from cascade may read its choices from. */
+export const PARAM_OPTIONS_FROM_SOURCES: ReadonlySet<string> = new Set(["child_schema"]);
+
 /** Types a config_schema field may declare. */
 export const CONFIG_FIELD_TYPES = ["string", "text", "integer", "number", "float", "boolean", "enum", "table"] as const;
 

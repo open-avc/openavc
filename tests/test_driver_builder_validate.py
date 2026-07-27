@@ -27,9 +27,10 @@ Finally, it replays the whole shared rejection corpus
 driver loader refuses — and asserts the Builder reports an error for each
 one. The hand-written scenarios above cover authoring rules the loader has
 no opinion on, which the corpus cannot reach; the corpus covers the loader's
-rules, which hand-written scenarios kept missing. Cases the Builder does not
-flag yet are listed in ``TS_CORPUS_GAPS`` as strict xfails, so implementing
-a rule forces its entry out of the list.
+rules, which hand-written scenarios kept missing. Every case now passes:
+``TS_CORPUS_GAPS`` is empty, so a definition the loader refuses is an error
+in the Builder too, across the whole corpus. A rule that regresses — or a
+case added to the corpus with no Builder rule behind it — fails here.
 
 Skips when the Node toolchain or esbuild is absent — unless the run promised
 Node (see tests/gates.py), in which case it fails instead.
@@ -204,63 +205,13 @@ def test_driver_builder_validate(validate_results: dict, scenario: str) -> None:
 # author fills in a form, hits Save, and gets rejected by the server.
 #
 # Known gaps: cases the loader rejects and the Builder does not flag yet.
-# They are marked xfail(strict=True), so the moment the Builder learns a
-# rule its case fails as an unexpected pass and the entry has to come out.
-# The list only shrinks; adding to it needs a reason in review.
-TS_CORPUS_GAPS = {
-    "action_confirm_bad_type",
-    "action_icon_not_string",
-    "action_label_not_string",
-    "action_param_pattern_redos",
-    "action_params_not_mapping",
-    "auth_redos_pattern",
-    "child_state_variable_bad_cloud_priority",
-    "child_state_variable_control_not_bool",
-    "child_state_variable_not_mapping",
-    "child_state_variable_unit_not_string",
-    "child_state_variable_unknown_type",
-    "child_type_def_not_mapping",
-    "command_prefix_not_string",
-    "command_suffix_not_string",
-    "device_setting_min_greater_than_max",
-    "device_setting_state_key_undeclared",
-    "device_setting_unknown_type",
-    "discovery_invalid_block",
-    "instances_count_from_state_not_string",
-    "instances_count_from_state_undeclared",
-    "instances_ids_non_scalar",
-    "instances_label_not_string",
-    "liveness_expect_not_string",
-    "liveness_expect_redos",
-    "param_decimals_negative",
-    "param_min_greater_than_max",
-    "param_min_not_number",
-    "param_options_from_bad_source",
-    "param_options_from_not_mapping",
-    "param_options_from_param_missing",
-    "param_options_from_param_not_sibling",
-    "param_options_from_sibling_not_child_id",
-    "param_options_state_empty",
-    "param_pattern_redos",
-    "param_trim_not_bool",
-    "param_type_from_not_mapping",
-    "param_type_from_param_missing",
-    "param_type_from_param_not_sibling",
-    "param_type_from_sibling_not_cascade",
-    "polling_interval_inert",
-    "polling_not_mapping",
-    "query_entry_query_for_empty",
-    "query_entry_query_for_undeclared_var",
-    "response_redos_pattern",
-    "send_frame_header_not_string",
-    "send_frame_not_mapping",
-    "state_variable_bad_cloud_priority",
-    "state_variable_control_not_bool",
-    "state_variable_not_dict",
-    "state_variable_unit_not_string",
-    "state_variables_not_mapping",
-    "unsupported_transport",
-}
+# EMPTY, and meant to stay that way — the Builder now flags all 219. An entry
+# here is marked xfail(strict=True), so the moment the Builder learns a rule
+# its case fails as an unexpected pass and the entry has to come out; the
+# list only shrinks. Adding one back needs a reason in review: it means a
+# definition the loader refuses saves cleanly in the Builder and is rejected
+# by the server afterwards, which is the failure this corpus exists to stop.
+TS_CORPUS_GAPS: set[str] = set()
 
 CORPUS_CASES = sorted(json.loads(CASES_FIXTURE.read_text(encoding="utf-8")))
 
