@@ -24,6 +24,7 @@ from server.drivers.base import (
     normalize_and_validate_command_params,
     validate_device_setting_value,
 )
+from server.drivers.child_ids import child_id_kind, coerce_child_local_id
 from server.core.event_bus import EventBus
 from server.core.state_store import StateStore
 from server.utils.logger import get_logger
@@ -546,7 +547,11 @@ class DeviceManager:
         used to hand-convert each param — now the platform does it, so a
         driver can pass ``params["outlet"]`` straight to the child API
         (``int(int)`` keeps hand-converting drivers working). String-id
-        types pass through untouched.
+        types pass through untouched — the driver receives what the caller
+        sent, and only the integer kind has a wire form to normalize.
+
+        The coercion rule itself lives in ``drivers/child_ids``; this method
+        owns which params it applies to and what a failure means here.
         """
         if not params:
             return params
@@ -563,21 +568,18 @@ class DeviceManager:
             if not isinstance(pdef, dict) or pdef.get("type") != "child_id":
                 continue
             value = out.get(name)
-            if value is None or isinstance(value, bool):
+            if value is None:
                 continue
             type_def = child_types.get(pdef.get("child_type"))
-            id_format = (type_def or {}).get("id_format") or {}
-            if id_format.get("type", "integer") != "integer":
+            if child_id_kind(type_def) != "integer":
                 continue
-            if isinstance(value, int):
-                continue
-            try:
-                out[name] = int(str(value).strip())
-            except ValueError:
+            coerced = coerce_child_local_id(type_def, value)
+            if coerced is None:
                 raise CommandParamError(
                     f"'{command}': '{name}' must be a child id number, "
                     f"got {value!r}"
-                ) from None
+                )
+            out[name] = coerced
         return out
 
     def get_device_info(self, device_id: str) -> dict[str, Any]:

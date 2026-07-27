@@ -22,6 +22,7 @@ from server.api.models import (
 from server.core.project_loader import ChildEntityConfig, DeviceConfig
 from server.core.project_migration import CONNECTION_FIELDS
 from server.drivers.base import CommandParamError, DeviceSettingValueError
+from server.drivers.child_ids import child_id_kind, coerce_child_local_id
 
 router = APIRouter()
 
@@ -785,23 +786,19 @@ def _coerce_local_id(
     types: dict[str, Any], child_type: str, raw: str,
 ) -> int | str:
     """Coerce a path-component ``local_id`` to the kind the child type
-    declares. String-id types take the value verbatim; integer-id types
-    parse it to ``int`` (a non-integer reads as 404 — same 'not found'
-    semantics as an out-of-range id).
+    declares, per the shared rule in ``drivers/child_ids``.
+
+    A value that can't be that kind reads as 404 — the same 'not found'
+    semantics as an out-of-range id, since neither can name a real child.
     """
-    id_kind = (
-        types.get(child_type, {}).get("id_format", {}).get("type", "integer")
-    )
-    if id_kind == "string":
-        return raw
-    try:
-        return int(raw)
-    except (ValueError, TypeError):
+    coerced = coerce_child_local_id(types.get(child_type), raw)
+    if coerced is None:
         raise HTTPException(
             status_code=404,
-            detail=f"Invalid integer local_id {raw!r} for child type "
-                   f"'{child_type}'",
-        ) from None
+            detail=f"Invalid {child_id_kind(types.get(child_type))} local_id "
+                   f"{raw!r} for child type '{child_type}'",
+        )
+    return coerced
 
 
 def _ensure_driver_for_children(engine: Any, device_id: str):
