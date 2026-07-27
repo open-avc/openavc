@@ -548,8 +548,7 @@ class CloudAgent:
                 # cloud still sends the full `enabled_capabilities` list
                 # for back-compat, so we have to subtract the disabled
                 # features here. Without this, an outdated agent would
-                # accept feature messages the cloud expects it to reject
-                # (spec openavc-update-spec.md:326-335). See A59.
+                # accept feature messages the cloud expects it to reject.
                 features_disabled = result.upgrade_required.get("features_disabled") or []
                 if features_disabled:
                     removed = [c for c in self._enabled_capabilities if c in features_disabled]

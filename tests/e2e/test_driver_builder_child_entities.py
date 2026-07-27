@@ -1,7 +1,6 @@
 """Playwright test for declaring child entity types in the Driver Builder.
 
-Covers the P8 acceptance from openavc-device-children-plan.md §Sequencing
-step 7: an author opens the Driver Builder, declares a child entity type
+Covers the authoring round-trip: an author opens the Driver Builder, declares a child entity type
 with a state field, saves, and the declaration round-trips through the
 .avcdriver YAML on disk and back into the editor after a full reload.
 

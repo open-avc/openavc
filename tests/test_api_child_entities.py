@@ -1,7 +1,7 @@
 """Tests for the child-entity REST endpoints under ``/api/devices/{id}/children``.
 
-Covers the P5 surface from openavc-device-children-plan.md: list (all types,
-single type, single child), PATCH (label + config persistence + live state
+Covers the child-entity REST surface: list (all types, single type,
+single child), PATCH (label + config persistence + live state
 mirror), and refresh hook. Uses the same MagicMock-engine pattern as
 ``test_api_endpoints.py`` but swaps in a real driver instance + real
 DeviceConfig so the route's interaction with the driver and project file

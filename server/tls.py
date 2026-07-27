@@ -1,7 +1,5 @@
 """TLS certificate generation and loading for OpenAVC HTTPS support.
 
-Closes openavc-backlog.md §11 ("HTTPS / TLS Support").
-
 This module handles:
 - Auto-generating a self-signed CA + leaf cert pair on first start.
 - Loading user-provided certs and validating them up-front.

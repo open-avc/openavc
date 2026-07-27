@@ -1,14 +1,11 @@
 """StateStore performance tests.
 
-Acceptance for P1 of the device-with-children plan: prefix-index +
-bulk-callback subscription must let StateStore handle controller-shaped
+Prefix-index + bulk-callback subscription must let StateStore handle controller-shaped
 workloads (~40k keys, mix of wildcard + narrow subscribers) without
 blocking the event loop for seconds.
 
-Thresholds come from the measured 'pre-optimization' baseline documented
-in ``openavc-device-children-plan.md`` (V3 / "Verified performance
-characteristics"). The 40k-key set_batch was 1,700 ms before this work;
-target is under 100 ms.
+Thresholds come from the measured pre-optimization baseline: the 40k-key
+set_batch took 1,700 ms before this work; target is under 100 ms.
 
 The subscriber mix mirrors a realistic in-production OpenAVC instance
 running one large controller-style device:

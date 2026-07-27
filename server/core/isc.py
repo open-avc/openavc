@@ -1038,8 +1038,7 @@ class ISCManager:
 
         When ``scheme`` is "https", connects via wss:// with an unverified
         SSL context — peers are self-signed by design (loopback / local LAN
-        trust model). See openavc-https-tls-plan.md §"ISC (Inter-System
-        Communication) — TLS-aware peers".
+        trust model).
         """
         import websockets
 

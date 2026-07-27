@@ -6,9 +6,9 @@ state-key surface they use for top-level device state — there's no
 dedicated child-entity API. This file verifies that contract end-to-end
 so future refactors can't silently strand the consumers.
 
-Plan section: openavc-device-children-plan.md §9 "ScriptAPI / PluginAPI /
-Macro / Trigger updates" — the section explicitly notes that no API
-changes are expected and mostly tests are required.
+None of these consumers needed an API change to reach child entities —
+the flat state-key surface already covered them. That is precisely why
+the contract needs tests to hold it in place.
 """
 
 from __future__ import annotations

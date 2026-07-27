@@ -1,7 +1,6 @@
 """Playwright tests for the Programmer IDE Child Entities tab.
 
-Covers the four scenarios from openavc-device-children-plan.md §Test plan
--> IDE (Playwright). Each test spawns a real ``server.main`` subprocess
+Covers the four Child Entities tab scenarios. Each test spawns a real ``server.main`` subprocess
 seeded with the ``e2e_test_controller`` synthetic driver (declared in
 ``_controller_driver_src.py``, copied into ``driver_repo/`` for the session
 by conftest). Tests navigate to the device detail view in a real Chromium,

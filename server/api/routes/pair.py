@@ -5,7 +5,7 @@ shown in the Programmer IDE Panel Access card. It gives scanners a choice
 between opening the web panel in a browser and installing the native app.
 
 Deep-link handoff to the native mobile app (custom URL scheme / Android
-intent URL) is intentionally deferred — see openavc-backlog.md §15.
+intent URL) is intentionally deferred until the native apps ship.
 """
 
 from __future__ import annotations
@@ -130,7 +130,7 @@ _PAGE_TEMPLATE = """<!DOCTYPE html>
 
 
 # Marketing page that will redirect to the right app store / download
-# once the native apps ship. See openavc-mobile-panel-plan.md Phase 1/2.
+# once the native apps ship.
 _APP_DOWNLOAD_URL = "https://openavc.com/panel-app"
 
 # Docs site hosts the Android + iOS dedicated-panel walkthroughs; the

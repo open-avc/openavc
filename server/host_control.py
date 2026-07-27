@@ -1,4 +1,4 @@
-"""Privileged host actions via a root-owned helper (C10).
+"""Privileged host actions via a root-owned helper.
 
 The server runs unprivileged (the Pi/Linux ``openavc.service`` sets
 ``NoNewPrivileges=true``, which makes setuid bits — and therefore ``sudo`` —
@@ -13,8 +13,7 @@ Availability is gated on the helper being installed (``helper_available()``).
 The Pi appliance image installs it (see ``installer/pi-image``); every other
 target — generic Linux ``install.sh``, Docker, Windows, dev — does not, so all
 of these calls are clean no-ops there (an admin manages their own OS account /
-sshd on a general-purpose box). Design notes: ``openavc-auth-posture-plan.md``
-(C10 section).
+sshd on a general-purpose box).
 
 Request shapes written to ``{data_dir}/priv-requests/<id>.json``:
 - ``{"action": "set_password"}`` — helper reads ``auth.programmer_password``
