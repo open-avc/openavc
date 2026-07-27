@@ -83,8 +83,6 @@ RUNTIME_OPT_OUT = {
 # and keep the reason honest: "deliberate" and "not built yet" are different
 # things and the difference is what a later reader needs.
 FRONTEND_OPT_OUT = {
-    "available_offline": "No editor yet: whether a command runs while the "
-                         "device is offline can only be set by hand in YAML.",
     "cert_subject": "No editor yet: the discovery probe's TLS pair (tls + "
                     "cert_subject) is not in the discovery hints editor.",
     "json_path": "No editor yet: a response mapping that pulls its value out "

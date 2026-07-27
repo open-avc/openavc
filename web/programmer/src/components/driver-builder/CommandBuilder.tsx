@@ -312,6 +312,48 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
                   </div>
                 )}
 
+                {/* Lift the connected-gate for this one command. Transport
+                    independent, so unlike the raw-framing flag above it shows
+                    for every command on every transport. */}
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 6,
+                    fontSize: "var(--font-size-sm)",
+                    color: "var(--text-secondary)",
+                    marginBottom: "var(--space-md)",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!cmd.available_offline}
+                    onChange={(e) =>
+                      updateCommand(name, {
+                        available_offline: e.target.checked || undefined,
+                      })
+                    }
+                    style={{ marginTop: 3 }}
+                  />
+                  <span>
+                    Runs while the device is offline
+                    <div
+                      style={{
+                        fontSize: "11px",
+                        color: "var(--text-muted)",
+                        marginTop: "var(--space-xs)",
+                      }}
+                    >
+                      Normally a command to a disconnected device is refused.
+                      Tick this only when the command needs no live connection
+                      — a Wake-on-LAN power on, which sends a magic packet
+                      rather than talking over the dead control link. A Quick
+                      Action button for it also stays available while the
+                      device is offline.
+                    </div>
+                  </span>
+                </label>
+
                 <ParamEditor
                   params={cmd.params}
                   childTypes={Object.keys(draft.child_entity_types ?? {})}
