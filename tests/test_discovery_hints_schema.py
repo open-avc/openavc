@@ -524,14 +524,37 @@ class TestTopLevelParser:
             parse_driver_discovery(_drv("bad", typo_field=["x"]))
 
     def test_no_signals_warns_but_loads(self, caplog):
-        # A driver with no fingerprints and no hints is almost
-        # certainly a mistake — log a warning, but don't reject.
+        # A driver that DECLARED a discovery block and put no signals in it
+        # is almost certainly a mistake — log a warning, but don't reject.
         import logging
         with caplog.at_level(logging.WARNING, logger="discovery.hints"):
             h = parse_driver_discovery(_drv("ghost"))
         assert h is not None
         assert "ghost" in caplog.text
         assert "never participate in matching" in caplog.text
+
+    def test_no_discovery_block_at_all_is_silent(self, caplog):
+        """Declaring no block is the normal state, not a mistake.
+
+        A serial projector, a software endpoint, or any driver built in the
+        Driver Builder without hints simply isn't discoverable. Warning about
+        it puts an orange badge in the IDE's activity feed next to a correct
+        driver — and the message ("discovery block declares no fingerprints")
+        isn't even true when there is no block.
+        """
+        import logging
+        driver = {
+            "id": "serial_only",
+            "name": "Serial Only",
+            "manufacturer": "Acme",
+            "category": "audio",
+            "transport": "serial",
+        }
+        assert "discovery" not in driver
+        with caplog.at_level(logging.WARNING, logger="discovery.hints"):
+            h = parse_driver_discovery(driver)
+        assert h is not None  # still parses, still loads
+        assert "never participate in matching" not in caplog.text
 
     def test_fingerprint_alone_silences_warning(self, caplog):
         import logging

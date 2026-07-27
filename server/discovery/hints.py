@@ -784,9 +784,13 @@ def parse_driver_discovery(driver_info: dict[str, Any]) -> DiscoveryHint | None:
     unknown ``requires`` key, so either way the driver's hints skip
     cleanly on old platforms and the rest of the catalog stays live.
 
-    A driver with no fingerprints and no hints can still parse — it
-    simply never participates in matching, which is logged as a
-    warning.
+    A driver that *declares* a ``discovery:`` block with no fingerprints
+    and no hints can still parse — it simply never participates in
+    matching, which is logged as a warning. A driver that declares no
+    block at all is silent: not being discoverable is the normal state
+    for a serial device, a software endpoint, or anything an integrator
+    builds in the Driver Builder without hints, and warning about it puts
+    an orange badge in the IDE next to a perfectly correct driver.
     """
     driver_id = str(driver_info.get("id") or "").strip()
     if not driver_id:
@@ -794,6 +798,10 @@ def parse_driver_discovery(driver_info: dict[str, Any]) -> DiscoveryHint | None:
 
     if any(driver_id.startswith(p) for p in _TEMPLATE_PREFIXES):
         return None
+
+    # Whether the author asked to be discoverable at all, which is what
+    # decides if a signal-less block is worth warning about below.
+    declared_discovery = "discovery" in driver_info
 
     discovery = driver_info.get("discovery") or {}
     if not isinstance(discovery, dict):
@@ -955,7 +963,9 @@ def parse_driver_discovery(driver_info: dict[str, Any]) -> DiscoveryHint | None:
         or bool(hint.port_open)
         or bool(hint.manufacturer_alias)
     )
-    if not has_any_signal:
+    # Only a declared block can "declare no fingerprints" — without one the
+    # message would not even be true, and the driver never asked to match.
+    if not has_any_signal and declared_discovery:
         log.warning(
             "%s: discovery block declares no fingerprints or hints; "
             "this driver will never participate in matching.",
