@@ -16,20 +16,24 @@ import pytest
 
 from server.core.plugin_installer import (
     CommunityPluginCache,
-    _detect_archive_format,
-    _install_deps_from_pypi,
-    _install_native_dep_archive,
     _install_pip_deps,
-    _normalize_pkg_name,
-    _parse_requirement,
-    _read_wheel_deps,
     _register_installed_plugin,
-    _resolve_version,
-    _version_tuple,
     get_plugin_data_info,
     install_plugin,
     list_installed_plugins,
     uninstall_plugin,
+)
+from server.core.plugin_native_deps import (
+    _detect_archive_format,
+    _install_native_dep_archive,
+)
+from server.core.plugin_wheels import (
+    _install_deps_from_pypi,
+    _normalize_pkg_name,
+    _parse_requirement,
+    _read_wheel_deps,
+    _resolve_version,
+    _version_tuple,
 )
 from server.core.plugin_loader import _PLUGIN_CLASS_REGISTRY, register_plugin_class
 
@@ -744,7 +748,7 @@ class TestInstallPipDeps:
 
         with patch(
             "asyncio.create_subprocess_exec", new=AsyncMock(return_value=_mock_pip_proc())
-        ) as mock_exec, patch("server.core.plugin_installer.subprocess.run") as mock_run:
+        ) as mock_exec, patch("subprocess.run") as mock_run:
             await _install_pip_deps("deps_plugin", plugin_dir)
 
         # Async subprocess, never the sync blocking call (V-LC-007)
@@ -786,7 +790,7 @@ class TestInstallPipDeps:
         try:
             with patch(
                 "asyncio.create_subprocess_exec", new=AsyncMock(return_value=proc)
-            ), patch("server.core.plugin_installer.subprocess.run"):
+            ), patch("subprocess.run"):
                 await _install_pip_deps("deps_plugin", plugin_dir)
         finally:
             hb.cancel()
@@ -1002,8 +1006,8 @@ class TestInstallDepsFromPyPI:
         )
 
         with (
-            patch("server.core.plugin_installer.sys") as mock_sys,
-            patch("server.core.plugin_installer._install_deps_from_pypi") as mock_pypi,
+            patch("server.core.plugin_wheels.sys") as mock_sys,
+            patch("server.core.plugin_wheels._install_deps_from_pypi") as mock_pypi,
         ):
             mock_sys.frozen = True
             mock_sys.version_info = MagicMock(major=3, minor=12)
@@ -1091,7 +1095,7 @@ class TestInstallNativeDepArchive:
         """The SSRF guard resolves the URL host; these extraction tests use
         unresolvable example hosts, so stub it out (it has its own tests)."""
         with patch(
-            "server.core.plugin_installer._validate_download_url",
+            "server.core.plugin_native_deps._validate_download_url",
             new_callable=AsyncMock,
         ):
             yield

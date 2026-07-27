@@ -18,18 +18,22 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+import server.core.plugin_artifacts as artifacts
+import server.core.plugin_native_deps as native_deps
 import server.core.plugin_installer as pi
-from server.core.plugin_installer import (
+from server.core.plugin_artifacts import (
     _check_zip_bomb,
     _DownloadBudget,
     _download_capped,
-    _is_safe_entry_name,
-    _is_safe_requirement,
-    _validate_catalog_url,
     _validate_download_url,
+)
+from server.core.plugin_installer import (
+    _is_safe_entry_name,
+    _validate_catalog_url,
     install_plugin,
     update_plugin,
 )
+from server.core.plugin_wheels import _is_safe_requirement
 
 CATALOG = "https://raw.githubusercontent.com/open-avc/openavc-plugins/main"
 
@@ -218,7 +222,7 @@ class TestDownloadUrlSSRF:
         info = {"type": "zip", "url": "https://metadata.test/x.zip", "extract": "f"}
         with self._patch_resolution("169.254.169.254"):
             with pytest.raises(ValueError, match="disallowed"):
-                await pi._install_native_dep_archive("dep", info, deps_dir)
+                await native_deps._install_native_dep_archive("dep", info, deps_dir)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -261,7 +265,7 @@ class TestSafeRequirement:
             '"dependencies": ["--index-url=http://evil/simple/", "requests"]}\n',
             encoding="utf-8",
         )
-        with patch("server.core.plugin_installer.subprocess.run") as mock_run:
+        with patch("subprocess.run") as mock_run:
             with pytest.raises(ValueError, match="Unsafe dependency"):
                 await pi._install_pip_deps("evilpip", plugin_dir)
         mock_run.assert_not_called()  # never reached pip
@@ -448,7 +452,7 @@ class TestDownloadCaps:
         assert out == b"hello"
 
     def test_zip_bomb_member_count(self, monkeypatch):
-        monkeypatch.setattr(pi, "_MAX_ARCHIVE_MEMBERS", 2)
+        monkeypatch.setattr(artifacts, "_MAX_ARCHIVE_MEMBERS", 2)
         buf = BytesIO()
         with zipfile.ZipFile(buf, "w") as zf:
             for i in range(3):
@@ -458,7 +462,7 @@ class TestDownloadCaps:
                 _check_zip_bomb(zf)
 
     def test_zip_bomb_uncompressed_size(self, monkeypatch):
-        monkeypatch.setattr(pi, "_MAX_UNCOMPRESSED_BYTES", 10)
+        monkeypatch.setattr(artifacts, "_MAX_UNCOMPRESSED_BYTES", 10)
         buf = BytesIO()
         with zipfile.ZipFile(buf, "w") as zf:
             zf.writestr("big.txt", b"x" * 100)
@@ -485,7 +489,7 @@ class TestDownloadCaps:
         with zipfile.ZipFile(buf, "w") as zf:
             zf.writestr("bomb/bomb_plugin.py", b"x" * 100)
         client = _download_client(stream=buf.getvalue())
-        with patch.object(pi, "_MAX_UNCOMPRESSED_BYTES", 10):
+        with patch.object(artifacts, "_MAX_UNCOMPRESSED_BYTES", 10):
             with patch("server.core.plugin_installer.httpx.AsyncClient", return_value=client):
                 with pytest.raises(ValueError, match="too large uncompressed"):
                     await install_plugin("bomb", f"{CATALOG}/bomb.zip")
