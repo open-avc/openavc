@@ -28,7 +28,7 @@ V1_SOURCE = textwrap.dedent("""\
     from openavc import on_event, state
 
     @on_event("test.ping")
-    async def handle(event, payload):
+    async def handle(event):
         state.set("var.pong", "v1")
 """)
 

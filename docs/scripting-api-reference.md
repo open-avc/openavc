@@ -32,11 +32,8 @@ async def handle(event):
     ...
 ```
 
-**Handler signatures:**
-- `async def handler(event)` receives an `Event` object (recommended)
-- `async def handler(event_name, payload)` receives string + dict (legacy)
-
-The engine detects the parameter count automatically.
+The handler takes one argument, the `Event` object. A handler that cannot
+accept it is refused when the script loads, with an error naming the handler.
 
 ### @on_state_change(pattern)
 

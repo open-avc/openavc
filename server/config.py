@@ -9,10 +9,9 @@ Backward-compatible module-level constants for existing code that does:
 
 import os
 
-from server.system_config import get_system_config, get_data_dir, APP_DIR
+from server.system_config import get_system_config, get_data_dir
 
 # Paths
-BASE_DIR = APP_DIR
 # The default project lives in the data directory with the rest of the
 # persistent user data (driver_repo, plugin_repo, saved_projects). Packaged
 # deployments set OPENAVC_PROJECT explicitly; this default covers development
@@ -73,12 +72,6 @@ LOG_LEVEL: str = _cfg.get("logging", "level", "info")
 PROGRAMMER_PASSWORD: str = _cfg.get("auth", "programmer_password", "")
 API_KEY: str = _cfg.get("auth", "api_key", "")
 PANEL_LOCK_CODE: str = _cfg.get("auth", "panel_lock_code", "")
-
-# Inter-System Communication
-ISC_ENABLED: bool = _cfg.get("isc", "enabled", True)
-
-# mDNS Service Advertisement
-MDNS_ADVERTISE: bool = _cfg.get("discovery", "advertise", True)
 
 # Rate Limiting (not in system.json, env-only for now)
 RATE_LIMIT_ENABLED = os.environ.get("OPENAVC_RATE_LIMIT_ENABLED", "true").lower() == "true"

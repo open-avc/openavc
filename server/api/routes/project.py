@@ -66,21 +66,26 @@ async def save_project_config(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=422, detail="Project must be a JSON object")
     engine = _get_engine()
 
-    # Optimistic concurrency: If-Match header (preferred) or legacy _revision body field
-    if_match = request.headers.get("if-match")
-    client_revision = body.pop("_revision", None)
+    # Optimistic concurrency: the If-Match header carrying the ETag from the
+    # last GET. A `_revision` body field used to mean the same thing; it is
+    # refused rather than ignored, because the project model allows extra
+    # fields (it would otherwise be persisted into the saved project) and
+    # because a caller sending it believes it is protected from concurrent
+    # saves — dropping it silently is how one session's edit disappears.
+    if "_revision" in body:
+        raise HTTPException(
+            status_code=400,
+            detail="The '_revision' body field is no longer supported. "
+                   "Send the ETag from your last GET /api/project in an If-Match header.",
+        )
 
+    if_match = request.headers.get("if-match")
     expected_rev: int | None = None
     if if_match is not None:
         try:
             expected_rev = int(if_match.strip('"'))
         except (ValueError, TypeError):
             raise HTTPException(status_code=400, detail="Invalid If-Match value")
-    elif client_revision is not None:
-        try:
-            expected_rev = int(client_revision)
-        except (ValueError, TypeError):
-            raise HTTPException(status_code=400, detail="Invalid _revision value")
 
     try:
         # Run the format-migration chain before validating: this door takes

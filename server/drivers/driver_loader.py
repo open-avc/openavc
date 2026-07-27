@@ -899,9 +899,3 @@ def reload_python_driver(
         "driver_id": new_driver_id,
         "old_driver_id": old_driver_id,
     }
-
-
-# --- Backward compatibility aliases ---
-# These map old names to new names so existing code doesn't break during transition
-load_json_driver = load_driver_file
-load_json_drivers = load_driver_files

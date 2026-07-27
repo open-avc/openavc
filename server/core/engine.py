@@ -1451,9 +1451,9 @@ class Engine:
 
     async def _start_isc(self) -> None:
         """Initialize ISC if enabled in both system config and project."""
-        # Read the live system-config value, not the import-time
-        # config.ISC_ENABLED constant, so a PATCH /system/config toggle is
-        # honored on reload/reconcile without a restart.
+        # Read the live system-config value rather than an import-time
+        # constant, so a PATCH /system/config toggle is honored on
+        # reload/reconcile without a restart.
         from server.system_config import get_system_config
         isc_enabled = bool(get_system_config().get("isc", "enabled", True))
         if not self.project or not isc_enabled or not self.project.isc.enabled:
@@ -1521,8 +1521,8 @@ class Engine:
 
     async def _start_mdns_advertiser(self) -> None:
         """Start mDNS service advertisement if enabled in system config."""
-        # Live system-config read (not the import-time config.MDNS_ADVERTISE
-        # constant) so a PATCH /system/config toggle is honored on reconcile.
+        # Live system-config read (not an import-time constant) so a PATCH
+        # /system/config toggle is honored on reconcile.
         from server.system_config import get_system_config
         if not get_system_config().get("discovery", "advertise", True):
             return

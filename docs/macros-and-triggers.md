@@ -251,7 +251,7 @@ Use the search box at the top of the script list to filter by file name.
 from openavc import on_event, devices, state, log, delay
 
 @on_event("ui.press.btn_system_on")
-async def system_on(event, payload):
+async def system_on(event):
     log.info("System ON triggered")
     state.set("var.room_active", True)
 

@@ -163,7 +163,7 @@ async def on_system_ready(event):
 _poll_timer = None
 
 @on_event("system.started")
-async def start_polling(event, payload):
+async def start_polling(event):
     global _poll_timer
 
     async def poll():
@@ -180,7 +180,7 @@ async def start_polling(event, payload):
 
 
 @on_event("system.stopping")
-async def stop_polling(event, payload):
+async def stop_polling(event):
     global _poll_timer
     if _poll_timer:
         cancel_timer(_poll_timer)

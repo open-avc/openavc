@@ -102,3 +102,47 @@ async def test_put_project_concurrent_same_revision_one_loses(engine, monkeypatc
     assert sorted([r1.status_code, r2.status_code]) == [200, 409]
     assert len(saves) == 1
     assert engine._project_revision == 1
+
+
+@pytest.mark.asyncio
+async def test_put_project_legacy_revision_body_field_refused(engine, monkeypatch):
+    """The removed `_revision` body field is refused, never quietly dropped.
+
+    It used to be an alternative to If-Match. Ignoring it would be the worst
+    outcome: the caller thinks it is protected from a concurrent save and
+    isn't, which is the silent lost update the 409 contract exists to stop.
+    Letting it through would be almost as bad — the project model allows
+    extra fields, so it would be persisted into the saved project.
+    """
+    saves = _stub_persistence(engine, monkeypatch)
+    engine._project_revision = 5
+
+    async with _client() as c:
+        resp = await c.put("/api/project", json={**BODY, "_revision": 5})
+
+    assert resp.status_code == 400
+    assert "If-Match" in resp.json()["detail"]
+    assert saves == []
+    assert engine._project_revision == 5
+
+
+@pytest.mark.asyncio
+async def test_put_project_legacy_revision_refused_even_alongside_if_match(
+    engine, monkeypatch
+):
+    """A correct If-Match does not excuse the dead field.
+
+    Accepting the header and silently swallowing the body field would let it
+    ride along into the saved project via the model's extra="allow".
+    """
+    saves = _stub_persistence(engine, monkeypatch)
+    engine._project_revision = 5
+
+    async with _client() as c:
+        resp = await c.put(
+            "/api/project", json={**BODY, "_revision": 5}, headers={"If-Match": '"5"'}
+        )
+
+    assert resp.status_code == 400
+    assert saves == []
+    assert engine._project_revision == 5

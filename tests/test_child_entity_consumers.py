@@ -282,7 +282,7 @@ async def test_script_reads_child_state_via_state_get(script_engine, core, tmp_p
         from openavc import on_event, state
 
         @on_event("test.read_child")
-        async def handle(event, payload):
+        async def handle(event):
             v = state.get("device.ctrl1.encoder.005.signal_present")
             state.set("var.read_value", v)
     """)
@@ -310,7 +310,7 @@ async def test_script_get_namespace_returns_child_state(
         from openavc import on_event, state
 
         @on_event("test.ns")
-        async def handle(event, payload):
+        async def handle(event):
             # get_namespace strips the prefix, so keys come back short.
             ns = state.get_namespace("device.ctrl1.encoder.005")
             state.set("var.ns_count", len(ns))

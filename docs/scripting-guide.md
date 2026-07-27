@@ -30,9 +30,7 @@ You do not need to install anything. The `openavc` module is provided automatica
 
 ### @on_event(pattern)
 
-Register a function to run when an event fires. Two handler signatures are supported:
-
-**Single-parameter (recommended):** Receives an `Event` object with attribute access to payload fields.
+Register a function to run when an event fires. The handler takes one argument: an `Event` object with attribute access to payload fields.
 
 ```python
 @on_event("ui.press.btn_system_on")
@@ -42,15 +40,7 @@ async def handle_system_on(event):
     await devices.send("projector_main", "power_on")
 ```
 
-**Two-parameter (legacy):** Receives `(event_name_str, payload_dict)`. Still fully supported for backward compatibility.
-
-```python
-@on_event("ui.press.btn_system_on")
-async def handle_system_on(event, payload):
-    await devices.send("projector_main", "power_on")
-```
-
-The engine detects the handler's parameter count automatically. No configuration needed.
+If a handler cannot accept that single argument, the script is refused when it loads and the error names the handler, rather than failing later the first time the event happens to fire.
 
 #### Synchronous vs. asynchronous handlers
 

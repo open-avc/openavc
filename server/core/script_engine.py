@@ -37,6 +37,10 @@ if TYPE_CHECKING:
 
 log = get_logger(__name__)
 
+# Stand-in for the Event object when test-binding an @on_event handler's
+# signature at import time. Only its arity matters, never its value.
+_EVENT_ARITY_PROBE = object()
+
 # Tracks how deep a state-change -> @on_state_change -> (macro/state.set) ->
 # state-change chain has recursed. Async state handlers fire as fresh
 # fire-and-forget tasks, so a toggling value (a bool flip, a counter) slips
@@ -200,7 +204,42 @@ class ScriptEngine:
             raise
 
         event_handlers, state_handlers = script_api.drain_pending()
+        self._check_event_handler_signatures(event_handlers)
         return event_handlers, state_handlers, module
+
+    @staticmethod
+    def _check_event_handler_signatures(event_handlers: list) -> None:
+        """Refuse @on_event handlers that can't accept a single Event argument.
+
+        Checked here, in phase 1, so nothing is registered and a hot-reload
+        keeps the running version. The alternative is a TypeError raised deep
+        inside the handler call the first time the event happens to fire —
+        which reads as "my script silently doesn't work" rather than "change
+        the signature".
+
+        Older scripts took ``(event_name, payload)``. That form is gone;
+        naming it in the message is the whole point of checking.
+        """
+        bad: list[str] = []
+        for pattern, handler in event_handlers:
+            try:
+                sig = inspect.signature(handler)
+            except (ValueError, TypeError):
+                # Not introspectable (a builtin or C callable). Let it run and
+                # fail at call time rather than refuse something that works.
+                continue
+            try:
+                sig.bind(_EVENT_ARITY_PROBE)
+            except TypeError:
+                name = getattr(handler, "__name__", "anonymous")
+                bad.append(f"{name}{sig} for '{pattern}'")
+
+        if bad:
+            raise ValueError(
+                "Event handlers take a single argument, the Event object — "
+                "e.g. `async def handler(event):` then read `event.name` and "
+                "`event.payload`. These do not: " + "; ".join(bad)
+            )
 
     def _exec_with_timeout(
         self, script_id: str, code: Any, module: types.ModuleType
@@ -411,30 +450,19 @@ class ScriptEngine:
     def _wrap_event_handler(
         self, handler: Callable, script_id: str
     ) -> Callable:
-        """Wrap an event handler with error protection and Event object support.
+        """Wrap an event handler with error protection.
 
-        Detects handler param count via inspect.signature():
-        - 1 param: pass Event object
-        - 2 params: pass (event_str, payload_dict) for backward compat
+        Handlers take a single ``Event`` argument. Anything that cannot
+        accept one was already refused at import time by
+        ``_check_event_handler_signatures``.
         """
-        # Detect handler signature
-        try:
-            sig = inspect.signature(handler)
-            param_count = len(sig.parameters)
-        except (ValueError, TypeError):
-            param_count = 2  # default to legacy signature
-
         events_ref = self.events
 
         async def wrapped(event: str, payload: dict[str, Any]) -> None:
             with script_api.current_script_context(script_id):
                 try:
-                    if param_count == 1:
-                        from server.core.script_api import Event
-                        evt = Event(event, payload)
-                        result = handler(evt)
-                    else:
-                        result = handler(event, payload)
+                    from server.core.script_api import Event
+                    result = handler(Event(event, payload))
                     if asyncio.iscoroutine(result):
                         await asyncio.wait_for(result, timeout=self.HANDLER_TIMEOUT)
                     # A synchronous handler has, by this point, already run to

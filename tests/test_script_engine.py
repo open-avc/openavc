@@ -84,8 +84,8 @@ async def test_load_event_handler(engine, subsystems, script_dir):
         from openavc import on_event, state
 
         @on_event("custom.test")
-        async def handle(event, payload):
-            state.set("var.event_fired", payload.get("msg", ""))
+        async def handle(event):
+            state.set("var.event_fired", event.get("msg", ""))
     """)
 
     engine.load_scripts([{"id": "test2", "file": "test2.py", "enabled": True}])
@@ -98,7 +98,7 @@ async def test_disabled_script_not_loaded(engine, script_dir):
     _write_script(script_dir, "skip.py", """\
         from openavc import on_event
         @on_event("should.not.register")
-        async def handle(event, payload):
+        async def handle(event):
             pass
     """)
 
@@ -120,7 +120,7 @@ async def test_handler_error_is_caught(engine, subsystems, script_dir):
         from openavc import on_event
 
         @on_event("boom")
-        async def handle(event, payload):
+        async def handle(event):
             raise RuntimeError("script error")
     """)
 
@@ -154,7 +154,7 @@ async def test_unload_removes_handlers(engine, subsystems, script_dir):
         from openavc import on_event, on_state_change
 
         @on_event("test.unload")
-        async def h1(event, payload):
+        async def h1(event):
             pass
 
         @on_state_change("var.unload")
@@ -213,7 +213,7 @@ async def test_multiple_handlers_in_one_script(engine, subsystems, script_dir):
         from openavc import on_event, on_state_change, state
 
         @on_event("custom.a")
-        async def h1(event, payload):
+        async def h1(event):
             state.set("var.a", "yes")
 
         @on_state_change("var.trigger")
@@ -321,6 +321,136 @@ async def test_script_absolute_path_is_refused(engine, subsystems, script_dir, t
     assert count == 0
     assert state.get("var.pwned2") is None
     assert "abs" in engine.get_load_errors()
+
+
+# ===== @on_event handlers take a single Event argument =====
+
+
+async def test_event_handler_receives_event_object(engine, subsystems, script_dir):
+    """The handler's one argument is an Event — name plus payload access."""
+    state, events, devices = subsystems
+
+    _write_script(script_dir, "evt.py", """\
+        from openavc import on_event, state
+
+        @on_event("custom.shape")
+        async def handle(event):
+            state.set("var.name", event.name)
+            state.set("var.attr", event.msg)
+            state.set("var.get", event.get("missing", "fallback"))
+            state.set("var.payload_key", list(event.payload)[0])
+    """)
+
+    engine.load_scripts([{"id": "evt", "file": "evt.py", "enabled": True}])
+    await events.emit("custom.shape", {"msg": "hi"})
+
+    assert state.get("var.name") == "custom.shape"
+    assert state.get("var.attr") == "hi"
+    assert state.get("var.get") == "fallback"
+    assert state.get("var.payload_key") == "msg"
+
+
+async def test_two_param_event_handler_refused_at_load(engine, subsystems, script_dir):
+    """The removed (event_name, payload) form fails the load, naming the handler.
+
+    It must not register and then blow up with a TypeError the first time the
+    event fires — that surfaces as "my script silently doesn't work".
+    """
+    state, events, devices = subsystems
+
+    _write_script(script_dir, "legacy.py", """\
+        from openavc import on_event, state
+
+        @on_event("custom.legacy")
+        async def handle(event, payload):
+            state.set("var.legacy_ran", "yes")
+    """)
+
+    count = engine.load_scripts(
+        [{"id": "legacy", "file": "legacy.py", "enabled": True}]
+    )
+
+    assert count == 0
+    errors = engine.get_load_errors()
+    assert "legacy" in errors
+    assert "handle" in errors["legacy"]
+    assert "single argument" in errors["legacy"]
+
+    # Nothing registered, so firing the event does nothing.
+    await events.emit("custom.legacy", {})
+    assert state.get("var.legacy_ran") is None
+
+
+async def test_flexible_event_handler_signatures_still_load(
+    engine, subsystems, script_dir
+):
+    """Anything that CAN take one positional arg is fine — only arity is checked.
+
+    *args and extra-with-defaults are legitimate handlers; the check must not
+    reject them just because the parameter count isn't literally 1.
+    """
+    state, events, devices = subsystems
+
+    _write_script(script_dir, "flex.py", """\
+        from openavc import on_event, state
+
+        @on_event("custom.star")
+        async def star(*args):
+            state.set("var.star", args[0].name)
+
+        @on_event("custom.default")
+        async def with_default(event, extra=None):
+            state.set("var.default", event.name)
+    """)
+
+    count = engine.load_scripts([{"id": "flex", "file": "flex.py", "enabled": True}])
+    assert count == 2
+    assert engine.get_load_errors().get("flex") is None
+
+    await events.emit("custom.star", {})
+    await events.emit("custom.default", {})
+    assert state.get("var.star") == "custom.star"
+    assert state.get("var.default") == "custom.default"
+
+
+async def test_two_param_handler_refusal_keeps_running_version_on_reload(
+    engine, subsystems, script_dir
+):
+    """A bad-signature hot-reload leaves the loaded version registered.
+
+    The arity check runs in import phase 1, so it inherits the existing
+    "a failed re-import doesn't disturb the running script" guarantee.
+    """
+    state, events, devices = subsystems
+
+    _write_script(script_dir, "hot.py", """\
+        from openavc import on_event, state
+
+        @on_event("custom.hot")
+        async def handle(event):
+            state.set("var.version", "v1")
+    """)
+    engine.load_scripts([{"id": "hot", "file": "hot.py", "enabled": True}])
+    await events.emit("custom.hot", {})
+    assert state.get("var.version") == "v1"
+
+    # Rewrite with the dead signature and hot-reload.
+    _write_script(script_dir, "hot.py", """\
+        from openavc import on_event, state
+
+        @on_event("custom.hot")
+        async def handle(event, payload):
+            state.set("var.version", "v2")
+    """)
+    result = engine.reload_script({"id": "hot", "file": "hot.py", "enabled": True})
+    assert result["status"] == "error"
+    assert "single argument" in result["error"]
+    assert result["old_script_preserved"] is True
+
+    # v1 is still the one running.
+    state.set("var.version", "cleared")
+    await events.emit("custom.hot", {})
+    assert state.get("var.version") == "v1"
 
 
 # ===== H-068: bounded state-change cascade =====
