@@ -83,10 +83,6 @@ RUNTIME_OPT_OUT = {
 # and keep the reason honest: "deliberate" and "not built yet" are different
 # things and the difference is what a later reader needs.
 FRONTEND_OPT_OUT = {
-    "cert_subject": "No editor yet: the discovery probe's TLS pair (tls + "
-                    "cert_subject) is not in the discovery hints editor.",
-    "json_path": "No editor yet: a response mapping that pulls its value out "
-                 "of a JSON string can only be written by hand in YAML.",
     "receive": "Deliberate: simulator command handlers have no form UI. The "
                "editor shows a count and says to edit the file directly.",
     "respond": "Deliberate: simulator command handlers have no form UI. The "

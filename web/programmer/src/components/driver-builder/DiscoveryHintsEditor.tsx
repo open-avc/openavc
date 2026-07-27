@@ -523,6 +523,18 @@ function ProbeBlock({
     onChange({ ...rest, [expectMode]: val });
   };
 
+  // cert_subject is only meaningful over TLS — the loader refuses a probe
+  // that declares one without the other (hints.py). Dropping it here means
+  // the editor cannot produce that combination in the first place.
+  const setTls = (next: boolean) => {
+    if (next) {
+      onChange({ ...probe, tls: true });
+      return;
+    }
+    const { tls: _t, cert_subject: _c, ...rest } = probe;
+    onChange(rest);
+  };
+
   const expectPlaceholder =
     expectMode === "expect_regex"
       ? "^NS-([A-Z0-9]+)"
@@ -611,6 +623,55 @@ function ProbeBlock({
             sendMode !== "none" &&
             " TCP probes that send bytes also need a matcher."}
         </div>
+
+        {kind === "tcp" && (
+          <>
+            <div style={ROW}>
+              <span style={FIELD_W}>TLS</span>
+              <label
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  fontSize: 11,
+                  color: "var(--text-muted)",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={!!probe.tls}
+                  onChange={(e) => setTls(e.target.checked)}
+                />
+                wrap the connection in TLS
+              </label>
+            </div>
+            {probe.tls && (
+              <div style={ROW}>
+                <span style={FIELD_W}>Cert subject</span>
+                <input
+                  type="text"
+                  placeholder="CN=ACME-"
+                  value={probe.cert_subject ?? ""}
+                  onChange={(e) =>
+                    onChange({
+                      ...probe,
+                      cert_subject: e.target.value || undefined,
+                    })
+                  }
+                  style={MONO}
+                />
+              </div>
+            )}
+            <div style={{ ...HELP, marginTop: 0 }}>
+              Turn TLS on for a device that only answers over HTTPS. With it
+              on you can also match the name on the device's own certificate —
+              a regex against the certificate subject, which identifies gear
+              that says nothing useful on the wire. A probe with only a
+              certificate subject and no send/expect matches on the
+              certificate alone.
+            </div>
+          </>
+        )}
 
         <div style={ROW}>
           <span style={FIELD_W}>Manufacturer</span>

@@ -65,7 +65,9 @@ export function getMappings(
  *  the state variable's declared type, while an explicit mapping coerces by
  *  its own `type` (default "string"), so a row only fits when its effective
  *  type equals the declared type — otherwise a type the author chose would be
- *  silently discarded on save. Rows with `map`/`arg` extras never fit. */
+ *  silently discarded on save. Rows with `map`/`arg`/`json_path` extras never
+ *  fit — the shorthand has nowhere to put them, so choosing it would drop
+ *  what the author just typed. */
 export function canUseSetShorthand(
   mappings: DriverResponseMapping[],
   stateVariables: Record<string, StateVarDefLike | undefined>,
@@ -78,6 +80,7 @@ export function canUseSetShorthand(
     seenStates.add(m.state);
     if (m.arg !== undefined) return false;
     if (m.map !== undefined) return false;
+    if (m.json_path !== undefined) return false;
     if ((m.type ?? "string") !== declaredStateType(stateVariables, m.state)) {
       return false;
     }

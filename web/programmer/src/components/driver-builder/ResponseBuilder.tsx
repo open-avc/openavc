@@ -513,6 +513,25 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
                 <option value="float">Float</option>
                 <option value="boolean">Boolean</option>
               </select>
+              <input
+                type="text"
+                value={mapping.json_path ?? ""}
+                placeholder="JSON path"
+                title={
+                  "Optional. Treat the matched value as a JSON string, parse it, " +
+                  "and take the value at this dot-separated path — e.g. data, " +
+                  "data.name, or data.0. Leave empty to use the matched value " +
+                  "as it arrives."
+                }
+                onChange={(e) => {
+                  const path = e.target.value.trim();
+                  const { json_path: _drop, ...bare } = mapping;
+                  const next = [...mappings];
+                  next[mi] = path ? { ...bare, json_path: path } : bare;
+                  updateResponse(i, buildResponse(pattern, next, resp, stateVars));
+                }}
+                style={{ width: 110, fontSize: "var(--font-size-sm)" }}
+              />
               <button
                 onClick={() => {
                   const next = mappings.filter((_, j) => j !== mi);

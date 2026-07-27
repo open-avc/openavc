@@ -1342,6 +1342,10 @@ discovery:
     port: 4352
     tls: false                          # optional — TLS-wrap before send/read
                                         # for an HTTPS-only device. Default false.
+    cert_subject: "CN=ACME-"            # optional — regex matched against the
+                                        # device's own TLS certificate subject.
+                                        # Requires tls: true. A probe with only
+                                        # cert_subject matches on the cert alone.
     send_ascii: "%1POWR ?\r"           # exactly one of: send_ascii, send_hex,
                                         # (omit for connect-only banner read)
     expect: "%1POWR=[01]"               # exactly one of: expect (substring),
@@ -1384,7 +1388,7 @@ discovery:
 | `mdns` | Fingerprint | mDNS service type the device announces. Bare string or list; list entries can be `{service, txt}` for TXT-record disambiguation when the service type is generic. |
 | `ssdp` | Fingerprint | UPnP device-type URN announced in SSDP `ST` / `NT` headers. Bare string or list; list entries can be `{device_type, model, manufacturer, friendly_name}` — the optional fields match the device's UPnP description exactly (case-insensitive), so several drivers can share a family-wide URN. |
 | `amx_ddp` | Fingerprint | AMX Device Discovery Protocol beacon match. Provide `make` (required) and optional `model_pattern` glob. |
-| `tcp_probe` | Fingerprint | Connect to `port`, optionally send `send_ascii` / `send_hex`, match exactly one of `expect` / `expect_regex` / `expect_hex`. Optional `tls` (TLS-wrap the connection, no cert verification, for an HTTPS-only device), `cross_vendor`, `extract_manufacturer`, `extract` rules, `timeout_ms` (≤ 10000). |
+| `tcp_probe` | Fingerprint | Connect to `port`, optionally send `send_ascii` / `send_hex`, match exactly one of `expect` / `expect_regex` / `expect_hex`. Optional `tls` (TLS-wrap the connection, no cert verification, for an HTTPS-only device), `cert_subject` (regex matched against the device's own TLS certificate subject — requires `tls: true`, and a probe carrying only `cert_subject` identifies the device by its certificate with nothing sent), `cross_vendor`, `extract_manufacturer`, `extract` rules, `timeout_ms` (≤ 10000). |
 | `udp_probe` | Fingerprint | Broadcast on `port`, match the response. Same sub-fields as `tcp_probe`, except `timeout_ms` defaults to 2000 (vs 3000 for `tcp_probe`). |
 | `python` | Fingerprint | Sibling `<driver_id>_discovery.py` with `async def probe(ctx) -> None`. Use when the wire format needs Python (multi-step handshakes, binary parsers, broadcast-then-per-host TCP follow-ups). Sub-fields: `file` (path relative to the driver) and optional `cross_vendor`. |
 | `oui` | Hint | MAC OUI prefixes (e.g. `["00:05:a6"]`). Drives the *possible* state and the "Unknown device, vendor: …" display. |
