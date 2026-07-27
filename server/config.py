@@ -1,8 +1,35 @@
-"""
-OpenAVC system configuration.
+"""Module-level settings constants, and the sole home of the env-only ones.
 
-Reads settings from system.json with environment variable overrides.
-Backward-compatible module-level constants for existing code that does:
+Not a compatibility shim. This module has two distinct jobs, and knowing
+which one a given constant is doing tells you where to add the next
+setting:
+
+**1. It owns the settings that never appear in system.json.** ``PROJECT_PATH``,
+``SAVED_PROJECTS_DIR``, every ``RATE_LIMIT_*`` knob and the two cloud
+intervals are defined here and nowhere else — environment variables and
+derived paths, with no entry in ``system_config.DEFAULTS`` and no Settings
+UI. **A new setting of that shape belongs here.**
+
+**2. For everything else it is a flat mirror** of a ``system_config`` value,
+read once at import. ``system_config.DEFAULTS`` owns those defaults outright,
+which is why the reads below pass no fallback argument: ``load()`` seeds its
+data from ``DEFAULTS``, so a fallback here could never fire and would only
+state a second, silently divergent default. **A new user-editable setting
+belongs in ``DEFAULTS``**, and gets a line here only if callers want the
+constant form.
+
+The mirror is a snapshot, and a mutable one — that is the sharp edge. Editing
+settings at runtime updates the ``SystemConfig`` singleton, not these
+constants, so the two views can disagree until restart. Code that must see a
+live value calls ``get_system_config()``; code that writes a settings change
+someone will read back through a constant has to update both, which is what
+the cloud-pairing routes do to ``CLOUD_*``. That double-write is the reason
+several modules import *both* this and ``system_config`` — not an accident to
+be tidied away.
+
+``tests/test_config_ownership.py`` enforces the split: env-only names stay
+out of ``DEFAULTS``, and mirrored names stay in it with no local fallback.
+
     from server import config
     config.HTTP_PORT
 """
@@ -37,7 +64,7 @@ def _safe_int(env_key: str, default: int) -> int:
         return default
 
 
-# --- Values sourced from system.json + env overrides ---
+# --- Mirrors of system_config values (DEFAULTS owns every default below) ---
 
 def _load_config_values():
     """Load config values from SystemConfig. Called at module import time."""
@@ -47,16 +74,16 @@ def _load_config_values():
 _cfg = _load_config_values()
 
 # Network
-HTTP_PORT: int = _cfg.get("network", "http_port", 8080)
-BIND_ADDRESS: str = _cfg.get("network", "bind_address", "0.0.0.0")
+HTTP_PORT: int = _cfg.get("network", "http_port")
+BIND_ADDRESS: str = _cfg.get("network", "bind_address")
 # Only honor X-Forwarded-For when explicitly fronted by a trusted reverse
 # proxy. Default False: use the real TCP peer so the client IP can't be
 # spoofed to bypass rate limiting or the localhost exemption.
-TRUST_FORWARDED_FOR: bool = _cfg.get("network", "trust_forwarded_for", False)
+TRUST_FORWARDED_FOR: bool = _cfg.get("network", "trust_forwarded_for")
 # Port-80 convenience redirect (typed URLs drop the port). Best-effort bind.
-PORT80_REDIRECT: bool = _cfg.get("network", "port80_redirect", False)
+PORT80_REDIRECT: bool = _cfg.get("network", "port80_redirect")
 
-# HTTPS / TLS (DEFAULTS owns the truth — no fallback args)
+# HTTPS / TLS
 TLS_ENABLED: bool = _cfg.get("tls", "enabled")
 TLS_PORT: int = _cfg.get("tls", "port")
 TLS_AUTO_GENERATE: bool = _cfg.get("tls", "auto_generate")
@@ -66,25 +93,34 @@ TLS_REDIRECT_HTTP: bool = _cfg.get("tls", "redirect_http")
 TLS_CLOUD_CERT: bool = _cfg.get("tls", "cloud_cert")
 
 # Logging
-LOG_LEVEL: str = _cfg.get("logging", "level", "info")
+LOG_LEVEL: str = _cfg.get("logging", "level")
 
-# Authentication (all empty = fully open, backward compatible)
-PROGRAMMER_PASSWORD: str = _cfg.get("auth", "programmer_password", "")
-API_KEY: str = _cfg.get("auth", "api_key", "")
-PANEL_LOCK_CODE: str = _cfg.get("auth", "panel_lock_code", "")
+# Authentication (all empty = fully open)
+PROGRAMMER_PASSWORD: str = _cfg.get("auth", "programmer_password")
+API_KEY: str = _cfg.get("auth", "api_key")
+PANEL_LOCK_CODE: str = _cfg.get("auth", "panel_lock_code")
 
-# Rate Limiting (not in system.json, env-only for now)
+# Cloud Agent. These four are the ones the cloud-pairing routes write back to
+# after a pair/unpair, so the constant and the singleton stay in step without
+# a restart — see the module docstring.
+CLOUD_ENABLED: bool = _cfg.get("cloud", "enabled")
+CLOUD_ENDPOINT: str = _cfg.get("cloud", "endpoint")
+CLOUD_SYSTEM_KEY: str = _cfg.get("cloud", "system_key")
+CLOUD_SYSTEM_ID: str = _cfg.get("cloud", "system_id")
+
+
+# --- Owned here: env-only, no system.json entry, no Settings UI ---
+# (PROJECT_PATH and SAVED_PROJECTS_DIR at the top of the file are these too —
+# they sit up there because they need no SystemConfig.)
+
+# Rate Limiting
 RATE_LIMIT_ENABLED = os.environ.get("OPENAVC_RATE_LIMIT_ENABLED", "true").lower() == "true"
 RATE_LIMIT_OPEN_PER_MINUTE = _safe_int("OPENAVC_RATE_LIMIT_OPEN", 120)
 RATE_LIMIT_STANDARD_PER_MINUTE = _safe_int("OPENAVC_RATE_LIMIT_STANDARD", 60)
 RATE_LIMIT_CONTROL_PER_MINUTE = _safe_int("OPENAVC_RATE_LIMIT_CONTROL", 120)
 RATE_LIMIT_STRICT_PER_MINUTE = _safe_int("OPENAVC_RATE_LIMIT_STRICT", 10)
 
-# Cloud Agent
-CLOUD_ENABLED: bool = _cfg.get("cloud", "enabled", False)
-CLOUD_ENDPOINT: str = _cfg.get("cloud", "endpoint", "wss://cloud.openavc.com/agent/v1")
-CLOUD_SYSTEM_KEY: str = _cfg.get("cloud", "system_key", "")
-CLOUD_SYSTEM_ID: str = _cfg.get("cloud", "system_id", "")
+# Cloud agent timing
 CLOUD_HEARTBEAT_INTERVAL = _safe_int("OPENAVC_CLOUD_HEARTBEAT_INTERVAL", 30)
 CLOUD_STATE_BATCH_INTERVAL = _safe_int("OPENAVC_CLOUD_STATE_BATCH_INTERVAL", 2)
 
