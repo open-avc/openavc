@@ -1141,6 +1141,37 @@ class ConfigurableDriver(BaseDriver):
         if self._is_http_command(cmd_def):
             return await self._send_http_command(command, cmd_def, params)
 
+        data = self.build_wire(command, params)
+        if data is None:
+            return None
+
+        await self.transport.send(data)
+        log.debug(f"[{self.device_id}] Sent command '{command}': {data!r}")
+        return True
+
+    def build_wire(
+        self, command: str, params: dict[str, Any] | None = None
+    ) -> bytes | None:
+        """Build the exact bytes a byte-stream command puts on the wire.
+
+        The whole send-side build in one place: command_prefix/suffix framing,
+        placeholder substitution, escape decoding, and the computed send_frame
+        header. Returns None when the command is unknown or declares no send
+        string (the two cases that make a byte-stream send a no-op).
+
+        Needs no transport, so the send path is testable — and previewable —
+        without opening a socket. Two limits on calling it directly: it is the
+        byte-stream route only (OSC and HTTP commands are built by their own
+        senders), and it takes params as given. send_command validates params
+        against the command's declared schema and applies their ``map:``
+        translations first, so anything that must match a real send has to go
+        through send_command, not here.
+        """
+        params = params or {}
+        cmd_def = self._definition.get("commands", {}).get(command)
+        if not isinstance(cmd_def, dict):
+            return None
+
         raw = cmd_def.get("send", "")
         if not raw:
             log.warning(f"[{self.device_id}] Command '{command}' has no send string")
@@ -1171,10 +1202,7 @@ class ConfigurableDriver(BaseDriver):
 
         # Encode (handle explicit escape sequences only — safe subset), then
         # wrap in the send_frame packet header (no-op unless declared).
-        data = self._apply_send_frame(_safe_encode_escapes(formatted))
-        await self.transport.send(data)
-        log.debug(f"[{self.device_id}] Sent command '{command}': {data!r}")
-        return True
+        return self._apply_send_frame(_safe_encode_escapes(formatted))
 
     @staticmethod
     def _apply_param_wire_maps(
