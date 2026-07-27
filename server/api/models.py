@@ -204,6 +204,11 @@ class TestCommandRequest(BaseModel):
     command_name: str | None = None
     params: dict[str, Any] = {}
     config_overrides: dict[str, Any] = {}
+    # Definition mode, no device: build the command through the real driver
+    # and report what it handed the transport, without connecting or sending.
+    # Answers "what will this command put on the wire" while the author is
+    # still typing it.
+    dry_run: bool = False
 
     # Raw mode (legacy) — also used as the substituted display string in
     # responses so the UI can show what was actually sent.

@@ -1564,7 +1564,23 @@ async def test_driver_command(driver_id: str, body: TestCommandRequest) -> dict:
 
     Falls back to a raw send-and-wait when only `command_string` is given,
     for one-off "what does this device say if I send X" probes.
+
+    With `dry_run`, the command is built by the same runtime but handed to a
+    transport that records instead of transmitting — the caller learns what
+    would go on the wire without a device, a socket, or a send.
     """
+    if body.dry_run:
+        if not (body.definition and body.command_name):
+            raise HTTPException(
+                status_code=422,
+                detail="A dry run needs a definition and a command_name",
+            )
+        # Deliberately outside the rate limit below. That limit protects
+        # devices from competing test sessions (many accept one control
+        # connection at a time); a dry run touches no device, and callers
+        # ask for one on every keystroke.
+        return await _dry_run_command(body)
+
     _rate_limit_test(f"test_command:{driver_id}")
 
     if body.definition and body.command_name:
@@ -1632,22 +1648,40 @@ async def check_connection_conflict(
     return {"conflicts": conflicts}
 
 
-async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
-    """Run a command through the live ConfigurableDriver code path.
+class _TestDriverBuildError(Exception):
+    """The supplied definition or connection settings can't produce a driver."""
 
-    Builds an isolated StateStore + EventBus, instantiates a one-shot driver
-    from the supplied definition with `poll_interval` forced to 0, hooks
-    on_data_received to capture incoming bytes, and reports the response,
-    state changes, and any errors back to the caller.
+
+class _TestDriver(NamedTuple):
+    """A one-shot ConfigurableDriver instance and the config it was built with."""
+
+    driver: Any
+    config: dict[str, Any]
+    state: Any
+    definition: dict[str, Any]
+    transport_type: str
+
+
+def _build_test_driver(
+    body: TestCommandRequest, port_fallback: int | None = None
+) -> _TestDriver:
+    """Instantiate a one-shot driver from a live-test request.
+
+    Shared by the live test and the dry run so both exercise the same
+    definition handling: definition defaults, then the caller's overrides
+    (host, port, credentials), then `poll_interval` forced to 0 so a one-shot
+    test never starts a background poller.
+
+    ``port_fallback`` stands in for an unusable port instead of failing —
+    the dry run wants a preview while the author is still filling the
+    connection panel; the live test has nowhere to connect without one.
+
+    Raises _TestDriverBuildError with a user-facing message.
     """
-    import asyncio
     from server.core.state_store import StateStore
     from server.core.event_bus import EventBus
     from server.drivers.configurable import create_configurable_driver_class
 
-    # Build the per-test config: definition's defaults, then user overrides
-    # (host, port, credentials), then poll forced off so we don't start a
-    # background poller for a one-shot test.
     definition = dict(body.definition or {})
     default_config = dict(definition.get("default_config") or {})
     # Serial drivers use `port` as a string path (e.g. "COM3"); IP transports
@@ -1658,13 +1692,11 @@ async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
         try:
             port_value = int(body.port)
         except (TypeError, ValueError):
-            return {
-                "success": False,
-                "sent": None,
-                "received": [],
-                "state_changes": {},
-                "error": f"Invalid port for {transport_type}: {body.port!r}",
-            }
+            if port_fallback is None:
+                raise _TestDriverBuildError(
+                    f"Invalid port for {transport_type}: {body.port!r}"
+                ) from None
+            port_value = port_fallback
     config = {
         **default_config,
         **(body.config_overrides or {}),
@@ -1680,25 +1712,49 @@ async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
 
     try:
         driver_cls = create_configurable_driver_class(definition)
+        driver = driver_cls(
+            device_id=f"test_{definition.get('id', 'driver')}",
+            config=config,
+            state=state,
+            events=events,
+        )
     except Exception as e:
+        raise _TestDriverBuildError(f"Driver definition is invalid: {e}") from e
+
+    return _TestDriver(driver, config, state, definition, transport_type)
+
+
+async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
+    """Run a command through the live ConfigurableDriver code path.
+
+    Builds an isolated StateStore + EventBus, instantiates a one-shot driver
+    from the supplied definition with `poll_interval` forced to 0, hooks
+    on_data_received to capture incoming bytes, and reports the response,
+    state changes, and any errors back to the caller.
+    """
+    import asyncio
+
+    try:
+        built = _build_test_driver(body)
+    except _TestDriverBuildError as e:
         return {
             "success": False,
             "sent": None,
             "received": [],
             "state_changes": {},
-            "error": f"Driver definition is invalid: {e}",
+            "error": str(e),
         }
 
-    # Capture state changes so the panel can show what the command moved.
-    initial_state: dict[str, Any] = {}
+    driver = built.driver
+    config = built.config
+    state = built.state
+    definition = built.definition
+    transport_type = built.transport_type
 
-    driver = driver_cls(
-        device_id=f"test_{definition.get('id', 'driver')}",
-        config=config,
-        state=state,
-        events=events,
+    # Capture state changes so the panel can show what the command moved.
+    initial_state: dict[str, Any] = (
+        dict(state.snapshot()) if hasattr(state, "snapshot") else {}
     )
-    initial_state = dict(state.snapshot()) if hasattr(state, "snapshot") else {}
 
     # Hook on_data_received to capture inbound bytes for display while still
     # running the production response-matching logic so state changes happen.
@@ -1793,6 +1849,208 @@ async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
         "state_changes": state_changes,
         "error": error_text,
     }
+
+
+class _CaptureTransport:
+    """Byte-stream stand-in (TCP, UDP, serial) that records instead of sending.
+
+    Every ConfigurableDriver command route finishes at a transport call, so
+    recording at that boundary yields the finished wire form — prefix/suffix
+    framing, substituted placeholders, decoded escapes, computed send_frame
+    header and all — without re-deriving any of it.
+    """
+
+    def __init__(self) -> None:
+        self.frames: list[bytes] = []
+
+    @property
+    def connected(self) -> bool:
+        return True
+
+    async def send(self, data: bytes) -> None:
+        self.frames.append(bytes(data))
+
+    async def close(self) -> None:
+        return None
+
+
+def _capture_osc_transport() -> Any:
+    """OSC capture double.
+
+    Subclasses OSCTransport rather than duck-typing it: the OSC sender
+    refuses a transport that isn't one (and so does the OSC device-setting
+    write), so a stand-in has to pass the isinstance check.
+    """
+    from server.transport.osc import OSCTransport
+
+    class _CaptureOSCTransport(OSCTransport):
+        def __init__(self) -> None:
+            super().__init__()
+            self.frames: list[bytes] = []
+
+        @property
+        def connected(self) -> bool:
+            return True
+
+        async def send(self, data: bytes) -> None:
+            self.frames.append(bytes(data))
+
+        async def close(self) -> None:
+            return None
+
+    return _CaptureOSCTransport()
+
+
+def _capture_http_transport() -> Any:
+    """HTTP capture double — subclasses for the same reason as the OSC one.
+
+    Records the request the driver built and hands back an empty response, so
+    the send path completes normally without anything leaving the process.
+    """
+    from server.transport.http_client import HTTPClientTransport, HTTPResponse
+
+    class _CaptureHTTPTransport(HTTPClientTransport):
+        def __init__(self) -> None:
+            super().__init__(base_url="http://device")
+            self.requests: list[dict[str, Any]] = []
+
+        @property
+        def connected(self) -> bool:
+            return True
+
+        async def request(
+            self,
+            method: str,
+            path: str,
+            params: dict[str, Any] | None = None,
+            json_body: Any = None,
+            form_data: dict[str, str] | None = None,
+            content: bytes | None = None,
+            headers: dict[str, str] | None = None,
+            timeout: Any = None,
+        ) -> Any:
+            import httpx
+
+            if not path.startswith("/"):
+                path = "/" + path
+            # Let httpx assemble the request exactly as it would for a real
+            # send, so the query string and the encoded body are the genuine
+            # article rather than a second rendering of them.
+            req = httpx.Request(
+                method.upper(),
+                httpx.URL(self.base_url).join(path),
+                params=params,
+                json=json_body,
+                data=form_data,
+                content=content,
+                headers=headers,
+            )
+            self.requests.append({
+                "method": req.method,
+                # raw_path is the request-line target: "/api/x?verbose=1".
+                "target": req.url.raw_path.decode("ascii", "replace"),
+                "headers": dict(headers or {}),
+                "body": req.content.decode("utf-8", "replace"),
+            })
+            return HTTPResponse(status_code=0, headers={}, text="", ok=True)
+
+        async def close(self) -> None:
+            return None
+
+    return _CaptureHTTPTransport()
+
+
+async def _dry_run_command(body: TestCommandRequest) -> dict:
+    """Build a command through the real driver and report what it would send.
+
+    Uses the same driver construction as the live test, then attaches a
+    transport that records instead of transmitting. Nothing is rendered here:
+    the reported wire is what the runtime handed the transport, so a preview
+    built from it cannot drift from the send the way a second implementation
+    of the protocol build would.
+
+    No connect, so no socket, no auth handshake and no on_connect — this is
+    the command's wire form, not a connection test.
+    """
+    try:
+        built = _build_test_driver(body, port_fallback=0)
+    except _TestDriverBuildError as e:
+        return {"dry_run": True, "success": False, "error": str(e), "route": None}
+
+    driver = built.driver
+    command = body.command_name or ""
+    cmd_def = (built.definition.get("commands") or {}).get(command)
+    if not isinstance(cmd_def, dict):
+        return {
+            "dry_run": True,
+            "success": False,
+            "error": f"Unknown command '{command}'",
+            "route": None,
+        }
+
+    # Match the capture to the route the runtime will take, which it picks
+    # from the command's declared fields — not from the driver's transport.
+    # The panel reports a shape/transport mismatch on its own; here we follow
+    # the command so the author still sees what the command would build.
+    if "address" in cmd_def:
+        route = "osc"
+        capture = _capture_osc_transport()
+    elif "path" in cmd_def or "method" in cmd_def:
+        route = "http"
+        capture = _capture_http_transport()
+    else:
+        route = "raw"
+        capture = _CaptureTransport()
+    driver.transport = capture
+
+    try:
+        await driver.send_command(command, body.params or {})
+    except Exception as e:
+        return {"dry_run": True, "success": False, "error": str(e), "route": route}
+
+    result: dict[str, Any] = {
+        "dry_run": True,
+        "success": True,
+        "error": None,
+        "route": route,
+        "wire": "",
+        "wire_hex": None,
+        "headers": None,
+        "body": None,
+    }
+
+    if route == "http":
+        # One command builds one request; a command that built none (no
+        # method and no path yet) leaves the preview blank.
+        if capture.requests:
+            sent = capture.requests[0]
+            result["wire"] = f"{sent['method']} {sent['target']}"
+            result["headers"] = sent["headers"]
+            result["body"] = sent["body"]
+        return result
+
+    if not capture.frames:
+        return result
+
+    data = b"".join(capture.frames)
+    result["wire_hex"] = data.hex()
+    if route == "osc":
+        # Read the captured packet back with the codec's own decoder, so the
+        # address and typed args shown are the ones actually encoded rather
+        # than a second pass over the templates.
+        from server.transport.osc_codec import osc_decode_message
+
+        try:
+            address, args = osc_decode_message(data)
+        except Exception:
+            result["wire"] = _decode_for_display(data)
+            return result
+        rendered = ", ".join(f"{tag}={value}" for tag, value in args)
+        result["wire"] = f"{address} [{rendered}]" if args else address
+        return result
+
+    result["wire"] = _decode_for_display(data)
+    return result
 
 
 def _decode_for_display(data: bytes) -> str:
