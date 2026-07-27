@@ -245,6 +245,24 @@ def _get_driver_repo_dir() -> Path:
     return DRIVER_REPO_DIR
 
 
+def _strip_listing_decorations(definition: dict) -> dict:
+    """Drop the bookkeeping the listing endpoint adds to a definition.
+
+    ``GET /driver-definitions`` decorates each definition with where it came
+    from — ``source`` ("builtin"/"user"), and historically ``_source_file``.
+    Those are not driver-format keys, and an editor that loaded a definition
+    from that endpoint hands them straight back when it saves. The authoring
+    gate is strict about undeclared keys on purpose, so without this the
+    server rejects a save over a key the server itself added. Same carve-out
+    the Builder's own validator makes (validateDriver.ts).
+    """
+    return {
+        key: value
+        for key, value in definition.items()
+        if key != "source" and not key.startswith("_")
+    }
+
+
 def _definition_invalid(errors: list[str], preamble: str | None = None) -> StructuredApiError:
     """422 for a driver definition that failed validation.
 
@@ -1339,7 +1357,9 @@ async def create_driver_definition(body: DriverDefinitionRequest) -> dict:
     # Echo only what the client sent: exclude_unset keeps model defaults
     # (manufacturer, delimiter, empty containers) out of the saved YAML;
     # explicit nulls are dropped, not written into the file.
-    driver_def = body.model_dump(exclude_unset=True, exclude_none=True)
+    driver_def = _strip_listing_decorations(
+        body.model_dump(exclude_unset=True, exclude_none=True)
+    )
 
     # Check for duplicate ID
     existing = _list(dirs)
@@ -1387,7 +1407,9 @@ async def update_driver_definition(driver_id: str, body: DriverDefinitionRequest
 
     dirs = _get_driver_dirs()
     # Echo only what the client sent (see create_driver_definition).
-    driver_def = body.model_dump(exclude_unset=True, exclude_none=True)
+    driver_def = _strip_listing_decorations(
+        body.model_dump(exclude_unset=True, exclude_none=True)
+    )
 
     # Must already exist
     existing = _list(dirs)
@@ -1494,9 +1516,7 @@ async def patch_driver_definition(driver_id: str, body: dict) -> dict:
     merged = _merge_patch(current, body)
     # Don't allow changing ID via PATCH
     merged["id"] = driver_id
-    # The listing decorates definitions with internal metadata (e.g.
-    # _source_file); keep it out of the saved YAML.
-    merged = {k: v for k, v in merged.items() if not k.startswith("_")}
+    merged = _strip_listing_decorations(merged)
 
     # Validate merged result (authoring gate — strict, as for create/replace)
     errors = validate_driver_definition(merged, strict=True)

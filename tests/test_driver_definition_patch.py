@@ -22,7 +22,13 @@ import pytest
 import yaml
 
 from server.api.routes import drivers as drivers_routes
-from server.api.routes.drivers import _merge_patch, patch_driver_definition
+from server.api.models import DriverDefinitionRequest
+from server.api.routes.drivers import (
+    _merge_patch,
+    create_driver_definition,
+    patch_driver_definition,
+    update_driver_definition,
+)
 from server.drivers.driver_loader import save_driver_definition
 
 from fastapi import HTTPException
@@ -144,3 +150,57 @@ async def test_patch_builtin_is_rejected_and_untouched(driver_dirs, monkeypatch)
         await patch_driver_definition("acme_widget", {"name": "Hacked"})
     assert exc.value.status_code == 403
     assert path.read_text() == before
+
+
+# --- the listing's own bookkeeping must survive a round trip -----------------
+#
+# GET /driver-definitions stamps `source` ("builtin"/"user") onto every
+# definition it returns, and the Driver Builder edits what that endpoint gave
+# it. Saving therefore hands `source` back. The authoring gate is strict about
+# undeclared keys, so before the strip the server answered its own decoration
+# with "unknown key 'source'" — a 422 on every Builder save, with nothing
+# written. These pin all three save routes: the key is accepted, and it is not
+# written into the driver file either.
+
+
+def _decorated() -> dict:
+    """A definition shaped exactly as the listing endpoint returns one."""
+    return {**DEFINITION, "source": "user", "_source_file": "/tmp/acme.avcdriver"}
+
+
+async def test_create_accepts_a_definition_carrying_listing_metadata(driver_dirs):
+    _, repo_dir = driver_dirs
+
+    result = await create_driver_definition(
+        DriverDefinitionRequest(**_decorated())
+    )
+    assert result["status"] == "created"
+
+    text = (repo_dir / "acme_widget.avcdriver").read_text()
+    assert "source" not in yaml.safe_load(text)
+    assert "_source_file" not in text
+
+
+async def test_replace_accepts_a_definition_carrying_listing_metadata(driver_dirs):
+    _, repo_dir = driver_dirs
+    save_driver_definition(dict(DEFINITION), repo_dir)
+
+    result = await update_driver_definition(
+        "acme_widget", DriverDefinitionRequest(**{**_decorated(), "name": "Acme II"})
+    )
+    assert result["status"] == "updated"
+
+    saved = yaml.safe_load((repo_dir / "acme_widget.avcdriver").read_text())
+    assert saved["name"] == "Acme II"
+    assert "source" not in saved
+
+
+async def test_patch_accepts_a_definition_carrying_listing_metadata(driver_dirs):
+    _, repo_dir = driver_dirs
+    save_driver_definition(dict(DEFINITION), repo_dir)
+
+    result = await patch_driver_definition("acme_widget", _decorated())
+    assert result["status"] == "updated"
+
+    saved = yaml.safe_load((repo_dir / "acme_widget.avcdriver").read_text())
+    assert "source" not in saved
