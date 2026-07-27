@@ -258,6 +258,31 @@ def _definition_invalid(errors: list[str], preamble: str | None = None) -> Struc
     return StructuredApiError(422, detail, errors=errors)
 
 
+def _reject_unknown_keys(driver_def: dict[str, Any], cleanup: Path | None = None) -> None:
+    """Import gate: refuse a definition carrying keys the contract doesn't declare.
+
+    Importing is authoring's cousin — the person who can fix the typo is right
+    here, and nothing is running on the driver yet, so refusing costs a
+    re-export and saves a section that silently does nothing. (The runtime
+    loader only warns, deliberately: dropping a driver already in service would
+    take its devices offline. See ``unknown_key_errors``.)
+    """
+    from server.drivers.avcdriver_semantic import unknown_key_errors
+
+    problems = unknown_key_errors(driver_def)
+    if not problems:
+        return
+    if cleanup is not None:
+        cleanup.unlink(missing_ok=True)
+    raise _definition_invalid(
+        problems,
+        preamble=(
+            f"{len(problems)} unrecognized key(s) in driver definition — "
+            "check the spelling against the driver contract"
+        ),
+    )
+
+
 def _companion_relpath_from_yaml(yaml_text: str) -> str | None:
     """Return the raw ``discovery.python.file`` string if declared.
 
@@ -701,6 +726,7 @@ async def upload_driver(request: Request) -> dict[str, Any]:
             if driver_def is None:
                 filepath.unlink(missing_ok=True)
                 raise HTTPException(status_code=422, detail="Invalid driver definition file")
+            _reject_unknown_keys(driver_def, filepath)
             driver_class = create_configurable_driver_class(driver_def)
             register_driver(driver_class)
             driver_id = driver_def.get("id", filename)
@@ -842,6 +868,7 @@ async def upload_driver_bundle(request: Request) -> dict[str, Any]:
             driver_def = load_driver_file(main_path)
             if driver_def is None:
                 raise HTTPException(status_code=422, detail="Invalid driver definition file in bundle.")
+            _reject_unknown_keys(driver_def)
             register_driver(create_configurable_driver_class(driver_def))
             driver_id = driver_def.get("id", main_name)
         else:
@@ -1322,8 +1349,9 @@ async def create_driver_definition(body: DriverDefinitionRequest) -> dict:
             detail=f"Driver definition '{driver_def['id']}' already exists",
         )
 
-    # Validate
-    errors = validate_driver_definition(driver_def)
+    # Validate. strict: this is an authoring gate, so an undeclared key is a
+    # typo to reject now, not a mystery to debug later.
+    errors = validate_driver_definition(driver_def, strict=True)
     if errors:
         raise _definition_invalid(errors)
 
@@ -1383,8 +1411,9 @@ async def update_driver_definition(driver_id: str, body: DriverDefinitionRequest
             detail=f"Driver id '{driver_def.get('id')}' belongs to a read-only built-in driver.",
         )
 
-    # Validate
-    errors = validate_driver_definition(driver_def)
+    # Validate. strict: this is an authoring gate, so an undeclared key is a
+    # typo to reject now, not a mystery to debug later.
+    errors = validate_driver_definition(driver_def, strict=True)
     if errors:
         raise _definition_invalid(errors)
 
@@ -1469,8 +1498,8 @@ async def patch_driver_definition(driver_id: str, body: dict) -> dict:
     # _source_file); keep it out of the saved YAML.
     merged = {k: v for k, v in merged.items() if not k.startswith("_")}
 
-    # Validate merged result
-    errors = validate_driver_definition(merged)
+    # Validate merged result (authoring gate — strict, as for create/replace)
+    errors = validate_driver_definition(merged, strict=True)
     if errors:
         raise _definition_invalid(errors)
 

@@ -14,6 +14,13 @@ The case inputs themselves are exported to
 rules module — the community driver catalog vendors a copy — can replay the
 identical corpus against their copy and prove verdict parity byte-for-byte.
 
+Every case is a definition an *authoring* gate refuses: the Driver Builder,
+the save/import routes, the AI tool, and catalog CI. That is very nearly the
+same set the runtime loader refuses, with one deliberate exception — an
+unrecognized key, which the loader downgrades to a warning so a driver
+written for a newer platform still runs. Replays therefore validate with
+``strict=True``.
+
 To regenerate both fixtures after an intentional rule or message change:
 
     python tests/test_driver_validation_messages.py --regen
@@ -36,7 +43,12 @@ def _validate(driver_def: Any) -> list[str]:
         sys.path.insert(0, str(_ROOT))
     from server.drivers.driver_loader import validate_driver_definition
 
-    return validate_driver_definition(driver_def)
+    # strict, because the corpus is "what an authoring gate refuses" — the
+    # bar the Builder, the save routes, import, the AI tool and catalog CI
+    # all hold to. Unknown keys are the one rule the runtime loader
+    # deliberately softens to a warning (see unknown_key_errors), so without
+    # this the corpus could not cover them at all.
+    return validate_driver_definition(driver_def, strict=True)
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "driver_validation_messages.json"
@@ -124,6 +136,18 @@ CASES: dict[str, Any] = {
     "missing_required_fields": {"description": "nothing declared"},
     "unsupported_transport": _d(transport="carrier_pigeon"),
     "ir_codes_not_bool": _d(ir_codes="yes"),
+    # A misspelled key is the quietest failure there is: the driver loads,
+    # the section is simply absent, and the device connects with nothing to
+    # show. One case per level, since the check walks the whole tree.
+    "unknown_top_level_key": _d(state_varibles={"power": {"type": "boolean"}}),
+    "unknown_param_key": _d(
+        commands={
+            "set_volume": {
+                "send": "VOL {level}\r",
+                "params": {"level": {"type": "integer", "mn": 0}},
+            }
+        },
+    ),
     # --- responses ---
     "responses_not_list": _d(responses={"a": 1}),
     "response_not_mapping": _d(responses=["PWR=1"]),

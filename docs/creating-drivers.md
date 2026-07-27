@@ -425,6 +425,20 @@ Add this line to the top of any `.avcdriver` file and editors with YAML Language
 # yaml-language-server: $schema=https://raw.githubusercontent.com/open-avc/openavc-drivers/main/avcdriver.schema.json
 ```
 
+Field names have to be spelled exactly. Write `state_varibles` and the driver
+would otherwise load with no state variables at all and no complaint, so the
+device connects and simply has nothing to show. A key the format doesn't
+recognize is therefore an error everywhere a driver is written or brought in:
+the Driver Builder, saving, importing a file, and community catalog review.
+Editors with the schema line above flag it as you type, usually suggesting the
+spelling you meant.
+
+Drivers already installed are treated more gently. One carrying an
+unrecognized key still loads and still runs, with a warning in the log naming
+the key. A driver written for a newer version of OpenAVC can mention a field
+this one hasn't learned yet, and taking its devices offline over that would be
+worse than ignoring it.
+
 The tables below document each field in detail.
 
 #### Top-level fields

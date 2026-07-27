@@ -152,6 +152,11 @@ def build_schema(tier: str) -> dict[str, Any]:
         "description": description,
         "type": "object",
         "required": required,
+        # Closed, like every $defs block: a key the registry doesn't declare is
+        # a typo, and catching it in the author's editor is the earliest a typo
+        # can be caught. FIELDS is the whole top-level contract, so nothing
+        # legitimate lands outside it.
+        "additionalProperties": False,
         "properties": {
             name: _node_to_schema(node, tier) for name, node in spec.FIELDS.items()
         },

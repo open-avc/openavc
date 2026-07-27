@@ -1212,3 +1212,49 @@ def test_param_pattern_validated_on_actions():
     ]
     errors = validate_driver_definition(driver)
     assert any("actions[0]" in e and "pattern" in e for e in errors)
+
+
+# ── Unknown keys: strict where a driver is created, lenient where loaded ──
+# A misspelled key is the quietest failure the format has — `state_varibles`
+# registers zero state variables and the device connects with nothing to
+# show. The authoring gates refuse it. The loader deliberately does not: it
+# drops a driver on any validation error, and nothing gates a definition on
+# min_platform_version at load, so a driver written for a newer platform
+# would vanish and take its devices offline over a field this release simply
+# hasn't learned yet.
+
+
+def test_unknown_top_level_key_rejected_when_strict():
+    driver = _def_with_command({})
+    driver["state_varibles"] = {"power": {"type": "boolean"}}
+    assert validate_driver_definition(driver) == []
+    errors = validate_driver_definition(driver, strict=True)
+    assert any("state_varibles" in e and "state_variables" in e for e in errors)
+
+
+def test_unknown_param_key_rejected_when_strict():
+    driver = _def_with_command({"bank": {"type": "integer", "mn": 0}})
+    assert validate_driver_definition(driver) == []
+    errors = validate_driver_definition(driver, strict=True)
+    assert any("'mn'" in e and "min" in e for e in errors)
+
+
+def test_unknown_key_still_loads_with_a_warning(tmp_path, caplog):
+    """The whole point of the asymmetry: the driver keeps working."""
+    driver = _def_with_command({})
+    driver["state_varibles"] = {"power": {"type": "boolean"}}
+    path = tmp_path / f"acme_widget{DRIVER_EXTENSION}"
+    path.write_text(yaml.safe_dump(driver), encoding="utf-8")
+
+    with caplog.at_level("WARNING"):
+        loaded = load_driver_file(path)
+
+    assert loaded is not None, "an unrecognized key must not drop the driver"
+    assert loaded["id"] == "acme_widget"
+    assert "state_varibles" in caplog.text
+
+
+def test_declared_param_description_is_accepted():
+    """`description` is the accepted alias for a param's `help` text."""
+    driver = _def_with_command({"bank": {"type": "integer", "description": "Bank"}})
+    assert validate_driver_definition(driver, strict=True) == []

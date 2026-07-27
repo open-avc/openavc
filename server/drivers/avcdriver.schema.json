@@ -15,6 +15,7 @@
     "description",
     "source_url"
   ],
+  "additionalProperties": false,
   "properties": {
     "id": {
       "type": "string",
@@ -582,7 +583,7 @@
           ]
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "childStateVariableEntry": {
       "type": "object",
@@ -635,7 +636,7 @@
           ]
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "childEntityType": {
       "type": "object",
@@ -694,7 +695,7 @@
           "$ref": "#/$defs/childInstances"
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "childInstances": {
       "type": "object",
@@ -1039,9 +1040,13 @@
               }
             ]
           }
+        },
+        "description": {
+          "type": "string",
+          "description": "Accepted alias for help — read either, write help."
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "oscArg": {
       "type": "object",
@@ -1062,7 +1067,7 @@
         },
         "value": true
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "commandEntry": {
       "type": "object",
@@ -1141,7 +1146,7 @@
           "description": "Let this command run while the device is offline (no live connection). Default false: the platform blocks commands to a disconnected device. Set true only for a command whose handler needs no connection — the canonical case is a Wake-on-LAN power_on that sends a magic packet instead of talking to the device over its (dead) control link. Param validation still runs; the driver's handler must not assume a live transport. When such a command is promoted to a Quick Action button, the button stays available regardless of connection state. Requires platform 0.24.0."
         }
       },
-      "additionalProperties": true,
+      "additionalProperties": false,
       "anyOf": [
         {
           "required": [
@@ -1229,7 +1234,7 @@
           "$ref": "#/$defs/visibleWhen"
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "visibleWhen": {
       "description": "Show the action only when a state condition holds. A single {key, operator, value} condition, or an {any:[...]} (OR) / {all:[...]} (AND) group. key may use $id for the device's own id.",
@@ -1306,7 +1311,7 @@
           "description": "Value to compare against (not needed for truthy/falsy)."
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "mappingEntry": {
       "type": "object",
@@ -1344,7 +1349,7 @@
           "description": "Optional. The matched value is treated as a JSON string: it is parsed and this dot-separated path is walked (object keys and integer list indices, e.g. \"data\" or \"data.name\" or \"data.0\") to the value used before mapping/coercion. A path landing on an array or object yields its length (so a boolean type becomes \"is non-empty?\" and an integer type becomes the count). Omit for today's positional/raw behavior. Common for OSC devices whose replies carry the value inside a JSON string (e.g. QLab's /reply ... {\"data\": ...})."
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "responseEntry": {
       "type": "object",
@@ -1401,7 +1406,7 @@
           }
         }
       },
-      "additionalProperties": true,
+      "additionalProperties": false,
       "anyOf": [
         {
           "required": [
@@ -1618,7 +1623,7 @@
           "description": "Line ending appended to credentials. Default \"\\r\\n\"."
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "livenessBlock": {
       "type": "object",
@@ -1660,7 +1665,7 @@
           }
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "frameParser": {
       "type": "object",
@@ -1742,7 +1747,7 @@
           "description": "struct_frame: reserved bytes after the payload (discarded). Default 0. Requires platform 0.23.0."
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "sendFrame": {
       "type": "object",
@@ -1777,7 +1782,7 @@
           "description": "Constant bytes emitted after the length field, before the command data (e.g. eISCP's version + reserved = \"\\x01\\x00\\x00\\x00\"). Literal-escape string."
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "configSchemaEntry": {
       "type": "object",
@@ -1871,7 +1876,7 @@
           "type": "string"
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "deviceSettingEntry": {
       "type": "object",
@@ -1927,7 +1932,7 @@
           "$ref": "#/$defs/deviceSettingWrite"
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "deviceSettingWrite": {
       "type": "object",
@@ -1960,7 +1965,7 @@
           }
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "simulatorSection": {
       "type": "object",
@@ -2042,7 +2047,7 @@
           "description": "Unsolicited messages emitted on state change, keyed by state variable."
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "discoveryBlock": {
       "type": "object",

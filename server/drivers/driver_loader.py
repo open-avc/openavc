@@ -27,6 +27,7 @@ from typing import Sequence, Any
 import yaml
 
 from server.drivers.avcdriver_semantic import (
+    unknown_key_errors as _unknown_key_errors,
     validate_driver_definition as _validate_definition_rules,
 )
 from server.drivers.spec import REQUIRED_FIELDS as REQUIRED_FIELDS
@@ -75,7 +76,9 @@ def _discovery_hint_errors(driver_def: dict[str, Any]) -> list[str]:
     return []
 
 
-def validate_driver_definition(driver_def: dict[str, Any]) -> list[str]:
+def validate_driver_definition(
+    driver_def: dict[str, Any], *, strict: bool = False
+) -> list[str]:
     """
     Validate a driver definition.
 
@@ -84,9 +87,13 @@ def validate_driver_definition(driver_def: dict[str, Any]) -> list[str]:
     The rules live in ``avcdriver_semantic`` (shared with the community
     catalog's validator); this wrapper adds the discovery-block check, which
     needs the discovery engine's parser.
+
+    ``strict`` also rejects keys the contract doesn't declare. Pass it from
+    the gates that *create* a driver (save, import, the AI tool); leave it off
+    when loading one, where ``load_driver_file`` warns instead.
     """
     return _validate_definition_rules(
-        driver_def, discovery_validator=_discovery_hint_errors
+        driver_def, discovery_validator=_discovery_hint_errors, strict=strict
     )
 
 
@@ -135,6 +142,16 @@ def load_driver_file(filepath: Path) -> dict[str, Any] | None:
             + "; ".join(errors)
         )
         return None
+
+    # Loud, but not fatal. A key the contract doesn't declare is nearly always
+    # a typo — and a typo'd section silently does nothing, which is why it is
+    # worth saying out loud. It is not worth dropping the driver over: a
+    # definition written for a newer platform can carry a field this one hasn't
+    # learned yet, and refusing it here would take the device offline instead.
+    # The authoring gates reject the same thing outright, so a typo can only
+    # reach this point on a driver that was written elsewhere.
+    for message in _unknown_key_errors(driver_def):
+        log.warning(f"Driver definition {filepath}: {message}")
 
     # Companion existence check: a ``python:`` declaration that points at
     # a missing file would auto-register two SignalRules under

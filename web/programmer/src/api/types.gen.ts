@@ -103,6 +103,40 @@ export const PUSH_KEYS_BY_TYPE: Readonly<Record<string, ReadonlySet<string>>> = 
   http_listener: new Set(["type"]),
 };
 
+/**
+ * Declared keys of every closed contract block, for the unknown-key check.
+ * __root__ is the top level; the rest are $defs names.
+ */
+export const DRIVER_CONTRACT_KEYS: Readonly<Record<string, ReadonlySet<string>>> = {
+  __root__: new Set(["actions", "auth", "author", "bridge", "category", "child_entity_types", "command_prefix", "command_suffix", "commands", "compatible_models", "config_derived", "config_schema", "default_config", "delimiter", "deprecated", "description", "device_settings", "discovery", "frame_parser", "help", "id", "inline_protocol", "ir_codes", "liveness", "manufacturer", "min_platform_version", "name", "on_connect", "polling", "ports", "protocols", "push", "quick_actions", "replacement_id", "responses", "send_frame", "simulated", "simulator", "source_url", "state_variables", "tags", "transport", "transports", "verified", "version", "web_ui"]),
+  helpBlock: new Set(["connection", "overview", "setup"]),
+  compatibleModelsEntry: new Set(["confidence", "manufacturer", "models", "notes"]),
+  stateVariableEntry: new Set(["cloud_priority", "control", "default", "help", "label", "max", "min", "step", "type", "unit", "values"]),
+  childStateVariableEntry: new Set(["cloud_priority", "control", "default", "help", "label", "max", "min", "step", "type", "unit", "values"]),
+  childEntityType: new Set(["id_format", "instances", "label", "label_field", "label_plural", "state_variables", "summary_fields"]),
+  childInstances: new Set(["count", "count_from", "count_from_state", "ids", "ids_from", "label"]),
+  childSetEntry: new Set(["id", "state", "type"]),
+  eachChildQuery: new Set(["each_child", "query_for", "send", "when"]),
+  queryEntry: new Set(["query_for", "send", "when"]),
+  paramEntry: new Set(["child_type", "decimals", "default", "description", "help", "label", "map", "max", "min", "options_from", "options_source", "options_state", "pattern", "required", "trim", "type", "type_from", "values"]),
+  oscArg: new Set(["type", "value"]),
+  commandEntry: new Set(["address", "args", "available_offline", "body", "headers", "help", "label", "method", "params", "path", "query_for", "query_params", "raw", "send", "sets"]),
+  actionEntry: new Set(["availability", "command", "confirm", "icon", "id", "kind", "label", "params", "url", "visible_when"]),
+  visibleWhenCondition: new Set(["key", "operator", "value"]),
+  mappingEntry: new Set(["arg", "group", "json_path", "map", "state", "type", "value"]),
+  responseEntry: new Set(["address", "child_set", "json", "mappings", "match", "require", "set", "throttle"]),
+  authBlock: new Set(["failure_pattern", "line_ending", "password_field", "password_prompt", "skip_if_empty", "success_pattern", "timeout_seconds", "type", "username_field", "username_prompt"]),
+  livenessBlock: new Set(["args", "expect", "interval", "max_failures", "send", "timeout"]),
+  frameParser: new Set(["header_extra", "header_offset", "header_reserve", "header_size", "include_header", "length", "length_adjust", "length_endian", "length_offset", "length_size", "mid_reserve", "trailer_reserve", "type"]),
+  sendFrame: new Set(["after_length", "header", "length_endian", "length_size", "type"]),
+  configSchemaEntry: new Set(["columns", "default", "description", "help", "label", "max", "min", "regex", "required", "row_label", "secret", "type", "values"]),
+  deviceSettingEntry: new Set(["default", "help", "label", "max", "min", "regex", "setup", "state_key", "type", "unique", "values", "write"]),
+  deviceSettingWrite: new Set(["address", "args", "body", "headers", "method", "path", "send"]),
+  simulatorSection: new Set(["command_handlers", "controls", "delays", "error_modes", "initial_state", "notifications", "push_state", "state_machines"]),
+  discoveryBlock: new Set(["amx_ddp", "hostname", "manufacturer_alias", "mdns", "oui", "port_open", "python", "requires", "snmp_pen", "ssdp", "tcp_probe", "udp_probe"]),
+  amxDdpItem: new Set(["cross_vendor", "make", "model_pattern"]),
+};
+
 // --- driver definition types ---
 
 /**

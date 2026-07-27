@@ -13,6 +13,7 @@ import {
   BRIDGE_PORT_KINDS,
   CLOUD_PRIORITIES,
   DISALLOWED_OPEN_PORTS,
+  DRIVER_CONTRACT_KEYS,
   FRAME_HEADER_SIZES,
   INSTANCE_SOURCES,
   INTERCHANGEABLE_TRANSPORTS,
@@ -283,6 +284,68 @@ function runawayPatternMessage(what: string, pattern: unknown): string | null {
   const found = runawayPatternReason(pattern);
   if (!found) return null;
   return `${what} ${found.reason} ("${pattern}"), which can lock the driver up for minutes on a reply that doesn't match. ${found.fix}`;
+}
+
+/** Edit distance, capped — just enough to offer "did you mean". */
+function editDistance(a: string, b: string): number {
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i];
+    for (let j = 1; j <= b.length; j++) {
+      row[j] = Math.min(
+        prev[j] + 1,
+        row[j - 1] + 1,
+        prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+    }
+    prev = row;
+  }
+  return prev[b.length];
+}
+
+/**
+ * Keys the driver contract doesn't declare.
+ *
+ * A misspelled key is the quietest way to break a driver: `state_varibles`
+ * loads without complaint and registers no state variables at all, so the
+ * device connects and simply has nothing to show. The key sets come from
+ * DRIVER_CONTRACT_KEYS, generated from the same registry that produces the
+ * published schema, so this can't drift from what the server accepts —
+ * adding a field to the contract makes it legal here in the same commit.
+ *
+ * Only blocks the registry closes are checked. Keys starting with `_` and
+ * `source` are IDE bookkeeping the list endpoint adds (`_source_file`,
+ * builtin-vs-user), never authored and never saved.
+ */
+function unknownKeyMessages(
+  obj: unknown,
+  block: string,
+  who: string,
+): string[] {
+  const known = DRIVER_CONTRACT_KEYS[block];
+  if (!known || !obj || typeof obj !== "object" || Array.isArray(obj)) return [];
+  const messages: string[] = [];
+  for (const key of Object.keys(obj)) {
+    if (known.has(key) || key.startsWith("_") || key === "source") continue;
+    let best: string | null = null;
+    let bestScore = Infinity;
+    for (const candidate of known) {
+      const d = editDistance(key.toLowerCase(), candidate.toLowerCase());
+      if (d < bestScore) {
+        bestScore = d;
+        best = candidate;
+      }
+    }
+    // Only suggest a neighbour close enough to plausibly be the same word.
+    const suggest =
+      best !== null && bestScore <= Math.max(2, Math.floor(key.length / 3))
+        ? ` Did you mean "${best}"?`
+        : "";
+    messages.push(
+      `${who} has "${key}", which isn't part of the driver format, so it does nothing.${suggest}`,
+    );
+  }
+  return messages;
 }
 
 /**
@@ -2065,6 +2128,50 @@ export function validateDriver(
   // ── Discovery hints (mirror server/discovery/hints.py rules so the user
   //    sees them here, not as an opaque 422 at save) ──────────────────────
   validateDiscovery(draft, issues);
+
+  // ── Unrecognized keys ──────────────────────────────────────────────────
+  // Last, so every other issue keeps its position. Reaches the blocks an
+  // author types into; the key sets are generated, see unknownKeyMessages.
+  const pushUnknown = (
+    obj: unknown,
+    block: string,
+    who: string,
+    anchor: Pick<ValidationIssue, "field" | "command" | "param">,
+  ): void => {
+    for (const message of unknownKeyMessages(obj, block, who)) {
+      issues.push({ severity: "error", section: "behavior", message, ...anchor });
+    }
+  };
+
+  for (const message of unknownKeyMessages(draft, "__root__", "This driver")) {
+    issues.push({ severity: "error", section: "general", message });
+  }
+  for (const [cmdName, cmd] of Object.entries(draft.commands ?? {})) {
+    pushUnknown(cmd, "commandEntry", `Command "${cmdName}"`, { command: cmdName });
+    for (const [paramName, paramDef] of Object.entries(cmd?.params ?? {})) {
+      pushUnknown(
+        paramDef,
+        "paramEntry",
+        `Parameter "${paramName}" in command "${cmdName}"`,
+        { command: cmdName, param: paramName },
+      );
+    }
+  }
+  for (const [varName, varDef] of Object.entries(draft.state_variables ?? {})) {
+    pushUnknown(varDef, "stateVariableEntry", `State variable "${varName}"`, {
+      field: `state_variables.${varName}`,
+    });
+  }
+  for (const [key, setting] of Object.entries(draft.device_settings ?? {})) {
+    pushUnknown(setting, "deviceSettingEntry", `Device setting "${key}"`, {
+      field: `device_settings.${key}`,
+    });
+  }
+  (Array.isArray(draft.responses) ? draft.responses : []).forEach((resp, i) => {
+    pushUnknown(resp, "responseEntry", `Response ${i + 1}`, {
+      field: `responses.${i}`,
+    });
+  });
 
   return issues;
 }

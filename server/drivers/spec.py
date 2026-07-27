@@ -728,7 +728,7 @@ DEFS = {
             },
         },
         'required': ('label',),
-        'extra': True,
+        'extra': False,
     },
     'childStateVariableEntry': {
         'type': 'object',
@@ -771,7 +771,7 @@ DEFS = {
                 'enum': CLOUD_PRIORITIES,
             },
         },
-        'extra': True,
+        'extra': False,
     },
     'childEntityType': {
         'type': 'object',
@@ -827,7 +827,7 @@ DEFS = {
                 'ref': 'childInstances',
             },
         },
-        'extra': True,
+        'extra': False,
     },
     'childInstances': {
         'type': 'object',
@@ -1122,8 +1122,12 @@ DEFS = {
                     ),
                 },
             },
+            'description': {
+                'type': 'string',
+                'doc': 'Accepted alias for help — read either, write help.',
+            },
         },
-        'extra': True,
+        'extra': False,
     },
     'oscArg': {
         'type': 'object',
@@ -1135,7 +1139,7 @@ DEFS = {
             },
             'value': ANY,
         },
-        'extra': True,
+        'extra': False,
     },
     'commandEntry': {
         'type': 'object',
@@ -1209,7 +1213,7 @@ DEFS = {
                 'doc': "Let this command run while the device is offline (no live connection). Default false: the platform blocks commands to a disconnected device. Set true only for a command whose handler needs no connection — the canonical case is a Wake-on-LAN power_on that sends a magic packet instead of talking to the device over its (dead) control link. Param validation still runs; the driver's handler must not assume a live transport. When such a command is promoted to a Quick Action button, the button stays available regardless of connection state. Requires platform 0.24.0.",
             },
         },
-        'extra': True,
+        'extra': False,
         'any_of': (
             {
                 'required': ('send',),
@@ -1278,7 +1282,7 @@ DEFS = {
             },
         },
         'required': ('id',),
-        'extra': True,
+        'extra': False,
     },
     'visibleWhen': {
         'doc': "Show the action only when a state condition holds. A single {key, operator, value} condition, or an {any:[...]} (OR) / {all:[...]} (AND) group. key may use $id for the device's own id.",
@@ -1332,7 +1336,7 @@ DEFS = {
             },
         },
         'required': ('key',),
-        'extra': True,
+        'extra': False,
     },
     'mappingEntry': {
         'type': 'object',
@@ -1364,7 +1368,7 @@ DEFS = {
                 'doc': 'Optional. The matched value is treated as a JSON string: it is parsed and this dot-separated path is walked (object keys and integer list indices, e.g. "data" or "data.name" or "data.0") to the value used before mapping/coercion. A path landing on an array or object yields its length (so a boolean type becomes "is non-empty?" and an integer type becomes the count). Omit for today\'s positional/raw behavior. Common for OSC devices whose replies carry the value inside a JSON string (e.g. QLab\'s /reply ... {"data": ...}).',
             },
         },
-        'extra': True,
+        'extra': False,
     },
     'responseEntry': {
         'type': 'object',
@@ -1418,7 +1422,7 @@ DEFS = {
                 },
             },
         },
-        'extra': True,
+        'extra': False,
         'any_of': (
             {
                 'required': ('match',),
@@ -1539,7 +1543,7 @@ DEFS = {
             },
         },
         'required': ('username_prompt', 'password_prompt'),
-        'extra': True,
+        'extra': False,
     },
     'livenessBlock': {
         'type': 'object',
@@ -1579,7 +1583,7 @@ DEFS = {
             },
         },
         'required': ('send',),
-        'extra': True,
+        'extra': False,
     },
     'frameParser': {
         'type': 'object',
@@ -1646,7 +1650,7 @@ DEFS = {
                 'doc': 'struct_frame: reserved bytes after the payload (discarded). Default 0. Requires platform 0.23.0.',
             },
         },
-        'extra': True,
+        'extra': False,
     },
     'sendFrame': {
         'type': 'object',
@@ -1676,7 +1680,7 @@ DEFS = {
                 'doc': 'Constant bytes emitted after the length field, before the command data (e.g. eISCP\'s version + reserved = "\\x01\\x00\\x00\\x00"). Literal-escape string.',
             },
         },
-        'extra': True,
+        'extra': False,
     },
     'configSchemaEntry': {
         'type': 'object',
@@ -1753,7 +1757,7 @@ DEFS = {
                 'type': 'string',
             },
         },
-        'extra': True,
+        'extra': False,
     },
     'deviceSettingEntry': {
         'type': 'object',
@@ -1802,7 +1806,7 @@ DEFS = {
                 'ref': 'deviceSettingWrite',
             },
         },
-        'extra': True,
+        'extra': False,
     },
     'deviceSettingWrite': {
         'type': 'object',
@@ -1835,7 +1839,7 @@ DEFS = {
                 },
             },
         },
-        'extra': True,
+        'extra': False,
     },
     'simulatorSection': {
         'type': 'object',
@@ -1917,7 +1921,7 @@ DEFS = {
                 'doc': 'Unsolicited messages emitted on state change, keyed by state variable.',
             },
         },
-        'extra': True,
+        'extra': False,
     },
     'discoveryBlock': {
         'type': 'object',
@@ -2292,6 +2296,30 @@ DEFS = {
         ),
     },
 }
+
+
+def block_has_fixed_keys(node: dict) -> bool:
+    """True when a block's declared ``fields`` are its whole legal key set.
+
+    The unknown-key check asks this before flagging anything, so the Python
+    validator, the Builder's generated key tables, and the published schema
+    all draw the line in the same place.
+
+    Two things disqualify a block. An open one (``extra`` is not False) takes
+    any key by design. And one whose combinator branches narrow *properties*
+    per value — ``push:``, whose legal keys depend on its ``type:`` — has no
+    single key set to check against; the union would accept keys the contract
+    refuses for that variant, so those blocks carry their own tailored check.
+    Branches that only add ``required`` constrain presence, not vocabulary,
+    and leave the key set fixed.
+    """
+    if node.get("extra") is not False or not isinstance(node.get("fields"), dict):
+        return False
+    for combinator in ("one_of", "any_of", "all_of"):
+        for branch in node.get(combinator, ()):
+            if set(branch) - {"required"}:
+                return False
+    return True
 
 
 # Cross-field rules that live at the document root (JSON Schema allOf):

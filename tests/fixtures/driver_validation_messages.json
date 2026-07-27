@@ -169,7 +169,8 @@
   "child_entity_types: type name 'zone*' must not contain glob metacharacters (*) \u2014 they break state-change dispatch"
  ],
  "command_legacy_string_alias": [
-  "Command 'noop': must have 'send' (TCP/serial), 'path'/'method' (HTTP), or 'address' (OSC)"
+  "Command 'noop': must have 'send' (TCP/serial), 'path'/'method' (HTTP), or 'address' (OSC)",
+  "commands.noop: unknown key 'string'"
  ],
  "command_not_dict": [
   "Command 'noop': must be a dict"
@@ -586,7 +587,8 @@
   "Response 0: json response needs a 'set' map or a 'mappings' list"
  ],
  "response_legacy_pattern_alias": [
-  "Response 0: missing match or address"
+  "Response 0: missing match or address",
+  "responses[0]: unknown key 'pattern'"
  ],
  "response_missing_pattern": [
   "Response 0: missing match or address"
@@ -656,6 +658,12 @@
  ],
  "state_variables_not_mapping": [
   "state_variables: must be a mapping"
+ ],
+ "unknown_param_key": [
+  "commands.set_volume.params.level: unknown key 'mn' (did you mean 'min'?)"
+ ],
+ "unknown_top_level_key": [
+  "unknown key 'state_varibles' (did you mean 'state_variables'?)"
  ],
  "unsupported_transport": [
   "Unsupported transport: carrier_pigeon"

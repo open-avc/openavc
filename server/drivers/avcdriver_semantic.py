@@ -16,6 +16,7 @@ them are passed in (see ``validate_driver_definition``'s
 
 from __future__ import annotations
 
+import difflib as _difflib
 import re
 from typing import Any, Callable
 
@@ -27,6 +28,8 @@ from server.drivers.spec import (
     CHILD_ID_TYPES,
     CLOUD_PRIORITIES,
     CONFIG_FIELD_SOURCES,
+    DEFS,
+    FIELDS,
     GENERIC_ID_PREFIXES,
     INSTANCE_SOURCES,
     LENGTH_ENDIANS,
@@ -42,6 +45,7 @@ from server.drivers.spec import (
     VALUE_TYPES,
     VISIBLE_WHEN_OPERATORS as _VISIBLE_WHEN_OPERATORS,
     YAML_TRANSPORTS,
+    block_has_fixed_keys,
     is_multicast_group,
 )
 from server.utils.regex_safety import regex_safety_error as _regex_redos_error
@@ -219,10 +223,76 @@ def _validate_param_option_providers(
                     )
 
 
+def unknown_key_errors(driver_def: dict[str, Any]) -> list[str]:
+    """Report keys the driver contract doesn't declare, with a spelling hint.
+
+    Driven entirely off the FIELDS/DEFS registry, so it can never disagree
+    with the published schema: a block is checked exactly when the registry
+    marks it closed (``extra: False``), which is exactly when the generator
+    emits ``additionalProperties: false`` for it. Adding a field to the
+    registry is all it takes for this to accept it.
+
+    Why this is separate from ``validate_driver_definition``'s default path:
+    the runtime loader drops a driver entirely when validation returns any
+    error, and nothing gates a driver on ``min_platform_version`` at load. So
+    a driver written for a newer platform would vanish at load and take its
+    devices offline — worse than the typo. The loader logs these as warnings;
+    only the authoring gates treat them as errors.
+    """
+    errors: list[str] = []
+
+    def walk(node: Any, value: Any, loc: str) -> None:
+        if not isinstance(node, dict):
+            return
+        if "ref" in node:
+            walk(DEFS.get(node["ref"]), value, loc)
+            return
+        if isinstance(value, list):
+            item = node.get("items")
+            if item is not None:
+                for i, entry in enumerate(value):
+                    walk(item, entry, f"{loc}[{i}]")
+            return
+        if not isinstance(value, dict):
+            return
+
+        fields = node.get("fields")
+        extra = node.get("extra")
+
+        # A block whose keys are author-chosen names (commands, state
+        # variables, a config map) declares its value shape in `extra`. The
+        # names are data, not contract keys — descend, don't judge.
+        if isinstance(extra, dict) and not fields:
+            for key, sub in value.items():
+                walk(extra, sub, f"{loc}.{key}" if loc else str(key))
+            return
+
+        if isinstance(fields, dict):
+            # Flagged only where the registry says the key set is fixed, so
+            # this and the schema always agree; an open or type-conditional
+            # block is still descended, just never judged here.
+            if block_has_fixed_keys(node):
+                known = set(fields)
+                for key in sorted(set(value) - known):
+                    close = _difflib.get_close_matches(
+                        str(key), sorted(known), n=1, cutoff=0.7
+                    )
+                    hint = f" (did you mean '{close[0]}'?)" if close else ""
+                    where = f"{loc}: " if loc else ""
+                    errors.append(f"{where}unknown key '{key}'{hint}")
+            for key, sub_node in fields.items():
+                if key in value:
+                    walk(sub_node, value[key], f"{loc}.{key}" if loc else str(key))
+
+    walk({"fields": FIELDS, "extra": False}, driver_def, "")
+    return errors
+
+
 def validate_driver_definition(
     driver_def: dict[str, Any],
     *,
     discovery_validator: Callable[[dict[str, Any]], list[str]] | None = None,
+    strict: bool = False,
 ) -> list[str]:
     """
     Validate a driver definition.
@@ -233,6 +303,12 @@ def validate_driver_definition(
     the runtime loader passes the discovery engine's parser through it, and
     it runs exactly where the check always ran so error order is unchanged.
     When None, the discovery block is not validated.
+
+    ``strict`` additionally rejects keys the contract doesn't declare (a
+    misspelled ``state_varibles`` silently loads a driver with no state
+    variables otherwise). Pass it where a driver is being *created* — the
+    Builder's save, an import, the AI tool, catalog CI — and leave it off
+    where one is being *loaded*: see ``unknown_key_errors``.
     """
     errors: list[str] = []
 
@@ -1567,6 +1643,12 @@ def validate_driver_definition(
     _validate_each_child(
         "on_connect", driver_def.get("on_connect"), allow_osc_dict=True
     )
+
+    # Strict mode: reject keys the contract doesn't declare. Appended last so
+    # every existing error keeps its position. Only the authoring gates ask for
+    # this — see unknown_key_errors for why loading stays lenient.
+    if strict:
+        errors.extend(unknown_key_errors(driver_def))
 
     return errors
 

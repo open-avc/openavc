@@ -664,7 +664,9 @@ class DeviceToolsMixin:
         if any(d.get("id") == definition["id"] for d in existing):
             return {"error": f"Driver definition '{definition['id']}' already exists"}
 
-        errors = validate_driver_definition(definition)
+        # strict: the AI is authoring here, and an undeclared key it invented
+        # would otherwise land in a saved driver and silently do nothing.
+        errors = validate_driver_definition(definition, strict=True)
         if errors:
             return {"error": "; ".join(errors)}
 
@@ -707,7 +709,9 @@ class DeviceToolsMixin:
         if old_path and str(old_path.resolve()).startswith(builtin_root):
             return {"error": f"Driver '{driver_id}' is a built-in and cannot be modified. Duplicate it under a new id first."}
 
-        errors = validate_driver_definition(definition)
+        # strict: the AI is authoring here, and an undeclared key it invented
+        # would otherwise land in a saved driver and silently do nothing.
+        errors = validate_driver_definition(definition, strict=True)
         if errors:
             return {"error": "; ".join(errors)}
 

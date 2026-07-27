@@ -179,14 +179,7 @@ INTERFACES: tuple[tuple[str, Callable[[], dict], dict[str, dict], dict], ...] = 
             "default": _D(type="unknown"),
             "map": _D(type="Record<string, string | number>"),
         },
-        _D(extra_members=(
-            (
-                "description",
-                "string",
-                "Accepted alias for help — read either, write help.",
-                True,
-            ),
-        )),
+        _D(),
     ),
     (
         "DriverCommandDef",
@@ -640,6 +633,39 @@ def _push_keys_by_type() -> str:
     return out
 
 
+def _contract_keys() -> str:
+    """Emit the declared key set of every block the registry closes.
+
+    The Builder needs these to tell an author that ``state_varibles`` is a
+    typo rather than saving a driver whose state variables silently vanish.
+    Generated rather than hand-typed for the usual reason: a field added to
+    the registry has to become a legal key everywhere at once, and a
+    hand-maintained copy is the drift this contract exists to prevent.
+
+    Selected by ``spec.block_has_fixed_keys``, the same predicate the Python
+    validator asks — so the Builder, the schema, and the server cannot
+    disagree about which keys are legal. ``__root__`` is the top-level node.
+    """
+    blocks: list[tuple[str, Any]] = [("__root__", spec.FIELDS)]
+    for name, node in spec.DEFS.items():
+        if spec.block_has_fixed_keys(node):
+            blocks.append((name, node["fields"]))
+
+    out = _doc_block(
+        "Declared keys of every closed contract block, for the unknown-key "
+        "check. __root__ is the top level; the rest are $defs names.", "",
+    )
+    out += (
+        "export const DRIVER_CONTRACT_KEYS: "
+        "Readonly<Record<string, ReadonlySet<string>>> = {\n"
+    )
+    for name, fields in blocks:
+        items = ", ".join(f'"{k}"' for k in sorted(fields))
+        out += f"  {name}: new Set([{items}]),\n"
+    out += "};\n"
+    return out
+
+
 def _render_member(
     name: str,
     node: dict[str, Any],
@@ -694,6 +720,7 @@ def render_types_ts() -> str:
     for name, shape, getter, doc in CONSTANTS:
         sections.append(_render_constant(name, shape, getter(), doc) + "\n")
     sections.append(_push_keys_by_type() + "\n")
+    sections.append(_contract_keys() + "\n")
 
     sections.append("// --- driver definition types ---\n\n")
     rendered = {name for name, *_ in INTERFACES}

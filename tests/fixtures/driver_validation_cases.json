@@ -5784,6 +5784,49 @@
   ],
   "transport": "tcp"
  },
+ "unknown_param_key": {
+  "commands": {
+   "set_volume": {
+    "params": {
+     "level": {
+      "mn": 0,
+      "type": "integer"
+     }
+    },
+    "send": "VOL {level}\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "unknown_top_level_key": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "state_varibles": {
+   "power": {
+    "type": "boolean"
+   }
+  },
+  "transport": "tcp"
+ },
  "unsupported_transport": {
   "commands": {
    "noop": {
