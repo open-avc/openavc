@@ -630,6 +630,17 @@ const responseIssues = (issues) => issues.filter((i) => /^Response \d/.test(i.me
   results.m173_command_with_send_ok = { pass: hits.length === 0, detail: hits };
 }
 {
+  // Whitespace IS a wire value. Some devices document a bare line feed as
+  // their keepalive, and the loader accepts it (a plain truthiness test on
+  // `send`), so the Builder must too. This check used to trim before asking
+  // whether the send was empty, which locked such a driver out of the editor
+  // completely — the reverse-corpus sweep exists because nothing caught that.
+  const hits = wireIssues(
+    validate(baseDraft("tcp", { heart_beat: { label: "Keepalive", send: "\n", params: {} } })),
+  );
+  results.whitespace_send_is_a_wire_value_ok = { pass: hits.length === 0, detail: hits };
+}
+{
   // A response with neither address nor pattern/match has nothing to match.
   const issues = responseIssues(
     validate(baseDraft("tcp", {}, { responses: [{ mappings: [] }] })),
@@ -725,30 +736,33 @@ const missingWriteIssues = (issues) =>
   results.setting_with_write_ok = { pass: issues.length === 0, detail: issues };
 }
 
-// --- Config fields: secret defaults are errors, wrong-typed defaults warn ---
+// --- Config fields: secret and wrong-typed defaults both warn --------------
 const configIssues = (issues) =>
   issues.filter((i) => /^Config field/.test(i.message));
 {
-  // A secret field carrying a default exports the credential in plain text
-  // inside the shareable .avcdriver — the import/hand-edit path the Config
-  // editor itself can't produce. Must be a save-blocking error.
+  // A masked field carrying a default is stored in plain text inside the
+  // shareable .avcdriver, which is worth saying — but it is not a refusal.
+  // What an author puts there is nearly always the factory default printed
+  // in the manufacturer's own manual, and blocking it means every install
+  // types the same published password by hand for no security gain. Two
+  // shipped drivers were locked out of the Builder entirely by the error.
   const issues = configIssues(
     validate(baseDraft("tcp", {}, {
       config_schema: { pin: { type: "string", label: "PIN", secret: true } },
       default_config: { pin: "hunter2" },
     })),
   );
-  results.secret_field_default_error = {
+  results.secret_field_default_warning = {
     pass:
       issues.length === 1 &&
-      issues[0].severity === "error" &&
+      issues[0].severity === "warning" &&
       issues[0].section === "connection" &&
-      /secret/.test(issues[0].message),
+      /never put a real site password/.test(issues[0].message),
     detail: issues,
   };
 }
 {
-  // The schema entry's own `default` is exported too — same error.
+  // The schema entry's own `default` is exported too — same warning.
   const issues = configIssues(
     validate(baseDraft("tcp", {}, {
       config_schema: {
@@ -756,8 +770,8 @@ const configIssues = (issues) =>
       },
     })),
   );
-  results.secret_schema_default_error = {
-    pass: issues.length === 1 && issues[0].severity === "error",
+  results.secret_schema_default_warning = {
+    pass: issues.length === 1 && issues[0].severity === "warning",
     detail: issues,
   };
 }

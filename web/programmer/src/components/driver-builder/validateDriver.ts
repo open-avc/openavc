@@ -105,11 +105,22 @@ export function commandRoute(cmd: {
   return "raw";
 }
 
-/** True when a field's value carries authored content worth telling the
- *  user about before removing (vs. an empty seed like `send: ""`). */
+/** True when a wire field carries authored content — worth telling the user
+ *  about before removing, and enough to give a command something to send
+ *  (vs. an empty seed like `send: ""`).
+ *
+ *  Only ever asked about wire fields (send/string, address/args,
+ *  method/path/body/headers/query_params), which is why a string is tested
+ *  for emptiness and NOT trimmed. Whitespace is a wire value: a device whose
+ *  documented keepalive is a bare line feed authors `send: "\n"`, and the
+ *  runtime sends it — `cmd_def.get("send")` in avcdriver_semantic.py is a
+ *  plain truthiness test, so the loader accepts it. Trimming here made the
+ *  Builder stricter than the platform and locked such a driver out of the
+ *  editor entirely. Labels and ids are trimmed where they are checked; they
+ *  do not come through here. */
 function hasContent(value: unknown): boolean {
   if (value == null) return false;
-  if (typeof value === "string") return value.trim() !== "";
+  if (typeof value === "string") return value !== "";
   if (Array.isArray(value)) return value.length > 0;
   if (typeof value === "object") return Object.keys(value).length > 0;
   return true;
@@ -996,11 +1007,15 @@ export function validateDriver(
   }
 
   // ── Config fields: defaults must be safe and typed. A secret field with a
-  //    default exports the credential in plain text inside the shareable
-  //    .avcdriver (the Config editor can't author one, but an imported or
-  //    hand-edited file can carry one in). A default stored as the wrong
-  //    primitive (e.g. "5" on an integer field) exports wrong-typed YAML that
-  //    anything reading default_config directly trips over. ────────────────
+  //    default is worth a nudge but not a refusal: the value an author puts
+  //    there is nearly always the factory default the manufacturer prints in
+  //    its own manual, which is a starting point for whoever commissions the
+  //    device rather than a secret. Refusing it made two shipped drivers
+  //    impossible to open in the Builder and bought nothing — the rule worth
+  //    having is "don't ship a site password", and a driver file cannot tell
+  //    the two apart. A default stored as the wrong primitive (e.g. "5" on an
+  //    integer field) exports wrong-typed YAML that anything reading
+  //    default_config directly trips over. ─────────────────────────────────
   for (const [fieldName, rawDef] of Object.entries(draft.config_schema ?? {})) {
     if (!rawDef || typeof rawDef !== "object") continue;
     const fieldDef = rawDef as {
@@ -1013,10 +1028,10 @@ export function validateDriver(
     if (fieldDef.secret === true) {
       if (hasValue(configDefault) || hasValue(fieldDef.default)) {
         issues.push({
-          severity: "error",
+          severity: "warning",
           section: "connection",
           field: `config_schema.${fieldName}`,
-          message: `Config field "${fieldName}" is secret but has a default value — remove the default. A secret default is exported in plain text inside the driver file.`,
+          message: `Config field "${fieldName}" is masked but has a default value, which is stored in plain text inside the driver file. That is fine for a published factory default, but never put a real site password here.`,
         });
       }
       continue;
