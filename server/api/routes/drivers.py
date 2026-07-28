@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 from typing import Any, NamedTuple
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 
 from server.api._engine import _get_engine, _rate_limit_test
 from server.api.auth import require_claimed_auth
@@ -1340,6 +1340,49 @@ async def get_driver_definition(driver_id: str) -> dict:
             d.pop("_source_file", None)
             return d
     raise HTTPException(status_code=404, detail=f"Driver definition '{driver_id}' not found")
+
+
+@router.post("/driver-definitions/validate")
+async def validate_driver_definition_draft(
+    body: Any = Body(...),
+) -> dict[str, Any]:
+    """Validate a driver definition without saving it.
+
+    Answers the question the Driver Builder asks on every keystroke: what is
+    wrong with this draft? The rules are the platform's own — the same
+    function the save routes call, at the same ``strict`` setting — so what
+    the editor shows and what a save accepts cannot disagree.
+
+    Each issue carries a ``path`` (``commands.mute``, ``state_variables.volume``,
+    ``config_schema.password``, ``responses[2]``, or ``""`` for a whole-driver
+    rule) so the editor can put it on the right tab beside the right control.
+
+    Deliberately takes the raw body rather than ``DriverDefinitionRequest``:
+    that model would reject a mistyped field with a 422 before any rule ran,
+    and a mistyped field is exactly what an author needs a readable message
+    about. A draft that isn't a mapping comes back as one issue, not an error.
+    """
+    from server.drivers.driver_loader import validate_driver_issues
+
+    if not isinstance(body, dict):
+        return {
+            "issues": [
+                {
+                    "severity": "error",
+                    "message": "Driver definition must be a mapping",
+                    "path": "",
+                }
+            ]
+        }
+
+    # Same carve-out the save routes make: the listing endpoint decorates a
+    # definition with where it came from, and an editor that loaded one hands
+    # those keys straight back.
+    draft = _strip_listing_decorations(body)
+
+    # strict: this is an authoring surface, so an undeclared key is a typo to
+    # show now rather than a mystery when the save refuses it.
+    return {"issues": validate_driver_issues(draft, strict=True)}
 
 
 @router.post("/driver-definitions")

@@ -223,6 +223,50 @@ def _validate_param_option_providers(
                     )
 
 
+class _TaggedErrors(list):
+    """A real ``list[str]`` that also records *where in the definition* each
+    entry came from.
+
+    The validation walk below enters one section of a definition at a time and
+    every one of its ~200 rules appends to the same ``errors`` list. So the
+    walk stamps its current location on the list itself — ``errors.ctx =
+    "commands.power_on"`` — instead of every rule site growing a path
+    argument. A rule that fires deep inside a helper inherits the enclosing
+    section's tag for free, because the helper appends to this same object.
+
+    Two properties make this safe to drop into the existing walk:
+
+    * It **is** a list, so ``validate_driver_definition`` keeps its
+      ``list[str]`` contract and no existing caller changes — the loader, the
+      save routes, ``build_index.py`` and the vendored catalog copy all see
+      exactly what they saw before.
+    * ``list.extend`` does not route through a subclass's ``append``, so both
+      are overridden. A sub-list that carries its own (finer) tags keeps them;
+      anything else inherits the current section.
+
+    ``validate_driver_issues`` is the only reader — it pairs ``tags`` with the
+    messages to give the Driver Builder something to anchor each issue to.
+    """
+
+    def __init__(self, *args: Any) -> None:
+        super().__init__(*args)
+        self.ctx: str = ""
+        self.tags: list[str] = [""] * len(self)
+
+    def append(self, item: Any) -> None:
+        super().append(item)
+        self.tags.append(self.ctx)
+
+    def extend(self, items: Any) -> None:
+        sub_tags = getattr(items, "tags", None)
+        items = list(items)
+        super().extend(items)
+        if sub_tags is not None and len(sub_tags) == len(items):
+            self.tags.extend(sub_tags)
+        else:
+            self.tags.extend([self.ctx] * len(items))
+
+
 def unknown_key_errors(driver_def: dict[str, Any]) -> list[str]:
     """Report keys the driver contract doesn't declare, with a spelling hint.
 
@@ -239,7 +283,7 @@ def unknown_key_errors(driver_def: dict[str, Any]) -> list[str]:
     devices offline — worse than the typo. The loader logs these as warnings;
     only the authoring gates treat them as errors.
     """
-    errors: list[str] = []
+    errors = _TaggedErrors()
 
     def walk(node: Any, value: Any, loc: str) -> None:
         if not isinstance(node, dict):
@@ -273,6 +317,9 @@ def unknown_key_errors(driver_def: dict[str, Any]) -> list[str]:
             # block is still descended, just never judged here.
             if block_has_fixed_keys(node):
                 known = set(fields)
+                # This walk already knows exactly where it is, so it tags its
+                # own entries rather than inheriting the caller's section.
+                errors.ctx = loc
                 for key in sorted(set(value) - known):
                     close = _difflib.get_close_matches(
                         str(key), sorted(known), n=1, cutoff=0.7
@@ -309,8 +356,14 @@ def validate_driver_definition(
     variables otherwise). Pass it where a driver is being *created* — the
     Builder's save, an import, the AI tool, catalog CI — and leave it off
     where one is being *loaded*: see ``unknown_key_errors``.
+
+    The returned list is a ``_TaggedErrors`` — still a plain ``list[str]`` to
+    every caller, but it also carries the section each message came from, so
+    ``validate_driver_issues`` can hand the Driver Builder something to anchor
+    each issue to. The ``errors.ctx = ...`` assignments below are what set it;
+    each one marks the walk entering a new part of the definition.
     """
-    errors: list[str] = []
+    errors = _TaggedErrors()
 
     # A malformed driver file can yaml-parse to a non-mapping, or carry
     # non-mapping `responses`/`commands`/`state_variables` sections (e.g. a
@@ -319,7 +372,8 @@ def validate_driver_definition(
     # taking every other driver down with the one bad file. Validate the shape
     # of each section before iterating it so a bad file is reported and skipped.
     if not isinstance(driver_def, dict):
-        return ["Driver definition must be a mapping"]
+        errors.append("Driver definition must be a mapping")
+        return errors
 
     for field in REQUIRED_FIELDS:
         if field not in driver_def:
@@ -349,11 +403,13 @@ def validate_driver_definition(
     )
 
     # Validate response patterns compile and don't have catastrophic backtracking
+    errors.ctx = "responses"
     responses = driver_def.get("responses", [])
     if not isinstance(responses, list):
         errors.append("responses: must be a list")
         responses = []
     for i, resp in enumerate(responses):
+        errors.ctx = f"responses[{i}]"
         if not isinstance(resp, dict):
             errors.append(f"Response {i}: must be a mapping")
             continue
@@ -674,6 +730,7 @@ def validate_driver_definition(
                     _check_group_ref(f"{where}: state '{prop}'", expr)
 
     # Validate commands structure
+    errors.ctx = "commands"
     commands = driver_def.get("commands", {})
     if not isinstance(commands, dict):
         errors.append("commands: must be a mapping")
@@ -681,6 +738,7 @@ def validate_driver_definition(
     declared_vars = driver_def.get("state_variables")
     declared_vars = declared_vars if isinstance(declared_vars, dict) else {}
     for cmd_name, cmd_def in commands.items():
+        errors.ctx = f"commands.{cmd_name}"
         if not isinstance(cmd_def, dict):
             errors.append(f"Command '{cmd_name}': must be a dict")
             continue
@@ -765,7 +823,9 @@ def validate_driver_definition(
 
     # Opt-in send-side command framing: a constant prefix/suffix wraps every
     # byte-stream command. Both must be strings when present.
+    errors.ctx = ""
     for frame_key in ("command_prefix", "command_suffix"):
+        errors.ctx = frame_key
         frame_val = driver_def.get(frame_key)
         if frame_val is not None and not isinstance(frame_val, str):
             errors.append(f"{frame_key}: must be a string")
@@ -776,11 +836,13 @@ def validate_driver_definition(
     # and just show "(not set)" forever while writes silently fired.
     # (`declared_vars` is hoisted above the command loop.)
     valid_setting_types = set(VALUE_TYPES)
+    errors.ctx = "device_settings"
     device_settings = driver_def.get("device_settings")
     if device_settings is not None and not isinstance(device_settings, dict):
         errors.append("device_settings: must be a mapping")
     elif isinstance(device_settings, dict):
         for setting_name, setting_def in device_settings.items():
+            errors.ctx = f"device_settings.{setting_name}"
             where = f"Device setting '{setting_name}'"
             if not isinstance(setting_def, dict):
                 errors.append(f"{where}: must be a mapping")
@@ -817,6 +879,7 @@ def validate_driver_definition(
     # the strong-signal-required rule: a driver may declare any
     # combination of strong + soft signals, or none (load-time warning).
     # Signal collisions are caught later when the SignalIndex is built.
+    errors.ctx = "discovery"
     driver_id = driver_def.get("id", "") or ""
     is_template = any(driver_id.startswith(p) for p in GENERIC_ID_PREFIXES)
     if not is_template and discovery_validator is not None:
@@ -835,6 +898,7 @@ def validate_driver_definition(
     # accepts device POSTs on a platform-assigned callback path (no keys of
     # its own — the URL is built at runtime and substitutes into commands as
     # {push_callback_url}).
+    errors.ctx = "push"
     push_def = driver_def.get("push")
     if push_def is not None:
         if not isinstance(push_def, dict):
@@ -1062,6 +1126,7 @@ def validate_driver_definition(
     # misdeclared block silently connects unauthenticated or mangles the
     # transport's data path instead of erroring. Enforce the requirements at
     # load time where the author can see them.
+    errors.ctx = "auth"
     auth_def = driver_def.get("auth")
     if auth_def is not None:
         if not isinstance(auth_def, dict):
@@ -1103,6 +1168,7 @@ def validate_driver_definition(
     # a reply within T, reconnect after K misses"). A misdeclared block would
     # silently never arm (no watchdog — the exact never-goes-offline failure it
     # exists to fix) or tear healthy devices down; enforce at load time.
+    errors.ctx = "liveness"
     liveness_def = driver_def.get("liveness")
     if liveness_def is not None:
         if not isinstance(liveness_def, dict):
@@ -1156,11 +1222,13 @@ def validate_driver_definition(
     # Validate the optional actions / quick_actions blocks (Quick Action strip).
     # quick_actions promote command ids to buttons; actions is the full form
     # (kind:"command" promotes a command, kind:"setup" is a provisioning wizard).
+    errors.ctx = "actions"
     errors.extend(validate_actions(driver_def))
     # A YAML driver is interpreted by ConfigurableDriver, which has no
     # run_setup_action handler — so kind:"setup" can never do anything here.
     # Reject it at load time rather than render a button that errors on click.
     for i, entry in enumerate(driver_def.get("actions") or []):
+        errors.ctx = f"actions[{i}]"
         if isinstance(entry, dict) and entry.get("kind") == "setup":
             errors.append(
                 f"actions[{i}]: kind 'setup' requires a Python driver "
@@ -1174,11 +1242,13 @@ def validate_driver_definition(
 
     # Validate state_variables structure
     valid_types = set(VALUE_TYPES)
+    errors.ctx = "state_variables"
     state_variables = driver_def.get("state_variables", {})
     if not isinstance(state_variables, dict):
         errors.append("state_variables: must be a mapping")
         state_variables = {}
     for var_name, var_def in state_variables.items():
+        errors.ctx = f"state_variables.{var_name}"
         if not isinstance(var_def, dict):
             errors.append(f"State variable '{var_name}': must be a dict")
             continue
@@ -1215,6 +1285,7 @@ def validate_driver_definition(
     # (authored by hand or by an older Driver Builder) would otherwise raise
     # in connect() and wedge the device in a permanent reconnect loop. Surface
     # it at load instead, with a clear message.
+    errors.ctx = "frame_parser"
     frame_parser = driver_def.get("frame_parser")
     if frame_parser is not None:
         if not isinstance(frame_parser, dict):
@@ -1268,6 +1339,7 @@ def validate_driver_definition(
     # Validate the optional send_frame block (send-side packet framing — the
     # send twin of frame_parser). Only length_prefix is supported; the header
     # bytes are literal-escape strings and length_size must be a positive int.
+    errors.ctx = "send_frame"
     send_frame = driver_def.get("send_frame")
     if send_frame is not None:
         if not isinstance(send_frame, dict):
@@ -1307,11 +1379,13 @@ def validate_driver_definition(
     # subscribe_children's "device.<id>.<child_type>.*" pattern. A dot would
     # corrupt the key structure; a glob metachar (* ? [) breaks the fnmatch
     # dispatch the platform uses to route per-child state changes.
+    errors.ctx = "child_entity_types"
     child_types = driver_def.get("child_entity_types", {})
     if child_types and not isinstance(child_types, dict):
         errors.append("child_entity_types: must be a mapping")
     elif isinstance(child_types, dict):
         for child_type, type_def in child_types.items():
+            errors.ctx = f"child_entity_types.{child_type}"
             if not isinstance(child_type, str) or not child_type:
                 errors.append(f"child_entity_types: type name {child_type!r} must be a non-empty string")
                 continue
@@ -1540,9 +1614,11 @@ def validate_driver_definition(
             query_config_fields.update(_block.keys())
 
     def _validate_each_child(name: str, entries: Any, allow_osc_dict: bool) -> None:
+        errors.ctx = name
         if not isinstance(entries, list):
             return
         for i, q in enumerate(entries):
+            errors.ctx = f"{name}[{i}]"
             if not isinstance(q, dict):
                 continue
             # `when: <config_field>` gates the entry on a truthy config value.
@@ -1634,6 +1710,7 @@ def validate_driver_definition(
                     f"(a format spec like {{child_id:02d}} works too)"
                 )
 
+    errors.ctx = "polling"
     polling_def = driver_def.get("polling")
     if polling_def is not None and not isinstance(polling_def, dict):
         errors.append("polling: must be a mapping")
@@ -1659,6 +1736,95 @@ def validate_driver_definition(
         errors.extend(unknown_key_errors(driver_def))
 
     return errors
+
+
+def validate_driver_warnings(driver_def: dict[str, Any]) -> list[str]:
+    """Rules an author should see but that must never block anything.
+
+    Deliberately separate from ``validate_driver_definition``: everything that
+    function returns is an *error* to every one of its callers — the loader
+    drops the driver, the save routes refuse it, catalog CI fails the build.
+    A rule that only wants to say "are you sure?" has no home there.
+
+    ``validate_driver_issues`` is what carries these onward, so an editor can
+    show them beside the errors without treating them as one.
+
+    Same tagging as the error walk: ``warnings.ctx`` marks where each message
+    belongs.
+    """
+    warnings = _TaggedErrors()
+    if not isinstance(driver_def, dict):
+        return warnings
+
+    def has_value(value: Any) -> bool:
+        return value is not None and value != ""
+
+    # A masked config field with a default stores that default in plain text
+    # inside the driver file. Worth a nudge, never a refusal: the value an
+    # author puts there is nearly always the factory default the manufacturer
+    # prints in its own manual — a starting point for whoever commissions the
+    # device rather than a secret. The rule worth having is "don't ship a site
+    # password", and a driver file cannot tell the two apart, so the nudge is
+    # the honest ceiling. (The same stance is declared on the `secret` field
+    # in spec.py, which is what the published schema and every editor read.)
+    config_schema = driver_def.get("config_schema")
+    raw_defaults = driver_def.get("default_config")
+    defaults = raw_defaults if isinstance(raw_defaults, dict) else {}
+    if isinstance(config_schema, dict):
+        for field_name, field_def in config_schema.items():
+            if not isinstance(field_def, dict):
+                continue
+            if field_def.get("secret") is not True:
+                continue
+            if has_value(field_def.get("default")) or has_value(
+                defaults.get(field_name)
+            ):
+                warnings.ctx = f"config_schema.{field_name}"
+                warnings.append(
+                    f"Config field '{field_name}' is masked but has a default "
+                    f"value, which is stored in plain text inside the driver "
+                    f"file. That is fine for a published factory default, but "
+                    f"never put a real site password here."
+                )
+
+    return warnings
+
+
+def _as_issues(messages: list[str], severity: str) -> list[dict[str, str]]:
+    """Pair each message with the section tag the walk recorded for it."""
+    tags = getattr(messages, "tags", None)
+    if tags is None or len(tags) != len(messages):
+        tags = [""] * len(messages)
+    return [
+        {"severity": severity, "message": message, "path": tag}
+        for message, tag in zip(messages, tags)
+    ]
+
+
+def validate_driver_issues(
+    driver_def: dict[str, Any],
+    *,
+    discovery_validator: Callable[[dict[str, Any]], list[str]] | None = None,
+    strict: bool = False,
+) -> list[dict[str, str]]:
+    """The same rules as ``validate_driver_definition``, as issue records.
+
+    Each entry is ``{"severity": "error" | "warning", "message", "path"}``.
+    ``path`` says where in the definition the message belongs —
+    ``commands.mute``, ``state_variables.volume``, ``config_schema.password``,
+    ``responses[2]``, or ``""`` for a whole-driver rule. That is what lets an
+    editor put an issue on the right tab and beside the right control without
+    knowing any of the rules itself.
+
+    This exists so the driver contract has exactly one implementation. The
+    Driver Builder asks this (through ``POST /api/driver-definitions/validate``)
+    instead of carrying its own copy of the rules in another language.
+    """
+    errors = validate_driver_definition(
+        driver_def, discovery_validator=discovery_validator, strict=strict
+    )
+    warnings = validate_driver_warnings(driver_def)
+    return _as_issues(errors, "error") + _as_issues(warnings, "warning")
 
 
 def validate_actions(driver_def: dict[str, Any]) -> list[str]:

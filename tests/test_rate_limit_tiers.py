@@ -72,6 +72,12 @@ EXPECTED_CONTROL = {
     ("POST", "/api/discovery/scan"),
     ("POST", "/api/discovery/stop"),
     ("POST", "/api/driver-definitions"),
+    # Called from the Driver Builder on a debounce while an author types, so
+    # it is the one control-tier route whose budget a human can spend without
+    # touching hardware. 120/min is plenty for a debounced editor that skips
+    # unchanged drafts, and the editor keeps its last issue list rather than
+    # blanking if a request ever does fail.
+    ("POST", "/api/driver-definitions/validate"),
     ("POST", "/api/driver-definitions/{driver_id}/reload"),
     ("POST", "/api/driver-definitions/{driver_id}/test-command"),
     ("POST", "/api/drivers/install"),

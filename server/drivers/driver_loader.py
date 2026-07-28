@@ -29,6 +29,7 @@ import yaml
 from server.drivers.avcdriver_semantic import (
     unknown_key_errors as _unknown_key_errors,
     validate_driver_definition as _validate_definition_rules,
+    validate_driver_issues as _validate_definition_issues,
 )
 from server.drivers.spec import REQUIRED_FIELDS as REQUIRED_FIELDS
 from server.utils.logger import get_logger
@@ -93,6 +94,21 @@ def validate_driver_definition(
     when loading one, where ``load_driver_file`` warns instead.
     """
     return _validate_definition_rules(
+        driver_def, discovery_validator=_discovery_hint_errors, strict=strict
+    )
+
+
+def validate_driver_issues(
+    driver_def: dict[str, Any], *, strict: bool = False
+) -> list[dict[str, str]]:
+    """The same validation as ``validate_driver_definition``, as issue records.
+
+    ``{severity, message, path}`` per issue — errors plus the warnings the
+    error list has no way to carry. Serves ``POST /driver-definitions/validate``,
+    which is how the Driver Builder gets its issues instead of holding a
+    second copy of the contract rules.
+    """
+    return _validate_definition_issues(
         driver_def, discovery_validator=_discovery_hint_errors, strict=strict
     )
 
