@@ -1434,6 +1434,53 @@ const irIssues = (issues) => issues.filter((i) => i.field === "ir_codes");
   results.p4_full_featured_driver_ok = { pass: errors.length === 0, detail: errors };
 }
 
+// --- Child id_format: don't be stricter than the loader ------------------
+// The loader reads a missing id_format.type as "integer". This validator used
+// to require the key outright, so a perfectly loadable driver was flagged in
+// the Builder — and because the corpus below only asks "was there an error?",
+// that false positive was also standing in for two rules that did not exist
+// (a non-integer min, and an id_format that isn't a block at all).
+{
+  const idFormatDraft = (idFormat) =>
+    baseDraft("tcp", { noop: { label: "Noop", send: "NOOP\\r", params: {} } }, {
+      child_entity_types: {
+        zone: {
+          label: "Zone",
+          id_format: idFormat,
+          state_variables: { level: { type: "number", label: "Level" } },
+        },
+      },
+    });
+  const idFormatErrors = (idFormat) =>
+    errorsOf(validate(idFormatDraft(idFormat))).filter((i) =>
+      /id_format/.test(i.message),
+    );
+
+  const omitted = idFormatErrors({ min: 1, max: 8 });
+  results.child_id_format_without_type_ok = {
+    pass: omitted.length === 0,
+    detail: omitted,
+  };
+
+  const notBlock = idFormatErrors("integer");
+  results.child_id_format_not_a_block_error = {
+    pass: notBlock.length === 1 && /must be a block of settings/.test(notBlock[0].message),
+    detail: notBlock,
+  };
+
+  const badMin = idFormatErrors({ type: "integer", min: "one" });
+  results.child_id_format_min_not_whole_error = {
+    pass: badMin.length === 1 && /id_format\.min must be a whole number/.test(badMin[0].message),
+    detail: badMin,
+  };
+
+  const zeroPad = idFormatErrors({ type: "integer", min: 1, pad_width: 0 });
+  results.child_id_format_pad_width_zero_ok = {
+    pass: zeroPad.length === 0,
+    detail: zeroPad,
+  };
+}
+
 // --- The shared rejection corpus ----------------------------------------
 // Every definition in driver_validation_cases.json is one the loader refuses.
 // The community driver catalog already replays this corpus against its

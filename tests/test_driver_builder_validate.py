@@ -32,6 +32,21 @@ rules, which hand-written scenarios kept missing. Every case now passes:
 in the Builder too, across the whole corpus. A rule that regresses — or a
 case added to the corpus with no Builder rule behind it — fails here.
 
+What the corpus does NOT prove, and why it is written this way: it asserts
+that *an* error was raised, not that the matching rule fired. It cannot
+assert more without a second hand-written corpus of expected Builder
+messages — the two validators word their messages differently on purpose
+(one is read in a log, the other by an author mid-edit) and spell their
+field paths differently too (``actions[0]`` against ``actions``), so there
+is nothing to compare mechanically. Building that second corpus would
+recreate exactly the hand-maintained mirror this validator was wired to the
+shared corpus to retire. So a case can pass on an unrelated error, and one
+did: three child ``id_format`` cases were carried by a false positive that
+demanded ``id_format.type`` the loader happily defaults. The counter-measure
+is the block of scenarios above it — when a corpus case covers a rule worth
+pinning, add a scenario that names the message, and pair it with a valid
+draft that must raise nothing.
+
 Skips when the Node toolchain or esbuild is absent — unless the run promised
 Node (see tests/gates.py), in which case it fails instead.
 """
@@ -186,6 +201,10 @@ SCENARIOS = [
     "p4_ir_codes_non_bridge_warning",
     "p4_ir_bridge_driver_ok",
     "p4_full_featured_driver_ok",
+    "child_id_format_without_type_ok",
+    "child_id_format_not_a_block_error",
+    "child_id_format_min_not_whole_error",
+    "child_id_format_pad_width_zero_ok",
 ]
 
 

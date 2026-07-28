@@ -1,4 +1,5 @@
 import type {
+  DriverChildIdFormat,
   DriverCommandDef,
   DriverDefinition,
   DriverDeviceSettingDef,
@@ -717,16 +718,43 @@ export function validateDriver(
       });
     }
 
-    // id_format sanity (mirror driver_loader.py): integer or string local
-    // ids. The runtime raises on anything else.
-    const idf = typeDef.id_format ?? { type: "integer" };
-    if (idf.type !== "integer" && idf.type !== "string") {
+    // id_format sanity (mirror avcdriver_semantic.py): integer or string
+    // local ids, whole-number bounds. The runtime raises on anything else.
+    const rawIdf = typeDef.id_format as unknown;
+    const idfIsBlock =
+      typeof rawIdf === "object" && rawIdf !== null && !Array.isArray(rawIdf);
+    if (rawIdf !== undefined && rawIdf !== null && !idfIsBlock) {
+      issues.push({
+        severity: "error",
+        section: "behavior",
+        field: `child_entity_types.${typeName}.id_format`,
+        message: `Child type "${typeName}" id_format must be a block of settings (type, min, max, pad_width), not a single value.`,
+      });
+    }
+    const idf = (idfIsBlock ? rawIdf : {}) as DriverChildIdFormat;
+    // A missing type means "integer" — the loader reads it as
+    // id_format.get("type", "integer"), so flagging an id_format that only
+    // omits it would reject a driver the platform loads happily. Default
+    // here too, or the Builder is stricter than the runtime.
+    const idfType = idf.type ?? "integer";
+    if (idfType !== "integer" && idfType !== "string") {
       issues.push({
         severity: "error",
         section: "behavior",
         field: `child_entity_types.${typeName}.id_format`,
         message: `Child type "${typeName}" id_format.type must be "integer" or "string".`,
       });
+    }
+    for (const bound of ["min", "max"] as const) {
+      const value = idf[bound] as unknown;
+      if (value !== undefined && value !== null && !Number.isInteger(value)) {
+        issues.push({
+          severity: "error",
+          section: "behavior",
+          field: `child_entity_types.${typeName}.id_format`,
+          message: `Child type "${typeName}" id_format.${bound} must be a whole number.`,
+        });
+      }
     }
     if (
       typeof idf.min === "number" &&
@@ -740,12 +768,17 @@ export function validateDriver(
         message: `Child type "${typeName}" id_format.max (${idf.max}) is less than min (${idf.min}).`,
       });
     }
-    if (typeof idf.pad_width === "number" && idf.pad_width < 0) {
+    const padWidth = idf.pad_width as unknown;
+    if (
+      padWidth !== undefined &&
+      padWidth !== null &&
+      (!Number.isInteger(padWidth) || (padWidth as number) < 0)
+    ) {
       issues.push({
         severity: "error",
         section: "behavior",
         field: `child_entity_types.${typeName}.id_format`,
-        message: `Child type "${typeName}" id_format.pad_width can't be negative.`,
+        message: `Child type "${typeName}" id_format.pad_width must be a whole number, zero or more (0 leaves the ID unpadded).`,
       });
     }
 
