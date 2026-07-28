@@ -1495,6 +1495,54 @@ const irIssues = (issues) => issues.filter((i) => i.field === "ir_codes");
   };
 }
 
+// --- A validator failure is an issue, never a blank screen ---------------
+// A driver file is arbitrary YAML, so a field can hold a type no rule
+// expected. The editor validates inside a render, so a throw there takes the
+// whole screen down and leaves no way to fix the value that caused it. Each
+// of these loads on the platform without complaint and used to throw.
+{
+  const throwers = {
+    unquoted_year_author: { author: 2026 },
+    numeric_auth_prompt: { auth: { type: "telnet_login", username_prompt: 5 } },
+    null_param_definition: { commands: { go: { send: "GO", params: { x: null } } } },
+    numeric_child_label: { child_entity_types: { zone: { label: 7 } } },
+  };
+  for (const [name, extra] of Object.entries(throwers)) {
+    const draft = { id: "acme_x", name: "Acme X", transport: "tcp", ...extra };
+    let raw = "did not throw";
+    try {
+      V.validateDriver(draft, [], null);
+    } catch (e) {
+      raw = String(e && e.message ? e.message : e);
+    }
+    let issues = null;
+    let threw = null;
+    try {
+      issues = V.validateDriverSafely(draft, [], null);
+    } catch (e) {
+      threw = String(e && e.message ? e.message : e);
+    }
+    results[`safe_${name}`] = {
+      pass:
+        threw === null &&
+        Array.isArray(issues) &&
+        issues.length >= 1 &&
+        issues.some((i) => i.severity === "error"),
+      detail: { raw, threw, issues },
+    };
+  }
+  // The wrapper must not invent an issue for a draft the rules can read.
+  const clean = V.validateDriverSafely(
+    baseDraft("tcp", { ping: { label: "Ping", send: "PING\\r", params: {} } }),
+    [],
+    null,
+  );
+  results.safe_wrapper_adds_nothing_to_a_readable_draft = {
+    pass: clean.filter((i) => i.severity === "error").length === 0,
+    detail: clean,
+  };
+}
+
 // --- The shared rejection corpus ----------------------------------------
 // Every definition in driver_validation_cases.json is one the loader refuses.
 // The community driver catalog already replays this corpus against its

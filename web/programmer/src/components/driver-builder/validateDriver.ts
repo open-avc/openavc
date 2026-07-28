@@ -569,11 +569,54 @@ function validateParamProviders(
 }
 
 /**
+ * Validate a draft, reporting a failure of the validator itself as an issue.
+ *
+ * Every consumer should call this rather than `validateDriver` directly. A
+ * driver file is arbitrary YAML written by hand or by another tool, so a
+ * field can hold a type no rule expected — `author: 2026` is unquoted YAML,
+ * parses as a number, loads on the platform without complaint, and used to
+ * take the editor down with `draft.author?.trim is not a function`. The
+ * editor validates inside a render, so a throw there blanks the whole screen
+ * and leaves no way to fix the value that caused it.
+ *
+ * Hardening individual rules does not close this: the input space is every
+ * possible YAML document, and one missed rule costs the whole editor. A
+ * validator's worst outcome should be a bad message, never a blank page.
+ */
+export function validateDriverSafely(
+  draft: DriverDefinition,
+  siblings: DriverDefinition[],
+  originalId: string | null,
+): ValidationIssue[] {
+  try {
+    return validateDriver(draft, siblings, originalId);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    return [
+      {
+        severity: "error",
+        section: "general",
+        field: "id",
+        message:
+          "This driver file has a value in a form the editor cannot read, so " +
+          "it could not be fully checked. It is usually a field that needs " +
+          "quotes in the YAML — a version, date or author written as a bare " +
+          `number is the common one. (${detail})`,
+      },
+    ];
+  }
+}
+
+/**
  * Validate a driver draft against the runtime contract.
  *
  * Returns a flat list of issues; consumers slice by section to render.
  * Errors block save (caller's responsibility); warnings flag publish-quality
  * problems (missing description, etc.) without blocking.
+ *
+ * Throws on a draft whose field types are unexpected — call
+ * `validateDriverSafely` instead of this, from anywhere a throw would be
+ * user-visible.
  *
  * @param draft   The current draft.
  * @param siblings Other saved definitions — used for ID collision detection.

@@ -26,7 +26,7 @@ import { SendFrameEditor } from "./SendFrameEditor";
 import { ConfigSchemaEditor } from "./ConfigSchemaEditor";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { IssueList } from "./IssueList";
-import { validateDriver, issuesFor } from "./validateDriver";
+import { validateDriverSafely, issuesFor } from "./validateDriver";
 import { DOCS } from "./docLinks";
 import { copyToClipboard } from "../shared/clipboard";
 
@@ -93,7 +93,7 @@ export function DriverEditor({
   }, [originalId, isNew]);
 
   const issues = useMemo(
-    () => validateDriver(draft, allDefinitions, originalId),
+    () => validateDriverSafely(draft, allDefinitions, originalId),
     [draft, allDefinitions, originalId],
   );
 

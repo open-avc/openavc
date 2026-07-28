@@ -1,6 +1,6 @@
 import yaml from "js-yaml";
 import type { DriverDefinition } from "../api/types";
-import { validateDriver } from "../components/driver-builder/validateDriver";
+import { validateDriverSafely } from "../components/driver-builder/validateDriver";
 
 /** A driver definition is a mapping. Excludes null, arrays, and scalars —
  *  mirrors the runtime loader's isinstance(dict) gate. */
@@ -119,7 +119,7 @@ export function makeLatestWins(): LatestWins {
  * created server-side. Returns clean, user-facing messages (empty array = safe
  * to create) drawn from the same validator the form editor uses, so the import
  * path surfaces structured issues instead of a terse backend 422. Transport
- * isn't covered by validateDriver (the editor always defaults one) so it's
+ * isn't covered by the validator (the editor always defaults one) so it's
  * checked explicitly here.
  */
 export function importBlockers(
@@ -130,7 +130,7 @@ export function importBlockers(
   if (!definition.transport) {
     messages.push("Transport is required (tcp, serial, udp, http, or osc).");
   }
-  for (const issue of validateDriver(definition, siblings, null)) {
+  for (const issue of validateDriverSafely(definition, siblings, null)) {
     if (issue.severity === "error") messages.push(issue.message);
   }
   return messages;

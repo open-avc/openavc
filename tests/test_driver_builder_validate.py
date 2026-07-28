@@ -54,6 +54,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -206,6 +207,11 @@ SCENARIOS = [
     "child_id_format_not_a_block_error",
     "child_id_format_min_not_whole_error",
     "child_id_format_pad_width_zero_ok",
+    "safe_unquoted_year_author",
+    "safe_numeric_auth_prompt",
+    "safe_null_param_definition",
+    "safe_numeric_child_label",
+    "safe_wrapper_adds_nothing_to_a_readable_draft",
 ]
 
 
@@ -288,3 +294,32 @@ def test_every_corpus_case_was_replayed(validate_results: dict) -> None:
     """The harness must report on all of them — a silent drop hides a gap."""
     missing = sorted(set(CORPUS_CASES) - set(_corpus(validate_results)))
     assert not missing, f"harness did not replay: {missing}"
+
+
+def test_nothing_calls_the_unguarded_validator() -> None:
+    """Every consumer must go through validateDriverSafely.
+
+    validateDriver throws on a draft whose field types are unexpected, and a
+    driver file is arbitrary YAML. The editor validates inside a render, so
+    one unguarded call is a blank screen with no way back. Rules get hardened
+    one at a time; the wrapper is what makes the whole class survivable, and
+    it only works if it is the only door.
+    """
+    src = OPENAVC_ROOT / "web" / "programmer" / "src"
+    offenders = []
+    for path in sorted(src.rglob("*.ts")) + sorted(src.rglob("*.tsx")):
+        if path.name == "validateDriver.ts":
+            continue  # where both live
+        for lineno, line in enumerate(
+            path.read_text(encoding="utf-8").splitlines(), start=1
+        ):
+            code = line.split("//", 1)[0]
+            if code.lstrip().startswith(("*", "/*")):
+                continue  # a JSDoc line naming the function, not a call
+            if re.search(r"\bvalidateDriver\s*\(", code):
+                offenders.append(f"{path.relative_to(OPENAVC_ROOT)}:{lineno}")
+    assert not offenders, (
+        "these call validateDriver directly and will blank the UI on a draft "
+        "it cannot read — call validateDriverSafely instead: "
+        + ", ".join(offenders)
+    )
