@@ -82,6 +82,36 @@ jobs:
           OPENAVC_DRIVERS_ROOT: ${{ runner.temp }}/openavc-drivers
         run: pytest tests/ -v --tb=short --ignore=tests/perf
 
+      # The browser tests boot a real server and drive the Programmer IDE in
+      # Chromium — the only automated proof the IDE works in a browser. They
+      # need three things the run above does not: the Playwright package, an
+      # actual browser, and a built IDE (the server serves web/programmer/dist,
+      # so with no build every page 404s and all of them fail). Installed after
+      # the unit run so that gate's environment stays exactly as it was.
+      - name: Install the browser test stack
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          pip install -e ".[dev]"
+          python -m playwright install --with-deps chromium
+
+      - name: Build the Programmer UI for the browser tests
+        if: matrix.os == 'ubuntu-latest'
+        working-directory: web/programmer
+        run: npm run build
+
+      # A separate step on purpose, never folded into the run above: the
+      # Playwright plugin drives a synchronous event loop that collides with
+      # pytest-asyncio and poisons the async suite, which is why pyproject
+      # excludes tests/e2e from every default run. Clearing addopts re-enables
+      # the plugin for this step alone. OPENAVC_REQUIRE_E2E is this leg
+      # promising Playwright: without it, a missing install would collect
+      # nothing and still report success.
+      - name: Run browser tests
+        if: matrix.os == 'ubuntu-latest'
+        env:
+          OPENAVC_REQUIRE_E2E: "1"
+        run: pytest tests/e2e -o addopts="" -v --tb=short
+
   build-frontend:
     name: Build frontends
     runs-on: ubuntu-latest

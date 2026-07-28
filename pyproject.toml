@@ -92,9 +92,10 @@ testpaths = ["tests"]
 # pytest-playwright (a [dev]-only extra) drives a synchronous Playwright event
 # loop that collides with pytest-asyncio's loop, poisoning the async unit suite
 # with hundreds of "event loop is already running" errors whenever both plugins
-# load. That happens on a local .[dev] install but not in CI, which installs
-# .[test] (no Playwright). Disable the plugin and skip the Playwright e2e tests
-# for the default run so `pytest` is the same clean unit run everywhere.
+# load. That is true anywhere Playwright is installed — a local .[dev]
+# install, and the CI leg that runs the browser tests. Disable the plugin and
+# skip the e2e tests for the default run so `pytest` is the same clean unit
+# run everywhere, whether or not Playwright is present.
 # Run the e2e suite on demand (needs `python -m playwright install chromium`):
 #   pytest tests/e2e -o addopts=""
 #
