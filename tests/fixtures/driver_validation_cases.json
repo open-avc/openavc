@@ -610,11 +610,11 @@
   },
   "transport": "tcp"
  },
- "child_id_format_pad_width_zero": {
+ "child_id_format_pad_width_negative": {
   "child_entity_types": {
    "zone": {
     "id_format": {
-     "pad_width": 0
+     "pad_width": -1
     }
    }
   },

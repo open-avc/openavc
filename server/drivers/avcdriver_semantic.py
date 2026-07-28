@@ -1358,12 +1358,20 @@ def validate_driver_definition(
                             f"{where}.id_format: min ({mn}) is greater than max ({mx})"
                         )
                     pad = id_format.get("pad_width")
+                    # 0 means "don't pad" — it is the runtime's own default
+                    # (base.py renders the id bare when pad_width is falsy)
+                    # and the field registry declares a minimum of 0. This
+                    # rule used to demand 1 or more, which made every child
+                    # type the Driver Builder creates unsaveable (it seeds
+                    # pad_width 0) and would have made a hand-authored
+                    # driver using the schema's own legal value disappear at
+                    # load. Only a negative width is meaningless.
                     if pad is not None and (
-                        isinstance(pad, bool) or not isinstance(pad, int) or pad < 1
+                        isinstance(pad, bool) or not isinstance(pad, int) or pad < 0
                     ):
                         errors.append(
-                            f"{where}.id_format: pad_width must be a positive "
-                            f"integer (got {pad!r})"
+                            f"{where}.id_format: pad_width must be zero or a "
+                            f"positive integer (got {pad!r})"
                         )
             child_vars = type_def.get("state_variables")
             if child_vars is not None and not isinstance(child_vars, dict):

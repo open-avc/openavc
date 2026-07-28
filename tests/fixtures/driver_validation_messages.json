@@ -84,8 +84,8 @@
  "child_id_format_not_mapping": [
   "child_entity_types.zone.id_format: must be a mapping"
  ],
- "child_id_format_pad_width_zero": [
-  "child_entity_types.zone.id_format: pad_width must be a positive integer (got 0)"
+ "child_id_format_pad_width_negative": [
+  "child_entity_types.zone.id_format: pad_width must be zero or a positive integer (got -1)"
  ],
  "child_id_format_unknown_type": [
   "child_entity_types.zone.id_format: unknown type 'uuid' (expected 'integer' or 'string')"

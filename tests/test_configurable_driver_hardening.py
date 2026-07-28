@@ -735,7 +735,7 @@ def test_validator_rejects_malformed_child_schema():
         child_entity_types={
             "zone": {
                 "label": "Zone",
-                "id_format": {"type": "uuid", "min": 5, "max": 1, "pad_width": 0},
+                "id_format": {"type": "uuid", "min": 5, "max": 1, "pad_width": -1},
                 "state_variables": {
                     "level": {"type": "loudness"},
                     "mute": {"type": "boolean", "cloud_priority": "medium"},
@@ -746,7 +746,7 @@ def test_validator_rejects_malformed_child_schema():
     text = "\n".join(errs)
     assert "unknown type 'uuid'" in text, errs
     assert "min (5) is greater than max (1)" in text, errs
-    assert "pad_width must be a positive integer" in text, errs
+    assert "pad_width must be zero or a positive integer" in text, errs
     assert "unknown type 'loudness'" in text, errs
     assert "cloud_priority" in text, errs
 
@@ -761,6 +761,24 @@ def test_validator_accepts_well_formed_child_schema():
                     "level": {"type": "number", "cloud_priority": "low"},
                     "mute": {"type": "boolean", "cloud_priority": "high"},
                 },
+            },
+        },
+    ))
+    assert errs == [], errs
+
+
+def test_validator_accepts_pad_width_zero():
+    """pad_width 0 means "render the id bare" — the runtime's own default.
+
+    The Driver Builder writes it on every child type it creates, so
+    refusing it made the editor unable to save one at all.
+    """
+    errs = validate_driver_definition(_base_def(
+        child_entity_types={
+            "zone": {
+                "label": "Zone",
+                "id_format": {"type": "integer", "min": 1, "pad_width": 0},
+                "state_variables": {"level": {"type": "number"}},
             },
         },
     ))

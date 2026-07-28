@@ -652,7 +652,7 @@ child_entity_types:
 
 - `label` / `label_plural`: Human-readable names shown in the IDE.
 - `id_format`: How the controller addresses this sub-unit.
-  - `type: integer` (default): numbered sub-units. `min`/`max` bound the valid range; `pad_width` zero-pads the ID when it appears in state keys.
+  - `type: integer` (default): numbered sub-units. `min`/`max` bound the valid range; `pad_width` zero-pads the ID when it appears in state keys (omit it, or set it to `0`, to leave the ID unpadded).
   - `type: string`: sub-units keyed by a device-native **name** instead of a number (a Q-SYS component Code Name, an MQTT topic leaf, a zone name). The name must be `[A-Za-z0-9_-]` only (so it's safe in a state key and in glob subscriptions) and at most `max_length` characters (default 128). Sanitize the device's native name to that charset and keep the original in the child's `label`.
 - `state_variables`: Same shape as device `state_variables` (types: `string`, `integer`, `number`, `float`, `boolean`, `enum`), including the optional `min`/`max`/`step`/`unit` numeric metadata and the `control: true` flag — a child variable flagged as a control is what the UI Builder's value picker and the `options_from: child_schema` command cascade list first. The platform always adds a boolean `online` and a string `label` per child, so you don't declare those. Each variable may carry an optional `cloud_priority`:
   - `high` — relayed to the cloud at the fast top-level cadence (for latency-sensitive fields like routing or mute).
