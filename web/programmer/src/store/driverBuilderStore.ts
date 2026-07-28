@@ -207,7 +207,7 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
       // Validate before POSTing. A driver with blocking problems loads into the
       // editor as a dirty draft so the user fixes it against the same inline
       // IssueList the form editor shows, instead of getting a terse backend 422.
-      const blockers = importBlockers(definition, get().definitions);
+      const blockers = await importBlockers(definition, get().definitions);
       if (blockers.length > 0) {
         set({
           selectedId: null,

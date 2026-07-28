@@ -12,6 +12,25 @@ const path = require("path");
 
 const helpersPath = process.argv[2];
 
+// importBlockers asks the server for the contract rules, so the bundle pulls
+// in the API client — which reads window.location at module scope to work out
+// the API base (tunnel-aware). Stub the browser globals the bundle needs
+// BEFORE evaluating it, and record what the helper actually sends.
+const validateCalls = [];
+let nextIssues = [];
+let nextFailure = null;
+globalThis.window = { location: { pathname: "/programmer/" } };
+globalThis.fetch = async (url, options) => {
+  validateCalls.push({ url, body: JSON.parse(options.body) });
+  if (nextFailure) throw new Error(nextFailure);
+  return {
+    ok: true,
+    status: 200,
+    headers: { get: () => "application/json" },
+    json: async () => ({ issues: nextIssues }),
+  };
+};
+
 const esbuild = require("esbuild");
 const built = esbuild.buildSync({
   entryPoints: [helpersPath],
@@ -87,68 +106,98 @@ const results = {};
   };
 }
 
-// --- M-128: importBlockers routes imports through the real validateDriver ---
-{
-  // A complete, well-formed driver has no blockers -> import proceeds.
-  const def = { id: "acme_x", name: "Acme X", transport: "tcp", version: "1.0.0", author: "Acme" };
-  const r = H.importBlockers(def, []);
-  results.m128_import_valid_no_blockers = { pass: eq(r, []), detail: r };
-}
-{
-  // Missing transport is caught here (validateDriver doesn't, since the editor
-  // always defaults one).
-  const def = { id: "acme_x", name: "Acme X" };
-  const r = H.importBlockers(def, []);
-  results.m128_import_missing_transport = {
-    pass: r.length === 1 && /Transport is required/.test(r[0]),
-    detail: r,
-  };
-}
-{
-  // Missing id -> the same clean message the form editor shows, not a 422.
-  const def = { name: "Acme X", transport: "tcp" };
-  const r = H.importBlockers(def, []);
-  results.m128_import_missing_id = {
-    pass: r.some((m) => /Driver ID is required/.test(m)),
-    detail: r,
-  };
-}
-{
-  // An ID with illegal characters -> blocked with the validator's message.
-  const def = { id: "Acme X", name: "X", transport: "tcp" };
-  const r = H.importBlockers(def, []);
-  results.m128_import_bad_id = {
-    pass: r.some((m) => /lowercase/.test(m)),
-    detail: r,
-  };
-}
-{
-  // A deep structural error the OLD import path skipped (it only checked
-  // id/name/transport presence): a child_id param with no child type. This is
-  // the whole point of routing imports through validateDriver.
-  const def = {
-    id: "acme_x",
-    name: "X",
-    transport: "tcp",
-    commands: { set_ch: { params: { ch: { type: "child_id" } } } },
-  };
-  const r = H.importBlockers(def, []);
-  results.m128_import_deep_structural_error = {
-    pass: r.some((m) => /Child ID but no child type/.test(m)),
-    detail: r,
-  };
-}
-{
-  // Warnings alone (an undeclared {placeholder} is a warning) must NOT block —
-  // import semantics match the editor, where warnings don't gate save.
-  const def = {
-    id: "acme_x",
-    name: "X",
-    transport: "tcp",
-    commands: { power_on: { send: "PWR {foo}\\r" } },
-  };
-  const r = H.importBlockers(def, []);
-  results.m128_import_warning_does_not_block = { pass: eq(r, []), detail: r };
+// --- M-128: importBlockers asks the platform, then adds what only it knows ---
+// The contract rules come from POST /driver-definitions/validate — the same
+// ones the create route is about to run — so an import can't be refused for a
+// reason the save would not have. The stub above stands in for the server and
+// records what was sent.
+async function importBlockerChecks() {
+  {
+    // A complete driver the server passes has no blockers, and the helper
+    // really did ask: the definition goes to the validate endpoint verbatim.
+    nextIssues = [];
+    validateCalls.length = 0;
+    const def = { id: "acme_x", name: "Acme X", transport: "tcp", version: "1.0.0", author: "Acme" };
+    const r = await H.importBlockers(def, []);
+    results.m128_import_valid_no_blockers = {
+      pass:
+        eq(r, []) &&
+        validateCalls.length === 1 &&
+        /\/driver-definitions\/validate$/.test(validateCalls[0].url) &&
+        eq(validateCalls[0].body, def),
+      detail: { r, calls: validateCalls.slice() },
+    };
+  }
+  {
+    // Missing transport is caught locally (the editor always defaults one, so
+    // an imported file is the only way in).
+    nextIssues = [];
+    const def = { id: "acme_x", name: "Acme X" };
+    const r = await H.importBlockers(def, []);
+    results.m128_import_missing_transport = {
+      pass: r.length === 1 && /Transport is required/.test(r[0]),
+      detail: r,
+    };
+  }
+  {
+    // Server errors block, in the platform's own words — no rewording, no
+    // second opinion.
+    nextIssues = [
+      { severity: "error", message: "Missing required field: id", path: "" },
+      {
+        severity: "error",
+        message: "Command 'set_ch' param 'ch': child_id needs child_type",
+        path: "commands.set_ch",
+      },
+    ];
+    const def = { name: "Acme X", transport: "tcp" };
+    const r = await H.importBlockers(def, []);
+    results.m128_import_server_errors_block = {
+      pass:
+        r.length === 2 &&
+        r.some((m) => /Missing required field: id/.test(m)) &&
+        r.some((m) => /child_id needs child_type/.test(m)),
+      detail: r,
+    };
+  }
+  {
+    // Warnings must NOT block — import semantics match the editor, where
+    // warnings don't gate save.
+    nextIssues = [
+      {
+        severity: "warning",
+        message: "Config field 'password' is masked but has a default value.",
+        path: "config_schema.password",
+      },
+    ];
+    const def = { id: "acme_x", name: "X", transport: "tcp" };
+    const r = await H.importBlockers(def, []);
+    results.m128_import_warning_does_not_block = { pass: eq(r, []), detail: r };
+  }
+  {
+    // The one blocker the editor works out for itself: the id is already in
+    // the library it's holding. The server sees one definition and can't know.
+    nextIssues = [];
+    const def = { id: "acme_x", name: "X", transport: "tcp" };
+    const r = await H.importBlockers(def, [{ id: "acme_x", name: "Existing" }]);
+    results.m128_import_duplicate_id_blocks = {
+      pass: r.length === 1 && /already exists/.test(r[0]),
+      detail: r,
+    };
+  }
+  {
+    // An unreachable server must not block the import: a network failure says
+    // nothing about the driver, and the create POST applies the same rules.
+    nextIssues = [];
+    nextFailure = "network down";
+    const def = { id: "acme_x", name: "X", transport: "tcp" };
+    const r = await H.importBlockers(def, []);
+    nextFailure = null;
+    results.m128_import_server_unreachable_does_not_block = {
+      pass: eq(r, []),
+      detail: r,
+    };
+  }
 }
 
 // --- M-229: cloneDraft fills in state_variables the editors index blindly ---
@@ -262,4 +311,10 @@ const parseOutcome = (text) => {
   };
 }
 
-process.stdout.write(JSON.stringify(results));
+importBlockerChecks().then(
+  () => process.stdout.write(JSON.stringify(results)),
+  (e) => {
+    process.stderr.write(String((e && e.stack) || e));
+    process.exit(1);
+  },
+);

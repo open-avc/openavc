@@ -89,6 +89,12 @@ FRONTEND_OPT_OUT = {
                "editor shows a count and says to edit the file directly.",
     "transitions": "Deliberate: simulator state machines have no form UI. The "
                    "editor shows them read-only; they are authored in YAML.",
+    "count_from_state": "NOT BUILT: a child roster sized by a state variable "
+                        "has no control in the Child Entities editor — it has "
+                        "to be written by hand. This sweep used to pass on the "
+                        "Builder's own copy of the validation rules naming the "
+                        "field; the rules moved to the platform, and the gap "
+                        "they were masking is real. One shipped driver uses it.",
 }
 
 # Node keys whose values are themselves nodes, and the combinator keys whose

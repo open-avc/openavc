@@ -1,11 +1,10 @@
 """Every shipped driver opens in the Driver Builder without an error.
 
-The rejection corpus (test_driver_builder_validate.py) proves the Builder
-refuses what the driver loader refuses. Nothing proved the other direction:
-that the Builder *accepts* what the loader accepts. That gap is not
-theoretical — it is where both defects found on 2026-07-27 and 2026-07-28
-came from, and it is structurally invisible to the rejection corpus, which
-only ever feeds in definitions that are supposed to be flagged.
+The rejection corpus proves the platform's rules refuse what they should.
+Nothing proved the other direction: that they *accept* what they accept. That
+gap is not theoretical — it is where both defects found on 2026-07-27 and
+2026-07-28 came from, and it is structurally invisible to the rejection
+corpus, which only ever feeds in definitions that are supposed to be flagged.
 
 A rule that is stricter than the platform does real damage. The Builder
 hard-blocks import on any error (``importBlockers``), so a driver the
@@ -16,9 +15,20 @@ validator.
 The corpus of valid drafts that needs no hand-maintenance is the shipped
 library itself: the built-in generics plus every driver the community
 catalog publishes. Each one loads on the platform by definition, so each one
-must raise zero Builder errors. When this fails, the driver named is one an
-author cannot open — read the message before assuming the driver is at
-fault, because the rule is the more likely defect.
+must open clean. When this fails, the driver named is one an author cannot
+open — read the message before assuming the driver is at fault, because the
+rule is the more likely defect.
+
+This is now checked from both ends, because the Driver Builder's issue list
+has two sources:
+
+1. **The endpoint** (``validate_driver_issues``, strict) — where the driver
+   contract actually lives, and where all but two of the editor's messages
+   come from. Checked in-process; needs no Node.
+2. **What is left in TypeScript** — the duplicate-id check and housekeeping
+   advice. It holds no contract rules any more, so this half is mostly a
+   guard against one growing back: a shipped driver that suddenly cannot be
+   opened means a rule was added to the editor instead of to the platform.
 
 Warnings are deliberately not asserted on. They are advice an author can
 read and ignore ("Version is empty"), they do not block anything, and
@@ -40,6 +50,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from server.drivers.driver_loader import validate_driver_issues
 from tests import gates
 
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
@@ -132,13 +143,41 @@ def builder_verdicts() -> dict:
 
 @gates.skipif_missing(gates.DRIVER_CORPUS, _corpus_reason())
 @pytest.mark.parametrize("driver_path", DRIVER_FILES, ids=lambda p: p.name)
+def test_shipped_driver_validates_clean_through_the_endpoint(
+    driver_path: Path,
+) -> None:
+    """The half the Driver Builder gets from the server: zero errors.
+
+    ``strict`` because that is what the endpoint passes — it is an authoring
+    surface, where an undeclared key is a typo worth showing rather than a
+    mystery at save time. A shipped driver that fails here is one nobody can
+    open in the editor, and it fails the save route too.
+    """
+    definition = yaml.safe_load(driver_path.read_text(encoding="utf-8"))
+    assert isinstance(definition, dict), f"{driver_path.name} is not a YAML mapping"
+    errors = [
+        issue["message"]
+        for issue in validate_driver_issues(definition, strict=True)
+        if issue["severity"] == "error"
+    ]
+    assert not errors, (
+        f"{driver_path.name} ships in the library but the platform's own "
+        f"rules reject it, so it cannot be opened or saved:\n  "
+        + "\n  ".join(errors)
+    )
+
+
+@gates.skipif_missing(gates.DRIVER_CORPUS, _corpus_reason())
+@pytest.mark.parametrize("driver_path", DRIVER_FILES, ids=lambda p: p.name)
 def test_shipped_driver_has_no_builder_errors(
     builder_verdicts: dict, driver_path: Path
 ) -> None:
-    """A driver the platform ships must open in the Builder cleanly.
+    """And the half the editor still decides for itself: also zero.
 
-    An error here means the Builder is stricter than the platform, and the
-    driver named cannot be imported or edited at all.
+    The only error it can raise is a duplicate id, and the sweep passes every
+    shipped driver as its own sibling list, so a driver whose id collides with
+    another in the library fails here. Anything else means a contract rule was
+    added to the editor instead of to the platform.
     """
     verdict = builder_verdicts[driver_path.name]
     assert not verdict["errors"], (

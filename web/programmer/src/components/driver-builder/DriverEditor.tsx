@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Save, Download, FileCode, Copy, Check, ExternalLink, Lock } from "lucide-react";
 import yaml from "js-yaml";
 import type { DriverDefinition } from "../../api/types";
@@ -26,7 +26,13 @@ import { SendFrameEditor } from "./SendFrameEditor";
 import { ConfigSchemaEditor } from "./ConfigSchemaEditor";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { IssueList } from "./IssueList";
-import { validateDriverSafely, issuesFor } from "./validateDriver";
+import {
+  validateDriverSafely,
+  issuesFor,
+  issuesFromServer,
+  type ValidationIssue,
+} from "./validateDriver";
+import * as api from "../../api/restClient";
 import { DOCS } from "./docLinks";
 import { copyToClipboard } from "../shared/clipboard";
 
@@ -37,6 +43,11 @@ type TabId =
   | "discovery"
   | "simulation"
   | "test";
+
+/** How long the editor waits after the last edit before asking the server to
+ *  check the draft. Long enough that typing a command name is one request,
+ *  short enough that the issue list feels attached to what you just typed. */
+const VALIDATE_DEBOUNCE_MS = 300;
 
 interface DriverEditorProps {
   draft: DriverDefinition;
@@ -83,18 +94,64 @@ export function DriverEditor({
   const devices = useProjectStore((s) => s.project?.devices);
   const allDefinitions = useDriverBuilderStore((s) => s.definitions);
 
+  // The driver contract lives on the platform, and the editor asks for it
+  // rather than carrying a second copy (which is how a draft could be valid
+  // here and refused on save). Debounced, because this fires on every
+  // keystroke and shares the control-tier rate budget with the Live Test
+  // panel's dry run.
+  const [serverIssues, setServerIssues] = useState<ValidationIssue[]>([]);
+  // Serialized draft: the store hands back a new object on every edit, so
+  // this is what tells an actual change from a re-render, and it keeps an
+  // unchanged draft from spending a request.
+  const draftKey = useMemo(() => JSON.stringify(draft), [draft]);
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const validateSeq = useRef(0);
+
   // When the loaded driver changes (or a new draft starts), reset the
   // save-attempted flag so a previous editor's state doesn't bleed in.
   // A brand-new draft also opens on General — keeping the previous
   // driver's tab (e.g. Connection) makes an empty draft look broken.
+  // The server's issue list is dropped too: it describes the driver we just
+  // navigated away from, and showing those against the new one for the
+  // length of a round trip is worse than showing nothing.
   useEffect(() => {
     setAttemptedSave(false);
+    setServerIssues([]);
     if (isNew) setActiveTab("general");
   }, [originalId, isNew]);
 
-  const issues = useMemo(
+  useEffect(() => {
+    const token = ++validateSeq.current;
+    const handle = setTimeout(() => {
+      api
+        .validateDriverDefinition(draftRef.current)
+        .then(({ issues }) => {
+          // Latest wins: a slow reply must not overwrite a newer one.
+          if (token === validateSeq.current) {
+            setServerIssues(issuesFromServer(issues));
+          }
+        })
+        .catch(() => {
+          // Keep the last list. A dropped connection or a 429 says nothing
+          // about the draft, and blanking the issues on one would read as
+          // "you fixed it".
+        });
+    }, VALIDATE_DEBOUNCE_MS);
+    return () => clearTimeout(handle);
+  }, [draftKey]);
+
+  // What the editor works out for itself: a duplicate id (the server checks
+  // one definition at a time and cannot see the library) and publishing
+  // advice that never blocks a save.
+  const localIssues = useMemo(
     () => validateDriverSafely(draft, allDefinitions, originalId),
     [draft, allDefinitions, originalId],
+  );
+
+  const issues = useMemo(
+    () => [...serverIssues, ...localIssues],
+    [serverIssues, localIssues],
   );
 
   // For brand-new drafts we suppress issues until the user attempts to

@@ -52,6 +52,33 @@ export async function deleteDriverDefinition(
   return request(`/driver-definitions/${id}`, { method: "DELETE" });
 }
 
+/** One problem with a draft, as the platform's own rules describe it. */
+export interface DriverValidationIssue {
+  severity: "error" | "warning";
+  message: string;
+  /** Where in the definition it belongs — "commands.mute", "config_schema.host",
+   *  "responses[2]", or "" for a rule about the whole driver. The Driver
+   *  Builder maps this to a tab; it is the only location the editor needs. */
+  path: string;
+}
+
+/**
+ * Ask the server what is wrong with a driver draft, without saving it.
+ *
+ * The driver contract has exactly one implementation, and it is this one — the
+ * same rules the save route runs. The Driver Builder used to carry a second
+ * copy in TypeScript, which is how a draft could be valid to the editor and
+ * refused on save (and the reverse: a shipped driver the editor would not open).
+ */
+export async function validateDriverDefinition(
+  definition: DriverDefinition,
+): Promise<{ issues: DriverValidationIssue[] }> {
+  return request("/driver-definitions/validate", {
+    method: "POST",
+    body: JSON.stringify(definition),
+  });
+}
+
 export interface TestCommandResult {
   success: boolean;
   sent: string | null;

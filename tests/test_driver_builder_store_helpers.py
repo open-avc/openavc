@@ -4,18 +4,19 @@ The Driver Builder store is React/Zustand with no jsdom-loadable entry point, so
 these exercise the pure helpers by bundling driverBuilderStore.helpers.ts on the
 fly with the esbuild already in web/programmer/node_modules and asserting on the
 results. Unlike the uiBuilderHelpers suite this uses buildSync(bundle) rather
-than transformSync, because importBlockers pulls in the real validateDriver.ts —
-so the import-validation cases run against the actual validator the form editor
-uses. Like the colorUtils suite it skips when the Node toolchain or esbuild
+than transformSync, because importBlockers pulls in the real API client and
+validator. Like the colorUtils suite it skips when the Node toolchain or esbuild
 isn't present rather than failing the Python-only CI gate.
 
 Covers the audit findings fixed in the driverBuilderStore.ts group:
   H-072/M-126 reconcileAfterSave (don't clobber edits made during the save
   await; keep selection consistent with the persisted id), M-127 makeLatestWins
   (overlapping list refreshes resolve newest-started-wins, not last-resolved),
-  M-128 importBlockers (route imports through validateDriver instead of a 422),
-  L-150 parseDriverDefinition (gate on a mapping so an imported list/scalar is
-  rejected with a shape message, not cast through to a misleading 422).
+  M-128 importBlockers (an import is refused only for reasons the save would
+  refuse it for — the contract rules come from the validate endpoint, plus the
+  duplicate-id check only the editor can make), L-150 parseDriverDefinition
+  (gate on a mapping so an imported list/scalar is rejected with a shape
+  message, not cast through to a misleading 422).
 """
 from __future__ import annotations
 
@@ -87,10 +88,10 @@ SCENARIOS = [
     "m127_latest_independent",
     "m128_import_valid_no_blockers",
     "m128_import_missing_transport",
-    "m128_import_missing_id",
-    "m128_import_bad_id",
-    "m128_import_deep_structural_error",
+    "m128_import_server_errors_block",
     "m128_import_warning_does_not_block",
+    "m128_import_duplicate_id_blocks",
+    "m128_import_server_unreachable_does_not_block",
     "m229_clone_fills_missing_state_variables",
     "m229_clone_preserves_shape_and_is_deep",
     "l150_json_object_ok",

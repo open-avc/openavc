@@ -1,37 +1,47 @@
 import type {
-  DriverChildIdFormat,
   DriverCommandDef,
   DriverDefinition,
   DriverDeviceSettingDef,
 } from "../../api/types";
+import type { DriverValidationIssue } from "../../api/driverClient";
 // Contract constant tables, generated from the platform's driver-contract
-// registry (types.gen.ts) — the runtime, the catalog validator, and this
-// validator all read the same tables, so they can't drift apart.
-import {
-  ACTION_AVAILABILITIES,
-  ACTION_KINDS_YAML,
-  AUTH_TRANSPORTS,
-  BRIDGE_PORT_KINDS,
-  CLOUD_PRIORITIES,
-  DISALLOWED_OPEN_PORTS,
-  DRIVER_CONTRACT_KEYS,
-  FRAME_HEADER_SIZES,
-  INSTANCE_SOURCES,
-  INTERCHANGEABLE_TRANSPORTS,
-  LENGTH_ENDIANS,
-  LIVENESS_TRANSPORTS,
-  PARAM_OPTIONS_FROM_SOURCES,
-  PUSH_FRAME_PARSER_TYPES,
-  PUSH_KEYS_BY_TYPE,
-  STATE_VAR_TYPES,
-  STRUCT_LENGTH_SIZES,
-  VISIBLE_WHEN_OPERATORS,
-  YAML_TRANSPORTS,
-} from "../../api/types";
+// registry (types.gen.ts).
+import { DISALLOWED_OPEN_PORTS } from "../../api/types";
 
 // Re-exported for the Discovery editor, which shows the rule inline at
 // authoring time.
 export { DISALLOWED_OPEN_PORTS };
+
+// ─────────────────────────────────────────────────────────────────────────
+// The Driver Builder does not know the driver contract. It asks.
+//
+// Every rule about what a driver file may contain lives in one place, on the
+// platform: `avcdriver_semantic.validate_driver_definition`, which is what the
+// save route, the driver loader, the AI tool and the community catalog all
+// run. The editor gets those rules from POST /api/driver-definitions/validate
+// and renders what comes back (see `issuesFromServer` below).
+//
+// This module used to carry a second copy of that contract — ~200 rules
+// written separately in TypeScript. Two copies of one contract drift, and
+// they did: a driver the editor called broken saved fine, and three drivers
+// the platform ships could not be opened in the editor at all.
+//
+// What is left here is everything that carries NO contract knowledge:
+//
+//   * `commandRoute` / `scrubForTransport` / `oscArgValueIssue` — editor
+//     mechanics. Which sender the runtime will route a command to, what a
+//     transport switch has to strip, whether an OSC argument box holds a
+//     number. The Live Test panel and the OSC argument editor show these
+//     inline as you type; they are not "is this driver valid" questions.
+//   * `issuesFromServer` — the path → tab mapping.
+//   * `validateDriver` — the two things the endpoint structurally cannot
+//     answer (it validates one definition, in isolation, with no view of the
+//     driver library) plus publishing advice that never blocks anything.
+//
+// Adding a rule about what a driver file may contain? It goes in `spec.py` /
+// `avcdriver_semantic.py`, and both the editor and the platform get it. Never
+// here — that is the mirror growing back.
+// ─────────────────────────────────────────────────────────────────────────
 
 export type IssueSection =
   | "general"
@@ -68,23 +78,15 @@ const BASELINE_CONFIG_KEYS = new Set([
   "api_key",
 ]);
 
-const ID_RE = /^[a-z][a-z0-9_]*$/;
-const PARAM_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 const PLACEHOLDER_RE = /\{(\w+)\}/g;
-
-// Child type ids and per-child field ids share the device state-key
-// namespace, so they follow the same lowercase-identifier rule.
-const CHILD_ID_RE = /^[a-z][a-z0-9_]*$/;
 
 // ── Transport ↔ command-shape routing ──────────────────────────────────
 // The runtime routes each command/setting-write by SHAPE, not by the
 // driver's transport (configurable.py): anything with an `address` goes to
 // the OSC sender, else `path`/`method` goes to HTTP, else the raw `send`
-// string. A mis-shaped command (e.g. an OSC address left behind after the
-// transport was switched to TCP) is refused by the sender's transport
-// guard at runtime — the command is dead with only a log line. These
-// helpers give the editor the same routing knowledge so stale shapes are
-// flagged at author time and scrubbed on a transport switch.
+// string. These helpers give the editor the same routing knowledge, so the
+// Live Test panel can say which sender a command will reach and a transport
+// switch can strip the fields the new sender would ignore.
 
 export type CommandRoute = "osc" | "http" | "raw";
 
@@ -113,11 +115,9 @@ export function commandRoute(cmd: {
  *  method/path/body/headers/query_params), which is why a string is tested
  *  for emptiness and NOT trimmed. Whitespace is a wire value: a device whose
  *  documented keepalive is a bare line feed authors `send: "\n"`, and the
- *  runtime sends it — `cmd_def.get("send")` in avcdriver_semantic.py is a
- *  plain truthiness test, so the loader accepts it. Trimming here made the
- *  Builder stricter than the platform and locked such a driver out of the
- *  editor entirely. Labels and ids are trimmed where they are checked; they
- *  do not come through here. */
+ *  runtime sends it. Trimming here made the transport scrub throw such a
+ *  keepalive away without saying so, and (before the rules moved to the
+ *  server) locked that driver out of the editor entirely. */
 function hasContent(value: unknown): boolean {
   if (value == null) return false;
   if (typeof value === "string") return value !== "";
@@ -204,9 +204,8 @@ export function scrubForTransport(
       );
       // A write emptied by the scrub is dropped entirely — its wire format
       // can't survive the transport switch, so it's honestly gone. The
-      // runtime loader still requires a write block on every device
-      // setting, so validation flags the setting as an error until it's
-      // re-authored for the new transport.
+      // platform still requires a write block on every device setting, so
+      // its validation flags the setting until it's re-authored.
       const scrubbed = { ...setting } as DriverDeviceSettingDef;
       if (Object.keys(nextWrite).length > 0) {
         scrubbed.write = nextWrite as DriverDeviceSettingDef["write"];
@@ -238,381 +237,131 @@ export function oscArgValueIssue(type: string, value: string): string | null {
   return null;
 }
 
-// ── Runaway-pattern (catastrophic backtracking) detection ────────────────
-// Mirrors the structural half of server/utils/regex_safety.py. A pattern that
-// repeats something already repeating — (a+)+ — takes exponential time on a
-// reply that doesn't match, and driver patterns run on raw device bytes while
-// the connection waits, so one garbled frame can wedge the driver for minutes.
-// The loader refuses these outright, so the Builder has to as well or the
-// author only learns about it when the save comes back rejected.
+// ── The server's issues, placed on the editor's tabs ─────────────────────
 //
-// Only the structural half is mirrored, deliberately. The Python side backs it
-// up by running the pattern in a worker thread with a time limit; there is no
-// honest equivalent in a browser — running a suspect pattern here IS the freeze
-// this check exists to prevent, and there is no thread to contain it.
+// Every issue the platform returns carries a `path` saying where in the
+// definition it belongs ("commands.mute", "config_schema.host",
+// "responses[2]", "" for a whole-driver rule). The editor needs one thing
+// from that: which tab to show it on. This table is the whole mapping — read
+// off DriverEditor's own layout, keyed by the first segment of the path.
+//
+// It covers every top-level field in the contract, because the platform's
+// unknown-key check reports against any of them, and a root with no entry
+// here would quietly land on General. `tests/test_driver_builder_validate.py`
+// fails when the contract grows a field this table doesn't place, so adding
+// one is a change that has to say which tab it belongs to.
 
-/** A single quantified atom inside a quantified group: (.+)+, (\d+)*, ([a-z]+)+. */
-const NESTED_QUANT_RE = /\((?:\\.|\[[^\]]*\]|[^()[\]\\*+?])[*+]\)[*+]/;
-/** A flat alternation immediately repeated — (a|a)+, (foo|foobar)*. */
-const ALT_QUANT_RE = /\(([^()]*\|[^()]*)\)[*+]/g;
+const SECTION_BY_PATH_ROOT: Record<string, IssueSection> = {
+  // General — identity, catalog metadata, publishing.
+  id: "general",
+  name: "general",
+  version: "general",
+  author: "general",
+  description: "general",
+  category: "general",
+  manufacturer: "general",
+  tags: "general",
+  help: "general",
+  compatible_models: "general",
+  min_platform_version: "general",
+  source_url: "general",
+  protocols: "general",
+  ports: "general",
+  simulated: "general",
+  verified: "general",
+  deprecated: "general",
+  replacement_id: "general",
+  inline_protocol: "general",
+  ir_codes: "general",
 
-/** Why this pattern can run away, in the author's terms — or null when it looks
- *  safe. `fix` names the concrete edit; the two are always shown together. */
-function runawayPatternReason(
-  pattern: string,
-): { reason: string; fix: string } | null {
-  if (NESTED_QUANT_RE.test(pattern)) {
-    return {
-      reason: "repeats a group that already repeats",
-      fix: "Use a single repeat — a+ rather than (a+)+.",
-    };
-  }
-  for (const m of pattern.matchAll(ALT_QUANT_RE)) {
-    const alts = m[1].split("|");
-    if (new Set(alts).size !== alts.length) {
-      return {
-        reason: "repeats a choice that lists the same option twice",
-        fix: "Remove the duplicate option.",
-      };
-    }
-    for (const a of alts) {
-      for (const b of alts) {
-        if (a && a !== b && b.startsWith(a)) {
-          return {
-            reason: "repeats a choice whose options overlap",
-            fix: "Make the options distinct, or drop the repeat.",
-          };
-        }
-      }
-    }
-  }
-  return null;
+  // Connection — everything about opening and holding the link.
+  transport: "connection",
+  transports: "connection",
+  delimiter: "connection",
+  bridge: "connection",
+  command_prefix: "connection",
+  command_suffix: "connection",
+  auth: "connection",
+  push: "connection",
+  liveness: "connection",
+  // "Connect Sequence" lives on the Connection tab, not Behavior.
+  on_connect: "connection",
+  frame_parser: "connection",
+  send_frame: "connection",
+  config_schema: "connection",
+  default_config: "connection",
+  config_derived: "connection",
+
+  // Behavior — what the driver does once it's talking.
+  state_variables: "behavior",
+  child_entity_types: "behavior",
+  commands: "behavior",
+  actions: "behavior",
+  quick_actions: "behavior",
+  web_ui: "behavior",
+  responses: "behavior",
+  polling: "behavior",
+  device_settings: "behavior",
+
+  // Tabs of their own.
+  discovery: "discovery",
+  simulator: "simulation",
+};
+
+/** First path segment: "commands.mute" → "commands", "responses[2]" →
+ *  "responses", "" → "" (a rule about the whole driver). */
+function pathRoot(path: string): string {
+  const cut = path.search(/[.[]/);
+  return cut === -1 ? path : path.slice(0, cut);
 }
 
-/** The message for an unsafe pattern, or null when it looks safe.
- *  `what` names the field in the author's words ("Response 1 match pattern"). */
-function runawayPatternMessage(what: string, pattern: unknown): string | null {
-  if (typeof pattern !== "string" || !pattern) return null;
-  const found = runawayPatternReason(pattern);
-  if (!found) return null;
-  return `${what} ${found.reason} ("${pattern}"), which can lock the driver up for minutes on a reply that doesn't match. ${found.fix}`;
-}
-
-/** Edit distance, capped — just enough to offer "did you mean". */
-function editDistance(a: string, b: string): number {
-  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
-  for (let i = 1; i <= a.length; i++) {
-    const row = [i];
-    for (let j = 1; j <= b.length; j++) {
-      row[j] = Math.min(
-        prev[j] + 1,
-        row[j - 1] + 1,
-        prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
-      );
-    }
-    prev = row;
-  }
-  return prev[b.length];
-}
-
-/**
- * Keys the driver contract doesn't declare.
+/** Turn the platform's issue list into what the editor renders.
  *
- * A misspelled key is the quietest way to break a driver: `state_varibles`
- * loads without complaint and registers no state variables at all, so the
- * device connects and simply has nothing to show. The key sets come from
- * DRIVER_CONTRACT_KEYS, generated from the same registry that produces the
- * published schema, so this can't drift from what the server accepts —
- * adding a field to the contract makes it legal here in the same commit.
- *
- * Only blocks the registry closes are checked. Keys starting with `_` and
- * `source` are IDE bookkeeping the list endpoint adds (`_source_file`,
- * builtin-vs-user), never authored and never saved.
- */
-function unknownKeyMessages(
-  obj: unknown,
-  block: string,
-  who: string,
-): string[] {
-  const known = DRIVER_CONTRACT_KEYS[block];
-  if (!known || !obj || typeof obj !== "object" || Array.isArray(obj)) return [];
-  const messages: string[] = [];
-  for (const key of Object.keys(obj)) {
-    if (known.has(key) || key.startsWith("_") || key === "source") continue;
-    let best: string | null = null;
-    let bestScore = Infinity;
-    for (const candidate of known) {
-      const d = editDistance(key.toLowerCase(), candidate.toLowerCase());
-      if (d < bestScore) {
-        bestScore = d;
-        best = candidate;
-      }
-    }
-    // Only suggest a neighbour close enough to plausibly be the same word.
-    const suggest =
-      best !== null && bestScore <= Math.max(2, Math.floor(key.length / 3))
-        ? ` Did you mean "${best}"?`
-        : "";
-    messages.push(
-      `${who} has "${key}", which isn't part of the driver format, so it does nothing.${suggest}`,
-    );
-  }
-  return messages;
-}
-
-/**
- * The three display/relay fields every value variable carries, device-level
- * and per-child alike (mirror avcdriver_semantic.py, which checks both the
- * same way). None of them stops the variable working, which is the problem:
- * a `unit` that isn't text or a `cloud_priority` typo just quietly does
- * nothing, so the loader refuses them rather than let it look applied.
- */
-function validateValueVariableFields(
-  varDef: Record<string, unknown>,
-  who: string,
-  push: (message: string) => void,
-): void {
-  const unit = varDef.unit;
-  if (unit !== undefined && unit !== null && typeof unit !== "string") {
-    push(`${who} has a unit of "${String(unit)}" — units are text, like dB or %.`);
-  }
-  const control = varDef.control;
-  if (control !== undefined && control !== null && typeof control !== "boolean") {
-    push(
-      `${who} has control set to "${String(control)}" — it must be true or false.`,
-    );
-  }
-  const priority = varDef.cloud_priority;
-  if (
-    priority !== undefined &&
-    priority !== null &&
-    !(CLOUD_PRIORITIES as readonly unknown[]).includes(priority)
-  ) {
-    push(
-      `${who} has cloud priority "${String(priority)}" — use ${CLOUD_PRIORITIES.join(" or ")}, or leave it out for the default.`,
-    );
-  }
-}
-
-/**
- * Mirror avcdriver_semantic.py's `_validate_param_option_providers`, which the
- * loader runs over every command's and every action's params. Two families:
- * the free-text aids (`pattern`, `min`/`max`, `decimals`, `trim`) and the
- * picker providers (`options_state`/`options_source`, `options_from`,
- * `type_from`).
- *
- * All of them are authoring aids — the runtime still coerces and checks the
- * submitted value — so a typo here never fails loudly. It just quietly leaves
- * the operator a plain text box where a dropdown was meant to be, which is
- * exactly why the loader refuses one.
- *
- * `describe` names the param in the author's words; `push` supplies the
- * severity and inline anchors, which differ between commands and actions.
- */
-function validateParamProviders(
-  params: unknown,
-  describe: (paramName: string) => string,
-  push: (paramName: string, message: string) => void,
-): void {
-  if (!params || typeof params !== "object" || Array.isArray(params)) return;
-  const entries = Object.entries(params as Record<string, unknown>);
-  for (const [pname, raw] of entries) {
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
-    const pdef = raw as Record<string, unknown>;
-    const who = describe(pname);
-
-    // A `pattern` shape-checks free text before the command is sent. It runs
-    // on whatever the operator typed, so it gets the same runaway check as a
-    // response pattern. (Not a "does it compile" check: the runtime's regex
-    // dialect is Python's, and a pattern JavaScript can't parse is not
-    // necessarily one the driver can't use.)
-    const runaway = runawayPatternMessage(`The pattern on ${who}`, pdef.pattern);
-    if (runaway) push(pname, runaway);
-
-    const { min, max } = pdef;
-    for (const [boundName, bound] of [
-      ["minimum", min],
-      ["maximum", max],
-    ] as const) {
-      if (bound !== undefined && bound !== null && typeof bound !== "number") {
-        push(
-          pname,
-          `${who} has a ${boundName} of "${String(bound)}", which isn't a number. Enter a number or remove it.`,
-        );
-      }
-    }
-    if (typeof min === "number" && typeof max === "number" && min > max) {
-      push(
-        pname,
-        `${who} has a minimum (${min}) above its maximum (${max}) — no value would be accepted.`,
-      );
-    }
-
-    // `decimals` rounds a number param before it goes on the wire.
-    const decimals = pdef.decimals;
-    if (
-      decimals !== undefined &&
-      decimals !== null &&
-      (!Number.isInteger(decimals) || (decimals as number) < 0)
-    ) {
-      push(
-        pname,
-        `${who} rounds to "${String(decimals)}" decimal places — that must be a whole number of 0 or more.`,
-      );
-    }
-
-    // `trim: false` keeps trailing whitespace the operator typed (raw
-    // passthrough payloads where a terminator is part of the value).
-    const trim = pdef.trim;
-    if (trim !== undefined && trim !== null && typeof trim !== "boolean") {
-      push(
-        pname,
-        `${who} has trim set to "${String(trim)}" — it must be true or false.`,
-      );
-    }
-
-    for (const key of ["options_state", "options_source"] as const) {
-      const val = pdef[key];
-      if (val !== undefined && val !== null && !(typeof val === "string" && val)) {
-        push(
-          pname,
-          `${who} has an empty ${key} — name the state key holding the choices, or remove it.`,
-        );
-      }
-    }
-
-    // `options_from`: this param's choices cascade off a sibling param.
-    const ofrom = pdef.options_from;
-    if (ofrom !== undefined && ofrom !== null) {
-      if (typeof ofrom !== "object" || Array.isArray(ofrom)) {
-        push(
-          pname,
-          `${who} has an options_from that isn't a block — it needs a param (the sibling to cascade from) and a source.`,
-        );
-      } else {
-        const spec = ofrom as Record<string, unknown>;
-        const source = spec.source;
-        if (typeof source !== "string" || !PARAM_OPTIONS_FROM_SOURCES.has(source)) {
-          push(
-            pname,
-            `${who} takes its choices from "${String(source)}", which isn't a source the runtime knows. Use ${[...PARAM_OPTIONS_FROM_SOURCES].join(" or ")}.`,
-          );
-        }
-        const ref = spec.param;
-        if (typeof ref !== "string" || !ref) {
-          push(
-            pname,
-            `${who} has an options_from with no param — name the parameter its choices depend on.`,
-          );
-        } else if (!(ref in (params as Record<string, unknown>))) {
-          push(
-            pname,
-            `${who} takes its choices from parameter "${ref}", which isn't declared alongside it.`,
-          );
-        } else if (source === "child_schema") {
-          const sibling = (params as Record<string, unknown>)[ref];
-          if (
-            sibling &&
-            typeof sibling === "object" &&
-            (sibling as Record<string, unknown>).type !== "child_id"
-          ) {
-            push(
-              pname,
-              `${who} takes its choices from the child schema of parameter "${ref}", but "${ref}" isn't a Child ID parameter — a child schema cascade has to point at one.`,
-            );
-          }
-        }
-      }
-    }
-
-    // `type_from`: this param's input type comes from the control a sibling
-    // child_schema cascade landed on.
-    const tfrom = pdef.type_from;
-    if (tfrom !== undefined && tfrom !== null) {
-      if (typeof tfrom !== "object" || Array.isArray(tfrom)) {
-        push(
-          pname,
-          `${who} has a type_from that isn't a block — it needs a param naming the cascade to take the input type from.`,
-        );
-        continue;
-      }
-      const ref = (tfrom as Record<string, unknown>).param;
-      if (typeof ref !== "string" || !ref) {
-        push(
-          pname,
-          `${who} has a type_from with no param — name the cascade to take the input type from.`,
-        );
-      } else if (!(ref in (params as Record<string, unknown>))) {
-        push(
-          pname,
-          `${who} takes its input type from parameter "${ref}", which isn't declared alongside it.`,
-        );
-      } else {
-        const sibling = (params as Record<string, unknown>)[ref];
-        const siblingFrom =
-          sibling && typeof sibling === "object"
-            ? (sibling as Record<string, unknown>).options_from
-            : undefined;
-        const isCascade =
-          !!siblingFrom &&
-          typeof siblingFrom === "object" &&
-          (siblingFrom as Record<string, unknown>).source === "child_schema";
-        if (!isCascade) {
-          push(
-            pname,
-            `${who} takes its input type from parameter "${ref}", but "${ref}" isn't a child schema cascade — the type is read from the control that cascade picked.`,
-          );
-        }
-      }
-    }
-  }
-}
-
-/**
- * Validate a draft, reporting a failure of the validator itself as an issue.
- *
- * Every consumer should call this rather than `validateDriver` directly. A
- * driver file is arbitrary YAML written by hand or by another tool, so a
- * field can hold a type no rule expected — `author: 2026` is unquoted YAML,
- * parses as a number, loads on the platform without complaint, and used to
- * take the editor down with `draft.author?.trim is not a function`. The
- * editor validates inside a render, so a throw there blanks the whole screen
- * and leaves no way to fix the value that caused it.
- *
- * Hardening individual rules does not close this: the input space is every
- * possible YAML document, and one missed rule costs the whole editor. A
- * validator's worst outcome should be a bad message, never a blank page.
- */
-export function validateDriverSafely(
-  draft: DriverDefinition,
-  siblings: DriverDefinition[],
-  originalId: string | null,
+ *  A whole-driver rule (empty path) goes to General, which is where a
+ *  driver's identity is edited and the tab the editor opens on. */
+export function issuesFromServer(
+  issues: DriverValidationIssue[],
 ): ValidationIssue[] {
-  try {
-    return validateDriver(draft, siblings, originalId);
-  } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
-    return [
-      {
-        severity: "error",
-        section: "general",
-        field: "id",
-        message:
-          "This driver file has a value in a form the editor cannot read, so " +
-          "it could not be fully checked. It is usually a field that needs " +
-          "quotes in the YAML — a version, date or author written as a bare " +
-          `number is the common one. (${detail})`,
-      },
-    ];
-  }
+  return issues.map((issue) => ({
+    severity: issue.severity === "warning" ? "warning" : "error",
+    section: SECTION_BY_PATH_ROOT[pathRoot(issue.path ?? "")] ?? "general",
+    field: issue.path || undefined,
+    message: issue.message,
+  }));
+}
+
+// ── What the Builder still checks for itself ─────────────────────────────
+
+/** Wire fields the routed sender will ignore — leftovers from a transport
+ *  switch or a hand-edited file. Advice, never a refusal: the platform loads
+ *  the driver and the command still works, it just carries dead fields. */
+function strayWireFields(obj: Record<string, unknown>): {
+  route: CommandRoute;
+  stray: string[];
+} {
+  const route = commandRoute(
+    obj as { address?: string; path?: string; method?: string },
+  );
+  const present = (fields: readonly string[]) =>
+    fields.filter((f) => hasContent(obj[f]));
+  const stray =
+    route === "osc"
+      ? [...present(RAW_SHAPE_FIELDS), ...present(HTTP_SHAPE_FIELDS)]
+      : route === "http"
+        ? [...present(RAW_SHAPE_FIELDS)]
+        : [...present(["body", "headers", "query_params"])];
+  return { route, stray };
 }
 
 /**
- * Validate a driver draft against the runtime contract.
+ * Validate a driver draft against everything the *editor* knows.
  *
- * Returns a flat list of issues; consumers slice by section to render.
- * Errors block save (caller's responsibility); warnings flag publish-quality
- * problems (missing description, etc.) without blocking.
+ * That is deliberately almost nothing. The contract rules come from the
+ * server (`issuesFromServer`); this covers the two things it cannot:
+ *
+ *   * a duplicate driver id — the endpoint validates one definition in
+ *     isolation and has no view of the library the editor is holding;
+ *   * publishing and housekeeping advice that must never block a save.
  *
  * Throws on a draft whose field types are unexpected — call
  * `validateDriverSafely` instead of this, from anywhere a throw would be
@@ -632,23 +381,12 @@ export function validateDriver(
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
 
-  // ── Identity ──────────────────────────────────────────────────────────
-  if (!draft.id) {
-    issues.push({
-      severity: "error",
-      section: "general",
-      field: "id",
-      message: "Driver ID is required.",
-    });
-  } else if (!ID_RE.test(draft.id)) {
-    issues.push({
-      severity: "error",
-      section: "general",
-      field: "id",
-      message:
-        "ID must start with a lowercase letter and use only lowercase letters, digits, and underscores.",
-    });
-  } else if (
+  // ── Identity collision ────────────────────────────────────────────────
+  // Not a contract rule — a fact about the driver library this editor is
+  // showing, which the server's per-definition check cannot see. Saving
+  // anyway is refused by the create route with a 409; this says so first.
+  if (
+    draft.id &&
     draft.id !== originalId &&
     siblings.some((s) => s.id === draft.id && s.id !== originalId)
   ) {
@@ -658,44 +396,6 @@ export function validateDriver(
       field: "id",
       message: `Another driver named "${draft.id}" already exists. Choose a different ID.`,
     });
-  }
-
-  if (!draft.name?.trim()) {
-    issues.push({
-      severity: "error",
-      section: "general",
-      field: "name",
-      message: "Driver name is required.",
-    });
-  }
-
-  // The transport picker can only offer supported values, but an imported or
-  // hand-edited file can name anything — and the loader refuses the driver
-  // outright, so it never appears in the device list at all.
-  if (
-    draft.transport &&
-    !(YAML_TRANSPORTS as readonly string[]).includes(draft.transport)
-  ) {
-    issues.push({
-      severity: "error",
-      section: "connection",
-      field: "transport",
-      message: `"${draft.transport}" isn't a transport the platform supports — use ${YAML_TRANSPORTS.join(", ")}.`,
-    });
-  }
-
-  // Wire framing wrapped around every command. Both are literal strings
-  // (escapes like \r are decoded at send time).
-  for (const key of ["command_prefix", "command_suffix"] as const) {
-    const value = (draft as unknown as Record<string, unknown>)[key];
-    if (value !== undefined && value !== null && typeof value !== "string") {
-      issues.push({
-        severity: "error",
-        section: "behavior",
-        field: key,
-        message: `The ${key === "command_prefix" ? "prefix" : "suffix"} added to every command must be text (got "${String(value)}").`,
-      });
-    }
   }
 
   // ── Publish-quality warnings ──────────────────────────────────────────
@@ -734,34 +434,17 @@ export function validateDriver(
     });
   }
 
-  // ── Child entity types ───────────────────────────────────────────────
-  const childTypes = draft.child_entity_types ?? {};
-  const childTypeNames = new Set(Object.keys(childTypes));
-  // Config fields a query's `when:` gate may name. Mirrors the backend's
-  // CONFIG_FIELD_SOURCES: config_derived keys resolve into config at
-  // runtime, so a gate may name them like any declared field.
-  const gateFieldNames = new Set([
-    ...Object.keys(draft.config_schema ?? {}),
-    ...Object.keys(draft.default_config ?? {}),
-    ...Object.keys(draft.config_derived ?? {}),
-  ]);
-  for (const [typeName, typeDef] of Object.entries(childTypes)) {
+  // ── Housekeeping advice ───────────────────────────────────────────────
+  // Everything below is a warning, and every one of them describes a driver
+  // the platform loads and runs. They are here rather than in the contract
+  // because there is nothing to refuse — a child type with no label works,
+  // it just shows up blank in the Child Entities tab.
+
+  for (const [typeName, typeDef] of Object.entries(
+    draft.child_entity_types ?? {},
+  )) {
     if (!typeDef || typeof typeDef !== "object" || Array.isArray(typeDef)) {
-      issues.push({
-        severity: "error",
-        section: "behavior",
-        field: `child_entity_types.${typeName}`,
-        message: `Child type "${typeName}" must be a block describing the child (state fields, ID format, roster), not a single value.`,
-      });
-      continue;
-    }
-    if (!CHILD_ID_RE.test(typeName)) {
-      issues.push({
-        severity: "error",
-        section: "behavior",
-        field: `child_entity_types.${typeName}`,
-        message: `Child type "${typeName}" must start with a lowercase letter and use only lowercase letters, digits, and underscores.`,
-      });
+      continue; // shape is the platform's call
     }
     if (!typeDef.label?.trim()) {
       issues.push({
@@ -771,74 +454,7 @@ export function validateDriver(
         message: `Child type "${typeName}" has no label. Integrators see this in the Child Entities tab.`,
       });
     }
-
-    // id_format sanity (mirror avcdriver_semantic.py): integer or string
-    // local ids, whole-number bounds. The runtime raises on anything else.
-    const rawIdf = typeDef.id_format as unknown;
-    const idfIsBlock =
-      typeof rawIdf === "object" && rawIdf !== null && !Array.isArray(rawIdf);
-    if (rawIdf !== undefined && rawIdf !== null && !idfIsBlock) {
-      issues.push({
-        severity: "error",
-        section: "behavior",
-        field: `child_entity_types.${typeName}.id_format`,
-        message: `Child type "${typeName}" id_format must be a block of settings (type, min, max, pad_width), not a single value.`,
-      });
-    }
-    const idf = (idfIsBlock ? rawIdf : {}) as DriverChildIdFormat;
-    // A missing type means "integer" — the loader reads it as
-    // id_format.get("type", "integer"), so flagging an id_format that only
-    // omits it would reject a driver the platform loads happily. Default
-    // here too, or the Builder is stricter than the runtime.
-    const idfType = idf.type ?? "integer";
-    if (idfType !== "integer" && idfType !== "string") {
-      issues.push({
-        severity: "error",
-        section: "behavior",
-        field: `child_entity_types.${typeName}.id_format`,
-        message: `Child type "${typeName}" id_format.type must be "integer" or "string".`,
-      });
-    }
-    for (const bound of ["min", "max"] as const) {
-      const value = idf[bound] as unknown;
-      if (value !== undefined && value !== null && !Number.isInteger(value)) {
-        issues.push({
-          severity: "error",
-          section: "behavior",
-          field: `child_entity_types.${typeName}.id_format`,
-          message: `Child type "${typeName}" id_format.${bound} must be a whole number.`,
-        });
-      }
-    }
-    if (
-      typeof idf.min === "number" &&
-      typeof idf.max === "number" &&
-      idf.max < idf.min
-    ) {
-      issues.push({
-        severity: "error",
-        section: "behavior",
-        field: `child_entity_types.${typeName}.id_format`,
-        message: `Child type "${typeName}" id_format.max (${idf.max}) is less than min (${idf.min}).`,
-      });
-    }
-    const padWidth = idf.pad_width as unknown;
-    if (
-      padWidth !== undefined &&
-      padWidth !== null &&
-      (!Number.isInteger(padWidth) || (padWidth as number) < 0)
-    ) {
-      issues.push({
-        severity: "error",
-        section: "behavior",
-        field: `child_entity_types.${typeName}.id_format`,
-        message: `Child type "${typeName}" id_format.pad_width must be a whole number, zero or more (0 leaves the ID unpadded).`,
-      });
-    }
-
-    // State fields.
-    const stateVars = typeDef.state_variables ?? {};
-    const fieldNames = Object.keys(stateVars);
+    const fieldNames = Object.keys(typeDef.state_variables ?? {});
     if (fieldNames.length === 0) {
       issues.push({
         severity: "warning",
@@ -847,49 +463,9 @@ export function validateDriver(
         message: `Child type "${typeName}" declares no state fields. Each child would only carry the platform's online/label keys.`,
       });
     }
-    for (const fieldName of fieldNames) {
-      if (!CHILD_ID_RE.test(fieldName)) {
-        issues.push({
-          severity: "error",
-          section: "behavior",
-          field: `child_entity_types.${typeName}.${fieldName}`,
-          message: `Field "${fieldName}" in child type "${typeName}" must use lowercase letters, digits, and underscores only.`,
-        });
-      }
-      // Per-child state fields take the same shape and the same display /
-      // relay fields as device-level state variables.
-      const fieldDef = (stateVars as Record<string, unknown>)[fieldName];
-      const who = `Field "${fieldName}" in child type "${typeName}"`;
-      const pushFieldIssue = (message: string) =>
-        issues.push({
-          severity: "error",
-          section: "behavior",
-          field: `child_entity_types.${typeName}.${fieldName}`,
-          message,
-        });
-      if (!fieldDef || typeof fieldDef !== "object" || Array.isArray(fieldDef)) {
-        pushFieldIssue(
-          `${who} must be a block with a label and a type, not a single value.`,
-        );
-        continue;
-      }
-      const fieldType = (fieldDef as Record<string, unknown>).type;
-      if (
-        fieldType !== undefined &&
-        fieldType !== "" &&
-        !(typeof fieldType === "string" && STATE_VAR_TYPES.has(fieldType))
-      ) {
-        pushFieldIssue(`${who} has unknown type "${String(fieldType)}".`);
-      }
-      validateValueVariableFields(
-        fieldDef as Record<string, unknown>,
-        who,
-        pushFieldIssue,
-      );
-    }
-
-    // summary_fields / label_field must reference declared fields. `online`
-    // and `label` are platform-injected, so they're always valid targets.
+    // summary_fields / label_field naming a field that isn't declared:
+    // the row simply renders nothing. `online` and `label` are
+    // platform-injected, so they're always valid targets.
     const fieldSet = new Set([...fieldNames, "online", "label"]);
     for (const sf of typeDef.summary_fields ?? []) {
       if (!fieldSet.has(sf)) {
@@ -909,177 +485,19 @@ export function validateDriver(
         message: `Child type "${typeName}" name field "${typeDef.label_field}" isn't a declared state field.`,
       });
     }
-
-    // Instances roster (mirror driver_loader.py): exactly one source; count
-    // sane; *_from must name a declared config field. A bad block would
-    // silently register nothing at runtime.
-    const inst = typeDef.instances;
-    if (inst) {
-      const configFields = new Set([
-        ...Object.keys(draft.config_schema ?? {}),
-        ...Object.keys(draft.default_config ?? {}),
-      ]);
-      // `count_from_state` is not one of the mutually exclusive sources — it
-      // names a device-reported variable the roster follows once connected,
-      // with the config source as the offline fallback. A name that isn't
-      // declared means the roster never follows the device.
-      const countFromState = (inst as Record<string, unknown>).count_from_state;
-      if (countFromState !== undefined && countFromState !== null) {
-        if (typeof countFromState !== "string" || !countFromState) {
-          issues.push({
-            severity: "error",
-            section: "behavior",
-            field: `child_entity_types.${typeName}.instances`,
-            message: `Child type "${typeName}" instances count_from_state must name a state variable.`,
-          });
-        } else if (!(countFromState in (draft.state_variables ?? {}))) {
-          issues.push({
-            severity: "error",
-            section: "behavior",
-            field: `child_entity_types.${typeName}.instances`,
-            message: `Child type "${typeName}" instances follow state variable "${countFromState}", which isn't declared — the roster would never track the device.`,
-          });
-        }
-      }
-
-      const instLabel = (inst as Record<string, unknown>).label;
-      if (
-        instLabel !== undefined &&
-        instLabel !== null &&
-        typeof instLabel !== "string"
-      ) {
-        issues.push({
-          severity: "error",
-          section: "behavior",
-          field: `child_entity_types.${typeName}.instances`,
-          message: `Child type "${typeName}" instances label must be text (it names each child, e.g. "Zone {id}").`,
-        });
-      }
-
-      const sources = (INSTANCE_SOURCES as readonly string[]).filter(
-        (k) => (inst as Record<string, unknown>)[k] !== undefined,
-      ) as ("count" | "count_from" | "ids_from" | "ids")[];
-      if (sources.length !== 1) {
-        issues.push({
-          severity: "error",
-          section: "behavior",
-          field: `child_entity_types.${typeName}.instances`,
-          message: `Child type "${typeName}" instances must declare exactly one of a fixed count, a count config field, an ID-list config field, or a fixed ID list.`,
-        });
-      } else if (sources[0] === "ids") {
-        const ids = inst.ids;
-        if (!Array.isArray(ids) || ids.length === 0) {
-          issues.push({
-            severity: "error",
-            section: "behavior",
-            field: `child_entity_types.${typeName}.instances`,
-            message: `Child type "${typeName}" instances ids must be a non-empty list of literal child IDs.`,
-          });
-        } else if (
-          ids.some(
-            (v) =>
-              v === null ||
-              typeof v === "boolean" ||
-              (typeof v !== "string" && typeof v !== "number"),
-          )
-        ) {
-          // A nested list stringifies to something that looks fine ([1] →
-          // "1"), so the integer check below would wave it through.
-          issues.push({
-            severity: "error",
-            section: "behavior",
-            field: `child_entity_types.${typeName}.instances`,
-            message: `Child type "${typeName}" instances ids must each be a single ID — a number or a piece of text, not a list.`,
-          });
-        } else if (
-          idf.type !== "string" &&
-          ids.some((v) => !/^\d+$/.test(String(v).trim()))
-        ) {
-          issues.push({
-            severity: "error",
-            section: "behavior",
-            field: `child_entity_types.${typeName}.instances`,
-            message: `Child type "${typeName}" declares integer ids, but the instances ids list has a non-integer entry.`,
-          });
-        }
-      } else if (sources[0] === "count") {
-        const count = inst.count as number;
-        if (!Number.isInteger(count) || count < 1) {
-          issues.push({
-            severity: "error",
-            section: "behavior",
-            field: `child_entity_types.${typeName}.instances`,
-            message: `Child type "${typeName}" instances count must be a whole number of at least 1.`,
-          });
-        } else if (typeof idf.max === "number" && count > idf.max) {
-          issues.push({
-            severity: "error",
-            section: "behavior",
-            field: `child_entity_types.${typeName}.instances`,
-            message: `Child type "${typeName}" instances count (${count}) exceeds id_format.max (${idf.max}).`,
-          });
-        }
-        if (idf.type === "string") {
-          issues.push({
-            severity: "error",
-            section: "behavior",
-            field: `child_entity_types.${typeName}.instances`,
-            message: `Child type "${typeName}" instances count requires integer ids (id_format.type is "string" — use an ID-list config field).`,
-          });
-        }
-      } else {
-        const fieldName = inst[sources[0]] as string;
-        if (!fieldName || !configFields.has(fieldName)) {
-          issues.push({
-            severity: "error",
-            section: "behavior",
-            field: `child_entity_types.${typeName}.instances`,
-            message: `Child type "${typeName}" instances reads config field "${fieldName || "(none)"}", which isn't declared in the driver's config.`,
-          });
-        }
-        if (sources[0] === "count_from" && idf.type === "string") {
-          issues.push({
-            severity: "error",
-            section: "behavior",
-            field: `child_entity_types.${typeName}.instances`,
-            message: `Child type "${typeName}" instances count field requires integer ids (id_format.type is "string" — use an ID-list config field).`,
-          });
-        }
-      }
-    }
   }
 
-  // ── Config fields: defaults must be safe and typed. A secret field with a
-  //    default is worth a nudge but not a refusal: the value an author puts
-  //    there is nearly always the factory default the manufacturer prints in
-  //    its own manual, which is a starting point for whoever commissions the
-  //    device rather than a secret. Refusing it made two shipped drivers
-  //    impossible to open in the Builder and bought nothing — the rule worth
-  //    having is "don't ship a site password", and a driver file cannot tell
-  //    the two apart. A default stored as the wrong primitive (e.g. "5" on an
-  //    integer field) exports wrong-typed YAML that anything reading
-  //    default_config directly trips over. ─────────────────────────────────
+  // A default stored as the wrong primitive (e.g. "5" on an integer field)
+  // exports wrong-typed YAML that anything reading default_config directly
+  // trips over.
   for (const [fieldName, rawDef] of Object.entries(draft.config_schema ?? {})) {
     if (!rawDef || typeof rawDef !== "object") continue;
-    const fieldDef = rawDef as {
-      type?: string;
-      secret?: boolean;
-      default?: unknown;
-    };
+    const fieldDef = rawDef as { type?: string; secret?: boolean };
+    if (fieldDef.secret === true) continue; // the platform warns about these
     const configDefault = (draft.default_config ?? {})[fieldName];
-    const hasValue = (v: unknown) => v !== undefined && v !== null && v !== "";
-    if (fieldDef.secret === true) {
-      if (hasValue(configDefault) || hasValue(fieldDef.default)) {
-        issues.push({
-          severity: "warning",
-          section: "connection",
-          field: `config_schema.${fieldName}`,
-          message: `Config field "${fieldName}" is masked but has a default value, which is stored in plain text inside the driver file. That is fine for a published factory default, but never put a real site password here.`,
-        });
-      }
+    if (configDefault === undefined || configDefault === null || configDefault === "") {
       continue;
     }
-    if (!hasValue(configDefault)) continue;
     const declaredType = fieldDef.type ?? "string";
     if (declaredType === "boolean" && typeof configDefault !== "boolean") {
       issues.push({
@@ -1101,66 +519,6 @@ export function validateDriver(
     }
   }
 
-  // ── Top-level state variables: the runtime hard-requires a label on every
-  //    one (driver_loader.py) and rejects an unknown type. A cleared label or
-  //    bad type otherwise only surfaces as an unanchored save-time 422, so
-  //    flag it inline in the Behavior tab where the editor lives. ───────────
-  if (
-    draft.state_variables !== undefined &&
-    draft.state_variables !== null &&
-    (typeof draft.state_variables !== "object" ||
-      Array.isArray(draft.state_variables))
-  ) {
-    issues.push({
-      severity: "error",
-      section: "behavior",
-      field: "state_variables",
-      message:
-        "State variables must be a block of named variables, not a list.",
-    });
-  }
-  for (const [varName, varDef] of Object.entries(draft.state_variables ?? {})) {
-    if (!varDef || typeof varDef !== "object" || Array.isArray(varDef)) {
-      // A bare `power: string` shorthand reads like it should work and
-      // doesn't — the runtime wants the full block.
-      issues.push({
-        severity: "error",
-        section: "behavior",
-        field: `state_variables.${varName}`,
-        message: `State variable "${varName}" must be a block with a label and a type, not a single value.`,
-      });
-      continue;
-    }
-    if (!varDef.label?.trim()) {
-      issues.push({
-        severity: "error",
-        section: "behavior",
-        field: `state_variables.${varName}`,
-        message: `State variable "${varName}" needs a label — the runtime rejects a state variable with no label.`,
-      });
-    }
-    if (varDef.type && !STATE_VAR_TYPES.has(varDef.type)) {
-      issues.push({
-        severity: "error",
-        section: "behavior",
-        field: `state_variables.${varName}`,
-        message: `State variable "${varName}" has unknown type "${varDef.type}" — use string, integer, number, boolean, enum, or float.`,
-      });
-    }
-    validateValueVariableFields(
-      varDef as unknown as Record<string, unknown>,
-      `State variable "${varName}"`,
-      (message) =>
-        issues.push({
-          severity: "error",
-          section: "behavior",
-          field: `state_variables.${varName}`,
-          message,
-        }),
-    );
-  }
-
-  // ── Commands: param-name legality + placeholder coverage ─────────────
   // Substitutable config tokens mirror the runtime's config dict: declared
   // schema fields, default_config-only keys, computed (config_derived)
   // values, and the baseline transport keys the runtime injects.
@@ -1174,90 +532,9 @@ export function validateDriver(
   for (const [cmdName, cmd] of Object.entries(draft.commands ?? {})) {
     const declaredParams = new Set(Object.keys(cmd.params ?? {}));
 
-    // child_id params must name a declared child type, else the runtime
-    // command picker has nothing to populate the dropdown from.
-    for (const [paramName, paramDef] of Object.entries(cmd.params ?? {})) {
-      if (paramDef.type !== "child_id") continue;
-      if (!paramDef.child_type) {
-        issues.push({
-          severity: "error",
-          section: "behavior",
-          command: cmdName,
-          param: paramName,
-          message: `Parameter "${paramName}" in command "${cmdName}" is a Child ID but no child type is selected.`,
-        });
-      } else if (!childTypeNames.has(paramDef.child_type)) {
-        issues.push({
-          severity: "error",
-          section: "behavior",
-          command: cmdName,
-          param: paramName,
-          message: `Parameter "${paramName}" in command "${cmdName}" references child type "${paramDef.child_type}", which isn't declared in Child Entity Types.`,
-        });
-      }
-    }
-
-    // Wire value maps (mirror driver_loader.py): every row needs both a
-    // value and a wire value — an empty row would silently never translate.
-    for (const [paramName, paramDef] of Object.entries(cmd.params ?? {})) {
-      if (paramDef.map === undefined) continue;
-      const rows = Object.entries(paramDef.map ?? {});
-      const rowsOk =
-        rows.length > 0 &&
-        rows.every(
-          ([k, v]) =>
-            k !== "" &&
-            (typeof v === "string" || typeof v === "number") &&
-            String(v) !== "",
-        );
-      if (!rowsOk) {
-        issues.push({
-          severity: "error",
-          section: "behavior",
-          command: cmdName,
-          param: paramName,
-          message: `Parameter "${paramName}" in command "${cmdName}" has a wire value map with empty rows — each row needs a value and what to send.`,
-        });
-      }
-    }
-
-    // Free-text aids + picker providers on this command's params (mirrors the
-    // loader's own per-param pass; see validateParamProviders).
-    validateParamProviders(
-      cmd.params,
-      (paramName) => `Parameter "${paramName}" in command "${cmdName}"`,
-      (paramName, message) =>
-        issues.push({
-          severity: "error",
-          section: "behavior",
-          command: cmdName,
-          param: paramName,
-          message,
-        }),
-    );
-
-    // Param-name legality. The renamer used to silently strip illegal
-    // characters; flag the residue so the user understands what got
-    // trimmed.
-    for (const paramName of declaredParams) {
-      if (!PARAM_NAME_RE.test(paramName)) {
-        issues.push({
-          severity: "error",
-          section: "behavior",
-          command: cmdName,
-          param: paramName,
-          message: `Parameter "${paramName}" in command "${cmdName}" has illegal characters. Use letters, digits, and underscores only.`,
-        });
-      }
-    }
-
-    // Walk every wire-format string and collect placeholders. Anything
-    // not in declared params or config keys is undeclared — almost
-    // always a typo that would silently leave a literal {token} on
-    // the wire.
-    const wireStrings = collectWireStrings(cmd);
+    // An undeclared {token} leaves a literal "{token}" on the wire.
     const seen = new Set<string>();
-    for (const wire of wireStrings) {
+    for (const wire of collectWireStrings(cmd)) {
       let m: RegExpExecArray | null;
       const re = new RegExp(PLACEHOLDER_RE.source, "g");
       while ((m = re.exec(wire))) {
@@ -1274,1227 +551,100 @@ export function validateDriver(
       }
     }
 
-    // Every command needs SOME wire format — the runtime loader rejects a
-    // command with no send/string, no path/method, and no address. For OSC
-    // and HTTP transports the shape check below already reports the missing
-    // address / method-path, so only the raw-transport case (a tcp/serial/udp
-    // command whose send was left blank — the builder seeds `send: ""`) slips
-    // through; flag it here so it doesn't save as a no-op that 422s at load.
-    const cmdRecord = cmd as unknown as Record<string, unknown>;
-    if (
-      commandRoute(cmd) === "raw" &&
-      draft.transport !== "osc" &&
-      draft.transport !== "http" &&
-      !hasContent(cmdRecord.send)
-    ) {
-      issues.push({
-        severity: "error",
-        section: "behavior",
-        command: cmdName,
-        message: `Command "${cmdName}" has nothing to send — set the ${(draft.transport || "tcp").toUpperCase()} send string.`,
-      });
-    }
-
-    // Transport ↔ shape consistency. The runtime routes by shape and its
-    // senders refuse a transport mismatch, so a stale shape (usually left
-    // behind by a transport switch in an older builder, an import, or
-    // hand-edited YAML) is a dead command at runtime.
-    issues.push(
-      ...shapeMismatchIssues(
-        cmd as unknown as Record<string, unknown>,
-        draft.transport,
-        `Command "${cmdName}"`,
-        cmdName,
-      ),
+    const { route, stray } = strayWireFields(
+      cmd as unknown as Record<string, unknown>,
     );
-
-    // OSC argument values: numeric tags crash the send on an empty or
-    // non-numeric value (the builder seeds new args with value "").
-    if (draft.transport === "osc" && commandRoute(cmd) === "osc") {
-      if (cmd.args !== undefined && !Array.isArray(cmd.args)) {
-        issues.push({
-          severity: "error",
-          section: "behavior",
-          command: cmdName,
-          message: `Command "${cmdName}" args must be a list of OSC arguments.`,
-        });
-      }
-      (Array.isArray(cmd.args) ? cmd.args : []).forEach((arg, i) => {
-        const problem = oscArgValueIssue(arg?.type, arg?.value);
-        if (problem) {
-          issues.push({
-            severity: "error",
-            section: "behavior",
-            command: cmdName,
-            message: `Command "${cmdName}" OSC argument ${i + 1} ${problem}.`,
-          });
-        }
-      });
-    }
-
-    // Declared command semantics — mirror avcdriver_semantic.py. `sets` /
-    // `query_for` drive the auto-generated simulator, so a dangling name
-    // would silently declare nothing: every key must name a declared state
-    // variable, and a "{param}" value must name a declared parameter. A
-    // command addressed to exactly one child (a single child_id param whose
-    // type is declared) may name that child type's state variables instead —
-    // the effect applies to the addressed child.
-    const childParamTypes = Object.values(cmd.params ?? {})
-      .filter((p) => p && typeof p === "object" && p.type === "child_id")
-      .map((p) => p.child_type);
-    const singleChildType =
-      childParamTypes.length === 1 ? childParamTypes[0] : undefined;
-    const childTargetVars: Record<string, unknown> =
-      singleChildType !== undefined && childTypeNames.has(singleChildType)
-        ? (childTypes[singleChildType]?.state_variables ?? {})
-        : {};
-    const hasChildTargetVars = Object.keys(childTargetVars).length > 0;
-    const declaredStateVars = draft.state_variables ?? {};
-    const setsRaw = cmdRecord.sets;
-    if (
-      setsRaw != null &&
-      (typeof setsRaw !== "object" || Array.isArray(setsRaw))
-    ) {
+    if (stray.length > 0) {
       issues.push({
-        severity: "error",
+        severity: "warning",
         section: "behavior",
         command: cmdName,
-        message: `Command "${cmdName}": "sets" must be a mapping of state variable to value.`,
+        message: `Command "${cmdName}" has ${stray.join(", ")} which the ${route.toUpperCase()} sender ignores — usually leftovers from a transport switch. Remove them to keep the driver clean.`,
       });
-    } else if (setsRaw != null) {
-      for (const [varName, setValue] of Object.entries(
-        setsRaw as Record<string, unknown>,
-      )) {
-        if (
-          !(varName in declaredStateVars) &&
-          !(varName in childTargetVars)
-        ) {
-          issues.push({
-            severity: "error",
-            section: "behavior",
-            command: cmdName,
-            message: hasChildTargetVars
-              ? `Command "${cmdName}" sets "${varName}" which is not a declared state variable (device-level or of the addressed child type).`
-              : `Command "${cmdName}" sets "${varName}" which is not a declared state variable.`,
-          });
-        }
-        if (
-          typeof setValue === "string" &&
-          (setValue.includes("{") || setValue.includes("}"))
-        ) {
-          const ref = /^\{([^{}]+)\}$/.exec(setValue);
-          if (!ref || !declaredParams.has(ref[1])) {
-            issues.push({
-              severity: "error",
-              section: "behavior",
-              command: cmdName,
-              message: `Command "${cmdName}": sets.${varName} value "${setValue}" must be a literal or a bare {param} reference to a declared parameter.`,
-            });
-          }
-        }
-      }
-    }
-    const queryForRaw = cmdRecord.query_for;
-    if (queryForRaw != null) {
-      if (typeof queryForRaw !== "string" || !queryForRaw) {
-        issues.push({
-          severity: "error",
-          section: "behavior",
-          command: cmdName,
-          message: `Command "${cmdName}": "query_for" must name a state variable.`,
-        });
-      } else if (
-        !(queryForRaw in declaredStateVars) &&
-        !(queryForRaw in childTargetVars)
-      ) {
-        issues.push({
-          severity: "error",
-          section: "behavior",
-          command: cmdName,
-          message: hasChildTargetVars
-            ? `Command "${cmdName}": query_for "${queryForRaw}" is not a declared state variable (device-level or of the addressed child type).`
-            : `Command "${cmdName}": query_for "${queryForRaw}" is not a declared state variable.`,
-        });
-      }
     }
   }
 
-  // ── Device settings: write shapes follow the same routing rules ───────
   for (const [settingName, setting] of Object.entries(
     draft.device_settings ?? {},
   )) {
-    // Type, read-back key, and range. A setting whose state_key names nothing
-    // loads fine and shows "(not set)" forever while its writes keep firing —
-    // the reason the loader refuses it.
-    const settingRecord = setting as unknown as Record<string, unknown>;
-    const settingType = settingRecord.type;
-    if (
-      settingType !== undefined &&
-      settingType !== "" &&
-      !(typeof settingType === "string" && STATE_VAR_TYPES.has(settingType))
-    ) {
+    const write = setting?.write as Record<string, unknown> | undefined;
+    if (!write || typeof write !== "object") continue;
+    const { route, stray } = strayWireFields(write);
+    if (stray.length > 0) {
       issues.push({
-        severity: "error",
+        severity: "warning",
         section: "behavior",
-        message: `Device setting "${settingName}" has unknown type "${String(settingType)}" — use string, integer, number, boolean, enum, or float.`,
-      });
-    }
-    const stateKey = settingRecord.state_key ?? settingName;
-    if (
-      typeof stateKey !== "string" ||
-      !(stateKey in (draft.state_variables ?? {}))
-    ) {
-      issues.push({
-        severity: "error",
-        section: "behavior",
-        message: `Device setting "${settingName}" reads back from state variable "${String(stateKey)}", which isn't declared — the setting would show "(not set)" forever while its writes still fired.`,
-      });
-    }
-    const settingMin = settingRecord.min;
-    const settingMax = settingRecord.max;
-    if (
-      typeof settingMin === "number" &&
-      typeof settingMax === "number" &&
-      settingMin > settingMax
-    ) {
-      issues.push({
-        severity: "error",
-        section: "behavior",
-        message: `Device setting "${settingName}" has a minimum (${settingMin}) above its maximum (${settingMax}) — no value would be accepted.`,
-      });
-    }
-
-    const write = setting.write;
-    if (!write || Object.keys(write).length === 0) {
-      // The runtime loader hard-requires a write block on every device
-      // setting (driver_loader.py: "a device setting must be writable") —
-      // a missing or emptied write (e.g. after a transport switch scrubbed
-      // its wire format) would 422 at load time.
-      issues.push({
-        severity: "error",
-        section: "behavior",
-        message: `Device setting "${settingName}": missing write block (send / path / address) - a device setting must be writable.`,
-      });
-      continue;
-    }
-    issues.push(
-      ...shapeMismatchIssues(
-        write as Record<string, unknown>,
-        draft.transport,
-        `Device setting "${settingName}" write`,
-        undefined,
-      ),
-    );
-    if (draft.transport === "osc" && commandRoute(write) === "osc") {
-      (write.args ?? []).forEach((arg, i) => {
-        const problem = oscArgValueIssue(arg.type, arg.value);
-        if (problem) {
-          issues.push({
-            severity: "error",
-            section: "behavior",
-            message: `Device setting "${settingName}" OSC argument ${i + 1} ${problem}.`,
-          });
-        }
+        message: `Device setting "${settingName}" write has ${stray.join(", ")} which the ${route.toUpperCase()} sender ignores — usually leftovers from a transport switch. Remove them to keep the driver clean.`,
       });
     }
   }
 
-  // ── Responses: mirror the runtime's structural rules (driver_loader.py).
-  //    A response is OSC (an `address`) or text (a `pattern`/`match`); the
-  //    builder's free-text fields let either go malformed, and nothing else
-  //    in this validator looks at responses, so a bad one only shows as a
-  //    save-time 422. An `address` response is OSC-only — flag one left on a
-  //    non-OSC transport (it would never match), and require the '/'-rooted
-  //    path the runtime demands. ────────────────────────────────────────────
-  //    A definition typed by hand (imported, pasted, or AI-written) can carry
-  //    the wrong container type entirely — `responses:` as a mapping rather
-  //    than a list. Say so, rather than letting `.forEach` throw: the caller
-  //    catches the throw and shows a raw JavaScript message, which tells the
-  //    author nothing about what to fix.
-  if (draft.responses !== undefined && !Array.isArray(draft.responses)) {
-    issues.push({
-      severity: "error",
-      section: "behavior",
-      message: "Responses must be a list of response rules.",
-    });
-  }
-  (Array.isArray(draft.responses) ? draft.responses : []).forEach((resp, i) => {
-    const label = `Response ${i + 1}`;
-    // Each entry must be a mapping too — a bare string or number here would
-    // otherwise reach a `.trim()` further down and throw.
-    if (resp === null || typeof resp !== "object" || Array.isArray(resp)) {
-      issues.push({
-        severity: "error",
-        section: "behavior",
-        message: `${label} must be a mapping of response fields.`,
-      });
-      return;
-    }
-    const tn = (draft.transport || "tcp").toUpperCase();
-    // Throttle (any response kind): the runtime rejects a zero/negative/
-    // non-numeric value, since it would silently disable either the rule or
-    // the throttle.
-    if (
-      resp.throttle !== undefined &&
-      (typeof resp.throttle !== "number" || !(resp.throttle > 0))
-    ) {
-      issues.push({
-        severity: "error",
-        section: "behavior",
-        message: `${label} throttle must be a positive number of seconds.`,
-      });
-    }
-    // `require:` scopes a json rule to bodies carrying the named key(s) —
-    // mirror avcdriver_semantic.py: it only applies to json: true rules, and
-    // a blank entry would silently disable the rule (never matches).
-    const isJsonRule = !!(resp as { json?: unknown }).json;
-    const requireVal = (resp as { require?: unknown }).require;
-    if (requireVal !== undefined && requireVal !== null) {
-      if (!isJsonRule) {
-        issues.push({
-          severity: "error",
-          section: "behavior",
-          message: `${label}: "require" only applies to JSON body rules — remove it, or switch the rule to JSON body.`,
-        });
-      }
-      if (typeof requireVal === "string") {
-        if (!requireVal.trim()) {
-          issues.push({
-            severity: "error",
-            section: "behavior",
-            message: `${label}: "require" must name a JSON key.`,
-          });
-        }
-      } else if (Array.isArray(requireVal)) {
-        if (
-          requireVal.length === 0 ||
-          !requireVal.every((k) => typeof k === "string" && k.trim())
-        ) {
-          issues.push({
-            severity: "error",
-            section: "behavior",
-            message: `${label}: "require" entries must be non-empty JSON key names.`,
-          });
-        }
-      } else {
-        issues.push({
-          severity: "error",
-          section: "behavior",
-          message: `${label}: "require" must be a JSON key name or a list of them.`,
-        });
-      }
-    }
-    if (resp.address !== undefined) {
-      if (draft.transport && draft.transport !== "osc") {
-        issues.push({
-          severity: "error",
-          section: "behavior",
-          message: `${label} has an OSC address but the driver transport is ${tn}. The runtime reads an address response as OSC, so it never matches on a non-OSC transport — remove the address or set the transport to OSC.`,
-        });
-      } else if (!resp.address.trim().startsWith("/")) {
-        issues.push({
-          severity: "error",
-          section: "behavior",
-          message: `${label} OSC address must start with "/" (e.g. /main/volume).`,
-        });
-      }
-    } else if (isJsonRule) {
-      // json-body rules parse the whole reply as JSON and map fields by
-      // key/path — no regex pattern (mirror avcdriver_semantic.py). They
-      // need a set map or mappings list to do anything.
-      const setVal = (resp as { set?: unknown }).set;
-      const hasSet =
-        typeof setVal === "object" && setVal !== null && !Array.isArray(setVal);
-      const mappingsVal = (resp as { mappings?: unknown }).mappings;
-      const hasMappings = Array.isArray(mappingsVal);
-      // The runtime dispatches OSC transports by address before json rules
-      // are ever consulted (configurable.py handle_data), so a json rule on
-      // an OSC driver never fires.
-      if (draft.transport === "osc") {
-        issues.push({
-          severity: "error",
-          section: "behavior",
-          message: `${label} is a JSON body rule but the driver transport is OSC — the runtime reads OSC messages by address, so this rule never matches.`,
-        });
-      }
-      if (!hasSet && !hasMappings) {
-        issues.push({
-          severity: "error",
-          section: "behavior",
-          message: `${label} is a JSON response but maps no fields — add a set map (state variable to JSON key/path) or a mappings list.`,
-        });
-      } else {
-        // Row checks against what the runtime will actually read
-        // (build_json_mappings: a non-empty mappings list wins, else set).
-        // A dangling state name or blank field path makes the row silently
-        // do nothing, and an unknown type coerces as plain string.
-        const declaredVars = draft.state_variables ?? {};
-        const checkJsonRow = (state: string, path: string, type: unknown) => {
-          if (!state || !(state in declaredVars)) {
-            issues.push({
-              severity: "error",
-              section: "behavior",
-              message: `${label}: JSON field row sets "${state || "(none)"}", which isn't a declared state variable.`,
-            });
-          }
-          if (!path.trim()) {
-            issues.push({
-              severity: "error",
-              section: "behavior",
-              message: `${label}: row for "${state || "(none)"}" reads no JSON field — add the field path (e.g. status.power).`,
-            });
-          }
-          if (
-            type !== undefined &&
-            (typeof type !== "string" || !STATE_VAR_TYPES.has(type))
-          ) {
-            issues.push({
-              severity: "error",
-              section: "behavior",
-              message: `${label}: row for "${state || "(none)"}" has unknown type "${String(type)}".`,
-            });
-          }
-        };
-        const mappingRows = hasMappings ? (mappingsVal as unknown[]) : [];
-        const setEntries = hasSet
-          ? Object.entries(setVal as Record<string, unknown>)
-          : [];
-        if (mappingRows.length > 0) {
-          for (const m of mappingRows) {
-            if (typeof m !== "object" || m === null) continue;
-            const row = m as { state?: unknown; key?: unknown; type?: unknown };
-            checkJsonRow(
-              typeof row.state === "string" ? row.state : "",
-              row.key == null ? "" : String(row.key),
-              row.type,
-            );
-          }
-        } else if (setEntries.length > 0) {
-          for (const [state, spec] of setEntries) {
-            if (
-              spec !== null &&
-              typeof spec === "object" &&
-              !Array.isArray(spec)
-            ) {
-              const s = spec as { key?: unknown; path?: unknown; type?: unknown };
-              // The runtime defaults a missing key/path to the state name.
-              const path = s.key ?? s.path ?? state;
-              checkJsonRow(state, String(path), s.type);
-            } else {
-              checkJsonRow(state, String(spec), undefined);
-            }
-          }
-        } else {
-          issues.push({
-            severity: "error",
-            section: "behavior",
-            message: `${label} is a JSON response but maps no fields — add at least one row.`,
-          });
-        }
-      }
-    } else if (!resp.match?.trim()) {
-      issues.push({
-        severity: "error",
-        section: "behavior",
-        message: `${label} has no pattern to match — add a match pattern, or an OSC address for an OSC driver.`,
-      });
-    } else {
-      // Response patterns run against every inbound frame while the driver
-      // waits on the socket — a runaway one wedges it (mirror the loader).
-      const runaway = runawayPatternMessage(
-        `${label} match pattern`,
-        resp.match,
-      );
-      if (runaway) {
-        issues.push({ severity: "error", section: "behavior", message: runaway });
-      }
-    }
-
-    // child_set routing (mirror driver_loader.py): declared type, declared
-    // props, in-range capture refs (regex) or address segments + positional
-    // args (OSC); not on json responses.
-    const childSet = resp.child_set;
-    if (childSet !== undefined) {
-      if (resp.address !== undefined) {
-        // OSC form: id from {segment: N} or a literal; values from {arg: N}
-        // or literals. No capture groups exist on an address match.
-        if (!Array.isArray(childSet) || childSet.length === 0) {
-          issues.push({
-            severity: "error",
-            section: "behavior",
-            message: `${label}: child_set must contain at least one routing entry.`,
-          });
-          return;
-        }
-        const addrText = (resp.address ?? "").trim();
-        const stripped = addrText.replace(/^\/+|\/+$/g, "");
-        const nsegs = stripped ? stripped.split("/").length : null;
-        childSet.forEach((entry, j) => {
-          const eLabel = `routing entry ${j + 1}`;
-          if (!entry.type || !childTypeNames.has(entry.type)) {
-            issues.push({
-              severity: "error",
-              section: "behavior",
-              message: `${label}: ${eLabel} routes to child type "${entry.type || "(none)"}", which isn't declared.`,
-            });
-            return;
-          }
-          if (entry.id === undefined || entry.id === null || entry.id === "") {
-            issues.push({
-              severity: "error",
-              section: "behavior",
-              message: `${label}: ${eLabel} needs an ID — an address segment like seg:1, or a literal child ID.`,
-            });
-          } else if (typeof entry.id === "object") {
-            const spec = entry.id as { segment?: unknown; map?: unknown };
-            const seg = spec.segment;
-            if (typeof seg !== "number" || !Number.isInteger(seg) || seg < 0) {
-              issues.push({
-                severity: "error",
-                section: "behavior",
-                message: `${label}: ${eLabel} ID needs an address segment index (seg:1 = the second /-separated part; OSC rules have no capture groups).`,
-              });
-            } else if (nsegs !== null && seg >= nsegs) {
-              issues.push({
-                severity: "error",
-                section: "behavior",
-                message: `${label}: ${eLabel} ID segment ${seg} is past the end of the address (${nsegs} segment${nsegs === 1 ? "" : "s"}).`,
-              });
-            }
-            if (spec.map !== undefined) {
-              const entriesOk =
-                typeof spec.map === "object" &&
-                spec.map !== null &&
-                Object.keys(spec.map as object).length > 0 &&
-                Object.entries(spec.map as Record<string, unknown>).every(
-                  ([k, v]) =>
-                    k !== "" &&
-                    (typeof v === "string" || typeof v === "number") &&
-                    String(v) !== "",
-                );
-              if (!entriesOk) {
-                issues.push({
-                  severity: "error",
-                  section: "behavior",
-                  message: `${label}: ${eLabel} wire-ID map rows must each have a wire ID and a child ID.`,
-                });
-              } else if (
-                (childTypes[entry.type]?.id_format?.type ?? "integer") ===
-                "integer"
-              ) {
-                for (const v of Object.values(
-                  spec.map as Record<string, string | number>,
-                )) {
-                  if (!/^\d+$/.test(String(v).trim())) {
-                    issues.push({
-                      severity: "error",
-                      section: "behavior",
-                      message: `${label}: ${eLabel} wire-ID map value "${v}" isn't an integer, but child type "${entry.type}" uses integer IDs.`,
-                    });
-                    break;
-                  }
-                }
-              }
-            }
-          } else if (typeof entry.id === "string" && entry.id.startsWith("$")) {
-            issues.push({
-              severity: "error",
-              section: "behavior",
-              message: `${label}: ${eLabel} ID "${entry.id}" — OSC rules have no capture groups; use an address segment (seg:1) or a literal.`,
-            });
-          }
-          const props = new Set(
-            Object.keys(childTypes[entry.type]?.state_variables ?? {}),
-          );
-          const stateMap = entry.state ?? {};
-          if (Object.keys(stateMap).length === 0) {
-            issues.push({
-              severity: "error",
-              section: "behavior",
-              message: `${label}: ${eLabel} maps no properties — add at least one.`,
-            });
-          }
-          for (const [prop, expr] of Object.entries(stateMap)) {
-            if (!props.has(prop)) {
-              issues.push({
-                severity: "error",
-                section: "behavior",
-                message: `${label}: ${eLabel} maps "${prop}", which isn't a declared field of child type "${entry.type}".`,
-              });
-            }
-            if (typeof expr === "string" && expr.startsWith("$")) {
-              issues.push({
-                severity: "error",
-                section: "behavior",
-                message: `${label}: ${eLabel} value for "${prop}" — OSC rules have no capture groups; use a positional argument (arg:0) or a literal.`,
-              });
-            } else if (typeof expr === "object" && expr !== null) {
-              const pe = expr as { arg?: unknown; value?: unknown };
-              if (pe.arg === undefined && pe.value === undefined) {
-                issues.push({
-                  severity: "error",
-                  section: "behavior",
-                  message: `${label}: ${eLabel} value for "${prop}" needs a positional argument (arg:0) or a literal value.`,
-                });
-              } else if (
-                pe.arg !== undefined &&
-                (typeof pe.arg !== "number" ||
-                  !Number.isInteger(pe.arg) ||
-                  pe.arg < 0)
-              ) {
-                issues.push({
-                  severity: "error",
-                  section: "behavior",
-                  message: `${label}: ${eLabel} value for "${prop}" arg must be a whole number of 0 or more.`,
-                });
-              }
-            }
-          }
-        });
-        return;
-      }
-      if (isJsonRule) {
-        issues.push({
-          severity: "error",
-          section: "behavior",
-          message: `${label}: child entity routing isn't supported on JSON responses.`,
-        });
-        return;
-      }
-      if (!Array.isArray(childSet) || childSet.length === 0) {
-        issues.push({
-          severity: "error",
-          section: "behavior",
-          message: `${label}: child_set must contain at least one routing entry.`,
-        });
-        return;
-      }
-      // Count the pattern's capture groups when it compiles cleanly (it may
-      // contain {config} placeholders substituted at runtime — skip then).
-      const patternText = resp.match ?? "";
-      let ngroups: number | null = null;
-      try {
-        ngroups = new RegExp(patternText + "|").exec("")!.length - 1;
-      } catch {
-        ngroups = null;
-      }
-      const checkRef = (where: string, ref: string) => {
-        const group = parseInt(ref.slice(1), 10);
-        if (!Number.isInteger(group) || group < 1) {
-          issues.push({
-            severity: "error",
-            section: "behavior",
-            message: `${label}: ${where} capture reference "${ref}" must be $1, $2, ...`,
-          });
-        } else if (ngroups !== null && group > ngroups) {
-          issues.push({
-            severity: "error",
-            section: "behavior",
-            message: `${label}: ${where} capture reference $${group} exceeds the pattern's ${ngroups} capture group${ngroups === 1 ? "" : "s"}.`,
-          });
-        }
-      };
-      childSet.forEach((entry, j) => {
-        const eLabel = `routing entry ${j + 1}`;
-        if (!entry.type || !childTypeNames.has(entry.type)) {
-          issues.push({
-            severity: "error",
-            section: "behavior",
-            message: `${label}: ${eLabel} routes to child type "${entry.type || "(none)"}", which isn't declared.`,
-          });
-          return;
-        }
-        if (entry.id === undefined || entry.id === null || entry.id === "") {
-          issues.push({
-            severity: "error",
-            section: "behavior",
-            message: `${label}: ${eLabel} needs an ID — a capture reference like $1, or a literal child ID.`,
-          });
-        } else if (typeof entry.id === "object") {
-          // Long form {group, map}: wire-ID translation on a capture ref.
-          const spec = entry.id as { group?: unknown; map?: unknown };
-          const gref = spec.group;
-          if (typeof gref === "number" && Number.isInteger(gref)) {
-            checkRef(`${eLabel} ID`, `$${gref}`);
-          } else if (typeof gref === "string" && gref.startsWith("$")) {
-            checkRef(`${eLabel} ID`, gref);
-          } else {
-            issues.push({
-              severity: "error",
-              section: "behavior",
-              message: `${label}: ${eLabel} wire-ID map needs a capture group (which capture holds the wire ID).`,
-            });
-          }
-          if (spec.map !== undefined) {
-            const entriesOk =
-              typeof spec.map === "object" &&
-              spec.map !== null &&
-              Object.keys(spec.map as object).length > 0 &&
-              Object.entries(spec.map as Record<string, unknown>).every(
-                ([k, v]) =>
-                  k !== "" &&
-                  (typeof v === "string" || typeof v === "number") &&
-                  String(v) !== "",
-              );
-            if (!entriesOk) {
-              issues.push({
-                severity: "error",
-                section: "behavior",
-                message: `${label}: ${eLabel} wire-ID map rows must each have a wire ID and a child ID.`,
-              });
-            } else if (
-              (childTypes[entry.type]?.id_format?.type ?? "integer") ===
-              "integer"
-            ) {
-              for (const v of Object.values(
-                spec.map as Record<string, string | number>,
-              )) {
-                if (!/^\d+$/.test(String(v).trim())) {
-                  issues.push({
-                    severity: "error",
-                    section: "behavior",
-                    message: `${label}: ${eLabel} wire-ID map value "${v}" isn't an integer, but child type "${entry.type}" uses integer IDs.`,
-                  });
-                  break;
-                }
-              }
-            }
-          }
-        } else if (typeof entry.id === "string" && entry.id.startsWith("$")) {
-          checkRef(`${eLabel} ID`, entry.id);
-        }
-        const props = new Set(
-          Object.keys(childTypes[entry.type]?.state_variables ?? {}),
-        );
-        const stateMap = entry.state ?? {};
-        if (Object.keys(stateMap).length === 0) {
-          issues.push({
-            severity: "error",
-            section: "behavior",
-            message: `${label}: ${eLabel} maps no properties — add at least one.`,
-          });
-        }
-        for (const [prop, expr] of Object.entries(stateMap)) {
-          if (!props.has(prop)) {
-            issues.push({
-              severity: "error",
-              section: "behavior",
-              message: `${label}: ${eLabel} maps "${prop}", which isn't a declared field of child type "${entry.type}".`,
-            });
-          }
-          if (typeof expr === "string" && expr.startsWith("$")) {
-            checkRef(`${eLabel} value for "${prop}"`, expr);
-          }
-        }
-      });
-    }
-  });
-
-  // ── Per-child query templates (each_child) in polling.queries/on_connect:
-  //    mirror driver_loader.py so a bad entry shows here, not as a 422. ────
-  const checkEachChildEntries = (
-    fieldName: string,
-    entries: unknown[] | undefined,
-    allowOscDict: boolean,
-  ) => {
-    (entries ?? []).forEach((q, i) => {
-      if (typeof q !== "object" || q === null) return;
-      const entry = q as Record<string, unknown>;
-      // `when: <config_field>` gates the entry on a truthy config value. A
-      // field name that doesn't exist would disable the entry forever, so a
-      // typo is an error, not a quiet no-op.
-      if ("when" in entry) {
-        const when = entry.when;
-        if (typeof when !== "string" || !when) {
-          issues.push({
-            severity: "error",
-            section: "behavior",
-            message: `${fieldName} entry ${i + 1}: "when" must name a config field.`,
-          });
-        } else if (!gateFieldNames.has(when)) {
-          issues.push({
-            severity: "error",
-            section: "behavior",
-            message: `${fieldName} entry ${i + 1}: "when" field "${when}" isn't a declared config field, so this entry would never run.`,
-          });
-        }
-      }
-      if (!("each_child" in entry)) {
-        // `query_for` on a plain entry names the device-level state variable
-        // the reply reports. It drives the generated simulator, so a dangling
-        // name declares nothing and the simulated device answers nothing.
-        if ("query_for" in entry) {
-          const qf = entry.query_for;
-          if ("address" in entry) {
-            issues.push({
-              severity: "error",
-              section: "behavior",
-              message: `${fieldName} entry ${i + 1}: "Reports" applies to a send query, not an OSC address entry.`,
-            });
-          } else if (typeof qf !== "string" || !qf) {
-            issues.push({
-              severity: "error",
-              section: "behavior",
-              message: `${fieldName} entry ${i + 1}: "Reports" must name a state variable.`,
-            });
-          } else if (!(qf in (draft.state_variables ?? {}))) {
-            issues.push({
-              severity: "error",
-              section: "behavior",
-              message: `${fieldName} entry ${i + 1}: "Reports" names "${qf}", which isn't a declared state variable.`,
-            });
-          }
-        }
-        if (allowOscDict && "address" in entry) return;
-        if (typeof entry.send === "string" && entry.send) return;
-        issues.push({
-          severity: "error",
-          section: "behavior",
-          message: `${fieldName} entry ${i + 1}: unrecognized entry — expected a query string or a per-child template.`,
-        });
-        return;
-      }
-      const ctype = entry.each_child;
-      if (typeof ctype !== "string" || !childTypeNames.has(ctype)) {
-        issues.push({
-          severity: "error",
-          section: "behavior",
-          message: `${fieldName} entry ${i + 1}: per-child type "${String(ctype)}" isn't a declared child type.`,
-        });
-      } else if (!childTypes[ctype]?.instances) {
-        issues.push({
-          severity: "error",
-          section: "behavior",
-          message: `${fieldName} entry ${i + 1}: child type "${ctype}" has no Instances rule, so a per-child query would never send anything.`,
-        });
-      }
-      const send = entry.send;
-      if (typeof send !== "string" || !send) {
-        issues.push({
-          severity: "error",
-          section: "behavior",
-          message: `${fieldName} entry ${i + 1}: per-child query needs a send template.`,
-        });
-      } else if (!/\{child_id(?::[^{}]*)?\}/.test(send)) {
-        issues.push({
-          severity: "error",
-          section: "behavior",
-          message: `${fieldName} entry ${i + 1}: the send template must contain {child_id} so each child gets its own query (a format spec like {child_id:02d} works too).`,
-        });
-      }
-      // `query_for` on a per-child entry names one of that child type's own
-      // state variables — each child answers the query from its own state.
-      if ("query_for" in entry && typeof ctype === "string" && childTypeNames.has(ctype)) {
-        const qf = entry.query_for;
-        const childVars = childTypes[ctype]?.state_variables ?? {};
-        if (typeof qf !== "string" || !qf || !(qf in childVars)) {
-          issues.push({
-            severity: "error",
-            section: "behavior",
-            message: `${fieldName} entry ${i + 1}: "Reports" must name a state variable of child type "${ctype}".`,
-          });
-        }
-      }
-    });
-  };
-  // ── Polling block shape ──────────────────────────────────────────────
-  // `interval:` reads like the poll cadence and isn't: the runtime takes that
-  // from the connection settings (poll_interval) and never looks here, so an
-  // interval set in this block polls at whatever the default is and the author
-  // has no way to tell. The loader rejects it for exactly that reason.
-  const polling = draft.polling as unknown;
-  if (polling !== undefined && polling !== null) {
-    if (typeof polling !== "object" || Array.isArray(polling)) {
-      issues.push({
-        severity: "error",
-        section: "behavior",
-        field: "polling",
-        message:
-          "Polling must be a block with a queries list, not a bare list of commands.",
-      });
-    } else if ("interval" in (polling as Record<string, unknown>)) {
-      issues.push({
-        severity: "error",
-        section: "behavior",
-        field: "polling.interval",
-        message:
-          "Polling has an interval, but the runtime never reads it — the poll cadence comes from the connection settings. Remove the interval and set poll_interval in Default Config instead.",
-      });
-    }
-  }
-  checkEachChildEntries("Poll query", draft.polling?.queries, false);
-  checkEachChildEntries("on_connect", draft.on_connect, true);
-
-  // ── Auth login handshake ─────────────────────────────────────────────
-  // Mirror the runtime's load-time rules (validate_driver_definition in
-  // driver_loader.py) so authors see these in the Connection tab rather than
-  // only as a save rejection. A misdeclared handshake silently connects
-  // unauthenticated or breaks the transport's data path at runtime.
-  const auth = draft.auth;
-  if (auth) {
-    if (auth.type && auth.type !== "telnet_login") {
-      issues.push({
-        severity: "error",
-        section: "connection",
-        field: "auth.type",
-        message: `Login handshake type "${auth.type}" isn't supported (only "telnet_login").`,
-      });
-    }
-    if (draft.transport && !AUTH_TRANSPORTS.has(draft.transport)) {
-      issues.push({
-        severity: "error",
-        section: "connection",
-        field: "auth",
-        message: `Login handshake only works on TCP or serial transports, not ${draft.transport}. Disable it or change the transport.`,
-      });
-    }
-    if (!auth.username_prompt?.trim()) {
-      issues.push({
-        severity: "error",
-        section: "connection",
-        field: "auth.username_prompt",
-        message:
-          "Login handshake needs a username prompt to watch for, or it connects unauthenticated.",
-      });
-    }
-    if (!auth.password_prompt?.trim()) {
-      issues.push({
-        severity: "error",
-        section: "connection",
-        field: "auth.password_prompt",
-        message:
-          "Login handshake needs a password prompt to watch for, or it connects unauthenticated.",
-      });
-    }
-    // Every handshake pattern is matched against raw bytes from a device that
-    // hasn't authenticated yet, so a runaway pattern here is the worst place
-    // for one — mirror the loader's check.
-    const authPatternLabels: [keyof typeof auth, string][] = [
-      ["username_prompt", "Login handshake username prompt"],
-      ["password_prompt", "Login handshake password prompt"],
-      ["success_pattern", "Login handshake success pattern"],
-      ["failure_pattern", "Login handshake failure pattern"],
-    ];
-    for (const [key, what] of authPatternLabels) {
-      const message = runawayPatternMessage(what, auth[key]);
-      if (message) {
-        issues.push({
-          severity: "error",
-          section: "connection",
-          field: `auth.${key}`,
-          message,
-        });
-      }
-    }
-  }
-
-  // ── Push notifications + connection watchdog — mirror driver_loader.py's
-  //    push:/liveness: rules so a misdeclared block shows in the Connection
-  //    tab at author time. At runtime a bad push block silently never
-  //    delivers a frame, and a bad liveness block either never arms or tears
-  //    healthy devices down. ────────────────────────────────────────────────
-  // ── Interchangeable transports, bridge ports, computed config values, and
-  //    the IR code-set flag — mirror the schema constraints (spec.py) and the
-  //    runtime's silent-failure modes so they surface at author time. ───────
-  validateTransports(draft, issues);
-  validateBridge(draft, issues);
-  validateConfigDerived(draft, issues);
-  validateIrCodes(draft, issues);
-
-  // ── Actions, quick actions, and web_ui — mirror avcdriver_semantic.py's
-  //    validate_actions so a bad promotion shows in the Behavior tab at
-  //    author time instead of as a save-time 422. ─────────────────────────
-  validateActions(draft, issues);
-
-  validatePush(draft, issues);
-  validateLiveness(draft, issues);
-
-  // ── Frame parser (binary protocols) — mirror driver_loader.py's
-  //    validate_driver_definition so a bad header_size/length shows in the
-  //    Connection tab at author time, not as a ValueError raised in connect()
-  //    that wedges the device in a permanent reconnect loop. ───────────────
-  validateFrameParser(draft, issues);
-  validateSendFrame(draft, issues);
-
-  // ── Discovery hints (mirror server/discovery/hints.py rules so the user
-  //    sees them here, not as an opaque 422 at save) ──────────────────────
-  validateDiscovery(draft, issues);
-
-  // ── Unrecognized keys ──────────────────────────────────────────────────
-  // Last, so every other issue keeps its position. Reaches the blocks an
-  // author types into; the key sets are generated, see unknownKeyMessages.
-  const pushUnknown = (
-    obj: unknown,
-    block: string,
-    who: string,
-    anchor: Pick<ValidationIssue, "field" | "command" | "param">,
-  ): void => {
-    for (const message of unknownKeyMessages(obj, block, who)) {
-      issues.push({ severity: "error", section: "behavior", message, ...anchor });
-    }
-  };
-
-  for (const message of unknownKeyMessages(draft, "__root__", "This driver")) {
-    issues.push({ severity: "error", section: "general", message });
-  }
-  for (const [cmdName, cmd] of Object.entries(draft.commands ?? {})) {
-    pushUnknown(cmd, "commandEntry", `Command "${cmdName}"`, { command: cmdName });
-    for (const [paramName, paramDef] of Object.entries(cmd?.params ?? {})) {
-      pushUnknown(
-        paramDef,
-        "paramEntry",
-        `Parameter "${paramName}" in command "${cmdName}"`,
-        { command: cmdName, param: paramName },
-      );
-    }
-  }
-  for (const [varName, varDef] of Object.entries(draft.state_variables ?? {})) {
-    pushUnknown(varDef, "stateVariableEntry", `State variable "${varName}"`, {
-      field: `state_variables.${varName}`,
-    });
-  }
-  for (const [key, setting] of Object.entries(draft.device_settings ?? {})) {
-    pushUnknown(setting, "deviceSettingEntry", `Device setting "${key}"`, {
-      field: `device_settings.${key}`,
-    });
-  }
-  (Array.isArray(draft.responses) ? draft.responses : []).forEach((resp, i) => {
-    pushUnknown(resp, "responseEntry", `Response ${i + 1}`, {
-      field: `responses.${i}`,
-    });
-  });
-
-  return issues;
-}
-
-/** Mirror server/transport/multicast_listener.py's is_multicast_group: an
- *  IPv4 literal in 224.0.0.0/4. */
-function isMulticastGroup(value: string): boolean {
-  const parts = value.split(".");
-  if (parts.length !== 4) return false;
-  const octets = parts.map((p) =>
-    /^\d{1,3}$/.test(p) ? parseInt(p, 10) : NaN,
-  );
-  if (octets.some((o) => Number.isNaN(o) || o > 255)) return false;
-  return octets[0] >= 224 && octets[0] <= 239;
-}
-
-/** Mirror the schema's `transports:` items enum (spec.py
- *  INTERCHANGEABLE_TRANSPORTS): every entry must be a real medium — "bridge"
- *  is a routing sentinel, not a medium, so it can't appear in the list. */
-function validateTransports(
-  draft: DriverDefinition,
-  issues: ValidationIssue[],
-): void {
-  const list = draft.transports;
-  if (list === undefined) return;
-  if (!Array.isArray(list)) {
-    issues.push({
-      severity: "error",
-      section: "connection",
-      field: "transports",
-      message: "Interchangeable transports must be a list of transport names.",
-    });
-    return;
-  }
-  const allowed = INTERCHANGEABLE_TRANSPORTS as readonly string[];
-  const seen = new Set<string>();
-  for (const entry of list) {
-    const key = typeof entry === "string" ? entry : String(entry);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    if (typeof entry !== "string" || !allowed.includes(entry)) {
-      issues.push({
-        severity: "error",
-        section: "connection",
-        field: "transports",
-        message: `"${key}" is not an interchangeable transport — use ${allowed.join(", ")}.`,
-      });
-    }
-  }
-}
-
-/** Mirror the schema's bridge block (spec.py): a ports list whose entries
- *  require id + kind, kind from BRIDGE_PORT_KINDS, passthrough_port in
- *  1-65535. Duplicate port ids are a warning, not an error: neither the
- *  schema nor the runtime rejects them — get_driver_bridge_ports keys a
- *  dict by id, so the last declaration silently wins. */
-function validateBridge(
-  draft: DriverDefinition,
-  issues: ValidationIssue[],
-): void {
-  const bridge = draft.bridge;
-  if (bridge === undefined) return;
-  const ports = (bridge as { ports?: unknown } | null)?.ports;
-  if (
-    !bridge ||
-    typeof bridge !== "object" ||
-    Array.isArray(bridge) ||
-    !Array.isArray(ports)
-  ) {
-    issues.push({
-      severity: "error",
-      section: "connection",
-      field: "bridge",
-      message:
-        "A bridge declaration needs a ports list — the typed ports other devices connect through.",
-    });
-    return;
-  }
-  const seenIds = new Set<string>();
-  ports.forEach((entry, i) => {
-    let label = `Bridge port ${i + 1}`;
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
-      issues.push({
-        severity: "error",
-        section: "connection",
-        field: "bridge",
-        message: `${label} must be a mapping with an id and a kind.`,
-      });
-      return;
-    }
-    const port = entry as Record<string, unknown>;
-    const id = port.id;
-    if (typeof id !== "string" || !id.trim()) {
-      issues.push({
-        severity: "error",
-        section: "connection",
-        field: "bridge",
-        message: `${label} needs an id (e.g. "serial:1") — downstream devices reference it as their bridge port.`,
-      });
-    } else {
-      label = `Bridge port "${id}"`;
+  // A duplicate bridge port id: the runtime keeps the last declaration, so
+  // the earlier one silently never resolves.
+  const bridgePorts = (draft.bridge as { ports?: unknown } | undefined)?.ports;
+  if (Array.isArray(bridgePorts)) {
+    const seenIds = new Set<string>();
+    for (const entry of bridgePorts) {
+      const id = (entry as Record<string, unknown> | null)?.id;
+      if (typeof id !== "string" || !id.trim()) continue;
       if (seenIds.has(id)) {
         issues.push({
           severity: "warning",
           section: "connection",
           field: "bridge",
-          message: `${label} duplicates another port's id — the runtime keeps only the last declaration.`,
+          message: `Bridge port "${id}" duplicates another port's id — the runtime keeps only the last declaration.`,
         });
       }
       seenIds.add(id);
     }
-    const kind = port.kind;
-    if (
-      typeof kind !== "string" ||
-      !(BRIDGE_PORT_KINDS as readonly string[]).includes(kind)
-    ) {
-      issues.push({
-        severity: "error",
-        section: "connection",
-        field: "bridge",
-        message: `${label} needs a kind — ${(BRIDGE_PORT_KINDS as readonly string[]).join(", ")}.`,
-      });
-    }
-    const passthrough = port.passthrough_port;
-    if (
-      passthrough !== undefined &&
-      (typeof passthrough !== "number" ||
-        !Number.isInteger(passthrough) ||
-        passthrough < 1 ||
-        passthrough > 65535)
-    ) {
-      issues.push({
-        severity: "error",
-        section: "connection",
-        field: "bridge",
-        message: `${label} pass-through port must be a whole number between 1 and 65535.`,
-      });
-    }
-  });
-}
+  }
 
-/** Computed config values (`config_derived`). The schema requires string
- *  templates; beyond that the runtime fails silently — an unknown {token}
- *  makes the computed value always "" (derive_config treats a missing field
- *  as empty), and a name that collides with a declared config field silently
- *  overwrites the configured value when the device connects — so both are
- *  warnings here. Valid template tokens are the same set link URLs use:
- *  declared config fields, baseline injected keys, plus other computed
- *  names (entries resolve in declaration order). */
-function validateConfigDerived(
-  draft: DriverDefinition,
-  issues: ValidationIssue[],
-): void {
+  // Computed config values: an unknown {token} makes the value always empty
+  // (derive_config treats a missing field as ""), and a name that collides
+  // with a declared config field silently replaces the configured one.
   const derived = draft.config_derived;
-  if (derived === undefined) return;
-  if (!derived || typeof derived !== "object" || Array.isArray(derived)) {
-    issues.push({
-      severity: "error",
-      section: "connection",
-      field: "config_derived",
-      message: "Computed fields must be a map of name to template string.",
-    });
-    return;
-  }
-  const declared = new Set([
-    ...Object.keys(draft.config_schema ?? {}),
-    ...Object.keys(draft.default_config ?? {}),
-  ]);
-  const tokenKeys = new Set([
-    ...declared,
-    ...BASELINE_CONFIG_KEYS,
-    ...Object.keys(derived),
-  ]);
-  for (const [name, template] of Object.entries(derived)) {
-    if (typeof template !== "string") {
-      issues.push({
-        severity: "error",
-        section: "connection",
-        field: `config_derived.${name}`,
-        message: `Computed field "${name}" must be a template string (e.g. "/workspace/{workspace_id}").`,
-      });
-      continue;
-    }
-    if (declared.has(name) || BASELINE_CONFIG_KEYS.has(name)) {
-      issues.push({
-        severity: "warning",
-        section: "connection",
-        field: `config_derived.${name}`,
-        message: `Computed field "${name}" has the same name as a config field — the computed value silently replaces the configured one when the device connects. Rename one of them.`,
-      });
-    }
-    // Templates accept {name} and {name:format_spec} — same token shape the
-    // runtime substitutes (compiled_protocol.derive_config).
-    const re = /\{(\w+)(?::[^{}]*)?\}/g;
-    const seen = new Set<string>();
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(template))) {
-      const token = m[1];
-      if (seen.has(token) || tokenKeys.has(token)) continue;
-      seen.add(token);
-      issues.push({
-        severity: "warning",
-        section: "connection",
-        field: `config_derived.${name}`,
-        message: `Computed field "${name}" references {${token}}, but no config field or computed field of that name exists — the computed value would always be empty.`,
-      });
+  if (derived && typeof derived === "object" && !Array.isArray(derived)) {
+    const declared = new Set([
+      ...Object.keys(draft.config_schema ?? {}),
+      ...Object.keys(draft.default_config ?? {}),
+    ]);
+    const tokenKeys = new Set([
+      ...declared,
+      ...BASELINE_CONFIG_KEYS,
+      ...Object.keys(derived),
+    ]);
+    for (const [name, template] of Object.entries(derived)) {
+      if (declared.has(name) || BASELINE_CONFIG_KEYS.has(name)) {
+        issues.push({
+          severity: "warning",
+          section: "connection",
+          field: `config_derived.${name}`,
+          message: `Computed field "${name}" has the same name as a config field — the computed value silently replaces the configured one when the device connects. Rename one of them.`,
+        });
+      }
+      if (typeof template !== "string") continue;
+      // Templates accept {name} and {name:format_spec} — the same token shape
+      // the runtime substitutes (compiled_protocol.derive_config).
+      const re = /\{(\w+)(?::[^{}]*)?\}/g;
+      const seen = new Set<string>();
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(template))) {
+        const token = m[1];
+        if (seen.has(token) || tokenKeys.has(token)) continue;
+        seen.add(token);
+        issues.push({
+          severity: "warning",
+          section: "connection",
+          field: `config_derived.${name}`,
+          message: `Computed field "${name}" references {${token}}, but no config field or computed field of that name exists — the computed value would always be empty.`,
+        });
+      }
     }
   }
-}
 
-/** The IR code-set opt-in. Mirror avcdriver_semantic.py: the flag must be a
- *  boolean (the codes themselves live in default_config.ir_codes / the
- *  device config). The transport pairing is advice the backend doesn't
- *  enforce — the field doc says use transport "bridge" — so a mismatch is
- *  a warning. */
-function validateIrCodes(
-  draft: DriverDefinition,
-  issues: ValidationIssue[],
-): void {
-  const flag = draft.ir_codes as unknown;
-  if (flag === undefined) return;
-  if (typeof flag !== "boolean") {
-    issues.push({
-      severity: "error",
-      section: "general",
-      field: "ir_codes",
-      message:
-        "The IR code-set flag must be true or false — the code-set itself lives in the device config / default config ir_codes map.",
-    });
-    return;
-  }
-  if (flag && draft.transport !== "bridge") {
+  // An IR code-set device emits through a bridge's IR port. The platform
+  // accepts any transport; the pairing is advice the field doc gives.
+  if (draft.ir_codes === true && draft.transport !== "bridge") {
     issues.push({
       severity: "warning",
       section: "general",
@@ -2503,32 +653,16 @@ function validateIrCodes(
         "An IR code-set device emits through an IR bridge port and has no address of its own — set the transport to Bridge so it's added from a bridge's IR port.",
     });
   }
-}
 
-/** Mirror server/drivers/avcdriver_semantic.py's validate_actions: the
- *  `actions` + `quick_actions` promotion blocks and the `web_ui` flag. A bad
- *  entry either 422s at save (loader-validated) or renders a button that
- *  404s on click, so every rule surfaces here first. Link URLs and a
- *  web_ui template get the same {placeholder} coverage check commands get —
- *  the runtime substitutes {host}/{port}/{config_key} and leaves unknown
- *  tokens verbatim in the opened URL. */
-function validateActions(
-  draft: DriverDefinition,
-  issues: ValidationIssue[],
-): void {
-  const commandIds = new Set(Object.keys(draft.commands ?? {}));
-
-  // Keys a link URL / web_ui template may substitute: declared config fields
-  // (computed config_derived values included — the runtime substitutes from
-  // the driver's live config dict) plus the runtime-injected connection keys
-  // (host, port, ...).
-  const urlKeys = new Set([
-    ...Object.keys(draft.config_schema ?? {}),
-    ...Object.keys(draft.default_config ?? {}),
-    ...Object.keys(draft.config_derived ?? {}),
-    ...BASELINE_CONFIG_KEYS,
-  ]);
-  const checkUrlTemplate = (where: string, field: string, template: string) => {
+  // Link URLs and the web_ui template substitute {host}, {port} and declared
+  // config fields; an unknown token is left verbatim in the opened URL.
+  const urlKeys = new Set([...configKeys]);
+  const checkUrlTemplate = (
+    where: string,
+    field: string,
+    section: IssueSection,
+    template: string,
+  ) => {
     const seen = new Set<string>();
     const re = new RegExp(PLACEHOLDER_RE.source, "g");
     let m: RegExpExecArray | null;
@@ -2539,1051 +673,61 @@ function validateActions(
       if (urlKeys.has(token)) continue;
       issues.push({
         severity: "warning",
-        section: "behavior",
+        section,
         field,
         message: `${where} references {${token}}, but only {host}, {port}, and declared config fields are substituted — the placeholder would be left in the opened URL.`,
       });
     }
   };
-
-  // web_ui: boolean, or a URL template string.
   if (typeof draft.web_ui === "string" && draft.web_ui) {
-    checkUrlTemplate("The web interface URL template", "web_ui", draft.web_ui);
-  }
-
-  // quick_actions: legacy sugar — every entry must name a declared command.
-  const quick = draft.quick_actions;
-  if (quick !== undefined) {
-    if (!Array.isArray(quick)) {
-      issues.push({
-        severity: "error",
-        section: "behavior",
-        field: "quick_actions",
-        message: "Quick actions must be a list of command ids.",
-      });
-    } else {
-      quick.forEach((cid, i) => {
-        if (typeof cid !== "string" || !cid) {
-          issues.push({
-            severity: "error",
-            section: "behavior",
-            field: "quick_actions",
-            message: `Quick action ${i + 1} must be a non-empty command id.`,
-          });
-        } else if (commandIds.size > 0 && !commandIds.has(cid)) {
-          issues.push({
-            severity: "error",
-            section: "behavior",
-            field: "quick_actions",
-            message: `Quick action "${cid}" is not a declared command.`,
-          });
-        }
-      });
-    }
-  }
-
-  const actions = draft.actions;
-  if (actions === undefined) return;
-  if (!Array.isArray(actions)) {
-    issues.push({
-      severity: "error",
-      section: "behavior",
-      field: "actions",
-      message: "Actions must be a list.",
-    });
-    return;
-  }
-
-  const seenIds = new Set<string>();
-  actions.forEach((entry, i) => {
-    const where = `Action ${i + 1}`;
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
-      issues.push({
-        severity: "error",
-        section: "behavior",
-        field: "actions",
-        message: `${where} must be a mapping with an id.`,
-      });
-      return;
-    }
-    const a = entry as unknown as Record<string, unknown>;
-    const id = a.id;
-    let label = where;
-    if (typeof id !== "string" || !id) {
-      issues.push({
-        severity: "error",
-        section: "behavior",
-        field: "actions",
-        message: `${where} needs an id.`,
-      });
-    } else {
-      label = `Action "${id}"`;
-      if (seenIds.has(id)) {
-        issues.push({
-          severity: "error",
-          section: "behavior",
-          field: "actions",
-          message: `${label} duplicates another action's id — ids must be unique.`,
-        });
-      }
-      seenIds.add(id);
-    }
-
-    const kind = a.kind ?? "command";
-    if (!(ACTION_KINDS_YAML as readonly unknown[]).includes(kind)) {
-      issues.push({
-        severity: "error",
-        section: "behavior",
-        field: "actions",
-        message: `${label} has unknown kind "${String(kind)}" — use "command" or "link" (setup actions need a Python driver).`,
-      });
-    }
-
-    const availability = a.availability;
-    if (
-      availability !== undefined &&
-      !(ACTION_AVAILABILITIES as readonly unknown[]).includes(availability)
-    ) {
-      issues.push({
-        severity: "error",
-        section: "behavior",
-        field: "actions",
-        message: `${label} availability must be online, offline, or always.`,
-      });
-    }
-
-    const url = a.url;
-    if (kind === "link") {
-      if (url !== undefined && (typeof url !== "string" || !url)) {
-        issues.push({
-          severity: "error",
-          section: "behavior",
-          field: "actions",
-          message: `${label} URL must be a non-empty string (leave it out to open https://{host}).`,
-        });
-      } else if (typeof url === "string") {
-        checkUrlTemplate(`${label}'s URL`, "actions", url);
-      }
-    } else if (url !== undefined) {
-      issues.push({
-        severity: "error",
-        section: "behavior",
-        field: "actions",
-        message: `${label} has a URL, but only a link action opens one — set the kind to "link" or remove the URL.`,
-      });
-    }
-
-    // Display fields — an imported or hand-edited file can carry the wrong
-    // type here, and the runtime renders the button from these verbatim.
-    if (a.label !== undefined && typeof a.label !== "string") {
-      issues.push({
-        severity: "error",
-        section: "behavior",
-        field: "actions",
-        message: `${label} button text must be text.`,
-      });
-    }
-    if (a.icon !== undefined && typeof a.icon !== "string") {
-      issues.push({
-        severity: "error",
-        section: "behavior",
-        field: "actions",
-        message: `${label} icon must be an icon name (text).`,
-      });
-    }
-    if (
-      a.confirm !== undefined &&
-      typeof a.confirm !== "boolean" &&
-      typeof a.confirm !== "string"
-    ) {
-      issues.push({
-        severity: "error",
-        section: "behavior",
-        field: "actions",
-        message: `${label} confirm must be true/false, or the message to show before running.`,
-      });
-    }
-
-    // Action params: same block shape and same per-param rules the loader
-    // applies to a command's params.
-    const actionParams = a.params;
-    if (
-      actionParams !== undefined &&
-      actionParams !== null &&
-      (typeof actionParams !== "object" || Array.isArray(actionParams))
-    ) {
-      issues.push({
-        severity: "error",
-        section: "behavior",
-        field: "actions",
-        message: `${label} params must be a block of named parameters, not a list.`,
-      });
-    }
-    validateParamProviders(
-      actionParams,
-      (paramName) => `${label} parameter "${paramName}"`,
-      (_paramName, message) =>
-        issues.push({
-          severity: "error",
-          section: "behavior",
-          field: "actions",
-          message,
-        }),
+    checkUrlTemplate(
+      "The web interface URL template",
+      "web_ui",
+      "behavior",
+      draft.web_ui,
     );
-
-    validateVisibleWhen(label, a.visible_when, issues);
-
-    // A kind:"command" action must resolve to a declared command — the
-    // explicit command field, or the action id itself. (Skipped when no
-    // commands are declared yet, matching the backend.)
-    if (kind === "command" && typeof id === "string" && id) {
-      const command = a.command;
-      if (command !== undefined && typeof command !== "string") {
-        issues.push({
-          severity: "error",
-          section: "behavior",
-          field: "actions",
-          message: `${label} command must be a command id string.`,
-        });
-      } else {
-        const target = (command as string | undefined) || id;
-        if (commandIds.size > 0 && !commandIds.has(target)) {
-          issues.push({
-            severity: "error",
-            section: "behavior",
-            field: "actions",
-            message: `${label} promotes command "${target}", which isn't a declared command.`,
-          });
-        }
-      }
-    }
-  });
-}
-
-/** Mirror avcdriver_semantic.py's _validate_visible_when: a single
- *  {key, operator, value} condition or an {any|all: [...]} group.
- *  Light-touch — unknown extra keys are tolerated. */
-function validateVisibleWhen(
-  label: string,
-  vw: unknown,
-  issues: ValidationIssue[],
-): void {
-  if (vw === undefined || vw === null) return;
-  if (typeof vw !== "object" || Array.isArray(vw)) {
-    issues.push({
-      severity: "error",
-      section: "behavior",
-      field: "actions",
-      message: `${label} visibility condition must be a mapping.`,
-    });
-    return;
   }
-  const rec = vw as Record<string, unknown>;
-
-  const checkCondition = (cwhere: string, cond: unknown) => {
-    if (!cond || typeof cond !== "object" || Array.isArray(cond)) {
-      issues.push({
-        severity: "error",
-        section: "behavior",
-        field: "actions",
-        message: `${cwhere} must be a mapping with a state key.`,
-      });
-      return;
-    }
-    const c = cond as Record<string, unknown>;
-    if (typeof c.key !== "string" || !c.key) {
-      issues.push({
-        severity: "error",
-        section: "behavior",
-        field: "actions",
-        message: `${cwhere} needs a state key to compare.`,
-      });
-    }
-    const op = c.operator ?? "eq";
-    if (typeof op !== "string" || !VISIBLE_WHEN_OPERATORS.has(op)) {
-      issues.push({
-        severity: "error",
-        section: "behavior",
-        field: "actions",
-        message: `${cwhere} has unknown operator "${String(op)}".`,
-      });
-    }
-  };
-
-  if ("any" in rec || "all" in rec) {
-    for (const groupKey of ["any", "all"] as const) {
-      if (!(groupKey in rec)) continue;
-      const group = rec[groupKey];
-      if (!Array.isArray(group) || group.length === 0) {
-        issues.push({
-          severity: "error",
-          section: "behavior",
-          field: "actions",
-          message: `${label} visibility "${groupKey}" group must list at least one condition.`,
-        });
-        continue;
-      }
-      group.forEach((cond, j) =>
-        checkCondition(`${label} visibility condition ${j + 1}`, cond),
-      );
-    }
-  } else {
-    checkCondition(`${label} visibility condition`, rec);
-  }
-}
-
-/** Push channel types the runtime knows about but hasn't implemented — kept
- *  distinct from plain typos so the message says "not yet" rather than
- *  "never". Mirror driver_loader.py. */
-// Every declared shape is implemented — nothing is reserved-but-unbuilt
-// today. Kept (empty) so a future shape can be named here with a
-// "not yet" message instead of reading as a typo. Mirror driver_loader.py.
-const RESERVED_PUSH_TYPES: ReadonlySet<string> = new Set<string>();
-
-/** Mirror server/drivers/driver_loader.py's push: load-time checks. Values
- *  accept {config_field} templates, and a template may only name a field
- *  declared in config_schema or default_config — an undeclared field
- *  resolves to nothing at runtime and the channel never opens. */
-function validatePush(
-  draft: DriverDefinition,
-  issues: ValidationIssue[],
-): void {
-  const push = draft.push;
-  if (!push) return;
-
-  const declaredFields = new Set([
-    ...Object.keys(draft.config_schema ?? {}),
-    ...Object.keys(draft.default_config ?? {}),
-  ]);
-
-  const type = push.type ?? "";
-  if (RESERVED_PUSH_TYPES.has(type)) {
-    issues.push({
-      severity: "error",
-      section: "connection",
-      field: "push.type",
-      message: `Push type "${type}" isn't supported yet — only "multicast", "sse", "tcp_listener", and "http_listener".`,
-    });
-  } else if (!(type in PUSH_KEYS_BY_TYPE)) {
-    issues.push({
-      severity: "error",
-      section: "connection",
-      field: "push.type",
-      message: `Push type must be "multicast", "sse", "tcp_listener", or "http_listener".`,
-    });
-  }
-
-  const knownKeys =
-    PUSH_KEYS_BY_TYPE[type] ??
-    new Set([
-      "type",
-      "group",
-      "port",
-      "path",
-      "idle_timeout",
-      "frame_parser",
-      "register",
-      "unregister",
-    ]);
-  const unknownKeys = Object.keys(push).filter(
-    (k) => !knownKeys.has(k) && (push as Record<string, unknown>)[k] !== undefined,
-  );
-  if (unknownKeys.length > 0) {
-    issues.push({
-      severity: "error",
-      section: "connection",
-      field: "push",
-      message: `Push has key(s) that don't apply to type "${type}": ${unknownKeys.join(", ")} — allowed: ${[...knownKeys].join(", ")}.`,
-    });
-  }
-
-  // A {config_field} template must name declared config fields; braces with
-  // no token would pass through to the wire verbatim.
-  const checkTemplate = (where: string, value: string) => {
-    const fields = [...value.matchAll(/\{(\w+)\}/g)].map((m) => m[1]);
-    if (fields.length === 0) {
-      issues.push({
-        severity: "error",
-        section: "connection",
-        field: `push.${where}`,
-        message: `Push ${where} "${value}" has braces but no {config_field} token.`,
-      });
-    }
-    for (const f of fields) {
-      if (!declaredFields.has(f)) {
-        issues.push({
-          severity: "error",
-          section: "connection",
-          field: `push.${where}`,
-          message: `Push ${where} references config field "${f}", which isn't declared in the driver's config.`,
-        });
-      }
-    }
-  };
-
-  if (type === "multicast") {
-    const group = push.group;
-    if (group === undefined || group === "") {
-      issues.push({
-        severity: "error",
-        section: "connection",
-        field: "push.group",
-        message:
-          "Push needs a multicast group — a literal address like 239.0.0.100, or a {config_field} template.",
-      });
-    } else if (group.includes("{")) {
-      checkTemplate("group", group);
-    } else if (!isMulticastGroup(group)) {
-      issues.push({
-        severity: "error",
-        section: "connection",
-        field: "push.group",
-        message: `Push group "${group}" must be an IPv4 multicast address (224.0.0.0 – 239.255.255.255) or a {config_field} template.`,
-      });
-    }
-
-    const port = push.port;
-    if (port === undefined || port === "") {
-      issues.push({
-        severity: "error",
-        section: "connection",
-        field: "push.port",
-        message:
-          "Push needs a port — a number 1-65535, or a {config_field} template.",
-      });
-    } else if (typeof port === "string" && port.includes("{")) {
-      checkTemplate("port", port);
-    } else if (
-      typeof port !== "number" ||
-      !Number.isInteger(port) ||
-      port < 1 ||
-      port > 65535
-    ) {
-      issues.push({
-        severity: "error",
-        section: "connection",
-        field: "push.port",
-        message:
-          "Push port must be a whole number between 1 and 65535, or a {config_field} template.",
-      });
-    }
-  }
-
-  if (type === "sse") {
-    // SSE rides the driver's HTTP session — it is a streaming mode of the
-    // control transport, not a separate listener.
-    if (draft.transport && draft.transport !== "http") {
-      issues.push({
-        severity: "error",
-        section: "connection",
-        field: "push.type",
-        message: `SSE push requires the HTTP transport (this driver uses "${draft.transport}").`,
-      });
-    }
-
-    const rawPath = push.path;
-    const paths =
-      typeof rawPath === "string"
-        ? rawPath === ""
-          ? []
-          : [rawPath]
-        : Array.isArray(rawPath)
-          ? rawPath
-          : [];
-    if (paths.length === 0) {
-      issues.push({
-        severity: "error",
-        section: "connection",
-        field: "push.path",
-        message:
-          "Push needs an event-stream path — a URL path on the device like /v2/configuration/system/status (one per line for multiple streams).",
-      });
-    }
-    for (const p of paths) {
-      if (typeof p !== "string" || p.trim() === "") {
-        issues.push({
-          severity: "error",
-          section: "connection",
-          field: "push.path",
-          message: "Every event-stream path must be a non-empty string.",
-        });
-      } else if (p.includes("{")) {
-        checkTemplate("path", p);
-      } else if (!p.startsWith("/")) {
-        issues.push({
-          severity: "error",
-          section: "connection",
-          field: "push.path",
-          message: `Event-stream path "${p}" must start with "/" (a URL path on the device) or be a {config_field} template.`,
-        });
-      }
-    }
-
-    const idle = push.idle_timeout;
-    if (
-      idle !== undefined &&
-      (typeof idle !== "number" || !Number.isFinite(idle) || idle <= 0)
-    ) {
-      issues.push({
-        severity: "error",
-        section: "connection",
-        field: "push.idle_timeout",
-        message: "Idle timeout must be a positive number of seconds.",
-      });
-    }
-  }
-
-  if (type === "tcp_listener") {
-    const port = push.port;
-    if (port === undefined || port === "") {
-      issues.push({
-        severity: "error",
-        section: "connection",
-        field: "push.port",
-        message:
-          "Push needs a listener port — a number 0-65535 (0 = automatic), or a {config_field} template.",
-      });
-    } else if (typeof port === "string" && port.includes("{")) {
-      checkTemplate("port", port);
-    } else if (
-      typeof port !== "number" ||
-      !Number.isInteger(port) ||
-      port < 0 ||
-      port > 65535
-    ) {
-      issues.push({
-        severity: "error",
-        section: "connection",
-        field: "push.port",
-        message:
-          "Listener port must be a whole number between 0 and 65535 (0 = automatic), or a {config_field} template.",
-      });
-    }
-
-    const frame = push.frame_parser;
-    if (frame !== undefined && frame !== null) {
-      const ftype = frame.type ?? "";
-      if (!PUSH_FRAME_PARSER_TYPES.has(ftype)) {
-        issues.push({
-          severity: "error",
-          section: "connection",
-          field: "push.frame_parser",
-          message: `Notification framing type "${ftype}" must be struct_frame, length_prefix, or fixed_length.`,
-        });
-      } else if (ftype === "struct_frame") {
-        for (const fkey of [
-          "header_reserve",
-          "mid_reserve",
-          "trailer_reserve",
-        ]) {
-          const fval = (frame as Record<string, unknown>)[fkey] ?? 0;
-          if (
-            typeof fval !== "number" ||
-            !Number.isInteger(fval) ||
-            fval < 0
-          ) {
-            issues.push({
-              severity: "error",
-              section: "connection",
-              field: `push.frame_parser.${fkey}`,
-              message: `Frame ${fkey.replace("_", " ")} must be a non-negative whole number of bytes.`,
-            });
-          }
-        }
-        const fsize = (frame as Record<string, unknown>).length_size ?? 2;
-        if (typeof fsize !== "number" || !STRUCT_LENGTH_SIZES.has(fsize)) {
-          issues.push({
-            severity: "error",
-            section: "connection",
-            field: "push.frame_parser.length_size",
-            message: "Frame length size must be 1, 2, or 4 bytes.",
-          });
-        }
-        const fadj = (frame as Record<string, unknown>).length_adjust ?? 0;
-        if (typeof fadj !== "number" || !Number.isInteger(fadj)) {
-          issues.push({
-            severity: "error",
-            section: "connection",
-            field: "push.frame_parser.length_adjust",
-            message: "Frame length adjust must be a whole number.",
-          });
-        }
-        const fend = (frame as Record<string, unknown>).length_endian ?? "big";
-        if (!(LENGTH_ENDIANS as readonly unknown[]).includes(fend)) {
-          issues.push({
-            severity: "error",
-            section: "connection",
-            field: "push.frame_parser.length_endian",
-            message: 'Frame length byte order must be "big" or "little".',
-          });
-        }
-      }
-    }
-
-    // register / unregister must name declared commands — a typo would
-    // silently never arm the device.
-    const commandNames = new Set(Object.keys(draft.commands ?? {}));
-    for (const ckey of ["register", "unregister"] as const) {
-      const cval = push[ckey];
-      if (cval === undefined) continue;
-      if (typeof cval !== "string" || cval.trim() === "") {
-        issues.push({
-          severity: "error",
-          section: "connection",
-          field: `push.${ckey}`,
-          message: `Push ${ckey} must be a command name.`,
-        });
-      } else if (!commandNames.has(cval)) {
-        issues.push({
-          severity: "error",
-          section: "connection",
-          field: `push.${ckey}`,
-          message: `Push ${ckey} command "${cval}" is not declared in this driver's commands.`,
-        });
-      }
-    }
-  }
-}
-
-/** Mirror server/drivers/driver_loader.py's liveness: load-time checks — a
- *  misdeclared watchdog would silently never arm (the exact never-goes-
- *  offline failure it exists to fix) or tear healthy devices down. */
-function validateLiveness(
-  draft: DriverDefinition,
-  issues: ValidationIssue[],
-): void {
-  const liveness = draft.liveness;
-  if (!liveness) return;
-
-  if (draft.transport && !LIVENESS_TRANSPORTS.has(draft.transport)) {
-    issues.push({
-      severity: "error",
-      section: "connection",
-      field: "liveness",
-      message: `Connection watchdog only works on TCP, serial, UDP, or OSC transports, not ${draft.transport}. Disable it or change the transport.`,
-    });
-  }
-
-  if (!liveness.send) {
-    issues.push({
-      severity: "error",
-      section: "connection",
-      field: "liveness.send",
-      message:
-        "Connection watchdog needs a probe command to send — without one the watchdog never arms.",
-    });
-  }
-
-  if (liveness.expect !== undefined) {
-    if (!liveness.expect) {
-      issues.push({
-        severity: "error",
-        section: "connection",
-        field: "liveness.expect",
-        message:
-          "Connection watchdog expect pattern can't be empty — remove it to count any inbound frame as a reply.",
-      });
-    } else if (typeof liveness.expect !== "string") {
-      // An imported file can carry a number or a list here; the runtime wants
-      // a regex string and refuses anything else.
-      issues.push({
-        severity: "error",
-        section: "connection",
-        field: "liveness.expect",
-        message:
-          "Connection watchdog expect pattern must be a match pattern (text), not a number or a list.",
-      });
-    } else {
-      try {
-        new RegExp(liveness.expect);
-      } catch {
-        issues.push({
-          severity: "error",
-          section: "connection",
-          field: "liveness.expect",
-          message: `Connection watchdog expect pattern "${liveness.expect}" isn't a valid regular expression.`,
-        });
-      }
-      const runaway = runawayPatternMessage(
-        "Connection watchdog expect pattern",
-        liveness.expect,
-      );
-      if (runaway) {
-        issues.push({
-          severity: "error",
-          section: "connection",
-          field: "liveness.expect",
-          message: runaway,
-        });
-      }
-    }
-  }
-
-  if (
-    liveness.interval !== undefined &&
-    (typeof liveness.interval !== "number" || liveness.interval < 1)
-  ) {
-    issues.push({
-      severity: "error",
-      section: "connection",
-      field: "liveness.interval",
-      message: "Connection watchdog interval must be at least 1 second.",
-    });
-  }
-  if (
-    liveness.timeout !== undefined &&
-    (typeof liveness.timeout !== "number" || liveness.timeout < 0.1)
-  ) {
-    issues.push({
-      severity: "error",
-      section: "connection",
-      field: "liveness.timeout",
-      message: "Connection watchdog reply timeout must be at least 0.1 seconds.",
-    });
-  }
-  if (
-    liveness.max_failures !== undefined &&
-    (!Number.isInteger(liveness.max_failures) || liveness.max_failures < 1)
-  ) {
-    issues.push({
-      severity: "error",
-      section: "connection",
-      field: "liveness.max_failures",
-      message:
-        "Connection watchdog max failures must be a whole number of at least 1.",
-    });
-  }
-
-  // The OSC-only args list has no editor surface (it round-trips as loaded),
-  // but an imported file can still carry a bad one.
-  if (liveness.args !== undefined) {
-    if (draft.transport !== "osc") {
-      issues.push({
-        severity: "error",
-        section: "connection",
-        field: "liveness.args",
-        message:
-          "Connection watchdog args are only valid on the OSC transport.",
-      });
-    } else if (!Array.isArray(liveness.args)) {
-      issues.push({
-        severity: "error",
-        section: "connection",
-        field: "liveness.args",
-        message: "Connection watchdog args must be a list.",
-      });
-    }
-  }
-}
-
-/** Mirror server/drivers/driver_loader.py's frame_parser load-time checks.
- *  The Frame Parser editor's own inputs constrain new drivers, but an
- *  imported or hand-edited .avcdriver can still carry a header_size the
- *  LengthPrefixFrameParser rejects (only 1/2/4) or a non-positive fixed
- *  length the FixedLengthFrameParser rejects — both raise at connect, so
- *  surface them as Connection errors before save. */
-function validateFrameParser(
-  draft: DriverDefinition,
-  issues: ValidationIssue[],
-): void {
-  const fp = draft.frame_parser;
-  if (!fp) return;
-  const type = fp.type;
-  if (type === "length_prefix") {
-    const headerSize = (fp.header_size as number | undefined) ?? 2;
-    if (!FRAME_HEADER_SIZES.has(headerSize)) {
-      issues.push({
-        severity: "error",
-        section: "connection",
-        field: "frame_parser.header_size",
-        message: `Frame parser header size must be 1, 2, or 4 bytes (got ${String(headerSize)}). The device would fail to connect.`,
-      });
-    }
-    const offset = fp.header_offset;
-    if (offset !== undefined && !Number.isInteger(offset)) {
-      issues.push({
-        severity: "error",
-        section: "connection",
-        field: "frame_parser.header_offset",
-        message: `Frame parser header offset must be a whole number (got ${String(offset)}).`,
-      });
-    }
-    for (const key of ["length_offset", "header_extra"] as const) {
-      const v = fp[key] as number | undefined;
-      if (v !== undefined && (!Number.isInteger(v) || v < 0)) {
-        issues.push({
-          severity: "error",
-          section: "connection",
-          field: `frame_parser.${key}`,
-          message: `Frame parser ${key} must be a non-negative whole number (got ${String(v)}).`,
-        });
-      }
-    }
-    const endian = fp.length_endian as string | undefined;
-    if (
-      endian !== undefined &&
-      !(LENGTH_ENDIANS as readonly unknown[]).includes(endian)
-    ) {
-      issues.push({
-        severity: "error",
-        section: "connection",
-        field: "frame_parser.length_endian",
-        message: `Frame parser length byte order must be "big" or "little" (got ${String(endian)}).`,
-      });
-    }
-  } else if (type === "fixed_length") {
-    const length = (fp.length as number | undefined) ?? 1;
-    if (!Number.isInteger(length) || length <= 0) {
-      issues.push({
-        severity: "error",
-        section: "connection",
-        field: "frame_parser.length",
-        message: `Frame parser frame length must be a positive whole number (got ${String(length)}). The device would fail to connect.`,
-      });
-    }
-  } else if (type) {
-    issues.push({
-      severity: "error",
-      section: "connection",
-      field: "frame_parser.type",
-      message: `Frame parser type "${String(type)}" isn't supported — use length-prefix or fixed-length.`,
-    });
-  } else {
-    issues.push({
-      severity: "error",
-      section: "connection",
-      field: "frame_parser.type",
-      message: "Frame parser is enabled but has no type set.",
-    });
-  }
-}
-
-/** Mirror server/drivers/driver_loader.py's send_frame load-time checks — the
- *  send twin of the frame_parser validation above. */
-function validateSendFrame(
-  draft: DriverDefinition,
-  issues: ValidationIssue[],
-): void {
-  const sf = draft.send_frame;
-  if (!sf) return;
-  if (typeof sf !== "object" || Array.isArray(sf)) {
-    issues.push({
-      severity: "error",
-      section: "connection",
-      field: "send_frame",
-      message:
-        "Send framing must be a block (type, length field size, byte order), not a single value.",
-    });
-    return;
-  }
-  const type = sf.type ?? "length_prefix";
-  if (type !== "length_prefix") {
-    issues.push({
-      severity: "error",
-      section: "connection",
-      field: "send_frame.type",
-      message: `Send frame type "${String(type)}" isn't supported — use length-prefix.`,
-    });
-    return;
-  }
-  const lengthSize = (sf.length_size as number | undefined) ?? 4;
-  if (!Number.isInteger(lengthSize) || lengthSize < 1) {
-    issues.push({
-      severity: "error",
-      section: "connection",
-      field: "send_frame.length_size",
-      message: `Send frame length field size must be a positive whole number (got ${String(lengthSize)}).`,
-    });
-  }
-  const endian = sf.length_endian as string | undefined;
-  if (
-    endian !== undefined &&
-    !(LENGTH_ENDIANS as readonly unknown[]).includes(endian)
-  ) {
-    issues.push({
-      severity: "error",
-      section: "connection",
-      field: "send_frame.length_endian",
-      message: `Send frame length byte order must be "big" or "little" (got ${String(endian)}).`,
-    });
-  }
-  // Literal bytes written before the length field and between it and the
-  // payload — escape strings like "\x02", so they have to be text.
-  for (const key of ["header", "after_length"] as const) {
-    const value = (sf as unknown as Record<string, unknown>)[key];
-    if (value !== undefined && value !== null && typeof value !== "string") {
-      issues.push({
-        severity: "error",
-        section: "connection",
-        field: `send_frame.${key}`,
-        message: `Send frame ${key === "header" ? "header" : "after-length"} bytes must be text, like "\\x02" (got ${String(value)}).`,
-      });
-    }
-  }
-}
-
-/** A discovery list entry is blank if it's an empty string, or an object whose
- *  primary identifying field is empty/whitespace. */
-function hasBlankEntry(arr: unknown[] | undefined, primaryKey?: string): boolean {
-  return (arr ?? []).some((e) => {
-    if (typeof e === "string") return e.trim() === "";
-    if (e && typeof e === "object" && primaryKey) {
-      const v = (e as Record<string, unknown>)[primaryKey];
-      return typeof v === "string" && v.trim() === "";
-    }
-    return false;
-  });
-}
-
-function validateDiscovery(
-  draft: DriverDefinition,
-  issues: ValidationIssue[],
-): void {
-  const disc = draft.discovery;
-  if (!disc) return;
-
-  // Disallowed open ports — match every web/SSH host, rejected at runtime.
-  for (const port of disc.port_open ?? []) {
-    if (DISALLOWED_OPEN_PORTS.has(port)) {
-      issues.push({
-        severity: "error",
-        section: "discovery",
-        field: "port_open",
-        message: `Port ${port} is too common to identify a device — it matches every web/SSH host. Remove it.`,
-      });
-    }
-  }
-
-  // Blank rows the runtime rejects (added-but-not-filled).
-  const blankChecks: [unknown[] | undefined, string | undefined, string, string][] = [
-    [disc.oui, undefined, "oui", "OUI list"],
-    [disc.hostname, undefined, "hostname", "Hostname list"],
-    [disc.manufacturer_alias, undefined, "manufacturer_alias", "Manufacturer alias list"],
-    [disc.mdns, "service", "mdns", "mDNS fingerprint"],
-    [disc.ssdp, "device_type", "ssdp", "SSDP fingerprint"],
-    [disc.amx_ddp, "make", "amx_ddp", "AMX DDP fingerprint"],
-  ];
-  for (const [arr, primaryKey, field, label] of blankChecks) {
-    if (hasBlankEntry(arr, primaryKey)) {
-      issues.push({
-        severity: "error",
-        section: "discovery",
-        field,
-        message: `${label} has a blank entry — fill it in or remove the row.`,
-      });
-    }
-  }
-
-  // A probe may declare at most one response matcher (runtime: exactly one of
-  // expect / expect_regex / expect_hex; more than one is rejected).
-  for (const [field, probe] of [
-    ["tcp_probe", disc.tcp_probe],
-    ["udp_probe", disc.udp_probe],
-  ] as const) {
-    if (!probe) continue;
-    // The port the probe dials. A blank or non-numeric one is refused at
-    // load, which takes the whole driver down — not just its discovery.
-    const probePort = (probe as unknown as Record<string, unknown>).port;
-    if (
-      !Number.isInteger(probePort) ||
-      (probePort as number) < 1 ||
-      (probePort as number) > 65535
-    ) {
-      issues.push({
-        severity: "error",
-        section: "discovery",
-        field,
-        message: `The ${field === "tcp_probe" ? "TCP" : "UDP"} probe port must be a whole number between 1 and 65535 (got "${String(probePort)}").`,
-      });
-    }
-    const declared = (["expect", "expect_regex", "expect_hex"] as const).filter(
-      (k) => probe[k] !== undefined && probe[k] !== "",
+  for (const action of draft.actions ?? []) {
+    if (action?.kind !== "link" || typeof action.url !== "string") continue;
+    checkUrlTemplate(
+      `Action "${action.id ?? action.label ?? "link"}"'s URL`,
+      "actions",
+      "behavior",
+      action.url,
     );
-    if (declared.length > 1) {
-      issues.push({
-        severity: "error",
-        section: "discovery",
-        field,
-        message: `A ${field === "tcp_probe" ? "TCP" : "UDP"} probe can declare only one matcher — pick one of substring, regex, or hex prefix (found ${declared.join(", ")}).`,
-      });
-    }
   }
+
+  return issues;
 }
 
-/** Issues for one command/setting-write whose shape doesn't match the
- *  driver transport (dead at runtime), plus warnings for authored leftovers
- *  the matching sender ignores. */
-function shapeMismatchIssues(
-  obj: Record<string, unknown>,
-  transport: string,
-  label: string,
-  command: string | undefined,
+/** `validateDriver`, guarded.
+ *
+ *  A driver file is arbitrary YAML and the editor validates inside a render,
+ *  so one unexpected value type (`author: 2026` parses as a number) would
+ *  blank the whole editor with no way back. Every caller must come through
+ *  here; `tests/test_driver_builder_validate.py` fails if one doesn't. */
+export function validateDriverSafely(
+  draft: DriverDefinition,
+  siblings: DriverDefinition[],
+  originalId: string | null,
 ): ValidationIssue[] {
-  const out: ValidationIssue[] = [];
-  const route = commandRoute(
-    obj as { address?: string; path?: string; method?: string },
-  );
-  const present = (fields: readonly string[]) =>
-    fields.filter((f) => hasContent(obj[f]));
-  const tn = (transport || "tcp").toUpperCase();
-
-  if (route === "osc" && transport !== "osc") {
-    out.push({
-      severity: "error",
-      section: "behavior",
-      command,
-      message: `${label} has OSC fields (address/args) but the driver transport is ${tn}. The runtime sends anything with an address as OSC, which fails on a non-OSC transport. Remove the OSC fields or set the transport to OSC.`,
-    });
-  } else if (route === "http" && transport !== "http") {
-    const fields = present(HTTP_SHAPE_FIELDS);
-    out.push({
-      severity: "error",
-      section: "behavior",
-      command,
-      message: `${label} has HTTP fields (${fields.join(", ") || "method/path"}) but the driver transport is ${tn}. The runtime sends anything with a method or path as an HTTP request, which fails on a non-HTTP transport. Remove the HTTP fields or set the transport to HTTP.`,
-    });
-  } else if (route === "raw" && transport === "osc") {
-    out.push({
-      severity: "error",
-      section: "behavior",
-      command,
-      message: `${label} has no OSC address. OSC messages are an address path plus typed arguments — set the address.`,
-    });
-  } else if (route === "raw" && transport === "http") {
-    out.push({
-      severity: "error",
-      section: "behavior",
-      command,
-      message: `${label} has no HTTP method or path, so it can't be sent as an HTTP request.`,
-    });
-  } else {
-    if (route === "osc" && !String(obj.address ?? "").trim()) {
-      out.push({
+  try {
+    return validateDriver(draft, siblings, originalId);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    return [
+      {
         severity: "error",
-        section: "behavior",
-        command,
-        message: `${label} has an empty OSC address. Set the address path (e.g. /ch/01/mix/fader).`,
-      });
-    }
-    // Route matches the transport — flag authored leftovers the sender
-    // ignores (typically residue from a transport switch in older builds
-    // or hand-edited YAML).
-    const stray: string[] =
-      route === "osc"
-        ? [...present(RAW_SHAPE_FIELDS), ...present(HTTP_SHAPE_FIELDS)]
-        : route === "http"
-          ? [...present(RAW_SHAPE_FIELDS)]
-          : [...present(["body", "headers", "query_params"])];
-    if (stray.length > 0) {
-      out.push({
-        severity: "warning",
-        section: "behavior",
-        command,
-        message: `${label} has ${stray.join(", ")} which the ${route === "raw" ? tn : route.toUpperCase()} sender ignores — usually leftovers from a transport switch. Remove them to keep the driver clean.`,
-      });
-    }
+        section: "general",
+        field: "id",
+        message:
+          "This driver file has a value in a form the editor cannot read, so " +
+          "it could not be fully checked. It is usually a field that needs " +
+          "quotes in the YAML — a version, date or author written as a bare " +
+          `number is the common one. (${detail})`,
+      },
+    ];
   }
-  return out;
 }
 
 /** Concatenate every wire-format field that supports {placeholders}. */

@@ -1,6 +1,7 @@
 import yaml from "js-yaml";
 import type { DriverDefinition } from "../api/types";
 import { validateDriverSafely } from "../components/driver-builder/validateDriver";
+import { validateDriverDefinition } from "../api/driverClient";
 
 /** A driver definition is a mapping. Excludes null, arrays, and scalars —
  *  mirrors the runtime loader's isinstance(dict) gate. */
@@ -117,21 +118,37 @@ export function makeLatestWins(): LatestWins {
 /**
  * Blocking problems that should stop an imported/pasted driver from being
  * created server-side. Returns clean, user-facing messages (empty array = safe
- * to create) drawn from the same validator the form editor uses, so the import
- * path surfaces structured issues instead of a terse backend 422. Transport
- * isn't covered by the validator (the editor always defaults one) so it's
- * checked explicitly here.
+ * to create) so the import path surfaces readable issues instead of a terse
+ * backend 422.
+ *
+ * The contract rules come from the server — the same ones the create route
+ * about to run will apply — plus the editor's own duplicate-id check, which
+ * the server cannot make (it validates one definition at a time and has no
+ * view of the library). Transport isn't covered by either (the editor always
+ * defaults one) so it's checked explicitly here.
+ *
+ * Async because the rules live on the platform. If the request itself fails,
+ * the import is NOT blocked: a network error says nothing about the driver,
+ * and the create POST that follows applies the same rules anyway.
  */
-export function importBlockers(
+export async function importBlockers(
   definition: DriverDefinition,
   siblings: DriverDefinition[],
-): string[] {
+): Promise<string[]> {
   const messages: string[] = [];
   if (!definition.transport) {
     messages.push("Transport is required (tcp, serial, udp, http, or osc).");
   }
   for (const issue of validateDriverSafely(definition, siblings, null)) {
     if (issue.severity === "error") messages.push(issue.message);
+  }
+  try {
+    const { issues } = await validateDriverDefinition(definition);
+    for (const issue of issues) {
+      if (issue.severity === "error") messages.push(issue.message);
+    }
+  } catch {
+    // Unreachable server: let the create call be the gate.
   }
   return messages;
 }

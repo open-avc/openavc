@@ -1,18 +1,26 @@
 "use strict";
 // Loads the real Driver Builder validator (validateDriver.ts, bundled on the
 // fly with the esbuild already in web/programmer/node_modules) and exercises
-// the transport-shape rules: stale wire-format fields after a transport
-// switch (commands and device-setting writes), the transport-switch scrub,
-// OSC argument value checks, and the declared command semantics rules
-// (sets / query_for). Prints JSON results to stdout; the Python wrapper
-// skips when the Node toolchain or esbuild is absent.
+// what is left in it now that the driver contract is enforced in exactly one
+// place, on the platform:
+//
+//   * editor mechanics that carry no contract knowledge — which sender the
+//     runtime routes a command to, what a transport switch has to strip,
+//     whether an OSC argument box holds a number;
+//   * `issuesFromServer`, the path -> tab mapping that decides where each of
+//     the platform's issues is rendered;
+//   * the duplicate-id check, which the endpoint cannot make (it validates
+//     one definition, with no view of the library);
+//   * housekeeping advice that never blocks a save.
+//
+// The rules themselves are covered by tests/test_driver_definition_validate.py
+// (verdict and message parity with the save path over the whole rejection
+// corpus) and tests/test_driver_builder_reverse_corpus.py (every shipped
+// driver opens clean). Prints JSON results to stdout; the Python wrapper skips
+// when the Node toolchain or esbuild is absent.
 const path = require("path");
-const fs = require("fs");
 
 const validatorPath = process.argv[2];
-// The shared rejection corpus (driver_validation_cases.json), replayed at the
-// end of this file.
-const corpusPath = process.argv[3];
 
 const esbuild = require("esbuild");
 const built = esbuild.buildSync({
@@ -54,78 +62,139 @@ const baseDraft = (transport, commands, extra = {}) => ({
 });
 
 const validate = (draft) => V.validateDriver(draft, [], null);
-const shapeRe = /OSC fields|HTTP fields|no OSC address|empty OSC address|method or path|sender ignores/;
-const shapeIssues = (issues) => issues.filter((i) => shapeRe.test(i.message));
-const argIssues = (issues) => issues.filter((i) => /OSC argument/.test(i.message));
+const strayIssues = (issues) => issues.filter((i) => /sender ignores/.test(i.message));
+const configIssues = (issues) => issues.filter((i) => /^Config field/.test(i.message));
+const bridgeIssues = (issues) => issues.filter((i) => i.field === "bridge");
+const derivedIssues = (issues) =>
+  issues.filter((i) => String(i.field || "").startsWith("config_derived"));
+const irIssues = (issues) => issues.filter((i) => i.field === "ir_codes");
 const errorsOf = (issues) => issues.filter((i) => i.severity === "error");
 
-// --- H-097: stale wire-format fields are flagged, not silently dead ------
+// --- The platform's issues land on the right tab -------------------------
+// The only mapping the editor performs. `path` is what the validation walk
+// stamped; the first segment picks the tab. Two of these are not guessable
+// from the field name: "Connect Sequence" and command framing live on the
+// Connection tab, not Behavior.
 {
-  // OSC fields left behind on a TCP driver: the runtime routes the command
-  // to the OSC sender, which refuses the transport — dead command.
-  const issues = validate(
-    baseDraft("tcp", {
-      power_on: {
-        label: "On",
-        send: "",
-        address: "/main/power",
-        args: [{ type: "i", value: "1" }],
-        params: {},
-      },
-    }),
-  );
-  const hits = shapeIssues(issues);
-  results.h097_tcp_with_osc_fields_error = {
+  const asked = {
+    "": "general",
+    id: "general",
+    ir_codes: "general",
+    transport: "connection",
+    command_prefix: "connection",
+    on_connect: "connection",
+    auth: "connection",
+    liveness: "connection",
+    push: "connection",
+    frame_parser: "connection",
+    send_frame: "connection",
+    "config_schema.host": "connection",
+    config_derived: "connection",
+    bridge: "connection",
+    commands: "behavior",
+    "commands.power_on": "behavior",
+    "state_variables.volume": "behavior",
+    "child_entity_types.zone": "behavior",
+    "responses[2]": "behavior",
+    "actions[0]": "behavior",
+    "polling.queries[1]": "behavior",
+    "device_settings.brightness": "behavior",
+    web_ui: "behavior",
+    discovery: "discovery",
+    simulator: "simulation",
+  };
+  const wrong = {};
+  for (const [p, want] of Object.entries(asked)) {
+    const got = V.issuesFromServer([
+      { severity: "error", message: "x", path: p },
+    ])[0].section;
+    if (got !== want) wrong[p] = { want, got };
+  }
+  results.server_issue_paths_land_on_the_right_tab = {
+    pass: Object.keys(wrong).length === 0,
+    detail: wrong,
+  };
+}
+{
+  // Severity and message pass through untouched — the platform's wording is
+  // the contract, and rewording it here would be a second contract again.
+  // An unrecognised root (a field added to the contract before this table
+  // learns about it) lands on General rather than vanishing.
+  const out = V.issuesFromServer([
+    { severity: "warning", message: "Careful.", path: "config_schema.password" },
+    { severity: "error", message: "Nope.", path: "brand_new_block.thing" },
+  ]);
+  results.server_issues_keep_their_severity_and_wording = {
     pass:
-      hits.length === 1 &&
-      hits[0].severity === "error" &&
-      hits[0].command === "power_on" &&
-      /OSC fields/.test(hits[0].message),
-    detail: hits,
+      out.length === 2 &&
+      out[0].severity === "warning" &&
+      out[0].message === "Careful." &&
+      out[0].section === "connection" &&
+      out[0].field === "config_schema.password" &&
+      out[1].severity === "error" &&
+      out[1].message === "Nope." &&
+      out[1].section === "general",
+    detail: out,
+  };
+}
+
+// --- The Builder raises no contract errors of its own --------------------
+{
+  // The whole point of the move. A draft the platform refuses for a dozen
+  // reasons (no id, no name, a command with nothing to send, an unknown
+  // state-variable type, a device setting with no write block, an
+  // uncompilable response pattern) raises NO error here — those all come
+  // back from the endpoint now. A contract rule creeping back into
+  // TypeScript fails this.
+  const broken = {
+    transport: "tcp",
+    commands: { dead: { label: "Dead" } },
+    state_variables: { volume: { type: "zzz" } },
+    device_settings: { brightness: { type: "integer", label: "Brightness" } },
+    responses: [{ match: "(" }],
+    child_entity_types: { zone: { id_format: { type: "roman" } } },
+  };
+  const errors = errorsOf(V.validateDriverSafely(broken, [], null));
+  results.builder_raises_no_contract_errors = {
+    pass: errors.length === 0,
+    detail: errors,
   };
 }
 {
-  // HTTP fields on a serial driver — same class, HTTP sender refuses.
-  const issues = validate(
-    baseDraft("serial", {
-      reboot: { label: "Reboot", send: "", method: "POST", path: "/reboot", params: {} },
-    }),
-  );
-  const hits = shapeIssues(issues);
-  results.h097_serial_with_http_fields_error = {
-    pass: hits.length === 1 && hits[0].severity === "error" && /HTTP fields/.test(hits[0].message),
-    detail: hits,
+  // The one error the editor still raises, and the reason it must: the
+  // endpoint validates a single definition and cannot see the library, so
+  // nothing else can tell you the id is taken before the save 409s.
+  const draft = baseDraft("tcp", {});
+  const siblings = [{ id: "acme_x", name: "Other" }];
+  const clash = errorsOf(V.validateDriver(draft, siblings, null));
+  const editingInPlace = errorsOf(V.validateDriver(draft, siblings, "acme_x"));
+  results.duplicate_id_is_the_editors_own_check = {
+    pass:
+      clash.length === 1 &&
+      /already exists/.test(clash[0].message) &&
+      clash[0].section === "general" &&
+      editingInPlace.length === 0,
+    detail: { clash, editingInPlace },
+  };
+}
+
+// --- Editor mechanics: routing, scrub, OSC argument values ---------------
+{
+  // Routing precedence mirrors the runtime: configurable.py checks address
+  // first, then path/method, then raw — a command with both address and
+  // path routes to OSC.
+  results.route_precedence_matches_runtime = {
+    pass:
+      V.commandRoute({ address: "/x", path: "/y" }) === "osc" &&
+      V.commandRoute({ path: "/y" }) === "http" &&
+      V.commandRoute({ method: "POST" }) === "http" &&
+      V.commandRoute({}) === "raw",
+    detail: null,
   };
 }
 {
-  // The reverse direction: a raw send-string command left on an OSC driver.
-  const issues = validate(
-    baseDraft("osc", {
-      legacy: { label: "Legacy", send: "PWR ON\\r", params: {} },
-    }),
-  );
-  const hits = errorsOf(shapeIssues(issues));
-  results.h097_osc_without_address_error = {
-    pass: hits.length === 1 && /no OSC address/.test(hits[0].message),
-    detail: hits,
-  };
-}
-{
-  // Raw command on an HTTP driver: nothing to send as a request.
-  const issues = validate(
-    baseDraft("http", {
-      legacy: { label: "Legacy", send: "PWR ON\\r", params: {} },
-    }),
-  );
-  const hits = errorsOf(shapeIssues(issues));
-  results.h097_http_without_method_path_error = {
-    pass: hits.length === 1 && /method or path/.test(hits[0].message),
-    detail: hits,
-  };
-}
-{
-  // Matching shape with a non-empty leftover send: ignored by the OSC
-  // sender -> warning, not error (the command itself works).
+  // A leftover send on a command the OSC sender handles: the command works,
+  // the field is dead weight -> advice, never a refusal.
   const issues = validate(
     baseDraft("osc", {
       fader: {
@@ -137,51 +206,17 @@ const errorsOf = (issues) => issues.filter((i) => i.severity === "error");
       },
     }),
   );
-  const hits = shapeIssues(issues);
-  results.h097_osc_leftover_send_warning = {
-    pass: hits.length === 1 && hits[0].severity === "warning" && /sender ignores/.test(hits[0].message),
+  const hits = strayIssues(issues);
+  results.osc_leftover_send_warning = {
+    pass:
+      hits.length === 1 &&
+      hits[0].severity === "warning" &&
+      /sender ignores/.test(hits[0].message),
     detail: hits,
   };
 }
 {
-  // Empty OSC address on an OSC driver (cleared field / hand-edited YAML).
-  const issues = validate(
-    baseDraft("osc", {
-      q: { label: "Q", send: "", address: "   ", args: [], params: {} },
-    }),
-  );
-  const hits = errorsOf(shapeIssues(issues));
-  results.h097_osc_empty_address_error = {
-    pass: hits.length === 1 && /empty OSC address/.test(hits[0].message),
-    detail: hits,
-  };
-}
-{
-  // Device-setting writes route exactly like commands at runtime — a stale
-  // OSC write on a TCP driver is flagged too.
-  const issues = validate(
-    baseDraft(
-      "tcp",
-      {},
-      {
-        device_settings: {
-          volume: {
-            label: "Volume",
-            type: "number",
-            write: { address: "/vol", args: [{ type: "f", value: "{value}" }] },
-          },
-        },
-      },
-    ),
-  );
-  const hits = errorsOf(shapeIssues(issues));
-  results.h097_setting_write_mismatch_error = {
-    pass: hits.length === 1 && /Device setting "volume"/.test(hits[0].message),
-    detail: hits,
-  };
-}
-{
-  // Clean drivers stay clean: matching shapes produce no shape issues.
+  // Clean drivers stay clean: matching shapes produce no stray-field advice.
   const tcp = validate(
     baseDraft("tcp", { on: { label: "On", send: "PWR1\\r", params: {} } }),
   );
@@ -201,16 +236,14 @@ const errorsOf = (issues) => issues.filter((i) => i.severity === "error");
       r: { label: "R", send: "", method: "GET", path: "/status", params: {} },
     }),
   );
-  results.h097_clean_drivers_no_shape_issues = {
+  results.clean_drivers_no_stray_field_issues = {
     pass:
-      shapeIssues(tcp).length === 0 &&
-      shapeIssues(osc).length === 0 &&
-      shapeIssues(http).length === 0,
-    detail: { tcp: shapeIssues(tcp), osc: shapeIssues(osc), http: shapeIssues(http) },
+      strayIssues(tcp).length === 0 &&
+      strayIssues(osc).length === 0 &&
+      strayIssues(http).length === 0,
+    detail: { tcp: strayIssues(tcp), osc: strayIssues(osc), http: strayIssues(http) },
   };
 }
-
-// --- H-097: transport-switch scrub --------------------------------------
 {
   // OSC -> TCP: address/args are dropped from the command (they're
   // invisible and uneditable in the TCP form), send stays as a key, and
@@ -226,7 +259,7 @@ const errorsOf = (issues) => issues.filter((i) => i.severity === "error");
   });
   const r = V.scrubForTransport(draft, "tcp");
   const cmd = r.commands.fader;
-  results.h097_scrub_to_tcp_removes_osc_fields = {
+  results.scrub_to_tcp_removes_osc_fields = {
     pass:
       !("address" in cmd) &&
       !("args" in cmd) &&
@@ -247,7 +280,7 @@ const errorsOf = (issues) => issues.filter((i) => i.severity === "error");
   });
   const toOsc = V.scrubForTransport(draft, "osc");
   const toUdp = V.scrubForTransport(draft, "udp");
-  results.h097_scrub_to_osc_clears_send = {
+  results.scrub_to_osc_clears_send = {
     pass:
       toOsc.commands.on.send === "" &&
       toOsc.removals.length === 1 &&
@@ -278,7 +311,7 @@ const errorsOf = (issues) => issues.filter((i) => i.severity === "error");
   );
   const r = V.scrubForTransport(draft, "tcp");
   const removalNames = r.removals.map((x) => x.name);
-  results.h097_scrub_setting_write_dropped = {
+  results.scrub_setting_write_dropped = {
     pass:
       r.device_settings !== undefined &&
       !("write" in r.device_settings.volume) &&
@@ -288,106 +321,31 @@ const errorsOf = (issues) => issues.filter((i) => i.severity === "error");
     detail: r,
   };
 }
-
-// --- M-152: OSC argument values checked at author time -------------------
 {
-  // The builder seeds new args with value "" — firing that command crashes
-  // the send at runtime (float("")), so it must be an author-time error.
-  const issues = validate(
-    baseDraft("osc", {
-      f: {
-        label: "F",
-        send: "",
-        address: "/x",
-        args: [{ type: "f", value: "" }],
-        params: {},
-      },
-    }),
-  );
-  const hits = argIssues(issues);
-  results.m152_empty_numeric_arg_error = {
-    pass: hits.length === 1 && hits[0].severity === "error" && /needs a numeric value/.test(hits[0].message),
-    detail: hits,
-  };
-}
-{
-  const issues = validate(
-    baseDraft("osc", {
-      f: {
-        label: "F",
-        send: "",
-        address: "/x",
-        args: [{ type: "i", value: "fast" }],
-        params: {},
-      },
-    }),
-  );
-  const hits = argIssues(issues);
-  results.m152_non_numeric_arg_error = {
-    pass: hits.length === 1 && /not a number/.test(hits[0].message),
-    detail: hits,
-  };
-}
-{
-  // Placeholders resolve at send time — not statically checkable, no error.
-  // String args may be empty (a valid OSC string). Int64 rejects fractions
-  // (the runtime's int(str) does too), and device-setting args are checked.
-  const ok = validate(
-    baseDraft("osc", {
-      f: {
-        label: "F",
-        send: "",
-        address: "/x",
-        args: [
-          { type: "f", value: "{level}" },
-          { type: "s", value: "" },
-          { type: "h", value: "42" },
-          { type: "d", value: "1e3" },
-        ],
-        params: { level: { type: "number" } },
-      },
-    }),
-  );
-  const frac = validate(
-    baseDraft("osc", {
-      f: {
-        label: "F",
-        send: "",
-        address: "/x",
-        args: [{ type: "h", value: "1.5" }],
-        params: {},
-      },
-    }),
-  );
-  const setting = validate(
-    baseDraft(
-      "osc",
-      {},
-      {
-        device_settings: {
-          gain: {
-            label: "Gain",
-            type: "number",
-            write: { address: "/gain", args: [{ type: "f", value: "" }] },
-          },
-        },
-      },
-    ),
-  );
-  results.m152_placeholder_string_ok_int64_fraction_error = {
+  // Whitespace IS a wire value. Some devices document a bare line feed as
+  // their keepalive, and the platform accepts it (a plain truthiness test on
+  // `send`). The scrub is the surviving half of that fix: switching such a
+  // driver to OSC must report the keepalive as authored content it is about
+  // to throw away, rather than dropping it silently as if the field were
+  // empty.
+  const draft = baseDraft("tcp", {
+    heart_beat: { label: "Keepalive", send: "\n", params: {} },
+    seeded: { label: "Seeded", send: "", params: {} },
+  });
+  const r = V.scrubForTransport(draft, "osc");
+  results.whitespace_send_is_authored_content = {
     pass:
-      argIssues(ok).length === 0 &&
-      argIssues(frac).length === 1 &&
-      /whole number/.test(argIssues(frac)[0].message) &&
-      argIssues(setting).length === 1 &&
-      /Device setting "gain"/.test(argIssues(setting)[0].message),
-    detail: { ok: argIssues(ok), frac: argIssues(frac), setting: argIssues(setting) },
+      r.removals.length === 1 &&
+      r.removals[0].name === "heart_beat" &&
+      r.removals[0].fields.join(",") === "send",
+    detail: r,
   };
 }
 {
-  // Direct helper checks, including the T/F/N no-value tags.
+  // Direct helper checks, including the T/F/N no-value tags. The OSC
+  // argument editor shows these inline as you type.
   const o = V.oscArgValueIssue;
-  results.m152_helper_matrix = {
+  results.osc_arg_helper_matrix = {
     pass:
       o("f", "") !== null &&
       o("f", "0.5") === null &&
@@ -408,388 +366,10 @@ const errorsOf = (issues) => issues.filter((i) => i.severity === "error");
   };
 }
 
-// --- Routing precedence mirrors the runtime ------------------------------
-{
-  // configurable.py checks address first, then path/method, then raw —
-  // a command with both address and path routes to OSC.
-  results.route_precedence_matches_runtime = {
-    pass:
-      V.commandRoute({ address: "/x", path: "/y" }) === "osc" &&
-      V.commandRoute({ path: "/y" }) === "http" &&
-      V.commandRoute({ method: "POST" }) === "http" &&
-      V.commandRoute({}) === "raw",
-    detail: null,
-  };
-}
-
-// --- Discovery hints validation (H-121 / H-122 / M-170) ------------------
-const discIssues = (issues) => issues.filter((i) => i.section === "discovery");
-
-{
-  // H-121: a disallowed open port (8080 et al) is flagged as an error, not
-  // silently saved to fail at load.
-  const issues = discIssues(validate(baseDraft("tcp", {}, { discovery: { port_open: [8080] } })));
-  results.h121_disallowed_port_8080_error = {
-    pass: issues.length === 1 && issues[0].severity === "error" &&
-      issues[0].field === "port_open" && /8080/.test(issues[0].message),
-    detail: issues,
-  };
-}
-{
-  // A vendor-specific port is fine.
-  const issues = discIssues(validate(baseDraft("tcp", {}, { discovery: { port_open: [4352] } })));
-  results.h121_vendor_port_ok = { pass: issues.length === 0, detail: issues };
-}
-{
-  // H-122: a probe declaring two matchers is an error (runtime allows one).
-  const issues = discIssues(
-    validate(baseDraft("tcp", {}, {
-      discovery: { tcp_probe: { port: 1234, expect: "A", expect_hex: "AA55" } },
-    })),
-  );
-  results.h122_probe_two_matchers_error = {
-    pass: issues.length === 1 && issues[0].severity === "error" &&
-      issues[0].field === "tcp_probe" && /only one matcher/.test(issues[0].message),
-    detail: issues,
-  };
-}
-{
-  // A probe with exactly one matcher is fine.
-  const issues = discIssues(
-    validate(baseDraft("tcp", {}, {
-      discovery: { tcp_probe: { port: 1234, expect: "NovaStar" } },
-    })),
-  );
-  results.h122_probe_one_matcher_ok = { pass: issues.length === 0, detail: issues };
-}
-{
-  // M-170: a blank string row (OUI here) is flagged with a field anchor.
-  const issues = discIssues(validate(baseDraft("tcp", {}, { discovery: { oui: ["00:11:22", ""] } })));
-  results.m170_blank_oui_error = {
-    pass: issues.length === 1 && issues[0].severity === "error" &&
-      issues[0].field === "oui" && /blank/.test(issues[0].message),
-    detail: issues,
-  };
-}
-{
-  // M-170: a blank mDNS fingerprint (object form, empty service) is flagged.
-  const issues = discIssues(
-    validate(baseDraft("tcp", {}, { discovery: { mdns: [{ service: "" }] } })),
-  );
-  results.m170_blank_mdns_service_error = {
-    pass: issues.length === 1 && issues[0].field === "mdns" && /blank/.test(issues[0].message),
-    detail: issues,
-  };
-}
-{
-  // Fully-populated discovery hints produce no discovery issues.
-  const issues = discIssues(
-    validate(baseDraft("tcp", {}, {
-      discovery: {
-        oui: ["00:11:22"],
-        hostname: ["acme-*"],
-        mdns: [{ service: "_acme._tcp.local." }],
-        tcp_probe: { port: 4352, expect: "ACME" },
-        port_open: [4352],
-      },
-    })),
-  );
-  results.discovery_clean_no_issues = { pass: issues.length === 0, detail: issues };
-}
-
-// --- Frame parser validation (H-123 / L-102) -----------------------------
-// Mirrors server/drivers/driver_loader.py: header_size must be 1/2/4 and a
-// fixed length must be a positive integer, else the parser raises at connect.
-const fpIssues = (issues) =>
-  issues.filter((i) => i.field && i.field.startsWith("frame_parser"));
-
-{
-  // H-123: a length-prefix header_size the runtime rejects (only 1/2/4) — an
-  // imported/hand-edited driver could carry 3, which raises at connect.
-  const issues = fpIssues(
-    validate(baseDraft("tcp", {}, { frame_parser: { type: "length_prefix", header_size: 3 } })),
-  );
-  results.h123_header_size_3_error = {
-    pass:
-      issues.length === 1 &&
-      issues[0].severity === "error" &&
-      issues[0].section === "connection" &&
-      issues[0].field === "frame_parser.header_size" &&
-      /1, 2, or 4/.test(issues[0].message),
-    detail: issues,
-  };
-}
-{
-  // A supported header_size (4) is clean.
-  const issues = fpIssues(
-    validate(baseDraft("tcp", {}, { frame_parser: { type: "length_prefix", header_size: 4, header_offset: -4 } })),
-  );
-  results.h123_header_size_4_negoffset_ok = { pass: issues.length === 0, detail: issues };
-}
-{
-  // L-102: a non-positive fixed length saves silently in older builders and
-  // raises ValueError at connect — flag it as a Connection error.
-  const issues = fpIssues(
-    validate(baseDraft("tcp", {}, { frame_parser: { type: "fixed_length", length: -5 } })),
-  );
-  results.l102_fixed_negative_length_error = {
-    pass:
-      issues.length === 1 &&
-      issues[0].severity === "error" &&
-      issues[0].field === "frame_parser.length" &&
-      /positive whole number/.test(issues[0].message),
-    detail: issues,
-  };
-}
-{
-  // A positive fixed length is clean.
-  const issues = fpIssues(
-    validate(baseDraft("tcp", {}, { frame_parser: { type: "fixed_length", length: 8 } })),
-  );
-  results.l102_fixed_length_ok = { pass: issues.length === 0, detail: issues };
-}
-{
-  // An unknown frame_parser type is rejected (matches the loader's message).
-  const issues = fpIssues(
-    validate(baseDraft("tcp", {}, { frame_parser: { type: "sliding_window" } })),
-  );
-  results.frame_parser_unknown_type_error = {
-    pass:
-      issues.length === 1 &&
-      issues[0].field === "frame_parser.type" &&
-      /isn't supported/.test(issues[0].message),
-    detail: issues,
-  };
-}
-{
-  // No frame_parser block (the common case) produces no frame_parser issues.
-  const issues = fpIssues(validate(baseDraft("tcp", {})));
-  results.frame_parser_absent_no_issues = { pass: issues.length === 0, detail: issues };
-}
-
-// --- State variable labels / types (M-172) -------------------------------
-// driver_loader.py hard-requires a label on every top-level state variable
-// and rejects an unknown type; the builder's free-text inputs let either go
-// bad, surfacing only as an unanchored save-time 422.
-const stateVarIssues = (issues) =>
-  issues.filter((i) => i.field && i.field.startsWith("state_variables"));
-
-{
-  const issues = stateVarIssues(
-    validate(baseDraft("tcp", {}, { state_variables: { volume: { type: "number", label: "" } } })),
-  );
-  results.m172_state_var_no_label_error = {
-    pass:
-      issues.length === 1 &&
-      issues[0].severity === "error" &&
-      issues[0].section === "behavior" &&
-      issues[0].field === "state_variables.volume" &&
-      /needs a label/.test(issues[0].message),
-    detail: issues,
-  };
-}
-{
-  const issues = stateVarIssues(
-    validate(baseDraft("tcp", {}, { state_variables: { volume: { type: "number", label: "Volume" } } })),
-  );
-  results.m172_state_var_with_label_ok = { pass: issues.length === 0, detail: issues };
-}
-{
-  const issues = stateVarIssues(
-    validate(baseDraft("tcp", {}, { state_variables: { mode: { type: "widget", label: "Mode" } } })),
-  );
-  results.m172_state_var_unknown_type_error = {
-    pass: issues.length === 1 && /unknown type/.test(issues[0].message),
-    detail: issues,
-  };
-}
-
-// --- Command wire format + response structure (M-173 / H-124) ------------
-// driver_loader.py rejects a command with no send/path-method/address and a
-// response that is neither a valid OSC address (leading '/') nor a text
-// pattern. The raw-transport blank-send case slips past the shape check.
-const wireIssues = (issues) => issues.filter((i) => /nothing to send/.test(i.message));
-const responseIssues = (issues) => issues.filter((i) => /^Response \d/.test(i.message));
-
-{
-  // A tcp command whose send was left blank (the builder's seed) does nothing
-  // and is rejected at load — flag it, anchored to the command.
-  const hits = wireIssues(
-    validate(baseDraft("tcp", { ping: { label: "Ping", send: "", params: {} } })),
-  );
-  results.m173_command_no_wire_format_error = {
-    pass: hits.length === 1 && hits[0].severity === "error" && hits[0].command === "ping",
-    detail: hits,
-  };
-}
-{
-  // A tcp command with a real send string is clean.
-  const hits = wireIssues(
-    validate(baseDraft("tcp", { ping: { label: "Ping", send: "PING\\r", params: {} } })),
-  );
-  results.m173_command_with_send_ok = { pass: hits.length === 0, detail: hits };
-}
-{
-  // Whitespace IS a wire value. Some devices document a bare line feed as
-  // their keepalive, and the loader accepts it (a plain truthiness test on
-  // `send`), so the Builder must too. This check used to trim before asking
-  // whether the send was empty, which locked such a driver out of the editor
-  // completely — the reverse-corpus sweep exists because nothing caught that.
-  const hits = wireIssues(
-    validate(baseDraft("tcp", { heart_beat: { label: "Keepalive", send: "\n", params: {} } })),
-  );
-  results.whitespace_send_is_a_wire_value_ok = { pass: hits.length === 0, detail: hits };
-}
-{
-  // A response with neither address nor pattern/match has nothing to match.
-  const issues = responseIssues(
-    validate(baseDraft("tcp", {}, { responses: [{ mappings: [] }] })),
-  );
-  results.m173_response_no_pattern_error = {
-    pass: issues.length === 1 && issues[0].severity === "error" && /no pattern to match/.test(issues[0].message),
-    detail: issues,
-  };
-}
-{
-  // OSC response address missing the leading '/' (runtime hard rule).
-  const issues = responseIssues(
-    validate(baseDraft("osc", {}, { responses: [{ address: "main/vol" }] })),
-  );
-  results.m173_response_osc_address_no_slash_error = {
-    pass: issues.length === 1 && /must start with/.test(issues[0].message),
-    detail: issues,
-  };
-}
-{
-  // H-124: an OSC-address response left on a non-OSC transport never matches.
-  const issues = responseIssues(
-    validate(baseDraft("tcp", {}, { responses: [{ address: "/main/vol" }] })),
-  );
-  results.h124_response_osc_address_on_tcp_error = {
-    pass: issues.length === 1 && /transport is TCP/.test(issues[0].message),
-    detail: issues,
-  };
-}
-{
-  // A normal text response with a match pattern is clean.
-  const issues = responseIssues(
-    validate(baseDraft("tcp", {}, {
-      responses: [{ match: "PWR=(\\d)", mappings: [{ group: 1, state: "power" }] }],
-    })),
-  );
-  results.m173_response_with_match_ok = { pass: issues.length === 0, detail: issues };
-}
-
-// --- Device settings: the runtime requires a write block ------------------
-// driver_loader.py hard-errors on a device setting without a write block
-// ("a device setting must be writable") — a draft missing one (or with a
-// write emptied by the transport scrub) must be flagged before save.
-const missingWriteIssues = (issues) =>
-  issues.filter((i) => /missing write block/.test(i.message));
-{
-  const issues = missingWriteIssues(
-    validate(
-      baseDraft("tcp", {}, {
-        device_settings: { volume: { label: "Volume", type: "number" } },
-      }),
-    ),
-  );
-  results.setting_missing_write_error = {
-    pass:
-      issues.length === 1 &&
-      issues[0].severity === "error" &&
-      /Device setting "volume"/.test(issues[0].message),
-    detail: issues,
-  };
-}
-{
-  // An emptied write object is the same as none — no wire format left.
-  const issues = missingWriteIssues(
-    validate(
-      baseDraft("tcp", {}, {
-        device_settings: {
-          volume: { label: "Volume", type: "number", write: {} },
-        },
-      }),
-    ),
-  );
-  results.setting_empty_write_error = {
-    pass: issues.length === 1 && issues[0].severity === "error",
-    detail: issues,
-  };
-}
-{
-  // A setting with a real write block raises no missing-write error.
-  const issues = missingWriteIssues(
-    validate(
-      baseDraft("tcp", {}, {
-        device_settings: {
-          volume: {
-            label: "Volume",
-            type: "number",
-            write: { send: "VOL {value}\\r" },
-          },
-        },
-      }),
-    ),
-  );
-  results.setting_with_write_ok = { pass: issues.length === 0, detail: issues };
-}
-
-// --- Config fields: secret and wrong-typed defaults both warn --------------
-const configIssues = (issues) =>
-  issues.filter((i) => /^Config field/.test(i.message));
-{
-  // A masked field carrying a default is stored in plain text inside the
-  // shareable .avcdriver, which is worth saying — but it is not a refusal.
-  // What an author puts there is nearly always the factory default printed
-  // in the manufacturer's own manual, and blocking it means every install
-  // types the same published password by hand for no security gain. Two
-  // shipped drivers were locked out of the Builder entirely by the error.
-  const issues = configIssues(
-    validate(baseDraft("tcp", {}, {
-      config_schema: { pin: { type: "string", label: "PIN", secret: true } },
-      default_config: { pin: "hunter2" },
-    })),
-  );
-  results.secret_field_default_warning = {
-    pass:
-      issues.length === 1 &&
-      issues[0].severity === "warning" &&
-      issues[0].section === "connection" &&
-      /never put a real site password/.test(issues[0].message),
-    detail: issues,
-  };
-}
-{
-  // The schema entry's own `default` is exported too — same warning.
-  const issues = configIssues(
-    validate(baseDraft("tcp", {}, {
-      config_schema: {
-        pin: { type: "string", label: "PIN", secret: true, default: "hunter2" },
-      },
-    })),
-  );
-  results.secret_schema_default_warning = {
-    pass: issues.length === 1 && issues[0].severity === "warning",
-    detail: issues,
-  };
-}
-{
-  // A secret field with no default (the legacy empty-string seed included)
-  // is clean.
-  const issues = configIssues(
-    validate(baseDraft("tcp", {}, {
-      config_schema: { pin: { type: "string", label: "PIN", secret: true } },
-      default_config: { pin: "" },
-    })),
-  );
-  results.secret_field_no_default_ok = { pass: issues.length === 0, detail: issues };
-}
+// --- Housekeeping advice (warnings only — none of it blocks a save) ------
 {
   // A string default on an integer field (a legacy Builder draft, or a
-  // hand-edited file) exports wrong-typed YAML — flag it, but only as a
-  // warning since the runtime re-coerces most paths.
+  // hand-edited file) exports wrong-typed YAML.
   const issues = configIssues(
     validate(baseDraft("tcp", {}, {
       config_schema: { display_id: { type: "integer", label: "Display ID" } },
@@ -820,7 +400,9 @@ const configIssues = (issues) =>
 }
 {
   // Correctly typed defaults (including float, the runtime's number alias)
-  // are clean.
+  // are clean — and a masked field with a default says nothing HERE: that
+  // advice comes from the platform now, and saying it twice was exactly the
+  // duplication this move removes.
   const issues = configIssues(
     validate(baseDraft("tcp", {}, {
       config_schema: {
@@ -828,464 +410,16 @@ const configIssues = (issues) =>
         gain: { type: "float", label: "Gain" },
         enabled: { type: "boolean", label: "Enabled" },
         zone: { type: "string", label: "Zone" },
+        password: { type: "string", label: "Password", secret: true, default: "admin" },
       },
       default_config: { display_id: 5, gain: 0.5, enabled: false, zone: "A" },
     })),
   );
   results.config_typed_defaults_ok = { pass: issues.length === 0, detail: issues };
 }
-
-// --- Declared command semantics: sets / query_for -------------------------
-// Mirror avcdriver_semantic.py's per-command checks: every `sets` key and the
-// `query_for` name must be a declared state variable (device-level, or of the
-// addressed child type when the command has exactly ONE child_id param), a
-// "{param}" value must name a declared parameter, and `sets` must be a
-// mapping. A dangling name silently declares nothing to the auto-generated
-// simulator, so all of these are save-blocking errors.
-const semIssues = (issues) => issues.filter((i) => /\bsets\b|\bquery_for\b/.test(i.message));
-const semVars = {
-  power: { type: "boolean", label: "Power" },
-  volume: { type: "integer", label: "Volume" },
-};
-const zoneChild = {
-  zone: {
-    label: "Zone",
-    id_format: { type: "integer", min: 1, max: 4 },
-    state_variables: { mute: { type: "boolean", label: "Mute" } },
-  },
-};
-
 {
-  // Device-level: literal + {param} sets and a query_for naming declared
-  // variables are clean.
-  const issues = semIssues(
-    validate(baseDraft("tcp", {
-      set_volume: {
-        label: "Set Volume",
-        send: "VOL {level}\\r",
-        params: { level: { type: "integer" } },
-        sets: { volume: "{level}", power: true },
-      },
-      get_power: { label: "Get Power", send: "PWR?\\r", params: {}, query_for: "power" },
-    }, { state_variables: semVars })),
-  );
-  results.sem_device_sets_query_for_ok = { pass: issues.length === 0, detail: issues };
-}
-{
-  // Child variant: a command with exactly one child_id param may name the
-  // child type's own variables — both sets and query_for.
-  const issues = semIssues(
-    validate(baseDraft("tcp", {
-      mute_zone: {
-        label: "Mute Zone",
-        send: "MUTE {zone} {state}\\r",
-        params: {
-          zone: { type: "child_id", child_type: "zone" },
-          state: { type: "boolean" },
-        },
-        sets: { mute: "{state}" },
-      },
-      query_zone_mute: {
-        label: "Query Zone Mute",
-        send: "MUTE? {zone}\\r",
-        params: { zone: { type: "child_id", child_type: "zone" } },
-        query_for: "mute",
-      },
-    }, { state_variables: semVars, child_entity_types: zoneChild })),
-  );
-  results.sem_child_sets_query_for_ok = { pass: issues.length === 0, detail: issues };
-}
-{
-  // A sets key that names no declared state variable is an error, anchored
-  // to the command.
-  const issues = semIssues(
-    validate(baseDraft("tcp", {
-      set_bright: {
-        label: "Brightness",
-        send: "BRT 1\\r",
-        params: {},
-        sets: { brightness: 100 },
-      },
-    }, { state_variables: semVars })),
-  );
-  results.sem_sets_unknown_var_error = {
-    pass:
-      issues.length === 1 &&
-      issues[0].severity === "error" &&
-      issues[0].command === "set_bright" &&
-      /sets "brightness" which is not a declared state variable/.test(issues[0].message),
-    detail: issues,
-  };
-}
-{
-  // A "{param}" value must reference a declared parameter of the command.
-  const issues = semIssues(
-    validate(baseDraft("tcp", {
-      set_power: {
-        label: "Set Power",
-        send: "PWR {state}\\r",
-        params: { state: { type: "boolean" } },
-        sets: { power: "{level}" },
-      },
-    }, { state_variables: semVars })),
-  );
-  results.sem_sets_unknown_param_ref_error = {
-    pass:
-      issues.length === 1 &&
-      issues[0].severity === "error" &&
-      /must be a literal or a bare \{param\} reference to a declared parameter/.test(issues[0].message),
-    detail: issues,
-  };
-}
-{
-  // The child variant needs EXACTLY one child_id param — with two, child
-  // variables are out of scope and the message doesn't offer them.
-  const issues = semIssues(
-    validate(baseDraft("tcp", {
-      route: {
-        label: "Route",
-        send: "ROUTE {src} {dst}\\r",
-        params: {
-          src: { type: "child_id", child_type: "zone" },
-          dst: { type: "child_id", child_type: "zone" },
-        },
-        sets: { mute: true },
-      },
-    }, { state_variables: semVars, child_entity_types: zoneChild })),
-  );
-  results.sem_sets_two_child_id_params_error = {
-    pass:
-      issues.length === 1 &&
-      issues[0].severity === "error" &&
-      /sets "mute" which is not a declared state variable\.$/.test(issues[0].message) &&
-      !/addressed child/.test(issues[0].message),
-    detail: issues,
-  };
-}
-{
-  // query_for naming an unknown variable is an error.
-  const issues = semIssues(
-    validate(baseDraft("tcp", {
-      get_watts: {
-        label: "Get Watts",
-        send: "WATT?\\r",
-        params: {},
-        query_for: "wattage",
-      },
-    }, { state_variables: semVars })),
-  );
-  results.sem_query_for_unknown_var_error = {
-    pass:
-      issues.length === 1 &&
-      issues[0].severity === "error" &&
-      issues[0].command === "get_watts" &&
-      /query_for "wattage" is not a declared state variable/.test(issues[0].message),
-    detail: issues,
-  };
-}
-{
-  // sets must be a mapping (imported / hand-edited YAML could carry a list).
-  const issues = semIssues(
-    validate(baseDraft("tcp", {
-      set_power: {
-        label: "Set Power",
-        send: "PWR1\\r",
-        params: {},
-        sets: ["power"],
-      },
-    }, { state_variables: semVars })),
-  );
-  results.sem_sets_not_mapping_error = {
-    pass:
-      issues.length === 1 &&
-      issues[0].severity === "error" &&
-      /"sets" must be a mapping/.test(issues[0].message),
-    detail: issues,
-  };
-}
-
-// --- JSON body response rules (mirror avcdriver_semantic.py + runtime) ----
-// A json: true rule parses the whole reply body as JSON; set values are JSON
-// field paths (string) or {key, type, map} specs. `require:` scopes the rule
-// to bodies carrying the named key(s) and is json-only.
-const jsonVars = {
-  power: { type: "boolean", label: "Power" },
-  volume: { type: "integer", label: "Volume" },
-};
-
-{
-  // String-path set form (+ require as a single string) is clean.
-  const issues = responseIssues(
-    validate(baseDraft("http", {}, {
-      state_variables: jsonVars,
-      responses: [
-        { json: true, set: { power: "status.power" }, require: "status" },
-      ],
-    })),
-  );
-  results.json_set_string_path_ok = { pass: issues.length === 0, detail: issues };
-}
-{
-  // {key, type, map} object form (+ require as a list) is clean; throttle
-  // stays available on json rules.
-  const issues = responseIssues(
-    validate(baseDraft("http", {}, {
-      state_variables: jsonVars,
-      responses: [
-        {
-          json: true,
-          throttle: 0.5,
-          require: ["status", "serialNumber"],
-          set: {
-            power: { key: "status.power", type: "string", map: { "1": "on" } },
-            volume: { path: "status.vol" },
-          },
-        },
-      ],
-    })),
-  );
-  results.json_set_object_form_ok = { pass: issues.length === 0, detail: issues };
-}
-{
-  // Explicit mappings-list form ({state, key, type}) is clean too.
-  const issues = responseIssues(
-    validate(baseDraft("tcp", {}, {
-      state_variables: jsonVars,
-      responses: [
-        { json: true, mappings: [{ state: "volume", key: "vol", type: "integer" }] },
-      ],
-    })),
-  );
-  results.json_mappings_form_ok = { pass: issues.length === 0, detail: issues };
-}
-{
-  // require on a non-json (regex) rule is rejected — it only scopes
-  // JSON body rules.
-  const issues = responseIssues(
-    validate(baseDraft("tcp", {}, {
-      state_variables: jsonVars,
-      responses: [
-        { match: "VOL=(\\d+)", set: { volume: "$1" }, require: "status" },
-      ],
-    })),
-  );
-  results.json_require_without_json_error = {
-    pass:
-      issues.length === 1 &&
-      issues[0].severity === "error" &&
-      /only applies to JSON body rules/.test(issues[0].message),
-    detail: issues,
-  };
-}
-{
-  // Blank require entries would silently disable the rule: a blank string
-  // and a list with a blank entry are both rejected.
-  const blankStr = responseIssues(
-    validate(baseDraft("http", {}, {
-      state_variables: jsonVars,
-      responses: [{ json: true, set: { power: "p" }, require: "   " }],
-    })),
-  );
-  const blankList = responseIssues(
-    validate(baseDraft("http", {}, {
-      state_variables: jsonVars,
-      responses: [{ json: true, set: { power: "p" }, require: ["status", ""] }],
-    })),
-  );
-  results.json_require_blank_error = {
-    pass:
-      blankStr.length === 1 &&
-      /must name a JSON key/.test(blankStr[0].message) &&
-      blankList.length === 1 &&
-      /non-empty JSON key names/.test(blankList[0].message),
-    detail: { blankStr, blankList },
-  };
-}
-{
-  // A non-string, non-list require (hand-edited YAML) is rejected.
-  const issues = responseIssues(
-    validate(baseDraft("http", {}, {
-      state_variables: jsonVars,
-      responses: [{ json: true, set: { power: "p" }, require: 5 }],
-    })),
-  );
-  results.json_require_bad_type_error = {
-    pass:
-      issues.length === 1 &&
-      /JSON key name or a list of them/.test(issues[0].message),
-    detail: issues,
-  };
-}
-{
-  // A row targeting an undeclared state variable silently does nothing.
-  const issues = responseIssues(
-    validate(baseDraft("http", {}, {
-      state_variables: jsonVars,
-      responses: [{ json: true, set: { brightness: "status.bright" } }],
-    })),
-  );
-  results.json_unknown_state_var_error = {
-    pass:
-      issues.length === 1 &&
-      issues[0].severity === "error" &&
-      /"brightness", which isn't a declared state variable/.test(issues[0].message),
-    detail: issues,
-  };
-}
-{
-  // An unknown coercion type falls back to plain string at runtime —
-  // flag it instead of silently ignoring the author's choice.
-  const issues = responseIssues(
-    validate(baseDraft("http", {}, {
-      state_variables: jsonVars,
-      responses: [
-        { json: true, set: { power: { key: "status.power", type: "widget" } } },
-      ],
-    })),
-  );
-  results.json_unknown_row_type_error = {
-    pass: issues.length === 1 && /unknown type "widget"/.test(issues[0].message),
-    detail: issues,
-  };
-}
-{
-  // child_set is rejected on json rules (no capture groups to route by).
-  const issues = responseIssues(
-    validate(baseDraft("http", {}, {
-      state_variables: jsonVars,
-      responses: [
-        {
-          json: true,
-          set: { power: "status.power" },
-          child_set: [{ type: "zone", id: "$1", state: { mute: "$2" } }],
-        },
-      ],
-    })),
-  );
-  results.json_child_set_error = {
-    pass:
-      issues.length === 1 &&
-      /child entity routing isn't supported on JSON responses/.test(issues[0].message),
-    detail: issues,
-  };
-}
-{
-  // A json rule with no set/mappings — and the empty-set seed — map no
-  // fields, so they do nothing at runtime.
-  const noFields = responseIssues(
-    validate(baseDraft("http", {}, {
-      state_variables: jsonVars,
-      responses: [{ json: true }],
-    })),
-  );
-  const emptySet = responseIssues(
-    validate(baseDraft("http", {}, {
-      state_variables: jsonVars,
-      responses: [{ json: true, set: {} }],
-    })),
-  );
-  results.json_no_fields_error = {
-    pass:
-      noFields.length === 1 &&
-      /maps no fields/.test(noFields[0].message) &&
-      emptySet.length === 1 &&
-      /maps no fields/.test(emptySet[0].message),
-    detail: { noFields, emptySet },
-  };
-}
-{
-  // A blank field path makes the row silently do nothing.
-  const issues = responseIssues(
-    validate(baseDraft("http", {}, {
-      state_variables: jsonVars,
-      responses: [{ json: true, set: { power: "" } }],
-    })),
-  );
-  results.json_empty_path_error = {
-    pass: issues.length === 1 && /reads no JSON field/.test(issues[0].message),
-    detail: issues,
-  };
-}
-{
-  // The runtime dispatches OSC by address before json rules are consulted,
-  // so a json rule on an OSC driver never fires.
-  const issues = responseIssues(
-    validate(baseDraft("osc", {}, {
-      state_variables: jsonVars,
-      responses: [{ json: true, set: { power: "status.power" } }],
-    })),
-  );
-  results.json_on_osc_transport_error = {
-    pass:
-      issues.length === 1 &&
-      /transport is OSC/.test(issues[0].message),
-    detail: issues,
-  };
-}
-
-// --- Phase 4 blind fields: transports / bridge / config_derived / ir_codes --
-const transportsIssues = (issues) => issues.filter((i) => i.field === "transports");
-const bridgeIssues = (issues) => issues.filter((i) => i.field === "bridge");
-const derivedIssues = (issues) =>
-  issues.filter((i) => String(i.field || "").startsWith("config_derived"));
-const irIssues = (issues) => issues.filter((i) => i.field === "ir_codes");
-
-{
-  // "bridge" is a routing sentinel, not a medium — the schema's items enum
-  // (INTERCHANGEABLE_TRANSPORTS) excludes it.
-  const issues = validate(baseDraft("tcp", {}, { transports: ["tcp", "bridge"] }));
-  const hits = transportsIssues(issues);
-  results.p4_transports_bad_entry_error = {
-    pass:
-      hits.length === 1 &&
-      hits[0].severity === "error" &&
-      /not an interchangeable transport/.test(hits[0].message),
-    detail: hits,
-  };
-}
-{
-  // The corpus form: primary included, all entries from the allowed set.
-  const issues = validate(baseDraft("tcp", {}, { transports: ["tcp", "serial"] }));
-  results.p4_transports_valid_ok = {
-    pass: transportsIssues(issues).length === 0,
-    detail: transportsIssues(issues),
-  };
-}
-{
-  // Schema requires id + kind on every port.
-  const issues = validate(
-    baseDraft("tcp", {}, { bridge: { ports: [{ id: "serial:1" }] } }),
-  );
-  const hits = bridgeIssues(issues);
-  results.p4_bridge_port_missing_kind_error = {
-    pass:
-      hits.length === 1 &&
-      hits[0].severity === "error" &&
-      /needs a kind/.test(hits[0].message),
-    detail: hits,
-  };
-}
-{
-  // passthrough_port carries the schema's 1-65535 integer bounds.
-  const issues = validate(
-    baseDraft("tcp", {}, {
-      bridge: {
-        ports: [{ id: "serial:1", kind: "serial", passthrough_port: 70000 }],
-      },
-    }),
-  );
-  const hits = bridgeIssues(issues);
-  results.p4_bridge_passthrough_range_error = {
-    pass:
-      hits.length === 1 &&
-      hits[0].severity === "error" &&
-      /between 1 and 65535/.test(hits[0].message),
-    detail: hits,
-  };
-}
-{
-  // Neither the schema nor the runtime rejects duplicate port ids — the
-  // runtime's id-keyed dict silently keeps the last one — so a warning.
+  // Two bridge ports sharing an id: the runtime's id-keyed dict silently
+  // keeps the last one.
   const issues = validate(
     baseDraft("tcp", {}, {
       bridge: {
@@ -1297,7 +431,7 @@ const irIssues = (issues) => issues.filter((i) => i.field === "ir_codes");
     }),
   );
   const hits = bridgeIssues(issues);
-  results.p4_bridge_duplicate_port_id_warning = {
+  results.bridge_duplicate_port_id_warning = {
     pass:
       hits.length === 1 &&
       hits[0].severity === "warning" &&
@@ -1318,14 +452,14 @@ const irIssues = (issues) => issues.filter((i) => i.field === "ir_codes");
       },
     }),
   );
-  results.p4_bridge_valid_ok = {
+  results.bridge_valid_ok = {
     pass: bridgeIssues(issues).length === 0,
     detail: bridgeIssues(issues),
   };
 }
 {
   // An unknown {token} makes the computed value silently always "" at
-  // runtime (derive_config treats missing fields as empty) — flagged here.
+  // runtime (derive_config treats missing fields as empty).
   const issues = validate(
     baseDraft("tcp", {}, {
       config_schema: { workspace_id: { type: "string", label: "Workspace" } },
@@ -1333,7 +467,7 @@ const irIssues = (issues) => issues.filter((i) => i.field === "ir_codes");
     }),
   );
   const hits = derivedIssues(issues);
-  results.p4_config_derived_unknown_placeholder_warning = {
+  results.config_derived_unknown_placeholder_warning = {
     pass:
       hits.length === 1 &&
       hits[0].severity === "warning" &&
@@ -1343,8 +477,7 @@ const irIssues = (issues) => issues.filter((i) => i.field === "ir_codes");
 }
 {
   // A computed name colliding with a declared config field silently
-  // overwrites the configured value when the device connects. The backend
-  // doesn't reject it, so a warning.
+  // overwrites the configured value when the device connects.
   const issues = validate(
     baseDraft("tcp", {}, {
       config_schema: { zone: { type: "string", label: "Zone" } },
@@ -1352,7 +485,7 @@ const irIssues = (issues) => issues.filter((i) => i.field === "ir_codes");
     }),
   );
   const hits = derivedIssues(issues);
-  results.p4_config_derived_name_collision_warning = {
+  results.config_derived_name_collision_warning = {
     pass:
       hits.length === 1 &&
       hits[0].severity === "warning" &&
@@ -1373,29 +506,17 @@ const irIssues = (issues) => issues.filter((i) => i.field === "ir_codes");
       },
     }),
   );
-  results.p4_config_derived_valid_ok = {
+  results.config_derived_valid_ok = {
     pass: derivedIssues(issues).length === 0,
     detail: derivedIssues(issues),
   };
 }
 {
-  // Mirror avcdriver_semantic.py: the IR code-set flag must be a boolean.
-  const issues = validate(baseDraft("tcp", {}, { ir_codes: "yes" }));
-  const hits = irIssues(issues);
-  results.p4_ir_codes_non_boolean_error = {
-    pass:
-      hits.length === 1 &&
-      hits[0].severity === "error" &&
-      /true or false/.test(hits[0].message),
-    detail: hits,
-  };
-}
-{
-  // The field doc says use transport "bridge" with ir_codes; the backend
-  // doesn't enforce it, so a mismatch warns rather than errors.
+  // The field doc says use transport "bridge" with ir_codes; the platform
+  // doesn't enforce it, so a mismatch is advice.
   const issues = validate(baseDraft("tcp", {}, { ir_codes: true }));
   const hits = irIssues(issues);
-  results.p4_ir_codes_non_bridge_warning = {
+  results.ir_codes_non_bridge_warning = {
     pass:
       hits.length === 1 &&
       hits[0].severity === "warning" &&
@@ -1406,14 +527,90 @@ const irIssues = (issues) => issues.filter((i) => i.field === "ir_codes");
 {
   // The generic_ir shape: transport bridge + ir_codes true is clean.
   const issues = validate(baseDraft("bridge", {}, { ir_codes: true }));
-  const hits = [...irIssues(issues), ...transportsIssues(issues), ...bridgeIssues(issues)];
-  results.p4_ir_bridge_driver_ok = { pass: hits.length === 0, detail: hits };
+  results.ir_bridge_driver_ok = {
+    pass: irIssues(issues).length === 0,
+    detail: irIssues(issues),
+  };
 }
 {
-  // All the surfaced fields together on one valid driver: interchangeable
-  // transports, bridge ports, computed config referenced from a command,
-  // help.connection, catalog-stamped discovery.requires, and the advanced
-  // simulator blocks. Zero errors.
+  // An undeclared {token} in a command leaves a literal "{token}" on the
+  // wire; a declared param or config field (including a computed one) is
+  // fine.
+  const issues = validate(
+    baseDraft(
+      "tcp",
+      {
+        set_vol: {
+          label: "Vol",
+          send: "VOL {level} {ws} {typo}\\r",
+          params: { level: { type: "number" } },
+        },
+      },
+      {
+        config_schema: { workspace_id: { type: "string", label: "Workspace" } },
+        config_derived: { ws: "/w/{workspace_id}" },
+      },
+    ),
+  );
+  const hits = issues.filter((i) => /references \{/.test(i.message));
+  results.command_unknown_placeholder_warning = {
+    pass:
+      hits.length === 1 &&
+      hits[0].severity === "warning" &&
+      /\{typo\}/.test(hits[0].message),
+    detail: hits,
+  };
+}
+{
+  // A link action's URL substitutes {host}, {port} and declared config
+  // fields; anything else is left verbatim in the opened URL.
+  const issues = validate(
+    baseDraft("tcp", {}, {
+      web_ui: "https://{host}/admin",
+      actions: [
+        { id: "open_ui", kind: "link", label: "Open", url: "https://{hostt}/" },
+      ],
+    }),
+  );
+  const hits = issues.filter((i) => /left in the opened URL/.test(i.message));
+  results.link_url_unknown_placeholder_warning = {
+    pass:
+      hits.length === 1 &&
+      hits[0].severity === "warning" &&
+      /\{hostt\}/.test(hits[0].message),
+    detail: hits,
+  };
+}
+{
+  // Child-entity advice: no label, no state fields, and a summary/name field
+  // that isn't declared. All three describe a driver the platform runs.
+  const issues = validate(
+    baseDraft("tcp", {}, {
+      child_entity_types: {
+        zone: { state_variables: {} },
+        out: {
+          label: "Output",
+          state_variables: { input: { type: "integer", label: "Input" } },
+          summary_fields: ["input", "nope"],
+          label_field: "also_nope",
+        },
+      },
+    }),
+  );
+  const hits = issues.filter((i) => /^Child type/.test(i.message));
+  results.child_entity_advice_warnings = {
+    pass:
+      hits.length === 4 &&
+      hits.every((i) => i.severity === "warning") &&
+      hits.some((i) => /has no label/.test(i.message)) &&
+      hits.some((i) => /declares no state fields/.test(i.message)) &&
+      hits.some((i) => /summary field "nope"/.test(i.message)) &&
+      hits.some((i) => /name field "also_nope"/.test(i.message)),
+    detail: hits,
+  };
+}
+{
+  // A driver with everything filled in raises nothing at all.
   const issues = validate(
     baseDraft(
       "tcp",
@@ -1444,67 +641,23 @@ const irIssues = (issues) => issues.filter((i) => i.field === "ir_codes");
       },
     ),
   );
-  const errors = errorsOf(issues);
-  results.p4_full_featured_driver_ok = { pass: errors.length === 0, detail: errors };
-}
-
-// --- Child id_format: don't be stricter than the loader ------------------
-// The loader reads a missing id_format.type as "integer". This validator used
-// to require the key outright, so a perfectly loadable driver was flagged in
-// the Builder — and because the corpus below only asks "was there an error?",
-// that false positive was also standing in for two rules that did not exist
-// (a non-integer min, and an id_format that isn't a block at all).
-{
-  const idFormatDraft = (idFormat) =>
-    baseDraft("tcp", { noop: { label: "Noop", send: "NOOP\\r", params: {} } }, {
-      child_entity_types: {
-        zone: {
-          label: "Zone",
-          id_format: idFormat,
-          state_variables: { level: { type: "number", label: "Level" } },
-        },
-      },
-    });
-  const idFormatErrors = (idFormat) =>
-    errorsOf(validate(idFormatDraft(idFormat))).filter((i) =>
-      /id_format/.test(i.message),
-    );
-
-  const omitted = idFormatErrors({ min: 1, max: 8 });
-  results.child_id_format_without_type_ok = {
-    pass: omitted.length === 0,
-    detail: omitted,
-  };
-
-  const notBlock = idFormatErrors("integer");
-  results.child_id_format_not_a_block_error = {
-    pass: notBlock.length === 1 && /must be a block of settings/.test(notBlock[0].message),
-    detail: notBlock,
-  };
-
-  const badMin = idFormatErrors({ type: "integer", min: "one" });
-  results.child_id_format_min_not_whole_error = {
-    pass: badMin.length === 1 && /id_format\.min must be a whole number/.test(badMin[0].message),
-    detail: badMin,
-  };
-
-  const zeroPad = idFormatErrors({ type: "integer", min: 1, pad_width: 0 });
-  results.child_id_format_pad_width_zero_ok = {
-    pass: zeroPad.length === 0,
-    detail: zeroPad,
+  results.full_featured_driver_no_issues = {
+    pass: issues.length === 0,
+    detail: issues,
   };
 }
 
 // --- A validator failure is an issue, never a blank screen ---------------
 // A driver file is arbitrary YAML, so a field can hold a type no rule
 // expected. The editor validates inside a render, so a throw there takes the
-// whole screen down and leaves no way to fix the value that caused it. Each
-// of these loads on the platform without complaint and used to throw.
+// whole screen down and leaves no way to fix the value that caused it. Both
+// of these load on the platform without complaint and throw here. (Two more
+// used to: `auth.username_prompt: 5` and a null param definition. Nothing
+// reads those fields any more — the rules that did belong to the platform
+// now — which is the class shrinking, not the guard weakening.)
 {
   const throwers = {
     unquoted_year_author: { author: 2026 },
-    numeric_auth_prompt: { auth: { type: "telnet_login", username_prompt: 5 } },
-    null_param_definition: { commands: { go: { send: "GO", params: { x: null } } } },
     numeric_child_label: { child_entity_types: { zone: { label: 7 } } },
   };
   for (const [name, extra] of Object.entries(throwers)) {
@@ -1524,6 +677,7 @@ const irIssues = (issues) => issues.filter((i) => i.field === "ir_codes");
     }
     results[`safe_${name}`] = {
       pass:
+        raw !== "did not throw" &&
         threw === null &&
         Array.isArray(issues) &&
         issues.length >= 1 &&
@@ -1541,38 +695,6 @@ const irIssues = (issues) => issues.filter((i) => i.field === "ir_codes");
     pass: clean.filter((i) => i.severity === "error").length === 0,
     detail: clean,
   };
-}
-
-// --- The shared rejection corpus ----------------------------------------
-// Every definition in driver_validation_cases.json is one the loader refuses.
-// The community driver catalog already replays this corpus against its
-// vendored copy of the Python rules; the Builder's validator is the consumer
-// that was never wired to it, so a rule the loader enforces can be missing
-// here and nothing notices until an author hits a save-time rejection.
-//
-// Emitted as raw verdicts, one per case. The Python side decides which are
-// expected to pass, so the known gaps live in one reviewable list there
-// instead of scattered through this file.
-{
-  const cases = JSON.parse(fs.readFileSync(corpusPath, "utf8"));
-  const corpus = {};
-  for (const [name, draft] of Object.entries(cases)) {
-    try {
-      const issues = validate(draft) || [];
-      corpus[name] = {
-        rejected: errorsOf(issues).length > 0,
-        threw: null,
-        messages: issues.map((i) => `${i.severity}: ${i.message}`),
-      };
-    } catch (e) {
-      corpus[name] = {
-        rejected: false,
-        threw: String(e && e.message ? e.message : e),
-        messages: [],
-      };
-    }
-  }
-  results.corpus = corpus;
 }
 
 process.stdout.write(JSON.stringify(results));

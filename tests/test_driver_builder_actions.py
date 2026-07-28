@@ -3,15 +3,20 @@ and the Actions editor's pure helpers (actionsEditorHelpers.ts).
 
 A driver can promote commands to Quick Action buttons (``actions`` +
 legacy ``quick_actions``) and declare a browser-reachable web interface
-(``web_ui``). The loader validates all three at save time, so the Builder
-mirrors those rules at author time: action ids must be unique, kinds and
-availabilities must come from the contract tables, a command action must
-resolve to a declared command, link URLs and a web_ui template only
-substitute {host}/{port}/config placeholders, and visible_when conditions
-need a key and a known operator. These tests bundle the real TypeScript with
-the esbuild in web/programmer/node_modules and assert both the validator and
-the editor helpers (quick_actions conversion, visible_when mode detection,
-condition-value coercion). Skips when the Node toolchain or esbuild is
+(``web_ui``). Every rule about what those blocks may contain — unique ids,
+kinds and availabilities from the contract tables, a command action that
+resolves, visible_when conditions with a key and a known operator — is the
+platform's, and comes back from ``POST /api/driver-definitions/validate``
+(tested in test_driver_definition_validate.py, word for word against the save
+path). The Builder used to mirror all of it in TypeScript; that copy is gone.
+
+What is left here, and what these tests cover: the placeholder advice for link
+URLs and a web_ui template (a warning — the platform substitutes {host},
+{port} and config fields, and leaves anything else verbatim in the opened
+URL), that a valid actions block raises nothing at all, and the Actions
+editor's pure helpers (quick_actions conversion, visible_when mode detection,
+condition-value coercion). Bundles the real TypeScript with the esbuild in
+web/programmer/node_modules. Skips when the Node toolchain or esbuild is
 absent rather than failing the Python-only CI gate.
 """
 from __future__ import annotations
@@ -81,22 +86,8 @@ def actions_results() -> dict:
 # One pytest case per harness scenario, so a failure names the exact behaviour.
 SCENARIOS = [
     "actions_clean_ok",
-    "action_missing_id_error",
-    "action_duplicate_id_error",
-    "action_unknown_kind_error",
-    "action_bad_availability_error",
-    "action_url_on_command_error",
-    "action_link_empty_url_error",
     "action_link_no_url_ok",
-    "action_command_unresolved_error",
-    "action_command_field_resolves_ok",
-    "action_no_commands_skips_resolution",
     "quick_actions_ok",
-    "quick_action_unknown_error",
-    "quick_action_blank_error",
-    "visible_when_missing_key_error",
-    "visible_when_unknown_operator_error",
-    "visible_when_group_ok_empty_group_error",
     "web_ui_unknown_placeholder_warning",
     "web_ui_known_placeholders_ok",
     "link_url_unknown_placeholder_warning",
