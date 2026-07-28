@@ -793,3 +793,64 @@ async def test_retry_all_orphans_partial_activation(dm, core):
     finally:
         _DRIVER_REGISTRY.pop("another_arriving_driver", None)
         await dm.disconnect_all()
+
+
+# ---------------------------------------------------------------------------
+# Shutdown must not start the auto-reconnect it just cancelled
+# ---------------------------------------------------------------------------
+
+
+async def test_shutdown_does_not_start_reconnect_loops(dm, core, acme_sim):
+    """disconnect_all leaves nothing retrying behind it.
+
+    Closing a device's transport fires the same drop callback a real failure
+    does, so the disconnect event that follows looks exactly like a device
+    falling over — and the handler answers that by starting a reconnect loop.
+    Shutdown cancels the loops first and then created a fresh one per device,
+    which kept retrying for up to two hours. Only the process exiting behind
+    Engine.stop() hid it.
+    """
+    await dm.add_device({
+        "id": "dev1",
+        "driver": "acme_display",
+        "name": "Test Display",
+        "config": {"host": "127.0.0.1", "port": acme_sim.port, "poll_interval": 0},
+    })
+    assert core[0].get("device.dev1.connected") is True
+
+    await dm.disconnect_all()
+    # The drop callback schedules its event, so let it land before looking.
+    await asyncio.sleep(0.2)
+
+    assert dm._reconnect_tasks == {}
+    # Match the coroutine's own qualified name: a substring search over
+    # str(coro) also matches this test function's name.
+    live = [
+        task for task in asyncio.all_tasks()
+        if getattr(task.get_coro(), "__qualname__", "") == "DeviceManager._reconnect_loop"
+    ]
+    assert live == []
+
+
+async def test_a_device_added_after_shutdown_can_still_auto_reconnect(
+    dm, core, acme_sim
+):
+    """The suppress-reconnect mark shutdown sets must not outlive it.
+
+    It is deliberately left in place at shutdown (the drop event can arrive
+    after disconnect_all returns), so adding a device is what has to clear it.
+    Without that, a manager started again would never auto-reconnect any
+    device it had shut down — a worse failure than the one being fixed.
+    """
+    config = {
+        "id": "dev1",
+        "driver": "acme_display",
+        "name": "Test Display",
+        "config": {"host": "127.0.0.1", "port": acme_sim.port, "poll_interval": 0},
+    }
+    await dm.add_device(config)
+    await dm.disconnect_all()
+    assert "dev1" in dm._intentional_disconnect
+
+    await dm.add_device(config)
+    assert "dev1" not in dm._intentional_disconnect

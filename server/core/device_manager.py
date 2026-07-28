@@ -272,6 +272,13 @@ class DeviceManager:
         name = device_config.get("name", device_id)
         config = device_config.get("config", {})
 
+        # Adding a device is a fresh start, so it must not inherit a
+        # suppress-auto-reconnect mark left by whatever happened to this id
+        # before — a shutdown, or a removal. remove_device says the same thing
+        # about its own discard: a stale entry silently disables auto-reconnect
+        # for the device added under that id next.
+        self._intentional_disconnect.discard(device_id)
+
         enabled = device_config.get("enabled", True)
         if not enabled:
             self._device_configs[device_id] = device_config
@@ -898,6 +905,21 @@ class DeviceManager:
         for task in list(self._web_ui_probe_tasks.values()):
             task.cancel()
         self._web_ui_probe_tasks.clear()
+
+        # Mark every device as an intentional disconnect BEFORE closing it.
+        # driver.disconnect() closes the transport, whose drop callback emits
+        # device.disconnected.<id>, which _on_device_disconnected reads as a
+        # device that fell over and answers by starting a reconnect loop — so
+        # without this, shutting down starts one loop per device, right after
+        # the cancel pass above cleared them. Nothing normally notices because
+        # the only caller is Engine.stop() and the process exits behind it;
+        # a stop that isn't followed by process exit leaves the loops retrying
+        # for about an hour. This is the set that exists for exactly this. It
+        # is not cleared afterwards, because the transport's drop callback
+        # emits its event through a scheduled task that can land well after
+        # this method returns; add_device clears the mark instead, so a manager
+        # that is started again reconnects normally.
+        self._intentional_disconnect.update(self._devices)
 
         for device_id, driver in self._devices.items():
             try:
