@@ -528,7 +528,6 @@ export interface ActionParam {
   child_type?: string;
   // Option providers — see DriverParamDef for the full contract.
   options_state?: string;
-  options_source?: string;
   options_from?: ParamOptionsFrom;
   type_from?: ParamTypeFrom;
 }

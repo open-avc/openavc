@@ -1048,10 +1048,6 @@ DEFS = {
                 'type': 'string',
                 'doc': 'Make this param a picker sourced from a device-relative state key. The IDE reads device.<id>.<options_state> (a JSON-encoded list of strings or {value,label} objects) and offers it as a dropdown. The driver publishes the enumerable set as a state variable.',
             },
-            'options_source': {
-                'type': 'string',
-                'doc': 'Like options_state but an absolute state key, read verbatim (same primitive plugins use). Use options_state for per-device lists.',
-            },
             'options_from': {
                 'type': 'object',
                 'doc': "Cascade: source this param's options from a sibling param's chosen value.",

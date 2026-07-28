@@ -34,8 +34,8 @@ export function findChildByValue(
  * not-yet-published source renders an empty list rather than throwing.
  *
  * This is the one shared contract behind every state-sourced param dropdown
- * (`options_state` / `options_source` on device command/action params, plugin
- * macro-action selects, and plugin panel-element config selects).
+ * (`options_state` on device command/action params, and the plugin-side
+ * `options_source` on plugin macro-action and panel-element config selects).
  */
 /**
  * Normalize an already-parsed option list into `{value, label}` rows. Each

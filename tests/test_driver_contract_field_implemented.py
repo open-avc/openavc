@@ -26,7 +26,15 @@ Two limits, recorded so nobody re-derives them:
 * A field name that is also an ordinary identifier can pass on a coincidence
   somewhere unrelated. ``tls`` on a discovery probe has no Builder editor at
   all, but the name matches the HTTPS settings client, so this check reports
-  it as covered. The check is a floor, not a ceiling.
+  it as covered. The check is a floor, not a ceiling. Two more collisions,
+  found by auditing what this check was actually proving:
+  ``params.*.options_source`` passed on *both* halves at once (plugins use the
+  name for an unrelated config field in ``core/plugin_loader.py``; the UI
+  Builder for an unrelated element property in ``panelElementConfig.ts``)
+  while nothing read the driver field — it has since been cut. And
+  ``child_entity_types.*.id_format.max_length`` passes its frontend half on
+  ``PluginConfigForm.tsx``, which hides a real gap: Python drivers set it and
+  no Builder editor can.
 * "Mentioned" is not "implemented correctly". This catches the field nobody
   wired up, which is a real and recurring bug; it cannot catch one wired up
   wrong. The corpus and behavior suites are what cover that.

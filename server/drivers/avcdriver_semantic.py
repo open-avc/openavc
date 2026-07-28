@@ -74,7 +74,7 @@ def _validate_param_option_providers(
     where: str, params: Any, errors: list[str],
 ) -> None:
     """Validate the param-picker option/type providers (§69) on a param map:
-    ``options_state`` / ``options_source`` (state-key lists), ``options_from``
+    ``options_state`` (state-key list), ``options_from``
     (cascade off a sibling param), and ``type_from`` (take the input type from a
     sibling cascade's chosen control). Also validates the Phase 3 free-text
     aids — a ``pattern`` regex (compiles + isn't ReDoS-prone) and sane
@@ -149,12 +149,11 @@ def _validate_param_option_providers(
                         )
                         break
 
-        for key in ("options_state", "options_source"):
-            val = pdef.get(key)
-            if val is not None and not (isinstance(val, str) and val):
-                errors.append(
-                    f"{where} param '{pname}': {key} must be a non-empty string"
-                )
+        ostate = pdef.get("options_state")
+        if ostate is not None and not (isinstance(ostate, str) and ostate):
+            errors.append(
+                f"{where} param '{pname}': options_state must be a non-empty string"
+            )
         ofrom = pdef.get("options_from")
         if ofrom is not None:
             if not isinstance(ofrom, dict):

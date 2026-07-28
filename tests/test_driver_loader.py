@@ -1000,9 +1000,9 @@ def test_driver_id_from_file_returns_none_on_garbage(tmp_path):
 # --- Param-picker option providers (§69 Phase 2) ---
 #
 # A command/action param can declare where its dropdown options come from:
-# options_state / options_source (state-key lists) and options_from (cascade
-# off a sibling param). validate_driver_definition flags a malformed provider
-# so an author sees the typo at load instead of getting a silent free-text box.
+# options_state (a state-key list) and options_from (cascade off a sibling
+# param). validate_driver_definition flags a malformed provider so an author
+# sees the typo at load instead of getting a silent free-text box.
 
 
 def _def_with_command(params: dict) -> dict:
@@ -1018,10 +1018,9 @@ def _def_with_command(params: dict) -> dict:
     }
 
 
-def test_options_state_and_source_accepted():
+def test_options_state_accepted():
     errors = validate_driver_definition(_def_with_command({
         "bank": {"type": "string", "options_state": "snapshot_banks"},
-        "voice": {"type": "string", "options_source": "plugin.tts.voices"},
     }))
     assert errors == []
 
@@ -1033,9 +1032,29 @@ def test_options_state_must_be_nonempty_string():
     assert any("options_state" in e for e in errors)
 
     errors = validate_driver_definition(_def_with_command({
-        "bank": {"type": "string", "options_source": 5},
+        "bank": {"type": "string", "options_state": 5},
     }))
-    assert any("options_source" in e for e in errors)
+    assert any("options_state" in e for e in errors)
+
+
+def test_absolute_state_key_picker_is_not_a_driver_field():
+    """`options_source` was an absolute-state-key twin of `options_state` that
+    no driver ever used and no runtime ever read, so it was removed from the
+    contract. A param that still declares it now reads as an ordinary typo:
+    strict validation names it as unknown and points at the field that works.
+
+    A plain load stays lenient, which is what keeps the removal free — an
+    existing hand-written driver carrying the key still loads and behaves
+    exactly as it always did (the key never did anything), it just no longer
+    passes the strict checks the Builder and catalog CI run.
+    """
+    definition = _def_with_command({
+        "voice": {"type": "string", "options_source": "var.tts_voices"},
+    })
+    assert validate_driver_definition(definition) == []
+
+    strict = validate_driver_definition(definition, strict=True)
+    assert any("options_source" in e and "options_state" in e for e in strict), strict
 
 
 def test_options_from_child_schema_accepted():

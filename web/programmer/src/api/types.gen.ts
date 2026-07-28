@@ -118,7 +118,7 @@ export const DRIVER_CONTRACT_KEYS: Readonly<Record<string, ReadonlySet<string>>>
   childSetEntry: new Set(["id", "state", "type"]),
   eachChildQuery: new Set(["each_child", "query_for", "send", "when"]),
   queryEntry: new Set(["query_for", "send", "when"]),
-  paramEntry: new Set(["child_type", "decimals", "default", "description", "help", "label", "map", "max", "min", "options_from", "options_source", "options_state", "pattern", "required", "trim", "type", "type_from", "values"]),
+  paramEntry: new Set(["child_type", "decimals", "default", "description", "help", "label", "map", "max", "min", "options_from", "options_state", "pattern", "required", "trim", "type", "type_from", "values"]),
   oscArg: new Set(["type", "value"]),
   commandEntry: new Set(["address", "args", "available_offline", "body", "headers", "help", "label", "method", "params", "path", "query_for", "query_params", "raw", "send", "sets"]),
   actionEntry: new Set(["availability", "command", "confirm", "icon", "id", "kind", "label", "params", "url", "visible_when"]),
@@ -221,11 +221,6 @@ export interface DriverParamDef {
    * the enumerable set as a state variable.
    */
   options_state?: string;
-  /**
-   * Like options_state but an absolute state key, read verbatim (same
-   * primitive plugins use). Use options_state for per-device lists.
-   */
-  options_source?: string;
   /** Cascade: source this param's options from a sibling param's chosen value. */
   options_from?: { param: string; source: "child_schema" };
   /**

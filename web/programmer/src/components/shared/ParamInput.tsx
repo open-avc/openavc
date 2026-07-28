@@ -35,9 +35,8 @@ import { VariableKeyPicker } from "./VariableKeyPicker";
  *   - options_from    -> cascade: a combobox of the controls on the child
  *                        chosen in a sibling `child_id` param (needs `deviceId`
  *                        + `values` + `params`)
- *   - options_state /
- *     options_source  -> combobox sourced from a state-published list
- *                        (device-relative or absolute state key)
+ *   - options_state   -> combobox sourced from a state-published list
+ *                        (a device-relative state key)
  *   - integer/number/float -> number input (honors min/max)
  *   - password/secret -> masked input (never pre-filled)
  *   - everything else -> text input
@@ -162,13 +161,12 @@ export function ParamInput({
     };
   }, [fetchChildType, deviceId]);
 
-  // State-sourced options: a device-relative key (`options_state`, resolved
-  // against this device) or an absolute key (`options_source`, verbatim).
-  const stateOptionKey = def.options_state
-    ? deviceId
+  // State-sourced options: a device-relative key (`options_state`), resolved
+  // against this device.
+  const stateOptionKey =
+    def.options_state && deviceId
       ? `device.${deviceId}.${def.options_state}`
-      : undefined
-    : def.options_source || undefined;
+      : undefined;
   const stateOptionRaw = useConnectionStore((s) =>
     stateOptionKey ? s.liveState[stateOptionKey] : undefined,
   );
@@ -247,7 +245,7 @@ export function ParamInput({
         }
       }
     }
-  } else if (stateOptionKey || def.options_state || def.options_source) {
+  } else if (def.options_state) {
     comboOptions = parseStateOptionList(stateOptionRaw);
   }
 

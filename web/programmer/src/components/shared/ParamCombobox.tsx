@@ -4,7 +4,7 @@ import { ChevronDown } from "lucide-react";
 import type { ParamOption } from "./paramOptions";
 
 /** A "pick or type" field for a param whose known values come from an option
- *  provider (options_state / options_source / options_from). Unlike an HTML
+ *  provider (options_state / options_from). Unlike an HTML
  *  <datalist>, the dropdown opens on click/focus and shows the *full* list even
  *  when a value is already chosen (a datalist hides everything once the text
  *  matches), filters as you type, and keeps a typed value the platform hasn't

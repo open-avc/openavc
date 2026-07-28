@@ -165,7 +165,7 @@ class DriverDefinitionRequest(BaseModel):
     actions: list[dict[str, Any]] = []
     quick_actions: list[str] = []
     # Param-picker option providers (§69 Phase 2) — `options_state` /
-    # `options_source` / `options_from` — and the free-text validators (§69
+    # `options_from` — and the free-text validators (§69
     # Phase 3) — `min` / `max` / `pattern` — on a command or action param are
     # nested inside the untyped `commands` / `actions` dicts above, so they ride
     # through to disk and out to the IDE verbatim with no per-field model. (The
