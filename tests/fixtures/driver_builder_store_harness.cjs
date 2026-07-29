@@ -200,11 +200,12 @@ async function importBlockerChecks() {
   }
 }
 
-// --- M-229: cloneDraft fills in state_variables the editors index blindly ---
+// --- M-229: cloneDraft fills in the collections the editors index blindly ---
 {
-  // The runtime loader tolerates a driver that omits state_variables, so a
-  // definition can arrive without it; cloning it verbatim crashed the
-  // State Variables / Behavior / Simulation tabs on Object.keys(undefined).
+  // The runtime loader tolerates a driver that omits any of these, so a
+  // definition can arrive without them; cloning it verbatim crashed the
+  // State Variables / Behavior / Simulation tabs on Object.keys(undefined),
+  // and the whole Connection tab on TransportPicker's default_config[key].
   const def = { id: "acme_min", name: "Acme Minimal", transport: "tcp" };
   let keys = null;
   let threw = false;
@@ -217,14 +218,69 @@ async function importBlockerChecks() {
     pass: !threw && eq(keys, []) && !("state_variables" in def),
     detail: { keys, threw },
   };
+
+  // Every collection the type declares always-present, not just the one that
+  // was patched first. Indexing any of them is what takes a tab down.
+  let filled = null;
+  let fillThrew = false;
+  try {
+    const clone = H.cloneDraft(def);
+    filled = {
+      default_config: clone.default_config,
+      config_schema: clone.config_schema,
+      commands: clone.commands,
+      polling: clone.polling,
+      responses: clone.responses,
+      // the access that crashed: "Cannot read properties of undefined
+      // (reading 'port')"
+      port: clone.default_config["port"] ?? null,
+    };
+  } catch (e) {
+    fillThrew = String(e);
+  }
+  results.m229_clone_fills_every_indexed_collection = {
+    pass:
+      fillThrew === false &&
+      eq(filled.default_config, {}) &&
+      eq(filled.config_schema, {}) &&
+      eq(filled.commands, {}) &&
+      eq(filled.polling, {}) &&
+      eq(filled.responses, []) &&
+      filled.port === null &&
+      // the source definition is untouched
+      !("default_config" in def),
+    detail: { filled, fillThrew },
+  };
+
+  // A scalar must NOT be invented: writing a delimiter into an HTTP driver
+  // would change the driver on re-export.
+  const scalars = H.cloneDraft(def);
+  results.m229_clone_invents_no_scalars = {
+    pass:
+      scalars.delimiter === undefined &&
+      scalars.manufacturer === undefined &&
+      scalars.frame_parser === undefined,
+    detail: {
+      delimiter: scalars.delimiter,
+      manufacturer: scalars.manufacturer,
+      frame_parser: scalars.frame_parser,
+    },
+  };
 }
 {
   // A well-formed definition round-trips byte-identically: same content AND
   // same key order (the fill must append only when absent, not re-order).
+  // "Well-formed" means it carries every collection the fill would add —
+  // otherwise this is testing the fill, not the round-trip.
   const def = {
     id: "acme_full",
     name: "Acme Full",
+    default_config: { port: 9000 },
+    config_schema: {},
     state_variables: { power: { type: "boolean", label: "Power" } },
+    commands: {},
+    responses: [],
+    polling: {},
     transport: "tcp",
   };
   try {

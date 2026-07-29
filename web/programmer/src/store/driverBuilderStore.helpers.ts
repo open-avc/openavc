@@ -45,17 +45,46 @@ export function parseDriverDefinition(text: string): DriverDefinition {
 }
 
 /**
+ * Collections `DriverDefinition` declares as always-present and the editors
+ * therefore index without a guard (`draft.default_config[key]`,
+ * `Object.keys(draft.commands)`).
+ *
+ * The type is a promise about an editor DRAFT, not about a driver on disk:
+ * only id/name/transport are required by the contract, so a hand-authored
+ * .avcdriver, an imported file, or a driver created through the API can
+ * legitimately omit any of these. Whatever the type says, the value can be
+ * undefined at runtime, and TypeScript cannot catch the difference.
+ */
+const DRAFT_COLLECTIONS = [
+  "default_config",
+  "config_schema",
+  "state_variables",
+  "commands",
+  "responses",
+  "polling",
+] as const;
+
+/**
  * Clone a definition into an editor draft, filling in the collections the
- * editors index without guards. The runtime loader tolerates a hand-authored
- * .avcdriver that omits state_variables, so definitions arriving from the
- * API or a file import can miss it even though the type declares it —
- * cloning it verbatim crashed the State Variables / Behavior / Simulation
- * tabs on Object.keys(undefined). Appends the key only when absent, so the
- * YAML key order of well-formed drivers is untouched on re-export.
+ * editors index without guards.
+ *
+ * Cloning verbatim crashes a tab outright: a driver with no state_variables
+ * took out State Variables / Behavior / Simulation on Object.keys(undefined),
+ * and one with no default_config took out the whole Connection tab on
+ * TransportPicker's `draft.default_config[key]` ("Cannot read properties of
+ * undefined (reading 'port')"). The first was fixed key-by-key; this covers
+ * the class, because every one of these is reachable the same way.
+ *
+ * Appends a key only when absent, so the YAML key order of well-formed
+ * drivers is untouched on re-export.
  */
 export function cloneDraft(definition: DriverDefinition): DriverDefinition {
   const draft = structuredClone(definition);
-  draft.state_variables ??= {};
+  const slots = draft as unknown as Record<string, unknown>;
+  for (const key of DRAFT_COLLECTIONS) {
+    // responses is the one list; the rest are keyed maps.
+    if (slots[key] == null) slots[key] = key === "responses" ? [] : {};
+  }
   return draft;
 }
 

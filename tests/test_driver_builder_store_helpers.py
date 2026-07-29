@@ -93,6 +93,8 @@ SCENARIOS = [
     "m128_import_duplicate_id_blocks",
     "m128_import_server_unreachable_does_not_block",
     "m229_clone_fills_missing_state_variables",
+    "m229_clone_fills_every_indexed_collection",
+    "m229_clone_invents_no_scalars",
     "m229_clone_preserves_shape_and_is_deep",
     "l150_json_object_ok",
     "l150_yaml_mapping_ok",
