@@ -113,7 +113,7 @@ export const DRIVER_CONTRACT_KEYS: Readonly<Record<string, ReadonlySet<string>>>
   compatibleModelsEntry: new Set(["confidence", "manufacturer", "models", "notes"]),
   stateVariableEntry: new Set(["cloud_priority", "control", "default", "help", "label", "max", "min", "step", "type", "unit", "values"]),
   childStateVariableEntry: new Set(["cloud_priority", "control", "default", "help", "label", "max", "min", "step", "type", "unit", "values"]),
-  childEntityType: new Set(["id_format", "instances", "label", "label_field", "label_plural", "state_variables", "summary_fields"]),
+  childEntityType: new Set(["dynamic", "id_format", "instances", "label", "label_field", "label_plural", "state_variables", "summary_fields"]),
   childInstances: new Set(["count", "count_from", "count_from_state", "ids", "ids_from", "label"]),
   childSetEntry: new Set(["id", "state", "type"]),
   eachChildQuery: new Set(["each_child", "query_for", "send", "when"]),
@@ -838,6 +838,16 @@ export interface DriverChildEntityType {
   state_variables: Record<string, DriverChildStateVarDef>;
   summary_fields?: string[];
   label_field?: string;
+  /**
+   * Mark a type whose children each carry their own control set, discovered at
+   * connect time rather than declared here (a DSP's user-built components, a
+   * hub's attached devices). Only a driver that registers children in code can
+   * populate one: register_child(..., schema=...) refuses a per-child schema
+   * unless the type declares this, and the {source: child_schema} param picker
+   * reads those schemas. A declarative roster has nothing to attach a schema
+   * to, so leave it off for YAML drivers.
+   */
+  dynamic?: boolean;
   instances?: DriverChildInstances;
 }
 

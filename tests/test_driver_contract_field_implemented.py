@@ -38,7 +38,14 @@ Two limits, recorded so nobody re-derives them:
   ``success_pattern`` discovery and auth fields, and ``params.*.trim`` matches
   the JavaScript string method, which appears in nearly every file. All three
   were hiding a missing editor; all three now have one, so the collisions are
-  recorded here as limits of the check rather than as open gaps.
+  recorded here as limits of the check rather than as open gaps. A fourth,
+  ``child_entity_types.*.dynamic``, passes its frontend half on the IDE's
+  hand-written ``ChildEntityTypeSchema`` type rather than on a form control,
+  and that one is right to have no control: only a driver that registers
+  children in code can attach the per-child schemas the flag unlocks, so a
+  checkbox in a YAML authoring surface would set a flag the runtime could
+  never act on. The type declaration is what matters there — it is why the
+  Builder round-trips the field instead of dropping it.
 * "Mentioned" is not "implemented correctly". This catches the field nobody
   wired up, which is a real and recurring bug; it cannot catch one wired up
   wrong. The corpus and behavior suites are what cover that.

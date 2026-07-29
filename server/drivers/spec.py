@@ -823,6 +823,10 @@ DEFS = {
             'label_field': {
                 'type': 'string',
             },
+            'dynamic': {
+                'type': 'boolean',
+                'doc': 'Mark a type whose children each carry their own control set, discovered at connect time rather than declared here (a DSP\'s user-built components, a hub\'s attached devices). Only a driver that registers children in code can populate one: register_child(..., schema=...) refuses a per-child schema unless the type declares this, and the {source: child_schema} param picker reads those schemas. A declarative roster has nothing to attach a schema to, so leave it off for YAML drivers.',
+            },
             'instances': {
                 'ref': 'childInstances',
             },
