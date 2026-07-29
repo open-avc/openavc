@@ -900,6 +900,25 @@ set_component_control:
 
 These rules apply to every driver format — a Python driver's declared `min`/`max`/`pattern` are enforced at command time exactly like a YAML driver's.
 
+**Two presentation-only parameter settings.** Neither changes the value the device receives:
+
+- `unit` puts a unit beside the input when the command is run (`%`, `ms`, `dB`) — worth setting wherever the number alone is ambiguous. The same key means the same thing on a state variable and on a device setting.
+- `secret: true` masks the input, for a parameter that carries a password, PIN, or key. Use it wherever a credential would otherwise sit on screen in plain text. The same key does the same job on a `config_schema` field.
+
+```yaml
+set_audio_delay:
+  label: Set Audio Delay
+  send: "DELAY {delay}\r"
+  params:
+    delay: { type: integer, required: true, label: Mute Time, min: 0, max: 10000, unit: ms }
+
+login:
+  label: Log In
+  send: "LOGIN {password}\r"
+  params:
+    password: { type: string, required: true, label: Password, secret: true }
+```
+
 ```yaml
 connect_host:
   send: "CONNECT {host}\r"

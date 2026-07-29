@@ -45,9 +45,7 @@ import { VariableKeyPicker } from "./VariableKeyPicker";
  *  whose runtime resolves $-prefixed values (macro steps). */
 
 export interface ParamInputProps {
-  // DriverParamDef plus `secret` (carried by action params) so password fields
-  // render masked from either schema source.
-  def: Partial<DriverParamDef> & { secret?: boolean };
+  def: Partial<DriverParamDef>;
   value: string;
   onChange: (value: string) => void;
   /** Enables the child_id dropdown (fetches the device's live children) and
@@ -404,6 +402,18 @@ export function ParamInput({
     <div style={{ display: "flex", flexDirection: "column", gap: 4, ...style }}>
       <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
         {widget}
+        {/* Display only — the unit is never part of the value sent. */}
+        {def.unit && (
+          <span
+            style={{
+              fontSize: "var(--font-size-sm)",
+              color: "var(--text-muted)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {def.unit}
+          </span>
+        )}
         {toggle}
       </div>
       {error && (

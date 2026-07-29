@@ -1015,6 +1015,10 @@
           "minimum": 0,
           "description": "For a number param: round the value to this many decimal places on the wire (0 = whole number). An integer param always coerces to a whole number, so decimals is not needed there. For fixed-width or hex output, use a format spec on the placeholder instead (e.g. {level:03d}, {addr:02X})."
         },
+        "unit": {
+          "type": "string",
+          "description": "Unit shown beside the input when the command is run (e.g. %, ms, dB). Display only — it is never sent on the wire, so the value the device receives is unchanged. Use it where the number alone is ambiguous; the same key on a state variable or device setting means the same thing."
+        },
         "pattern": {
           "type": "string",
           "format": "regex",
@@ -1023,6 +1027,10 @@
         "trim": {
           "type": "boolean",
           "description": "For string params. Default true: leading/trailing whitespace is trimmed before the value goes on the wire. Set false to pass the value through verbatim — for raw payloads where edge whitespace is meaningful (typed text, verbatim titles, relay bodies whose trailing terminator is part of the protocol). Requires platform 0.22.0."
+        },
+        "secret": {
+          "type": "boolean",
+          "description": "Render the input masked when the command is run, for a param that carries a password, PIN or key. Presentation only: the value still goes on the wire as typed, and nothing is stored. The same key on a config_schema field means the same thing — set it wherever a credential would otherwise sit on screen in plain text."
         },
         "default": true,
         "map": {

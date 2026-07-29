@@ -1099,6 +1099,7 @@ function ParamRow({
   const isEnum = def.type === "enum";
   const isBool = def.type === "boolean";
   const isChildId = def.type === "child_id";
+  const showUnit = isNumeric || def.unit !== undefined;
 
   return (
     <div
@@ -1234,12 +1235,13 @@ function ParamRow({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns:
-            def.type === "number"
-              ? "1fr 1fr 1fr 1fr 1fr"
-              : isNumeric
-                ? "1fr 1fr 1fr 1fr"
-                : "1fr 1fr",
+          gridTemplateColumns: [
+            "1fr", // Help Text
+            "1fr", // Default
+            ...(isNumeric ? ["1fr", "1fr"] : []), // Min, Max
+            ...(def.type === "number" ? ["1fr"] : []), // Decimals
+            ...(showUnit ? ["1fr"] : []), // Unit
+          ].join(" "),
           gap: "var(--space-sm)",
           marginTop: "var(--space-sm)",
         }}
@@ -1350,6 +1352,22 @@ function ParamRow({
             )}
           </>
         )}
+        {/* Shown for numeric params, where a unit is the usual need — and for
+            any param that already carries one, so a value set by hand in YAML
+            stays visible and editable instead of silently kept. */}
+        {showUnit && (
+          <div>
+            <span style={labelStyle}>Unit</span>
+            <input
+              value={def.unit ?? ""}
+              onChange={(e) => onUpdate({ unit: e.target.value || undefined })}
+              placeholder="%, ms, dB"
+              title="Shown beside the input when the command is run. Display only — it is never sent to the device."
+              data-testid={`param-unit-${name}`}
+              style={{ width: "100%", fontSize: "var(--font-size-sm)" }}
+            />
+          </div>
+        )}
       </div>
 
       {/* Free-text aids. Shown for string params, where the runtime applies
@@ -1357,11 +1375,12 @@ function ParamRow({
           hand in YAML stays visible and editable instead of silently kept. */}
       {(def.type === "string" ||
         def.pattern !== undefined ||
-        def.trim !== undefined) && (
+        def.trim !== undefined ||
+        def.secret !== undefined) && (
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "1fr auto",
+            gridTemplateColumns: "1fr auto auto",
             gap: "var(--space-sm)",
             marginTop: "var(--space-sm)",
             alignItems: "end",
@@ -1405,6 +1424,28 @@ function ParamRow({
               data-testid={`param-trim-${name}`}
             />
             Trim spaces
+          </label>
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              fontSize: "var(--font-size-sm)",
+              color: "var(--text-secondary)",
+              paddingBottom: 6,
+              whiteSpace: "nowrap",
+            }}
+            title="Mask the input when the command is run, for a password, PIN or key. Presentation only: the value still goes to the device as typed."
+          >
+            <input
+              type="checkbox"
+              checked={def.secret === true}
+              onChange={(e) =>
+                onUpdate({ secret: e.target.checked ? true : undefined })
+              }
+              data-testid={`param-secret-${name}`}
+            />
+            Masked
           </label>
         </div>
       )}

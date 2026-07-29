@@ -118,7 +118,7 @@ export const DRIVER_CONTRACT_KEYS: Readonly<Record<string, ReadonlySet<string>>>
   childSetEntry: new Set(["id", "state", "type"]),
   eachChildQuery: new Set(["each_child", "query_for", "send", "when"]),
   queryEntry: new Set(["query_for", "send", "when"]),
-  paramEntry: new Set(["child_type", "decimals", "default", "description", "help", "label", "map", "max", "min", "options_from", "options_state", "pattern", "required", "trim", "type", "type_from", "values"]),
+  paramEntry: new Set(["child_type", "decimals", "default", "description", "help", "label", "map", "max", "min", "options_from", "options_state", "pattern", "required", "secret", "trim", "type", "type_from", "unit", "values"]),
   oscArg: new Set(["type", "value"]),
   commandEntry: new Set(["address", "args", "available_offline", "body", "headers", "help", "label", "method", "params", "path", "query_for", "query_params", "raw", "send", "sets"]),
   actionEntry: new Set(["availability", "command", "confirm", "icon", "id", "kind", "label", "params", "url", "visible_when"]),
@@ -249,6 +249,13 @@ export interface DriverParamDef {
    */
   decimals?: number;
   /**
+   * Unit shown beside the input when the command is run (e.g. %, ms, dB).
+   * Display only — it is never sent on the wire, so the value the device
+   * receives is unchanged. Use it where the number alone is ambiguous; the
+   * same key on a state variable or device setting means the same thing.
+   */
+  unit?: string;
+  /**
    * Regex a free-text value must fully match — a shape check for values that
    * can't be enumerated (IP, hostname, fixed-length ID). The runtime validates
    * it at command time; the IDE shows an inline error while authoring. Must
@@ -263,6 +270,14 @@ export interface DriverParamDef {
    * the protocol). Requires platform 0.22.0.
    */
   trim?: boolean;
+  /**
+   * Render the input masked when the command is run, for a param that carries
+   * a password, PIN or key. Presentation only: the value still goes on the
+   * wire as typed, and nothing is stored. The same key on a config_schema
+   * field means the same thing — set it wherever a credential would otherwise
+   * sit on screen in plain text.
+   */
+  secret?: boolean;
   default?: unknown;
   /**
    * Wire-value translation applied after validation, before substitution: the
