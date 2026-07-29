@@ -475,6 +475,7 @@ The tables below document each field in detail.
 | `send_frame` | No | Advanced: send-side packet framing — wraps every command in a binary header with a computed data length (e.g. eISCP). The send twin of `frame_parser` (see below). Byte-stream transports only. |
 | `protocols` | No | Protocol names this driver speaks (e.g., `["pjlink"]`, `["extron_sis"]`). Helps discovery match devices to drivers. |
 | `discovery` | No | Discovery declarations — fingerprints and hints. See Discovery below. |
+| `inline_protocol` | No | Built-in generic devices only. Turns on the no-code Commands & Responses editor on the device page, where the commands, responses and state variables live in that device's own config and merge into the driver at runtime. A driver you write ships its protocol in the driver file, so leave this off. |
 
 #### `config_schema` entry
 
@@ -682,6 +683,16 @@ child_entity_types:
       # ids: [st, m]               # or: a literal fixed list (protocol-fixed rosters like main buses)
       label: "Output {id}"     # optional initial label; a user's project label always wins
 ```
+
+**Letting the device size the roster (`count_from_state`).** When the hardware reports how many sub-units it has, you don't have to make the installer type the number. Add `count_from_state` beside `count_from`, naming an integer state variable the device publishes:
+
+```yaml
+    instances:
+      count_from: output_count       # what to use before the device answers
+      count_from_state: num_outputs  # what to follow once it does
+```
+
+The roster is built from the config field at connect, then re-sized as soon as the state variable arrives, and again whenever it changes. The config field stays the offline fallback, so a device that never reports (or reports zero) still comes up with a sensible roster. `count_from_state` is a companion to `count_from`, not a fifth roster source — pair it with a **fixed** `count` and the fixed number wins outright and the state variable is never read.
 
 Route response captures into child state with `child_set:` on a response entry. `id` is a capture reference (`$1`) or a literal; each state value is a capture reference or a literal, coerced by the child property's declared type:
 
@@ -2712,11 +2723,29 @@ simulator:
 | `push_state` | Enable push behavior (state changes sent to connected drivers) |
 | `notifications` | Optional overrides for the push format on state changes |
 | `command_handlers` | How the simulator responds to commands |
+| `state_machines` | Devices that take time to change state (projector warm-up, cooldown) |
 | `error_modes` | Failure scenarios for testing error handling |
 
 **Control types:** `power`, `slider`, `toggle`, `select`, `matrix`, `indicator`, `meters`, `presets`, `group`.
 
 **Push behavior** is opt-in. Set `push_state: true` to enable it. When enabled, state changes from the simulator UI are pushed to connected drivers using the driver's existing response format. Only set this for devices that actually send unsolicited updates (e.g., Extron verbose mode, Shure subscriptions). Without it, the simulator is poll-only. **Notifications** are optional overrides for the push format. If your device uses a different format for unsolicited messages (for example, value-specific strings like `Amt1`/`Amt0` instead of `Amt{value}`), add a `notifications` section to override the format. Use `'*'` as the key to match any value with `{value}` as a placeholder, or use specific values like `'true'`/`'false'` for exact matches.
+
+**State machines** model a device that takes time to change state, so your driver meets the same waiting and refusing a real one does. Add a `state_machines:` block; each machine declares its `states`, the `initial` one, and the `transitions` between them:
+
+```yaml
+  state_machines:
+    power_state:
+      states: [off, warming, on, cooling]
+      initial: off
+      transitions:
+        - { from: off,     trigger: power_on,  to: warming }
+        - { from: warming, after_seconds: 30,  to: on }       # timed, no command
+        - { from: on,      trigger: power_off, to: cooling }
+        - { from: cooling, after_seconds: 90,  to: off }
+        - { from: cooling, trigger: "*", reject: true }       # ignore everything while cooling
+```
+
+A `trigger` names one of your `commands`; `after_seconds` fires on a timer instead, which is how warm-up and cooldown run without anyone sending anything. `reject: true` makes the simulator swallow the command and answer nothing, the way a projector ignores input changes mid-cooldown — the case that catches a driver assuming every command gets a reply. The machine publishes its current state under its own name (`power_state` above), so responses and controls can read it like any other state variable. A transition naming a trigger exactly always beats a `"*"` catch-all, so the order you list them in doesn't change behavior.
 
 For the complete simulator guide with all control types, state machines, and Python simulators, see the Writing Simulators documentation in the driver repository.
 
