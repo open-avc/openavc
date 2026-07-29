@@ -558,6 +558,7 @@ FIELDS = {
     'polling': {
         'type': 'object',
         'doc': 'Periodic status query configuration. NOTE: a polling.interval key is inert and rejected by the catalog validator; set the cadence via default_config.poll_interval instead.',
+        'extra': False,
         'fields': {
             'queries': {
                 'type': 'array',

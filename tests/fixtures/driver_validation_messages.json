@@ -473,7 +473,8 @@
   "Command 'set' param 'b': type_from.param 'a' must itself be an options_from child_schema cascade"
  ],
  "polling_interval_inert": [
-  "polling.interval is not read by the runtime \u2014 remove the interval: key and set default_config.poll_interval instead"
+  "polling.interval is not read by the runtime \u2014 remove the interval: key and set default_config.poll_interval instead",
+  "polling: unknown key 'interval'"
  ],
  "polling_not_mapping": [
   "polling: must be a mapping"
