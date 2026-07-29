@@ -240,12 +240,22 @@ export function SimulatorEditor({ draft, onUpdate }: SimulatorEditorProps) {
         singular="notification"
         description="Unsolicited messages emitted on state change, keyed by state variable."
       />
+      <AdvancedSimBlockSummary
+        title="Simulator Controls"
+        entries={sim.controls}
+        singular="control"
+        description="Widgets shown on this device's page in the Simulator UI, for driving it by hand."
+      />
     </div>
   );
 }
 
 /** Read-only summary for an advanced simulator block (count + names) with a
- *  pointer at the YAML view. Rendered only when the block exists. */
+ *  pointer at the YAML view. Rendered only when the block exists.
+ *
+ *  Takes a keyed map (state machines, notifications) or a list (controls,
+ *  which are ordered widgets); a list entry is named by its `id`/`name`/
+ *  `label`, falling back to its position. */
 function AdvancedSimBlockSummary({
   title,
   entries,
@@ -253,11 +263,17 @@ function AdvancedSimBlockSummary({
   description,
 }: {
   title: string;
-  entries: Record<string, unknown> | undefined;
+  entries: Record<string, unknown> | unknown[] | undefined;
   singular: string;
   description: string;
 }) {
-  const names = Object.keys(entries ?? {});
+  const names = Array.isArray(entries)
+    ? entries.map((entry, i) => {
+        const e = (entry ?? {}) as Record<string, unknown>;
+        const named = e.id ?? e.name ?? e.label;
+        return named == null ? `#${i + 1}` : String(named);
+      })
+    : Object.keys(entries ?? {});
   if (names.length === 0) return null;
   return (
     <div style={{ marginBottom: "var(--space-md)" }}>

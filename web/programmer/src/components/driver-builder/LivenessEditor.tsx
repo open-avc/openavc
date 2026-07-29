@@ -1,4 +1,5 @@
 import type { DriverDefinition, DriverLivenessDef } from "../../api/types";
+import { OscArgsEditor } from "./OscArgsEditor";
 
 interface LivenessEditorProps {
   draft: DriverDefinition;
@@ -130,6 +131,29 @@ export function LivenessEditor({ draft, onUpdate }: LivenessEditorProps) {
               </div>
             </div>
           </div>
+
+          {/* OSC probes carry typed arguments alongside the address, the same
+              way an OSC command does. Only an OSC transport has them. */}
+          {draft.transport === "osc" && (
+            <div style={{ marginTop: "var(--space-md)" }}>
+              <label style={labelStyle}>Probe Arguments</label>
+              <OscArgsEditor
+                args={
+                  (liveness?.args ?? []) as { type: string; value: string }[]
+                }
+                onChange={(args) =>
+                  update({
+                    args: args.length
+                      ? (args as DriverLivenessDef["args"])
+                      : undefined,
+                  })
+                }
+              />
+              <div style={helpStyle}>
+                Optional typed arguments sent with the probe address.
+              </div>
+            </div>
+          )}
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "var(--space-md)" }}>
             <div>
