@@ -986,3 +986,110 @@ def test_declared_sets_keeps_wire_form_for_string_var():
     sim = _make_sim(definition)
     sim._dispatch_command(b"MVL1A")
     assert sim._state["volume_code"] == "1A"
+
+
+# ===========================================================================
+# OSC script handlers: respond() must not silently drop its arguments
+#
+# The author guide describes the OSC handler contract as "respond(address,
+# args) sends an OSC message" with an `args` list, which reads as a list of
+# values — so handlers get written as respond(addr, [value]). The encoder
+# wants (type_tag, value) pairs, and `for tag, value in args` unpacked the
+# two-character string "12" into tag "1" and value "2": no branch matched the
+# bogus tag, so the reply went out with NO arguments at all. The driver's
+# `arg: 0` mapping then found nothing, and a simulator that answers every
+# request with an empty message is indistinguishable from one that works.
+# ===========================================================================
+
+
+OSC_DEFINITION = {
+    "id": "acme_console",
+    "name": "Acme Console",
+    "transport": "osc",
+    "state_variables": {"cue": {"type": "string", "label": "Cue"}},
+    "commands": {"go": {"address": "/acme/go"}},
+    "responses": [
+        {
+            "address": "/acme/cue/current",
+            "mappings": [{"arg": 0, "state": "cue", "type": "string"}],
+        }
+    ],
+    "simulator": {
+        "initial_state": {"cue": "1"},
+        "command_handlers": [
+            {
+                "address": "/acme/go",
+                # Exactly what the guide's wording produces: a bare value.
+                "handler": 'respond("/acme/cue/current", ["7"])',
+            }
+        ],
+    },
+}
+
+
+def test_osc_handler_bare_value_reaches_the_wire_as_a_typed_argument():
+    sim = _make_sim(OSC_DEFINITION)
+    responses = sim._handle_osc_message("/acme/go", [])
+    assert responses is not None
+    address, args = responses[0]
+    assert address == "/acme/cue/current"
+    assert args == [("s", "7")], (
+        "a bare value must be given the type tag its Python type implies; "
+        "an empty arg list here is the silent-drop regression"
+    )
+
+
+def test_osc_handler_bare_value_survives_encoding():
+    """The end the driver actually sees: a real OSC packet with one argument."""
+    from server.transport.osc_codec import osc_decode_message, osc_encode_message
+
+    sim = _make_sim(OSC_DEFINITION)
+    address, args = sim._handle_osc_message("/acme/go", [])[0]
+    decoded = osc_decode_message(osc_encode_message(address, args))
+    assert decoded == ("/acme/cue/current", [("s", "7")])
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        (7, ("i", 7)),
+        (0.5, ("f", 0.5)),
+        ("x", ("s", "x")),
+        (True, ("i", True)),
+        (False, ("i", False)),
+        (None, ("N", None)),
+    ],
+)
+def test_bare_values_take_the_tag_their_type_implies(value, expected):
+    from simulator.yaml_auto import _normalize_osc_args
+
+    assert _normalize_osc_args([value]) == [expected]
+
+
+def test_a_typed_pair_passes_through_untouched():
+    from simulator.yaml_auto import _normalize_osc_args
+
+    assert _normalize_osc_args([("f", 0.25)]) == [("f", 0.25)]
+    assert _normalize_osc_args([["i", 3]]) == [("i", 3)]
+
+
+def test_a_lone_value_outside_a_list_is_accepted():
+    from simulator.yaml_auto import _normalize_osc_args
+
+    assert _normalize_osc_args("hello") == [("s", "hello")]
+
+
+def test_no_args_is_still_no_args():
+    from simulator.yaml_auto import _normalize_osc_args
+
+    assert _normalize_osc_args(None) == []
+    assert _normalize_osc_args([]) == []
+
+
+def test_a_pair_with_an_unknown_type_tag_is_loud():
+    """Loud beats silent: the old behavior turned this into a garbage type tag
+    and an empty payload, which looked like a working simulator."""
+    from simulator.yaml_auto import _normalize_osc_args
+
+    with pytest.raises(ValueError, match="type_tag"):
+        _normalize_osc_args([("zz", 1)])

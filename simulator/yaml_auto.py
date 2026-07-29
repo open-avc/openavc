@@ -1136,8 +1136,8 @@ class YAMLAutoSimulator(TCPSimulator):
         """Execute a script handler for OSC messages."""
         response_data: list[tuple[str, list[tuple[str, Any]]]] = []
 
-        def respond(resp_address: str, resp_args: list[tuple[str, Any]] | None = None) -> None:
-            response_data.append((resp_address, resp_args or []))
+        def respond(resp_address: str, resp_args: Any = None) -> None:
+            response_data.append((resp_address, _normalize_osc_args(resp_args)))
 
         state_proxy = _StateProxy(self._state, self.set_state)
 
@@ -2999,6 +2999,73 @@ def _type_to_osc_tag(value_type: str) -> str:
         "boolean": "i",
         "string": "s",
     }.get(value_type, "f")
+
+
+# The type tags osc_encode_message understands.
+_OSC_TYPE_TAGS = frozenset("fishdbTFN")
+
+
+def _osc_tag_for(value: Any) -> str:
+    """The OSC type tag a bare Python value implies.
+
+    Booleans send ``i`` as 1/0 rather than OSC's payload-free ``T``/``F``,
+    because that is what AV gear expects and what ``_type_to_osc_tag`` already
+    picks for a boolean state variable.
+    """
+    if isinstance(value, bool):
+        return "i"
+    if isinstance(value, int):
+        return "i"
+    if isinstance(value, float):
+        return "f"
+    if isinstance(value, (bytes, bytearray)):
+        return "b"
+    if value is None:
+        return "N"
+    return "s"
+
+
+def _normalize_osc_args(args: Any) -> list[tuple[str, Any]]:
+    """Coerce a script handler's ``respond`` arguments into (tag, value) pairs.
+
+    ``osc_encode_message`` wants ``(type_tag, value)`` pairs, but the author
+    guide describes the OSC handler contract as "``respond(address, args)``
+    sends an OSC message" with an ``args`` *list* — which reads as a list of
+    values, so handlers get written as ``respond(addr, [cue])``. That used to
+    reach the encoder untouched, where ``for tag, value in args`` unpacked the
+    two-character string ``"12"`` into tag ``"1"`` and value ``"2"``: no branch
+    matched the bogus tag, so the message went out with a garbage type tag and
+    **no payload at all**. The driver's ``arg: 0`` mapping then found nothing,
+    and a simulator that answers every request with an empty reply is
+    indistinguishable from one that works.
+
+    So accept both shapes. An already-typed pair passes through; a bare value
+    gets the tag its Python type implies. A sequence that is neither raises,
+    which the caller's ``except Exception`` logs — loud beats silent here.
+
+    One ambiguity is unavoidable and deliberate: ``["s", "hello"]`` reads as a
+    typed pair, not as two strings. The typed form is the documented one, and a
+    bare data value that happens to be a lone type-tag letter is far less
+    likely than a handler passing a pair.
+    """
+    if args is None:
+        return []
+    if not isinstance(args, (list, tuple)):
+        args = [args]
+
+    normalized: list[tuple[str, Any]] = []
+    for arg in args:
+        if isinstance(arg, (tuple, list)):
+            if len(arg) == 2 and isinstance(arg[0], str) and arg[0] in _OSC_TYPE_TAGS:
+                normalized.append((arg[0], arg[1]))
+                continue
+            raise ValueError(
+                f"OSC respond() argument {arg!r} is not a (type_tag, value) "
+                f"pair — the type tag must be one of {sorted(_OSC_TYPE_TAGS)}. "
+                f"Pass a bare value to have its type inferred."
+            )
+        normalized.append((_osc_tag_for(arg), arg))
+    return normalized
 
 
 class _YAMLAutoUDPProtocol(asyncio.DatagramProtocol):
