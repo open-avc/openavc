@@ -31,10 +31,14 @@ Two limits, recorded so nobody re-derives them:
   ``params.*.options_source`` passed on *both* halves at once (plugins use the
   name for an unrelated config field in ``core/plugin_loader.py``; the UI
   Builder for an unrelated element property in ``panelElementConfig.ts``)
-  while nothing read the driver field — it has since been cut. And
-  ``child_entity_types.*.id_format.max_length`` passes its frontend half on
-  ``PluginConfigForm.tsx``, which hides a real gap: Python drivers set it and
-  no Builder editor can.
+  while nothing read the driver field — it has since been cut. Three more
+  pass their frontend half on a name that belongs to something else:
+  ``child_entity_types.*.id_format.max_length`` matches ``PluginConfigForm``'s
+  own field, ``params.*.pattern`` matches the unrelated ``model_pattern`` /
+  ``success_pattern`` discovery and auth fields, and ``params.*.trim`` matches
+  the JavaScript string method, which appears in nearly every file. All three
+  were hiding a missing editor; all three now have one, so the collisions are
+  recorded here as limits of the check rather than as open gaps.
 * "Mentioned" is not "implemented correctly". This catches the field nobody
   wired up, which is a real and recurring bug; it cannot catch one wired up
   wrong. The corpus and behavior suites are what cover that.
@@ -97,12 +101,6 @@ FRONTEND_OPT_OUT = {
                "editor shows a count and says to edit the file directly.",
     "transitions": "Deliberate: simulator state machines have no form UI. The "
                    "editor shows them read-only; they are authored in YAML.",
-    "count_from_state": "NOT BUILT: a child roster sized by a state variable "
-                        "has no control in the Child Entities editor — it has "
-                        "to be written by hand. This sweep used to pass on the "
-                        "Builder's own copy of the validation rules naming the "
-                        "field; the rules moved to the platform, and the gap "
-                        "they were masking is real. One shipped driver uses it.",
 }
 
 # Node keys whose values are themselves nodes, and the combinator keys whose

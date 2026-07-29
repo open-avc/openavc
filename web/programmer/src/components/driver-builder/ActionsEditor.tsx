@@ -608,6 +608,7 @@ function ActionCard({
                   <ParamEditor
                     params={action.params ?? {}}
                     childTypes={Object.keys(draft.child_entity_types ?? {})}
+                    stateKeys={Object.keys(draft.state_variables ?? {})}
                     onChange={(params) => onUpdate({ params })}
                   />
                   <button

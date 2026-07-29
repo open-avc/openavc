@@ -58,19 +58,27 @@ def _open_driver_builder_create(page: Page, base_url: str) -> None:
     page.get_by_role("button", name="Create", exact=True).click()
 
 
-def _expand_child_entity_types_section(page: Page) -> None:
-    """Open the 'Child Entity Types' collapsible if it isn't already.
+def _expand_section(page: Page, title: str) -> None:
+    """Open a named collapsible section if it isn't already.
 
-    For a brand-new driver the section starts collapsed (no types yet);
-    for a driver that already declares types it auto-opens. Toggling only
-    when collapsed keeps both paths correct.
+    Several sections auto-open only once they hold something, so a
+    brand-new driver finds them collapsed. Toggling only when collapsed
+    keeps both paths correct.
+
+    Matched on the accessible name anchored at the start — a section's
+    subtitle quotes other sections by name ("Commands ... state variables"),
+    so a substring match resolves to several headers at once.
     """
-    header = page.locator(
-        'button[aria-expanded]:has-text("Child Entity Types")'
+    header = page.get_by_role(
+        "button", name=re.compile(rf"^{re.escape(title)}\b")
     )
     header.wait_for(state="visible", timeout=SELECT_TIMEOUT)
     if header.get_attribute("aria-expanded") == "false":
         header.click()
+
+
+def _expand_child_entity_types_section(page: Page) -> None:
+    _expand_section(page, "Child Entity Types")
 
 
 def test_declare_child_type_persists_to_yaml_and_reload(
@@ -216,3 +224,108 @@ def test_command_child_id_param_persists(openavc_server, page: Page):
     ]
     assert child_params, f"no child_id param persisted: {params!r}"
     assert child_params[0]["child_type"] == "decoder"
+
+
+def _save_and_load(page: Page, handle, driver_id: str) -> dict:
+    """Click Save, wait for the file the create endpoint writes, parse it."""
+    page.get_by_role("button", name="Save", exact=True).click()
+    driver_file = handle.data_dir / "driver_repo" / f"{driver_id}.avcdriver"
+    deadline = time.monotonic() + 10.0
+    while time.monotonic() < deadline and not driver_file.exists():
+        time.sleep(0.1)
+    assert driver_file.exists(), f"Driver not saved to {driver_file}"
+    return yaml.safe_load(driver_file.read_text(encoding="utf-8"))
+
+
+def test_param_choice_source_and_text_rules_persist(openavc_server, page: Page):
+    """The parameter option-source editor writes what the platform reads.
+
+    One control answers "where do this parameter's choices come from", so this
+    drives the state-list source and the two free-text rules beside it, and
+    asserts the exact keys the runtime looks for.
+    """
+    handle = openavc_server
+    page.set_default_timeout(SELECT_TIMEOUT)
+
+    _open_driver_builder_create(page, handle.base_url)
+    page.get_by_role("button", name="Create New Driver").click()
+    page.get_by_placeholder("e.g., extron_sw4").fill("e2e_param_source_driver")
+    page.get_by_placeholder("e.g., Extron SW4 HD 4K").fill("E2E Param Source Driver")
+
+    page.get_by_role("button", name="Behavior", exact=True).click()
+    page.get_by_role("button", name="Add Command").click()
+    page.get_by_role("button", name="+ Add Parameter").click()
+
+    # The choices come from a list the device publishes. The state key is
+    # free text (the driver may publish it at runtime), so type one.
+    page.get_by_test_id("param-options-source-param1").select_option("state")
+    page.get_by_test_id("param-options-state-param1").fill("input_list")
+
+    # The free-text rules in the same row: a shape check, and opting out of
+    # the whitespace trim.
+    page.get_by_test_id("param-pattern-param1").fill(r"\d{1,3}")
+    page.get_by_test_id("param-trim-param1").uncheck()
+
+    page.get_by_placeholder(re.compile("POWR")).fill("SEL {param1}")
+
+    saved = _save_and_load(page, handle, "e2e_param_source_driver")
+    params = next(iter(saved["commands"].values()))["params"]
+    assert params["param1"]["options_state"] == "input_list", params
+    assert params["param1"]["pattern"] == r"\d{1,3}", params
+    assert params["param1"]["trim"] is False, params
+
+
+def test_child_id_max_length_and_roster_follow_state_persist(
+    openavc_server, page: Page,
+):
+    """String-id length cap and a roster that follows a device-reported count.
+
+    Both are fields Python drivers have always set and no Builder control
+    could reach.
+    """
+    handle = openavc_server
+    page.set_default_timeout(SELECT_TIMEOUT)
+
+    _open_driver_builder_create(page, handle.base_url)
+    page.get_by_role("button", name="Create New Driver").click()
+    page.get_by_placeholder("e.g., extron_sw4").fill("e2e_child_roster_driver")
+    page.get_by_placeholder("e.g., Extron SW4 HD 4K").fill("E2E Child Roster Driver")
+
+    # A config field for the roster count to read (seeded as config_1).
+    page.get_by_role("button", name="Connection", exact=True).click()
+    _expand_section(page, "Configuration Fields")
+    page.get_by_role("button", name="Add Config Field").click()
+
+    page.get_by_role("button", name="Behavior", exact=True).click()
+    # A driver-level state variable for the roster to follow (seeded as
+    # variable_1) — the platform requires the name to be declared.
+    _expand_section(page, "State Variables")
+    page.get_by_role("button", name="Add State Variable").click()
+
+    _expand_child_entity_types_section(page)
+
+    # Type one: integer ids, roster sized by the config field, following the
+    # device-reported count once it arrives.
+    page.get_by_test_id("add-child-type").click()
+    _rename_id(page, "child-type-id-child_type_1", "channel")
+    page.get_by_test_id("child-instances-source-channel").select_option("count_from")
+    page.get_by_test_id("child-instances-count-from-state-channel").select_option(
+        "variable_1"
+    )
+
+    # Type two: string ids with a length cap.
+    page.get_by_test_id("add-child-type").click()
+    _rename_id(page, "child-type-id-child_type_2", "zone")
+    # The id-format Type select is the one offering a "string" option on this
+    # card; scope to the card so the other type's select isn't matched.
+    zone_card = page.get_by_test_id("child-type-card-zone")
+    zone_card.locator('select:has(option[value="string"])').first.select_option(
+        "string"
+    )
+    page.get_by_test_id("child-id-max-length-zone").fill("12")
+
+    saved = _save_and_load(page, handle, "e2e_child_roster_driver")
+    types = saved["child_entity_types"]
+    assert types["channel"]["instances"]["count_from"] == "config_1", types
+    assert types["channel"]["instances"]["count_from_state"] == "variable_1", types
+    assert types["zone"]["id_format"]["max_length"] == 12, types

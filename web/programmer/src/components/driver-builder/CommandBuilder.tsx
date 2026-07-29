@@ -357,6 +357,7 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
                 <ParamEditor
                   params={cmd.params}
                   childTypes={Object.keys(draft.child_entity_types ?? {})}
+                  stateKeys={Object.keys(draft.state_variables ?? {})}
                   onChange={(params) => updateCommand(name, { params })}
                 />
 
@@ -940,6 +941,7 @@ export function KeyValueList({
 export function ParamEditor({
   params,
   childTypes,
+  stateKeys,
   onChange,
 }: {
   params: Record<string, DriverParamDef>;
@@ -947,6 +949,11 @@ export function ParamEditor({
    *  ``child_id`` type can render a dropdown of valid child types. Empty
    *  when the driver hasn't declared any. */
   childTypes: string[];
+  /** Driver-declared state variable names — suggestions for a param whose
+   *  options come from a list the device publishes. Only suggestions: the
+   *  key is device-relative and may name a state the driver writes at
+   *  runtime rather than one declared up front. */
+  stateKeys: string[];
   onChange: (params: Record<string, DriverParamDef>) => void;
 }) {
   const paramNames = Object.keys(params);
@@ -1012,6 +1019,8 @@ export function ParamEditor({
           name={name}
           def={params[name]}
           childTypes={childTypes}
+          stateKeys={stateKeys}
+          siblings={params}
           tryRename={(next) => renameParam(name, next)}
           onUpdate={(partial) => updateParam(name, partial)}
           onRemove={() => removeParam(name)}
@@ -1035,6 +1044,8 @@ function ParamRow({
   name,
   def,
   childTypes,
+  stateKeys,
+  siblings,
   tryRename,
   onUpdate,
   onRemove,
@@ -1042,6 +1053,10 @@ function ParamRow({
   name: string;
   def: DriverParamDef;
   childTypes: string[];
+  stateKeys: string[];
+  /** Every param of this command, including this one — the option-source
+   *  editor cascades off a sibling, so it needs to see them. */
+  siblings: Record<string, DriverParamDef>;
   tryRename: (next: string) => { ok: boolean; reason?: string };
   onUpdate: (partial: Partial<DriverParamDef>) => void;
   onRemove: () => void;
@@ -1337,6 +1352,63 @@ function ParamRow({
         )}
       </div>
 
+      {/* Free-text aids. Shown for string params, where the runtime applies
+          them — and for any param that already carries one, so a value set by
+          hand in YAML stays visible and editable instead of silently kept. */}
+      {(def.type === "string" ||
+        def.pattern !== undefined ||
+        def.trim !== undefined) && (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr auto",
+            gap: "var(--space-sm)",
+            marginTop: "var(--space-sm)",
+            alignItems: "end",
+          }}
+        >
+          <div>
+            <span style={labelStyle}>Value Pattern</span>
+            <input
+              value={def.pattern ?? ""}
+              onChange={(e) =>
+                onUpdate({ pattern: e.target.value || undefined })
+              }
+              placeholder="Regex the whole value must match, e.g. \d{1,3}(\.\d{1,3}){3}"
+              title="Shape check for a value that can't be listed — an IP, a hostname, a fixed-length ID. The command is refused when the value doesn't match."
+              data-testid={`param-pattern-${name}`}
+              style={{
+                width: "100%",
+                fontSize: "var(--font-size-sm)",
+                fontFamily: "var(--font-mono)",
+              }}
+            />
+          </div>
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              fontSize: "var(--font-size-sm)",
+              color: "var(--text-secondary)",
+              paddingBottom: 6,
+              whiteSpace: "nowrap",
+            }}
+            title="On by default: surrounding spaces are stripped before the value goes on the wire. Turn off for raw payloads where edge whitespace is part of the protocol."
+          >
+            <input
+              type="checkbox"
+              checked={def.trim !== false}
+              onChange={(e) =>
+                onUpdate({ trim: e.target.checked ? undefined : false })
+              }
+              data-testid={`param-trim-${name}`}
+            />
+            Trim spaces
+          </label>
+        </div>
+      )}
+
       {isEnum && (
         <div style={{ marginTop: "var(--space-sm)" }}>
           <span style={labelStyle}>Allowed Values</span>
@@ -1397,10 +1469,234 @@ function ParamRow({
           </div>
         </div>
       )}
+      <ParamOptionsEditor
+        name={name}
+        def={def}
+        siblings={siblings}
+        stateKeys={stateKeys}
+        onUpdate={onUpdate}
+      />
       <ParamWireMapEditor
         map={def.map}
         onChange={(map) => onUpdate({ map })}
       />
+    </div>
+  );
+}
+
+/** Where a parameter's choices come from.
+ *
+ *  One control for the three fields that answer that question, because to an
+ *  author they are one decision, not three:
+ *
+ *  - ``options_state`` — the device publishes the list as a state variable.
+ *  - ``options_from``  — the list is the controls of a child picked in a
+ *                        sibling ``child_id`` param (a cascade).
+ *  - ``type_from``     — a companion to the cascade: this param's *input type*
+ *                        follows whichever control the cascade picked, so a
+ *                        Value box becomes a dB spinner for a level and Yes/No
+ *                        for a mute.
+ *
+ *  ``options_from.source`` has exactly one legal value, so the editor writes it
+ *  rather than showing a one-item dropdown. Switching source clears the other
+ *  field, and nothing is written just by rendering — a param that arrived with
+ *  an odd combination keeps it until the author changes something. */
+function ParamOptionsEditor({
+  name,
+  def,
+  siblings,
+  stateKeys,
+  onUpdate,
+}: {
+  name: string;
+  def: DriverParamDef;
+  siblings: Record<string, DriverParamDef>;
+  stateKeys: string[];
+  onUpdate: (partial: Partial<DriverParamDef>) => void;
+}) {
+  const labelStyle: React.CSSProperties = {
+    display: "block",
+    fontSize: "11px",
+    color: "var(--text-muted)",
+    marginBottom: 2,
+  };
+  const hintStyle: React.CSSProperties = {
+    fontSize: "11px",
+    color: "var(--text-muted)",
+    marginTop: 2,
+  };
+
+  // A cascade reads the controls of a child, so it can only point at a
+  // sibling child_id param — the same rule the platform enforces.
+  const childIdSiblings = Object.entries(siblings)
+    .filter(([sName, sDef]) => sName !== name && sDef?.type === "child_id")
+    .map(([sName]) => sName);
+  // `type_from` points at a sibling that is itself a child_schema cascade.
+  const cascadeSiblings = Object.entries(siblings)
+    .filter(
+      ([sName, sDef]) =>
+        sName !== name && sDef?.options_from?.source === "child_schema",
+    )
+    .map(([sName]) => sName);
+
+  const source: "fixed" | "state" | "cascade" = def.options_from
+    ? "cascade"
+    : def.options_state !== undefined
+      ? "state"
+      : "fixed";
+
+  const changeSource = (next: string) => {
+    if (next === "fixed") {
+      onUpdate({ options_state: undefined, options_from: undefined });
+    } else if (next === "state") {
+      onUpdate({
+        options_from: undefined,
+        options_state: def.options_state ?? stateKeys[0] ?? "",
+      });
+    } else {
+      onUpdate({
+        options_state: undefined,
+        options_from: {
+          param: def.options_from?.param ?? childIdSiblings[0] ?? "",
+          source: "child_schema",
+        },
+      });
+    }
+  };
+
+  return (
+    <div style={{ marginTop: "var(--space-sm)" }}>
+      <span style={labelStyle}>Choices Come From</span>
+      <select
+        value={source}
+        onChange={(e) => changeSource(e.target.value)}
+        data-testid={`param-options-source-${name}`}
+        style={{ width: "100%", fontSize: "var(--font-size-sm)" }}
+      >
+        <option value="fixed">Whatever the type allows</option>
+        <option value="state">A list the device publishes</option>
+        <option value="cascade">
+          The controls of a child picked in another parameter
+        </option>
+      </select>
+
+      {source === "state" && (
+        <div style={{ marginTop: "var(--space-xs)" }}>
+          <input
+            value={def.options_state ?? ""}
+            onChange={(e) => onUpdate({ options_state: e.target.value })}
+            list={`param-options-state-list-${name}`}
+            placeholder="State variable holding the list, e.g. input_list"
+            data-testid={`param-options-state-${name}`}
+            style={{
+              width: "100%",
+              fontSize: "var(--font-size-sm)",
+              fontFamily: "var(--font-mono)",
+            }}
+          />
+          <datalist id={`param-options-state-list-${name}`}>
+            {stateKeys.map((key) => (
+              <option key={key} value={key} />
+            ))}
+          </datalist>
+          <div style={hintStyle}>
+            The driver publishes the choices as this state variable (a JSON list
+            of values, or of value/label pairs). The picker offers them and
+            still accepts anything typed.
+          </div>
+        </div>
+      )}
+
+      {source === "cascade" && (
+        <div style={{ marginTop: "var(--space-xs)" }}>
+          {childIdSiblings.length === 0 ? (
+            <div
+              style={{
+                fontSize: "11px",
+                color: "var(--color-warning, #d97706)",
+                padding: "var(--space-xs) var(--space-sm)",
+                borderRadius: "var(--border-radius)",
+                background: "rgba(255, 152, 0, 0.12)",
+                border: "1px solid rgba(255, 152, 0, 0.35)",
+              }}
+            >
+              This command has no Child ID parameter to cascade from. Add one
+              (Type: Child ID), then pick it here.
+            </div>
+          ) : (
+            <select
+              value={def.options_from?.param ?? ""}
+              onChange={(e) =>
+                onUpdate({
+                  options_from: {
+                    param: e.target.value,
+                    source: "child_schema",
+                  },
+                })
+              }
+              data-testid={`param-options-from-${name}`}
+              style={{
+                width: "100%",
+                fontSize: "var(--font-size-sm)",
+                fontFamily: "var(--font-mono)",
+              }}
+            >
+              <option value="">(select a Child ID parameter)</option>
+              {childIdSiblings.map((sName) => (
+                <option key={sName} value={sName}>
+                  {sName}
+                </option>
+              ))}
+            </select>
+          )}
+          <div style={hintStyle}>
+            Picking a child in that parameter fills this one with the child's
+            own controls.
+          </div>
+        </div>
+      )}
+
+      {/* The type companion. Hidden when there is no cascade to follow, so it
+          doesn't sit there unusable — unless one is already set, which must
+          stay visible to be cleared. */}
+      {(cascadeSiblings.length > 0 || def.type_from) && (
+        <div style={{ marginTop: "var(--space-sm)" }}>
+          <span style={labelStyle}>Input Type Follows</span>
+          <select
+            value={def.type_from?.param ?? ""}
+            onChange={(e) =>
+              onUpdate({
+                type_from: e.target.value
+                  ? { param: e.target.value }
+                  : undefined,
+              })
+            }
+            data-testid={`param-type-from-${name}`}
+            style={{
+              width: "100%",
+              fontSize: "var(--font-size-sm)",
+              fontFamily: "var(--font-mono)",
+            }}
+          >
+            <option value="">Nothing — use the type above</option>
+            {cascadeSiblings.map((sName) => (
+              <option key={sName} value={sName}>
+                {sName}
+              </option>
+            ))}
+            {def.type_from?.param &&
+              !cascadeSiblings.includes(def.type_from.param) && (
+                <option value={def.type_from.param}>
+                  {def.type_from.param} (not a cascade)
+                </option>
+              )}
+          </select>
+          <div style={hintStyle}>
+            This box takes its type from whichever control that parameter picked
+            — a number spinner for a level, Yes/No for a mute.
+          </div>
+        </div>
+      )}
     </div>
   );
 }

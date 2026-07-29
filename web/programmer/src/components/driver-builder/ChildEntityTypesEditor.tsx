@@ -217,6 +217,7 @@ export function ChildEntityTypesEditor({
                   onUpdate={(partial) => updateType(name, partial)}
                 />
                 <IdFormatSection
+                  name={name}
                   type={t}
                   onUpdate={(partial) => updateType(name, partial)}
                 />
@@ -229,6 +230,7 @@ export function ChildEntityTypesEditor({
                       ...Object.keys(draft.default_config ?? {}),
                     ]),
                   )}
+                  stateFields={Object.keys(draft.state_variables ?? {})}
                   onUpdate={(partial) => updateType(name, partial)}
                 />
                 <StateVarsSection
@@ -330,9 +332,11 @@ function IdentitySection({
 // ID format (integer min/max/pad_width)
 // ──────────────────────────────────────────────────────────────────────────
 function IdFormatSection({
+  name,
   type,
   onUpdate,
 }: {
+  name: string;
   type: DriverChildEntityType;
   onUpdate: (partial: Partial<DriverChildEntityType>) => void;
 }) {
@@ -369,7 +373,7 @@ function IdFormatSection({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "1fr 1fr 1fr 1fr",
+          gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr",
           gap: "var(--space-sm)",
           alignItems: "end",
         }}
@@ -431,13 +435,30 @@ function IdFormatSection({
             style={{ width: "100%", fontSize: "var(--font-size-sm)" }}
           />
         </div>
+        <div>
+          <span style={{ ...labelStyle, fontSize: "11px" }}>Max length</span>
+          <input
+            type="number"
+            min={1}
+            value={idf.max_length ?? ""}
+            disabled={idf.type !== "string"}
+            onChange={(e) =>
+              writeIdFormat({ max_length: parseInteger(e.target.value) })
+            }
+            placeholder="128"
+            title="String IDs only: the longest local id the runtime will register. Longer ids are refused."
+            data-testid={`child-id-max-length-${name}`}
+            style={{ width: "100%", fontSize: "var(--font-size-sm)" }}
+          />
+        </div>
       </div>
       <div style={helpStyle}>
         Integer IDs live in <code>[min, max]</code>; pad width zero-pads the
         local id when rendered in state keys — e.g. pad_width 3 renders
         encoder 5 as <code>005</code>. String IDs are device-native names
-        (letters, digits, <code>_</code>, <code>-</code>) and take their
-        roster from an ID-list config field.
+        (letters, digits, <code>_</code>, <code>-</code>), take their roster
+        from an ID-list config field, and are capped at max length (128 by
+        default).
       </div>
     </div>
   );
@@ -451,11 +472,16 @@ function InstancesSection({
   name,
   type,
   configFields,
+  stateFields,
   onUpdate,
 }: {
   name: string;
   type: DriverChildEntityType;
   configFields: string[];
+  /** Driver-level state variable names — the roster can follow one the
+   *  device reports. The platform requires the name to be declared, so this
+   *  is a closed list rather than free text. */
+  stateFields: string[];
   onUpdate: (partial: Partial<DriverChildEntityType>) => void;
 }) {
   const inst = type.instances;
@@ -473,14 +499,23 @@ function InstancesSection({
               : "none";
 
   const keepLabel = inst?.label ? { label: inst.label } : {};
+  // `count_from_state` is a companion to the count family, not a source of its
+  // own, so every write in that family has to carry it the way `label` is
+  // carried — otherwise editing the config field silently drops it. It does
+  // NOT ride along to an ID-list roster: the runtime checks it before
+  // `ids_from`, so carrying it there would quietly take the roster over.
+  const keepFollow = inst?.count_from_state
+    ? { count_from_state: inst.count_from_state }
+    : {};
+  const keepCount = { ...keepFollow, ...keepLabel };
 
   const setSource = (next: string) => {
     if (next === "none") {
       onUpdate({ instances: undefined });
     } else if (next === "count") {
-      onUpdate({ instances: { count: 2, ...keepLabel } });
+      onUpdate({ instances: { count: 2, ...keepCount } });
     } else if (next === "count_from") {
-      onUpdate({ instances: { count_from: configFields[0] ?? "", ...keepLabel } });
+      onUpdate({ instances: { count_from: configFields[0] ?? "", ...keepCount } });
     } else if (next === "ids") {
       onUpdate({ instances: { ids: [], ...keepLabel } });
     } else {
@@ -496,7 +531,12 @@ function InstancesSection({
       data-testid={`child-instances-${key}-${name}`}
       value={value}
       onChange={(e) =>
-        onUpdate({ instances: { [key]: e.target.value, ...keepLabel } })
+        onUpdate({
+          instances: {
+            [key]: e.target.value,
+            ...(key === "count_from" ? keepCount : keepLabel),
+          },
+        })
       }
       style={{ width: "100%", fontSize: "var(--font-size-sm)" }}
     >
@@ -530,7 +570,10 @@ function InstancesSection({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "1fr 1fr 1fr",
+          gridTemplateColumns:
+            source === "count_from" || inst?.count_from_state
+              ? "1fr 1fr 1fr 1fr"
+              : "1fr 1fr 1fr",
           gap: "var(--space-sm)",
           alignItems: "end",
         }}
@@ -563,7 +606,7 @@ function InstancesSection({
                 onUpdate({
                   instances: {
                     count: Number.isFinite(n) ? n : 1,
-                    ...keepLabel,
+                    ...keepCount,
                   },
                 });
               }}
@@ -603,6 +646,43 @@ function InstancesSection({
               placeholder="st, m"
               style={{ width: "100%", fontSize: "var(--font-size-sm)" }}
             />
+          </div>
+        )}
+        {/* Only offered against a config-field count, which is where the
+            runtime consults it: a literal Fixed count wins outright and the
+            state variable would never be read. Still rendered when one is
+            already set, so a value written by hand stays visible and
+            clearable rather than invisible. */}
+        {(source === "count_from" || inst?.count_from_state) && (
+          <div>
+            <span style={{ ...labelStyle, fontSize: "11px" }}>
+              Follow device state
+            </span>
+            <select
+              data-testid={`child-instances-count-from-state-${name}`}
+              value={inst?.count_from_state ?? ""}
+              onChange={(e) => {
+                const next = { ...(inst ?? {}) };
+                if (e.target.value) next.count_from_state = e.target.value;
+                else delete next.count_from_state;
+                onUpdate({ instances: next });
+              }}
+              title="Once the device reports this count, the roster resizes to match the hardware."
+              style={{ width: "100%", fontSize: "var(--font-size-sm)" }}
+            >
+              <option value="">Don&apos;t follow</option>
+              {stateFields.map((f) => (
+                <option key={f} value={f}>
+                  {f}
+                </option>
+              ))}
+              {inst?.count_from_state &&
+                !stateFields.includes(inst.count_from_state) && (
+                  <option value={inst.count_from_state}>
+                    {inst.count_from_state} (not declared)
+                  </option>
+                )}
+            </select>
           </div>
         )}
         {source !== "none" && (
@@ -651,6 +731,13 @@ function InstancesSection({
             <code>1,2,4</code>) — for sparse or installer-chosen IDs.
           </>
         )}{" "}
+        {source === "count_from" && inst?.count_from_state && (
+          <>
+            Once the device reports <code>{inst.count_from_state}</code>, the
+            roster resizes to match it, and the config field is only the
+            fallback used before the device answers.{" "}
+          </>
+        )}
         The label template seeds each child&apos;s display name (
         <code>{"{id}"}</code> inserts the ID); a name set in the project
         always wins.
