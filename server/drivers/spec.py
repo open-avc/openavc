@@ -113,6 +113,16 @@ AUTH_TYPES: tuple[str, ...] = ("telnet_login",)
 # own no transport).
 LIVENESS_TRANSPORTS: tuple[str, ...] = ("tcp", "serial", "udp", "osc")
 
+# Transports that put the device on a TCP port of its own, which is what makes
+# a `discovery.port_open` hint able to fire at all: the scan behind that hint is
+# a TCP connect sweep (discovery/port_scanner.py). A driver whose transports
+# miss this set entirely declares a hint the matcher can never match — inert,
+# and silently so, since the generic-port rule that already guards this field
+# only rejects ports that are too broad, never ports on the wrong protocol.
+# Kept here rather than in the validator so the rule reads off the registry
+# like every other one.
+PORT_OPEN_TRANSPORTS: tuple[str, ...] = ("tcp", "http")
+
 # --- framing -----------------------------------------------------------------
 
 # Receive-side frame_parser types a YAML driver may declare, and the

@@ -378,6 +378,66 @@ def test_warnings_never_reach_the_error_list():
     assert validate_driver_definition(SECRET_DEFAULT, strict=True) == []
 
 
+# --- port_open on a transport the port scan can never reach ------------------
+#
+# The hint is matched against a TCP connect sweep. The rule that already guards
+# this field only rejects ports that are too generic, so a port on the wrong
+# protocol passed every gate and shipped looking declared while doing nothing.
+
+
+def test_port_open_on_an_osc_only_driver_warns():
+    definition = _d(
+        transport="osc",
+        commands={"go": {"address": "/go"}},
+        discovery={"port_open": [10023]},
+    )
+    issues = validate_driver_issues(definition, strict=True)
+    assert [i["severity"] for i in issues] == ["warning"]
+    assert issues[0]["path"] == "discovery"
+    assert "can never fire" in issues[0]["message"]
+
+
+def test_port_open_on_a_udp_only_driver_warns():
+    definition = _d(transport="udp", discovery={"port_open": [6454]})
+    issues = validate_driver_issues(definition, strict=True)
+    assert any("can never fire" in i["message"] for i in issues)
+
+
+def test_port_open_says_nothing_on_a_tcp_driver():
+    definition = _d(discovery={"port_open": [4998]})
+    assert validate_driver_issues(definition, strict=True) == []
+
+
+def test_port_open_says_nothing_on_an_http_driver():
+    definition = _d(
+        transport="http",
+        commands={"status": {"method": "GET", "path": "/status"}},
+        discovery={"port_open": [8123]},
+    )
+    assert validate_driver_issues(definition, strict=True) == []
+
+
+def test_a_second_transport_that_speaks_tcp_makes_the_hint_reachable():
+    """An OSC driver that also runs over TCP can be found by a port scan, so
+    the hint is real and must not be nagged about."""
+    definition = _d(
+        transport="osc",
+        transports=["osc", "tcp"],
+        commands={"go": {"address": "/go"}},
+        discovery={"port_open": [10023]},
+    )
+    assert validate_driver_issues(definition, strict=True) == []
+
+
+def test_the_port_open_nudge_never_reaches_the_error_list():
+    definition = _d(
+        transport="osc",
+        commands={"go": {"address": "/go"}},
+        discovery={"port_open": [10023]},
+    )
+    assert validate_driver_definition(definition, strict=True) == []
+
+
 # --- The endpoint itself -----------------------------------------------------
 
 

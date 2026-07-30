@@ -37,6 +37,7 @@ from server.drivers.spec import (
     LIVENESS_TRANSPORTS,
     OSC_ARG_TYPES as _OSC_ARG_TYPES,
     PARAM_OPTIONS_FROM_SOURCES as _PARAM_OPTIONS_FROM_SOURCES,
+    PORT_OPEN_TRANSPORTS,
     PUSH_FRAME_PARSER_TYPES,
     PUSH_TYPE_KEYS,
     REQUIRED_FIELDS,
@@ -1785,6 +1786,28 @@ def validate_driver_warnings(driver_def: dict[str, Any]) -> list[str]:
                     f"file. That is fine for a published factory default, but "
                     f"never put a real site password here."
                 )
+
+    # A `port_open` hint is matched against a TCP connect sweep, so on a driver
+    # that only speaks UDP or OSC it can never fire. The existing rule on this
+    # field only rejects ports that are too *generic* — nothing notices a port
+    # on the wrong protocol, so the hint ships looking declared and does
+    # nothing. A nudge rather than a refusal because the device may genuinely
+    # also listen on TCP; it is the driver that has no way to be found that way.
+    discovery = driver_def.get("discovery")
+    if isinstance(discovery, dict) and discovery.get("port_open"):
+        declared = [driver_def.get("transport")]
+        extra = driver_def.get("transports")
+        if isinstance(extra, list):
+            declared.extend(extra)
+        transports = {t for t in declared if isinstance(t, str) and t}
+        if transports and not transports & set(PORT_OPEN_TRANSPORTS):
+            warnings.ctx = "discovery"
+            warnings.append(
+                f"discovery.port_open is matched against a TCP port scan, but "
+                f"this driver's transport is "
+                f"{', '.join(sorted(transports))} — the hint can never fire. "
+                f"Drop it, or add a transport that listens on TCP."
+            )
 
     return warnings
 
