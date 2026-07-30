@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import socket
 import sys
 import tempfile
 from pathlib import Path
@@ -28,6 +29,82 @@ log = get_logger(__name__)
 # Workspace paths (dev-only — openavc-drivers sibling repo)
 _WORKSPACE_ROOT = APP_DIR.parent
 _DRIVERS_DIR = _WORKSPACE_ROOT / "openavc-drivers"
+
+# The port the simulator serves its own UI and API on. Named here so the
+# failure message below can say which port it means; still one fixed value,
+# which is why two OpenAVC instances on one machine cannot both simulate.
+SIMULATOR_UI_PORT = 19500
+
+# What a failed bind looks like across platforms. Linux/macOS raise EADDRINUSE
+# with the wording below; Windows says "only one usage of each socket address"
+# for WSAEADDRINUSE, and neither the errno number (48 on macOS, 98 on Linux)
+# nor the phrasing is shared, so match on the parts that are.
+_ADDRESS_IN_USE_MARKERS = (
+    "address already in use",
+    "only one usage of each socket address",
+    "errno 48",
+    "errno 98",
+    "10048",
+)
+
+
+def _port_is_taken(port: int, host: str = "127.0.0.1") -> bool:
+    """True when something is already listening on ``host:port``.
+
+    A connect rather than a trial bind: on loopback it answers instantly, and
+    it sidesteps the SO_REUSEADDR / TIME_WAIT differences between platforms
+    that make "could I bind this?" a different question from "is anyone
+    serving here?" — the second is the one worth asking.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.settimeout(0.25)
+        try:
+            return probe.connect_ex((host, port)) == 0
+        except OSError:
+            return False
+
+
+def _is_address_in_use(stderr: str) -> bool:
+    """True when the subprocess said it could not bind its listening socket."""
+    lowered = stderr.lower()
+    return any(marker in lowered for marker in _ADDRESS_IN_USE_MARKERS)
+
+
+def _port_in_use_message() -> str:
+    """What to tell someone whose Simulator UI port is already occupied."""
+    return (
+        f"The simulator could not start: port {SIMULATOR_UI_PORT}, which it "
+        f"serves the Simulator UI on, is already in use. Usually that is "
+        f"another OpenAVC instance simulating on this machine, or a simulator "
+        f"left running by a previous instance that exited without stopping "
+        f"it. Stop the other instance's simulation (or end the leftover "
+        f"process listening on port {SIMULATOR_UI_PORT}) and start simulation "
+        f"again."
+    )
+
+
+def _startup_failure_message(returncode: int | None, stderr: str) -> str:
+    """Explain why the simulator subprocess died before it was ready.
+
+    The raw form of this was a truncated stderr blob ending in
+    ``[Errno 48] error while attempting to bind on address
+    ('127.0.0.1', 19500): address already in use`` — which never said that
+    19500 is the simulator's own UI port, that something else already holds
+    it, or what to do about it. That is the single most common way this fails,
+    because the simulator outlives a server that exits without stopping it and
+    the port is fixed, so a second instance on the same machine hits it every
+    time. The pre-flight check in ``_do_start`` catches it before we spawn
+    anything; this stays as the backstop for the narrow window where something
+    else claims the port between that check and uvicorn's own bind. Everything
+    we cannot name keeps the original blob, which is still the best thing to
+    show.
+    """
+    if _is_address_in_use(stderr):
+        return _port_in_use_message()
+    return (
+        f"Simulator exited with code {returncode}. "
+        f"stderr: {stderr[:500]} (stdout in simulator.stdout logs)"
+    )
 
 
 class SimulationManager:
@@ -162,7 +239,7 @@ class SimulationManager:
         sim_config = {
             "driver_paths": driver_paths,
             "devices": devices_config,
-            "ui_port": 19500,
+            "ui_port": SIMULATOR_UI_PORT,
         }
 
         # Write config to temp file
@@ -173,6 +250,17 @@ class SimulationManager:
         config_file.close()
         config_path = config_file.name
         self._config_path = config_path
+
+        # Ask before spawning, rather than reading the wreckage afterwards.
+        # Uvicorn reports a failed bind on stderr *after* "Application startup
+        # complete", sometimes in the same read and sometimes in a later one,
+        # so the readiness loop could see the marker, declare success, and go
+        # on to query port 19500 — which the other instance's simulator
+        # answered. This instance then reported it was simulating with its
+        # devices redirected to a simulator it did not own. Checking first is
+        # deterministic and needs no guesses about uvicorn's wording.
+        if _port_is_taken(SIMULATOR_UI_PORT):
+            raise RuntimeError(_port_in_use_message())
 
         log.info("Starting simulator with %d devices...", len(devices_config))
         log.info("Driver paths: %s", driver_paths)
@@ -262,7 +350,7 @@ class SimulationManager:
             port = 19000
             for dev_cfg in devices_config:
                 device_id = dev_cfg["device_id"]
-                while port < 19500:
+                while port < SIMULATOR_UI_PORT:
                     try:
                         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                             s.bind(("127.0.0.1", port))
@@ -307,9 +395,18 @@ class SimulationManager:
         stdout is already being drained), and raise if the process exits early.
 
         Returns silently on success. Raises RuntimeError if the process exits
-        during startup; warns and returns if it stays up but never prints the
-        ready marker (probably fine — older uvicorn versions phrased it
-        differently).
+        during startup, or if it reported a failed bind; warns and returns if
+        it stays up but never prints the ready marker (probably fine — older
+        uvicorn versions phrased it differently).
+
+        A failed bind is checked *before* the ready marker, and that ordering
+        is the whole point. Uvicorn emits ``Application startup complete`` and
+        then the bind error, and both routinely land in the same 4 KB read —
+        so the marker won, this returned success, and the caller went on to
+        query ``localhost:19500``, which the *other* instance's simulator
+        answered. That instance then believed it was simulating while its
+        devices pointed at a simulator it did not own, and the only trace was
+        a ``Simulator process exited (code 1)`` line logged after the fact.
         """
         ready = False
         for _ in range(40):  # Up to 4 seconds
@@ -322,8 +419,7 @@ class SimulationManager:
                 # _do_start, so don't read it here (the read would race the
                 # drainer); point at the logs instead.
                 raise RuntimeError(
-                    f"Simulator exited with code {process.returncode}. "
-                    f"stderr: {stderr[:500]} (stdout in simulator.stdout logs)"
+                    _startup_failure_message(process.returncode, stderr)
                 )
             if process.stderr:
                 try:
@@ -342,6 +438,8 @@ class SimulationManager:
                 for line in text.splitlines():
                     if line.strip():
                         log.info("simulator.stderr: %s", line)
+                if _is_address_in_use(text):
+                    raise RuntimeError(_startup_failure_message(None, text))
                 if "Uvicorn running" in text or "Application startup complete" in text:
                     ready = True
                     break

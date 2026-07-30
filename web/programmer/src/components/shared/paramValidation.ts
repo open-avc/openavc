@@ -72,3 +72,23 @@ export function hasInvalidParams(
     (k) => validateParam(params[k], values[k] ?? "") !== null,
   );
 }
+
+/**
+ * True when a param declaring `required` has been left blank.
+ *
+ * Separate from `hasInvalidParams` because `validateParam` deliberately passes
+ * an empty value (it can't tell an optional left blank from a required one).
+ * The Quick Action strip and the setup wizard have always checked this through
+ * their own `hasMissingRequired`; the plain Send Command form did not, so a
+ * required param left blank was simply dropped from the request and the user
+ * got whatever the driver did next. The runtime now refuses it outright, and
+ * this is the same answer one step earlier, inline, without a round trip.
+ */
+export function hasMissingRequiredParams(
+  params: Record<string, ParamLike>,
+  values: Record<string, string>,
+): boolean {
+  return Object.keys(params).some(
+    (k) => params[k]?.required && (values[k] ?? "").trim() === "",
+  );
+}

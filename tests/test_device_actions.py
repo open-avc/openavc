@@ -17,7 +17,11 @@ from server.core.device_manager import DeviceManager
 from server.core.event_bus import EventBus
 from server.core.state_store import StateStore
 from server.drivers.actions import resolve_device_actions, validate_actions
-from server.drivers.base import BaseDriver, CommandParamError
+from server.drivers.base import (
+    BaseDriver,
+    CommandParamError,
+    UnknownCommandError,
+)
 from server.drivers.configurable import create_configurable_driver_class
 from server.drivers.driver_loader import validate_driver_definition
 from server.main import app
@@ -455,6 +459,59 @@ def test_invoke_action_bad_param_returns_400_not_404(actions_client):
     assert resp.status_code == 400
     assert "level" in resp.text
     assert "not found" not in resp.text.lower()
+
+
+def test_action_naming_a_nonexistent_command_blames_the_action(actions_client):
+    """The other half of the same misdirection.
+
+    An `actions` entry may name a command the driver never declares — the
+    catalog rejects that now, but a driver copied straight into driver_repo/
+    only warns at load, so the button still renders and a real typo takes this
+    path. It used to answer ``Device 'dev1' not found`` while the device was
+    connected and its own page was rendering, because the dispatch gate raised
+    a plain ValueError. Now it names the action, the device, and the command
+    that does not exist — the three things needed to find the typo.
+    """
+    c, engine = actions_client
+    engine.devices.send_command = AsyncMock(
+        side_effect=UnknownCommandError(
+            "Command 'power_on' not found on device 'dev1'"
+        )
+    )
+    resp = c.post("/api/devices/dev1/actions/power_on", json={"params": {}})
+    assert resp.status_code == 404
+    detail = resp.json()["detail"]
+    assert detail == (
+        "Action 'power_on' on device 'dev1' names command 'power_on', "
+        "which this driver does not declare"
+    )
+    assert "Device 'dev1' not found" not in detail
+
+
+def test_command_route_names_the_command_not_the_device(actions_client):
+    """The plain command route, same fault, framed for its own caller."""
+    c, engine = actions_client
+    engine.devices.send_command = AsyncMock(
+        side_effect=UnknownCommandError(
+            "Command 'query_evrything' not found on device 'dev1'"
+        )
+    )
+    resp = c.post(
+        "/api/devices/dev1/command", json={"command": "query_evrything", "params": {}}
+    )
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == (
+        "Command 'query_evrything' not found on device 'dev1'"
+    )
+
+
+def test_command_route_still_says_device_when_the_device_is_missing(actions_client):
+    """The neighbouring message must not have moved."""
+    c, engine = actions_client
+    engine.devices.send_command = AsyncMock(side_effect=ValueError("no such device"))
+    resp = c.post("/api/devices/dev1/command", json={"command": "power_on"})
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "Device 'dev1' not found"
 
 
 # --- kind: link / Open Web UI ---------------------------------------------

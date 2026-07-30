@@ -9,7 +9,10 @@ import * as api from "../../api/restClient";
 import type { BridgePort, DeviceConfig, DeviceInfo, DeviceSettingValue, DriverParamDef } from "../../api/types";
 import { ParamInput } from "../../components/shared/ParamInput";
 import { normalizeOptionList, optionLabel, parseStateOptionList } from "../../components/shared/paramOptions";
-import { hasInvalidParams } from "../../components/shared/paramValidation";
+import {
+  hasInvalidParams,
+  hasMissingRequiredParams,
+} from "../../components/shared/paramValidation";
 import { DevicePanelSlot, ContextActionRenderer } from "../../components/plugins/PluginExtensions";
 import { findDeviceReferences, validateSettingValue } from "./deviceUtils";
 import { ChildEntities } from "./ChildEntities";
@@ -228,9 +231,12 @@ export function DeviceDetail({
   const commandParamDefs =
     (commandDef?.params as Record<string, Partial<DriverParamDef>>) ?? {};
   const paramKeys = Object.keys(commandParamDefs);
-  // Block Send on an invalid literal param (out of range / pattern mismatch) —
-  // the per-field inline error says which. Authoring aid; the runtime gates too.
-  const sendBlocked = hasInvalidParams(commandParamDefs, commandParams);
+  // Block Send on an invalid literal param (out of range / pattern mismatch)
+  // or a required one left blank — the per-field inline error says which.
+  // Authoring aid; the runtime gates both too.
+  const sendBlocked =
+    hasInvalidParams(commandParamDefs, commandParams) ||
+    hasMissingRequiredParams(commandParamDefs, commandParams);
 
   // Bridge: when this device's driver advertises bridge ports, it's a bridge
   // other devices route through. The card below lists each port + what's bound

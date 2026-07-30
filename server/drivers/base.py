@@ -46,6 +46,7 @@ __all__ = [
     "ConnectionFaultError",
     "DeviceSettingValueError",
     "UndeclaredStateError",
+    "UnknownCommandError",
     "normalize_and_validate_command_params",
     "strict_driver_state",
     "validate_device_setting_value",
@@ -81,6 +82,21 @@ class CommandParamError(ValueError):
     request) with the message instead of a misleading 404 "device not found".
     Subclasses ValueError so existing ``except ValueError`` handlers still
     catch it. The message is user-facing and actionable — surface it verbatim.
+    """
+
+
+class UnknownCommandError(ValueError):
+    """A caller asked a device for a command name the driver does not declare.
+
+    Distinct from a generic ValueError for the same reason as
+    :class:`CommandParamError`: ``DeviceManager.send_command`` raises a plain
+    ValueError for "no such device", so every ``except ValueError`` above it
+    reported a *typo'd command* as ``Device 'x' not found`` — while the device
+    was connected and its own page was rendering. The name of the thing that is
+    missing is the one fact the message has to carry.
+
+    Subclasses ValueError so existing handlers still catch it. The message is
+    user-facing and actionable — surface it verbatim.
     """
 
 
@@ -294,12 +310,31 @@ def normalize_and_validate_command_params(
       - string (and any type carrying a ``pattern``) -> must fullmatch the
         declared regex.
     Only declared params are checked; config-passthrough keys and params with
-    no schema entry are left untouched, and empty optional values are skipped
-    (required-param presence is enforced by the caller/UI, not here).
+    no schema entry are left untouched, and empty optional values are skipped.
+
+    A param declaring ``required: true`` must be supplied. That used to be a
+    label the IDE drew a red asterisk from and nothing else read, so omitting
+    one produced whatever the driver's code did next — a ``KeyError`` inside a
+    YAML ``send:`` template or a Python handler, surfacing to the caller as the
+    generic ``Failed to send command 'route' to device 'switcher_1'`` while the
+    *value* checks on the very same command answered with
+    ``'route': 'output' must be at most 8, got 99``. The declaration is the
+    driver author's, so the runtime enforces it here, at the one gate every
+    caller passes through. Absent and ``None`` both count as not supplied; an
+    empty string does not (a blank value is a value, and this function has
+    always treated it as an optional left blank).
 
     Raises ``CommandParamError`` (a ValueError) with a user-facing message.
     """
-    if not isinstance(param_defs, dict) or not params:
+    if not isinstance(param_defs, dict):
+        return params
+    supplied = params or {}
+    for name, pdef in param_defs.items():
+        if isinstance(pdef, dict) and pdef.get("required") and supplied.get(name) is None:
+            raise CommandParamError(f"'{command}': '{name}' is required")
+    if not params:
+        # Returned unchanged, not normalized to {}: a caller that passed None
+        # gets None back, so a driver handler sees the argument it always did.
         return params
     out = dict(params)
     for name, pdef in param_defs.items():

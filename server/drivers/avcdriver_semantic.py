@@ -1898,6 +1898,31 @@ def device_setting_state_key_errors(
     ]
 
 
+def undeclared_child_type_reason(
+    child_type: str, child_types: dict[str, Any],
+) -> str:
+    """Why a ``child_type`` reference does not resolve, as one reason fragment.
+
+    Shared with the runtime, which is the point. The static rule below rejects
+    this before a driver is published; a driver copied straight into
+    ``driver_repo/`` only warns at load, so the dispatch gate meets the same
+    fault again at command time and has to describe it the same way — the
+    alternative was the gate falling through to integer coercion and blaming
+    the value the user typed. A fragment rather than a sentence, so each
+    surface frames it: the static rule prefixes the dotted path, the gate
+    prefixes the command and parameter name.
+    """
+    declared = sorted(k for k in child_types if k != UNEVALUATED_KEY)
+    return (
+        f"child_type '{child_type}' is not a declared child_entity_type"
+        + (
+            f" (declared: {', '.join(declared)})"
+            if declared
+            else " (the driver declares none)"
+        )
+    )
+
+
 def child_param_reference_errors(
     driver_def: dict[str, Any],
 ) -> tuple[list[str], list[str]]:
@@ -1982,15 +2007,9 @@ def child_param_reference_errors(
                         f"child_entity_types keys are computed"
                     )
                     continue
-                declared = sorted(k for k in child_types if k != UNEVALUATED_KEY)
                 errors.append(
-                    f"{where}: child_type '{child_type}' is not a declared "
-                    f"child_entity_type"
-                    + (
-                        f" (declared: {', '.join(declared)})"
-                        if declared
-                        else " (the driver declares none)"
-                    )
+                    f"{where}: "
+                    f"{undeclared_child_type_reason(child_type, child_types)}"
                 )
                 continue
 

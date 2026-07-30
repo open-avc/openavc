@@ -18,9 +18,11 @@ from server.core.connection_fault import (
     is_permanent_fault,
     typed_fault_from_exc,
 )
+from server.drivers.avcdriver_semantic import undeclared_child_type_reason
 from server.drivers.base import (
     CommandParamError,
     DeviceSettingValueError,
+    UnknownCommandError,
     normalize_and_validate_command_params,
     validate_device_setting_value,
 )
@@ -464,6 +466,11 @@ class DeviceManager:
         driver = self._devices.get(device_id)
         if driver is None:
             raise ValueError(f"Device '{device_id}' not found")
+        # Before the connected-gate on purpose: a command name the driver does
+        # not declare is wrong whether or not the device happens to be online,
+        # and "Device 'x' is not connected" would send the author to look at
+        # the network instead of at the name they typed.
+        self._check_command_declared(driver, device_id, command)
         # The connected-gate is skipped for commands the driver declares
         # available_offline — a handler that needs no live connection (e.g. a
         # Wake-on-LAN power_on) so a macro, panel button, or schedule can wake a
@@ -483,6 +490,42 @@ class DeviceManager:
                 {"device_id": device_id, "error": str(exc)},
             )
             raise
+
+    @staticmethod
+    def _check_command_declared(
+        driver: BaseDriver, device_id: str, command: str
+    ) -> None:
+        """Refuse a command the driver's own ``commands`` block never declares.
+
+        Nothing checked this, and the two driver formats failed differently
+        while looking the same from outside: a YAML driver logged
+        ``Unknown command: <name>`` and returned success, and a Python driver
+        raised whatever its handler raised — usually a ValueError, which the
+        REST layer above turned into ``Device '<id>' not found`` on a device
+        that was connected and rendering. Either way the author was pointed
+        away from the typo. A Quick Action is the common route in, because an
+        ``actions`` entry may name a command that does not exist (the catalog
+        rejects that now; a driver dropped straight into ``driver_repo/`` only
+        warns at load, so the button still renders).
+
+        Reads the *instance* DRIVER_INFO, so a driver that builds its command
+        set at runtime — discovered controls, channel strips, the inline
+        protocol generics merging a device's own configured commands — is
+        judged on what it actually declares by the time the command is sent.
+
+        Enforced only when that set is a **non-empty dict**: 20 of the 92
+        shipped drivers declare no literal ``commands`` block at all and hand
+        every name straight to their own dispatch, and an empty set means
+        "this driver did not tell us", not "this driver has no commands".
+        """
+        info = getattr(driver, "DRIVER_INFO", {}) or {}
+        commands = info.get("commands")
+        if not isinstance(commands, dict) or not commands:
+            return
+        if command not in commands:
+            raise UnknownCommandError(
+                f"Command '{command}' not found on device '{device_id}'"
+            )
 
     @staticmethod
     def _command_available_offline(driver: BaseDriver, command: str) -> bool:
@@ -511,9 +554,12 @@ class DeviceManager:
         DRIVER_INFO so runtime-populated command sets (qsc_qrc's discovered
         controls, toa_9000m2's built commands) are gated too. Commands or
         params without a schema entry pass through untouched.
+
+        Runs when the caller supplied no params at all, not only when it
+        supplied some: a command invoked with nothing is precisely the case a
+        missing ``required`` param has to be caught in, and the early return on
+        falsy params is why it never was.
         """
-        if not params:
-            return params
         info = getattr(driver, "DRIVER_INFO", {}) or {}
         cmd_def = (info.get("commands") or {}).get(command)
         if not isinstance(cmd_def, dict):
@@ -558,7 +604,20 @@ class DeviceManager:
             value = out.get(name)
             if value is None:
                 continue
-            type_def = child_types.get(pdef.get("child_type"))
+            declared_type = pdef.get("child_type")
+            # A child_type naming a type the driver never defined used to fall
+            # through to the default integer kind and be reported as a bad
+            # VALUE — "'component' must be a child id number, got 'Pgm_Gain'"
+            # — when the value was fine and the driver's own declaration was
+            # the typo. Say which declaration is wrong, in the same sentence
+            # the catalog, the file checker, simulator.validate and the loader
+            # already use for the static form of this fault.
+            if isinstance(declared_type, str) and declared_type not in child_types:
+                raise CommandParamError(
+                    f"'{command}': '{name}': "
+                    + undeclared_child_type_reason(declared_type, child_types)
+                )
+            type_def = child_types.get(declared_type)
             if child_id_kind(type_def) != "integer":
                 continue
             coerced = coerce_child_local_id(type_def, value)

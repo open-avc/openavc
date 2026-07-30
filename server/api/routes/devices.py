@@ -21,7 +21,11 @@ from server.api.models import (
 )
 from server.core.project_loader import ChildEntityConfig, DeviceConfig
 from server.core.project_migration import CONNECTION_FIELDS
-from server.drivers.base import CommandParamError, DeviceSettingValueError
+from server.drivers.base import (
+    CommandParamError,
+    DeviceSettingValueError,
+    UnknownCommandError,
+)
 from server.drivers.child_ids import child_id_kind, coerce_child_local_id
 
 router = APIRouter()
@@ -454,6 +458,11 @@ async def send_command(device_id: str, body: CommandRequest) -> dict[str, Any]:
         # A bad parameter value (out of range / wrong type / pattern mismatch) —
         # surface the actionable message, not a misleading "device not found".
         raise _api_error(400, str(e), e)
+    except UnknownCommandError as e:
+        # Still a 404, but naming the thing that is actually missing: the
+        # command. (UnknownCommandError subclasses ValueError, so this branch
+        # has to sit above the device-not-found one.)
+        raise _api_error(404, str(e), e)
     except ValueError as e:
         raise _api_error(404, f"Device '{device_id}' not found", e)
     except ConnectionError as e:
@@ -602,6 +611,17 @@ async def invoke_device_action(
             # mismatch) — surface the actionable message, not a misleading
             # "device not found" (CommandParamError subclasses ValueError).
             raise _api_error(400, str(e), e)
+        except UnknownCommandError as e:
+            # The action resolved, but the command it names does not exist.
+            # Name both: the author is looking at a button, and the broken
+            # declaration is the action's `command` field.
+            raise _api_error(
+                404,
+                f"Action '{action_id}' on device '{device_id}' names "
+                f"command '{action['command']}', which this driver does "
+                f"not declare",
+                e,
+            )
         except ValueError as e:
             raise _api_error(404, f"Device '{device_id}' not found", e)
         except ConnectionError as e:

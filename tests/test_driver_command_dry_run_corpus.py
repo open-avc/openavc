@@ -118,6 +118,15 @@ def _command_params(cmd: dict[str, Any]) -> dict[str, Any]:
     return params
 
 
+def _unsatisfiable_required(cmd: dict[str, Any], params: dict[str, Any]) -> list[str]:
+    """Required params `_synthesize` could not produce a value for."""
+    return [
+        name
+        for name, pdef in (cmd.get("params") or {}).items()
+        if isinstance(pdef, dict) and pdef.get("required") and params.get(name) is None
+    ]
+
+
 def _previewable_commands(doc: dict[str, Any]) -> list[tuple[str, dict]]:
     """Commands the Builder can preview: declared, and not bridge-routed.
 
@@ -161,9 +170,19 @@ async def test_every_command_previews_as_the_runtime_builds_it(driver_path: Path
 
     failures: list[str] = []
     previewed = 0
+    unsatisfiable: list[str] = []
 
     for name, cmd in _previewable_commands(doc):
         params = _command_params(cmd)
+        # A required param this harness cannot invent a value for (a free-text
+        # field behind a regex it can't solve) is now refused by the runtime
+        # gate rather than left standing, so there is no preview to assert on.
+        # Named rather than dropped: a sweep that quietly stops reaching
+        # commands reports clean for the wrong reason.
+        missing = _unsatisfiable_required(cmd, params)
+        if missing:
+            unsatisfiable.append(f"{name}({', '.join(missing)})")
+            continue
         result = await _preview(doc, name, params)
         if not result["success"]:
             failures.append(f"{name}: {result['error']}")
@@ -188,6 +207,8 @@ async def test_every_command_previews_as_the_runtime_builds_it(driver_path: Path
     assert not failures, f"{driver_path.name}:\n  " + "\n  ".join(failures)
     assert previewed or not _previewable_commands(doc), (
         f"{driver_path.name}: no command previewed"
+        + (f" ({len(unsatisfiable)} skipped: {', '.join(unsatisfiable)})"
+           if unsatisfiable else "")
     )
 
 

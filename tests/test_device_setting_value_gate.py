@@ -398,13 +398,15 @@ async def test_trim_false_preserves_raw_payload(core):
     assert driver.seen[-1] == ("set_label", {"text": "Lobby"})
 
 
-async def test_undeclared_commands_and_params_pass_through(core):
-    """Commands with no schema entry (a driver dispatching by name) and params
-    the schema doesn't declare stay untouched — the gate never blocks them."""
-    dm, driver = await _bounded(core, "amp4")
+async def test_undeclared_params_pass_through(core):
+    """Params the schema doesn't declare stay untouched — the gate narrows the
+    values it was told about and invents no rules for the rest.
 
-    await dm.send_command("amp4", "mystery_command", {"anything": "  goes "})
-    assert driver.seen == [("mystery_command", {"anything": "  goes "})]
+    (This used to assert that an undeclared *command* passed through too. It
+    no longer does: a driver that declares a command set is taken at its word,
+    and a name outside it is refused by ``_check_command_declared``.)
+    """
+    dm, driver = await _bounded(core, "amp4")
 
     await dm.send_command("amp4", "set_volume", {"level": 10, "extra": "  x "})
     assert driver.seen[-1] == ("set_volume", {"level": 10, "extra": "  x "})

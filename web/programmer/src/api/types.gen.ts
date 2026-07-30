@@ -202,6 +202,17 @@ export interface ParamTypeFrom {
 
 export interface DriverParamDef {
   type: string;
+  /**
+   * The command cannot run without this parameter. Enforced by the runtime at
+   * command time for every caller and both driver formats: omitting it (or
+   * passing null) is refused with "'<command>': '<param>' is required" before
+   * the command reaches the driver. A blank string still counts as supplied.
+   * Leave it off for a parameter the driver can do without; a value the driver
+   * should assume when the user gives none is a default, not a requirement.
+   * Enforced from platform 0.24.0 — before that it only drew the asterisk
+   * beside the input, and omitting one surfaced as a generic "Failed to send
+   * command".
+   */
   required?: boolean;
   label?: string;
   help?: string;

@@ -141,6 +141,10 @@ Order matters here. Build them in the order they appear:
 
 **Parameters** for each command let users fill in what to send. Each parameter has a type, optional required flag, label, help, default, and (numeric) min/max bounds, (enum) allowed values, or (free text) a `pattern` regex the value must match.
 
+**What the runtime enforces.** Everything you declare about a parameter is checked before the command reaches the device, however the command was run — a panel button, a macro, a schedule, the REST API, or the AI assistant. A value outside `min`/`max`, of the wrong type, or failing a `pattern` is refused, and the reason names the parameter: `'route': 'output' must be at most 8, got 99`. **Required** works the same way — leave a required parameter out and the command is refused with `'route': 'output' is required` rather than sending something incomplete. Tick Required only when the command genuinely cannot run without the value; if you would rather the driver filled in something the user did not give, that is a **Default**, not a requirement. A blank text box counts as a value that was supplied.
+
+A command name the driver does not declare is refused the same way, with `Command 'query_evrything' not found on device 'switcher_1'`. Worth recognising: that is what a misspelled command in a Quick Action looks like from the device page.
+
 **Number formatting on the wire.** The runtime coerces each parameter to its declared type before substituting it, so an `integer` parameter always sends a whole number. A value of `26.0` (for example from a slider bound to the command) goes out as `26`, not `26.0`. For a `number` parameter, set **Decimals** to round to a fixed number of places (`decimals: 0` sends a whole number, `decimals: 1` sends one place). For finer control on a single placeholder, a format spec works inline: `{level:03d}` zero-pads (e.g. `007`), `{addr:02X}` hex-formats, and `{gain:.1f}` fixes one decimal place. Specs work even when the value arrives as a whole-number float.
 
 **Escape sequences** in command strings: `\r`, `\n`, `\t`, `\\`, `\xHH` (hex byte, e.g. `\x1B` for ESC).
