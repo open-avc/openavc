@@ -224,6 +224,9 @@ class SerialTransport:
             self._frame_parser = DelimiterFrameParser(delimiter)
         else:
             self._frame_parser = None
+        # Attribute overflow warnings to this device (see TCPTransport).
+        if self._frame_parser is not None:
+            self._frame_parser.device_label = self._name
 
         self._reader: Any = None
         self._writer: Any = None

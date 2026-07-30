@@ -222,6 +222,175 @@ def test_callable_parser_reset():
     assert p.feed(b"new;") == [b"new"]
 
 
+# --- Resync: the returned buffer is authoritative on the None branch ---
+#
+# A binary protocol recovers from a bad frame by dropping bytes it can never
+# use while reporting no message. These tests use an INVENTED framing (Acme
+# widget: SOF, 1-byte length, payload, XOR checksum) because the property under
+# test belongs to the platform, not to any device.
+
+WIDGET_SOF = b"\x02\x02"
+
+
+def _widget_frame(payload: bytes) -> bytes:
+    """Build one Acme widget frame: SOF + len + payload + XOR checksum."""
+    body = bytes([len(payload)]) + payload
+    checksum = 0
+    for b in body:
+        checksum ^= b
+    return WIDGET_SOF + body + bytes([checksum])
+
+
+def _widget_parse(buffer: bytes):
+    """Invented parse function exercising both kinds of None-branch drop.
+
+    Returns (frame_payload, remaining) or (None, remaining).
+    """
+    start = buffer.find(WIDGET_SOF)
+    if start == -1:
+        # No start marker anywhere: nothing here is usable. Keep the last byte
+        # in case it is the first half of a split marker.
+        return None, buffer[-1:]
+    if start > 0:
+        buffer = buffer[start:]
+    if len(buffer) < 3:
+        return None, buffer
+    payload_len = buffer[2]
+    total = 3 + payload_len + 1
+    if len(buffer) < total:
+        return None, buffer
+    body = buffer[2 : total - 1]
+    checksum = 0
+    for b in body:
+        checksum ^= b
+    if checksum != buffer[total - 1]:
+        # Corrupt frame: skip this start marker and resync on the next one.
+        return None, buffer[2:]
+    return buffer[3 : total - 1], buffer[total:]
+
+
+def test_callable_parser_honors_trimmed_buffer_on_none():
+    """Leading garbage the parse function drops must actually be dropped."""
+    p = CallableFrameParser(_widget_parse)
+    assert p.feed(b"\x00" * 4096) == []
+    # The parse function asked to keep one byte; the parser must not hoard the
+    # other 4095. Discarding the trim is what let 64 KB accumulate silently.
+    assert len(p._buffer) == 1
+
+
+def test_callable_parser_delivers_good_frame_after_garbage():
+    p = CallableFrameParser(_widget_parse)
+    assert p.feed(b"garbage-with-no-marker") == []
+    assert p.feed(_widget_frame(b"\x11\x22")) == [b"\x11\x22"]
+
+
+def test_callable_parser_resyncs_past_corrupt_frame_in_one_feed():
+    """A corrupt frame is skipped and a following good frame still arrives."""
+    corrupt = bytearray(_widget_frame(b"\x33\x44"))
+    corrupt[-1] ^= 0xFF  # break the checksum
+    good = _widget_frame(b"\x55\x66")
+
+    p = CallableFrameParser(_widget_parse)
+    assert p.feed(bytes(corrupt) + good) == [b"\x55\x66"]
+
+
+def test_callable_parser_keeps_delivering_after_one_corrupt_frame():
+    """The F1 shape: one bad frame must not wedge the stream.
+
+    Before the None-branch buffer was honored, a single corrupt frame stalled
+    every subsequent good frame until the max_buffer guard cleared it.
+    """
+    # Corrupt a payload byte rather than the checksum byte: this framing has no
+    # escaping, so a corrupted trailing byte can itself alias the start marker
+    # and swallow the next frame. That ambiguity belongs to the invented
+    # protocol, not to the parser, and would obscure what this test asserts.
+    corrupt = bytearray(_widget_frame(b"\x77\x88"))
+    corrupt[3] ^= 0xFF
+
+    p = CallableFrameParser(_widget_parse)
+    assert p.feed(bytes(corrupt)) == []
+
+    delivered = []
+    for i in range(200):
+        delivered += p.feed(_widget_frame(bytes([i % 256])))
+    assert len(delivered) == 200
+    assert p._buffer == b""
+
+
+def test_callable_parser_none_branch_partial_frame_still_waits():
+    """Honoring the buffer must not break ordinary reassembly."""
+    frame = _widget_frame(b"\x99\xaa")
+    p = CallableFrameParser(_widget_parse)
+    assert p.feed(frame[:3]) == []
+    assert p.feed(frame[3:]) == [b"\x99\xaa"]
+
+
+def test_callable_parser_none_branch_no_progress_does_not_spin():
+    """A parse_fn that reports no message and consumes nothing must stop.
+
+    This is the None-branch half of the hang guard: without it, honoring the
+    returned buffer would loop forever on a parse function that never
+    consumes.
+    """
+    calls = {"n": 0}
+
+    def parse(buf):
+        calls["n"] += 1
+        return None, buf  # never a message, never consumes
+
+    p = CallableFrameParser(parse)
+    assert p.feed(b"data") == []
+    assert calls["n"] == 1
+    assert p._buffer == b"data"
+
+
+def test_callable_parser_none_branch_growing_buffer_does_not_spin():
+    """A None return whose buffer GREW is also no progress."""
+    calls = {"n": 0}
+
+    def parse(buf):
+        calls["n"] += 1
+        return None, buf + b"!"
+
+    p = CallableFrameParser(parse)
+    assert p.feed(b"ab") == []
+    assert calls["n"] == 1
+
+
+# --- Overflow warnings name the device (F15) ---
+
+
+def test_callable_parser_overflow_warning_names_the_device(caplog):
+    """64 KB of dropped traffic must be attributable to a device."""
+    def parse(buf):
+        return None, buf  # never consumes, so the buffer overflows
+
+    p = CallableFrameParser(parse, max_buffer=16)
+    p.device_label = "widget_1"
+    with caplog.at_level("WARNING"):
+        p.feed(b"x" * 32)
+    assert "[widget_1] Callable parser buffer overflow" in caplog.text
+
+
+def test_delimiter_parser_overflow_warning_names_the_device(caplog):
+    """The label is shared by every parser, not just the callable one."""
+    p = DelimiterFrameParser(b"\r", max_buffer=8)
+    p.device_label = "widget_2"
+    with caplog.at_level("WARNING"):
+        p.feed(b"no delimiter here at all")
+    assert "[widget_2] Delimiter parser buffer overflow" in caplog.text
+
+
+def test_overflow_warning_without_a_label_is_still_readable(caplog):
+    """An unstamped parser (built directly in a test or a script) must not
+    emit a stray prefix."""
+    p = DelimiterFrameParser(b"\r", max_buffer=8)
+    with caplog.at_level("WARNING"):
+        p.feed(b"no delimiter here at all")
+    assert "Delimiter parser buffer overflow" in caplog.text
+    assert "[]" not in caplog.text
+
+
 # --- Hardening regressions (overflow / framing safety) ---
 
 

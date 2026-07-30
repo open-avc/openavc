@@ -31,6 +31,19 @@ DEFAULT_MAX_BUFFER = 65536
 class FrameParser(ABC):
     """Abstract base class for message frame parsers."""
 
+    #: Device label for log messages, stamped by the transport that owns this
+    #: parser (see TCPTransport / SerialTransport). Not a constructor argument
+    #: on purpose: a Python driver builds its own parser in
+    #: _create_frame_parser() and cannot be expected to pass its device id, so
+    #: the transport that receives the parser fills this in instead. Without it
+    #: an overflow warning names no device and 64 KB of dropped traffic cannot
+    #: be attributed.
+    device_label: str = ""
+
+    def _where(self) -> str:
+        """Log-line prefix identifying the device, empty when unstamped."""
+        return f"[{self.device_label}] " if self.device_label else ""
+
     @abstractmethod
     def feed(self, data: bytes) -> list[bytes]:
         """
@@ -70,7 +83,11 @@ class DelimiterFrameParser(FrameParser):
                 messages.append(msg)
         # Protect against unbounded growth (no delimiter arriving)
         if len(self._buffer) > self._max_buffer:
-            log.warning(f"Delimiter parser buffer overflow ({len(self._buffer)} bytes), clearing")
+            log.warning(
+                "%sDelimiter parser buffer overflow (%d bytes), clearing",
+                self._where(),
+                len(self._buffer),
+            )
             self._buffer = b""
         return messages
 
@@ -152,8 +169,9 @@ class LengthPrefixFrameParser(FrameParser):
             # whole buffer each step (O(n^2)) on the shared event loop.
             if total > self._max_buffer:
                 log.warning(
-                    "Length-prefix parser: claimed frame size %d exceeds max "
-                    "%d; clearing desynced buffer", total, self._max_buffer,
+                    "%sLength-prefix parser: claimed frame size %d exceeds max "
+                    "%d; clearing desynced buffer",
+                    self._where(), total, self._max_buffer,
                 )
                 self._buffer = b""
                 break
@@ -169,7 +187,8 @@ class LengthPrefixFrameParser(FrameParser):
         # completes) is otherwise silently pinned until disconnect.
         if len(self._buffer) > self._max_buffer:
             log.warning(
-                "Length-prefix parser buffer overflow (%d bytes), clearing",
+                "%sLength-prefix parser buffer overflow (%d bytes), clearing",
+                self._where(),
                 len(self._buffer),
             )
             self._buffer = b""
@@ -202,7 +221,8 @@ class FixedLengthFrameParser(FrameParser):
             # length) leaves every subsequent frame misaligned permanently.
             # Dropping to an empty buffer resyncs on the next whole frame.
             log.warning(
-                "FixedLength parser buffer overflow (%d bytes), clearing",
+                "%sFixedLength parser buffer overflow (%d bytes), clearing",
+                self._where(),
                 len(self._buffer),
             )
             self._buffer = b""
@@ -276,8 +296,9 @@ class StructFrameParser(FrameParser):
             # walk byte-by-byte (there is no in-band resync point).
             if total > self._max_buffer:
                 log.warning(
-                    "Struct-frame parser: claimed frame size %d exceeds max "
-                    "%d; clearing desynced buffer", total, self._max_buffer,
+                    "%sStruct-frame parser: claimed frame size %d exceeds max "
+                    "%d; clearing desynced buffer",
+                    self._where(), total, self._max_buffer,
                 )
                 self._buffer = b""
                 break
@@ -291,7 +312,8 @@ class StructFrameParser(FrameParser):
         # must not pin an unbounded buffer until disconnect.
         if len(self._buffer) > self._max_buffer:
             log.warning(
-                "Struct-frame parser buffer overflow (%d bytes), clearing",
+                "%sStruct-frame parser buffer overflow (%d bytes), clearing",
+                self._where(),
                 len(self._buffer),
             )
             self._buffer = b""
@@ -407,7 +429,8 @@ class SlipFrameParser(FrameParser):
         # parsers) is the right recovery rather than walking byte-by-byte.
         if len(self._buffer) > self._max_buffer:
             log.warning(
-                "SLIP parser buffer overflow (%d bytes), clearing",
+                "%sSLIP parser buffer overflow (%d bytes), clearing",
+                self._where(),
                 len(self._buffer),
             )
             self._buffer = bytearray()
@@ -451,10 +474,19 @@ class CallableFrameParser(FrameParser):
 
     It receives the current buffer and must return:
         - ``(message, remaining)`` if a complete message was found
-        - ``(None, buffer)`` if more data is needed
+        - ``(None, remaining)`` if no complete message is available yet
 
-    The parser calls the function repeatedly until it returns None,
-    collecting all extracted messages.
+    **The returned buffer is always authoritative, on both branches.** On the
+    ``None`` branch, return the buffer unchanged to wait for more data, or a
+    shorter buffer to drop bytes the protocol can never use: leading garbage
+    before a start marker, or a frame whose checksum failed. That is how a
+    binary protocol resyncs, and it is why the buffer is honored here rather
+    than only when a message comes back -- discarding it would mean one
+    corrupt frame wedges the stream until the max_buffer guard clears it, and
+    a driver could not recover on its own.
+
+    The parser calls the function repeatedly until it stops making progress:
+    no message produced and no bytes consumed.
     """
 
     def __init__(
@@ -471,29 +503,50 @@ class CallableFrameParser(FrameParser):
         messages: list[bytes] = []
         try:
             while True:
+                before = len(self._buffer)
                 msg, remaining = self._parse_fn(self._buffer)
+                # Authoritative on both branches — see the class docstring.
+                self._buffer = remaining
                 if msg is None:
-                    break
+                    if len(remaining) >= before:
+                        # Nothing parsed and nothing consumed: the parse
+                        # function is waiting for more data (the common case),
+                        # or it cannot make progress at all. Either way this
+                        # pass is done. This is also the hang guard for the
+                        # None branch — without it a parse function that
+                        # neither parses nor consumes would spin forever and
+                        # wedge the shared event loop.
+                        break
+                    # Bytes dropped without a message: garbage discarded or a
+                    # corrupt frame skipped. Keep going — the buffer strictly
+                    # shrank, so this terminates, and the next frame may
+                    # already be complete.
+                    continue
                 messages.append(msg)
-                if len(remaining) >= len(self._buffer):
+                if len(remaining) >= before:
                     # No forward progress: a buggy parse_fn returned a message
                     # without consuming any buffer. Without this guard the loop
                     # spins forever and wedges the shared event loop (every
                     # device, poll, and WS client). Take the message it found,
                     # then stop this pass.
                     log.warning(
-                        "Custom frame parser made no forward progress "
-                        "(buffer not consumed); stopping to avoid a hang"
+                        "%sCustom frame parser made no forward progress "
+                        "(buffer not consumed); stopping to avoid a hang",
+                        self._where(),
                     )
-                    self._buffer = remaining
                     break
-                self._buffer = remaining
         except Exception:  # Catch-all: user-supplied parse_fn can raise anything
-            log.exception("Error in custom frame parser function, clearing buffer")
+            log.exception(
+                "%sError in custom frame parser function, clearing buffer", self._where()
+            )
             self._buffer = b""
         # Protect against unbounded growth
         if len(self._buffer) > self._max_buffer:
-            log.warning(f"Callable parser buffer overflow ({len(self._buffer)} bytes), clearing")
+            log.warning(
+                "%sCallable parser buffer overflow (%d bytes), clearing",
+                self._where(),
+                len(self._buffer),
+            )
             self._buffer = b""
         return messages
 

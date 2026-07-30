@@ -2112,14 +2112,19 @@ def _build_mdc_frame(cmd: int, display_id: int, data: bytes = b"") -> bytes:
     return bytes([0xAA]) + frame + bytes([cs])
 
 # Frame parser helper
+#
+# The buffer you return is always what the parser keeps, including when you
+# return no message. That is how a binary driver recovers from a bad packet:
+# return less buffer than you were given to throw bytes away, or the buffer
+# unchanged to wait for more data. Note both kinds of return below.
 def _parse_mdc_frame(buffer: bytes) -> tuple[bytes | None, bytes]:
     start = buffer.find(0xAA)
     if start == -1:
-        return None, b""
+        return None, b""      # no start byte at all: discard, nothing here is a frame
     if start > 0:
-        buffer = buffer[start:]
+        buffer = buffer[start:]   # drop the garbage before the start byte
     if len(buffer) < 4:
-        return None, buffer
+        return None, buffer   # unchanged: a partial frame, wait for the rest
     data_len = buffer[3]
     total_len = 4 + data_len + 1
     if len(buffer) < total_len:
@@ -2186,7 +2191,7 @@ class SamsungMDCDriver(BaseDriver):
 ```
 
 **Key differences from the text-protocol example**:
-- `_create_frame_parser()` returns a `CallableFrameParser` with a custom function that knows how to find message boundaries in the binary stream.
+- `_create_frame_parser()` returns a `CallableFrameParser` with a custom function that knows how to find message boundaries in the binary stream. Your function returns `(message, remaining)`, or `(None, remaining)` when it has no complete message yet — and **the buffer you return is kept in both cases**. Returning a shorter buffer with no message is how the driver resyncs after a corrupt frame; returning the buffer unchanged means "wait for more data". A parser that could not drop bytes would stay stuck on the first bad packet until the 64 KB overflow guard cleared it.
 - `_resolve_delimiter()` returns `None` because there's no text delimiter.
 - `on_data_received()` gets complete binary frames (header and checksum already stripped by the parser).
 
@@ -2500,7 +2505,9 @@ Import from `server.transport.frame_parsers`:
 | `FixedLengthFrameParser(length=8)` | Protocols where every message is exactly N bytes |
 | `CallableFrameParser(your_function)` | Custom protocols where you write the parsing logic |
 
-All frame parsers accept an optional `max_buffer` parameter (default: 65536 bytes / 64 KB). If the internal buffer exceeds this limit (for example, when a device sends garbage data without proper delimiters), the buffer is automatically cleared to prevent unbounded memory growth.
+`CallableFrameParser` calls your function with the current buffer and expects `(message, remaining)` or `(None, remaining)`. **The buffer you return is always what the parser keeps.** Return it unchanged to wait for more data, or return less of it to discard bytes that can never form a frame — leading garbage, or a frame whose checksum failed. Dropping bytes with no message is how a binary protocol resyncs, so write that branch rather than holding the bad bytes.
+
+All frame parsers accept an optional `max_buffer` parameter (default: 65536 bytes / 64 KB). If the internal buffer exceeds this limit (for example, when a device sends garbage data without proper delimiters), the buffer is automatically cleared to prevent unbounded memory growth and a warning naming the device is logged.
 
 ### Available Binary Helpers
 

@@ -89,6 +89,12 @@ class TCPTransport:
             self._frame_parser = DelimiterFrameParser(delimiter)
         else:
             self._frame_parser = None
+        # Stamp the device label so a parser's buffer-overflow warning can be
+        # attributed. Driver-supplied parsers are built in the driver's own
+        # _create_frame_parser() with no access to the device id, so the
+        # transport that receives one fills it in here.
+        if self._frame_parser is not None:
+            self._frame_parser.device_label = self._name
 
         self._reader: asyncio.StreamReader | None = None
         self._writer: asyncio.StreamWriter | None = None

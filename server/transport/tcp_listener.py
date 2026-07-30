@@ -96,10 +96,14 @@ class TcpListenerSubscription:
         if self._frame_parser_factory is None:
             return None
         try:
-            return self._frame_parser_factory()
+            parser = self._frame_parser_factory()
         except Exception:
             log.exception("[%s] Push frame-parser factory failed", self.name)
             return None
+        if parser is not None:
+            # Attribute overflow warnings to this subscription (see TCPTransport).
+            parser.device_label = self.name
+        return parser
 
     async def close(self) -> None:
         if self._closed:
