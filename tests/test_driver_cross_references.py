@@ -287,6 +287,51 @@ def test_quick_actions_naming_no_command_are_reported_when_commands_are_visible(
     assert len(errors) == 1
 
 
+# --- a device setting's state_key --------------------------------------------
+
+def _with_setting(**sdef) -> dict:
+    definition = _definition()
+    body: dict = {"type": "boolean", "write": {"send": "PWR {value}\r"}}
+    body.update(sdef)
+    definition["device_settings"] = {"standby": body}
+    return definition
+
+
+def test_a_dangling_state_key_reads_the_same_on_both_surfaces():
+    """A typo'd state_key loads fine and shows "(not set)" forever while the
+    write still fires — a setting that looks like it works and never reads
+    back. The rule was YAML-only; the Python surface reaches it now."""
+    from server.drivers.driver_loader import validate_driver_definition
+
+    definition = _with_setting(state_key="powr")
+    yaml_errors = [
+        e for e in validate_driver_definition(definition, strict=False)
+        if "powr" in e
+    ]
+    python_errors = [e for e in python_driver_info_issues(definition) if "powr" in e]
+    assert len(yaml_errors) == 1
+    assert "is not a declared state variable" in yaml_errors[0]
+    assert python_errors == yaml_errors
+
+
+def test_a_state_key_defaults_to_the_setting_name():
+    assert [e for e in python_driver_info_issues(_with_setting()) if "standby" in e]
+    ok = _with_setting()
+    ok["state_variables"]["standby"] = {"type": "boolean"}
+    assert python_driver_info_issues(ok) == []
+
+
+def test_computed_state_variables_skip_the_state_key_check():
+    definition = _with_setting(state_key="powr")
+    definition["state_variables"] = UNEVALUATED_KEY
+
+    assert [e for e in python_driver_info_issues(definition) if "powr" in e] == []
+    assert any(
+        "device_settings state_key reference(s)" in s
+        for s in python_driver_reference_skips(definition)
+    )
+
+
 # --- the shared rule is genuinely shared -------------------------------------
 
 def test_the_python_path_carries_no_second_copy_of_the_action_rules():

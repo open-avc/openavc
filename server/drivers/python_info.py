@@ -25,6 +25,7 @@ from typing import Any
 from server.drivers.avcdriver_semantic import (
     UNEVALUATED_KEY,
     child_param_reference_errors,
+    device_setting_state_key_errors,
     validate_actions,
 )
 
@@ -250,6 +251,18 @@ def python_driver_info_issues(
         for key, sdef in settings.items():
             if not isinstance(sdef, dict):
                 issues.append(f"device_settings['{key}'] must be a mapping")
+                continue
+            # A setting's state_key is a reference into state_variables, and
+            # this is the SAME rule the YAML surface runs — the function was
+            # lifted out of that walk rather than reimplemented here.
+            issues.extend(
+                device_setting_state_key_errors(
+                    f"Device setting '{key}'",
+                    key,
+                    sdef,
+                    info.get("state_variables"),
+                )
+            )
         if settings and overrides_set_device_setting is False:
             issues.append(
                 "declares device_settings but does not override "
@@ -278,6 +291,20 @@ def python_driver_reference_skips(info: dict[str, Any]) -> list[str]:
     ever silences a whole driver.
     """
     _, skips = child_param_reference_errors(info)
+
+    # device_settings -> state_variables, skipped when the target set is
+    # computed. Same reason as above: a driver may build its state
+    # variables at connect, and "not in a set we could not read" is not a
+    # finding.
+    settings = info.get("device_settings")
+    declared = info.get("state_variables")
+    if isinstance(settings, dict) and settings and (
+        not isinstance(declared, dict) or UNEVALUATED_KEY in declared
+    ):
+        skips.append(
+            f"{len(settings)} device_settings state_key reference(s) — "
+            f"state_variables is computed"
+        )
 
     # The actions / quick_actions -> commands reference, skipped by
     # ``validate_actions`` whenever the command set is only partly visible.

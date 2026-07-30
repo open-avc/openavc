@@ -866,12 +866,11 @@ def validate_driver_definition(
             stype = setting_def.get("type", "")
             if stype and stype not in valid_setting_types:
                 errors.append(f"{where}: unknown type '{stype}'")
-            state_key = setting_def.get("state_key", setting_name)
-            if state_key not in declared_vars:
-                errors.append(
-                    f"{where}: state_key '{state_key}' is not a declared "
-                    f"state variable — the setting would never read back"
+            errors.extend(
+                device_setting_state_key_errors(
+                    where, setting_name, setting_def, declared_vars,
                 )
+            )
             mn, mx = setting_def.get("min"), setting_def.get("max")
             if (
                 isinstance(mn, (int, float)) and isinstance(mx, (int, float))
@@ -1863,6 +1862,40 @@ def validate_driver_issues(
     )
     warnings = validate_driver_warnings(driver_def)
     return _as_issues(errors, "error") + _as_issues(warnings, "warning")
+
+
+def device_setting_state_key_errors(
+    where: str,
+    setting_name: str,
+    setting_def: dict[str, Any],
+    declared_vars: Any,
+) -> list[str]:
+    """A device setting's ``state_key`` must name a declared state variable.
+
+    Lifted out of the YAML walk so the Python surface can reach the same rule
+    rather than grow a second one. It is called from exactly where it always
+    ran, with the same message, so YAML error order is unchanged.
+
+    A typo'd ``state_key`` loads fine and shows "(not set)" forever while
+    writes fire into nothing — a setting that appears to work and never reads
+    back.
+
+    ``declared_vars`` may be an unreadable block on the Python surface (a
+    driver that builds its state variables at runtime). "Not in a set we could
+    not read" proves nothing, so that case is left to the caller's skip
+    reporting rather than turned into an error.
+    """
+    if not isinstance(declared_vars, dict) or UNEVALUATED_KEY in declared_vars:
+        return []
+    state_key = setting_def.get("state_key", setting_name)
+    if not isinstance(state_key, str):
+        return []
+    if state_key in declared_vars:
+        return []
+    return [
+        f"{where}: state_key '{state_key}' is not a declared "
+        f"state variable — the setting would never read back"
+    ]
 
 
 def child_param_reference_errors(

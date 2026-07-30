@@ -250,7 +250,11 @@ def test_class_dependent_checks_are_named_not_assumed(tmp_path):
         tmp_path / "acme_widget.py",
         CLEAN_PYTHON.replace(
             '"commands": {',
-            '"device_settings": {"volume": {"type": "integer"}},\n'
+            # state_key points at the declared "power" variable: a setting's
+            # state_key is a reference, and this case is about the
+            # class-dependent NOTE, not about shipping a dangling one.
+            '"device_settings": {"volume": {"type": "integer",'
+            ' "state_key": "power"}},\n'
             '            "commands": {',
         ),
     )
