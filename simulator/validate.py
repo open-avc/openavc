@@ -45,7 +45,6 @@ Checks performed:
 from __future__ import annotations
 
 import argparse
-import ast
 import fnmatch
 import json
 import re
@@ -536,20 +535,26 @@ def _check_poll_coverage(
                 )
 
 
-def _check_type_consistency(
+def _check_initial_state_types(
     result: ValidationResult,
     state_vars: dict,
     sim_initial: dict,
-    sim_handlers: list,
 ) -> None:
-    """Check for common type consistency issues."""
+    """Compare each declared state variable's type against its seeded value.
+
+    Shared by the YAML and Python paths so the two cannot drift apart again.
+    """
+    if not isinstance(state_vars, dict) or not isinstance(sim_initial, dict):
+        return
+
     for var_name, var_def in state_vars.items():
-        var_type = var_def.get("type", "string")
+        if not isinstance(var_name, str) or not isinstance(var_def, dict):
+            continue
         if var_name not in sim_initial:
             continue
+        var_type = var_def.get("type", "string")
         initial = sim_initial[var_name]
 
-        # Check boolean variables
         if var_type == "boolean" and not isinstance(initial, bool):
             result.error(
                 "type_consistency",
@@ -557,23 +562,63 @@ def _check_type_consistency(
                 f"value is {type(initial).__name__}: {initial!r}"
             )
 
-        # Check integer variables
-        if var_type == "integer" and not isinstance(initial, int):
+        # bool is a subclass of int, so True would satisfy an integer
+        # declaration without this — a false pass on the one confusion this
+        # check exists to catch.
+        if var_type == "integer" and (
+            isinstance(initial, bool) or not isinstance(initial, int)
+        ):
             result.warning(
                 "type_consistency",
                 f"State variable '{var_name}' is integer but initial_state "
                 f"value is {type(initial).__name__}: {initial!r}"
             )
 
-        # Check enum variables
+        if var_type in ("number", "float") and (
+            isinstance(initial, bool) or not isinstance(initial, (int, float))
+        ):
+            result.warning(
+                "type_consistency",
+                f"State variable '{var_name}' is {var_type} but initial_state "
+                f"value is {type(initial).__name__}: {initial!r}"
+            )
+
         if var_type == "enum":
             valid_values = var_def.get("values", [])
-            if valid_values and str(initial) not in [str(v) for v in valid_values]:
+            if not isinstance(valid_values, list):
+                # Declared, but built from a constant or a call, so there is
+                # nothing to compare against. Say so — a silent skip here
+                # reads exactly like a pass.
+                result.info(
+                    "type_consistency",
+                    f"State variable '{var_name}' is an enum whose values are "
+                    f"computed, so its initial value {initial!r} could not be "
+                    f"checked against them."
+                )
+            elif valid_values and str(initial) not in [str(v) for v in valid_values]:
                 result.error(
                     "type_consistency",
                     f"State variable '{var_name}' initial value {initial!r} "
                     f"not in enum values: {valid_values}"
                 )
+
+
+def _check_type_consistency(
+    result: ValidationResult,
+    state_vars: dict,
+    sim_initial: dict,
+    sim_handlers: list,
+) -> None:
+    """Check for common type consistency issues.
+
+    One implementation for both driver formats. There used to be two — this
+    one for YAML and a second inside the Python path — and they had drifted:
+    the Python copy checked ``boolean`` and ``enum`` only, so a string sitting
+    in an ``integer`` state variable went unreported for every Python driver
+    while the same mistake was caught in a YAML one. Neither copy covered
+    ``number`` or ``float``, which are both declarable types.
+    """
+    _check_initial_state_types(result, state_vars, sim_initial)
 
     # Check for boolean state refs in respond: templates that might produce
     # capitalized Python booleans (True/False instead of true/false)
@@ -1211,10 +1256,28 @@ def _check_child_entities(result: ValidationResult, driver_def: dict, sim: dict)
 
 def validate_python_driver(driver_path: Path) -> ValidationResult:
     """Validate a Python driver and its companion _sim.py simulator."""
+    from server.drivers.python_info import ExtractError
     from simulator.scaffold import extract_driver_info
 
-    driver_info = extract_driver_info(driver_path)
+    # The reader refuses a file it cannot honestly read — a syntax error, or a
+    # DRIVER_INFO that is not a class attribute (the runtime loads it off a
+    # BaseDriver subclass, so a module-level dict of that name is a driver
+    # that will never load). Report that as a finding rather than letting it
+    # come out of a validator as a traceback.
+    try:
+        driver_info = extract_driver_info(driver_path)
+    except ExtractError as exc:
+        result = ValidationResult(str(driver_path), driver_path.stem, "python")
+        result.error("driver_info", str(exc))
+        return result
+    except SyntaxError as exc:
+        result = ValidationResult(str(driver_path), driver_path.stem, "python")
+        result.error("driver_info", f"{driver_path.name} does not parse: {exc}")
+        return result
+
     driver_id = driver_info.get("id", driver_path.stem) if driver_info else driver_path.stem
+    if not isinstance(driver_id, str):
+        driver_id = driver_path.stem
     result = ValidationResult(str(driver_path), driver_id, "python")
 
     if not driver_info:
@@ -1247,11 +1310,27 @@ def validate_python_driver(driver_path: Path) -> ValidationResult:
                 f"SIMULATOR_INFO driver_id ({sim_info['driver_id']!r})"
             )
 
-    # Check state variable coverage
+    # Check state variable coverage. A value the reader could not resolve
+    # statically arrives as the UNEVALUATED marker rather than a dict, and it
+    # is named rather than skipped — the old reader's regex fallback always
+    # produced *something*, so a computed block used to be checked against an
+    # invention instead of reported as unreadable.
     driver_state_vars = driver_info.get("state_variables", {})
     sim_initial = sim_info.get("initial_state", {})
+    if not isinstance(sim_initial, dict):
+        sim_initial = {}
+
+    if not isinstance(driver_state_vars, dict):
+        result.info(
+            "state_coverage",
+            "DRIVER_INFO state_variables are computed, so state coverage and "
+            "initial-state types could not be checked.",
+        )
+        driver_state_vars = {}
 
     for var_name, var_def in driver_state_vars.items():
+        if not isinstance(var_name, str):
+            continue
         if var_name not in sim_initial:
             result.warning(
                 "state_coverage",
@@ -1259,27 +1338,9 @@ def validate_python_driver(driver_path: Path) -> ValidationResult:
                 f"SIMULATOR_INFO initial_state"
             )
 
-    # Check type consistency for initial state
-    for var_name, var_def in driver_state_vars.items():
-        if var_name not in sim_initial:
-            continue
-        var_type = var_def.get("type", "string")
-        initial = sim_initial[var_name]
-
-        if var_type == "boolean" and not isinstance(initial, bool):
-            result.error(
-                "type_consistency",
-                f"State variable '{var_name}' is boolean but initial_state "
-                f"value is {type(initial).__name__}: {initial!r}"
-            )
-        if var_type == "enum":
-            valid_values = var_def.get("values", [])
-            if valid_values and str(initial) not in [str(v) for v in valid_values]:
-                result.error(
-                    "type_consistency",
-                    f"State variable '{var_name}' initial value {initial!r} "
-                    f"not in enum values: {valid_values}"
-                )
+    # Check type consistency for initial state — the same function the YAML
+    # path calls, so a Python driver is held to the same rules.
+    _check_initial_state_types(result, driver_state_vars, sim_initial)
 
     # Check transport match
     driver_transport = driver_info.get("transport", "tcp")
@@ -1291,28 +1352,48 @@ def validate_python_driver(driver_path: Path) -> ValidationResult:
             f"SIMULATOR_INFO transport ({sim_transport!r})"
         )
 
-    # Check command coverage: every command in DRIVER_INFO should be
-    # handleable by the simulator. For Python sims we can't prove the
-    # protocol dispatch statically, but we can at least flag sims that
-    # never mention any command names exactly.
+    # Command coverage. A Python simulator's dispatch cannot be proven
+    # statically — a binary protocol answers raw bytes and never writes a
+    # logical command name anywhere — so this is a heads-up, not a finding,
+    # and it reports at ``info``.
+    #
+    # It used to be a single warning gated on ``not exact_mentions``: one
+    # command name appearing anywhere in the file silenced the check for
+    # every other command. ``verillon_beacon`` validated with zero warnings
+    # because the string ``set_bitrate`` occurred inside ``"stream.set_bitrate"``
+    # and its other three commands were never looked at. Reporting which
+    # names were not found is the same evidence without the cliff.
     sim_source = sim_path.read_text(encoding="utf-8")
     driver_commands = driver_info.get("commands", {})
-    exact_mentions: set[str] = set()
-    for cmd_name in driver_commands:
-        # Look for the command name as a standalone token so prefixes like
-        # ``power`` do not accidentally satisfy ``power_on``.
-        if re.search(rf"(?<![A-Za-z0-9_]){re.escape(cmd_name)}(?![A-Za-z0-9_])", sim_source):
-            exact_mentions.add(cmd_name)
-
-    if not exact_mentions and driver_commands:
-        preview = ", ".join(repr(name) for name in list(driver_commands)[:5])
-        if len(driver_commands) > 5:
-            preview += f", … (+{len(driver_commands) - 5} more)"
-        result.warning(
+    if not isinstance(driver_commands, dict):
+        result.info(
             "command_coverage",
-            "Python simulator source does not mention any DRIVER_INFO "
-            f"commands exactly: {preview}. The simulator may still handle them at "
-            "the protocol level, but this is worth checking."
+            "DRIVER_INFO commands are computed, so command coverage could not "
+            "be checked.",
+        )
+        return result
+
+    command_names = [name for name in driver_commands if isinstance(name, str)]
+    unmentioned = [
+        name
+        for name in command_names
+        # Standalone token so prefixes like ``power`` do not satisfy ``power_on``.
+        if not re.search(
+            rf"(?<![A-Za-z0-9_]){re.escape(name)}(?![A-Za-z0-9_])", sim_source
+        )
+    ]
+
+    if unmentioned:
+        preview = ", ".join(repr(name) for name in unmentioned[:5])
+        if len(unmentioned) > 5:
+            preview += f", … (+{len(unmentioned) - 5} more)"
+        result.info(
+            "command_coverage",
+            f"{len(unmentioned)} of {len(command_names)} DRIVER_INFO command "
+            f"name(s) do not appear in the simulator source: {preview}. A "
+            "simulator that dispatches on raw protocol bytes will never "
+            "mention them, so this is only worth checking when the simulator "
+            "does dispatch by name."
         )
 
     return result

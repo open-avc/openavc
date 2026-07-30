@@ -79,13 +79,18 @@ def _write(path: Path, content: str) -> Path:
     return path
 
 
-def test_python_simulator_without_command_names_gets_a_warning(tmp_path):
-    """A Python simulator that never mentions driver command names should
-    surface a warning instead of passing silently.
+def test_python_simulator_without_command_names_is_reported(tmp_path):
+    """A Python simulator that never mentions driver command names says so.
+
+    Reports at ``info``, not ``warning``: a simulator that dispatches on raw
+    protocol bytes can never mention a logical command name, so this warned
+    permanently on those drivers no matter how correct they were — which
+    trains an author to ignore the one channel that might say something real.
     """
     driver = _write(
         tmp_path / "sample.py",
-        "DRIVER_INFO = {\n"
+        "class SampleDriver:\n"
+        "  DRIVER_INFO = {\n"
         "    'id': 'sample',\n"
         "    'name': 'Sample',\n"
         "    'transport': 'tcp',\n"
@@ -113,15 +118,21 @@ def test_python_simulator_without_command_names_gets_a_warning(tmp_path):
 
     assert result.passed
     assert not result.errors
-    assert any(issue.check == 'command_coverage' for issue in result.warnings)
-    assert 'power_on' in result.warnings[0].message or 'power_off' in result.warnings[0].message
+    coverage = [i for i in result.infos if i.check == 'command_coverage']
+    assert coverage
+    # Both are named, not just the first: one command appearing in the source
+    # used to silence the check for every other command in the driver.
+    assert 'power_on' in coverage[0].message
+    assert 'power_off' in coverage[0].message
+    assert '2 of 2' in coverage[0].message
 
 
-def test_python_simulator_prefix_only_mentions_still_warn(tmp_path):
+def test_python_simulator_prefix_only_mentions_are_still_reported(tmp_path):
     """A prefix like `power` must not count as `power_on` coverage."""
     driver = _write(
         tmp_path / "sample.py",
-        "DRIVER_INFO = {\n"
+        "class SampleDriver:\n"
+        "  DRIVER_INFO = {\n"
         "    'id': 'sample',\n"
         "    'name': 'Sample',\n"
         "    'transport': 'tcp',\n"
@@ -149,4 +160,4 @@ def test_python_simulator_prefix_only_mentions_still_warn(tmp_path):
 
     assert result.passed
     assert not result.errors
-    assert any(issue.check == 'command_coverage' for issue in result.warnings)
+    assert any(issue.check == 'command_coverage' for issue in result.infos)
