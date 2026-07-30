@@ -22,6 +22,12 @@ import ast
 from pathlib import Path
 from typing import Any
 
+from server.drivers.avcdriver_semantic import (
+    UNEVALUATED_KEY,
+    child_param_reference_errors,
+    validate_actions,
+)
+
 
 class ExtractError(Exception):
     """Raised when a driver file's metadata cannot be extracted."""
@@ -45,8 +51,11 @@ class _Unevaluated:
 
 UNEVALUATED = _Unevaluated()
 
-# Key placeholder for `**expr` where expr's own keys can't be read.
-UNEVALUATED_KEY = "<unevaluated>"
+# ``UNEVALUATED_KEY`` — the placeholder for `**expr` whose own keys can't be
+# read — is imported above rather than defined here, and stays importable from
+# this module for the callers that already do. Only this reader ever emits it;
+# the rules that have to RECOGNISE it are shared with the YAML surface, so it
+# is defined with them.
 
 
 def lenient_ast_value(node: Any, path: str, opaque: list[str]) -> Any:
@@ -214,37 +223,20 @@ def python_driver_info_issues(
     """
     issues: list[str] = []
 
-    qa = info.get("quick_actions")
-    if qa is not None and (
-        not isinstance(qa, list) or any(not isinstance(x, str) for x in qa)
-    ):
-        issues.append("quick_actions must be a list of command-id strings")
+    # The actions / quick_actions block is validated by the SHARED rule
+    # function, not a second copy of it. This module used to carry its own —
+    # narrower (it checked shape but never that a kind:"command" action names
+    # a command that exists) and worded differently, so the same broken
+    # driver was described one way by the catalog and another by the Builder.
+    # ``validate_actions`` is surface-neutral: the one YAML-only action rule
+    # (kind:"setup" needs a Python driver) lives in its caller, not in it.
+    issues.extend(validate_actions(info))
 
     actions = info.get("actions")
-    declares_setup = False
-    if actions is not None and not isinstance(actions, list):
-        issues.append("actions must be a list")
-    elif isinstance(actions, list):
-        for i, entry in enumerate(actions):
-            if not isinstance(entry, dict) or not entry.get("id"):
-                issues.append(
-                    f"actions[{i}] must be a mapping with an 'id' "
-                    f"(the resolver silently drops it otherwise)"
-                )
-                continue
-            kind = entry.get("kind", "command")
-            if kind not in ("command", "setup"):
-                issues.append(
-                    f"actions[{i}] ('{entry.get('id')}'): unknown kind {kind!r}"
-                )
-            elif kind == "setup":
-                declares_setup = True
-            availability = entry.get("availability", "online")
-            if availability not in ("online", "offline", "always"):
-                issues.append(
-                    f"actions[{i}] ('{entry.get('id')}'): unknown availability "
-                    f"{availability!r}"
-                )
+    declares_setup = isinstance(actions, list) and any(
+        isinstance(entry, dict) and entry.get("kind") == "setup"
+        for entry in actions
+    )
     if declares_setup and overrides_run_setup_action is False:
         issues.append(
             "declares a kind:'setup' action but does not override "
@@ -264,4 +256,52 @@ def python_driver_info_issues(
                 "set_device_setting — every write will 501"
             )
 
+    # References out of a command's params into child_entity_types, from the
+    # same shared function the YAML path calls. Its skip list is dropped here
+    # (the return type is a plain error list every door already consumes) and
+    # reported separately by ``python_driver_reference_skips`` — a skip is
+    # coverage, not a verdict, so it must never reach a caller as an issue.
+    reference_errors, _ = child_param_reference_errors(info)
+    issues.extend(reference_errors)
+
     return issues
+
+
+def python_driver_reference_skips(info: dict[str, Any]) -> list[str]:
+    """Cross-references that could not be decided, and why.
+
+    A Python driver may build ``commands`` or ``child_entity_types`` at
+    runtime — the Q-SYS pattern — and a check whose target set is computed
+    cannot tell a dangling reference from one that resolves at connect. Those
+    references are skipped and named here, so a caller prints the gap instead
+    of implying it checked. The skip is always per reference: nothing here
+    ever silences a whole driver.
+    """
+    _, skips = child_param_reference_errors(info)
+
+    # The actions / quick_actions -> commands reference, skipped by
+    # ``validate_actions`` whenever the command set is only partly visible.
+    # It skips silently (its YAML callers can never hit the case); naming the
+    # gap is this function's job.
+    commands = info.get("commands")
+    if commands is not None and not isinstance(commands, dict):
+        target = "commands is computed"
+    elif isinstance(commands, dict) and UNEVALUATED_KEY in commands:
+        target = (
+            f"commands is only partly visible ({len(commands) - 1} key(s) "
+            f"read, the rest merged or built at runtime)"
+        )
+    else:
+        target = ""
+    if target:
+        named = sum(
+            1 for entry in (info.get("actions") or [])
+            if isinstance(entry, dict) and entry.get("kind", "command") == "command"
+        ) + len(info.get("quick_actions") or [])
+        if named:
+            skips.append(
+                f"{named} action/quick_action reference(s) into commands — "
+                f"{target}"
+            )
+
+    return skips

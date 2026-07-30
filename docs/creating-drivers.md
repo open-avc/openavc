@@ -782,7 +782,7 @@ on_connect:
 
 `when:` works on entries in both `on_connect` and `polling.queries`, with or without `each_child` (the plain `{ send: ..., when: ... }` form exists so a one-off query can be gated too). The field must be one you declared in `config_schema` or `default_config` — a name that doesn't exist is a load error rather than a query that silently never runs. Pair a metering stream with `throttle:` on its response rules and `cloud_priority: low` on the state variables it feeds.
 
-Per-child **writes** need nothing new — declare a command with a `child_id` parameter (see `commands`) and the platform validates and substitutes the ID (as the unpadded local ID; use a format spec like `{channel:02d}` in the send string / OSC address when the wire wants zero-padding). Per-child values that the device persists (a zone volume, an output mute) are modeled as child state variables plus a `child_id` command, not as `device_settings` — a device setting's `state_key` is flat and can't address a child. The IDE's per-child "Refresh from Device" re-derives the roster from config automatically.
+Per-child **writes** need nothing new — declare a command with a `child_id` parameter (see `commands`) and the platform validates and substitutes the ID (as the unpadded local ID; use a format spec like `{channel:02d}` in the send string / OSC address when the wire wants zero-padding). Validation here means both halves: the value has to be the kind of id the type declares, **and** it has to fall inside the `min`/`max` of that type's `id_format`. An id outside the declared range is refused before anything reaches the wire, with a message naming the parameter and the range (`'set_zone_level': 'zone' must be between 1 and 32, got 99`) — so declaring an honest `id_format` is what buys you the check. Per-child values that the device persists (a zone volume, an output mute) are modeled as child state variables plus a `child_id` command, not as `device_settings` — a device setting's `state_key` is flat and can't address a child. The IDE's per-child "Refresh from Device" re-derives the roster from config automatically.
 
 Python drivers declare the same block in `DRIVER_INFO` and register instances at runtime with `self.register_child(type, local_id, initial_state=...)`, update them with `set_child_state` / `set_children_state_batch`, and remove them with `deregister_child`. For a **dynamic** type, pass the discovered control schema when registering:
 
@@ -2705,6 +2705,27 @@ layout, so it works on a driver you will never publish. `python -m
 simulator.validate` runs the same check before its own, so you get it either
 way.
 
+It also checks that the parts of your driver agree with each other. Several
+things in a driver are references to something else in the same file, and a
+reference pointing at nothing used to load cleanly and fail only when somebody
+pressed the button:
+
+```
+my_driver.py: error: commands.set_zone_level.params.zone: child_type 'zne' is not a declared child_entity_type (declared: zone)
+my_driver.py: error: actions[3]: command 'query_evrything' is not a declared command
+my_driver.py: error: commands.set_zone_level.params.zone: max 99 is above child_entity_types.zone.id_format.max (32) — the gate would accept an id the child type cannot have
+```
+
+Each of those is worth knowing about because none of them announces itself:
+
+- A **`child_type` naming no declared type** falls back to plain integer
+  handling when the command runs, so the error blames the value the user typed
+  rather than the driver that misspelled the type.
+- An **`actions` entry naming a command that does not exist** still renders a
+  live button on the device page. Pressing it fails.
+- A **`child_id` parameter whose `min`/`max` disagree with the child type's
+  `id_format`** lets an id through that the type cannot have.
+
 It also says what it could **not** check. A `DRIVER_INFO` value built by code
 rather than written out as a literal cannot be read from the source, and the
 keys nested under it go unchecked — the command names those spots rather than
@@ -2715,6 +2736,20 @@ my_driver.py: note: 1 value(s) could not be read from the source (built from a
 constant, a call or a comprehension); keys nested under them are unchecked:
 commands.set_input.params.input.values
 ```
+
+The same applies to a reference whose *target* is built at runtime. If your
+driver fills in `commands` in code — a legitimate pattern when the device
+tells you what it supports — the checker cannot know whether an action's
+command exists, so it skips that reference and says so rather than guessing:
+
+```
+my_driver.py: note: cross-reference not checked — 6 action/quick_action
+reference(s) into commands — commands is only partly visible (15 key(s) read,
+the rest merged or built at runtime)
+```
+
+A skip is never a pass. It is the command telling you which of your
+declarations it had no way to verify.
 
 ### Without hardware (simulation mode)
 

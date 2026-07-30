@@ -62,10 +62,18 @@ def test_semantic_rules_stay_pure():
 def test_python_info_imports_nothing_beyond_itself():
     """The Python-driver reader is vendored into the community catalog and runs
     in a CI job that installs only that repo's own requirements — so it may not
-    reach for the server runtime, and not for YAML either."""
+    reach for the server runtime, and not for YAML either.
+
+    It may reach the shared rules module, which is vendored beside it and held
+    to the same contract: the cross-reference rules a Python driver is checked
+    against are the *same functions* the YAML surface calls, and reaching them
+    is the whole point. Budgeting against ``ALLOWED`` rather than a list of its
+    own keeps that from becoming a back door — anything ``avcdriver_semantic``
+    may not import, ``python_info`` still may not import through it.
+    """
+    allowed = ALLOWED | {"server.drivers.python_info"}
     loaded = _loaded_modules("import server.drivers.python_info")
-    assert set(loaded) <= {
-        "server",
-        "server.drivers",
-        "server.drivers.python_info",
-    }, loaded
+    assert set(loaded) <= allowed, sorted(set(loaded) - allowed)
+    # Still not YAML. The reader parses Python source, and the catalog CI job
+    # it runs in has no yaml dependency to lean on.
+    assert "yaml" not in loaded

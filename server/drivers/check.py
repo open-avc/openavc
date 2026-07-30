@@ -55,6 +55,7 @@ from server.drivers.python_info import (
     declares_driver_info,
     extract_python_driver_info_full,
     python_driver_info_issues,
+    python_driver_reference_skips,
 )
 
 DRIVER_EXTENSIONS = (".avcdriver", ".py")
@@ -146,6 +147,9 @@ def _check_python_driver(path: Path) -> FileCheckResult:
 
     result.errors.extend(unknown_key_errors(info))
     result.errors.extend(python_driver_info_issues(info))
+
+    for skip in python_driver_reference_skips(info):
+        result.notes.append(f"cross-reference not checked — {skip}")
 
     if unevaluated:
         result.notes.append(

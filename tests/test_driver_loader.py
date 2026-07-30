@@ -1005,9 +1005,14 @@ def test_driver_id_from_file_returns_none_on_garbage(tmp_path):
 # sees the typo at load instead of getting a silent free-text box.
 
 
-def _def_with_command(params: dict) -> dict:
-    """A minimal valid driver whose one command carries `params`."""
-    return {
+def _def_with_command(params: dict, child_types: dict | None = None) -> dict:
+    """A minimal valid driver whose one command carries `params`.
+
+    Pass ``child_types`` whenever ``params`` carries a ``child_id``: such a
+    param is a reference into ``child_entity_types``, and a driver naming a
+    type it never declares is not a valid one.
+    """
+    definition = {
         "id": "acme_widget",
         "name": "Acme Widget",
         "transport": "tcp",
@@ -1016,6 +1021,18 @@ def _def_with_command(params: dict) -> dict:
             "do_thing": {"label": "Do Thing", "send": "DO {bank}\r", "params": params},
         },
     }
+    if child_types is not None:
+        definition["child_entity_types"] = child_types
+    return definition
+
+
+# The child type the child_id params below point at, kept beside the helper.
+_COMPONENT_TYPE = {
+    "component": {
+        "id_format": {"type": "string"},
+        "state_variables": {"level": {"type": "number"}},
+    },
+}
 
 
 def test_options_state_accepted():
@@ -1064,7 +1081,7 @@ def test_options_from_child_schema_accepted():
             "type": "string",
             "options_from": {"param": "component", "source": "child_schema"},
         },
-    }))
+    }, _COMPONENT_TYPE))
     assert errors == []
 
 
@@ -1140,7 +1157,7 @@ def _def_with_cascade_chain(value_params: dict) -> dict:
         },
     }
     params.update(value_params)
-    return _def_with_command(params)
+    return _def_with_command(params, _COMPONENT_TYPE)
 
 
 def test_type_from_accepted():

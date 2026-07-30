@@ -175,6 +175,70 @@ def test_dispatch_rejects_a_bool_id():
     assert "outlet" in str(exc.value)
 
 
+# --- command dispatch: the declared range is enforced, not just the kind -----
+
+RANGED_TYPE = {"id_format": {"type": "integer", "min": 1, "max": 32}}
+
+
+@pytest.mark.parametrize("raw", [1, 32, "01", "032", 17])
+def test_dispatch_accepts_ids_inside_the_declared_range(raw):
+    out = DeviceManager._coerce_child_id_params(
+        _driver(RANGED_TYPE), "set_level", {"outlet": raw},
+    )
+    assert out["outlet"] == int(raw)
+
+
+@pytest.mark.parametrize("raw, expected", [(99, 99), ("99", 99), (0, 0), (-3, -3)])
+def test_dispatch_rejects_ids_outside_the_declared_range(raw, expected):
+    """The finding this closes: an id past the declared max coerced cleanly,
+    went on the wire, and the command returned success — the device answered
+    with its own error and nothing surfaced it. The bound the driver wrote
+    down was the one thing the gate never read."""
+    with pytest.raises(CommandParamError) as exc:
+        DeviceManager._coerce_child_id_params(
+            _driver(RANGED_TYPE), "set_level", {"outlet": raw},
+        )
+    message = str(exc.value)
+    assert "outlet" in message
+    assert "between 1 and 32" in message
+    assert str(expected) in message
+
+
+@pytest.mark.parametrize("id_format, raw", [
+    # No bounds declared means unbounded, not invalid.
+    ({"type": "integer"}, 9999),
+    ({"type": "integer", "min": 1}, 9999),
+    ({"type": "integer", "max": 32}, -50),
+    # A string type's ids are names; min/max describe nothing orderable.
+    ({"type": "string", "min": 1, "max": 4}, "main_gain"),
+    # A malformed bound is ignored rather than allowed to reject everything.
+    ({"type": "integer", "max": "thirty-two"}, 9999),
+    ({"type": "integer", "max": True}, 9999),
+])
+def test_dispatch_only_range_checks_what_the_driver_actually_declared(
+    id_format, raw,
+):
+    out = DeviceManager._coerce_child_id_params(
+        _driver({"id_format": id_format}), "set_level", {"outlet": raw},
+    )
+    assert "outlet" in out
+
+
+@pytest.mark.parametrize("bounds, raw, expected", [
+    ({"min": 1}, 0, "must be at least 1"),
+    ({"max": 8}, 9, "must be at most 8"),
+])
+def test_dispatch_names_only_the_bound_that_exists(bounds, raw, expected):
+    """A half-bounded type must not claim a range it never declared."""
+    with pytest.raises(CommandParamError) as exc:
+        DeviceManager._coerce_child_id_params(
+            _driver({"id_format": {"type": "integer", **bounds}}),
+            "set_level",
+            {"outlet": raw},
+        )
+    assert expected in str(exc.value)
+
+
 @pytest.mark.parametrize("info", [
     {},
     {"commands": {}},

@@ -132,10 +132,11 @@ def test_structural_message_is_the_loaders_rule_verbatim(tmp_path):
     )
     result = check_driver_file(driver)
     expected = python_driver_info_issues({"actions": [{"kind": "command"}]})
-    assert expected == [
-        "actions[0] must be a mapping with an 'id' "
-        "(the resolver silently drops it otherwise)"
-    ]
+    # The wording is the SHARED rule's. python_info used to carry its own copy
+    # of the actions checks — narrower, and worded differently — so the same
+    # broken driver was described one way by the catalog and another by the
+    # Builder. It delegates to ``validate_actions`` now, and both say this.
+    assert expected == ["actions[0]: missing required 'id' (non-empty string)"]
     assert expected[0] in result.errors
 
 

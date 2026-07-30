@@ -115,6 +115,20 @@ def _push(transport: str = "tcp", **push: Any) -> dict[str, Any]:
     return _d(transport=transport, push=push)
 
 
+def _child_param(**pdef: Any) -> dict[str, Any]:
+    """A definition addressing a child through a ``child_id`` param.
+
+    The declared ``zone`` type bounds ids to 1..8, so a case can contradict
+    either the type name or the range.
+    """
+    body: dict[str, Any] = {"type": "child_id", "child_type": "zone"}
+    body.update(pdef)
+    return _d(
+        child_entity_types=dict(_CHILD_TYPES),
+        commands={"set_zone": {"send": "Z{zone}\r", "params": {"zone": body}}},
+    )
+
+
 def _child_type(**tdef: Any) -> dict[str, Any]:
     return _d(child_entity_types={"zone": tdef})
 
@@ -174,6 +188,15 @@ CASES: dict[str, Any] = {
         child_entity_types=dict(_CHILD_TYPES),
         responses=[{"match": r"Z(\d)", "child_set": ["zone"]}],
     ),
+    # --- references out of a command's params into child_entity_types ---
+    # A dangling child_type used to fall through to plain integer coercion at
+    # dispatch, so the user was told the value they typed was wrong when the
+    # driver was. Bounds that contradict the type's id_format let the gate
+    # accept an id the type cannot have.
+    "child_param_unknown_type": _child_param(child_type="zne"),
+    "child_param_no_type": _child_param(child_type=None),
+    "child_param_max_above_id_format": _child_param(max=99),
+    "child_param_min_below_id_format": _child_param(min=0),
     "child_set_unknown_type": _child_resp(type="relay", id="$1", state={"level": "$2"}),
     "child_set_missing_id": _child_resp(type="zone", state={"level": "$2"}),
     "child_set_id_group_invalid": _child_resp(type="zone", id={"group": True}, state={"level": "$2"}),

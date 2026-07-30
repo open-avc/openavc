@@ -90,6 +90,18 @@
  "child_id_format_unknown_type": [
   "child_entity_types.zone.id_format: unknown type 'uuid' (expected 'integer' or 'string')"
  ],
+ "child_param_max_above_id_format": [
+  "commands.set_zone.params.zone: max 99 is above child_entity_types.zone.id_format.max (8) \u2014 the gate would accept an id the child type cannot have"
+ ],
+ "child_param_min_below_id_format": [
+  "commands.set_zone.params.zone: min 0 is below child_entity_types.zone.id_format.min (1) \u2014 the gate would accept an id the child type cannot have"
+ ],
+ "child_param_no_type": [
+  "commands.set_zone.params.zone: a child_id param must declare 'child_type' (without it the id cannot be resolved to a child type and is coerced as a plain integer)"
+ ],
+ "child_param_unknown_type": [
+  "commands.set_zone.params.zone: child_type 'zne' is not a declared child_entity_type (declared: zone)"
+ ],
  "child_set_entry_not_mapping": [
   "Response 0: child_set[0]: must be a mapping"
  ],

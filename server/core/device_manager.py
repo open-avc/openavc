@@ -24,7 +24,11 @@ from server.drivers.base import (
     normalize_and_validate_command_params,
     validate_device_setting_value,
 )
-from server.drivers.child_ids import child_id_kind, coerce_child_local_id
+from server.drivers.child_ids import (
+    child_id_kind,
+    child_id_range_error,
+    coerce_child_local_id,
+)
 from server.core.event_bus import EventBus, detach_emit_chain
 from server.core.state_store import StateStore
 from server.utils.logger import get_logger
@@ -585,6 +589,18 @@ class DeviceManager:
                 raise CommandParamError(
                     f"'{command}': '{name}' must be a child id number, "
                     f"got {value!r}"
+                )
+            # Coercion proves the id is the right KIND; the declared range is
+            # a separate fact and used to go unchecked. An out-of-range id
+            # reached the wire and the command reported success — the device
+            # answered with its own error and nothing surfaced it. Enforced
+            # here beside the min/max checks the same gate already runs for
+            # ordinary numeric params, so a child id is no longer the one
+            # parameter kind whose declared bounds mean nothing.
+            range_error = child_id_range_error(type_def, coerced)
+            if range_error is not None:
+                raise CommandParamError(
+                    f"'{command}': '{name}' {range_error}, got {coerced}"
                 )
             out[name] = coerced
         return out
