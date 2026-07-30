@@ -245,11 +245,18 @@ def iter_driver_files(path: Path) -> list[Path]:
 
 
 def _display_path(path: Path, root: Path) -> str:
-    """The path as the caller would type it — relative where that is shorter."""
+    """The path as the caller would type it — relative where that is shorter.
+
+    Native separators, so a Windows author gets ``drivers\\my_driver.py`` and
+    can paste it back into their own shell. ``as_posix()`` would print
+    ``C:/Users/...``, which no Windows tool emits and an editor's problem
+    matcher will not recognise — and the point of this output format is that
+    the terminal, CI and the IDE all say the same thing.
+    """
     try:
-        return path.relative_to(root).as_posix()
+        return str(path.relative_to(root))
     except ValueError:
-        return path.as_posix()
+        return str(path)
 
 
 def main(argv: list[str] | None = None) -> int:

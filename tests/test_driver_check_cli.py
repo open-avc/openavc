@@ -152,6 +152,22 @@ def test_output_is_path_qualified(tmp_path, capsys):
     )
 
 
+def test_printed_paths_use_native_separators(tmp_path):
+    """A Windows author must get ``drivers\\acme_widget.py``, not ``C:/...``.
+
+    ``as_posix()`` reads fine on macOS and is wrong on Windows: nothing there
+    emits that form and an editor's problem matcher will not match it, which
+    defeats the point of a ``path: error: message`` format. On POSIX the two
+    are identical, so this pins the function rather than the separator — a
+    re-introduced ``as_posix()`` fails on Windows and is at least legible here.
+    """
+    from server.drivers.check import _display_path
+
+    nested = tmp_path / "drivers" / "acme_widget.py"
+    assert _display_path(nested, tmp_path) == str(Path("drivers/acme_widget.py"))
+    assert _display_path(nested, Path(tmp_path.anchor) / "elsewhere") == str(nested)
+
+
 # ── A file it cannot read is an error, not a skip ──
 
 
