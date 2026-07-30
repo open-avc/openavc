@@ -17,6 +17,8 @@ from collections import deque
 from dataclasses import dataclass, asdict
 from typing import Any
 
+from server.utils.log_redaction import get_secret_registry
+
 
 @dataclass
 class LogEntry:
@@ -114,7 +116,23 @@ class LogBuffer:
             entries = [e for e in entries if e.category == category]
         if count < len(entries):
             entries = entries[-count:]
-        return [e.to_dict() for e in entries]
+
+        # Redact again on the way out, not only on the way in. A secret the
+        # DEVICE issues — a session token from a login — arrives in a frame that
+        # the transport logs *before* the driver has seen it and could call
+        # redact_in_log(). That one line is already in the buffer by the time the
+        # value is known to be a credential, and this is the door that serves it
+        # (GET /api/logs/recent, and the Log view's Download). Cheap: at most
+        # `count` entries, and a no-op when nothing is registered.
+        registry = get_secret_registry()
+        if not registry.has_secrets():
+            return [e.to_dict() for e in entries]
+        out = []
+        for entry in entries:
+            data = entry.to_dict()
+            data["message"] = registry.redact_any(data.get("message", ""))
+            out.append(data)
+        return out
 
 
 class BufferHandler(logging.Handler):

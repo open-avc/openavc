@@ -12,6 +12,8 @@ import logging
 import sys
 from logging.handlers import RotatingFileHandler
 
+from server.utils.log_redaction import SecretRedactionFilter
+
 # Format: [timestamp] [LEVEL] [module] message
 LOG_FORMAT = "[%(asctime)s.%(msecs)03d] [%(levelname)-5s] [%(name)s] %(message)s"
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
@@ -21,6 +23,16 @@ _configured = False
 # runtime (PATCH /system/config) without a restart.
 _console_handler: logging.Handler | None = None
 _file_handler: logging.Handler | None = None
+
+# Credential masking for anything a driver, script or plugin logs itself.
+# Transport TX/RX is already redacted at the formatter (transport/wire_log.py),
+# so a credential on the wire never reaches a record at all; this is the
+# backstop for every other line. It goes on the HANDLERS, not on a logger,
+# because a filter attached to a logger never sees records propagating up from
+# its children — and every module logs through its own child logger. One shared
+# instance: a record passing through all three handlers is redacted on the
+# first and left alone by the rest.
+_secret_filter = SecretRedactionFilter()
 
 
 def _build_file_handler(formatter: logging.Formatter) -> logging.Handler | None:
@@ -61,6 +73,7 @@ def _build_file_handler(formatter: logging.Formatter) -> logging.Handler | None:
     )
     handler.setLevel(logging.INFO)
     handler.setFormatter(formatter)
+    handler.addFilter(_secret_filter)
     return handler
 
 
@@ -115,6 +128,7 @@ def _configure_root():
     handler = logging.StreamHandler(sys.stdout)
     handler.setLevel(_console_level)
     handler.setFormatter(formatter)
+    handler.addFilter(_secret_filter)
     root.addHandler(handler)
     global _console_handler
     _console_handler = handler
@@ -133,6 +147,7 @@ def _configure_root():
     from server.utils.log_buffer import get_log_buffer, BufferHandler
     buffer_handler = BufferHandler(get_log_buffer())
     buffer_handler.setLevel(logging.DEBUG)
+    buffer_handler.addFilter(_secret_filter)
     root.addHandler(buffer_handler)
 
     # Device protocol traffic (transport TX/RX) is logged at DEBUG. Pin the

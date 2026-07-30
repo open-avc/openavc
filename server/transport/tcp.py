@@ -18,6 +18,7 @@ import socket as socket_module
 import ssl as ssl_module
 
 from server.transport.frame_parsers import DelimiterFrameParser, FrameParser
+from server.transport.wire_log import format_wire_data
 from server.utils.logger import get_logger
 from .types import Callback
 
@@ -355,16 +356,9 @@ class TCPTransport:
             if self._connected:
                 await self._handle_disconnect()
 
-    @staticmethod
-    def _format_data(data: bytes) -> str:
-        """Format data for logging — decoded text or hex for binary."""
-        try:
-            text = data.decode("ascii").strip()
-            if text.isprintable():
-                return text
-        except (UnicodeDecodeError, ValueError):
-            pass
-        return data.hex()
+    def _format_data(self, data: bytes) -> str:
+        """Format a payload for a TX/RX line, masking this device's secrets."""
+        return format_wire_data(data, self._name)
 
     def _deliver_message(self, data: bytes) -> None:
         """Deliver a complete message to the callback and/or response queue."""

@@ -1,11 +1,15 @@
 """Mixin for AI tool handlers that manage system-level operations."""
 
 import asyncio
-import re
 from pathlib import Path
 from typing import Any
 
 from server.cloud.tools import apply_tool_edit
+from server.utils.log_redaction import (
+    MIN_SECRET_LEN,
+    is_secret_key,
+    redact_text,
+)
 from server.utils.logger import get_logger
 from server.utils.paths import safe_path_within
 
@@ -33,44 +37,13 @@ def _coerce_number(
     return int(number) if integer else number
 
 
-# Config keys whose string values are treated as secrets and scrubbed from
-# log text before it leaves for the cloud (see _collect_secret_values).
-_SECRET_KEY_HINTS = (
-    "password",
-    "passphrase",
-    "secret",
-    "token",
-    "api_key",
-    "community",
-    "auth_key",
-    "system_key",
-    "lock_code",
-)
-
-
-def _looks_secret(key: str) -> bool:
-    lowered = key.lower()
-    return any(hint in lowered for hint in _SECRET_KEY_HINTS)
-
-
-_WORD_EDGE = re.compile(r"\w")
-
-
-def _redact_log_message(message: str, secrets: set[str]) -> str:
-    # Scrub the secret VALUE only where it stands as its own token. A plain
-    # substring replace mangled unrelated words that happen to contain a short
-    # secret — an SNMP community of "public" turned "republic" into "re***".
-    # Word boundaries are applied per edge, but only when that edge is itself a
-    # word char, so a secret with punctuation edges (e.g. "p@ss!") still
-    # matches wherever it really appears. Longest-first so overlapping secrets
-    # don't leave a fragment behind.
-    for secret in sorted(secrets, key=len, reverse=True):
-        if secret not in message:
-            continue
-        left = r"\b" if _WORD_EDGE.match(secret[0]) else ""
-        right = r"\b" if _WORD_EDGE.match(secret[-1]) else ""
-        message = re.sub(left + re.escape(secret) + right, "***", message)
-    return message
+# Which config keys hold credentials, and how a credential VALUE is masked out
+# of log text, both live in server/utils/log_redaction.py — the same rule the
+# transport TX/RX formatter and the log filter use. This module was where that
+# rule was first written; it is now one of its callers, so the cloud AI's view
+# of a log line and the log itself can never disagree about what a secret is.
+_looks_secret = is_secret_key
+_redact_log_message = redact_text
 
 
 class SystemToolsMixin:
@@ -93,7 +66,11 @@ class SystemToolsMixin:
             if not isinstance(mapping, dict):
                 return
             for key, value in mapping.items():
-                if isinstance(value, str) and len(value) >= 4 and _looks_secret(str(key)):
+                if (
+                    isinstance(value, str)
+                    and len(value) >= MIN_SECRET_LEN
+                    and _looks_secret(str(key))
+                ):
                     secrets.add(value)
 
         engine = self._get_engine()

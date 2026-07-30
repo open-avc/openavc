@@ -18,6 +18,7 @@ from typing import Any
 
 from server.core.connection_fault import INVALID_CONFIG, ConnectionFaultError
 from server.transport.frame_parsers import DelimiterFrameParser, FrameParser
+from server.transport.wire_log import format_wire_data
 from server.utils.logger import get_logger
 from .types import Callback
 
@@ -486,16 +487,9 @@ class SerialTransport:
             for msg in self._frame_parser.feed(data):
                 self._deliver_message(msg)
 
-    @staticmethod
-    def _format_data(data: bytes) -> str:
-        """Format data for logging — decoded text or hex for binary."""
-        try:
-            text = data.decode("ascii").strip()
-            if text.isprintable():
-                return text
-        except (UnicodeDecodeError, ValueError):
-            pass
-        return data.hex()
+    def _format_data(self, data: bytes) -> str:
+        """Format a payload for a TX/RX line, masking this device's secrets."""
+        return format_wire_data(data, self._name)
 
     def _deliver_message(self, data: bytes) -> None:
         """Deliver a complete message to callback and/or response queue."""

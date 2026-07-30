@@ -494,21 +494,41 @@ async def test_concurrent_sends_serialized(echo_server):
 
 
 # --- _format_data helper ---
+#
+# The formatting rule itself lives in transport/wire_log.py and is shared with
+# the serial and UDP transports; TCPTransport._format_data only binds it to this
+# transport's device id (which is what gets that device's credentials masked).
+# These cases pin the binding — that a TCP transport formats through the shared
+# function — while tests/test_log_redaction.py pins the rule.
+
+
+def _format_via_transport(data: bytes) -> str:
+    transport = TCPTransport(
+        host="127.0.0.1",
+        port=1234,
+        on_data=lambda _d: None,
+        on_disconnect=lambda: None,
+        delimiter=None,
+        timeout=1.0,
+        inter_command_delay=0.0,
+        name="fmt_probe",
+    )
+    return transport._format_data(data)
 
 
 def test_format_data_ascii():
     """Printable ASCII is returned as decoded text."""
-    assert TCPTransport._format_data(b"hello world") == "hello world"
+    assert _format_via_transport(b"hello world") == "hello world"
 
 
 def test_format_data_binary():
     """Non-printable binary data is returned as hex."""
-    assert TCPTransport._format_data(b"\x00\x01\xff") == "0001ff"
+    assert _format_via_transport(b"\x00\x01\xff") == "0001ff"
 
 
 def test_format_data_mixed_nonprintable():
     """Non-printable ASCII bytes fall through to hex."""
-    assert TCPTransport._format_data(b"\x07\x08") == "0708"
+    assert _format_via_transport(b"\x07\x08") == "0708"
 
 
 # --- Custom name ---

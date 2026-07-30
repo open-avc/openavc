@@ -35,6 +35,7 @@ from server.core.connection_fault import (
 from server.core.event_bus import EventBus, detach_emit_chain
 from server.core.state_store import StateStore
 from server.transport.frame_parsers import FrameParser
+from server.utils.log_redaction import collect_secret_values, get_secret_registry
 from server.utils.logger import get_logger
 
 # Re-exported for drivers: raise ConnectionFaultError(msg, code=...) instead of
@@ -496,6 +497,46 @@ class BaseDriver(ABC):
 
         # Initialize state variables from DRIVER_INFO
         self._init_state_variables()
+
+        # Register this device's credentials so the transport's TX/RX formatter
+        # masks them. Done here rather than in the DeviceManager because every
+        # path that builds a driver — the manager, a test, the Builder's live
+        # test — runs this constructor, and both halves it needs (the resolved
+        # config and the driver's own config_schema) are already in hand.
+        self._register_config_secrets()
+
+    def _register_config_secrets(self) -> None:
+        """Publish this device's config credentials to the redaction registry."""
+        try:
+            get_secret_registry().set_config_secrets(
+                self.device_id,
+                collect_secret_values(
+                    self.config, self.DRIVER_INFO.get("config_schema")
+                ),
+            )
+        except Exception:  # pragma: no cover - never block a driver from loading
+            log.debug(
+                f"[{self.device_id}] Could not register config secrets for "
+                f"log redaction",
+                exc_info=True,
+            )
+
+    def redact_in_log(self, value: str) -> None:
+        """Mask ``value`` wherever it appears in this device's log lines.
+
+        For a secret the device issues at runtime — a session token from a
+        login, a nonce — which the project config cannot know and so the
+        automatic redaction of ``config_schema`` credentials cannot cover.
+        Call it once, as soon as the value is known::
+
+            token = reply["result"]["session"]
+            self.redact_in_log(token)
+
+        From then on the token is masked in TX/RX traffic and in any log line
+        this driver writes itself. Values shorter than four characters are
+        ignored, so a trivial value cannot blank unrelated log text.
+        """
+        get_secret_registry().add_runtime_secret(self.device_id, value)
 
     def set_project_child_entities(
         self, child_entities: dict[str, dict[str, dict[str, Any]]] | None,

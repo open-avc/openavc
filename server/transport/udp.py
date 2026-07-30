@@ -19,6 +19,7 @@ import asyncio
 import ipaddress
 from typing import Callable
 
+from server.transport.wire_log import format_wire_data
 from server.utils.logger import get_logger
 from .types import Callback
 
@@ -169,7 +170,10 @@ class UDPTransport:
                 self._last_error = str(e) or type(e).__name__
                 log.error(f"[{self._name}] UDP send failed to {host}:{port}: {e}")
                 raise
-            log.debug(f"[{self._name}] TX: {_format_data(data)} -> {host}:{port}")
+            log.debug(
+                f"[{self._name}] TX: {_format_data(data, self._name)} "
+                f"-> {host}:{port}"
+            )
             if self._inter_command_delay > 0:
                 await asyncio.sleep(self._inter_command_delay)
 
@@ -212,7 +216,7 @@ class UDPTransport:
                 )
                 raise
             log.info(
-                f"[{self._name}] TX: {_format_data(data)} -> "
+                f"[{self._name}] TX: {_format_data(data, self._name)} -> "
                 f"{self.host}:{self.port}"
             )
 
@@ -302,7 +306,10 @@ class UDPTransport:
                 return
 
         self.last_data_received = time.monotonic()
-        log.debug(f"[{self._name}] RX: {_format_data(data)} <- {addr[0]}:{addr[1]}")
+        log.debug(
+            f"[{self._name}] RX: {_format_data(data, self._name)} "
+            f"<- {addr[0]}:{addr[1]}"
+        )
 
         # If someone is waiting for a response, put it in the queue
         if self._waiting_for_response:
@@ -326,15 +333,9 @@ class UDPTransport:
                 )
 
 
-def _format_data(data: bytes) -> str:
-    """Format data for logging — decoded text or hex for binary."""
-    try:
-        text = data.decode("ascii").strip()
-        if text.isprintable():
-            return text
-    except (UnicodeDecodeError, ValueError):
-        pass
-    return data.hex()
+def _format_data(data: bytes, device_id: str | None = None) -> str:
+    """Format a payload for a TX/RX line, masking that device's secrets."""
+    return format_wire_data(data, device_id)
 
 
 class _UDPProtocol(asyncio.DatagramProtocol):

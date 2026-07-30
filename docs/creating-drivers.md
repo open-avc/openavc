@@ -2514,9 +2514,10 @@ orphan nothing lists.
 
 All transport types (TCP, serial, HTTP, UDP) automatically log every send and receive at INFO level, tagged with the device ID. This means:
 
-- **You do not need to add any logging code** for protocol traffic. It's built into the transport layer.
+- **You do not need to add any logging code** for protocol traffic. It's built into the transport layer. (One exception, below: a secret the *device* hands you at runtime.)
 - Every `TX` (sent) and `RX` (received) message appears in the Programmer IDE's device log, filterable by device.
 - Text data is shown decoded. Binary data is shown as hex.
+- Credentials are masked. Any config field you mark `secret: true`, and any field named like a credential (`password`, `token`, `api_key`, `passphrase`, `username`), has its **value** replaced with `***` wherever it appears in the log.
 
 **Example log output** (automatic, no code needed):
 ```
@@ -2541,7 +2542,28 @@ async def on_data_received(self, data: bytes) -> None:
         log.info(f"[{self.device_id}] Power: {state}")
 ```
 
-**If you override `connect()`**: Always pass `name=self.device_id` when creating a transport manually. If you forget, the log will show the IP address instead of the device name, and device log filtering won't work.
+**If you override `connect()`**: Always pass `name=self.device_id` when creating a transport manually. If you forget, the log will show the IP address instead of the device name, device log filtering won't work, **and this device's credentials won't be masked** — the transport identifies whose secrets to mask by that name.
+
+#### Secrets the device gives you: `self.redact_in_log()`
+
+The automatic masking covers the credentials in the device's **config**, because those are the values the platform already knows are secret. It cannot know about a value the *device* invents at runtime — a session token returned by a login, a nonce. Your driver is the only thing that knows that value is a credential, so tell the platform once, as soon as you have it:
+
+```python
+async def connect(self) -> None:
+    await super().connect()
+    reply = await self.transport.send_and_wait(b'{"method":"session.login", ...}')
+    token = json.loads(reply)["result"]["session"]
+
+    self.redact_in_log(token)   # <- from here on, the token reads as ***
+
+    self._token = token
+```
+
+From that call on, the token is masked in TX/RX traffic **and** in any line your driver logs itself. Values shorter than four characters are ignored, so a trivial value can't blank unrelated log text.
+
+Call it before you use the token, not after. The reply that *delivered* it was already logged by the transport before your code ran — the log the Programmer serves catches up (it re-masks on the way out), but the live log stream does not.
+
+The download in the Log view and `GET /api/logs/recent` both apply this masking, so a log file you send to a manufacturer for support doesn't carry the site's passwords.
 
 ### Available Frame Parsers
 

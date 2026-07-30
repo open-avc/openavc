@@ -31,6 +31,7 @@ from server.drivers.child_ids import (
 )
 from server.core.event_bus import EventBus, detach_emit_chain
 from server.core.state_store import StateStore
+from server.utils.log_redaction import get_secret_registry, redact_config
 from server.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -199,40 +200,13 @@ _load_builtin_drivers()
 PAUSE_TTL = 600.0
 
 
-# Device-config field names whose values are credentials and must never leave
-# the device manager in cleartext. get_device_info's orphaned-device branch is
-# the only path that returns raw connection config, and that payload flows to
-# the cloud AI (cloud/tools/device_tools.py::_get_device_info) — a missing
-# driver must not turn a simple get_device_info into a credential dump. Matched
-# case-insensitively: exact names for ambiguous words (so a benign `user_label`
-# isn't caught), substrings for the unambiguous secret markers. Mirrors the auth
-# fields BaseDriver.connect reads (username/password/token/api_key) plus common
-# variants.
-_SECRET_KEY_EXACT = frozenset({"username", "user", "bearer"})
-_SECRET_KEY_SUBSTRINGS = (
-    "password", "passwd", "passphrase", "secret",
-    "token", "api_key", "apikey", "credential", "private",
-)
-
-
-def _redact_config(config: dict[str, Any]) -> dict[str, Any]:
-    """Return a copy of a device config with credential values masked.
-
-    A present-but-masked value (``"***"``) still tells a caller the field is
-    set without revealing it; empty/None values are left as-is so "not
-    configured" stays visible. Nested dicts are redacted recursively.
-    """
-    redacted: dict[str, Any] = {}
-    for key, value in config.items():
-        if isinstance(value, dict):
-            redacted[key] = _redact_config(value)
-            continue
-        key_l = str(key).lower()
-        is_secret = key_l in _SECRET_KEY_EXACT or any(
-            marker in key_l for marker in _SECRET_KEY_SUBSTRINGS
-        )
-        redacted[key] = "***" if (is_secret and value not in (None, "")) else value
-    return redacted
+# Masking a device config for a caller uses the same credential-field names as
+# masking a credential out of the device log — see server/utils/log_redaction.py,
+# which owns both. Re-exported here because get_device_info's orphaned-device
+# branch is the only path that returns raw connection config, and that payload
+# flows to the cloud AI (cloud/tools/device_tools.py::_get_device_info): a
+# missing driver must not turn a simple get_device_info into a credential dump.
+_redact_config = redact_config
 
 
 class DeviceManager:
@@ -428,6 +402,9 @@ class DeviceManager:
         # under the same id.
         self._cancel_pause_expiry(device_id)
         self._intentional_disconnect.discard(device_id)
+        # Forget this device's credentials, so a password that is no longer
+        # configured anywhere stops masking text in an unrelated device's log.
+        get_secret_registry().forget(device_id)
 
         driver = self._devices.pop(device_id, None)
         if driver:

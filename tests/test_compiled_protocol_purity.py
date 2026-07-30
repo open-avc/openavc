@@ -25,6 +25,10 @@ ALLOWED = {
     "server.utils.logger",
     # Pulled in by server.utils.logger (same closure inline_protocol has).
     "server.utils.log_buffer",
+    # Also pulled in by server.utils.logger: the credential-redaction filter it
+    # installs on every handler. Stdlib-only (logging + re), so it does not
+    # widen what the simulator or the validator has to be able to import.
+    "server.utils.log_redaction",
     "server.system_config",
 }
 
