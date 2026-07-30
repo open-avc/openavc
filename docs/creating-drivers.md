@@ -460,7 +460,7 @@ The tables below document each field in detail.
 | `version` | No | Semantic version. Default: `"1.0.0"`. |
 | `author` | No | Who wrote this driver. |
 | `description` | No | Brief description. |
-| `help` | No | Help text object: `{overview: "...", setup: "..."}`. Shown in the Add Device dialog and available to the AI assistant. |
+| `help` | No | Help text object: `{overview: "...", setup: "...", connection: "..."}`. Shown in the Add Device dialog and available to the AI assistant. `overview` and `setup` are required when the block is present; `connection` is optional and renders as the dialog's "Connection hint" line — use it for what the installer must do on the device before OpenAVC can reach it. |
 | `delimiter` | No | Message delimiter. Default: `"\\r"`. Use `"\\r\\n"` for CRLF. |
 | `command_prefix` | No | A constant string prepended to every command's `send` string. Set it once for a protocol whose commands all share a fixed lead-in (a "packet header") instead of repeating it on each command. Byte-stream transports only (TCP/serial/UDP). |
 | `command_suffix` | No | A constant string appended to every command's `send` string (its terminator). Set it once so you don't type `\r` on every command. Byte-stream transports only. Supports the same escape sequences as `send`. |
@@ -666,9 +666,11 @@ child_entity_types:
   - `high` — relayed to the cloud at the fast top-level cadence (for latency-sensitive fields like routing or mute).
   - `low` — relayed at the slow verbose cadence (for chatty per-IO state).
   - omitted — the default per-child cadence.
-- `summary_fields`: Which fields show as columns in the Child Entities list (the rest stay in the expanded per-child view).
+- `summary_fields`: Which fields show as columns in the Child Entities list (the rest stay in the expanded per-child view). These name **type-level** `state_variables` — the properties every child of the type has. Omit it and the list falls back to the first three declared `state_variables`, which is what you want for a normal type and is a trap for a `dynamic` one: see the note under `dynamic` below.
 - `label_field`: Which field carries the controller's own name for the unit. The user's friendly label is separate and lives in the project file.
 - `dynamic: true`: Mark a type **dynamic** when each sub-unit's control set is only known at connect time and **differs between sibling units** — e.g. a DSP whose components are user-built (a gain has gain/mute, a custom block has whatever the designer named). Leave `state_variables` empty (or with only the fields every child shares); each child publishes its own schema when you register it (see below). The IDE renders each dynamic child's discovered controls in its expanded row. Dynamic types are a **Python-driver** capability (a YAML `instances:` roster is fixed or config-driven; enumerating sub-units from the device at runtime needs Python).
+
+  **`summary_fields` and `dynamic` together.** The two look like they conflict — `summary_fields` is one list for the whole type, and a dynamic type's children each have their own schema — but they answer different questions and never meet. The columns come from the type; the per-child schema drives the expanded row and the command param pickers, and is never consulted for columns. So declare the handful of properties *every* child genuinely has (a name, an online-ish status, a type tag) in `state_variables` and list those in `summary_fields`. The trap is doing what "leave `state_variables` empty" reads like: with nothing declared at type level there is nothing for the fallback to pick either, and the Child Entities list renders with no columns of its own — just the platform's `online` and `label` — no matter how much state each child is publishing.
 - `instances`: Makes the type real at runtime for **YAML drivers** — see the next section. Without it, a YAML declaration is types-only and children are created only by a Python driver's `register_child`.
 
 ##### Declarative children in YAML (`instances`, `child_set`, `each_child`)
@@ -1419,7 +1421,7 @@ discovery:
 | `amx_ddp` | Fingerprint | AMX Device Discovery Protocol beacon match. Provide `make` (required) and optional `model_pattern` glob. |
 | `tcp_probe` | Fingerprint | Connect to `port`, optionally send `send_ascii` / `send_hex`, match exactly one of `expect` / `expect_regex` / `expect_hex`. Optional `tls` (TLS-wrap the connection, no cert verification, for an HTTPS-only device), `cert_subject` (regex matched against the device's own TLS certificate subject — requires `tls: true`, and a probe carrying only `cert_subject` identifies the device by its certificate with nothing sent), `cross_vendor`, `extract_manufacturer`, `extract` rules, `timeout_ms` (≤ 10000). |
 | `udp_probe` | Fingerprint | Broadcast on `port`, match the response. Same sub-fields as `tcp_probe`, except `timeout_ms` defaults to 2000 (vs 3000 for `tcp_probe`). |
-| `python` | Fingerprint | Sibling `<driver_id>_discovery.py` with `async def probe(ctx) -> None`. Use when the wire format needs Python (multi-step handshakes, binary parsers, broadcast-then-per-host TCP follow-ups). Sub-fields: `file` (path relative to the driver) and optional `cross_vendor`. |
+| `python` | Fingerprint | Sibling `<driver_id>_discovery.py` with `async def probe(ctx) -> None`. Use when the wire format needs Python (multi-step handshakes, binary parsers, broadcast-then-per-host TCP follow-ups). Sub-fields: `file` (path relative to the driver) and optional `cross_vendor`. May also be written as a bare string — `python: ./my_driver_discovery.py` — when there is nothing to say but the path. **Works the same from a Python driver's `DRIVER_INFO`**, with the path relative to the `.py` file; see the note below. |
 | `oui` | Hint | MAC OUI prefixes (e.g. `["00:05:a6"]`). Drives the *possible* state and the "Unknown device, vendor: …" display. |
 | `hostname` | Hint | Regex patterns matched against reverse-DNS / NetBIOS name. |
 | `port_open` | Hint | TCP ports the device leaves open (e.g. `[1710, 4352]`). Generic web/SSH ports (22, 80, 443, 8000, 8080, 8443, 8888) are disallowed. |
@@ -1438,6 +1440,33 @@ Enforced at driver-load time and mirrored at catalog-build time by `openavc-driv
 6. **`manufacturer_alias` is case-insensitive and de-duplicated** at parse time. Multiple drivers may declare the same alias.
 7. **Fingerprint collisions raise.** Two drivers cannot claim the same fingerprint (same kind, same source ID, same TXT filter) without explicit cross-vendor framing. The signal index raises at build time.
 8. **Template drivers exempt.** Drivers whose ID starts with `generic_` skip discovery validation entirely — they are project starting points, not discoverable devices.
+
+#### A `discovery:` block in a Python driver
+
+Everything above is written as YAML because that is where most `discovery:`
+blocks live, but the block is read from a driver's definition, not from a file
+format — so a **Python** driver declares the identical structure as a
+`"discovery"` key in `DRIVER_INFO`, `_discovery.py` companion included:
+
+```python
+DRIVER_INFO = {
+    "id": "acme_widget",
+    # ...
+    "discovery": {
+        "mdns": "_acme._tcp.local.",
+        "oui": ["00:05:a6"],
+        "python": "./acme_widget_discovery.py",   # relative to THIS .py file
+    },
+}
+```
+
+The companion is the same `async def probe(ctx) -> None` module, and it is
+installed alongside the driver the same way. The one thing to get right is the
+path: it resolves relative to the driver file, so a Python driver at
+`switchers/acme_widget.py` pairs with `switchers/acme_widget_discovery.py`. If
+the file is missing the driver is refused at load with a message naming the
+path it looked for, rather than loading into a state where the device is
+theoretically matchable and never actually found.
 
 When you bump a driver to use a new schema field your platform target may lack, set `min_platform_version` in `index.json` so older OpenAVC instances grey out the driver instead of trying to parse fields they don't understand.
 
@@ -2095,10 +2124,10 @@ After installation, the driver appears in the "Add Device" dialog.
 
 ### Full Example: Binary Protocol (Samsung MDC)
 
-For binary protocols, you override `_create_frame_parser()` and `_resolve_delimiter()` to tell the transport how to split the byte stream into messages. This example is the actual Samsung MDC driver included with OpenAVC.
+For binary protocols, you override `_create_frame_parser()` and `_resolve_delimiter()` to tell the transport how to split the byte stream into messages. The example below is written against the Samsung MDC protocol to show the shape; it is illustrative, not a copy of any shipped driver.
 
 ```python
-# server/drivers/samsung_mdc.py
+# displays/samsung_mdc.py — a Python driver in your driver library
 
 from server.drivers.base import BaseDriver
 from server.transport.binary_helpers import checksum_sum
@@ -2345,8 +2374,11 @@ class MatrixControllerDriver(BaseDriver):
         },
     }
 
-    async def connect(self) -> None:
-        await super().connect()
+    async def _initial_sync(self) -> None:
+        # Marked connected, before polling starts — the roster is in place
+        # before the first poll runs against it. Don't override connect() for
+        # this: super().connect() has already started polling by the time the
+        # line after it runs.
         await self._reconcile_roster()                      # register from the roster
         await self.poll_children("encoder", self._fetch_encoder_detail)
 
@@ -2441,7 +2473,36 @@ raise ConnectionFaultError(
 )
 ```
 
-The code becomes `offline_reason` verbatim and the message becomes `offline_detail`; unknown codes raise immediately so a typo can't silently misclassify. For a failure with no exception to carry it (a keep-alive loop that stopped hearing replies), stash the reason before forcing the disconnect: `self._stash_fault("no_response", "...")` then `self._handle_transport_disconnect()`. Don't re-wrap transport errors that already carry their cause (a refused socket, a DNS failure) — re-raise those unchanged.
+The code becomes `offline_reason` verbatim and the message becomes `offline_detail`; unknown codes raise immediately so a typo can't silently misclassify. Don't re-wrap transport errors that already carry their cause (a refused socket, a DNS failure) — re-raise those unchanged.
+
+For a failure with no exception to carry it — a keep-alive loop that stopped hearing replies — there is nothing for the classifier to read, so hand it the reason and tear the link down in one call:
+
+```python
+self._force_disconnect("no_response", "Connected, but the device stopped answering status queries.")
+```
+
+**Type the fault in *both* paths, or you lose the good reason on the next retry.** This is the mistake worth spelling out, because half of it is easy to miss. A driver typically notices a dead device two different ways, and authors reliably handle the first and forget the second:
+
+```python
+async def poll(self) -> None:
+    try:
+        reply = await self.transport.send_and_wait(b"STATUS?\r", timeout=3.0)
+    except asyncio.TimeoutError:
+        # (1) The reply never came. Easy to forget, because nothing threw
+        #     until the timeout — and this is the common real-world failure.
+        self._force_disconnect("no_response", "The device stopped answering status queries.")
+        return
+
+    if not reply.startswith(b"STATUS="):
+        # (2) Something answered, but not this protocol. The path most
+        #     drivers do type, because there is an obvious place to put it.
+        raise ConnectionFaultError(
+            "Connected, but the reply was not in the expected format.",
+            code="no_response",
+        )
+```
+
+Why both matter: the stashed reason is **cleared at the start of every `connect()` attempt**, on purpose, so one attempt's failure can't be blamed on the previous one. `no_response` is therefore accurate for exactly as long as it takes auto-reconnect to try again. If the retry fails without a typed fault of its own, the platform falls back to classifying the raw transport error and the card changes to the generic `transport_disconnected` — "the connection dropped, retrying", when the truth is "the device is up and has stopped answering". So raise the typed fault from your handshake too (`_post_connect`), and the accurate reason survives every retry instead of one window.
 
 **`auth_failed` also changes the retry policy.** The platform treats a credential rejection as non-transient: it tries once per user action, then pauses auto-reconnect until the credentials change (editing the device or pressing Reconnect tries again). This protects devices with brute-force lockouts, where every failed login counts toward blocking the controller's IP address. So classify precisely — raise `auth_failed` only for a genuine credential rejection, never a transport failure — and never send a login you know can't succeed: if the config has no password and the device requires one, raise the typed fault before contacting the device at all.
 
@@ -2460,10 +2521,19 @@ These are available on every driver via the `BaseDriver` base class:
 | `await self.stop_polling()` | Stops the polling loop |
 | `await self._verify_reachable(host, port)` | Returns True if a TCP connection opens within the timeout |
 | `await self.transport.send(data)` | Send raw bytes to the device |
-| `await self.transport.send_and_wait(data, timeout=5)` | Send and wait for the next response |
+| `await self.transport.send_and_wait(data, timeout=5)` | Send and wait for the next response — see below |
 | `self.device_id` | The device's ID (e.g., `"projector1"`) |
 | `self.config` | The device's config dict from project.avc |
 | `self.events` | The EventBus instance (for emitting custom events) |
+
+#### What `send_and_wait` actually gives you
+
+Four things about it that decide how you write a driver, and none of them are guessable from the signature:
+
+- **It returns `bytes`, and it returns exactly one message** — one complete frame as your frame parser delimited it, not "everything that arrived". On UDP that is one datagram; on HTTP, where every request is already a round trip, it is the whole response body encoded UTF-8.
+- **`on_data_received` still fires for that same message.** The reply goes to the waiter *and* to your callback — the transport does both, always. So a driver that awaits a reply here and also parses in `on_data_received` will handle that frame twice. Pick one: either await replies and keep `on_data_received` for unsolicited pushes only, or ignore the return value and do all parsing in the callback.
+- **Concurrent callers are already serialized for you.** TCP, serial and UDP hold the send lock across the whole send-and-wait, so a poll and a command can't interleave on one connection, and the response queue is drained before the send so a stale unsolicited frame can't be mistaken for your reply. You do not need a lock of your own. The flip side: an *unsolicited* message that arrives between your send and the device's answer is returned as the answer, so check the reply's shape before trusting it.
+- **A timeout raises `asyncio.TimeoutError`; a link that drops mid-wait raises `ConnectionError`.** Neither returns `b""`, so `if not reply:` is not how you detect either one. See "Declaring the offline reason" above for typing these into a `no_response` the device card can show.
 
 ### Declare every state variable you write
 
@@ -2546,15 +2616,17 @@ async def on_data_received(self, data: bytes) -> None:
         log.info(f"[{self.device_id}] Power: {state}")
 ```
 
-**If you override `connect()`**: Always pass `name=self.device_id` when creating a transport manually. If you forget, the log will show the IP address instead of the device name, device log filtering won't work, **and this device's credentials won't be masked** — the transport identifies whose secrets to mask by that name.
+**If you build a transport yourself** — in `_create_transport()`, or in a driver that replaces `connect()` wholesale because it has no persistent connection — always pass `name=self.device_id`. If you forget, the log will show the IP address instead of the device name, device log filtering won't work, **and this device's credentials won't be masked** — the transport identifies whose secrets to mask by that name.
 
 #### Secrets the device gives you: `self.redact_in_log()`
 
 The automatic masking covers the credentials in the device's **config**, because those are the values the platform already knows are secret. It cannot know about a value the *device* invents at runtime — a session token returned by a login, a nonce. Your driver is the only thing that knows that value is a credential, so tell the platform once, as soon as you have it:
 
 ```python
-async def connect(self) -> None:
-    await super().connect()
+async def _post_connect(self) -> None:
+    # Transport up, device not yet declared connected — a login belongs here,
+    # not in an override of connect(): raising fails the attempt cleanly
+    # instead of flapping the device online and straight back off.
     reply = await self.transport.send_and_wait(b'{"method":"session.login", ...}')
     token = json.loads(reply)["result"]["session"]
 
@@ -2596,6 +2668,14 @@ Import from `server.transport.binary_helpers`:
 | `hex_dump(data)` | Format bytes as a hex dump string for logging |
 | `escape_bytes(data, escape_char, special)` | Escape special bytes |
 | `unescape_bytes(data, escape_char, special)` | Reverse escape |
+| `pack_length_prefix(value, size, endian="big")` | Encode a length header — `size` bytes, big or little endian |
+| `encode_escape_sequences(s)` | Turn the escapes in a text string (`\r`, `\n`, `\t`, `\\`, `\xHH`) into the bytes they name; everything else goes out as UTF-8 |
+
+`encode_escape_sequences` is the one to reach for when a delimiter or a command
+suffix comes from a config field: a user types `\r` in a text box and means one
+carriage return, not a backslash and an `r`. Unknown backslash sequences pass
+through literally rather than raising, so a Windows path in a message body
+survives.
 
 ---
 
@@ -2603,24 +2683,49 @@ Import from `server.transport.binary_helpers`:
 
 Every driver, whether Python, JSON, or Driver Builder, defines the same metadata structure. Here's the complete reference:
 
+### Required to load vs. required to publish
+
+Two different bars, and mixing them up is the usual reason a finished driver
+gets bounced from the catalog:
+
+- **To load** — for a driver you drop into your own `driver_repo/` and use on
+  your own system — the platform needs `id`, `name` and `transport`. Everything
+  else is optional; a driver missing `manufacturer` still connects and works.
+- **To publish** — to submit the driver to the community library — the
+  published contract (`pythondriver.schema.json`) requires **nine** fields:
+  `id`, `name`, `manufacturer`, `category`, `version`, `author`, `transport`,
+  `description`, `source_url`. It also refuses any key it does not declare, so
+  a stray typo'd key is an error rather than a shrug.
+
+The example below shows the load bar, so the "Optional metadata" block is
+optional *for you* and mandatory *for a submission*. Run
+`python -m server.drivers.check <path>` (see [Checking the file against the
+driver contract](#checking-the-file-against-the-driver-contract)) to be told
+which bar a file currently clears, and see
+[contributing-drivers.md](https://github.com/open-avc/openavc-drivers/blob/main/docs/contributing-drivers.md)
+for the rest of the submission checklist.
+
 ```python
 DRIVER_INFO = {
-    # --- Required ---
+    # --- Required to load ---
     "id": "unique_driver_id",        # Lowercase, underscores only
     "name": "Human-Readable Name",
     "transport": "tcp",              # "tcp", "serial", "http", "udp", or "osc"
 
-    # --- Optional metadata ---
+    # --- Optional to load, REQUIRED to publish ---
     "manufacturer": "Generic",
     "category": "utility",           # projector, display, switcher, etc.
     "version": "1.0.0",
     "author": "Your Name",
     "description": "What this driver does.",
+    "source_url": "https://github.com/you/your-repo",   # where the driver lives
 
     # --- Help text (shown in UI and used by AI assistant) ---
     "help": {
         "overview": "Brief description of what this driver controls.",
         "setup": "Step-by-step setup instructions for connecting the device.",
+        # Optional third key: the "Connection hint" line in Add Device.
+        "connection": "Enable Network Control in the on-screen menu first.",
     },
 
     # --- Connection defaults ---
