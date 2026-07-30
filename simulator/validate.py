@@ -55,7 +55,9 @@ from typing import Any
 
 import yaml
 
+from server.drivers.check import check_driver_file, iter_driver_files
 from server.drivers.compiled_protocol import derive_config, safe_substitute, send_regex
+from server.drivers.python_info import declares_driver_info
 
 
 # ── Result types ──
@@ -1574,71 +1576,54 @@ def _is_python_driver(path: Path) -> bool:
     """True only when the file has a `DRIVER_INFO = {...}` assignment, either at
     module level or as a class attribute.
 
-    Python drivers almost always define `DRIVER_INFO` as a class attribute on
-    their `BaseDriver` subclass (`class FooDriver(BaseDriver): DRIVER_INFO =
-    {...}`), so we check both module-level statements and the bodies of
-    module-level classes. Function-local assignments are deliberately ignored
-    (a helper that builds a throwaway dict named DRIVER_INFO is not a driver).
-
-    A plain substring match for "DRIVER_INFO" would also catch build scripts,
-    docs, and helpers that mention the name in a comment or string literal
-    (e.g. `scripts/build_index.py`), then the validator reports them as broken
-    drivers. Parsing the AST keeps the check honest.
+    The rule lives in ``server.drivers.python_info`` so this and the standalone
+    checker agree on what counts as a driver file.
     """
-    try:
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-    except (SyntaxError, OSError, UnicodeDecodeError):
-        return False
-    # Module-level statements plus the bodies of module-level classes.
-    candidates = list(tree.body)
-    for node in tree.body:
-        if isinstance(node, ast.ClassDef):
-            candidates.extend(node.body)
-    for node in candidates:
-        if isinstance(node, ast.Assign):
-            if any(
-                isinstance(t, ast.Name) and t.id == "DRIVER_INFO"
-                for t in node.targets
-            ):
-                return True
-        elif isinstance(node, ast.AnnAssign):
-            if isinstance(node.target, ast.Name) and node.target.id == "DRIVER_INFO":
-                return True
-    return False
+    return declares_driver_info(path)
 
 
 def find_drivers(path: Path) -> list[tuple[Path, str]]:
     """Find all driver files in a directory.
 
     Returns list of (path, type) tuples where type is "yaml" or "python".
+    A directory walk is the checker's, so pointing either command at the same
+    tree validates the same set of files — including its skip rules, which
+    keep a repo's own test suite from being reported as 55 broken drivers.
     """
-    drivers = []
-
     if path.is_file():
         if path.suffix == ".avcdriver":
-            drivers.append((path, "yaml"))
-        elif path.suffix == ".py" and not path.stem.endswith("_sim"):
+            return [(path, "yaml")]
+        if path.suffix == ".py" and not path.stem.endswith("_sim"):
             if _is_python_driver(path):
-                drivers.append((path, "python"))
-        return drivers
+                return [(path, "python")]
+        return []
 
-    # Scan directory
-    for f in sorted(path.rglob("*.avcdriver")):
-        drivers.append((f, "yaml"))
-
-    for f in sorted(path.rglob("*.py")):
-        if f.stem.endswith("_sim"):
-            continue
-        if _is_python_driver(f):
-            drivers.append((f, "python"))
-
-    return drivers
+    return [
+        (f, "yaml" if f.suffix == ".avcdriver" else "python")
+        for f in iter_driver_files(path)
+    ]
 
 
 # ── CLI ──
 
 
-def main():
+def _prepend_contract_issues(result: ValidationResult, path: Path) -> None:
+    """Run the driver contract over the file and put its findings first.
+
+    This command is the one the guides name, so it is where an author who has
+    never heard of ``python -m server.drivers.check`` still meets the contract.
+    Parity is what the rest of this module checks — whether a driver and its
+    simulator agree — and parity says nothing about whether a key is
+    misspelled. The verdict and its wording come from the checker; nothing is
+    re-derived here, so the terminal, catalog CI and the IDE cannot disagree.
+    """
+    contract = check_driver_file(path)
+    issues = [Issue("error", "contract", msg) for msg in contract.errors]
+    issues += [Issue("info", "contract", note) for note in contract.notes]
+    result.issues[:0] = issues
+
+
+def main(argv: list[str] | None = None):
     parser = argparse.ArgumentParser(
         prog="simulator-validate",
         description="Validate driver simulator compatibility",
@@ -1660,7 +1645,7 @@ def main():
         action="store_true",
         help="Show only pass/fail counts, not individual issues",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     path = Path(args.path)
     if not path.exists():
@@ -1675,9 +1660,11 @@ def main():
     results: list[ValidationResult] = []
     for driver_path, driver_type in drivers:
         if driver_type == "yaml":
-            results.append(validate_yaml_driver(driver_path))
+            result = validate_yaml_driver(driver_path)
         else:
-            results.append(validate_python_driver(driver_path))
+            result = validate_python_driver(driver_path)
+        _prepend_contract_issues(result, driver_path)
+        results.append(result)
 
     # Print results
     total_errors = 0

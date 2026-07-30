@@ -1,11 +1,12 @@
 """Import-guard for the driver-contract modules.
 
-``server/drivers/spec.py`` and ``server/drivers/avcdriver_semantic.py`` are
-shared beyond the server runtime (the community driver catalog runs the same
-rules in its CI), so they must stay importable with nothing but the standard
-library and each other: no runtime, no transports, no discovery, no YAML.
-This test imports them in a clean subprocess and fails if anything outside
-the allowed closure gets pulled in.
+``server/drivers/spec.py``, ``server/drivers/avcdriver_semantic.py`` and
+``server/drivers/python_info.py`` are shared beyond the server runtime (the
+community driver catalog runs the same rules in its CI, in a job that installs
+no ``openavc`` package), so they must stay importable with nothing but the
+standard library and each other: no runtime, no transports, no discovery, no
+YAML. This test imports them in a clean subprocess and fails if anything
+outside the allowed closure gets pulled in.
 """
 from __future__ import annotations
 
@@ -56,3 +57,15 @@ def test_semantic_rules_stay_pure():
         f"avcdriver_semantic pulled in modules outside its purity contract: "
         f"{sorted(set(loaded) - ALLOWED)}"
     )
+
+
+def test_python_info_imports_nothing_beyond_itself():
+    """The Python-driver reader is vendored into the community catalog and runs
+    in a CI job that installs only that repo's own requirements — so it may not
+    reach for the server runtime, and not for YAML either."""
+    loaded = _loaded_modules("import server.drivers.python_info")
+    assert set(loaded) <= {
+        "server",
+        "server.drivers",
+        "server.drivers.python_info",
+    }, loaded

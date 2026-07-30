@@ -2675,6 +2675,47 @@ DRIVER_INFO = {
 
 ## Testing Your Driver
 
+### Checking the file against the driver contract
+
+Before you run anything, check the file itself:
+
+```bash
+python -m server.drivers.check path/to/my_driver.py
+python -m server.drivers.check path/to/my_driver.avcdriver
+python -m server.drivers.check data/driver_repo/          # a whole folder
+```
+
+It reads the file without running it and reports keys the contract does not
+declare, along with a spelling suggestion where there is an obvious one:
+
+```
+my_driver.py: error: commands.power_on: unknown key 'labl' (did you mean 'label'?)
+```
+
+A misspelled key is the failure worth catching here. It does not raise
+anything — the section it belongs to simply never takes effect, so the driver
+loads and the feature is quietly missing. That matters more for a Python driver
+than a YAML one: a `.avcdriver` gets live feedback in an editor from its
+`# yaml-language-server:` schema line, and there is no equivalent for a
+`DRIVER_INFO` dict.
+
+The command exits non-zero when anything is wrong and prints nothing when a
+single file is clean. It needs no project, no server and no particular folder
+layout, so it works on a driver you will never publish. `python -m
+simulator.validate` runs the same check before its own, so you get it either
+way.
+
+It also says what it could **not** check. A `DRIVER_INFO` value built by code
+rather than written out as a literal cannot be read from the source, and the
+keys nested under it go unchecked — the command names those spots rather than
+passing over them:
+
+```
+my_driver.py: note: 1 value(s) could not be read from the source (built from a
+constant, a call or a comprehension); keys nested under them are unchecked:
+commands.set_input.params.input.values
+```
+
 ### Without hardware (simulation mode)
 
 For serial drivers, use the `SIM:` prefix as the port name (e.g., `SIM:test`). This creates a simulated serial connection that accepts sends without error.

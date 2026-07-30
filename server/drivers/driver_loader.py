@@ -31,6 +31,9 @@ from server.drivers.avcdriver_semantic import (
     validate_driver_definition as _validate_definition_rules,
     validate_driver_issues as _validate_definition_issues,
 )
+from server.drivers.python_info import (
+    python_driver_info_issues as _python_driver_info_issues,
+)
 from server.drivers.spec import REQUIRED_FIELDS as REQUIRED_FIELDS
 from server.utils.logger import get_logger
 
@@ -391,72 +394,26 @@ def load_python_driver_file(filepath: Path) -> type | None:
 def _warn_python_driver_info_issues(driver_class: type) -> None:
     """Structural sanity warnings for a Python driver's DRIVER_INFO.
 
-    Warn-only, never rejects: Python drivers may populate ``commands`` /
-    state at runtime (the Q-SYS pattern), so cross-references against the
-    class-level dict can false-positive — but STRUCTURE is static, and a
-    malformed entry used to be silently skipped by the action resolver (the
-    button just never appears) or fail at first write. YAML drivers get the
-    equivalent as hard load errors via validate_driver_definition.
+    Warn-only, never rejects — a driver written for a newer platform must not
+    vanish at load and take its devices offline. The rules themselves live in
+    ``python_info``, so ``python -m server.drivers.check`` and the community
+    catalog reach the same verdict from the source text; this door adds the two
+    facts only the loaded class knows.
     """
     from server.drivers.base import BaseDriver
 
     info = getattr(driver_class, "DRIVER_INFO", {}) or {}
     driver_id = info.get("id", driver_class.__name__)
-    issues: list[str] = []
 
-    qa = info.get("quick_actions")
-    if qa is not None and (
-        not isinstance(qa, list) or any(not isinstance(x, str) for x in qa)
+    for msg in _python_driver_info_issues(
+        info,
+        overrides_run_setup_action=(
+            driver_class.run_setup_action is not BaseDriver.run_setup_action
+        ),
+        overrides_set_device_setting=(
+            driver_class.set_device_setting is not BaseDriver.set_device_setting
+        ),
     ):
-        issues.append("quick_actions must be a list of command-id strings")
-
-    actions = info.get("actions")
-    declares_setup = False
-    if actions is not None and not isinstance(actions, list):
-        issues.append("actions must be a list")
-    elif isinstance(actions, list):
-        for i, entry in enumerate(actions):
-            if not isinstance(entry, dict) or not entry.get("id"):
-                issues.append(
-                    f"actions[{i}] must be a mapping with an 'id' "
-                    f"(the resolver silently drops it otherwise)"
-                )
-                continue
-            kind = entry.get("kind", "command")
-            if kind not in ("command", "setup"):
-                issues.append(
-                    f"actions[{i}] ('{entry.get('id')}'): unknown kind {kind!r}"
-                )
-            elif kind == "setup":
-                declares_setup = True
-            availability = entry.get("availability", "online")
-            if availability not in ("online", "offline", "always"):
-                issues.append(
-                    f"actions[{i}] ('{entry.get('id')}'): unknown availability "
-                    f"{availability!r}"
-                )
-    if declares_setup and driver_class.run_setup_action is BaseDriver.run_setup_action:
-        issues.append(
-            "declares a kind:'setup' action but does not override "
-            "run_setup_action — the wizard will 501 on launch"
-        )
-
-    settings = info.get("device_settings")
-    if settings is not None and not isinstance(settings, dict):
-        issues.append("device_settings must be a mapping")
-    elif isinstance(settings, dict):
-        for key, sdef in settings.items():
-            if not isinstance(sdef, dict):
-                issues.append(f"device_settings['{key}'] must be a mapping")
-        if settings and (
-            driver_class.set_device_setting is BaseDriver.set_device_setting
-        ):
-            issues.append(
-                "declares device_settings but does not override "
-                "set_device_setting — every write will 501"
-            )
-
-    for msg in issues:
         log.warning(f"Python driver '{driver_id}': {msg}")
 
 
