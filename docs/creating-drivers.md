@@ -2449,7 +2449,7 @@ These are available on every driver via the `BaseDriver` base class:
 
 | Method | Description |
 |--------|-------------|
-| `self.set_state("power", "on")` | Sets `device.<device_id>.power` in the state store |
+| `self.set_state("power", "on")` | Sets `device.<device_id>.power` in the state store. Use a name you declared in `DRIVER_INFO["state_variables"]` — see "Declare every state variable you write" below |
 | `self.get_state("power")` | Gets the current value of `device.<device_id>.power` |
 | `self.delete_state("power")` | Removes `device.<device_id>.power` from the store entirely (for drivers that narrow their declared surface at runtime) |
 | `await self.start_polling(15)` | Starts calling `self.poll()` every 15 seconds |
@@ -2460,6 +2460,55 @@ These are available on every driver via the `BaseDriver` base class:
 | `self.device_id` | The device's ID (e.g., `"projector1"`) |
 | `self.config` | The device's config dict from project.avc |
 | `self.events` | The EventBus instance (for emitting custom events) |
+
+### Declare every state variable you write
+
+`set_state()` accepts any name, but only the ones you list in
+`DRIVER_INFO["state_variables"]` are real. A declared variable has a type, a
+label, and a place in every binding picker, the Live State table and the
+trigger editor. An undeclared one is a value in the store that nothing offers
+you and nothing knows the type of — so a panel button cannot bind to it and a
+trigger cannot watch it, even though the value is correct and updating.
+
+Watch for the case where the name is built at runtime:
+
+```python
+# Wrong: writes lamp1_hours, lamp2_hours ... and declares none of them
+for i, hours in enumerate(lamp_hours, start=1):
+    self.set_state(f"lamp{i}_hours", hours)
+```
+
+Declare each name the loop can produce (`lamp1_hours` through `lamp8_hours`
+here), or use a **child entity type** if the count is genuinely open-ended —
+that is what child entities are for.
+
+The platform tells you when this happens:
+
+- **In the server log**, once per key, the first time the driver writes it:
+
+  ```
+  [projector_1] driver 'acme_projector' wrote state 'lamp2_hours', which it
+  does not declare in DRIVER_INFO["state_variables"] — the value is live, but
+  nothing knows its type and no binding picker will offer it
+  ```
+
+  It stays a warning at runtime on purpose: the value is correct and the
+  device is working, and taking a room offline over a missing declaration
+  would punish the user for an authoring slip.
+
+- **In your tests**, as a hard failure. Set `OPENAVC_STRICT_DRIVER_STATE=1`
+  and the same condition raises instead of warning:
+
+  ```bash
+  OPENAVC_STRICT_DRIVER_STATE=1 python -m pytest tests/
+  ```
+
+  Set it in your test harness so an undeclared write fails the suite you
+  already run. OpenAVC's own test suite runs with it on.
+
+The child-entity half of the API has always been strict: writing a property a
+child type does not declare raises immediately, because that key would be an
+orphan nothing lists.
 
 ### Device Log
 

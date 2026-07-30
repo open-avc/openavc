@@ -24,6 +24,18 @@ os.environ.setdefault(
     "OPENAVC_DATA_DIR", tempfile.mkdtemp(prefix="openavc_test_import_")
 )
 
+# Run the whole suite with driver-contract violations promoted from a warning
+# to a raise. A driver that writes a state variable it never declared in
+# DRIVER_INFO["state_variables"] produces live state nothing can be built
+# against -- no type, no binding picker entry -- and at runtime the platform
+# only warns, because taking a working device offline over an author's
+# omission would punish the end user for it. A test suite is exactly where
+# that trade-off flips: nobody's room is on the line, and the author is
+# iterating. This is the same env var a driver author sets in their own
+# harness, so what fails here fails there. Honor an explicit override
+# (OPENAVC_STRICT_DRIVER_STATE=0) so the warn path can still be exercised.
+os.environ.setdefault("OPENAVC_STRICT_DRIVER_STATE", "1")
+
 import pytest
 
 from server.core.device_manager import register_driver

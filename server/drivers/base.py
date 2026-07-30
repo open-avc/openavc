@@ -18,6 +18,7 @@ connect() as before.
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
@@ -43,11 +44,32 @@ __all__ = [
     "CommandParamError",
     "ConnectionFaultError",
     "DeviceSettingValueError",
+    "UndeclaredStateError",
     "normalize_and_validate_command_params",
+    "strict_driver_state",
     "validate_device_setting_value",
 ]
 
 log = get_logger(__name__)
+
+# Env var that turns driver-contract violations from a warning into a raise.
+# Set in openavc's own tests/conftest.py and in a driver author's test harness,
+# so a driver whose code writes something its DRIVER_INFO never declared fails
+# the suite the author is already running instead of shipping silently.
+STRICT_DRIVER_STATE_ENV = "OPENAVC_STRICT_DRIVER_STATE"
+
+
+def strict_driver_state() -> bool:
+    """True when the platform should hard-fail on a driver contract violation
+    rather than warn.
+
+    Read from the environment on every call rather than cached at import: the
+    flag exists to be turned on around a single driver (a test, the Builder's
+    Test tab), and an import-time constant cannot be. It costs nothing on a
+    correct driver, because the only caller is the violation path itself.
+    """
+    raw = os.environ.get(STRICT_DRIVER_STATE_ENV, "")
+    return raw.strip().lower() in ("1", "true", "yes", "on")
 
 
 class CommandParamError(ValueError):
@@ -72,6 +94,16 @@ class DeviceSettingValueError(ValueError):
     and an unchecked value can even transmit a literal ``{value:d}``
     placeholder to the device when a format spec fails). Same 400-mapping
     rationale as CommandParamError.
+    """
+
+
+class UndeclaredStateError(ValueError):
+    """A driver wrote a state variable it never declared in
+    ``DRIVER_INFO["state_variables"]``, under strict mode.
+
+    Only raised when :func:`strict_driver_state` is on — see
+    ``BaseDriver._check_undeclared_state`` for why this is a warning at
+    runtime and a raise where the author is iterating.
     """
 
 
@@ -456,6 +488,11 @@ class BaseDriver(ABC):
         # consults this to seed the per-child `label` state key without
         # the driver having to plumb the project schema itself.
         self._project_child_entities: dict[str, dict[str, dict[str, Any]]] = {}
+        # State keys this driver wrote without declaring them. Used to warn
+        # once per key instead of once per poll — a driver that writes an
+        # undeclared key writes it every cycle, and a per-poll warning is a
+        # log flood that trains everyone to ignore the channel.
+        self._undeclared_state_seen: set[str] = set()
 
         # Initialize state variables from DRIVER_INFO
         self._init_state_variables()
@@ -2184,14 +2221,71 @@ class BaseDriver(ABC):
 
     # --- Convenience helpers ---
 
+    # Flat state keys the platform writes on every device regardless of what
+    # the driver declares, so an author is never asked to declare them.
+    # `connected` is seeded by _init_state_variables() and thereafter owned by
+    # the DeviceManager; a driver that also declares it is fine either way.
+    _PLATFORM_STATE_PROPS: frozenset[str] = frozenset({"connected"})
+
     def set_state(self, property_name: str, value: Any) -> None:
-        """Set a state value under this device's namespace."""
+        """Set a state value under this device's namespace.
+
+        The property should be declared in ``DRIVER_INFO["state_variables"]``;
+        an undeclared one still writes, but is reported (see
+        :meth:`_check_undeclared_state`).
+        """
         var_def = self.DRIVER_INFO.get("state_variables", {}).get(property_name)
+        if var_def is None:
+            self._check_undeclared_state(property_name)
         self._warn_on_type_mismatch(property_name, value, var_def)
         self.state.set(
             f"device.{self.device_id}.{property_name}",
             value,
             source=f"device.{self.device_id}",
+        )
+
+    def _check_undeclared_state(self, property_name: str) -> None:
+        """Report a write to a state variable the driver never declared.
+
+        Deliberately *not* the same posture as the child-entity equivalent.
+        ``_validate_child_prop`` raises, and ``set_child_state`` skips writes to
+        an unregistered child, because those writes have nowhere to go — the
+        key they would create is an orphan nothing lists. A flat key does have
+        somewhere to go: the write lands, the value is live and correct, and
+        the only thing missing is the driver's declaration of it. Raising here
+        at runtime would take a working device offline over an author's
+        omission and make the end user pay for it.
+
+        Silence is not the alternative — silent inert state is the failure mode
+        this platform exists to kill. Undeclared state is real state that no
+        binding picker offers, no type is known for, and nothing in the project
+        can be built against. So:
+
+        * **Runtime** — ``log.warning`` once per key, which is what someone
+          tailing the server log during bring-up sees.
+        * **Strict mode** — raise, so the author's own test suite fails on it.
+          That is where the author is iterating and where this is actionable.
+        """
+        if property_name in self._PLATFORM_STATE_PROPS:
+            return
+        driver_id = self.DRIVER_INFO.get("id", "?")
+        summary = (
+            f"[{self.device_id}] driver '{driver_id}' wrote state "
+            f"'{property_name}', which it does not declare in "
+            f'DRIVER_INFO["state_variables"]'
+        )
+        if strict_driver_state():
+            # Before the seen-set, so every write raises, not just the first.
+            raise UndeclaredStateError(
+                f"{summary}. Declare it, or stop writing it. (Reported as a "
+                f"warning when {STRICT_DRIVER_STATE_ENV} is not set.)"
+            )
+        if property_name in self._undeclared_state_seen:
+            return
+        self._undeclared_state_seen.add(property_name)
+        log.warning(
+            f"{summary} — the value is live, but nothing knows its type and "
+            f"no binding picker will offer it"
         )
 
     def _warn_on_type_mismatch(
@@ -2228,6 +2322,13 @@ class BaseDriver(ABC):
 
     def set_states(self, updates: dict[str, Any]) -> None:
         """Set multiple state values atomically (listeners see all changes at once)."""
+        declared = self.DRIVER_INFO.get("state_variables", {})
+        # Check every key before writing any, so strict mode fails the batch
+        # whole rather than half-applied — the same rule set_child_state_batch
+        # follows for an undeclared child prop.
+        for k in updates:
+            if k not in declared:
+                self._check_undeclared_state(k)
         namespaced = {
             f"device.{self.device_id}.{k}": v for k, v in updates.items()
         }
