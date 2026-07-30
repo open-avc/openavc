@@ -1,5 +1,14 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { Save, Download, FileCode, Copy, Check, ExternalLink, Lock } from "lucide-react";
+import {
+  Save,
+  Download,
+  FileCode,
+  Copy,
+  Check,
+  ExternalLink,
+  Lock,
+  MessageSquare,
+} from "lucide-react";
 import yaml from "js-yaml";
 import type { DriverDefinition } from "../../api/types";
 import { useProjectStore } from "../../store/projectStore";
@@ -60,6 +69,10 @@ interface DriverEditorProps {
   readOnly: boolean;
   /** The id this driver was loaded under. null for a brand-new draft. */
   originalId: string | null;
+  /** Comment lines in the file this driver was loaded from. Saving rewrites
+   *  the file from the edited structure, so they are not carried back out —
+   *  warn before that happens rather than after. */
+  commentLines: number;
   onUpdate: (partial: Partial<DriverDefinition>) => void;
   onSave: () => void;
   onExport: () => void;
@@ -76,6 +89,7 @@ export function DriverEditor({
   isNew,
   readOnly,
   originalId,
+  commentLines,
   onUpdate,
   onSave,
   onExport,
@@ -385,6 +399,39 @@ export function DriverEditor({
           >
             <Copy size={14} /> {saving ? "Copying..." : "Customize a copy"}
           </button>
+        </div>
+      )}
+
+      {/* Comment notice — the Builder edits a parsed structure, so saving
+          rewrites the file from that structure and the original file's
+          comments do not come back out. Hand-written drivers carry protocol
+          notes transcribed from the manufacturer's manual and the schema line
+          editors validate against, so say so before the save, not after. */}
+      {!readOnly && !isNew && commentLines > 0 && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--space-md)",
+            padding: "var(--space-sm) var(--space-lg)",
+            background: "var(--bg-hover)",
+            borderBottom: "1px solid var(--border-color)",
+            flexShrink: 0,
+          }}
+        >
+          <MessageSquare size={14} style={{ color: "var(--color-warning)" }} />
+          <span
+            style={{
+              fontSize: "var(--font-size-sm)",
+              color: "var(--text-secondary)",
+              flex: 1,
+            }}
+          >
+            This driver's file has {commentLines} comment{" "}
+            {commentLines === 1 ? "line" : "lines"}. Saving here rewrites the
+            file from the fields above and does not keep them — edit the
+            .avcdriver directly if the comments matter.
+          </span>
         </div>
       )}
 

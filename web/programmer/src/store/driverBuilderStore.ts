@@ -58,6 +58,12 @@ interface DriverBuilderState {
   saving: boolean;
   loading: boolean;
   error: string | null;
+  /** Comment lines in the selected driver's file on disk. The Builder edits a
+   *  parsed structure, so a save rewrites the file from that structure and the
+   *  comments are gone — this is what the editor warns about before it happens.
+   *  Kept out of `draft` on purpose: in the draft it would show up in the live
+   *  YAML preview and in an exported .avcdriver. */
+  commentLines: number;
 
   // All registered drivers (from GET /drivers)
   registeredDrivers: DriverInfo[];
@@ -97,12 +103,25 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
   const applySelection = (id: string | null) => {
     const { definitions } = get();
     if (id === null) {
-      set({ selectedId: null, draft: { ...EMPTY_DEFINITION }, dirty: false });
+      set({
+        selectedId: null,
+        draft: { ...EMPTY_DEFINITION },
+        dirty: false,
+        commentLines: 0,
+      });
       return;
     }
     const found = definitions.find((d) => d.id === id);
     if (found) {
-      set({ selectedId: id, draft: cloneDraft(found), dirty: false, error: null });
+      const commentLines =
+        (found as unknown as { _comment_lines?: number })._comment_lines ?? 0;
+      set({
+        selectedId: id,
+        draft: cloneDraft(found),
+        dirty: false,
+        error: null,
+        commentLines,
+      });
     }
   };
 
@@ -115,6 +134,7 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
     saving: false,
     loading: false,
     error: null,
+    commentLines: 0,
 
     registeredDrivers: [],
     communityDrivers: [],
@@ -149,6 +169,7 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
         draft: { ...EMPTY_DEFINITION },
         dirty: true,
         error: null,
+        commentLines: 0,
       });
     },
 

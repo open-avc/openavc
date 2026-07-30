@@ -134,6 +134,30 @@ def companion_relpath_from_def(driver_def: dict[str, Any]) -> str | None:
     return None
 
 
+def count_comment_lines(filepath: Path) -> int:
+    """How many comment lines a driver file carries.
+
+    A ``.avcdriver`` is loaded as YAML and saved by dumping the parsed
+    structure, so a save through an editor cannot carry comments back out —
+    they were never in the object it edited. That matters more here than in
+    most formats: comments are the documented reason this contract is YAML
+    rather than JSON ("essential for documenting protocol details from
+    manufacturer manuals"), the schema hook editors validate against lives in
+    one, and the shipped corpus carries thousands of lines of protocol notes
+    transcribed from vendor manuals.
+
+    So the count travels with the definition, and the editor warns before a
+    save rather than after. Cheap and honest: preserving comments through a
+    form editor needs a round-trip YAML engine, and this says what will happen
+    instead of pretending otherwise.
+    """
+    try:
+        text = filepath.read_text(encoding="utf-8")
+    except OSError:
+        return 0
+    return sum(1 for line in text.splitlines() if line.lstrip().startswith("#"))
+
+
 def load_driver_file(filepath: Path) -> dict[str, Any] | None:
     """
     Load and validate a single driver definition file (.avcdriver YAML).
@@ -682,6 +706,7 @@ def list_driver_definitions(directories: Sequence[Path | str]) -> list[dict[str,
             driver_id = driver_def.get("id", "")
             # Add source info
             driver_def["_source_file"] = str(filepath)
+            driver_def["_comment_lines"] = count_comment_lines(filepath)
             if driver_id in slots:
                 prev_dir, position = slots[driver_id]
                 if prev_dir == dir_index:

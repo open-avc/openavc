@@ -25,6 +25,7 @@ export function DriverPanel() {
     saving,
     loading,
     error,
+    commentLines,
     loadDefinitions,
     selectDriver,
     setInstalledDriverId,
@@ -180,6 +181,7 @@ export function DriverPanel() {
                 isNew={isNew}
                 readOnly={readOnly}
                 originalId={selectedId}
+                commentLines={commentLines}
                 onUpdate={updateDraft}
                 onSave={save}
                 onExport={() => selectedId && handleExport(selectedId)}

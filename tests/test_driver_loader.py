@@ -1277,3 +1277,84 @@ def test_declared_param_description_is_accepted():
     """`description` is the accepted alias for a param's `help` text."""
     driver = _def_with_command({"bank": {"type": "integer", "description": "Bank"}})
     assert validate_driver_definition(driver, strict=True) == []
+
+
+# ---------------------------------------------------------------------------
+# Comment lines travel with a listed definition
+#
+# A .avcdriver is loaded as YAML and saved by dumping the parsed structure, so
+# an editor that opens one and saves it rewrites the file without the comments
+# — they were never in the object it edited. Comments are the documented reason
+# this contract is YAML rather than JSON, they carry protocol notes transcribed
+# from vendor manuals, and one of them is the schema line editors validate
+# against. The count rides along so the Builder can warn before a save instead
+# of after.
+# ---------------------------------------------------------------------------
+
+
+COMMENTED_DRIVER = """\
+# yaml-language-server: $schema=https://example.invalid/avcdriver.schema.json
+# Acme Widget — ASCII over TCP 4998, CR terminated.
+id: acme_widget
+name: Acme Widget
+transport: tcp
+commands:
+  power_on:
+    send: "PWR 1\\r"   # not a comment line: trailing, after content
+"""
+
+
+def _write(tmp_path: Path, text: str, name: str = "acme_widget") -> Path:
+    path = tmp_path / f"{name}{DRIVER_EXTENSION}"
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def test_count_comment_lines_counts_whole_line_comments(tmp_path):
+    from server.drivers.driver_loader import count_comment_lines
+
+    path = _write(tmp_path, COMMENTED_DRIVER)
+    # The two leading `#` lines only — a trailing comment after a value is part
+    # of that line and rewriting the file does not lose the line itself.
+    assert count_comment_lines(path) == 2
+
+
+def test_count_comment_lines_counts_indented_comments(tmp_path):
+    from server.drivers.driver_loader import count_comment_lines
+
+    path = _write(tmp_path, "id: a\nname: A\ntransport: tcp\n    # indented\n")
+    assert count_comment_lines(path) == 1
+
+
+def test_count_comment_lines_is_zero_for_a_file_without_any(tmp_path):
+    from server.drivers.driver_loader import count_comment_lines
+
+    path = _write(tmp_path, "id: a\nname: A\ntransport: tcp\n")
+    assert count_comment_lines(path) == 0
+
+
+def test_count_comment_lines_on_a_missing_file_is_zero(tmp_path):
+    from server.drivers.driver_loader import count_comment_lines
+
+    assert count_comment_lines(tmp_path / "nope.avcdriver") == 0
+
+
+def test_listing_reports_the_comment_count(tmp_path):
+    _write(tmp_path, COMMENTED_DRIVER)
+    listed = list_driver_definitions([tmp_path])
+    entry = next(d for d in listed if d["id"] == "acme_widget")
+    assert entry["_comment_lines"] == 2
+
+
+def test_the_comment_count_is_stripped_before_a_save(tmp_path):
+    """It is bookkeeping the server added, not a driver-format key. The save
+    doors are strict about undeclared keys, so it has to come back off."""
+    from server.api.routes.drivers import _strip_listing_decorations
+
+    _write(tmp_path, COMMENTED_DRIVER)
+    listed = list_driver_definitions([tmp_path])
+    entry = next(d for d in listed if d["id"] == "acme_widget")
+    stripped = _strip_listing_decorations(entry)
+    assert "_comment_lines" not in stripped
+    assert "_source_file" not in stripped
+    assert stripped["id"] == "acme_widget"
