@@ -2097,10 +2097,10 @@ class ConfigurableDriver(BaseDriver):
         """
         Send query strings from definition at configured interval.
 
-        For HTTP transport, polling queries can be:
-            - Command names (e.g., "get_status") — executes that command
-            - URL paths (e.g., "/api/status") — sends a GET request
-        For TCP/serial, queries are raw protocol strings as before.
+        A query that names a declared command runs as that command on every
+        transport, so its reply goes through response matching and send-side
+        framing applies. Anything else is a raw string for the transport: a URL
+        path on HTTP, an OSC address on OSC, the protocol bytes on TCP/serial/UDP.
         """
         if not self.transport or not self.transport.connected:
             return
@@ -2132,8 +2132,9 @@ class ConfigurableDriver(BaseDriver):
                             msg = osc_encode_message(address)
                             await self.transport.send(msg)
                     else:
-                        # HTTP/UDP resolve command names (so the response is matched);
-                        # TCP/serial send the raw string. Shared with on_connect via
+                        # Every transport resolves a command name (so framing
+                        # applies and the response is matched) and falls back to
+                        # the raw string. Shared with on_connect via
                         # _dispatch_query so the two paths can't drift apart.
                         await self._dispatch_query(query)
                 except (ConnectionError, TimeoutError, OSError):

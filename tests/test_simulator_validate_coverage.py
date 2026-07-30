@@ -464,7 +464,13 @@ def test_child_entity_driver_with_sim_section_gets_info(tmp_path):
     """)
     assert not _messages(r, "child_entities", "warning")
     msgs = _messages(r, "child_entities", "info")
-    assert any("not auto-generated" in m for m in msgs), msgs
+    # This used to assert the note said per-child state is "not auto-generated",
+    # which stopped being true when 0.24.0 shipped declarative child simulation.
+    # The stale claim survived precisely because a test held it in place, so
+    # pin what the note has to tell an author instead: state IS modelled, and
+    # the thing they control is whether the pairing is declared.
+    assert any("modelled from the declarations" in m for m in msgs), msgs
+    assert any("query_for" in m for m in msgs), msgs
 
 
 # ── poll-coverage regressions ──

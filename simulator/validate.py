@@ -33,7 +33,8 @@ Checks performed:
    10. Controls         — simulator.controls entries have valid types,
                           required per-type fields, and known state keys
    11. Child entities   — drivers with child_entity_types get a heads-up that
-                          per-child state is not auto-generated
+                          per-child state is modelled only where the command /
+                          poll pairing is declared
 
   Python drivers (.py + _sim.py):
     1. SIMULATOR_INFO   — required fields present (driver_id, name, initial_state)
@@ -1188,16 +1189,18 @@ def _check_child_entities(result: ValidationResult, driver_def: dict, sim: dict)
         result.warning(
             "child_entities",
             f"driver declares child entity types ({names}) but has no "
-            f"simulator: section — the auto-generated simulator only models "
-            f"top-level state_variables, so child-addressed commands and polls "
-            f"get no realistic responses. Add command_handlers covering them."
+            f"simulator: section — per-child state is modelled from the "
+            f"declarations, so seed each child's starting values under "
+            f"simulator.initial_state with dotted keys (e.g. output.2.input)."
         )
     else:
         result.info(
             "child_entities",
             f"driver declares child entity types ({names}) — per-child state "
-            f"is not auto-generated, so make sure command_handlers cover "
-            f"child-addressed commands and each_child polling queries."
+            f"is modelled from the declarations, but only where the pairing is "
+            f"declared: a child_id command needs sets: / query_for:, and an "
+            f"each_child poll query needs query_for:. Anything without one "
+                f"needs its own command_handlers entry."
         )
 
 

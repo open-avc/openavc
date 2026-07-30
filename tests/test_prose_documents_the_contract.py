@@ -275,3 +275,28 @@ def test_the_sweeps_still_reach_the_document() -> None:
     # Fences it cannot root are fine and expected (fragments, project files);
     # this only pins that rooting has not silently become the rare case.
     assert skipped < rooted, f"{skipped} fences skipped vs {rooted} rooted"
+
+
+def test_the_code_fences_are_balanced() -> None:
+    """An odd number of ``` markers inverts every fence after the break.
+
+    Found by an outside audit: the http_listener push example had lost its
+    opening fence, so the whole back half of this guide was inside-out — the
+    YAML examples read as prose and the prose read as YAML. That matters twice
+    over. A reader sees a mangled page, and ``_example_sweep`` above walks
+    exactly these fences, so its coverage silently moved to the wrong half of
+    the document while every assertion in this file still passed.
+
+    Counting is the whole check. It cannot say a fence opens in a sensible
+    place, only that they pair up, which is the failure that actually happened.
+    """
+    fences = [
+        (n, line)
+        for n, line in enumerate(DOC_PATH.read_text(encoding="utf-8").splitlines(), 1)
+        if line.startswith("```")
+    ]
+    assert len(fences) % 2 == 0, (
+        f"{DOC_PATH.name} has {len(fences)} code-fence markers — an odd count, "
+        f"so one block is unterminated and every fence after it is inverted. "
+        f"Last few: {[n for n, _ in fences[-6:]]}"
+    )

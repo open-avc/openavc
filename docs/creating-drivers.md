@@ -45,7 +45,7 @@ The editor has six tabs across the top, each grouping a single concern:
 |-----|-----------------|
 | **General** | Identity (id, name, manufacturer, category, version, author, description), Help & Setup text, Publishing metadata (min platform version, protocols, tags, source URL) |
 | **Connection** | Transport (TCP/serial/UDP/OSC/HTTP/Bridge, plus "Also Usable Over" for multi-transport drivers), Bridge Ports (`bridge`), Authentication, Push Notifications (`push`), Connection Watchdog (`liveness`), Connect Sequence (`on_connect`), Frame Parser, Configuration Fields (`config_schema` + computed fields) |
-| **Behavior** | State Variables, Commands, Responses, Polling, Actions, Device Settings |
+| **Behavior** | State Variables, Child Entity Types (`child_entity_types`, with the instances roster, ID format and per-field cloud priority), Commands, Responses (including per-child routing), Polling, Actions, Device Settings |
 | **Discovery** | Discovery fingerprints (mDNS, SSDP, AMX DDP beacon, TCP/UDP probes, Python file) and hints (OUI, hostname, open port, manufacturer alias, SNMP PEN) |
 | **Simulation** | Simulator definition (initial state, controls, command handlers, error modes) |
 | **Test** | Live tester — runs commands through the real driver runtime against a device |
@@ -315,7 +315,10 @@ help:
   overview: >
     Controls Extron SIS-compatible switchers. Supports input routing,
     volume control, and mute.
-  setup: >
+  # Use `|` (literal), not `>` (folded), for numbered steps. Folded style
+  # joins the lines, so the Add Device dialog shows "1. … 2. …" as one
+  # run-on paragraph.
+  setup: |
     1. Connect the switcher to the network or via RS-232 (9600 8N1).
     2. For TCP, use port 23 (default Extron telnet port).
 
@@ -1280,6 +1283,7 @@ push:
 - `unregister` — optional; the command that cancels the registration. It runs best-effort when the device is disconnected on purpose (project reload, device removed), freeing the device's subscriber slot — dial-back devices typically allow only a handful of registered controllers.
 - `frame_parser` — how the dial-back byte stream is split into notifications (it's a separate stream, so the control transport's framing doesn't apply). `struct_frame` fits the common shape above — reserved header + length field + reserved bytes + payload + reserved trailer; `length_prefix` and `fixed_length` are also accepted. Omit it to dispatch raw reads (fine for devices that send one plain-text line per connection).
 
+```yaml
 # HTTP listener — the device POSTs notifications to a callback URL OpenAVC
 # assigns (webhook style, e.g. Cisco codec HttpFeedback):
 push:
@@ -1301,14 +1305,6 @@ commands:
 ```
 
 Because `on_connect` re-runs on every reconnect, the registration refreshes itself — a device that lost its registration (reboot, failed deliveries) is re-registered the moment the driver reconnects. Devices that expire registrations on their own can also include the registration command in the `polling` list as a keepalive.
-
-How it behaves:
-
-- The subscription starts as soon as the device connects — **before** `on_connect` runs, so a device whose notifications must be armed by an `on_connect` command never sends a frame the platform misses. It stops when the device disconnects and re-arms automatically on reconnect.
-- Everything that arrives goes through the driver's normal `responses` rules — same `match`/`set` semantics as a polled reply, nothing new to learn. A multicast datagram carrying several frames is split on the driver's `delimiter` first; an SSE event or an HTTP-listener body dispatches whole, exactly like an HTTP response body (pair JSON payloads with `json: true` response rules).
-- Multicast frames and HTTP-listener posts are accepted **only from the device's own address**, so two identical devices pushing the same way each update their own OpenAVC device. SSE needs no filtering — the stream rides the driver's own HTTP session, with its authentication and TLS settings.
-- A dropped SSE stream reconnects on its own with exponential backoff (1 s doubling to 30 s); a device reboot re-establishes the subscription without any user action.
-- Push supplements polling; it doesn't replace it. Keep your `polling` block as the baseline resync — if the network filters multicast, an event stream drops, or a device quietly stops posting (see below), the device still works, just at poll speed.
 
 How it behaves:
 
@@ -2754,13 +2750,17 @@ simulator:
 ```yaml
   state_machines:
     power_state:
-      states: [off, warming, on, cooling]
-      initial: off
+      # Quote "off" and "on". YAML reads them bare as booleans, so an
+      # unquoted list becomes [false, "warming", true, "cooling"] and the
+      # machine publishes True/False where your response patterns expect
+      # the words — a state variable that silently never updates again.
+      states: ["off", warming, "on", cooling]
+      initial: "off"
       transitions:
-        - { from: off,     trigger: power_on,  to: warming }
-        - { from: warming, after_seconds: 30,  to: on }       # timed, no command
-        - { from: on,      trigger: power_off, to: cooling }
-        - { from: cooling, after_seconds: 90,  to: off }
+        - { from: "off",   trigger: power_on,  to: warming }
+        - { from: warming, after_seconds: 30,  to: "on" }     # timed, no command
+        - { from: "on",    trigger: power_off, to: cooling }
+        - { from: cooling, after_seconds: 90,  to: "off" }
         - { from: cooling, trigger: "*", reject: true }       # ignore everything while cooling
 ```
 
