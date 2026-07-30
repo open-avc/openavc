@@ -261,6 +261,18 @@ DEFAULTS: dict[str, Any] = {
     "discovery": {
         "advertise": True,
     },
+    "simulation": {
+        # Ports the device simulator subprocess listens on. Two OpenAVC
+        # instances on one machine cannot both simulate on the same numbers,
+        # so both are settable — moving only the UI port is not enough,
+        # because the per-device simulators would still collide on the
+        # device port range.
+        "ui_port": 19500,
+        # First port of the per-device range. The simulator hands each
+        # simulated device the next free port from here, stopping below
+        # ui_port, so keep ui_port above this by at least the device count.
+        "device_port_base": 19000,
+    },
     "tls": {
         "enabled": False,
         "port": 8443,
@@ -294,6 +306,8 @@ ENV_OVERRIDES: dict[tuple[str, str], tuple[str, type]] = {
     ("cloud", "system_key"): ("OPENAVC_CLOUD_SYSTEM_KEY", str),
     ("cloud", "system_id"): ("OPENAVC_CLOUD_SYSTEM_ID", str),
     ("discovery", "advertise"): ("OPENAVC_MDNS_ADVERTISE", bool),
+    ("simulation", "ui_port"): ("OPENAVC_SIMULATOR_UI_PORT", int),
+    ("simulation", "device_port_base"): ("OPENAVC_SIMULATOR_DEVICE_PORT_BASE", int),
     ("tls", "enabled"): ("OPENAVC_TLS_ENABLED", bool),
     ("tls", "port"): ("OPENAVC_TLS_PORT", int),
     ("tls", "auto_generate"): ("OPENAVC_TLS_AUTO_GENERATE", bool),

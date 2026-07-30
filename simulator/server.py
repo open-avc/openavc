@@ -9,10 +9,11 @@ Serves:
 
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import logging
 import sys
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -112,7 +113,7 @@ class LoopbackGuardMiddleware:
 async def lifespan(app: FastAPI):
     """Startup: discover drivers, start requested simulators."""
     config = _runtime.startup_config
-    manager = SimulatorManager()
+    manager = SimulatorManager(port_range_start=config.get("device_port_base"))
 
     # Discover available simulators
     driver_paths = config.get("driver_paths", [])
@@ -162,9 +163,29 @@ async def lifespan(app: FastAPI):
             len(available),
         )
 
+    # Follow the launching server, if there is one. Only openavc passes a
+    # parent_pid; started from a terminal there is nobody to follow.
+    watch_task = None
+    parent_pid = config.get("parent_pid")
+    if parent_pid:
+        from simulator.parent_watch import watch_parent
+
+        def _request_shutdown() -> None:
+            server = _runtime.uvicorn_server
+            if server is not None:
+                server.should_exit = True
+
+        watch_task = asyncio.ensure_future(
+            watch_parent(int(parent_pid), _request_shutdown),
+        )
+
     yield
 
     # Shutdown
+    if watch_task is not None and not watch_task.done():
+        watch_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await watch_task
     await manager.stop_all()
     logger.info("Simulator shut down")
 

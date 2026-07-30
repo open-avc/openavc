@@ -33,6 +33,10 @@ logger = logging.getLogger(__name__)
 # Port range for auto-allocation
 PORT_RANGE_START = 19000
 PORT_RANGE_END = 19499
+# How many ports the per-device range spans. Kept as a width rather than a
+# second absolute number so moving the base (two OpenAVC instances on one
+# machine need distinct ranges) moves the whole window with it.
+PORT_RANGE_WIDTH = PORT_RANGE_END - PORT_RANGE_START
 
 
 class SimulatorInfo:
@@ -62,12 +66,16 @@ class SimulatorInfo:
 class SimulatorManager:
     """Central coordinator for device simulators."""
 
-    def __init__(self):
+    def __init__(self, port_range_start: int | None = None):
         self._available: dict[str, SimulatorInfo] = {}
         self._instances: dict[str, BaseSimulator] = {}  # keyed by device_id
         self._allocated_ports: set[int] = set()
         self._change_listeners: list = []
         self.network = NetworkConditionLayer()
+        self._port_start = (
+            PORT_RANGE_START if port_range_start is None else int(port_range_start)
+        )
+        self._port_end = self._port_start + PORT_RANGE_WIDTH
 
     # ── Discovery ──
 
@@ -320,9 +328,9 @@ class SimulatorManager:
         a stopped device is reused, instead of a monotonic cursor that only ever
         advances and shrinks the usable pool until restart.
         """
-        for port in range(PORT_RANGE_START, PORT_RANGE_END + 1):
+        for port in range(self._port_start, self._port_end + 1):
             if port not in self._allocated_ports:
                 return port
         raise RuntimeError(
-            f"No available ports in range {PORT_RANGE_START}-{PORT_RANGE_END}"
+            f"No available ports in range {self._port_start}-{self._port_end}"
         )

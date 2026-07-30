@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import socket
 import sys
 import tempfile
@@ -30,10 +31,46 @@ log = get_logger(__name__)
 _WORKSPACE_ROOT = APP_DIR.parent
 _DRIVERS_DIR = _WORKSPACE_ROOT / "openavc-drivers"
 
-# The port the simulator serves its own UI and API on. Named here so the
-# failure message below can say which port it means; still one fixed value,
-# which is why two OpenAVC instances on one machine cannot both simulate.
+# Defaults for the two ports the simulator subprocess listens on. These are
+# the fallbacks only — read them through ``simulator_ui_port()`` and
+# ``simulator_device_port_base()`` below, which go through the layered config
+# (system.json / env) like every other port. They stay named because the
+# failure messages say which port they mean.
 SIMULATOR_UI_PORT = 19500
+SIMULATOR_DEVICE_PORT_BASE = 19000
+
+
+def simulator_ui_port() -> int:
+    """The port the simulator serves its own UI and API on.
+
+    Resolved per call rather than cached at import: the whole point of making
+    it configurable is that a second instance on the same machine can move it,
+    and someone who changes it in Settings should get the new value on the
+    next Start Simulation rather than after a server restart.
+    """
+    from server.system_config import get_system_config
+
+    value = get_system_config().get("simulation", "ui_port")
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return SIMULATOR_UI_PORT
+
+
+def simulator_device_port_base() -> int:
+    """First port of the per-device simulator range.
+
+    Configurable for the same reason as the UI port, and it has to move with
+    it: two instances that shared this range would collide on the per-device
+    listeners even with distinct UI ports.
+    """
+    from server.system_config import get_system_config
+
+    value = get_system_config().get("simulation", "device_port_base")
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return SIMULATOR_DEVICE_PORT_BASE
 
 # What a failed bind looks like across platforms. Linux/macOS raise EADDRINUSE
 # with the wording below; Windows says "only one usage of each socket address"
@@ -70,15 +107,17 @@ def _is_address_in_use(stderr: str) -> bool:
     return any(marker in lowered for marker in _ADDRESS_IN_USE_MARKERS)
 
 
-def _port_in_use_message() -> str:
+def _port_in_use_message(ui_port: int | None = None) -> str:
     """What to tell someone whose Simulator UI port is already occupied."""
+    port = simulator_ui_port() if ui_port is None else ui_port
     return (
-        f"The simulator could not start: port {SIMULATOR_UI_PORT}, which it "
+        f"The simulator could not start: port {port}, which it "
         f"serves the Simulator UI on, is already in use. Usually that is "
         f"another OpenAVC instance simulating on this machine, or a simulator "
         f"left running by a previous instance that exited without stopping "
         f"it. Stop the other instance's simulation (or end the leftover "
-        f"process listening on port {SIMULATOR_UI_PORT}) and start simulation "
+        f"process listening on port {port}), or give this instance its own "
+        f'ports under "simulation" in system.json, and start simulation '
         f"again."
     )
 
@@ -236,10 +275,18 @@ class SimulationManager:
         if not driver_paths:
             raise RuntimeError("No driver paths found")
 
+        ui_port = simulator_ui_port()
         sim_config = {
             "driver_paths": driver_paths,
             "devices": devices_config,
-            "ui_port": SIMULATOR_UI_PORT,
+            "ui_port": ui_port,
+            "device_port_base": simulator_device_port_base(),
+            # Who to follow. The simulator exits when this process is gone.
+            # Needed because the paths that strand a simulator are exactly the
+            # ones where no shutdown code of ours runs: SIGKILL, an OOM kill,
+            # a hard crash, and our own os._exit(0) restart watchdog. The
+            # graceful path already stops it from this side.
+            "parent_pid": os.getpid(),
         }
 
         # Write config to temp file
@@ -255,12 +302,12 @@ class SimulationManager:
         # Uvicorn reports a failed bind on stderr *after* "Application startup
         # complete", sometimes in the same read and sometimes in a later one,
         # so the readiness loop could see the marker, declare success, and go
-        # on to query port 19500 — which the other instance's simulator
+        # on to query the UI port — which the other instance's simulator
         # answered. This instance then reported it was simulating with its
         # devices redirected to a simulator it did not own. Checking first is
         # deterministic and needs no guesses about uvicorn's wording.
-        if _port_is_taken(SIMULATOR_UI_PORT):
-            raise RuntimeError(_port_in_use_message())
+        if _port_is_taken(ui_port):
+            raise RuntimeError(_port_in_use_message(ui_port))
 
         log.info("Starting simulator with %d devices...", len(devices_config))
         log.info("Driver paths: %s", driver_paths)
@@ -347,10 +394,10 @@ class SimulationManager:
         if not self._sim_ports:
             import socket
             log.warning("Falling back to sequential port assignment")
-            port = 19000
+            port = simulator_device_port_base()
             for dev_cfg in devices_config:
                 device_id = dev_cfg["device_id"]
-                while port < SIMULATOR_UI_PORT:
+                while port < ui_port:
                     try:
                         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                             s.bind(("127.0.0.1", port))

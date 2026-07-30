@@ -32,6 +32,15 @@ def main():
         help="Bind address (default: 127.0.0.1)",
     )
     parser.add_argument(
+        "--device-port-base",
+        type=int,
+        default=None,
+        help=(
+            "First port handed to simulated devices (default: 19000). Move it "
+            "along with --port to run a second simulator on the same machine."
+        ),
+    )
+    parser.add_argument(
         "--no-auto-shutdown",
         action="store_true",
         help=(
@@ -53,6 +62,8 @@ def main():
         config["driver_paths"] = args.driver_paths
     if "ui_port" not in config:
         config["ui_port"] = args.port
+    if args.device_port_base is not None:
+        config["device_port_base"] = args.device_port_base
     config["auto_shutdown"] = not args.no_auto_shutdown
 
     # Store config for the FastAPI app to pick up
