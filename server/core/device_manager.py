@@ -25,7 +25,7 @@ from server.drivers.base import (
     validate_device_setting_value,
 )
 from server.drivers.child_ids import child_id_kind, coerce_child_local_id
-from server.core.event_bus import EventBus
+from server.core.event_bus import EventBus, detach_emit_chain
 from server.core.state_store import StateStore
 from server.utils.logger import get_logger
 
@@ -1349,6 +1349,9 @@ class DeviceManager:
         Exponential backoff: 2s, 4s, 8s, 16s, 30s max.
         Gives up after max_attempts (default 120 = ~1 hour at 30s intervals).
         """
+        # This loop is spawned from inside the disconnect emit chain but outlives
+        # it, so it must not keep being charged to it — see detach_emit_chain.
+        detach_emit_chain()
         delays = [2, 4, 8, 16, 30]
         attempt = 0
         permanent_attempts = 0

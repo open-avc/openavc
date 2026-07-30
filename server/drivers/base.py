@@ -31,7 +31,7 @@ from server.core.connection_fault import (
     classify_connection_fault,
     default_fault_message,
 )
-from server.core.event_bus import EventBus
+from server.core.event_bus import EventBus, detach_emit_chain
 from server.core.state_store import StateStore
 from server.transport.frame_parsers import FrameParser
 from server.utils.logger import get_logger
@@ -1399,6 +1399,7 @@ class BaseDriver(ABC):
         can't stall the loop. Any exception (timeout, transport failure,
         protocol error) counts as a miss; a clean return resets the counter.
         """
+        detach_emit_chain()  # a device-lifetime loop is a root, not a continuation
         interval = float(self.HEALTH_INTERVAL_S)
         timeout = float(self.HEALTH_TIMEOUT_S)
         max_failures = max(int(self.HEALTH_MAX_FAILURES), 1)
@@ -2080,6 +2081,7 @@ class BaseDriver(ABC):
         httpx.ConnectError and friends in a driver's poll() causes connected
         state to lie.
         """
+        detach_emit_chain()  # a device-lifetime loop is a root, not a continuation
         import time
         try:
             import httpx

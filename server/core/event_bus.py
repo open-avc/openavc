@@ -74,6 +74,33 @@ _emit_depth: contextvars.ContextVar[int] = contextvars.ContextVar(
 )
 
 
+def detach_emit_chain() -> None:
+    """Reset the emit-depth counter for a long-lived background loop.
+
+    Copying the context is what makes the counter measure real recursion
+    rather than breadth (see above), and it is right for a task that finishes
+    inside the chain that spawned it. It is wrong for a task that outlives it:
+    a loop started from inside a handler inherits that handler's depth and
+    never gives it back, so every event it emits for the rest of its life is
+    charged to a chain that has long since unwound.
+
+    That ratchets, and a flapping device is how it shows up. The watchdog drops
+    a dead link and emits ``device.disconnected.<id>`` from inside an emit
+    chain; the reconnect loop a handler of that event spawns inherits its
+    depth; the loop's own reconnect emits the next disconnect one level deeper
+    again. After a few cycles the device crosses ``MAX_EMIT_DEPTH`` and the bus
+    starts silently dropping its ``device.connected.<id>`` and
+    ``state.changed.device.<id>.connected`` events — so triggers, panel
+    indicators, and anything else watching that device's connection state stop
+    being told anything at all, permanently, with only a debug-level warning
+    about a "possible recursive event chain" to show for it.
+
+    A loop that runs for the lifetime of a device is a root, not a
+    continuation. Call this once at the top of one.
+    """
+    _emit_depth.set(0)
+
+
 class EventBus:
     """Async pub/sub event bus with glob pattern matching."""
 

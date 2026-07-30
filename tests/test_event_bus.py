@@ -2,6 +2,8 @@
 
 import asyncio
 
+from server.core import event_bus
+
 
 
 
@@ -172,3 +174,88 @@ async def test_once_does_not_double_fire_under_concurrent_emit(events):
     )
 
     assert fires == ["test.once.race"]
+
+
+async def test_a_long_lived_loop_spawned_from_a_handler_ratchets_the_depth(events):
+    """The mechanism behind the bug detach_emit_chain exists to fix.
+
+    ``create_task`` copies the context, which is what makes the depth counter
+    measure recursion rather than breadth. But a task that OUTLIVES the chain
+    that spawned it keeps the inherited depth forever, so each cycle of
+    "handler spawns loop, loop emits, that emit's handler spawns the next loop"
+    lands one level deeper — until the guard drops the events entirely.
+
+    Pinned as a characteristic so the fix below is measured against it rather
+    than asserted.
+    """
+    depths: list[int] = []
+
+    async def spawn_next(event, payload):
+        cycle = payload["cycle"]
+        if cycle >= events.MAX_EMIT_DEPTH + 2:
+            return
+
+        async def loop() -> None:
+            # A device-lifetime loop, standing in for the reconnect/health loop:
+            # spawned inside this handler, then emitting on its own schedule.
+            depths.append(event_bus._emit_depth.get())
+            await events.emit("ratchet", {"cycle": cycle + 1})
+
+        await asyncio.create_task(loop())
+
+    events.on("ratchet", spawn_next)
+    await events.emit("ratchet", {"cycle": 0})
+
+    # Each spawned loop starts one level deeper than the last.
+    assert depths[:3] == [1, 2, 3]
+    # And it stops early: once the inherited depth hits the cap the emits are
+    # dropped, so the chain never reaches the cycle it was told to run to.
+    assert len(depths) < events.MAX_EMIT_DEPTH + 2
+
+
+async def test_detach_emit_chain_stops_the_ratchet(events):
+    """Same shape, with the loop declaring itself a root.
+
+    This is what keeps a flapping device reporting its connection state: the
+    watchdog drops the link from inside an emit chain, the reconnect loop a
+    handler spawns detaches, and its own disconnect/connect events are charged
+    to a fresh chain instead of the one that started it.
+    """
+    depths: list[int] = []
+    cycles = events.MAX_EMIT_DEPTH + 3
+
+    async def spawn_next(event, payload):
+        cycle = payload["cycle"]
+        if cycle >= cycles:
+            return
+
+        async def loop() -> None:
+            event_bus.detach_emit_chain()
+            depths.append(event_bus._emit_depth.get())
+            await events.emit("detached", {"cycle": cycle + 1})
+
+        await asyncio.create_task(loop())
+
+    events.on("detached", spawn_next)
+    await events.emit("detached", {"cycle": 0})
+
+    # Every loop starts from zero, and no cycle is lost to the depth guard.
+    assert depths == [0] * cycles
+
+
+async def test_detach_only_affects_its_own_task(events):
+    """A detach inside one task must not clear the depth of the chain it was
+    spawned from — that chain still needs its recursion bound."""
+    inner_depth: list[int] = []
+
+    async def detacher() -> None:
+        event_bus.detach_emit_chain()
+
+    async def handler(event, payload):
+        await asyncio.create_task(detacher())
+        inner_depth.append(event_bus._emit_depth.get())
+
+    events.on("scoped", handler)
+    await events.emit("scoped")
+
+    assert inner_depth == [1]
