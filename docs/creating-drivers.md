@@ -458,7 +458,7 @@ The tables below document each field in detail.
 | `name` | Yes | Human-readable display name. |
 | `transport` | Yes | `"tcp"`, `"serial"`, `"http"`, `"udp"`, `"osc"`, or `"bridge"` (an IR device that emits through a bridge; see IR devices below). |
 | `manufacturer` | No | Manufacturer name. Default: `"Generic"`. |
-| `category` | No | One of: `projector`, `display`, `switcher`, `scaler`, `audio`, `camera`, `lighting`, `relay`, `utility`, `other`. |
+| `category` | No | One of: `projector`, `display`, `switcher`, `audio`, `camera`, `video`, `streaming`, `lighting`, `power`, `utility`. |
 | `version` | No | Semantic version. Default: `"1.0.0"`. |
 | `author` | No | Who wrote this driver. |
 | `description` | No | Brief description. |
@@ -1482,7 +1482,6 @@ The top-level `protocols` field is metadata for catalog tagging — it does **no
 protocols: ["pjlink"]
 ```
 
-This lets the discovery system match your driver directly when it identifies the protocol on a device, without relying on the built-in fallback mapping.
 
 **Where to find MAC prefixes:** Look at the MAC address of your device (shown in device network settings or `arp -a`). The first three octets (e.g., `00:05:a6`) identify the manufacturer. You can verify at [IEEE OUI lookup](https://standards-oui.ieee.org/).
 
@@ -1490,7 +1489,7 @@ This lets the discovery system match your driver directly when it identifies the
 
 For devices controlled via HTTP/REST APIs (Panasonic PTZ cameras, Sony Bravia displays, Crestron DM NVX, Zoom Rooms, etc.), set `transport: http` and use HTTP-specific command fields.
 
-HTTP commands use `method`, `path`, and `body` instead of `string`/`send`:
+HTTP commands use `method`, `path`, and `body` instead of `send`:
 
 ```yaml
 # Panasonic AW-series PTZ Camera (HTTP CGI control)
@@ -1699,7 +1698,7 @@ With `level=75`, this sends `POST /api/audio` with body `{"channel": "program", 
 
 For devices controlled via OSC over UDP (Behringer X32, QLab, ETC Eos, TouchDesigner, Resolume, etc.), set `transport: osc` and use OSC-specific command and response fields.
 
-OSC commands use `address` and `args` instead of `send`/`string` (TCP/serial) or `method`/`path` (HTTP). OSC responses match by address pattern instead of regex.
+OSC commands use `address` and `args` instead of `send` (TCP/serial) or `method`/`path` (HTTP). OSC responses match by address pattern instead of regex.
 
 #### OSC Command Format
 
@@ -2690,7 +2689,7 @@ survives.
 
 ## DRIVER_INFO Reference
 
-Every driver, whether Python, JSON, or Driver Builder, defines the same metadata structure. Here's the complete reference:
+Every driver, whether Python, YAML, or Driver Builder, defines the same metadata structure. Here's the complete reference:
 
 ### Required to load vs. required to publish
 
