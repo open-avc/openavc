@@ -85,6 +85,14 @@ export interface TestCommandResult {
   received: string[];
   state_changes: Record<string, unknown>;
   error: string | null;
+  /**
+   * Driver-contract faults the test tripped — currently state the driver
+   * wrote without declaring it in `state_variables`. Distinct from `error`,
+   * which is about the exchange with the device: these mean the exchange
+   * worked and the driver's own declarations are wrong. Absent on the raw
+   * send-and-wait path, which runs no driver.
+   */
+  contract_errors?: string[];
 }
 
 /**
@@ -197,13 +205,34 @@ export async function getPythonDriverSource(
   return request(`/python-drivers/${id}/source`);
 }
 
+/** What a save returns when the source does not parse. */
+export interface SaveDriverSourceResult {
+  /** "saved" — bytes are on disk; "error" — nothing was written. */
+  status: string;
+  /** Set on a refusal (Save & Reload) — why the file was not written. */
+  error?: string;
+  /** Set on a plain Save that persisted source that will not parse. */
+  syntax_error?: string;
+  /** 1-based line the parser stopped on, for the editor's error marker. */
+  line?: number | null;
+}
+
+/**
+ * Save a Python driver's source.
+ *
+ * `requireValidSyntax` is what separates the two buttons: Save & Reload sets
+ * it so the server refuses to persist source that cannot parse (the file on
+ * disk keeps loading), while a plain Save leaves it off so work in progress is
+ * never lost — and gets told when what it kept will not load.
+ */
 export async function savePythonDriverSource(
   id: string,
-  source: string
-): Promise<{ status: string }> {
+  source: string,
+  requireValidSyntax = false
+): Promise<SaveDriverSourceResult> {
   return request(`/python-drivers/${id}/source`, {
     method: "PUT",
-    body: JSON.stringify({ source }),
+    body: JSON.stringify({ source, require_valid_syntax: requireValidSyntax }),
   });
 }
 

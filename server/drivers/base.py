@@ -529,6 +529,10 @@ class BaseDriver(ABC):
         # undeclared key writes it every cycle, and a per-poll warning is a
         # log flood that trains everyone to ignore the channel.
         self._undeclared_state_seen: set[str] = set()
+        # Per-instance strict mode. None means "follow the process-wide env
+        # var"; True/False override it for this driver alone. See
+        # `strict_state` below for why one driver has to be able to differ.
+        self._strict_state_override: bool | None = None
 
         # Initialize state variables from DRIVER_INFO
         self._init_state_variables()
@@ -2320,6 +2324,32 @@ class BaseDriver(ABC):
             source=f"device.{self.device_id}",
         )
 
+    @property
+    def strict_state(self) -> bool:
+        """Whether a contract violation raises for *this* driver.
+
+        ``OPENAVC_STRICT_DRIVER_STATE`` is the default and is read per call, so
+        it can be turned on around a test run. But it is a *process* variable,
+        and the surface that wants strictness most — the Builder's Test tab —
+        runs inside a live server that is simultaneously polling real devices.
+        Flipping the env var there would make every unrelated driver raise
+        mid-poll for as long as somebody has the panel open: a device could go
+        offline because a colleague was testing a different driver.
+
+        So the flag is scoped to the instance instead. This is the same check,
+        the same exception and the same message as the env var produces — only
+        the question "is it on *here*" has a narrower answer. Setting it is the
+        caller's job, and the only caller that does is the one-shot driver the
+        live test builds, which is attached to nothing.
+        """
+        if self._strict_state_override is not None:
+            return self._strict_state_override
+        return strict_driver_state()
+
+    @strict_state.setter
+    def strict_state(self, value: bool | None) -> None:
+        self._strict_state_override = value
+
     def _check_undeclared_state(self, property_name: str) -> None:
         """Report a write to a state variable the driver never declared.
 
@@ -2341,6 +2371,8 @@ class BaseDriver(ABC):
           tailing the server log during bring-up sees.
         * **Strict mode** — raise, so the author's own test suite fails on it.
           That is where the author is iterating and where this is actionable.
+          See :attr:`strict_state` for why that is per-driver and not only the
+          process-wide env var.
         """
         if property_name in self._PLATFORM_STATE_PROPS:
             return
@@ -2350,7 +2382,7 @@ class BaseDriver(ABC):
             f"'{property_name}', which it does not declare in "
             f'DRIVER_INFO["state_variables"]'
         )
-        if strict_driver_state():
+        if self.strict_state:
             # Before the seen-set, so every write raises, not just the first.
             raise UndeclaredStateError(
                 f"{summary}. Declare it, or stop writing it. (Reported as a "

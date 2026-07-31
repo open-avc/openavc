@@ -271,3 +271,56 @@ def test_the_three_postures_are_deliberate(lenient, caplog):
         drv.set_state("firmware", "1.2.3")
     assert drv.state.get("device.amp_2.firmware") == "1.2.3"
     assert len(_reports(caplog)) == 1
+
+
+# ── Per-driver scope: the Builder's Test tab, without a process-wide flip ───
+#
+# The env var is read per call so it can be turned on around one driver. But
+# "per call" is not "per driver": the surface that wants strictness most is the
+# Builder's Test tab, which runs inside a live server that is polling real
+# devices at the same time. Setting the env var there would make every
+# unrelated driver raise mid-poll for as long as the panel is open — a room
+# could go down because somebody was testing a different driver. So the flag is
+# also settable on one instance.
+
+def test_strict_can_be_turned_on_for_one_driver_while_the_process_is_lenient(
+    lenient, caplog
+):
+    tested = _mk("under_test")
+    tested.strict_state = True
+    production = _mk("in_production")
+
+    with pytest.raises(UndeclaredStateError):
+        tested.set_state("output_5_mute", True)
+
+    # The device the operator is actually running is untouched by the test.
+    with caplog.at_level(logging.WARNING, logger="server.drivers.base"):
+        production.set_state("output_5_mute", True)
+    assert production.state.get("device.in_production.output_5_mute") is True
+
+
+def test_a_driver_can_opt_out_while_the_process_is_strict(strict, caplog):
+    """The override answers in both directions, so it is a scope, not a switch."""
+    drv = _mk()
+    drv.strict_state = False
+    with caplog.at_level(logging.WARNING, logger="server.drivers.base"):
+        drv.set_state("output_5_mute", True)
+    assert drv.state.get("device.amp_1.output_5_mute") is True
+    assert len(_reports(caplog)) == 1
+
+
+def test_the_default_is_the_env_var_not_a_hardcoded_posture(lenient, strict):
+    """Unset override → whatever the process says. `strict` runs after
+    `lenient`, so this asserts the live value, not a captured one."""
+    drv = _mk()
+    assert drv.strict_state is True
+    drv.strict_state = None
+    assert drv.strict_state is True
+
+
+def test_clearing_the_override_returns_the_driver_to_the_process_posture(lenient):
+    drv = _mk()
+    drv.strict_state = True
+    assert drv.strict_state is True
+    drv.strict_state = None
+    assert drv.strict_state is False

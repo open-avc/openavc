@@ -1808,11 +1808,25 @@ async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
             "error": str(e),
         }
 
+    from server.drivers.base import UndeclaredStateError
+
     driver = built.driver
     config = built.config
     state = built.state
     definition = built.definition
     transport_type = built.transport_type
+
+    # Strict for this driver only — never the process-wide env var, which
+    # would make every device this server is polling raise mid-poll while the
+    # panel is open. The test driver is attached to nothing, so a raise here
+    # costs a room nothing. See BaseDriver.strict_state.
+    driver.strict_state = True
+    contract_errors: list[str] = []
+
+    def note_contract_error(e: UndeclaredStateError) -> None:
+        """Record a violation once; the same rule fires on every poll."""
+        if str(e) not in contract_errors:
+            contract_errors.append(str(e))
 
     # Capture state changes so the panel can show what the command moved.
     initial_state: dict[str, Any] = (
@@ -1828,7 +1842,15 @@ async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
     async def capture_on_data(data: bytes) -> None:
         received_chunks.append(data)
         response_event.set()
-        await original_on_data(data)
+        # Caught here rather than left to propagate: for a byte-stream
+        # transport this runs on the read-loop task, where an exception is
+        # logged and dropped and would never reach the caller. Swallowing it
+        # after recording also keeps the rest of the exchange observable —
+        # the author sees what came back *and* what the driver did wrong.
+        try:
+            await original_on_data(data)
+        except UndeclaredStateError as e:
+            note_contract_error(e)
 
     driver.on_data_received = capture_on_data  # type: ignore[method-assign]
 
@@ -1838,6 +1860,10 @@ async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
     try:
         try:
             await driver.connect()
+        except UndeclaredStateError as e:
+            # An on_connect query can write state too. Report it as the
+            # contract violation it is, not as "Connect failed".
+            note_contract_error(e)
         except Exception as e:
             return {
                 "success": False,
@@ -1845,6 +1871,7 @@ async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
                 "received": [_decode_for_display(b) for b in received_chunks],
                 "state_changes": {},
                 "error": f"Connect failed: {e}",
+                "contract_errors": contract_errors,
             }
 
         cmd_def = (definition.get("commands") or {}).get(body.command_name)
@@ -1855,6 +1882,7 @@ async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
                 "received": [_decode_for_display(b) for b in received_chunks],
                 "state_changes": {},
                 "error": f"Unknown command '{body.command_name}'",
+                "contract_errors": contract_errors,
             }
 
         sent_repr = _describe_outgoing(definition, cmd_def, config, body.params or {})
@@ -1866,6 +1894,11 @@ async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
             send_result = await driver.send_command(
                 body.command_name, body.params or {}
             )
+        except UndeclaredStateError as e:
+            # A command's `sets:` writes state on send. Same reasoning as the
+            # connect branch: this is a contract fault, not a send failure.
+            note_contract_error(e)
+            send_result = None
         except Exception as e:
             error_text = f"Send failed: {e}"
             send_result = None
@@ -1906,11 +1939,14 @@ async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
     }
 
     return {
-        "success": error_text is None,
+        # A contract violation fails the test even when the device answered
+        # perfectly: the exchange worked, the driver's declarations did not.
+        "success": error_text is None and not contract_errors,
         "sent": sent_repr,
         "received": [_decode_for_display(b) for b in received_chunks],
         "state_changes": state_changes,
         "error": error_text,
+        "contract_errors": contract_errors,
     }
 
 
@@ -2546,7 +2582,28 @@ async def export_python_driver_bundle(driver_id: str):
 
 @router.put("/python-drivers/{driver_id}/source", dependencies=[Depends(require_claimed_auth)])
 async def save_python_driver_source(driver_id: str, body: dict) -> dict:
-    """Save the source code of a Python driver file."""
+    """Save the source code of a Python driver file.
+
+    ``require_valid_syntax`` decides what happens to source that will not
+    parse, and the two answers belong to the two buttons in the Code view:
+
+    * **Save** (default, flag absent) writes it and *says so* —
+      ``{"status": "saved", "syntax_error": ..., "line": N}``. Half-finished
+      code is the normal state of an editor and refusing to keep it would lose
+      work; what the author must not do is walk away believing the file is
+      fine. The old behaviour wrote it and said nothing at all.
+    * **Save & Reload** (flag set) refuses: ``{"status": "error", ...}`` and
+      **nothing is written**. That button means "make this the live driver",
+      and a file that cannot parse cannot load on any future startup — so
+      persisting it swaps a working driver on disk for one that drops its
+      devices at the next restart, while the still-running process hides it.
+
+    A refusal is reported at HTTP 200 in the body, matching the reload route
+    next door (documented behaviour), because the editor needs the structured
+    ``line`` to mark the offending row and an HTTPException detail is prose.
+    """
+    from server.drivers.driver_loader import python_source_syntax_error
+
     filepath = _safe_driver_path(driver_id)
     source = body.get("source")
     if source is None:
@@ -2555,12 +2612,20 @@ async def save_python_driver_source(driver_id: str, body: dict) -> dict:
     if not filepath.exists():
         raise HTTPException(status_code=404, detail=f"Python driver '{driver_id}' not found")
 
+    syntax = python_source_syntax_error(source, filepath.name)
+    if syntax and body.get("require_valid_syntax"):
+        return {"status": "error", "driver_id": driver_id, "saved": False, **syntax}
+
     try:
         filepath.write_text(source, encoding="utf-8")
     except OSError as e:
         raise _api_error(500, f"Could not save driver '{driver_id}'.", e)
 
-    return {"status": "saved", "driver_id": driver_id}
+    result: dict[str, Any] = {"status": "saved", "driver_id": driver_id}
+    if syntax:
+        result["syntax_error"] = syntax["error"]
+        result["line"] = syntax["line"]
+    return result
 
 
 @router.post("/python-drivers", dependencies=[Depends(require_claimed_auth)])

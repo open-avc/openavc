@@ -44,6 +44,14 @@ interface ResultEntry {
   received: string[];
   state_changes: Record<string, unknown>;
   error: string | null;
+  /**
+   * Driver-contract faults, kept apart from `error` on purpose: `error` means
+   * the device did not answer, these mean it answered fine and the driver's
+   * declarations are wrong. Sending the author to the device when the fault
+   * is in their own YAML is exactly the misdirection this panel exists to
+   * avoid.
+   */
+  contract_errors?: string[];
   /** Set when the request hit the 2s rate limit (A82). */
   throttled?: boolean;
   timestamp: number;
@@ -464,6 +472,7 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
           received: result.received,
           state_changes: result.state_changes,
           error: result.error,
+          contract_errors: result.contract_errors ?? [],
           timestamp: Date.now(),
         },
         ...prev,
@@ -929,6 +938,21 @@ function ResultRow({ entry, isLast }: { entry: ResultEntry; isLast: boolean }) {
           <AlertCircle size={12} /> {entry.error}
         </div>
       )}
+      {(entry.contract_errors ?? []).map((msg, j) => (
+        <div
+          key={`contract-${j}`}
+          style={{
+            color: "var(--color-warning, #e8b250)",
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 4,
+            marginTop: 4,
+          }}
+        >
+          <AlertTriangle size={12} style={{ flexShrink: 0, marginTop: 2 }} />
+          <span>{msg}</span>
+        </div>
+      ))}
     </div>
   );
 }

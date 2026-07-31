@@ -173,7 +173,19 @@ export function ScriptView() {
       if (selectedType === "script") {
         await api.saveScriptSource(selectedId, source);
       } else {
-        await api.savePythonDriverSource(selectedId, source);
+        // Plain Save keeps work in progress in whatever state it is in — but
+        // says so when what it kept will not load. The running driver goes on
+        // working, so nothing else would tell you until a restart dropped it
+        // and took its devices offline.
+        const res = await api.savePythonDriverSource(selectedId, source);
+        if (res.syntax_error) {
+          showError(`Saved, but this driver will not load: ${res.syntax_error}`);
+          setDriverReloadErrors(
+            res.line ? [{ line: res.line, message: res.syntax_error }] : []
+          );
+        } else {
+          setDriverReloadErrors([]);
+        }
       }
       setOriginalSource(source);
     } catch (e) {
@@ -251,11 +263,26 @@ export function ScriptView() {
   const handleReloadDriver = useCallback(async () => {
     if (!selectedId || selectedType !== "driver") return;
 
-    // Save first if dirty
+    // Save first if dirty — but refuse to persist source that will not parse.
+    // "Save & Reload" means "make this the live driver"; writing a file that
+    // cannot load leaves the running process working while the copy on disk is
+    // dead, and the next restart drops the driver and its devices with it.
     if (isDirty) {
       setSaving(true);
       try {
-        await api.savePythonDriverSource(selectedId, source);
+        const res = await api.savePythonDriverSource(selectedId, source, true);
+        if (res.status === "error") {
+          showError(
+            `Not saved — ${res.error}. The file on disk is unchanged and still loads.`
+          );
+          if (res.line) {
+            setDriverReloadErrors([
+              { line: res.line, message: res.error ?? "Syntax error" },
+            ]);
+          }
+          setSaving(false);
+          return;
+        }
         setOriginalSource(source);
       } catch (e) {
         showError(`Save failed: ${e}`);

@@ -786,6 +786,39 @@ def _ast_dict_to_simple(node: Any) -> dict[str, str | int | float | bool]:
     return result
 
 
+def syntax_error_report(exc: SyntaxError, filename: str) -> dict[str, Any]:
+    """Render a SyntaxError the way the Code view already knows how to show it.
+
+    ``{"error": "SyntaxError: <msg> (<file>, line N)", "line": N}`` — the line
+    is a separate field because the editor turns it into a clickable marker on
+    the offending line, so a formatter that folds it into the prose would break
+    the link. Shared by :func:`reload_python_driver` (which gets its
+    SyntaxError from importing the file) and the save door (which gets one from
+    parsing source that is not on disk yet), so a driver that will not parse is
+    described in exactly the same words wherever the author meets it.
+    """
+    return {
+        "error": f"SyntaxError: {exc.msg} ({filename}, line {exc.lineno})",
+        "line": exc.lineno,
+    }
+
+
+def python_source_syntax_error(source: str, filename: str) -> dict[str, Any] | None:
+    """Report why ``source`` will not parse, or None when it parses.
+
+    Deliberately a *parse*, not an import: the caller is a save door deciding
+    whether bytes may be written, and importing would both run the module's
+    top-level code and fail on a dependency the driver legitimately imports.
+    A file that parses but cannot import is work in progress; a file that does
+    not parse cannot load on any future startup.
+    """
+    try:
+        ast.parse(source, filename=filename)
+    except SyntaxError as e:
+        return syntax_error_report(e, filename)
+    return None
+
+
 def reload_python_driver(
     filepath: Path,
 ) -> dict[str, Any]:
@@ -829,8 +862,7 @@ def reload_python_driver(
     except SyntaxError as e:
         return {
             "status": "error",
-            "error": f"SyntaxError: {e.msg} ({filepath.name}, line {e.lineno})",
-            "line": e.lineno,
+            **syntax_error_report(e, filepath.name),
             "old_driver_preserved": True,
         }
     except Exception as e:
