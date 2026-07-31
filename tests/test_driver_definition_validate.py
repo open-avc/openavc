@@ -202,6 +202,17 @@ SECTION_CASES: list[tuple[str, dict[str, Any], str]] = [
         "polling",
     ),
     (
+        "substitutions in a command",
+        _d(commands={"noop": {"send": "SET {levl}\r",
+                              "params": {"level": {"type": "integer"}}}}),
+        "commands.noop.send",
+    ),
+    (
+        "substitutions in a polling query",
+        _d(polling={"queries": ["{missing_tag} STA\r"]}),
+        "polling.queries[0]",
+    ),
+    (
         "polling.queries[i]",
         _d(polling={"queries": [{"send": "Q1"}, {"when": "nope", "send": "Q2"}]}),
         "polling.queries[1]",
@@ -262,8 +273,10 @@ def test_every_context_tag_has_a_section_case():
             # Bound to a value the enclosing walk computes. Each is covered
             # through the section that supplies it: `loc` by the unknown-key
             # cases, `name` by polling.queries / on_connect, `frame_key` by
-            # command_prefix / command_suffix.
-            assert expr in {"loc", "name", "frame_key"}, (
+            # command_prefix / command_suffix, `substitution_loc` by the two
+            # unresolved-placeholder cases (a command and a polling query),
+            # which is why both are in the table rather than one.
+            assert expr in {"loc", "name", "frame_key", "substitution_loc"}, (
                 f"new computed context tag {expr!r} — add a case for what it produces"
             )
             continue

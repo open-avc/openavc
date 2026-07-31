@@ -1018,7 +1018,7 @@ def _def_with_command(params: dict, child_types: dict | None = None) -> dict:
         "transport": "tcp",
         "discovery": {"oui": ["aa:bb:cc"]},
         "commands": {
-            "do_thing": {"label": "Do Thing", "send": "DO {bank}\r", "params": params},
+            "do_thing": {"label": "Do Thing", "send": "DO\r", "params": params},
         },
     }
     if child_types is not None:

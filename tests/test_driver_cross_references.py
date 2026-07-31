@@ -25,6 +25,7 @@ import pytest
 from server.drivers.avcdriver_semantic import (
     UNEVALUATED_KEY,
     child_param_reference_errors,
+    validate_substitutions,
     validate_actions,
 )
 from server.drivers.python_info import (
@@ -369,3 +370,149 @@ def test_reference_checking_does_not_mutate_the_definition():
     validate_actions(definition)
     python_driver_info_issues(definition)
     assert definition == before
+
+
+# ── {name} substitutions must resolve to something the driver declares ──
+#
+# The runtime leaves an unknown placeholder verbatim on purpose, so a JSON
+# body full of braces cannot crash a send. That makes a typo invisible: the
+# token travels to the device as literal text, the command appears to do
+# nothing, and no gate said a word. These rules are the authoring half.
+
+
+def _substitution_definition() -> dict:
+    """A driver interpolating a config field and a command parameter."""
+    return {
+        "id": "acme_widget",
+        "name": "Acme Widget",
+        "transport": "tcp",
+        "default_config": {"host": "", "port": 5000, "zone_tag": "MAIN"},
+        "config_schema": {"host": {"type": "string", "label": "IP Address"}},
+        "state_variables": {"volume": {"type": "integer", "label": "Volume"}},
+        "commands": {
+            "set_volume": {
+                "label": "Set Volume",
+                "send": "{zone_tag} VOL{level}\r\n",
+                "params": {"level": {"type": "integer", "label": "Level"}},
+            },
+        },
+        "responses": [{"match": "{zone_tag} VOL(\\d+)", "set": {"volume": "$1"}}],
+        "polling": {"queries": ["{zone_tag} VOL?\r\n"]},
+    }
+
+
+def test_a_driver_that_declares_what_it_interpolates_is_clean():
+    assert validate_substitutions(_substitution_definition()) == []
+
+
+@pytest.mark.parametrize(
+    ("mutate", "where"),
+    [
+        (lambda d: d["commands"]["set_volume"].update(send="VOL{levl}\r\n"),
+         "commands.set_volume.send"),
+        (lambda d: d["commands"]["set_volume"].update(
+            path="/api/v{ver}/volume"), "commands.set_volume.path"),
+        (lambda d: d["commands"]["set_volume"].update(
+            body='{"level": {lvl}}'), "commands.set_volume.body"),
+        (lambda d: d["commands"]["set_volume"].update(
+            headers={"X-Zone": "{zne}"}), "commands.set_volume.headers.X-Zone"),
+        (lambda d: d["responses"].insert(0, {"match": "{zne} VOL(\\d+)"}),
+         "responses[0].match"),
+        (lambda d: d["polling"].update(queries=["{zne} VOL?\r\n"]),
+         "polling.queries[0]"),
+        (lambda d: d.update(on_connect=["{zne} INIT\r\n"]), "on_connect[0]"),
+    ],
+)
+def test_an_unresolvable_placeholder_is_reported_where_it_sits(mutate, where):
+    definition = _substitution_definition()
+    mutate(definition)
+    errors = validate_substitutions(definition)
+    assert errors, f"{where}: expected an error"
+    assert errors[0].startswith(where), errors[0]
+    assert "resolves to nothing" in errors[0]
+
+
+def test_the_message_suggests_the_name_the_author_meant():
+    definition = _substitution_definition()
+    definition["commands"]["set_volume"]["send"] = "VOL{levl}\r\n"
+    assert "did you mean 'level'?" in validate_substitutions(definition)[0]
+
+
+@pytest.mark.parametrize(
+    "send",
+    [
+        '{"volume": {level}}',        # literal JSON braces around a real param
+        "VOL{level:03d}\r\n",         # a format spec on a real param
+        "Z{child_id} VOL{level}\r\n",  # the platform's per-child token
+        "{zone_tag} VOL{level}\r\n",   # a config field
+    ],
+)
+def test_valid_templates_do_not_fire(send):
+    """The rule must not punish the shapes device protocols actually use.
+    A JSON body is the reason the runtime tolerates unknown braces at all."""
+    definition = _substitution_definition()
+    definition["commands"]["set_volume"]["send"] = send
+    assert validate_substitutions(definition) == []
+
+
+def test_the_push_tokens_the_platform_injects_resolve():
+    """``listener_port`` and ``push_callback_url`` are set on the config by the
+    push machinery, not declared by the driver — a registration command that
+    references them is correct."""
+    definition = _substitution_definition()
+    definition["commands"]["register"] = {
+        "label": "Register",
+        "method": "GET",
+        "path": "/event?port={listener_port}&url={push_callback_url}",
+    }
+    assert validate_substitutions(definition) == []
+
+
+def test_a_response_pattern_cannot_reach_a_command_parameter():
+    """A response is matched long after the command's params are gone, so a
+    param name there resolves to nothing even though the command declares it."""
+    definition = _substitution_definition()
+    definition["responses"] = [{"match": "VOL{level}", "set": {"volume": "$1"}}]
+    errors = validate_substitutions(definition)
+    assert errors and "only config values substitute here" in errors[0]
+
+
+def test_a_command_cannot_reach_another_commands_parameter():
+    definition = _substitution_definition()
+    definition["commands"]["set_input"] = {
+        "label": "Set Input",
+        "send": "IN{level}\r\n",          # 'level' belongs to set_volume
+        "params": {"input": {"type": "integer", "label": "Input"}},
+    }
+    errors = validate_substitutions(definition)
+    assert any(e.startswith("commands.set_input.send") for e in errors), errors
+
+
+def test_a_computed_params_block_skips_rather_than_guesses():
+    """A Python driver may build its params at runtime. The visible set is then
+    a SUBSET of the real one, so 'not in it' proves nothing — the same reason
+    the actions check skips. Reporting a working driver as broken is worse."""
+    definition = _substitution_definition()
+    definition["commands"]["set_volume"]["params"] = {UNEVALUATED_KEY: {}}
+    definition["commands"]["set_volume"]["send"] = "VOL{whatever}\r\n"
+    assert validate_substitutions(definition) == []
+
+
+def test_substitution_checking_does_not_mutate_the_definition():
+    definition = _substitution_definition()
+    before = copy.deepcopy(definition)
+    validate_substitutions(definition)
+    assert definition == before
+
+
+def test_a_command_with_no_params_block_is_left_alone():
+    """The runtime substitutes whatever the caller passed, so a command that
+    declares no params can still use a placeholder a macro supplies at call
+    time. Loose — no type check, no range gate, no UI control — but working,
+    and this rule has no standing to fail it."""
+    definition = _substitution_definition()
+    definition["commands"]["set_input"] = {
+        "label": "Set Input",
+        "send": "IN{input}\r\n",   # 'input' arrives from the caller
+    }
+    assert validate_substitutions(definition) == []

@@ -59,6 +59,176 @@ from server.utils.regex_safety import regex_safety_error as _regex_redos_error
 # to recognise it rather than in the reader that emits it.
 UNEVALUATED_KEY = "<unevaluated>"
 
+# Names the platform substitutes without the driver declaring them:
+# ``child_id`` in a per-child send template, and the two tokens the push
+# machinery injects before a registration command goes out (``base.py`` sets
+# ``listener_port``; ``_push_params`` supplies ``push_callback_url``).
+PLATFORM_SUBSTITUTIONS = frozenset(
+    {"child_id", "push_callback_url", "listener_port"}
+)
+
+# One ``{name}`` or ``{name:format_spec}`` token. Deliberately requires an
+# identifier, so a literal JSON body — ``{"vol": {level}}`` — matches only on
+# the real placeholder and never on the brace that opens the object.
+_SUBSTITUTION_TOKEN = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)(?::[^{}]*)?\}")
+
+# What each position is allowed to interpolate, phrased for the message.
+_CMD_SOURCES = "no parameter of this command and no config field"
+_CFG_SOURCES = "no config field (only config values substitute here)"
+
+
+def _config_substitution_names(driver_def: dict[str, Any]) -> set[str]:
+    """Every name resolvable from the driver's config, plus the platform's.
+
+    The runtime builds a command's substitution map as ``{**self.config,
+    **self._push_params(), **params}``, and ``self.config`` is the driver's
+    declared defaults merged with the device's own settings — so a name is
+    resolvable exactly when the driver declares it somewhere in its config
+    surface. Measured against the shipped library before this rule landed:
+    every YAML driver declares every name it interpolates, so nothing beyond
+    the three platform tokens needs assuming here.
+    """
+    names = set(PLATFORM_SUBSTITUTIONS)
+    for block in ("default_config", "config_schema", "config_derived"):
+        section = driver_def.get(block)
+        if isinstance(section, dict):
+            names |= {k for k in section if isinstance(k, str)}
+    return names
+
+
+def _closest_name(name: str, candidates: set[str]) -> str | None:
+    """The nearest declared name, for a did-you-mean suggestion."""
+    close = _difflib.get_close_matches(name, sorted(candidates), n=1, cutoff=0.7)
+    return close[0] if close else None
+
+
+def _unresolved_substitutions(
+    where: str, template: Any, resolvable: set[str], sources: str
+) -> list[str]:
+    """Report ``{name}`` tokens in one template that resolve to nothing.
+
+    ``safe_substitute`` leaves an unknown placeholder verbatim rather than
+    raising — deliberately, so a JSON body full of braces cannot crash a send.
+    The cost is that a typo travels to the device as literal text and nothing
+    says so: the command appears to do nothing, or a response pattern compiles
+    to a regex that can never match. The runtime stays lenient; this is the
+    authoring gate that makes the typo visible instead.
+
+    ``sources`` names what this template is allowed to interpolate, because
+    that differs by position — a command sees its own params and the config, a
+    response pattern is matched long after any params are gone.
+    """
+    if not isinstance(template, str):
+        return []
+    errors: list[str] = []
+    for match in _SUBSTITUTION_TOKEN.finditer(template):
+        name = match.group(1)
+        if name in resolvable:
+            continue
+        suggestion = _closest_name(name, resolvable)
+        hint = f" (did you mean '{suggestion}'?)" if suggestion else ""
+        errors.append(
+            f"{where}: '{{{name}}}' resolves to nothing{hint} — it names "
+            f"{sources}, so it would go to the device literally"
+        )
+    return errors
+
+
+def validate_substitutions(driver_def: dict[str, Any]) -> list[str]:
+    """Every ``{name}`` a driver writes into a wire template must resolve.
+
+    Covers the three places a placeholder reaches the device or the matcher:
+    a command's send/path/body/address/headers, a response's ``match``
+    pattern, and the polling / on_connect query lists.
+
+    Mirrored into the community catalog's validator by the vendored copy of
+    this module (``openavc-drivers/scripts/_vendor/``).
+    """
+    errors: list[str] = []
+    config_names = _config_substitution_names(driver_def)
+
+    commands = driver_def.get("commands")
+    if isinstance(commands, dict) and UNEVALUATED_KEY not in commands:
+        for name, cmd in commands.items():
+            if not isinstance(cmd, dict):
+                continue
+            params = cmd.get("params")
+            # A computed params block is a SUBSET of the real one, so "not in
+            # it" proves nothing — skip this command rather than report a
+            # working driver as broken. Same rule as the actions check.
+            if isinstance(params, dict) and UNEVALUATED_KEY in params:
+                continue
+            # A command that declares no params is making no claim about its
+            # placeholders, and the runtime substitutes whatever the caller
+            # passed: `send: "IN{input}"` with no params block works, because a
+            # macro or script can supply `input` at call time. That is a loose
+            # shape — an undeclared param gets no type coercion, no range gate
+            # and no UI control — but it is not a wrong one, so this check has
+            # no standing to call it an error.
+            #
+            # Once a command DOES declare params it has named its inputs, and a
+            # token outside that set sitting beside a near-identical one inside
+            # it is the typo this rule exists to catch.
+            if not isinstance(params, dict) or not params:
+                continue
+            resolvable = config_names | {k for k in params if isinstance(k, str)}
+            for field in ("send", "path", "body", "address"):
+                errors.extend(
+                    _unresolved_substitutions(
+                        f"commands.{name}.{field}",
+                        cmd.get(field),
+                        resolvable,
+                        _CMD_SOURCES,
+                    )
+                )
+            headers = cmd.get("headers")
+            if isinstance(headers, dict):
+                for key, value in headers.items():
+                    errors.extend(
+                        _unresolved_substitutions(
+                            f"commands.{name}.headers.{key}",
+                            value,
+                            resolvable,
+                            _CMD_SOURCES,
+                        )
+                    )
+
+    # A response pattern is substituted against the config alone — it is
+    # matched long after any command's params are gone.
+    responses = driver_def.get("responses")
+    if isinstance(responses, list):
+        for i, response in enumerate(responses):
+            if isinstance(response, dict):
+                errors.extend(
+                    _unresolved_substitutions(
+                        f"responses[{i}].match",
+                        response.get("match"),
+                        config_names,
+                        _CFG_SOURCES,
+                    )
+                )
+
+    polling = driver_def.get("polling")
+    for where, entries in (
+        ("polling.queries",
+         polling.get("queries") if isinstance(polling, dict) else None),
+        ("on_connect", driver_def.get("on_connect")),
+    ):
+        if not isinstance(entries, list):
+            continue
+        for i, entry in enumerate(entries):
+            template = entry if isinstance(entry, str) else None
+            if isinstance(entry, dict):
+                template = entry.get("send") or entry.get("address")
+            errors.extend(
+                _unresolved_substitutions(
+                    f"{where}[{i}]", template, config_names, _CFG_SOURCES
+                )
+            )
+
+    return errors
+
+
 def _validate_osc_args(where: str, arg_defs: Any, errors: list[str]) -> None:
     """Validate OSC arg `type` tags so an unsupported tag or typo fails at load
     rather than being silently dropped when the message is built."""
@@ -1757,6 +1927,20 @@ def validate_driver_definition(
     _validate_each_child(
         "on_connect", driver_def.get("on_connect"), allow_osc_dict=True
     )
+
+    # Every {name} the driver writes into a wire template has to resolve.
+    # Sits with the other cross-reference rules in spirit: it is the same
+    # question — does this name point at something the driver declares — asked
+    # of the substitution surface rather than of commands and child types.
+    #
+    # These messages already open with their own location, and they land in
+    # several sections at once (a command, a response, the polling list), so
+    # each is tagged from its own prefix rather than sharing one section tag —
+    # otherwise the Builder would anchor a polling issue to a command.
+    for message in validate_substitutions(driver_def):
+        substitution_loc = message.split(":", 1)[0]
+        errors.ctx = substitution_loc
+        errors.append(message)
 
     # Strict mode: reject keys the contract doesn't declare. Appended last so
     # every existing error keeps its position. Only the authoring gates ask for
