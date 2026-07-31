@@ -10,6 +10,7 @@ import {
 } from "../../api/restClient";
 import type { ProjectConfig, UIPage, UIElement } from "../../api/types";
 import { ConfirmDialog } from "../shared/ConfirmDialog";
+import { Modal } from "../shared/Modal";
 import {
   parseColor, rgbToHex6, contrastRatio, wcagLevel, deriveSurfaceBorder,
   CSS_VAR_FALLBACKS, type WcagLevel,
@@ -1165,17 +1166,6 @@ export function ThemeStudio({
     onClose();
   };
 
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") handleClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  // handleClose closes over isDirty; safe to capture latest each render
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, isDirty]);
-
   // Listen for element clicks from the preview iframe
   useEffect(() => {
     if (!open) return;
@@ -1229,36 +1219,23 @@ export function ThemeStudio({
   if (!open) return null;
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Theme Studio"
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.75)",
+    <Modal
+      onClose={handleClose}
+      label="Theme Studio"
+      overlayStyle={{ background: "rgba(0,0,0,0.75)" }}
+      panelStyle={{
+        width: "92vw",
+        height: "92vh",
+        maxWidth: 1800,
+        background: "var(--bg-base)",
+        border: "1px solid var(--border-color)",
+        borderRadius: 8,
         display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 1000,
+        flexDirection: "column",
+        boxShadow: "0 24px 64px rgba(0,0,0,0.5)",
+        overflow: "hidden",
       }}
-      onClick={handleClose}
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: "92vw",
-          height: "92vh",
-          maxWidth: 1800,
-          background: "var(--bg-base)",
-          border: "1px solid var(--border-color)",
-          borderRadius: 8,
-          display: "flex",
-          flexDirection: "column",
-          boxShadow: "0 24px 64px rgba(0,0,0,0.5)",
-          overflow: "hidden",
-        }}
-      >
         {/* Header */}
         <div
           style={{
@@ -1538,8 +1515,7 @@ export function ThemeStudio({
             }
           />
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }
 

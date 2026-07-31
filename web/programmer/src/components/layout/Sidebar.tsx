@@ -21,6 +21,7 @@ import {
   Loader2,
   LogOut,
 } from "lucide-react";
+import { Modal } from "../shared/Modal";
 import { usePluginStore } from "../../store/pluginStore";
 import { useConnectionStore } from "../../store/connectionStore";
 import { useProjectStore } from "../../store/projectStore";
@@ -249,16 +250,15 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
         </span>
       </button>
       {showSimConfirm && (
-        <div role="dialog" aria-modal="true" aria-label="Start Device Simulation" style={{
-          position: "fixed", inset: 0, zIndex: 10000,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          background: "rgba(0,0,0,0.6)",
-        }} onClick={(e) => { if (e.target === e.currentTarget) setShowSimConfirm(false); }}>
-          <div style={{
+        <Modal
+          onClose={() => setShowSimConfirm(false)}
+          label="Start Device Simulation"
+          panelStyle={{
             background: "var(--bg-surface)", border: "1px solid var(--border-color)",
             borderRadius: 8, padding: "24px 28px", maxWidth: 420, width: "90%",
             boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
-          }}>
+          }}
+        >
             <h3 style={{ margin: "0 0 12px", fontSize: 16 }}>Start Device Simulation</h3>
             <p style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6, margin: "0 0 8px" }}>
               This will redirect all device connections to simulated virtual devices on your local machine.
@@ -290,8 +290,7 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
                 background: "var(--accent-bg)", color: "#fff",
               }}>Start Simulation</button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
       <button
         className={`${styles.navItem} ${activeView === "updates" ? styles.active : ""}`}

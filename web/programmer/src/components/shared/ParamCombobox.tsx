@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
 import { ChevronDown } from "lucide-react";
 import type { ParamOption } from "./paramOptions";
+import { LAYER } from "./layers";
 
 /** A "pick or type" field for a param whose known values come from an option
  *  provider (options_state / options_from). Unlike an HTML
@@ -174,7 +175,7 @@ export function ParamCombobox({
             border: "1px solid var(--border-color)",
             borderRadius: "var(--border-radius)",
             boxShadow: "var(--shadow-lg)",
-            zIndex: 9999,
+            zIndex: LAYER.popover,
           }}
         >
           {filtered.map((o, i) => {

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { HexColorPicker } from "react-colorful";
+import { LAYER } from "./layers";
 
 interface InlineColorPickerProps {
   value: string;
@@ -91,7 +92,7 @@ export function InlineColorPicker({
       )}
       {open && (
         <div style={{
-          position: "fixed", zIndex: 9999,
+          position: "fixed", zIndex: LAYER.popover,
           top: popoverPos.top, bottom: popoverPos.bottom, left: popoverPos.left,
           background: "var(--bg-elevated)", border: "1px solid var(--border-color)",
           borderRadius: "var(--border-radius)", padding: "var(--space-xs)",

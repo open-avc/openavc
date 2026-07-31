@@ -1,6 +1,7 @@
 /**
  * Keyboard shortcuts reference panel — toggled with Ctrl+/
  */
+import { Modal } from "./Modal";
 
 interface ShortcutGroup {
   title: string;
@@ -42,34 +43,20 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
 
 export function ShortcutsPanel({ onClose }: { onClose: () => void }) {
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Keyboard Shortcuts"
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.5)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 10000,
+    <Modal
+      onClose={onClose}
+      label="Keyboard Shortcuts"
+      overlayStyle={{ background: "rgba(0,0,0,0.5)" }}
+      panelStyle={{
+        background: "var(--bg-surface)",
+        border: "1px solid var(--border-color)",
+        padding: "var(--space-lg)",
+        width: "min(480px, 90vw)",
+        maxHeight: "70vh",
+        overflow: "auto",
+        boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
       }}
-      onClick={onClose}
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: "var(--bg-surface)",
-          border: "1px solid var(--border-color)",
-          borderRadius: "var(--border-radius)",
-          padding: "var(--space-lg)",
-          width: "min(480px, 90vw)",
-          maxHeight: "70vh",
-          overflow: "auto",
-          boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
-        }}
-      >
         <div style={{
           display: "flex",
           justifyContent: "space-between",
@@ -137,7 +124,6 @@ export function ShortcutsPanel({ onClose }: { onClose: () => void }) {
         <div style={{ fontSize: 11, color: "var(--text-muted)", textAlign: "center", marginTop: "var(--space-sm)" }}>
           Press <kbd style={{ fontFamily: "var(--font-mono)", padding: "0 4px", borderRadius: 2, background: "var(--bg-hover)", border: "1px solid var(--border-color)" }}>Ctrl+/</kbd> or <kbd style={{ fontFamily: "var(--font-mono)", padding: "0 4px", borderRadius: 2, background: "var(--bg-hover)", border: "1px solid var(--border-color)" }}>Escape</kbd> to close
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

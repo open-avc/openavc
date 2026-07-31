@@ -30,6 +30,7 @@ import { PropertiesPanel } from "../components/ui-builder/PropertiesPanel";
 import { ContextMenu } from "../components/ui-builder/ContextMenu";
 import { ThemeStudio } from "../components/ui-builder/ThemeStudio";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
+import { Modal, isModalOpen } from "../components/shared/Modal";
 import {
   SCREEN_PRESETS,
   createDefaultElement,
@@ -241,6 +242,11 @@ export function UIBuilderView() {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // A dialog is up: the canvas is behind a backdrop, so these keys are
+      // meant for the dialog. Before this guard, Escape on a dialog also
+      // deselected the element underneath, and Delete reached the canvas and
+      // removed it.
+      if (isModalOpen()) return;
       // Ctrl+P toggles preview mode (works in both modes)
       if ((e.ctrlKey || e.metaKey) && e.key === "p") {
         e.preventDefault();
@@ -1465,26 +1471,17 @@ export function UIBuilderView() {
 
       {/* Validation results */}
       {validationIssues !== null && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Validation Results"
-          style={{
-            position: "fixed", inset: 0, zIndex: 1000,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            background: "rgba(0,0,0,0.5)",
+        <Modal
+          onClose={() => setValidationIssues(null)}
+          label="Validation Results"
+          overlayStyle={{ background: "rgba(0,0,0,0.5)" }}
+          panelStyle={{
+            borderRadius: 8,
+            border: "1px solid var(--border-color)",
+            padding: 20, minWidth: 400, maxWidth: 600, maxHeight: "70vh",
+            display: "flex", flexDirection: "column", gap: 12,
           }}
-          onClick={() => setValidationIssues(null)}
         >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: "var(--bg-elevated)", borderRadius: 8,
-              border: "1px solid var(--border-color)", boxShadow: "var(--shadow-lg)",
-              padding: 20, minWidth: 400, maxWidth: 600, maxHeight: "70vh",
-              display: "flex", flexDirection: "column", gap: 12,
-            }}
-          >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <h3 style={{ margin: 0, fontSize: 14 }}>
                 Project Validation {validationIssues.length === 0 ? "— No Issues" : `— ${validationIssues.length} issue${validationIssues.length === 1 ? "" : "s"}`}
@@ -1525,8 +1522,7 @@ export function UIBuilderView() {
                 ))}
               </div>
             )}
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Settings dialog */}
@@ -1586,33 +1582,16 @@ function UISettingsDialog({
   const inputStyle: React.CSSProperties = { width: "100%" };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Panel Settings"
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.6)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 1000,
+    <Modal
+      onClose={handleCancel}
+      label="Panel Settings"
+      panelStyle={{
+        padding: "var(--space-xl)",
+        width: 480,
+        maxHeight: "85vh",
+        overflow: "auto",
       }}
-      onClick={handleCancel}
     >
-      <div
-        style={{
-          background: "var(--bg-elevated)",
-          borderRadius: "var(--border-radius)",
-          padding: "var(--space-xl)",
-          width: 480,
-          maxHeight: "85vh",
-          overflow: "auto",
-          boxShadow: "var(--shadow-lg)",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
         <h3 style={{ fontSize: "var(--font-size-lg)", marginBottom: "var(--space-lg)" }}>Panel Settings</h3>
 
             <div style={fieldStyle}>
@@ -1815,7 +1794,6 @@ function UISettingsDialog({
             Save
           </button>
         </div>
-      </div>
 
       {showDiscardConfirm && (
         <ConfirmDialog
@@ -1827,6 +1805,6 @@ function UISettingsDialog({
           onCancel={() => setShowDiscardConfirm(false)}
         />
       )}
-    </div>
+    </Modal>
   );
 }

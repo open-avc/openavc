@@ -4,6 +4,7 @@ import * as api from "../../api/restClient";
 import { getSerialPorts, type SerialPortInfo } from "../../api/systemClient";
 import type { DeviceConfig, DriverInfo } from "../../api/types";
 import { DeviceSettingsSetupDialog, hasDriverSetupSettings } from "../../components/shared/DeviceSettingsSetupDialog";
+import { Modal } from "../../components/shared/Modal";
 import { normalizeOptionList } from "../../components/shared/paramOptions";
 import {
   coerceConfigValue,
@@ -893,33 +894,16 @@ export function AddDeviceDialog({
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Add Device"
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.6)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 1000,
+    <Modal
+      onClose={onClose}
+      label="Add Device"
+      panelStyle={{
+        padding: "var(--space-xl)",
+        width: 480,
+        maxHeight: "80vh",
+        overflow: "auto",
       }}
-      onClick={onClose}
     >
-      <div
-        style={{
-          background: "var(--bg-elevated)",
-          borderRadius: "var(--border-radius)",
-          padding: "var(--space-xl)",
-          width: 480,
-          maxHeight: "80vh",
-          overflow: "auto",
-          boxShadow: "var(--shadow-lg)",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
         <h3 style={{ fontSize: "var(--font-size-lg)", marginBottom: "var(--space-lg)" }}>
           {prefill ? "Duplicate Device" : "Add Device"}
         </h3>
@@ -1119,7 +1103,6 @@ export function AddDeviceDialog({
             {isAdding ? "Adding..." : prefill ? "Duplicate Device" : "Add Device"}
           </button>
         </div>
-      </div>
 
       {setupDeviceId && driverInfo && (
         <DeviceSettingsSetupDialog
@@ -1129,7 +1112,7 @@ export function AddDeviceDialog({
           onClose={onClose}
         />
       )}
-    </div>
+    </Modal>
   );
 }
 
@@ -1251,33 +1234,16 @@ export function EditDeviceDialog({
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Edit Device"
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.6)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 1000,
+    <Modal
+      onClose={onClose}
+      label="Edit Device"
+      panelStyle={{
+        padding: "var(--space-xl)",
+        width: 480,
+        maxHeight: "80vh",
+        overflow: "auto",
       }}
-      onClick={onClose}
     >
-      <div
-        style={{
-          background: "var(--bg-elevated)",
-          borderRadius: "var(--border-radius)",
-          padding: "var(--space-xl)",
-          width: 480,
-          maxHeight: "80vh",
-          overflow: "auto",
-          boxShadow: "var(--shadow-lg)",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
         <h3 style={{ fontSize: "var(--font-size-lg)", marginBottom: "var(--space-lg)" }}>
           Edit Device
         </h3>
@@ -1430,7 +1396,6 @@ export function EditDeviceDialog({
             {saving ? "Saving..." : "Save Changes"}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

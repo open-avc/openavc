@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback, useEffect } from "react";
 import { Plus, Trash2, HardDrive, X, Link, Pencil, LayoutDashboard } from "lucide-react";
 import { CopyButton } from "../../components/shared/CopyButton";
 import { ConfirmDialog } from "../../components/shared/ConfirmDialog";
+import { Modal } from "../../components/shared/Modal";
 import { VariableKeyPicker } from "../../components/shared/VariableKeyPicker";
 import { useProjectStore } from "../../store/projectStore";
 import { useConnectionStore } from "../../store/connectionStore";
@@ -822,17 +823,12 @@ export function VariablesSubTab() {
 
       {/* Rename dialog (10.5) */}
       {renameTarget && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Rename Variable"
-          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}
-          onClick={() => setRenameTarget(null)}
+        <Modal
+          onClose={() => setRenameTarget(null)}
+          label="Rename Variable"
+          overlayStyle={{ background: "rgba(0,0,0,0.5)" }}
+          panelStyle={{ background: "var(--bg-surface)", border: "1px solid var(--border-color)", padding: "var(--space-lg)", width: "min(440px, 90vw)", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }}
         >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{ background: "var(--bg-surface)", border: "1px solid var(--border-color)", borderRadius: "var(--border-radius)", padding: "var(--space-lg)", width: "min(440px, 90vw)", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }}
-          >
             <div style={{ fontWeight: 600, fontSize: "var(--font-size-md)", color: "var(--text-primary)", marginBottom: "var(--space-md)" }}>
               Rename Variable
             </div>
@@ -878,8 +874,7 @@ export function VariablesSubTab() {
                 Rename
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

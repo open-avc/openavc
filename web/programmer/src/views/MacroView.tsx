@@ -3,6 +3,7 @@ import { ViewContainer } from "../components/layout/ViewContainer";
 import { MacroList } from "../components/macros/MacroList";
 import { MacroEditor } from "../components/macros/MacroEditor";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
+import { Modal } from "../components/shared/Modal";
 import { macroToScript, generateId, getConversionWarnings } from "../components/macros/macroHelpers";
 import { useProjectStore } from "../store/projectStore";
 import { useNavigationStore } from "../store/navigationStore";
@@ -164,34 +165,19 @@ export function MacroView() {
 
       {/* Script conversion preview dialog (9.6) */}
       {scriptPreview && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Script Conversion Preview"
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.6)",
+        <Modal
+          onClose={() => setScriptPreview(null)}
+          label="Script Conversion Preview"
+          panelStyle={{
+            background: "var(--bg-surface)",
+            border: "1px solid var(--border-color)",
+            width: "min(700px, 90vw)",
+            maxHeight: "80vh",
             display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 100,
+            flexDirection: "column",
+            boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
           }}
-          onClick={() => setScriptPreview(null)}
         >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: "var(--bg-surface)",
-              border: "1px solid var(--border-color)",
-              borderRadius: "var(--border-radius)",
-              width: "min(700px, 90vw)",
-              maxHeight: "80vh",
-              display: "flex",
-              flexDirection: "column",
-              boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
-            }}
-          >
             {/* Header */}
             <div style={{
               padding: "var(--space-md)",
@@ -286,8 +272,7 @@ export function MacroView() {
                 </button>
               </div>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </ViewContainer>
   );

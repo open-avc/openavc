@@ -112,13 +112,12 @@ function AuthedApp() {
         e.preventDefault();
         setShowShortcuts((v) => !v);
       }
-      if (e.key === "Escape" && showShortcuts) {
-        setShowShortcuts(false);
-      }
+      // Escape belongs to the panel itself (Modal), so it can't also close a
+      // dialog the user opened on top of it.
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [showShortcuts]);
+  }, []);
 
   // Global undo/redo keyboard shortcuts (skip when in UI Builder, which has its own)
   useEffect(() => {

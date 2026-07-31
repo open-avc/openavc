@@ -3,6 +3,7 @@ import { Trash2, X, Image as ImageIcon, Music, FolderOpen } from "lucide-react";
 import * as api from "../../api/restClient";
 import { useProjectStore } from "../../store/projectStore";
 import { ConfirmDialog } from "../shared/ConfirmDialog";
+import { Modal } from "../shared/Modal";
 
 export type AssetFilter = "all" | "image" | "audio";
 export type AssetSelectMode = "pick" | "manage";
@@ -502,35 +503,18 @@ export function AssetBrowserModal({ filter, currentValue, onSelect, onClose }: A
     filter === "image" ? "Image Assets" :
     "Project Assets";
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={title}
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 10000,
+    <Modal
+      onClose={onClose}
+      label={title}
+      panelStyle={{
+        background: "var(--bg-surface)",
+        border: "1px solid var(--border-color)",
+        width: 560,
+        maxHeight: "80vh",
         display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "rgba(0,0,0,0.6)",
-      }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        flexDirection: "column",
       }}
     >
-      <div
-        style={{
-          background: "var(--bg-surface)",
-          border: "1px solid var(--border-color)",
-          borderRadius: "var(--border-radius)",
-          width: 560,
-          maxHeight: "80vh",
-          display: "flex",
-          flexDirection: "column",
-          boxShadow: "var(--shadow-lg)",
-        }}
-      >
         <div
           style={{
             display: "flex",
@@ -562,7 +546,6 @@ export function AssetBrowserModal({ filter, currentValue, onSelect, onClose }: A
             onSelect={onSelect}
           />
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

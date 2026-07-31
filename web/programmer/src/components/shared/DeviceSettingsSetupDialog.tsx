@@ -3,6 +3,7 @@ import * as api from "../../api/restClient";
 import { ApiError, parseApiError } from "../../api/errors";
 import type { DriverInfo } from "../../api/types";
 import { validateSettingValue } from "../driver-builder/deviceSettingsHelpers";
+import { Modal } from "./Modal";
 import { normalizeOptionList } from "./paramOptions";
 
 /** Generate a non-clashing default value for a unique device setting. */
@@ -148,33 +149,16 @@ export function DeviceSettingsSetupDialog({
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Device Setup"
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.6)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 1001,
+    <Modal
+      onClose={onClose}
+      label="Device Setup"
+      panelStyle={{
+        padding: "var(--space-xl)",
+        width: 480,
+        maxHeight: "80vh",
+        overflow: "auto",
       }}
-      onClick={onClose}
     >
-      <div
-        style={{
-          background: "var(--bg-elevated)",
-          borderRadius: "var(--border-radius)",
-          padding: "var(--space-xl)",
-          width: 480,
-          maxHeight: "80vh",
-          overflow: "auto",
-          boxShadow: "var(--shadow-lg)",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
         <h3 style={{ fontSize: "var(--font-size-lg)", marginBottom: "var(--space-sm)" }}>
           Device Setup
         </h3>
@@ -317,8 +301,7 @@ export function DeviceSettingsSetupDialog({
             {saving ? "Applying..." : "Apply Settings"}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

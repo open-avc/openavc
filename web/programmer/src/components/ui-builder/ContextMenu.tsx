@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Copy, Clipboard, Trash2, CopyPlus, ArrowUpToLine, ArrowDownToLine, Globe, Undo2 } from "lucide-react";
+import { LAYER } from "../shared/layers";
 
 interface ContextMenuProps {
   x: number;
@@ -176,7 +177,7 @@ export function ContextMenu({
         position: "fixed",
         left: x,
         top: y,
-        zIndex: 1000,
+        zIndex: LAYER.popover,
         background: "var(--bg-elevated)",
         border: "1px solid var(--border-color)",
         borderRadius: "var(--border-radius)",

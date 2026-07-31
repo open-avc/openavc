@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { RefreshCw, Download, RotateCcw, CheckCircle, XCircle, Loader, CloudDownload } from "lucide-react";
 import { ViewContainer } from "../components/layout/ViewContainer";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
+import { Modal } from "../components/shared/Modal";
 import { useConnectionStore } from "../store/connectionStore";
 import { showError, showSuccess } from "../store/toastStore";
 import * as api from "../api/restClient";
@@ -429,22 +430,18 @@ export function UpdatesView() {
 
       {/* Progress Modal */}
       {showProgressModal && (
-        <div role="dialog" aria-modal="true" aria-label="Update Progress" style={{
-          position: "fixed",
-          inset: 0,
-          background: "rgba(0,0,0,0.7)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          zIndex: 1000,
-        }}>
-          <div style={{
-            background: "var(--bg-elevated)",
-            borderRadius: "var(--border-radius)",
+        <Modal
+          label="Update Progress"
+          // No dismiss handler on purpose: an update in progress is not
+          // something a stray click or an Escape should walk away from. The
+          // states that are safe to leave offer their own Close button.
+          overlayStyle={{ background: "rgba(0,0,0,0.7)" }}
+          panelStyle={{
             padding: "var(--space-xl)",
             width: 400,
             boxShadow: "var(--shadow-md)",
-          }}>
+          }}
+        >
             <div style={{ fontSize: "var(--font-size-lg)", fontWeight: 600, marginBottom: "var(--space-lg)" }}>
               {installTarget ? "Installing OpenAVC v" + installTarget : "Updating OpenAVC"}
             </div>
@@ -518,8 +515,7 @@ export function UpdatesView() {
                 </button>
               </div>
             )}
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* CSS keyframe for spinner */}

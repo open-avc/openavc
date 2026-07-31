@@ -1,5 +1,6 @@
 import { useToastStore } from "../../store/toastStore";
 import type { Toast } from "../../store/toastStore";
+import { LAYER } from "./layers";
 
 const severityColors: Record<Toast["severity"], string> = {
   info: "#2196F3",
@@ -22,7 +23,7 @@ export default function ToastContainer() {
         position: "fixed",
         bottom: 16,
         right: 16,
-        zIndex: 10000,
+        zIndex: LAYER.toast,
         display: "flex",
         flexDirection: "column",
         gap: 8,

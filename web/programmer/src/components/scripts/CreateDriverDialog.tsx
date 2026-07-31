@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Modal } from "../shared/Modal";
 import { DRIVER_TEMPLATES } from "./driverTemplates";
 import { DRIVER_CATEGORIES } from "../driver-builder/driverCategories";
 
@@ -51,34 +52,21 @@ export function CreateDriverDialog({ onSubmit, onCancel, existingIds = [] }: Cre
   });
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Create Python Driver"
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 1000,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "rgba(0,0,0,0.5)",
+    <Modal
+      onClose={onCancel}
+      label="Create Python Driver"
+      overlayStyle={{ background: "rgba(0,0,0,0.5)" }}
+      panelStyle={{
+        background: "var(--bg-surface)",
+        border: "1px solid var(--border-color)",
+        borderRadius: "var(--border-radius-lg, 8px)",
+        padding: "var(--space-lg)",
+        width: 520,
+        maxHeight: "85vh",
+        overflow: "auto",
+        boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
       }}
-      onClick={onCancel}
     >
-      <div
-        style={{
-          background: "var(--bg-surface)",
-          border: "1px solid var(--border-color)",
-          borderRadius: "var(--border-radius-lg, 8px)",
-          padding: "var(--space-lg)",
-          width: 520,
-          maxHeight: "85vh",
-          overflow: "auto",
-          boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
         <h3
           style={{
             margin: "0 0 var(--space-md) 0",
@@ -251,8 +239,7 @@ export function CreateDriverDialog({ onSubmit, onCancel, existingIds = [] }: Cre
             Create Driver
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

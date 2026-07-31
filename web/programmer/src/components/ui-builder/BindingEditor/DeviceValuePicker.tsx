@@ -21,6 +21,7 @@ import type {
 } from "../../../api/types";
 import { useConnectionStore } from "../../../store/connectionStore";
 import * as api from "../../../api/restClient";
+import { LAYER } from "../../shared/layers";
 
 /** Shape of one entry in DRIVER_INFO.state_variables (per-device, from
  *  getDevice — instance-building drivers only populate it there). Child
@@ -516,7 +517,7 @@ function PropertyDropdown({
               border: "1px solid var(--border-color)",
               borderRadius: "var(--border-radius)",
               boxShadow: "var(--shadow-lg)",
-              zIndex: 9999,
+              zIndex: LAYER.popover,
             }}
           >
             <div style={{ padding: "6px 8px", borderBottom: "1px solid var(--border-color)" }}>

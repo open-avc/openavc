@@ -11,6 +11,7 @@ import { CopyButton } from "./CopyButton";
 import { groupLabel } from "./variableKeyPickerHelpers";
 import { showError } from "../../store/toastStore";
 import { getDevice, listChildEntities } from "../../api/restClient";
+import { LAYER } from "./layers";
 
 /** Session cache of device state-variable labels (deviceId -> suffix ->
  *  friendly label), filled lazily the first time a picker opens. Display-only:
@@ -441,7 +442,7 @@ export function VariableKeyPicker({
           border: "1px solid var(--border-color)",
           borderRadius: "var(--border-radius)",
           boxShadow: "var(--shadow-lg)",
-          zIndex: 9999,
+          zIndex: LAYER.popover,
         }}>
           {/* Search input */}
           <div style={{ padding: "6px 8px", borderBottom: "1px solid var(--border-color)" }}>

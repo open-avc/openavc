@@ -6,6 +6,7 @@ import { DriverEditor } from "../components/driver-builder/DriverEditor";
 import { CommunityBrowser } from "../components/driver-builder/CommunityBrowser";
 import { InstalledDriversView } from "../components/driver-builder/InstalledDriversView";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
+import { Modal } from "../components/shared/Modal";
 
 type ViewTab = "installed" | "create" | "browse-community";
 
@@ -300,33 +301,16 @@ commands:
   ...`;
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Import Driver Definition"
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.6)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 1000,
+    <Modal
+      onClose={onClose}
+      label="Import Driver Definition"
+      panelStyle={{
+        padding: "var(--space-xl)",
+        width: 520,
+        maxHeight: "80vh",
+        overflow: "auto",
       }}
-      onClick={onClose}
     >
-      <div
-        style={{
-          background: "var(--bg-elevated)",
-          borderRadius: "var(--border-radius)",
-          padding: "var(--space-xl)",
-          width: 520,
-          maxHeight: "80vh",
-          overflow: "auto",
-          boxShadow: "var(--shadow-lg)",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
         <h3
           style={{
             fontSize: "var(--font-size-lg)",
@@ -441,8 +425,7 @@ commands:
             Import
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

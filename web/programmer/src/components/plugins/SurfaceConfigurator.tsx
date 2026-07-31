@@ -14,6 +14,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { X, Trash2, ChevronLeft, ChevronRight, Usb, Pin, Play, MoreHorizontal } from "lucide-react";
 import { CopyButton } from "../shared/CopyButton";
+import { Modal } from "../shared/Modal";
 import { showInfo } from "../../store/toastStore";
 import { CollapsibleSection } from "../driver-builder/CollapsibleSection";
 import { useConnectionStore } from "../../store/connectionStore";
@@ -31,6 +32,7 @@ import type { ProjectConfig } from "../../api/types";
 import { isCellRouted, matchStateKeys } from "./routingMatrixHelpers";
 import * as api from "../../api/restClient";
 import { BASE } from "../../api/base";
+import { LAYER } from "../shared/layers";
 
 // ──── Types ────
 
@@ -930,7 +932,7 @@ function RoutingMatrix({
                 border: "1px solid var(--border-color)",
                 borderRadius: "var(--border-radius)",
                 boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                zIndex: 9999,
+                zIndex: LAYER.popover,
                 maxHeight: 200,
                 overflow: "auto",
               }}>
@@ -1668,33 +1670,22 @@ function NetworkDeckDialog({
   };
 
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.5)",
-        zIndex: 1000,
+    <Modal
+      onClose={onClose}
+      label="Add a network deck"
+      overlayStyle={{ background: "rgba(0,0,0,0.5)" }}
+      panelStyle={{
+        width: 440,
+        maxHeight: "80vh",
+        overflow: "auto",
+        background: "var(--bg-surface)",
+        border: "1px solid var(--border-color)",
+        padding: "var(--space-lg)",
         display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
+        flexDirection: "column",
+        gap: "var(--space-md)",
       }}
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: 440,
-          maxHeight: "80vh",
-          overflow: "auto",
-          background: "var(--bg-surface)",
-          border: "1px solid var(--border-color)",
-          borderRadius: "var(--border-radius)",
-          padding: "var(--space-lg)",
-          display: "flex",
-          flexDirection: "column",
-          gap: "var(--space-md)",
-        }}
-      >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ fontWeight: 600 }}>Add a network deck</div>
           <button onClick={onClose} style={{ color: "var(--text-muted)", cursor: "pointer" }}>
@@ -1854,8 +1845,7 @@ function NetworkDeckDialog({
           The deck shows its address on its keys at power-up. For installed
           systems, set a static IP there so the address never changes.
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

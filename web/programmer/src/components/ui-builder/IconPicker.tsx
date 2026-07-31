@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { X } from "lucide-react";
 import * as LucideIcons from "lucide-react";
+import { Modal } from "../shared/Modal";
 import { ICON_CATEGORIES, ALL_ICONS, kebabToPascal } from "./iconPickerHelpers";
 
 function getIconComponent(kebabName: string): React.ComponentType<{ size?: number; color?: string }> | null {
@@ -109,35 +110,18 @@ function IconBrowserModal({
   }, [activeCategory, search]);
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Choose Icon"
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 10000,
+    <Modal
+      onClose={onClose}
+      label="Choose Icon"
+      panelStyle={{
+        background: "var(--bg-surface)",
+        border: "1px solid var(--border-color)",
+        width: 600,
+        maxHeight: "80vh",
         display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "rgba(0,0,0,0.6)",
-      }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        flexDirection: "column",
       }}
     >
-      <div
-        style={{
-          background: "var(--bg-surface)",
-          border: "1px solid var(--border-color)",
-          borderRadius: "var(--border-radius)",
-          width: 600,
-          maxHeight: "80vh",
-          display: "flex",
-          flexDirection: "column",
-          boxShadow: "var(--shadow-lg)",
-        }}
-      >
         {/* Header */}
         <div
           style={{
@@ -290,7 +274,6 @@ function IconBrowserModal({
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Search, CheckCircle, Download, RefreshCw, AlertTriangle, Shield, X, PlayCircle, ArrowUpCircle, Loader2 } from "lucide-react";
 import { useDriverBuilderStore } from "../../store/driverBuilderStore";
+import { Modal } from "../shared/Modal";
 import { hasUpdate } from "../../api/types";
 import type { CommunityDriver } from "../../api/types";
 
@@ -814,33 +815,19 @@ function CommunityDriverDetail({
     c === "full" ? "#10b981" : c === "partial" ? "#f59e0b" : "#94a3b8";
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Community Driver Details"
-      onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.6)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 1000,
+    <Modal
+      onClose={onClose}
+      label="Community Driver Details"
+      panelStyle={{
+        background: "var(--bg-surface, #2d2d2d)",
+        borderRadius: "8px",
+        border: "1px solid var(--border-color)",
+        width: "min(560px, 90vw)",
+        maxHeight: "80vh",
+        overflow: "auto",
+        padding: "var(--space-lg)",
       }}
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: "var(--bg-surface, #2d2d2d)",
-          borderRadius: "8px",
-          border: "1px solid var(--border-color)",
-          width: "min(560px, 90vw)",
-          maxHeight: "80vh",
-          overflow: "auto",
-          padding: "var(--space-lg)",
-        }}
-      >
         {/* Deprecation banner */}
         {driver.deprecated && (
           <div
@@ -1195,8 +1182,7 @@ function CommunityDriverDetail({
             </button>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
