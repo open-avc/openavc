@@ -314,8 +314,22 @@ def unknown_key_errors(driver_def: dict[str, Any]) -> list[str]:
         # A block whose keys are author-chosen names (commands, state
         # variables, a config map) declares its value shape in `extra`. The
         # names are data, not contract keys — descend, don't judge.
+        #
+        # The one thing worth judging is whether the name is text at all.
+        # YAML reads a bare `on`, `off`, `yes` or `no` as a boolean and bare
+        # digits as a number, so a parameter an author reasonably calls `on`
+        # arrives as the key `True`. Nothing downstream can substitute it,
+        # and the failure surfaces far from the cause.
         if isinstance(extra, dict) and not fields:
+            errors.ctx = loc
             for key, sub in value.items():
+                if not isinstance(key, str):
+                    where = f"{loc}: " if loc else ""
+                    errors.append(
+                        f"{where}name '{key}' is not text — YAML reads bare "
+                        f"on/off/yes/no/true/false as booleans and bare "
+                        f"digits as numbers. Put it in quotes."
+                    )
                 walk(extra, sub, f"{loc}.{key}" if loc else str(key))
             return
 
