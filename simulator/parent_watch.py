@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import sys
 
 logger = logging.getLogger(__name__)
 
@@ -31,23 +32,66 @@ POLL_INTERVAL_SECONDS = 2.0
 
 
 def parent_is_alive(pid: int) -> bool:
-    """True while process ``pid`` still exists.
+    """True while process ``pid`` still exists. Never touches it.
 
-    ``os.kill(pid, 0)`` asks the kernel about the process without touching it.
-    ``PermissionError`` counts as alive: the process exists, it just is not
-    ours to signal.
+    The two platforms need genuinely different calls, and using the POSIX one
+    on Windows is not a degraded check — it is catastrophic. ``os.kill(pid, 0)``
+    is a pure liveness probe on POSIX, but CPython implements ``os.kill`` on
+    Windows as ``OpenProcess`` followed by ``TerminateProcess(handle, sig)``,
+    so signal 0 does not ask whether a process is alive: **it kills it**, with
+    exit code 0. A watchdog polling its parent that way would have shut the
+    OpenAVC server down a couple of seconds after simulation started.
     """
     if pid <= 0:
         return False
+
+    if sys.platform == "win32":
+        return _parent_is_alive_windows(pid)
+
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
         return False
     except PermissionError:
+        # The process exists, it just is not ours to signal.
         return True
     except OSError:
         return True
     return True
+
+
+def _parent_is_alive_windows(pid: int) -> bool:
+    """Windows liveness via a handle wait, which only reads.
+
+    ``SYNCHRONIZE`` is the least privilege that permits a wait, and a zero
+    timeout makes it a poll rather than a block. A process object becomes
+    signalled once the process exits, so ``WAIT_TIMEOUT`` is the answer that
+    means "still running".
+
+    A failed ``OpenProcess`` is read the same way the POSIX branch reads its
+    errors: access-denied means the process is there but not ours to look at,
+    so it counts as alive. Only "no such process" counts as gone. Getting that
+    backwards would shut the simulator down while its server was still running.
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    SYNCHRONIZE = 0x00100000
+    WAIT_TIMEOUT = 0x00000102
+    ERROR_INVALID_PARAMETER = 87
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+
+    handle = kernel32.OpenProcess(SYNCHRONIZE, False, pid)
+    if not handle:
+        # 87 is what Windows returns for a pid that does not exist.
+        return ctypes.get_last_error() != ERROR_INVALID_PARAMETER
+    try:
+        return kernel32.WaitForSingleObject(handle, 0) == WAIT_TIMEOUT
+    finally:
+        kernel32.CloseHandle(handle)
 
 
 async def watch_parent(

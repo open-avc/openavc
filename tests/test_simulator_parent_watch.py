@@ -34,9 +34,64 @@ def test_reaped_child_reads_as_gone():
     """
     import subprocess
 
-    proc = subprocess.Popen([sys.executable, "-c", "pass"])
+    from server.utils.spawn import CREATE_NO_WINDOW
+
+    proc = subprocess.Popen(
+        [sys.executable, "-c", "pass"], creationflags=CREATE_NO_WINDOW,
+    )
     proc.wait()
     assert parent_is_alive(proc.pid) is False
+
+
+def test_the_probe_does_not_kill_what_it_inspects():
+    """The check that would have caught the Windows defect.
+
+    ``os.kill(pid, 0)`` reads as a liveness probe and is one on POSIX, but on
+    Windows CPython implements ``os.kill`` as ``TerminateProcess``, so the
+    same line kills the process it was meant to ask about. Polling a parent
+    that way would have killed the server. Nothing in a POSIX-only run can
+    surface that, which is why this asserts the survival directly: it passes
+    trivially on POSIX and is the whole point on Windows.
+    """
+    import subprocess
+    import time
+
+    from server.utils.spawn import CREATE_NO_WINDOW
+
+    # A child that outlives the probe by a wide margin.
+    proc = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(30)"],
+        creationflags=CREATE_NO_WINDOW,
+    )
+    try:
+        assert parent_is_alive(proc.pid) is True
+        for _ in range(3):
+            parent_is_alive(proc.pid)
+        time.sleep(0.3)
+        assert proc.poll() is None, (
+            "the liveness probe terminated the process it was inspecting"
+        )
+        assert parent_is_alive(proc.pid) is True
+    finally:
+        proc.kill()
+        proc.wait()
+
+
+def test_the_probe_never_calls_os_kill_on_windows():
+    """Pinned on the source too, because the runtime proof needs Windows.
+
+    A POSIX-only run cannot execute the Windows branch at all, so without
+    this the platform split could be deleted and every test would still pass
+    on the machine most of this work happens on.
+    """
+    from pathlib import Path
+
+    import simulator.parent_watch as pw
+
+    source = Path(pw.__file__).read_text(encoding="utf-8")
+    windows_branch = source.split("def _parent_is_alive_windows")[1]
+    assert "os.kill" not in windows_branch
+    assert 'sys.platform == "win32"' in source
 
 
 @pytest.mark.parametrize("pid", [0, -1])
