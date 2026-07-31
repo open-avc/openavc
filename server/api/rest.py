@@ -13,12 +13,14 @@ from server.api.auth import require_programmer_auth
 from server.api.routes import auth as _auth_routes
 from server.api.routes import cloud as _cloud_routes
 from server.api.routes import devices as _devices_routes
+from server.api.routes import driver_test as _driver_test_routes
 from server.api.routes import drivers as _drivers_routes
 from server.api.routes import host as _host_routes
 from server.api.routes import ir_db as _ir_db_routes
 from server.api.routes import isc as _isc_routes
 from server.api.routes import macros as _macros_routes
 from server.api.routes import project as _project_routes
+from server.api.routes import python_drivers as _python_drivers_routes
 from server.api.routes import push as _push_routes
 from server.api.routes import scripts as _scripts_routes
 from server.api.routes import setup as _setup_routes
@@ -55,6 +57,8 @@ router.include_router(_macros_routes.router)
 router.include_router(_scripts_routes.router)
 router.include_router(_devices_routes.router)
 router.include_router(_drivers_routes.router)
+router.include_router(_driver_test_routes.router)
+router.include_router(_python_drivers_routes.router)
 router.include_router(_ir_db_routes.router)
 router.include_router(_project_routes.router)
 router.include_router(_isc_routes.router)

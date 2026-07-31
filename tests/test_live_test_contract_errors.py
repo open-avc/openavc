@@ -29,7 +29,7 @@ import pytest
 # Aliased: pytest tries to collect anything named Test* and warns on a class
 # with an __init__.
 from server.api.models import TestCommandRequest as CommandRequest
-from server.api.routes.drivers import _test_via_configurable_driver
+from server.api.routes.driver_test import _test_via_configurable_driver
 from server.drivers.avcdriver_semantic import validate_driver_definition
 
 

@@ -22,12 +22,12 @@ import asyncio
 import pytest
 
 from server.api.models import TestCommandRequest
-from server.api.routes.drivers import (
+from server.api.routes.driver_test import (
     _dry_run_command,
     _test_via_configurable_driver,
 )
 # Aliased on import: pytest would otherwise collect the route handler itself.
-from server.api.routes.drivers import test_driver_command as command_endpoint
+from server.api.routes.driver_test import test_driver_command as command_endpoint
 
 
 def _definition(**overrides) -> dict:

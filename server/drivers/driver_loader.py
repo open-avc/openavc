@@ -52,7 +52,7 @@ DRIVER_EXTENSION = ".avcdriver"
 # were standalone Python drivers. Filter them at the listing layer
 # alongside underscore-prefixed files (which are conventional
 # helpers / private modules).
-_COMPANION_SUFFIXES: tuple[str, ...] = ("_discovery.py", "_sim.py")
+COMPANION_SUFFIXES: tuple[str, ...] = ("_discovery.py", "_sim.py")
 
 
 def _is_driver_file(filepath: Path) -> bool:
@@ -60,7 +60,7 @@ def _is_driver_file(filepath: Path) -> bool:
     name = filepath.name
     if name.startswith("_"):
         return False
-    if any(name.endswith(suf) for suf in _COMPANION_SUFFIXES):
+    if any(name.endswith(suf) for suf in COMPANION_SUFFIXES):
         return False
     return True
 

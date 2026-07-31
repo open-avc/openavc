@@ -329,12 +329,12 @@ def conflict_engine():
 
 
 async def test_check_conflict_returns_matching_device(monkeypatch, conflict_engine):
-    from server.api.routes import drivers as drivers_routes
+    from server.api.routes import driver_test as driver_test_routes
 
-    monkeypatch.setattr(drivers_routes, "_get_engine", lambda: conflict_engine)
+    monkeypatch.setattr(driver_test_routes, "_get_engine", lambda: conflict_engine)
     conflict_engine.state.set("device.proj_main.connected", True, source="test")
 
-    result = await drivers_routes.check_connection_conflict(
+    result = await driver_test_routes.check_connection_conflict(
         host="10.0.0.50", port="4352", transport="tcp"
     )
     assert len(result["conflicts"]) == 1
@@ -346,10 +346,10 @@ async def test_check_conflict_returns_matching_device(monkeypatch, conflict_engi
 
 
 async def test_check_conflict_skips_disabled_devices(monkeypatch, conflict_engine):
-    from server.api.routes import drivers as drivers_routes
+    from server.api.routes import driver_test as driver_test_routes
 
-    monkeypatch.setattr(drivers_routes, "_get_engine", lambda: conflict_engine)
-    result = await drivers_routes.check_connection_conflict(
+    monkeypatch.setattr(driver_test_routes, "_get_engine", lambda: conflict_engine)
+    result = await driver_test_routes.check_connection_conflict(
         host="10.0.0.50", port="4352", transport="tcp"
     )
     # The disabled spare must not appear.
@@ -358,10 +358,10 @@ async def test_check_conflict_skips_disabled_devices(monkeypatch, conflict_engin
 
 
 async def test_check_conflict_no_match(monkeypatch, conflict_engine):
-    from server.api.routes import drivers as drivers_routes
+    from server.api.routes import driver_test as driver_test_routes
 
-    monkeypatch.setattr(drivers_routes, "_get_engine", lambda: conflict_engine)
-    result = await drivers_routes.check_connection_conflict(
+    monkeypatch.setattr(driver_test_routes, "_get_engine", lambda: conflict_engine)
+    result = await driver_test_routes.check_connection_conflict(
         host="10.0.0.50", port="9999", transport="tcp"
     )
     assert result["conflicts"] == []
@@ -370,21 +370,21 @@ async def test_check_conflict_no_match(monkeypatch, conflict_engine):
 async def test_check_conflict_non_tcp_returns_empty(monkeypatch, conflict_engine):
     """Single-session poaching is a TCP issue; HTTP/UDP/serial return [] so
     the UI doesn't surface false-alarm warnings."""
-    from server.api.routes import drivers as drivers_routes
+    from server.api.routes import driver_test as driver_test_routes
 
-    monkeypatch.setattr(drivers_routes, "_get_engine", lambda: conflict_engine)
+    monkeypatch.setattr(driver_test_routes, "_get_engine", lambda: conflict_engine)
     for transport in ("http", "udp", "serial", "osc"):
-        result = await drivers_routes.check_connection_conflict(
+        result = await driver_test_routes.check_connection_conflict(
             host="10.0.0.50", port="4352", transport=transport
         )
         assert result["conflicts"] == [], f"transport={transport}"
 
 
 async def test_check_conflict_invalid_port(monkeypatch, conflict_engine):
-    from server.api.routes import drivers as drivers_routes
+    from server.api.routes import driver_test as driver_test_routes
 
-    monkeypatch.setattr(drivers_routes, "_get_engine", lambda: conflict_engine)
-    result = await drivers_routes.check_connection_conflict(
+    monkeypatch.setattr(driver_test_routes, "_get_engine", lambda: conflict_engine)
+    result = await driver_test_routes.check_connection_conflict(
         host="10.0.0.50", port="not-a-port", transport="tcp"
     )
     assert result["conflicts"] == []
@@ -393,15 +393,15 @@ async def test_check_conflict_invalid_port(monkeypatch, conflict_engine):
 async def test_check_conflict_honors_connection_overrides(monkeypatch, conflict_engine):
     """connections[device_id] overrides device.config — the conflict check
     must compare against the merged effective host:port."""
-    from server.api.routes import drivers as drivers_routes
+    from server.api.routes import driver_test as driver_test_routes
 
-    monkeypatch.setattr(drivers_routes, "_get_engine", lambda: conflict_engine)
+    monkeypatch.setattr(driver_test_routes, "_get_engine", lambda: conflict_engine)
     conflict_engine.project.connections["proj_main"] = {
         "host": "10.0.0.77",
         "port": 4352,
     }
     # Match against the override, not the bare config.
-    result = await drivers_routes.check_connection_conflict(
+    result = await driver_test_routes.check_connection_conflict(
         host="10.0.0.77", port="4352", transport="tcp"
     )
     assert len(result["conflicts"]) == 1
@@ -409,12 +409,12 @@ async def test_check_conflict_honors_connection_overrides(monkeypatch, conflict_
 
 
 async def test_check_conflict_surfaces_paused_state(monkeypatch, conflict_engine):
-    from server.api.routes import drivers as drivers_routes
+    from server.api.routes import driver_test as driver_test_routes
 
-    monkeypatch.setattr(drivers_routes, "_get_engine", lambda: conflict_engine)
+    monkeypatch.setattr(driver_test_routes, "_get_engine", lambda: conflict_engine)
     conflict_engine.state.set("device.proj_main.paused", True, source="test")
 
-    result = await drivers_routes.check_connection_conflict(
+    result = await driver_test_routes.check_connection_conflict(
         host="10.0.0.50", port="4352", transport="tcp"
     )
     assert len(result["conflicts"]) == 1

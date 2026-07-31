@@ -22,7 +22,7 @@ from __future__ import annotations
 import pytest
 from fastapi import HTTPException
 
-from server.api.routes import drivers as driver_routes
+from server.api.routes import python_drivers as driver_routes
 from server.drivers.driver_loader import (
     python_source_syntax_error,
     reload_python_driver,

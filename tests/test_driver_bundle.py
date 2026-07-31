@@ -25,12 +25,14 @@ from fastapi import HTTPException
 
 from server.api.routes.drivers import (
     _try_download_python_companion,
-    delete_python_driver,
-    export_python_driver_bundle,
     install_community_driver,
     uninstall_driver,
     update_driver,
     upload_driver_bundle,
+)
+from server.api.routes.python_drivers import (
+    delete_python_driver,
+    export_python_driver_bundle,
 )
 from server.api.models import CommunityDriverInstallRequest
 
@@ -42,8 +44,8 @@ from server.api.models import CommunityDriverInstallRequest
 def driver_repo(tmp_path, monkeypatch):
     """Point both repo-path accessors at a tmp dir.
 
-    ``upload_driver_bundle`` / install use ``_get_driver_repo_dir``; export
-    resolves through ``_safe_driver_path``, which reads
+    ``upload_driver_bundle`` / install use ``routes.drivers._get_driver_repo_dir``;
+    the Python-driver routes resolve through ``_safe_driver_path``, which reads
     ``server.system_config.DRIVER_REPO_DIR`` directly — so patch both.
     """
     repo = tmp_path / "driver_repo"
@@ -73,8 +75,15 @@ def stub_engine_wiring(monkeypatch):
     fake_engine.project = None  # uninstall skips the in-use device check
     fake_engine.devices.retry_all_orphans = AsyncMock(return_value=[])
     fake_engine.devices.get_devices_using_driver = lambda driver_id: []
+    # Both route modules under test here read the engine through their own
+    # module namespace — install/uninstall from routes.drivers, delete from
+    # routes.python_drivers — so a single patch would leave one of them
+    # reaching for the real (unstarted) engine.
     monkeypatch.setattr(
         "server.api.routes.drivers._get_engine", lambda: fake_engine
+    )
+    monkeypatch.setattr(
+        "server.api.routes.python_drivers._get_engine", lambda: fake_engine
     )
 
     # Skip the install path's catalog-hash lookup. These tests drive the
