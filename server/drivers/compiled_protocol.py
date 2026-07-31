@@ -1217,11 +1217,31 @@ def compile_driver(
             pattern = re.compile(resolved)
 
             # Accept both "mappings" (detailed) and "set" (shorthand) formats.
-            mappings = list(resp.get("mappings", []))
-            if not mappings and "set" in resp:
+            # A rule may carry BOTH, and routinely needs to: mappings: is the
+            # only form that takes a value map, so the moment one captured
+            # field needs a map the author writes mappings: for it and set: for
+            # the plain ones. This used to read set: only when mappings: was
+            # absent, which silently dropped the whole set: half — no warning,
+            # no log line, the state variables just kept their startup values.
+            # They are merged instead; mappings: entries are applied first so
+            # an explicit entry still wins for a state named in both.
+            state_vars = definition.get("state_variables", {})
+            # An explicit mappings: entry with no type: took the string default
+            # even when the state variable declares integer/boolean, so a
+            # trigger comparing it to a number never fired. set: has always
+            # inferred the declared type; do the same here. Copied rather than
+            # filled in place — `definition` is the loaded driver dict and is
+            # shared with every other device on this driver.
+            mappings = []
+            for mp in resp.get("mappings", []):
+                if isinstance(mp, dict) and "type" not in mp and mp.get("state"):
+                    var_def = state_vars.get(mp["state"], {})
+                    if isinstance(var_def, dict) and var_def.get("type"):
+                        mp = {**mp, "type": var_def["type"]}
+                mappings.append(mp)
+            if isinstance(resp.get("set"), dict):
                 # Convert shorthand: {"set": {"input": "$1", "mute": "true"}}
                 # to mappings: [{"group": 1, "state": "input"}, ...]
-                state_vars = definition.get("state_variables", {})
                 for state_key, value_expr in resp["set"].items():
                     var_def = state_vars.get(state_key, {})
                     var_type = var_def.get("type", "string") if isinstance(var_def, dict) else "string"

@@ -554,3 +554,79 @@ async def test_send_command_gates_and_trims(state, events):
     # String value is trimmed before substitution.
     await driver.send_command("connect", {"host": "  10.0.0.5  "})
     assert b"HOST 10.0.0.5\r" in sent[-1]
+
+
+# --- A response rule carrying BOTH set: and mappings: ---
+# mappings: is the only form that takes a value map, so as soon as one captured
+# field needs a map the author writes mappings: for it and set: for the plain
+# ones. The compiler used to read set: only when mappings: was absent, which
+# silently dropped the whole set: half: no warning, no log line, the state
+# variables just kept their startup values.
+
+_BOTH_FORMS_DEFINITION = {
+    "id": "test_both_forms",
+    "name": "Both Forms",
+    "transport": "tcp",
+    "commands": {},
+    "state_variables": {
+        "mode": {"type": "enum", "values": ["Low", "High"]},
+        "level": {"type": "integer"},
+        "engaged": {"type": "boolean"},
+        "channel": {"type": "integer"},
+    },
+    "responses": [
+        {
+            "match": r"STATUS ([01]),(\d+),([01])",
+            "set": {"level": "$2", "engaged": "$3"},
+            "mappings": [
+                {"group": 1, "state": "mode", "map": {"0": "Low", "1": "High"}},
+            ],
+        },
+        {
+            # No explicit type: — must inherit the declared integer, not string.
+            "match": r"CH (\d+)",
+            "mappings": [{"group": 1, "state": "channel"}],
+        },
+    ],
+}
+
+
+def _both_forms_driver(state, events):
+    state.set_event_bus(events)
+    cls = create_configurable_driver_class(_BOTH_FORMS_DEFINITION)
+    return cls("bf1", {}, state, events)
+
+
+@pytest.mark.asyncio
+async def test_set_and_mappings_on_one_rule_both_apply(state, events):
+    """set: is merged with mappings:, not dropped when mappings: is present."""
+    drv = _both_forms_driver(state, events)
+    await drv.on_data_received(b"STATUS 1,42,1")
+
+    assert state.get("device.bf1.mode") == "High"  # from mappings:
+    assert state.get("device.bf1.level") == 42  # from set: — used to stay None
+    assert state.get("device.bf1.engaged") is True  # from set: — used to stay None
+
+
+@pytest.mark.asyncio
+async def test_mapping_without_type_inherits_declared_type(state, events):
+    """An explicit mappings: entry defaults to the state variable's type."""
+    drv = _both_forms_driver(state, events)
+    await drv.on_data_received(b"CH 3")
+
+    # Used to store the string "3", so a trigger comparing to 3 never fired.
+    assert state.get("device.bf1.channel") == 3
+    assert isinstance(state.get("device.bf1.channel"), int)
+
+
+def test_compile_does_not_mutate_the_shared_definition():
+    """Type back-fill copies; `definition` is shared across devices."""
+    original = _BOTH_FORMS_DEFINITION["responses"][1]["mappings"][0]
+    assert "type" not in original
+
+    create_configurable_driver_class(_BOTH_FORMS_DEFINITION)
+    state, events = StateStore(), EventBus()
+    state.set_event_bus(events)
+    _both_forms_driver(state, events)
+
+    assert "type" not in original

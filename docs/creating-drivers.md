@@ -1046,8 +1046,19 @@ A `set:` value on a `match:` rule is always one of those two — a capture refer
 
 - `mappings[].group`: Which regex capture group (1-based).
 - `mappings[].state`: Which state variable to update.
-- `mappings[].type`: How to convert the captured text: `string`, `integer`, `float`, `boolean`.
+- `mappings[].type` (optional): How to convert the captured text: `string`, `integer`, `float`, `boolean`. Leave it out and the state variable's own declared type is used, which is normally what you want.
 - `mappings[].map` (optional): A lookup table. If the captured value is a key in this object, the mapped value is used instead. The mapped value is then converted with `type` just like an unmapped capture, so the stored state matches its declared type regardless of transport.
+
+**One rule can use both forms.** When a response line has one field that needs a value map and several that don't, put the mapped field in `mappings:` and the plain ones in `set:` — both are applied. There is no need to rewrite the whole rule in the verbose form just because one field needs a map:
+
+```yaml
+- match: 'STATUS (\d),(\d+),([01])'
+  set: { level: "$2", muted: "$3" }      # plain captures
+  mappings:                               # the one field needing a map
+    - { group: 1, state: mode, map: { "0": "Low", "1": "High" } }
+```
+
+If the same state variable appears in both, the `mappings:` entry wins.
 
 Responses are checked in order. The first matching pattern wins.
 
