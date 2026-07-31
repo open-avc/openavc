@@ -5682,6 +5682,61 @@
   },
   "transport": "tcp"
  },
+ "response_set_value_is_list": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "match": "MODE (\\d)",
+    "set": {
+     "power": [
+      "$1"
+     ]
+    }
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "response_set_value_is_value_map": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "match": "MODE (\\d)",
+    "set": {
+     "power": {
+      "group": 1,
+      "map": {
+       "0": "off"
+      }
+     }
+    }
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
  "response_throttle_bool": {
   "commands": {
    "noop": {

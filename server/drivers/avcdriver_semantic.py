@@ -644,6 +644,25 @@ def validate_driver_definition(
                     f"Response {i}: require must be a JSON key name or a "
                     f"list of them"
                 )
+        # A `set:` value on a regex or OSC rule is a capture reference ("$1")
+        # or a static — never a {group, map} spec. That spec shape IS valid in
+        # two neighbouring places (inside `child_set: … state:`, and on a
+        # `json: true` rule), which is what makes writing it here such an easy
+        # mistake, and nothing downstream catches it: the runtime takes the
+        # mapping as a static value and stores `str()` of it, so the state
+        # variable ends up holding the literal text "{'group': 1, 'map': ...}"
+        # with no warning anywhere. Value maps on these rules belong in the
+        # sibling `mappings:` list.
+        if not resp.get("json"):
+            set_map = resp.get("set")
+            if isinstance(set_map, dict):
+                for state_key, value in set_map.items():
+                    if isinstance(value, (dict, list)):
+                        errors.append(
+                            f"Response {i}: set.{state_key} must be a capture "
+                            f'reference like "$1" or a static value; move a '
+                            f"value map into mappings:"
+                        )
         # OSC responses use "address" key — validate it starts with /
         if "address" in resp:
             addr = resp["address"]

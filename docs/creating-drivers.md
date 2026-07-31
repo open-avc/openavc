@@ -1034,6 +1034,8 @@ The shorthand `set` format is recommended (cleaner, matches community driver con
 - `match`: A regular expression. Use capture groups `()` to extract values.
 - `set`: Maps capture groups to state variables. `"$1"` refers to the first capture group, `"$2"` to the second, etc. Literal strings without `$` set a static value.
 
+A `set:` value on a `match:` rule is always one of those two — a capture reference or a static. It is **not** the place for a value map, even though the `{ group, map }` shape is what you write inside `child_set:` and on a `json: true` rule. Put a value map on a `match:` rule in the verbose `mappings:` list below; writing one under `set:` is rejected when the driver is validated.
+
 **Verbose format** (used when you need type conversion or value maps):
 
 ```yaml

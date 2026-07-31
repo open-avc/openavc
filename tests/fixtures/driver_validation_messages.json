@@ -627,6 +627,12 @@
  "response_require_wrong_type": [
   "Response 0: require must be a JSON key name or a list of them"
  ],
+ "response_set_value_is_list": [
+  "Response 0: set.power must be a capture reference like \"$1\" or a static value; move a value map into mappings:"
+ ],
+ "response_set_value_is_value_map": [
+  "Response 0: set.power must be a capture reference like \"$1\" or a static value; move a value map into mappings:"
+ ],
  "response_throttle_bool": [
   "Response 0: throttle must be a positive number of seconds"
  ],

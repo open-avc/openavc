@@ -179,6 +179,13 @@ CASES: dict[str, Any] = {
     # carrying only the old spelling must fail like any match-less rule.
     "response_legacy_pattern_alias": _resp(pattern="PWR=(\\d)", set={"power": "$1"}),
     "response_redos_pattern": _resp(match="(a+)+$"),
+    # A {group, map} value spec is legal inside child_set and on a json: true
+    # rule, so writing one in a regex `set:` is an easy mistake — and the
+    # runtime accepts it as a static, storing str(dict) in the state variable.
+    "response_set_value_is_value_map": _resp(
+        match=r"MODE (\d)", set={"power": {"group": 1, "map": {"0": "off"}}}
+    ),
+    "response_set_value_is_list": _resp(match=r"MODE (\d)", set={"power": ["$1"]}),
     # --- byte-stream child_set ---
     "child_set_not_list": _d(
         child_entity_types=dict(_CHILD_TYPES),
