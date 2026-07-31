@@ -14,6 +14,8 @@ import time
 from abc import ABC, abstractmethod
 from typing import Any, Callable
 
+from simulator.self_signed_tls import wants_tls
+
 logger = logging.getLogger(__name__)
 
 
@@ -273,6 +275,11 @@ class BaseSimulator(ABC):
                 for k, v in self._error_modes.items()
             },
         }
+        # Whether this simulator terminates TLS. The platform reads it when it
+        # redirects a device at its simulator: an HTTPS-only device keeps its
+        # https:// connection when the simulator can answer it, and is flipped
+        # to plain HTTP only when it can't.
+        info["tls"] = wants_tls(self.SIMULATOR_INFO, self.config)
         controls = self.SIMULATOR_INFO.get("controls")
         if controls:
             info["controls"] = controls

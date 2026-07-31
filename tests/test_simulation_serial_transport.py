@@ -99,9 +99,10 @@ def test_tcp_driver_redirect_leaves_transport_untouched():
     assert mgr._original_configs["dev2"]["transport"] is None
 
 
-def test_https_device_redirect_flips_ssl_off_and_restores():
-    # Simulated HTTP devices serve plain HTTP; an HTTPS device's ssl flag is
-    # flipped off for the duration and restored exactly afterwards.
+def test_https_device_redirect_flips_ssl_off_when_the_sim_serves_plain_http():
+    # A simulator that doesn't terminate TLS can only be reached in the clear,
+    # so the device's ssl flag is flipped off for the duration and restored
+    # exactly afterwards.
     mgr = _manager(_FakeDeviceManager({}))
     driver = _FakeDriver("http", host="10.0.0.7", port=4003)
     driver.config["ssl"] = True
@@ -113,6 +114,41 @@ def test_https_device_redirect_flips_ssl_off_and_restores():
     mgr._restore_original_config(driver, mgr._original_configs["dev4"])
     assert driver.config["ssl"] is True
     assert driver.config["host"] == "10.0.0.7"
+
+
+def test_https_device_keeps_its_scheme_when_the_sim_serves_tls():
+    # An HTTPS-only device's simulator terminates TLS, so the driver connects
+    # the way it connects in the field. What gets turned off is verification —
+    # the simulator's certificate is an ephemeral self-signed one.
+    mgr = _manager(_FakeDeviceManager({}))
+    driver = _FakeDriver("http", host="10.0.0.7", port=4003)
+    driver.config["ssl"] = True
+    mgr._sim_tls["dev6"] = True
+
+    mgr._apply_sim_redirect(driver, "dev6", 19015)
+    assert driver.config["ssl"] is True
+    assert driver.config["verify_ssl"] is False
+    # The device never set verify_ssl, so restore removes the override rather
+    # than leaving verification off against the real hardware.
+    assert mgr._original_configs["dev6"]["verify_ssl"] is None
+
+    mgr._restore_original_config(driver, mgr._original_configs["dev6"])
+    assert driver.config["ssl"] is True
+    assert "verify_ssl" not in driver.config
+
+
+def test_device_that_verifies_certs_gets_its_setting_back():
+    mgr = _manager(_FakeDeviceManager({}))
+    driver = _FakeDriver("http", host="10.0.0.7", port=4003)
+    driver.config["ssl"] = True
+    driver.config["verify_ssl"] = True
+    mgr._sim_tls["dev7"] = True
+
+    mgr._apply_sim_redirect(driver, "dev7", 19017)
+    assert driver.config["verify_ssl"] is False
+
+    mgr._restore_original_config(driver, mgr._original_configs["dev7"])
+    assert driver.config["verify_ssl"] is True
 
 
 def test_plain_http_device_redirect_leaves_ssl_absent():

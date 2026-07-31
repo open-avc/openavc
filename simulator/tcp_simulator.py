@@ -14,6 +14,7 @@ import uuid
 from abc import abstractmethod
 
 from simulator.base import BaseSimulator
+from simulator.network_conditions import corrupt_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -314,7 +315,7 @@ class TCPSimulator(BaseSimulator):
 
                     # Check for corrupt_response error behavior
                     if response and self.has_error_behavior("corrupt_response"):
-                        response = _corrupt_bytes(response)
+                        response = corrupt_bytes(response)
 
                     if response:
                         writer.write(response)
@@ -340,15 +341,3 @@ class TCPSimulator(BaseSimulator):
             except Exception:
                 pass
             logger.info("%s: client disconnected (id=%s)", self.name, client_id)
-
-
-def _corrupt_bytes(data: bytes) -> bytes:
-    """Randomly corrupt some bytes for error simulation."""
-    import random
-    ba = bytearray(data)
-    if len(ba) > 0:
-        # Corrupt 1-3 bytes
-        for _ in range(min(3, len(ba))):
-            idx = random.randint(0, len(ba) - 1)
-            ba[idx] = random.randint(0, 255)
-    return bytes(ba)

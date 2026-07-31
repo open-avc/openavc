@@ -154,6 +154,10 @@ class SimulationManager:
         self._process: asyncio.subprocess.Process | None = None
         self._original_configs: dict[str, dict] = {}  # device_id → {host, port, transport}
         self._sim_ports: dict[str, int] = {}  # device_id → sim port
+        # device_id → whether that simulator terminates TLS. Decides whether an
+        # https device keeps its scheme while redirected (see
+        # _apply_sim_redirect).
+        self._sim_tls: dict[str, bool] = {}
         self._active = False
         self._sim_ui_url: str | None = None
         self._starting = False  # prevents concurrent start attempts
@@ -198,6 +202,7 @@ class SimulationManager:
             await self._cleanup_process()
             self._active = False
             self._sim_ports.clear()
+            self._sim_tls.clear()
             raise
         finally:
             self._starting = False
@@ -384,6 +389,7 @@ class SimulationManager:
                                 port = dev.get("port")
                                 if did and port:
                                     self._sim_ports[did] = port
+                                    self._sim_tls[did] = bool(dev.get("tls"))
                             break
                     except Exception:
                         await asyncio.sleep(0.3)
@@ -572,6 +578,7 @@ class SimulationManager:
         await self._cleanup_process()
 
         self._sim_ports.clear()
+        self._sim_tls.clear()
         self._original_configs.clear()
         self._sim_ui_url = None
         self._active = False
@@ -595,6 +602,7 @@ class SimulationManager:
                     self._drain_tasks = []
                     self._process = None
                     self._sim_ports.clear()
+                    self._sim_tls.clear()
                     self._original_configs.clear()
                     self._sim_ui_url = None
                     self._active = False
@@ -666,12 +674,18 @@ class SimulationManager:
 
         A driver whose transport has no simulator server (serial, ssh) is
         flipped to TCP for the duration: the simulator serves TCP, so the
-        driver must speak TCP to reach it. An HTTPS device
-        (``ssl: true``) is flipped to plain HTTP the same way — simulated
-        HTTP devices serve plain HTTP, so leaving TLS on would make every
-        HTTPS-only device (ClickShare, Hue v2) fail its own simulator. Every
-        other transport (tcp/udp/osc/mqtt) is served by the sim directly and
-        keeps its declared settings.
+        driver must speak TCP to reach it. Every other transport
+        (tcp/udp/osc/http/mqtt) is served by the sim directly and keeps its
+        declared settings.
+
+        An HTTPS device (``ssl: true``) keeps its scheme when its simulator
+        terminates TLS, which is what an HTTPS-only device's simulator does —
+        the driver then reaches the simulator exactly the way it reaches the
+        hardware. Certificate verification is what gets turned off instead:
+        the simulator's cert is a throwaway self-signed one. A simulator that
+        serves plain HTTP still gets the old flip, so a device whose driver
+        speaks https to a simulator that doesn't isn't left dialing TLS into a
+        plaintext socket.
         """
         self._original_configs[device_id] = {
             "host": driver.config.get("host", ""),
@@ -681,32 +695,34 @@ class SimulationManager:
             # explicit transport in config until we add one here).
             "transport": driver.config.get("transport"),
             "ssl": driver.config.get("ssl"),
+            "verify_ssl": driver.config.get("verify_ssl"),
         }
         driver.config["host"] = "127.0.0.1"
         driver.config["port"] = sim_port
         if self._driver_transport_needs_tcp_stand_in(driver):
             driver.config["transport"] = "tcp"
         if driver.config.get("ssl"):
-            driver.config["ssl"] = False
+            if self._sim_tls.get(device_id):
+                driver.config["verify_ssl"] = False
+            else:
+                driver.config["ssl"] = False
 
     @staticmethod
     def _restore_original_config(driver: Any, orig: dict) -> None:
         """Restore a driver's saved connection (host, port, transport, ssl)."""
         driver.config["host"] = orig.get("host", "")
         driver.config["port"] = orig.get("port", 0)
-        # Only touch transport when we actually recorded it. A None value means
-        # there was no explicit override before redirect — remove the one we
-        # added so the driver falls back to its DRIVER_INFO transport.
-        if "transport" in orig:
-            if orig["transport"] is None:
-                driver.config.pop("transport", None)
+        # Only touch a key we actually recorded. A None value means there was
+        # no explicit setting before the redirect — remove the one we added so
+        # the driver's own default applies again (its DRIVER_INFO transport,
+        # or verification back on for a device that never turned it off).
+        for key in ("transport", "ssl", "verify_ssl"):
+            if key not in orig:
+                continue
+            if orig[key] is None:
+                driver.config.pop(key, None)
             else:
-                driver.config["transport"] = orig["transport"]
-        if "ssl" in orig:
-            if orig["ssl"] is None:
-                driver.config.pop("ssl", None)
-            else:
-                driver.config["ssl"] = orig["ssl"]
+                driver.config[key] = orig[key]
 
     async def _redirect_connections(self) -> None:
         """Swap device host/port (and serial→tcp) to point at the simulator."""
@@ -850,7 +866,9 @@ class SimulationManager:
                         data = await resp.json()
                         sim_port = data.get("port", 0)
                         if sim_port:
-                            self._redirect_device_to_sim(device_id, sim_port)
+                            self._redirect_device_to_sim(
+                                device_id, sim_port, bool(data.get("tls"))
+                            )
                             await self._reconnect_quietly(device_id)
                             log.info("Simulation sync: %s on port %d", device_id, sim_port)
                         else:
@@ -877,10 +895,17 @@ class SimulationManager:
         if added or removed:
             log.info("Simulation sync complete: +%d -%d devices", len(added), len(removed))
 
-    def _redirect_device_to_sim(self, device_id: str, sim_port: int) -> None:
-        """Record the original config and point one device at the simulator."""
+    def _redirect_device_to_sim(
+        self, device_id: str, sim_port: int, sim_tls: bool = False
+    ) -> None:
+        """Record the original config and point one device at the simulator.
+
+        ``sim_tls`` is what the simulator reported about itself, and decides
+        whether an https device keeps its scheme (see _apply_sim_redirect).
+        """
         dm = self.engine.devices
         self._sim_ports[device_id] = sim_port
+        self._sim_tls[device_id] = sim_tls
         driver = dm._devices.get(device_id)
         if driver:
             self._apply_sim_redirect(driver, device_id, sim_port)
@@ -905,7 +930,9 @@ class SimulationManager:
                 data = await resp.json()
             for dev in data.get("devices", []):
                 if dev.get("device_id") == device_id and dev.get("port"):
-                    self._redirect_device_to_sim(device_id, dev["port"])
+                    self._redirect_device_to_sim(
+                        device_id, dev["port"], bool(dev.get("tls"))
+                    )
                     await self._reconnect_quietly(device_id)
                     log.info(
                         "Adopted orphaned simulator instance for %s on port %d",

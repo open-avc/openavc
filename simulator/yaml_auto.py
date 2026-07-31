@@ -8,10 +8,13 @@ Works at two levels:
   Level 0: Pure auto-gen from commands + responses + state_variables
   Level 1: Enhanced with explicit simulator: section (merged on top)
 
-Supports TCP (default), UDP, OSC, and HTTP transports. UDP/OSC drivers
-get a datagram server instead of a TCP stream server. HTTP drivers get
-an aiohttp web server; incoming requests are synthesized to a text command
-line ("METHOD /path?query") and dispatched through the same handler
+Supports TCP (default), UDP, OSC, and HTTP transports. Each runs on the same
+server the Python simulator bases run on — the TCP one by inheritance, the
+other three through the mixins those bases are built from — so a YAML driver
+and a Python driver of the same transport are simulated by the same code.
+UDP/OSC drivers get a datagram server instead of a TCP stream server. HTTP
+drivers get an aiohttp web server; incoming requests are synthesized to a text
+command line ("METHOD /path?query") and dispatched through the same handler
 machinery as TCP.
 """
 
@@ -53,6 +56,8 @@ from server.drivers.inline_protocol import (
     normalize_config_state_vars,
 )
 from server.transport.binary_helpers import encode_escape_sequences
+from simulator.http_simulator import HTTPServerMixin
+from simulator.osc_simulator import OSCDispatchMixin
 from simulator.tcp_simulator import TCPSimulator
 
 logger = logging.getLogger(__name__)
@@ -163,12 +168,18 @@ def _merge_inline_protocol(driver_def: dict, config: dict | None) -> tuple[dict,
     return merged, True
 
 
-class YAMLAutoSimulator(TCPSimulator):
+class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
     """Auto-generated simulator from a .avcdriver definition.
 
-    Inherits from TCPSimulator for TCP/serial drivers. For UDP drivers,
-    start() and stop() are overridden to use a UDP datagram server instead.
-    The handle_command() logic is identical for both transports.
+    The driver's ``transport:`` field decides which server start() runs, and
+    every one of them is the server the matching Python simulator base runs:
+    TCPSimulator by inheritance, and the UDP / OSC / HTTP servers through the
+    same mixins ``UDPSimulator``, ``OSCSimulator`` and ``HTTPSimulator`` are
+    built from. What stays here is the part that is actually this class's job —
+    turning a driver definition into handlers — plus the two places a
+    generated simulator answers differently from a hand-written one: HTTP
+    requests become synthesized command lines (respond_http), and OSC messages
+    resolve through the driver's response address map (handle_message).
     """
 
     # Set dynamically per instance (not class-level)
@@ -208,15 +219,20 @@ class YAMLAutoSimulator(TCPSimulator):
 
         self._driver_def = driver_def
 
-        # UDP/OSC/HTTP transport support — overrides TCP server with the
-        # appropriate alternate server in start()/stop().
+        # UDP/OSC/HTTP transport support — start()/stop() run the datagram or
+        # HTTP server from the mixins instead of the inherited TCP one.
         transport = driver_def.get("transport", "tcp")
         self._is_udp = transport == "udp"
         self._is_osc = transport == "osc"
         self._is_http = transport == "http"
-        self._udp_transport: asyncio.DatagramTransport | None = None
-        self._http_runner: Any = None  # aiohttp.web.AppRunner when HTTP
-        self._http_site: Any = None    # aiohttp.web.TCPSite when HTTP
+
+        # HTTPS-only devices: the driver dials https:// when its config says
+        # ssl, so the simulator terminates TLS and the driver connects here
+        # exactly as it connects in the field (see self_signed_tls.py). The
+        # platform reads this back out of to_info_dict() and leaves such a
+        # device's ssl setting alone while it is redirected.
+        if self._is_http and self._resolve_ssl(driver_def, config):
+            self.SIMULATOR_INFO["tls"] = True
 
         # Build handlers from driver definition
         self._command_handlers: list[CommandHandler] = []
@@ -241,10 +257,8 @@ class YAMLAutoSimulator(TCPSimulator):
         # Push notification tracking: prevent echo during command processing
         self._handling_command = False
         self._handling_osc = False
-        # UDP push: track last client for unsolicited responses
-        self._last_udp_client: tuple[str, int] | None = None
-        # OSC push: track client and build reverse state→address map
-        self._last_osc_client: tuple[str, int] | None = None
+        # OSC push: build the reverse state→address map (the client to push to
+        # is the datagram server's _last_client_addr)
         self._osc_state_to_address: dict[str, tuple[str, int, str, dict[str, str] | None]] = {}
         if self._is_osc:
             self._build_osc_address_handlers()
@@ -289,9 +303,9 @@ class YAMLAutoSimulator(TCPSimulator):
         # a GET on one of its declared paths with Accept: text/event-stream is
         # held open and the `notifications:` templates are delivered there as
         # SSE events (data: <msg>\n\n) — the HTTP analogue of the multicast
-        # channel above.
-        self._push_sse_paths = self._resolve_push_sse(driver_def, config)
-        self._sse_clients: set[asyncio.Queue] = set()
+        # channel above. `sse_paths` is the HTTP server's own name for the
+        # paths it holds open, so the resolved list goes straight into it.
+        self.sse_paths = self._resolve_push_sse(driver_def, config)
 
         # Dial-out push emission: when the driver declares
         # `push: {type: tcp_listener}`, the simulator watches for the
@@ -307,10 +321,6 @@ class YAMLAutoSimulator(TCPSimulator):
         # straight failures so a departed platform doesn't get dialed forever.
         self._push_tcp_subscribers: dict[tuple[str, int], int] = {}
         self._push_tcp_tasks: set[asyncio.Task] = set()
-        # Peer address of the request currently being dispatched — the
-        # dial-back target host for a registration command (HTTP fills it
-        # from the request; plain-TCP sims fall back to loopback).
-        self._last_peer_ip = "127.0.0.1"
         # HTTP-callback push emission: when the driver declares
         # `push: {type: http_listener}`, script handlers record the callback
         # URL the (simulated) controller registers — via register_callback()
@@ -475,7 +485,19 @@ class YAMLAutoSimulator(TCPSimulator):
         out = out.replace("\\", "")
         return out
 
-    # ── UDP / OSC / HTTP transport overrides ──
+    # ── Transport resolution ──
+
+    @staticmethod
+    def _resolve_ssl(driver_def: dict, config: dict | None) -> bool:
+        """True when this device's HTTP connection is https.
+
+        Same layering the platform resolves the device's config with — the
+        instance's own setting wins over the driver's default — so the
+        simulator serves the scheme the driver is about to dial.
+        """
+        defaults = driver_def.get("default_config") or {}
+        cfg = config or {}
+        return bool(cfg.get("ssl", defaults.get("ssl", False)))
 
     @staticmethod
     def _resolve_push_multicast(
@@ -701,37 +723,19 @@ class YAMLAutoSimulator(TCPSimulator):
             self._http_push_callbacks.remove(url)
             self.log_protocol("in", f"(callback unregistered: {url})")
 
-    async def _post_http_callback(self, url: str, msg: str) -> None:
-        """Deliver one rendered notification to a registered callback URL.
+    @staticmethod
+    def _callback_content_type(msg: str) -> str:
+        """Content type for a rendered notification, from the payload's shape.
 
-        Content type follows the payload shape (XML vs JSON) purely for
-        protocol-log realism — the platform's dispatch reads only the body.
-        Delivery failure is a debug-level event: a real device silently
-        drops feedback its subscriber stopped answering.
+        Purely for protocol-log realism — the platform's dispatch reads only
+        the body.
         """
-        import aiohttp
-
-        body = msg.encode("utf-8")
         stripped = msg.lstrip()
         if stripped.startswith("<"):
-            ctype = "text/xml"
-        elif stripped.startswith(("{", "[")):
-            ctype = "application/json"
-        else:
-            ctype = "text/plain"
-        try:
-            timeout = aiohttp.ClientTimeout(total=10)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.post(
-                    url, data=body, headers={"Content-Type": ctype}
-                ) as resp:
-                    self.log_protocol(
-                        "out", f"POST {url} -> {resp.status} | {msg[:200]}"
-                    )
-        except Exception as e:
-            logger.debug(
-                "%s: callback POST to %s failed: %s", self.name, url, e
-            )
+            return "text/xml"
+        if stripped.startswith(("{", "[")):
+            return "application/json"
+        return "text/plain"
 
     def _open_multicast_sender(self) -> None:
         """Open the multicast emission socket (TTL 1, loopback enabled so a
@@ -751,33 +755,18 @@ class YAMLAutoSimulator(TCPSimulator):
             logger.warning("Could not open multicast sender: %s", e)
 
     async def start(self, port: int) -> None:
-        """Start the simulator server (TCP, UDP, OSC, or HTTP based on driver transport)."""
+        """Start the server the driver's transport calls for (TCP, UDP, OSC, HTTP)."""
         if self._push_multicast:
             self._open_multicast_sender()
         if self._is_http:
-            await self._start_http(port)
-            return
-        if not self._is_udp and not self._is_osc:
+            await self.start_http_server(port)
+        elif self._is_udp or self._is_osc:
+            await self.start_datagram_server(port)
+        else:
             await super().start(port)
-            return
-
-        # UDP/OSC mode — start a datagram server instead of TCP
-        self._port = port
-        loop = asyncio.get_running_loop()
-        self._udp_transport, _ = await loop.create_datagram_endpoint(
-            lambda: _YAMLAutoUDPProtocol(self),
-            local_addr=("127.0.0.1", port),
-        )
-        self._running = True
-        proto = "OSC" if self._is_osc else "UDP"
-        logger.info(
-            "%s started on %s port %d (driver: %s)",
-            self.name, proto, port, self.driver_id,
-        )
 
     async def stop(self) -> None:
-        """Stop the simulator server."""
-        self._cancel_state_machine_timers()
+        """Stop whichever server start() ran."""
         self._cancel_push_tcp_tasks()
         if self._mcast_sock is not None:
             try:
@@ -786,61 +775,11 @@ class YAMLAutoSimulator(TCPSimulator):
                 pass
             self._mcast_sock = None
         if self._is_http:
-            await self._stop_http()
-            return
-        if not self._is_udp and not self._is_osc:
+            await self.stop_http_server()
+        elif self._is_udp or self._is_osc:
+            await self.stop_datagram_server()
+        else:
             await super().stop()
-            return
-
-        self._running = False
-        if self._udp_transport:
-            self._udp_transport.close()
-            self._udp_transport = None
-        logger.info("%s stopped", self.name)
-
-    # ── HTTP transport ──
-
-    async def _start_http(self, port: int) -> None:
-        """Start an aiohttp server that synthesizes incoming requests into
-        text commands and dispatches them through the existing handler chain.
-
-        The synthesized command line format is:
-            "METHOD /path?query|<body>"   (body section omitted when empty)
-        with the path + query URL-decoded so command_handlers regex can match
-        the original (un-encoded) characters from the driver's `path:` field.
-        """
-        from aiohttp import web
-
-        self._port = port
-        app = web.Application()
-        app.router.add_route("*", "/{path:.*}", self._handle_http_request)
-
-        # handler_cancellation: an event-stream subscriber that disconnects
-        # (driver reconnect, network drop) must release its handler — without
-        # it the handler blocks on its queue until the next notification
-        # write fails.
-        self._http_runner = web.AppRunner(app, handler_cancellation=True)
-        await self._http_runner.setup()
-        self._http_site = web.TCPSite(self._http_runner, "127.0.0.1", port)
-        await self._http_site.start()
-        self._running = True
-        logger.info(
-            "%s started on HTTP port %d (driver: %s)",
-            self.name, port, self.driver_id,
-        )
-
-    async def _stop_http(self) -> None:
-        """Stop the HTTP server."""
-        self._running = False
-        # Unblock held event-stream handlers first — cleanup() waits for
-        # active handlers, and an SSE subscription blocks on its queue.
-        self._close_sse_clients()
-        self._cancel_push_tcp_tasks()
-        if self._http_runner:
-            await self._http_runner.cleanup()
-            self._http_runner = None
-            self._http_site = None
-        logger.info("%s stopped", self.name)
 
     def _cancel_push_tcp_tasks(self) -> None:
         """Abandon in-flight dial-out notification connections."""
@@ -848,71 +787,35 @@ class YAMLAutoSimulator(TCPSimulator):
             task.cancel()
         self._push_tcp_tasks.clear()
 
-    def _http_response_delay(self) -> float:
-        """Resolve the HTTP response delay: ``command_response`` when the
-        author set it (0 included — an explicit 0 means an instant reply),
-        falling back to the ``request_response`` alias, then no delay."""
-        delay = self._delays.get("command_response")
-        if delay is None:
-            delay = self._delays.get("request_response", 0)
-        return delay
+    # ── HTTP transport ──
 
-    async def _handle_http_request(self, request: Any) -> Any:
-        """Convert an aiohttp request to a synthesized command line, dispatch
-        it through the standard handler machinery, and wrap the response.
+    def decode_request_path(self, path: str) -> str:
+        """URL-decode the path so handlers match the un-encoded form.
 
-        Status code is 200 when a handler matched, 404 when no handler matched.
-        Response body comes from whatever the handler returned via respond().
+        Command handlers are regexes built from the driver's own `path:`
+        fields, which are written the way a human writes them ("#" not "%23").
+        """
+        return unquote(path)
+
+    async def respond_http(
+        self,
+        request: Any,
+        method: str,
+        path: str,
+        headers: dict[str, str],
+        body: str,
+    ) -> Any:
+        """Answer an HTTP request through the same handler chain TCP uses.
+
+        The request is synthesized into a command line:
+            "METHOD /path?query|<body>"   (body section omitted when empty)
+        so one set of generated handlers serves every transport. Status is 200
+        when a handler matched and 404 when none did; the body is whatever the
+        handler returned via respond().
         """
         from aiohttp import web
 
-        method = request.method
-        raw_path = "/" + request.match_info.get("path", "")
-        if request.query_string:
-            raw_path += "?" + request.query_string
-        # URL-decode so handlers can match the un-encoded form (e.g. "#" not "%23")
-        decoded_path = unquote(raw_path)
-
-        # Event-stream subscription (push: {type: sse}): a GET on a declared
-        # push path with Accept: text/event-stream is held open and fed the
-        # notifications: templates instead of a one-shot response.
-        if (
-            method == "GET"
-            and self._push_sse_paths
-            and decoded_path.split("?")[0] in self._push_sse_paths
-            and "text/event-stream" in request.headers.get("Accept", "")
-        ):
-            return await self._serve_sse(request, decoded_path)
-
-        body_text = await request.text()
-        # Dial-back registrations record the requester as the push target.
-        self._last_peer_ip = str(request.remote or "127.0.0.1")
-
-        log_text = f"{method} {decoded_path}"
-        if body_text:
-            log_text += f" | {body_text[:200]}"
-        self.log_protocol("in", log_text)
-
-        # Network conditions and error injection (same as HTTPSimulator base)
-        if self._network_layer and self._network_layer.should_drop(self.device_id):
-            await asyncio.sleep(30)
-            return web.Response(status=504, text="Gateway Timeout")
-        if self.has_error_behavior("no_response"):
-            await asyncio.sleep(30)
-            return web.Response(status=504, text="Gateway Timeout")
-        if self._network_layer:
-            await self._network_layer.apply_latency(self.device_id)
-        delay = self._http_response_delay()
-        if delay > 0:
-            await asyncio.sleep(delay)
-
-        # Synthesize the command line that handlers regex against. Body is
-        # appended after a "|" delimiter so handlers can reference it when
-        # they need to (POST/PUT bodies).
-        if body_text:
-            command_line = f"{method} {decoded_path}|{body_text}"
-        else:
-            command_line = f"{method} {decoded_path}"
+        command_line = f"{method} {path}|{body}" if body else f"{method} {path}"
 
         try:
             response_bytes = self.handle_command(command_line.encode("utf-8"))
@@ -928,131 +831,32 @@ class YAMLAutoSimulator(TCPSimulator):
         self.log_protocol("out", f"200 | {response_text[:200]}")
         return web.Response(status=200, text=response_text)
 
-    async def _serve_sse(self, request: Any, path: str) -> Any:
-        """Hold an event-stream subscription open and relay notifications.
+    # ── UDP / OSC transport ──
 
-        Each subscriber gets its own queue; set_state() enqueues rendered
-        notification templates, and this handler writes them out as
-        ``data: <msg>\\n\\n`` frames until the client disconnects or the
-        simulator stops (a ``None`` sentinel unblocks the queue wait so
-        stop() never hangs on an open subscription).
+    async def dispatch_datagram(self, data: bytes, addr: tuple[str, int]) -> None:
+        """Route a datagram to the OSC or the plain command pipeline.
+
+        Which one is a per-instance fact here (the driver's transport), where
+        for a Python simulator it is the class it subclassed.
         """
-        from aiohttp import web
-
-        response = web.StreamResponse(
-            status=200,
-            headers={
-                "Content-Type": "text/event-stream",
-                "Cache-Control": "no-cache",
-            },
-        )
-        await response.prepare(request)
-        queue: asyncio.Queue = asyncio.Queue()
-        self._sse_clients.add(queue)
-        self.log_protocol("in", f"GET {path} (event-stream subscribed)")
-        try:
-            while self._running:
-                msg = await queue.get()
-                if msg is None:
-                    break
-                await response.write(f"data: {msg}\n\n".encode("utf-8"))
-        except (ConnectionResetError, ConnectionError, asyncio.CancelledError):
-            pass
-        finally:
-            self._sse_clients.discard(queue)
-            self.log_protocol("in", f"GET {path} (event-stream closed)")
-        return response
-
-    def _close_sse_clients(self) -> None:
-        """Unblock every open event-stream handler so stop() can finish."""
-        for queue in list(self._sse_clients):
-            queue.put_nowait(None)
-
-    def _handle_udp_datagram(self, data: bytes, addr: tuple[str, int]) -> None:
-        """Process an incoming UDP datagram and send response."""
-        self.log_protocol("in", data)
-
-        if self._network_layer and self._network_layer.should_drop(self.device_id):
+        if not self._is_osc:
+            await self.dispatch_command_datagram(data, addr)
             return
-        if self.has_error_behavior("no_response"):
-            return
-
-        if self._is_osc:
-            asyncio.ensure_future(self._handle_osc_datagram_async(data, addr))
-        else:
-            asyncio.ensure_future(self._handle_udp_datagram_async(data, addr))
-
-    async def _handle_udp_datagram_async(
-        self, data: bytes, addr: tuple[str, int]
-    ) -> None:
-        """Async handler for UDP datagram processing (supports delays)."""
-        self._last_udp_client = addr
-
-        if self._network_layer:
-            await self._network_layer.apply_latency(self.device_id)
-
-        delay = self._delays.get("command_response", 0)
-        if delay > 0:
-            await asyncio.sleep(delay)
-
-        try:
-            response = self.handle_command(data)
-        except Exception:
-            logger.exception("%s: error in handle_command", self.name)
-            response = None
-
-        if response and self.has_error_behavior("corrupt_response"):
-            from simulator.tcp_simulator import _corrupt_bytes
-            response = _corrupt_bytes(response)
-
-        if response and self._udp_transport:
-            self._udp_transport.sendto(response, addr)
-            self.log_protocol("out", response)
-
-    async def _handle_osc_datagram_async(
-        self, data: bytes, addr: tuple[str, int]
-    ) -> None:
-        """Handle an incoming OSC datagram: decode, match, respond."""
-        from server.transport.osc_codec import osc_decode_bundle, osc_encode_message
-
-        self._last_osc_client = addr
-
-        if self._network_layer:
-            await self._network_layer.apply_latency(self.device_id)
-
-        delay = self._delays.get("command_response", 0)
-        if delay > 0:
-            await asyncio.sleep(delay)
-
-        try:
-            messages = osc_decode_bundle(data)
-        except (ValueError, Exception) as e:
-            logger.warning("%s: OSC decode error: %s", self.device_id, e)
-            return
-
+        # Suppress the push echo for the whole OSC exchange: state written
+        # while answering a message is a reply, not an unsolicited notice.
         self._handling_osc = True
         try:
-            for osc_address, osc_args in messages:
-                try:
-                    responses = self._handle_osc_message(osc_address, osc_args)
-                except Exception:
-                    logger.exception("%s: error handling OSC %s", self.device_id, osc_address)
-                    continue
-                if responses and self._udp_transport:
-                    for resp_addr, resp_args in responses:
-                        resp_data = osc_encode_message(resp_addr, resp_args)
-                        if self.has_error_behavior("corrupt_response"):
-                            from simulator.osc_simulator import _corrupt_bytes
-                            resp_data = _corrupt_bytes(resp_data)
-                        self._udp_transport.sendto(resp_data, addr)
-                        self.log_protocol("out", resp_data)
+            await self.dispatch_osc_datagram(data, addr)
         finally:
             self._handling_osc = False
 
-    def _handle_osc_message(
+    def handle_message(
         self, address: str, args: list[tuple[str, Any]]
     ) -> list[tuple[str, list[tuple[str, Any]]]] | None:
         """Handle a decoded OSC message using the response address mappings.
+
+        The OSC override point a Python simulator implements by hand; here it
+        is answered from the driver's own response definitions.
 
         Two behaviors:
         - Message WITH args: update state from arg values, echo back
@@ -2507,7 +2311,7 @@ class YAMLAutoSimulator(TCPSimulator):
         elif (
             self._is_osc
             and not self._handling_osc
-            and self._last_osc_client
+            and self._last_client_addr
             and self._udp_transport
             and key in self._osc_state_to_address
         ):
@@ -2526,13 +2330,13 @@ class YAMLAutoSimulator(TCPSimulator):
             self._is_udp
             and not self._is_osc
             and not self._handling_command
-            and self._last_udp_client
+            and self._last_client_addr
             and self._udp_transport
             and (push_text := self._format_state_reply(key, value)) is not None
         ):
             delimiter = self._get_delimiter()
             push_data = (push_text + delimiter).encode()
-            self._udp_transport.sendto(push_data, self._last_udp_client)
+            self._udp_transport.sendto(push_data, self._last_client_addr)
             self.log_protocol("out", push_data)
 
         # Manual TCP notification (legacy: explicit notifications: section in simulator YAML)
@@ -2566,12 +2370,9 @@ class YAMLAutoSimulator(TCPSimulator):
                     logger.debug(
                         "Multicast notification send failed", exc_info=True
                     )
-        elif self._push_sse_paths:
+        elif self.sse_paths:
             # SSE events are self-framed — no delimiter appended.
-            if self._sse_clients:
-                for queue in list(self._sse_clients):
-                    queue.put_nowait(msg)
-                self.log_protocol("out", f"data: {msg[:200]}")
+            self.push_sse_event(msg)
         elif self._push_tcp:
             # One outbound connection per registered subscriber, each
             # carrying one framed notification (the dial-back pattern).
@@ -2582,7 +2383,10 @@ class YAMLAutoSimulator(TCPSimulator):
             # No registered callback (controller never sent its registration
             # command) means no delivery, matching a real device.
             for url in list(self._http_push_callbacks):
-                asyncio.ensure_future(self._post_http_callback(url, msg))
+                asyncio.ensure_future(self.post_http_callback(
+                    url, msg,
+                    headers={"Content-Type": self._callback_content_type(msg)},
+                ))
         elif self._clients:
             asyncio.ensure_future(self.push(data))
 
@@ -2642,7 +2446,7 @@ class YAMLAutoSimulator(TCPSimulator):
                 osc_value = value
 
         data = osc_encode_message(addr, [(tag, osc_value)])
-        self._udp_transport.sendto(data, self._last_osc_client)
+        self._udp_transport.sendto(data, self._last_client_addr)
         self.log_protocol("out", data)
 
     def _format_state_reply(self, key: str, value: Any) -> str | None:
@@ -3052,20 +2856,3 @@ def _normalize_osc_args(args: Any) -> list[tuple[str, Any]]:
             )
         normalized.append((_osc_tag_for(arg), arg))
     return normalized
-
-
-class _YAMLAutoUDPProtocol(asyncio.DatagramProtocol):
-    """Internal protocol handler that routes UDP datagrams to YAMLAutoSimulator."""
-
-    def __init__(self, simulator: YAMLAutoSimulator):
-        self._simulator = simulator
-
-    def datagram_received(self, data: bytes, addr: tuple[str, int]) -> None:
-        self._simulator._handle_udp_datagram(data, addr)
-
-    def error_received(self, exc: Exception) -> None:
-        logger.warning("YAML auto UDP simulator error: %s", exc)
-
-    def connection_lost(self, exc: Exception | None) -> None:
-        if exc:
-            logger.debug("YAML auto UDP connection lost: %s", exc)

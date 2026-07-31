@@ -425,14 +425,14 @@ def test_sim_resolves_sse_paths_from_templates():
     from simulator.yaml_auto import YAMLAutoSimulator
 
     sim = YAMLAutoSimulator(device_id="s1", config={}, driver_def=_sim_def())
-    assert sim._push_sse_paths == ["/api/events"]
+    assert sim.sse_paths == ["/api/events"]
 
     sim2 = YAMLAutoSimulator(
         device_id="s2",
         config={"events_path": "/custom/stream"},
         driver_def=_sim_def(),
     )
-    assert sim2._push_sse_paths == ["/custom/stream"]
+    assert sim2.sse_paths == ["/custom/stream"]
 
 
 def test_sim_without_push_block_has_no_sse_paths():
@@ -441,7 +441,7 @@ def test_sim_without_push_block_has_no_sse_paths():
     d = _sim_def()
     d.pop("push")
     sim = YAMLAutoSimulator(device_id="s1", config={}, driver_def=d)
-    assert sim._push_sse_paths == []
+    assert sim.sse_paths == []
 
 
 @pytest.mark.asyncio

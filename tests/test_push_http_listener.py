@@ -553,17 +553,23 @@ async def test_sim_posts_notification_to_registered_callback(monkeypatch):
     from simulator.yaml_auto import YAMLAutoSimulator
 
     sim = YAMLAutoSimulator(device_id="acme1", config={}, driver_def=_sim_def())
-    posted: list[tuple[str, str]] = []
+    posted: list[tuple[str, str, dict]] = []
 
-    async def fake_post(url: str, msg: str) -> None:
-        posted.append((url, msg))
+    async def fake_post(url, body, headers=None, method="POST"):
+        posted.append((url, body, headers or {}))
 
-    monkeypatch.setattr(sim, "_post_http_callback", fake_post)
+    monkeypatch.setattr(sim, "post_http_callback", fake_post)
     sim.register_callback("http://10.0.0.2:8080/api/push/dev1")
 
     sim.set_state("mute", True)
     await asyncio.sleep(0)
-    assert posted == [("http://10.0.0.2:8080/api/push/dev1", "<Mute>1</Mute>")]
+    # Content type follows the payload shape, so the protocol log reads the
+    # way a real device's webhook delivery does.
+    assert posted == [(
+        "http://10.0.0.2:8080/api/push/dev1",
+        "<Mute>1</Mute>",
+        {"Content-Type": "text/xml"},
+    )]
 
 
 @pytest.mark.asyncio
@@ -573,10 +579,10 @@ async def test_sim_without_registration_posts_nothing(monkeypatch):
     sim = YAMLAutoSimulator(device_id="acme1", config={}, driver_def=_sim_def())
     posted: list[tuple[str, str]] = []
 
-    async def fake_post(url: str, msg: str) -> None:
-        posted.append((url, msg))
+    async def fake_post(url, body, headers=None, method="POST"):
+        posted.append((url, body))
 
-    monkeypatch.setattr(sim, "_post_http_callback", fake_post)
+    monkeypatch.setattr(sim, "post_http_callback", fake_post)
     sim.set_state("mute", True)
     await asyncio.sleep(0)
     assert posted == []

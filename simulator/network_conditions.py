@@ -164,3 +164,19 @@ class NetworkConditionLayer:
             },
             "presets": list(PRESETS.keys()),
         }
+
+
+def corrupt_bytes(data: bytes) -> bytes:
+    """Randomly corrupt 1-3 bytes of a response.
+
+    Applied by every transport when the ``corrupt_response`` error mode is
+    active. It lives here with drop / latency / instability because it is the
+    same kind of thing — a degradation applied to bytes on their way out — and
+    because one home is what keeps the transports identical about it.
+    """
+    ba = bytearray(data)
+    if len(ba) > 0:
+        for _ in range(min(3, len(ba))):
+            idx = random.randint(0, len(ba) - 1)
+            ba[idx] = random.randint(0, 255)
+    return bytes(ba)

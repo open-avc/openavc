@@ -736,24 +736,24 @@ def test_http_delay_zero_beats_request_response_alias():
     `get(...) or get("request_response", 0)` treated 0 as unset and fell
     through to the alias."""
     sim = _make_http_sim({"command_response": 0, "request_response": 5})
-    assert sim._http_response_delay() == 0
+    assert sim._response_delay() == 0
 
 
 def test_http_delay_seed_shadows_request_response_alias():
     """YAML auto-sims always seed command_response (0.05 default), so the
     undocumented request_response alias never applies to them."""
     sim = _make_http_sim({"request_response": 2})
-    assert sim._http_response_delay() == 0.05
+    assert sim._response_delay() == 0.05
 
 
 def test_http_delay_defaults_to_auto_seed():
     sim = _make_http_sim({})
-    assert sim._http_response_delay() == 0.05
+    assert sim._response_delay() == 0.05
 
 
 def test_http_delay_uses_command_response():
     sim = _make_http_sim({"command_response": 0.5})
-    assert sim._http_response_delay() == 0.5
+    assert sim._response_delay() == 0.5
 
 
 # ===========================================================================
@@ -1029,7 +1029,7 @@ OSC_DEFINITION = {
 
 def test_osc_handler_bare_value_reaches_the_wire_as_a_typed_argument():
     sim = _make_sim(OSC_DEFINITION)
-    responses = sim._handle_osc_message("/acme/go", [])
+    responses = sim.handle_message("/acme/go", [])
     assert responses is not None
     address, args = responses[0]
     assert address == "/acme/cue/current"
@@ -1044,7 +1044,7 @@ def test_osc_handler_bare_value_survives_encoding():
     from server.transport.osc_codec import osc_decode_message, osc_encode_message
 
     sim = _make_sim(OSC_DEFINITION)
-    address, args = sim._handle_osc_message("/acme/go", [])[0]
+    address, args = sim.handle_message("/acme/go", [])[0]
     decoded = osc_decode_message(osc_encode_message(address, args))
     assert decoded == ("/acme/cue/current", [("s", "7")])
 
