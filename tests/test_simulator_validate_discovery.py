@@ -9,7 +9,8 @@ to confirm the file actually defines a top-level DRIVER_INFO assignment.
 
 from pathlib import Path
 
-from simulator.validate import find_drivers, _is_python_driver
+from server.drivers.python_info import declares_driver_info
+from simulator.validate import find_drivers
 
 
 def _write(path: Path, content: str) -> Path:
@@ -44,7 +45,7 @@ def test_picks_up_class_scoped_driver_info(tmp_path):
         "class FooDriver(BaseDriver):\n"
         "    DRIVER_INFO = {'id': 'foo'}\n",
     )
-    assert _is_python_driver(driver)
+    assert declares_driver_info(driver)
     assert find_drivers(driver) == [(driver, "python")]
 
 
@@ -71,9 +72,9 @@ def test_ignores_files_only_mentioning_driver_info(tmp_path):
         "def get():\n    DRIVER_INFO = {'id': 'fake'}\n    return DRIVER_INFO\n",
     )
 
-    assert not _is_python_driver(comment_only)
-    assert not _is_python_driver(string_only)
-    assert not _is_python_driver(nested)
+    assert not declares_driver_info(comment_only)
+    assert not declares_driver_info(string_only)
+    assert not declares_driver_info(nested)
 
 
 def test_directory_scan_filters_non_drivers(tmp_path):
@@ -106,3 +107,30 @@ def test_yaml_drivers_still_found(tmp_path):
     _write(tmp_path / "y.avcdriver", "id: y\nname: Y\n")
     found = find_drivers(tmp_path)
     assert (tmp_path / "y.avcdriver", "yaml") in found
+
+
+def test_named_file_is_always_returned_so_the_checker_can_speak(tmp_path):
+    """A file named explicitly is returned whatever is in it — the directory
+    skip rules are for walks only.
+
+    Naming a path and being told "No drivers found" hides the one sentence
+    that would have explained the problem: the contract check runs on
+    whatever this returns, and it is the thing that says *why* a file isn't a
+    driver. Both spellings of the rule now come from the checker, so the
+    documented command and `python -m server.drivers.check` agree.
+    """
+    companion = _write(tmp_path / "thing_sim.py", "class Sim:\n    pass\n")
+    assert find_drivers(companion) == [(companion, "python")]
+
+    not_a_driver = _write(tmp_path / "helper.py", "print('hello')\n")
+    assert find_drivers(not_a_driver) == [(not_a_driver, "python")]
+
+    # ...while a walk of the same directory still skips both.
+    assert find_drivers(tmp_path) == []
+
+
+def test_named_file_of_an_unknown_type_is_tagged_unknown(tmp_path):
+    """Neither validator claims a file it can't parse; the contract check
+    reports the unsupported type."""
+    other = _write(tmp_path / "notes.txt", "not a driver\n")
+    assert find_drivers(other) == [(other, "unknown")]

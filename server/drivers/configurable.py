@@ -27,13 +27,14 @@ from server.drivers.base import (
     ConnectionFaultError,
     normalize_and_validate_command_params as _normalize_and_validate_command_params,
 )
+from server.drivers.child_ids import coerce_child_local_id
 from server.drivers.inline_protocol import (
-    _derive_command_params,
-    _derive_state_vars_from_responses,
-    _normalize_config_commands,
-    _normalize_config_responses,
-    _normalize_config_state_vars,
-    _normalize_ir_codes,
+    derive_command_params,
+    derive_state_vars_from_responses,
+    normalize_config_commands,
+    normalize_config_responses,
+    normalize_config_state_vars,
+    normalize_ir_codes,
 )
 from server.transport.binary_helpers import encode_escape_sequences as _safe_encode_escapes
 from server.transport.frame_parsers import DEFAULT_MAX_BUFFER, FrameParser
@@ -334,15 +335,15 @@ class ConfigurableDriver(BaseDriver):
         # setting write); absent means today's behavior exactly.
         self._send_frame = self._build_send_frame(self._definition.get("send_frame"))
 
-        norm_commands = _normalize_config_commands(
+        norm_commands = normalize_config_commands(
             self.config.get("commands"),
             self._command_suffix or line_ending,
             prefix=self._command_prefix,
         )
         # File commands (not in this set) are the ones send_command frames.
         self._inline_command_names: set[str] = set(norm_commands)
-        norm_responses = _normalize_config_responses(self.config.get("responses"))
-        norm_state_vars = _normalize_config_state_vars(
+        norm_responses = normalize_config_responses(self.config.get("responses"))
+        norm_state_vars = normalize_config_state_vars(
             self.config.get("state_variables")
         )
         # IR code-set → commands. The effective code-set is the driver-declared
@@ -350,7 +351,7 @@ class ConfigurableDriver(BaseDriver):
         # layered into self.config by resolved_device_config) overlaid with any
         # device-authored ir_codes. Each becomes an IR command emitted through
         # the bound bridge (see send_command). Config codes win by name.
-        ir_commands = _normalize_ir_codes(self.config.get("ir_codes"))
+        ir_commands = normalize_ir_codes(self.config.get("ir_codes"))
 
         if not (norm_commands or norm_responses or norm_state_vars or ir_commands):
             return
@@ -365,7 +366,7 @@ class ConfigurableDriver(BaseDriver):
                 str(cmd[f]) for f in ("send", "path", "body") if isinstance(cmd.get(f), str)
             )
             if "{" in ph_src:
-                cmd["params"] = _derive_command_params(
+                cmd["params"] = derive_command_params(
                     ph_src, config_keys, cmd.get("params")
                 )
 
@@ -376,7 +377,7 @@ class ConfigurableDriver(BaseDriver):
 
         merged_commands = {**file_commands, **norm_commands, **ir_commands}
         merged_responses = list(file_responses) + norm_responses
-        derived_vars = _derive_state_vars_from_responses(merged_responses)
+        derived_vars = derive_state_vars_from_responses(merged_responses)
         merged_state_vars = {**file_state_vars, **derived_vars, **norm_state_vars}
 
         # Commands the editor flagged "poll" are sent on the device's
@@ -674,22 +675,11 @@ class ConfigurableDriver(BaseDriver):
 
     def _coerce_child_local_id(self, child_type: str, raw: Any) -> int | str | None:
         """Coerce a routed child id (regex capture or literal) to the type's
-        declared ``id_format`` — int for integer ids, stripped string
-        otherwise. Returns None when it can't be coerced."""
+        declared ``id_format``. Returns None when it can't be coerced — the
+        callers here skip such an update rather than raise, as a REST route
+        would 404 on the same input."""
         child_types = self._definition.get("child_entity_types") or {}
-        tdef = child_types.get(child_type) or {}
-        id_format = tdef.get("id_format") or {}
-        if id_format.get("type", "integer") == "integer":
-            if isinstance(raw, bool):
-                return None
-            if isinstance(raw, int):
-                return raw
-            try:
-                return int(str(raw).strip())
-            except (TypeError, ValueError):
-                return None
-        text = str(raw).strip()
-        return text or None
+        return coerce_child_local_id(child_types.get(child_type), raw)
 
     def _resolve_instance_ids(
         self, ctype: str, tdef: dict[str, Any], inst: dict[str, Any]

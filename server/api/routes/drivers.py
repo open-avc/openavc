@@ -848,10 +848,7 @@ async def upload_driver_bundle(request: Request) -> dict[str, Any]:
     if not entries:
         raise HTTPException(status_code=422, detail="Bundle is empty.")
 
-    def _is_companion(name: str) -> bool:
-        return name.endswith("_discovery.py") or name.endswith("_sim.py")
-
-    mains = [n for n in entries if not _is_companion(n)]
+    mains = [n for n in entries if not n.endswith(COMPANION_SUFFIXES)]
     if not mains:
         raise HTTPException(
             status_code=422,

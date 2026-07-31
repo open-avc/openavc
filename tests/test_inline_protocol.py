@@ -12,8 +12,8 @@ import pytest
 from server.core.event_bus import EventBus
 from server.core.state_store import StateStore
 from server.drivers.configurable import (
-    _normalize_config_commands,
-    _normalize_config_responses,
+    normalize_config_commands,
+    normalize_config_responses,
     create_configurable_driver_class,
 )
 
@@ -382,17 +382,17 @@ def test_inline_protocol_does_not_leak_across_instances():
 
 
 def test_normalize_commands_skips_bad_shapes():
-    out = _normalize_config_commands({"a": "RAW", "b": {"send": "X"}, "c": 5})
+    out = normalize_config_commands({"a": "RAW", "b": {"send": "X"}, "c": 5})
     assert out == {"a": {"send": "RAW"}, "b": {"send": "X"}}
 
 
 def test_normalize_responses_passes_through_canonical():
     """An already-canonical entry (with mappings) is preserved untouched."""
     canonical = {"match": r"X(\d)", "mappings": [{"group": 1, "state": "x"}]}
-    assert _normalize_config_responses([canonical]) == [canonical]
+    assert normalize_config_responses([canonical]) == [canonical]
 
 
 def test_normalize_responses_drops_incomplete_rows():
     # Missing the state target → skipped, not a crash.
-    assert _normalize_config_responses([{"mode": "contains", "text": "X"}]) == []
-    assert _normalize_config_responses(["not a dict", 42]) == []
+    assert normalize_config_responses([{"mode": "contains", "text": "X"}]) == []
+    assert normalize_config_responses(["not a dict", 42]) == []

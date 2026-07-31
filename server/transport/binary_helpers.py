@@ -10,6 +10,14 @@ from __future__ import annotations
 
 import re
 
+# Default max buffer size: 64 KB. Protects against unbounded growth from
+# misbehaving devices or missing delimiters. It lives in this leaf, not in
+# frame_parsers, because both sides of the wire need it: the receive-side
+# parsers re-export it from here, and the shared send_frame walk the
+# simulator runs on (server.drivers.compiled_protocol) is held to a purity
+# contract that lets it import this module and not the transport stack.
+DEFAULT_MAX_BUFFER = 65536
+
 # Escape sequences recognized in driver delimiter/command strings
 _ESCAPE_MAP = {
     r"\r": "\r",

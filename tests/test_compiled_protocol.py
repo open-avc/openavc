@@ -93,6 +93,43 @@ def test_split_send_frames_round_trips_and_keeps_partial_tail():
     assert not buffer
 
 
+def test_split_send_frames_clears_a_desynced_buffer():
+    """A claimed frame bigger than the cap can never be assembled.
+
+    The buffer is per-connection and persistent, and a length-prefixed stream
+    has no in-band resync point, so the only recovery is to drop it — the same
+    call the receive-side length-prefix parser makes on the other end of the
+    wire. Without this the stream is pinned until the peer disconnects.
+    """
+    sf = build_send_frame(_EISCP_CFG)
+    header = b"ISCP\x00\x00\x00\x10"
+    # Header claims a 1 MB body; cap is 64 KB.
+    buffer = bytearray(header + (1_000_000).to_bytes(4, "big") + b"junk")
+
+    assert split_send_frames(sf, buffer) == []
+    assert not buffer
+
+    # A caller may tighten the bound; the same rule applies at any size.
+    buffer = bytearray(apply_send_frame(sf, b"!1PWR01\r"))
+    assert split_send_frames(sf, buffer, max_buffer=8) == []
+    assert not buffer
+
+
+def test_split_send_frames_never_retains_more_than_max_buffer():
+    """Defensive symmetry with the receive-side parser: whatever the walk
+    leaves behind is still held to the cap.
+
+    Bytes too few to even hold a frame header exit the walk before any of its
+    checks run, so this is the one path that can pin a buffer the walk itself
+    never looks at.
+    """
+    sf = build_send_frame(_EISCP_CFG)
+    buffer = bytearray(b"\xff" * 10)
+
+    assert split_send_frames(sf, buffer, max_buffer=4) == []
+    assert not buffer
+
+
 # ── send_regex / send_param_specs (send-template inversion) ──
 
 

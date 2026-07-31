@@ -55,8 +55,12 @@ from typing import Any
 import yaml
 
 from server.drivers.check import check_driver_file, iter_driver_files
-from server.drivers.compiled_protocol import derive_config, safe_substitute, send_regex
-from server.drivers.python_info import declares_driver_info
+from server.drivers.compiled_protocol import (
+    derive_config,
+    safe_substitute,
+    send_regex,
+    state_var_default,
+)
 
 
 # ── Result types ──
@@ -962,18 +966,14 @@ def _check_explicit_handlers(
 
 
 def _default_for_type(var_def: dict) -> Any:
-    """The auto-gen initial value for a state variable (mirrors yaml_auto)."""
-    var_type = var_def.get("type", "string")
-    if var_type == "integer":
-        return var_def.get("min", 0)
-    if var_type == "number":
-        return 0.0
-    if var_type == "boolean":
-        return False
-    if var_type == "enum":
-        values = var_def.get("values", [])
-        return values[0] if values else ""
-    return ""
+    """The auto-gen initial value for a state variable.
+
+    Calls the same rule the simulator seeds with rather than restating it —
+    the old copy claimed to mirror yaml_auto and did not, so a driver
+    declaring a fractional integer ``min`` got a round-trip warning for a
+    value the simulator would never have produced.
+    """
+    return state_var_default(var_def)
 
 
 def _check_notifications(
@@ -1706,36 +1706,26 @@ def _extract_respond_calls(handler_code: str) -> list[str]:
 # ── Directory scanning ──
 
 
-def _is_python_driver(path: Path) -> bool:
-    """True only when the file has a `DRIVER_INFO = {...}` assignment, either at
-    module level or as a class attribute.
-
-    The rule lives in ``server.drivers.python_info`` so this and the standalone
-    checker agree on what counts as a driver file.
-    """
-    return declares_driver_info(path)
-
-
 def find_drivers(path: Path) -> list[tuple[Path, str]]:
-    """Find all driver files in a directory.
+    """Find all driver files in a path.
 
     Returns list of (path, type) tuples where type is "yaml" or "python".
-    A directory walk is the checker's, so pointing either command at the same
-    tree validates the same set of files — including its skip rules, which
-    keep a repo's own test suite from being reported as 55 broken drivers.
+    The whole rule is the checker's — a directory walk and its skip rules
+    (which keep a repo's own test suite from being reported as 55 broken
+    drivers), and its policy that a file named explicitly is always checked,
+    whatever is in it. That second half matters here: naming a companion or a
+    malformed driver and being told "No drivers found" hides the sentence the
+    contract check would have printed. Only the yaml/python tag is this
+    command's own, because only this command validates parity.
     """
-    if path.is_file():
-        if path.suffix == ".avcdriver":
-            return [(path, "yaml")]
-        if path.suffix == ".py" and not path.stem.endswith("_sim"):
-            if _is_python_driver(path):
-                return [(path, "python")]
-        return []
+    return [(f, _driver_type_tag(f)) for f in iter_driver_files(path)]
 
-    return [
-        (f, "yaml" if f.suffix == ".avcdriver" else "python")
-        for f in iter_driver_files(path)
-    ]
+
+def _driver_type_tag(path: Path) -> str:
+    """Which validator a path belongs to, by extension."""
+    if path.suffix == ".avcdriver":
+        return "yaml"
+    return "python" if path.suffix == ".py" else "unknown"
 
 
 # ── CLI ──

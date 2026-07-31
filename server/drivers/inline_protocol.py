@@ -10,6 +10,12 @@ Pure and stdlib-only on purpose: both the driver runtime
 (``server.drivers.configurable``) and the device simulator
 (``simulator.yaml_auto``) import these, so they must not pull in the driver
 runtime or transport stack.
+
+The six public names below are that shared surface — ``normalize_config_*``,
+``derive_command_params``, ``derive_state_vars_from_responses`` and
+``normalize_ir_codes``. Everything underscore-prefixed is internal to this
+module and free to change: sharing is the whole reason this file exists, so
+"private" has to mean something narrower here than "not imported yet".
 """
 
 from __future__ import annotations
@@ -61,7 +67,7 @@ def _as_list(raw: Any) -> list[Any]:
     return []
 
 
-def _normalize_config_commands(
+def normalize_config_commands(
     raw: Any, line_ending: str = "", prefix: str = "",
 ) -> dict[str, Any]:
     """Normalize device-config ``commands`` into the canonical command map.
@@ -102,7 +108,7 @@ def _normalize_config_commands(
     return out
 
 
-def _derive_command_params(
+def derive_command_params(
     send: str, config_keys: set[str], existing: Any,
 ) -> dict[str, Any]:
     """Auto-declare a string param for each ``{placeholder}`` in a send string.
@@ -121,7 +127,7 @@ def _derive_command_params(
     return params
 
 
-def _normalize_ir_codes(raw: Any) -> dict[str, Any]:
+def normalize_ir_codes(raw: Any) -> dict[str, Any]:
     """Normalize an ``ir_codes`` map into canonical IR command definitions.
 
     An IR device's code-set is a map of ``{name: {label, pronto, repeat}}``
@@ -162,7 +168,7 @@ def _normalize_ir_codes(raw: Any) -> dict[str, Any]:
     return out
 
 
-def _normalize_config_state_vars(raw: Any) -> dict[str, Any]:
+def normalize_config_state_vars(raw: Any) -> dict[str, Any]:
     """Normalize device-config ``state_variables`` into the canonical schema.
 
     Accepts a ``{name: {type: ...}}`` map or a ``{name: "type"}`` shorthand.
@@ -264,7 +270,7 @@ def _normalize_one_response(entry: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
-def _normalize_config_responses(raw: Any) -> list[dict[str, Any]]:
+def normalize_config_responses(raw: Any) -> list[dict[str, Any]]:
     """Normalize a device-config ``responses`` list into canonical entries."""
     out: list[dict[str, Any]] = []
     for entry in _as_list(raw):
@@ -276,7 +282,7 @@ def _normalize_config_responses(raw: Any) -> list[dict[str, Any]]:
     return out
 
 
-def _derive_state_vars_from_responses(
+def derive_state_vars_from_responses(
     responses: list[dict[str, Any]],
 ) -> dict[str, Any]:
     """Auto-declare a state variable for every ``state`` a response writes.

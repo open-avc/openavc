@@ -58,13 +58,6 @@ from server.drivers.python_info import (
     python_driver_reference_skips,
 )
 
-DRIVER_EXTENSIONS = (".avcdriver", ".py")
-
-# Sibling files that live next to drivers but aren't drivers: discovery
-# companions and Python simulators. Mirrors the runtime loader's filter.
-COMPANION_SUFFIXES: tuple[str, ...] = ("_discovery.py", "_sim.py")
-
-
 @dataclass
 class FileCheckResult:
     """What the contract check found in one file."""
@@ -218,6 +211,12 @@ def scan_for_drivers(path: Path) -> DirectoryScan:
     """
     if path.is_file():
         return DirectoryScan(files=[path])
+
+    # Imported here, not at module scope, for the reason the checks below
+    # give: this module stays cheap to import. The suffixes live with the
+    # runtime loader that acts on them, so there is one spelling of "this
+    # file sits beside a driver but isn't one".
+    from server.drivers.driver_loader import COMPANION_SUFFIXES
 
     scan = DirectoryScan()
     for candidate in sorted(path.rglob("*.avcdriver")):

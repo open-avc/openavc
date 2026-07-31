@@ -24,11 +24,16 @@ it must not pull in the driver runtime or transport stack.
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from server.transport.binary_helpers import encode_escape_sequences, pack_length_prefix
+from server.transport.binary_helpers import (
+    DEFAULT_MAX_BUFFER,
+    encode_escape_sequences,
+    pack_length_prefix,
+)
 from server.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -533,6 +538,82 @@ def emit_literal(pattern: str) -> str | None:
     return emission
 
 
+# ── Declared state-variable defaults ──
+
+
+def _min_as_number(var_def: dict[str, Any]) -> float | None:
+    """A state variable's declared ``min`` as a float, or None if it isn't a
+    number. Booleans are not numbers here: ``min: true`` is an authoring
+    mistake, and ``float(True)`` would quietly seed 1."""
+    raw = var_def.get("min")
+    if raw is None or isinstance(raw, bool):
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def state_var_default(
+    var_def: dict[str, Any], *, number_from_min: bool = False
+) -> Any:
+    """The value a declared state variable starts at, before anything is read
+    from the device.
+
+    One rule for every consumer — the driver runtime seeding a device's (and
+    a child's) state, the auto-generated simulator seeding the values it will
+    serve, and the validator working out what a variable would hold. They
+    used to agree by hand and had drifted three ways.
+
+    An ``integer`` variable with a fractional ``min`` rounds UP, so the start
+    value is never below the minimum the driver declared; a non-numeric
+    ``min`` is an authoring bug that falls back to 0 rather than crashing
+    driver instantiation.
+
+    ``number_from_min`` is the one place the callers genuinely differ, and it
+    is not drift. A driver seeds the LOGICAL value it publishes, so a fader
+    declaring ``min: -80`` starts at -80.0. A simulator seeds the WIRE value
+    it will put on the socket, which is a different namespace — the driver's
+    response rules map between the two — so it starts numeric variables at
+    0.0 and lets the first poll settle it.
+    """
+    var_type = var_def.get("type", "string") if isinstance(var_def, dict) else "string"
+    if var_type == "boolean":
+        return False
+    if var_type == "integer":
+        min_num = _min_as_number(var_def)
+        if min_num is None:
+            _warn_unusable_min(var_def)
+            return 0
+        return math.ceil(min_num)
+    if var_type in ("number", "float"):
+        # 'float' is an accepted type alias for 'number' (driver loader +
+        # schema). Both seed a numeric 0.0, not '' — a consumer reading the
+        # var before the first poll must not get a string where a number is
+        # expected.
+        if not number_from_min:
+            return 0.0
+        min_num = _min_as_number(var_def)
+        if min_num is None:
+            _warn_unusable_min(var_def)
+            return 0.0
+        return min_num
+    if var_type == "enum":
+        values = var_def.get("values", [])
+        return values[0] if values else ""
+    return ""
+
+
+def _warn_unusable_min(var_def: dict[str, Any]) -> None:
+    """Warn only when a ``min`` was actually authored and can't be read.
+    A variable with no ``min`` at all is the normal case, not a mistake."""
+    if var_def.get("min") is not None:
+        log.warning(
+            "state variable declares a non-numeric 'min' %r; defaulting to 0",
+            var_def.get("min"),
+        )
+
+
 # ── Value coercion ──
 
 _TRUE_WORDS = frozenset({"true", "yes", "on"})
@@ -704,13 +785,23 @@ def apply_send_frame(sf: dict[str, Any] | None, data: bytes) -> bytes:
     return sf["header"] + length + sf["after_length"] + data
 
 
-def split_send_frames(sf: dict[str, Any], buffer: bytearray) -> list[bytes]:
+def split_send_frames(
+    sf: dict[str, Any],
+    buffer: bytearray,
+    max_buffer: int = DEFAULT_MAX_BUFFER,
+) -> list[bytes]:
     """Strip complete send_frame packets off the front of ``buffer``.
 
     Consumes each complete frame (fixed header + computed-length body) from
     the buffer in place and returns the bare bodies, leaving any partial
     trailing frame for the next read — exactly what the receive side's
     length-prefix frame parser does on the other end of the wire.
+
+    ``max_buffer`` bounds a desync the same way that parser does, and for the
+    same reason: the buffer is per-connection and persistent, so a claimed
+    frame size that can never be assembled would otherwise pin the stream
+    forever. A length-prefixed stream has no in-band resync point, so the
+    only honest recovery is to drop what's there and start clean.
     """
     header_len = len(sf["header"])
     length_size = sf["length_size"]
@@ -721,10 +812,26 @@ def split_send_frames(sf: dict[str, Any], buffer: bytearray) -> list[bytes]:
             buffer[header_len : header_len + length_size], sf["length_endian"]
         )
         total = total_header + data_len
+        if total > max_buffer:
+            log.warning(
+                "send_frame split: claimed frame size %d exceeds max %d; "
+                "clearing desynced buffer",
+                total, max_buffer,
+            )
+            del buffer[:]
+            break
         if len(buffer) < total:
             break
         messages.append(bytes(buffer[total_header:total]))
         del buffer[:total]
+    # Same defensive symmetry the receive-side parser keeps: a partial frame
+    # whose payload never completes must not be retained past the cap.
+    if len(buffer) > max_buffer:
+        log.warning(
+            "send_frame split: buffer overflow (%d bytes), clearing",
+            len(buffer),
+        )
+        del buffer[:]
     return messages
 
 

@@ -43,12 +43,14 @@ from server.drivers.compiled_protocol import (
     send_regex,
     spec_int_base,
     split_send_frames,
+    state_var_default,
 )
+from server.drivers.child_ids import coerce_child_local_id
 from server.drivers.inline_protocol import (
-    _derive_state_vars_from_responses,
-    _normalize_config_commands,
-    _normalize_config_responses,
-    _normalize_config_state_vars,
+    derive_state_vars_from_responses,
+    normalize_config_commands,
+    normalize_config_responses,
+    normalize_config_state_vars,
 )
 from server.transport.binary_helpers import encode_escape_sequences
 from simulator.tcp_simulator import TCPSimulator
@@ -138,9 +140,9 @@ def _merge_inline_protocol(driver_def: dict, config: dict | None) -> tuple[dict,
     stripped.
     """
     cfg = config or {}
-    norm_cmds = _normalize_config_commands(cfg.get("commands"))  # no line-ending
-    canonical = _normalize_config_responses(cfg.get("responses"))
-    norm_vars = _normalize_config_state_vars(cfg.get("state_variables"))
+    norm_cmds = normalize_config_commands(cfg.get("commands"))  # no line-ending
+    canonical = normalize_config_responses(cfg.get("responses"))
+    norm_vars = normalize_config_state_vars(cfg.get("state_variables"))
 
     if not (norm_cmds or canonical or norm_vars):
         return driver_def, False
@@ -152,7 +154,7 @@ def _merge_inline_protocol(driver_def: dict, config: dict | None) -> tuple[dict,
         for r in canonical
     ]
     merged["responses"] = list(driver_def.get("responses") or []) + sim_responses
-    derived = _derive_state_vars_from_responses(canonical)
+    derived = derive_state_vars_from_responses(canonical)
     merged["state_variables"] = {
         **(driver_def.get("state_variables") or {}), **derived, **norm_vars,
     }
@@ -1948,20 +1950,9 @@ class YAMLAutoSimulator(TCPSimulator):
 
     @staticmethod
     def _default_child_value(var_def: dict) -> Any:
-        """Default for a child state variable — same rules as the flat
-        initial_state seeding in _build_info."""
-        var_type = var_def.get("type", "string") if isinstance(var_def, dict) else "string"
-        if var_type == "integer":
-            min_num = _as_number(var_def.get("min"))
-            return math.ceil(min_num) if min_num is not None else 0
-        if var_type == "number":
-            return 0.0
-        if var_type == "boolean":
-            return False
-        if var_type == "enum":
-            values = var_def.get("values", [])
-            return values[0] if values else ""
-        return ""
+        """Default for a child state variable — the same call _build_info
+        makes for the flat initial_state, so the two cannot drift."""
+        return state_var_default(var_def)
 
     def _register_sim_children(self, ctype: str, ids: list) -> None:
         """Add children to the sim roster and seed their state defaults.
@@ -2037,16 +2028,16 @@ class YAMLAutoSimulator(TCPSimulator):
         for ctype, entries in (child_entities or {}).items():
             if ctype not in self._child_types() or not isinstance(entries, dict):
                 continue
-            id_format = (self._child_types().get(ctype) or {}).get("id_format") or {}
+            tdef = self._child_types().get(ctype)
             ids = []
             for padded in entries:
-                if id_format.get("type", "integer") == "integer":
-                    try:
-                        ids.append(int(str(padded).strip()))
-                        continue
-                    except (TypeError, ValueError):
-                        pass
-                ids.append(str(padded))
+                # The shared rule returns None for "can't be that kind of id",
+                # leaving each caller its own failure. Here an id the driver
+                # couldn't route still names a child in the roster, so keep
+                # the raw text rather than dropping it. `is not None` and not
+                # `or`: local id 0 is a real id and falsy.
+                local = coerce_child_local_id(tdef, padded)
+                ids.append(local if local is not None else str(padded))
             self._register_sim_children(ctype, ids)
         self._build_child_query_handlers()
 
@@ -2761,11 +2752,10 @@ class YAMLAutoSimulator(TCPSimulator):
         for key, var_def in state_vars.items():
             var_type = var_def.get("type", "string")
             label = var_def.get("label", key.replace("_", " ").title())
+            # The seed value is the shared rule; the branches below decide
+            # only which control the UI gets.
+            initial_state[key] = state_var_default(var_def)
             if var_type == "integer":
-                # An integer var must start as an int even if min is authored
-                # fractional; ceil keeps the start value >= min.
-                min_num = _as_number(var_def.get("min"))
-                initial_state[key] = math.ceil(min_num) if min_num is not None else 0
                 v_min = var_def.get("min")
                 v_max = var_def.get("max")
                 if v_min is not None and v_max is not None:
@@ -2779,7 +2769,6 @@ class YAMLAutoSimulator(TCPSimulator):
                 else:
                     controls.append({"type": "indicator", "key": key, "label": label})
             elif var_type == "number":
-                initial_state[key] = 0.0
                 v_min = var_def.get("min")
                 v_max = var_def.get("max")
                 if v_min is not None and v_max is not None:
@@ -2792,11 +2781,9 @@ class YAMLAutoSimulator(TCPSimulator):
                 else:
                     controls.append({"type": "indicator", "key": key, "label": label})
             elif var_type == "boolean":
-                initial_state[key] = False
                 controls.append({"type": "toggle", "key": key, "label": label})
             elif var_type == "enum":
                 values = var_def.get("values", [])
-                initial_state[key] = values[0] if values else ""
                 if key == "power":
                     controls.append({"type": "power", "key": key})
                 elif values:
@@ -2805,7 +2792,6 @@ class YAMLAutoSimulator(TCPSimulator):
                 else:
                     controls.append({"type": "indicator", "key": key, "label": label})
             else:
-                initial_state[key] = ""
                 controls.append({"type": "indicator", "key": key, "label": label})
 
         info: dict = {

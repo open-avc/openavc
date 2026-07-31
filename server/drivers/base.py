@@ -33,6 +33,7 @@ from server.core.connection_fault import (
     default_fault_message,
 )
 from server.core.event_bus import EventBus, detach_emit_chain
+from server.drivers.compiled_protocol import state_var_default
 from server.core.state_store import StateStore
 from server.transport.frame_parsers import FrameParser
 from server.utils.log_redaction import collect_secret_values, get_secret_registry
@@ -644,46 +645,11 @@ class BaseDriver(ABC):
             code, message or default_fault_message(code)
         )
 
-    @staticmethod
-    def _numeric_default(var_def: dict[str, Any], *, as_int: bool) -> int | float:
-        """Default for an integer/number/float state var: its declared ``min``
-        (or 0), coerced to the right numeric type.
-
-        A non-numeric ``min`` (e.g. a hand-edited driver with ``min: "low"``)
-        is an authoring bug; fall back to 0 with a warning rather than crashing
-        driver instantiation with an uncaught ValueError.
-        """
-        raw = var_def.get("min", 0)
-        try:
-            return int(raw) if as_int else float(raw)
-        except (TypeError, ValueError):
-            log.warning(
-                "state variable declares a non-numeric 'min' %r; defaulting to 0",
-                raw,
-            )
-            return 0 if as_int else 0.0
-
     def _init_state_variables(self) -> None:
         """Register all state variables from DRIVER_INFO with default values."""
         state_vars = self.DRIVER_INFO.get("state_variables", {})
         for prop_name, prop_info in state_vars.items():
-            var_type = prop_info.get("type", "string")
-            if var_type == "boolean":
-                default: Any = False
-            elif var_type == "integer":
-                default = self._numeric_default(prop_info, as_int=True)
-            elif var_type in ("number", "float"):
-                # 'float' is an accepted type alias for 'number' (driver loader
-                # + schema). Both must seed a numeric 0.0, not '' — otherwise a
-                # consumer reading the var before the first poll gets a string
-                # where a number is expected.
-                default = self._numeric_default(prop_info, as_int=False)
-            elif var_type == "enum":
-                values = prop_info.get("values", [])
-                default = values[0] if values else ""
-            else:
-                default = ""
-            self.set_state(prop_name, default)
+            self.set_state(prop_name, self._default_for_var_def(prop_info))
         # Always set a connected state
         self.set_state("connected", False)
 
@@ -2609,21 +2575,16 @@ class BaseDriver(ABC):
 
     @staticmethod
     def _default_for_var_def(var_def: dict[str, Any]) -> Any:
-        """Default value for a declared state variable, matching the rules
-        used by _init_state_variables() so per-child defaults are consistent
-        with per-device ones.
+        """Default value for a declared state variable — per-device and
+        per-child seeding both come through here.
+
+        The rule itself lives in ``compiled_protocol`` so the runtime, the
+        simulator and the validator cannot drift apart on it.
+        ``number_from_min`` is what makes this the driver's answer: a driver
+        publishes logical values, so a numeric variable starts at its
+        declared minimum.
         """
-        var_type = var_def.get("type", "string")
-        if var_type == "boolean":
-            return False
-        if var_type == "integer":
-            return BaseDriver._numeric_default(var_def, as_int=True)
-        if var_type in ("number", "float"):
-            return BaseDriver._numeric_default(var_def, as_int=False)
-        if var_type == "enum":
-            values = var_def.get("values", [])
-            return values[0] if values else ""
-        return ""
+        return state_var_default(var_def, number_from_min=True)
 
     def register_child(
         self,

@@ -722,18 +722,17 @@ def _import_avc(content: bytes, override_id: str | None) -> dict[str, Any]:
     }
 
 
-# A driver's discovery probe and simulator sit beside it in driver_repo/ under
-# these suffixes. They belong in the bundle — an install fetches them too —
-# but neither is a driver, so trying to register one would only log a warning.
-_DRIVER_COMPANION_SUFFIXES = ("_discovery.py", "_sim.py")
-
-
 def _install_bundled_drivers(zf: zipfile.ZipFile) -> list[str]:
     """Install driver files bundled in a zip's drivers/ directory.
 
     Returns list of installed driver IDs.
     """
+    # A driver's discovery probe and simulator sit beside it in driver_repo/
+    # under COMPANION_SUFFIXES. They belong in the bundle — an install fetches
+    # them too — but neither is a driver, so trying to register one would only
+    # log a warning.
     from server.drivers.driver_loader import (
+        COMPANION_SUFFIXES,
         load_driver_file,
         load_python_driver_file,
     )
@@ -756,7 +755,7 @@ def _install_bundled_drivers(zf: zipfile.ZipFile) -> list[str]:
         content = zf.read(name)
         dest.write_bytes(content)
 
-        if fname.endswith(_DRIVER_COMPANION_SUFFIXES):
+        if fname.endswith(COMPANION_SUFFIXES):
             log.info(f"Installed bundled driver companion: {fname}")
             continue
 
