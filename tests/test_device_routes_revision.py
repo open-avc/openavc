@@ -17,7 +17,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from server.api import rest, ws
-from server.core.device_manager import register_driver, unregister_driver
+from server.drivers.registry import register_driver, unregister_driver
 from server.core.engine import Engine
 from server.core.project_loader import (
     ChildEntityConfig,

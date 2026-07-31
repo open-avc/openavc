@@ -34,6 +34,11 @@ from server.drivers.avcdriver_semantic import (
 from server.drivers.python_info import (
     python_driver_info_issues as _python_driver_info_issues,
 )
+from server.drivers.registry import (
+    is_driver_registered,
+    register_driver,
+    unregister_driver,
+)
 from server.drivers.spec import REQUIRED_FIELDS as REQUIRED_FIELDS
 from server.utils.logger import get_logger
 
@@ -305,7 +310,6 @@ def load_driver_files(directories: Sequence[Path | str]) -> int:
 
     Returns the number of distinct drivers successfully registered.
     """
-    from server.core.device_manager import register_driver
     from server.drivers.configurable import create_configurable_driver_class
 
     registered: dict[str, int] = {}  # driver_id -> index of the dir it loaded from
@@ -426,8 +430,6 @@ def load_python_drivers(directories: Sequence[Path | str]) -> int:
 
     Returns the number of distinct drivers successfully registered.
     """
-    from server.core.device_manager import register_driver
-
     registered: dict[str, int] = {}  # driver_id -> index of the dir it loaded from
     for dir_index, dir_path in enumerate(directories):
         dir_path = Path(dir_path)
@@ -473,6 +475,30 @@ def load_all_drivers(directories: Sequence[Path | str]) -> int:
     count += load_driver_files(directories)
     count += load_python_drivers(directories)
     return count
+
+
+def load_builtin_drivers() -> int:
+    """Load every driver the standard directories hold, and register it.
+
+    The startup pass: the built-in ``.avcdriver`` definitions that ship with
+    the server (the generic tcp / serial / http devices among them) plus
+    whatever the user has installed into ``driver_repo/``. Called once from
+    ``Engine.start()``, after the legacy-repo migration has moved anything
+    still sitting in the pre-data_dir layout, and before the project loads
+    and starts asking which drivers exist.
+
+    Returns the number of drivers loaded.
+    """
+    from server.system_config import DRIVER_DEFINITIONS_DIR, DRIVER_REPO_DIR
+
+    driver_dirs = [
+        DRIVER_DEFINITIONS_DIR,
+        DRIVER_REPO_DIR,
+    ]
+    loaded = load_all_drivers(driver_dirs)
+    if loaded:
+        log.info(f"Loaded {loaded} driver(s) from definition/driver files")
+    return loaded
 
 
 def save_driver_definition(
@@ -583,7 +609,6 @@ def restore_driver_registration(
     unregistered. (YAML definitions only; Python drivers have their own
     filename-keyed reload path.)
     """
-    from server.core.device_manager import register_driver, unregister_driver
     from server.drivers.configurable import create_configurable_driver_class
 
     filepath = find_driver_file_by_id(directories, driver_id)
@@ -685,8 +710,6 @@ def list_python_drivers(directories: Sequence[Path | str]) -> list[dict[str, Any
     parsing to extract DRIVER_INFO safely.
     """
     import ast
-
-    from server.core.device_manager import is_driver_registered
 
     drivers: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
@@ -831,7 +854,6 @@ def reload_python_driver(
     Returns a dict with status, driver_id, and any errors.
     Does NOT handle device reconnection — that's the caller's responsibility.
     """
-    from server.core.device_manager import register_driver, unregister_driver
     from server.drivers.base import BaseDriver
 
     stem = filepath.stem

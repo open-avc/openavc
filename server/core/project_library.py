@@ -36,6 +36,7 @@ from server.system_config import (
 from server.utils.fileio import atomic_write_text as _atomic_write_text
 from server.utils.logger import get_logger
 from server.utils.paths import safe_path_within
+from server.drivers.registry import is_driver_registered, register_driver
 
 log = get_logger(__name__)
 
@@ -647,13 +648,12 @@ def import_project(
 
 def _check_missing_drivers(data: dict) -> list[dict[str, Any]]:
     """Check which drivers are missing for a project's devices."""
-    from server.core.device_manager import _DRIVER_REGISTRY
 
     missing: list[dict[str, Any]] = []
     seen: set[str] = set()
     for device in data.get("devices", []):
         driver_id = device.get("driver", "")
-        if driver_id in seen or driver_id in _DRIVER_REGISTRY:
+        if driver_id in seen or is_driver_registered(driver_id):
             continue
         seen.add(driver_id)
         affected = [d.get("id", "") for d in data.get("devices", []) if d.get("driver") == driver_id]
@@ -737,7 +737,6 @@ def _install_bundled_drivers(zf: zipfile.ZipFile) -> list[str]:
         load_driver_file,
         load_python_driver_file,
     )
-    from server.core.device_manager import _DRIVER_REGISTRY, register_driver
 
     driver_repo = _DRIVER_REPO_DIR
     driver_repo.mkdir(exist_ok=True)
@@ -783,7 +782,7 @@ def _install_bundled_drivers(zf: zipfile.ZipFile) -> list[str]:
             # driver in the process-global registry (register_driver is an
             # unconditional overwrite).
             if driver_class and driver_id:
-                if driver_id in _DRIVER_REGISTRY:
+                if is_driver_registered(driver_id):
                     log.warning(
                         "Bundled driver id '%s' (%s) already registered; "
                         "keeping the existing driver", driver_id, fname,

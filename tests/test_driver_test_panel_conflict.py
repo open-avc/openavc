@@ -18,7 +18,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from server.core.device_manager import DeviceManager, _DRIVER_REGISTRY
+from server.drivers.registry import _DRIVER_REGISTRY
+from server.core.device_manager import DeviceManager
 from server.core.event_bus import EventBus
 from server.core.state_store import StateStore
 from server.drivers.base import BaseDriver

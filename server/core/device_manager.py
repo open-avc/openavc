@@ -33,6 +33,7 @@ from server.drivers.child_ids import (
     child_id_range_error,
     coerce_child_local_id,
 )
+from server.drivers.registry import get_driver_class, is_driver_registered
 from server.core.event_bus import EventBus, detach_emit_chain
 from server.core.state_store import StateStore
 from server.utils.log_redaction import get_secret_registry, redact_config
@@ -59,142 +60,6 @@ def _log_task_exception(task: asyncio.Task) -> None:
 
 if TYPE_CHECKING:
     from server.drivers.base import BaseDriver
-
-# Driver registry — maps driver ID strings to driver classes
-_DRIVER_REGISTRY: dict[str, type[BaseDriver]] = {}
-
-
-def register_driver(driver_class: type[BaseDriver]) -> None:
-    """Register a driver class in the global registry."""
-    driver_id = driver_class.DRIVER_INFO.get("id", "")
-    if driver_id:
-        _DRIVER_REGISTRY[driver_id] = driver_class
-        log.debug(f"Registered driver: {driver_id}")
-
-
-def unregister_driver(driver_id: str) -> bool:
-    """Remove a driver class from the global registry. Returns True if removed."""
-    removed = _DRIVER_REGISTRY.pop(driver_id, None) is not None
-    if removed:
-        log.info(f"Unregistered driver: {driver_id}")
-    return removed
-
-
-def is_driver_registered(driver_id: str) -> bool:
-    """Check if a driver ID is registered in the global registry."""
-    return driver_id in _DRIVER_REGISTRY
-
-
-def get_driver_default_config(driver_id: str) -> dict[str, Any]:
-    """Return the registered driver's ``default_config``, or ``{}`` if unknown.
-
-    Used by ``core.device_config.resolve_device_config`` to layer driver-declared
-    defaults under saved device config. Unknown / orphaned drivers return
-    an empty dict so a missing driver behaves the same as today (the
-    device will fail to instantiate, but resolution stays well-defined).
-    """
-    cls = _DRIVER_REGISTRY.get(driver_id)
-    if cls is None:
-        return {}
-    defaults = cls.DRIVER_INFO.get("default_config", {}) or {}
-    return dict(defaults)
-
-
-def get_driver_transport(driver_id: str) -> str:
-    """Return the registered driver's declared transport (``DRIVER_INFO
-    ['transport']``, defaulting to ``tcp`` like the connect path), or ``""``
-    if the driver is unknown. Used to resolve a device's effective transport
-    when its saved config omits one, so a stray ``usb_serial`` on a network
-    device can't hijack its port.
-    """
-    cls = _DRIVER_REGISTRY.get(driver_id)
-    if cls is None:
-        return ""
-    return cls.DRIVER_INFO.get("transport", "tcp")
-
-
-def get_driver_bridge_ports(driver_id: str) -> dict[str, dict[str, Any]]:
-    """Return a registered bridge driver's advertised ports as
-    ``{port_id: {kind, passthrough_port?, label?}}``, or ``{}`` if the driver
-    is unknown or not a bridge.
-
-    A *bridge* driver declares ``DRIVER_INFO["bridge"]["ports"]``: a list of
-    typed ports (``serial`` / ``ir`` / ``relay``) that other devices connect
-    *through*. Serial ports carry a ``passthrough_port`` (the TCP port on the
-    bridge host that transparently pipes that serial line, e.g. 4999); IR /
-    relay ports route commands through the bridge's command socket instead and
-    omit it. Used by ``core.device_config`` to rewrite a
-    bridge-bound downstream device's transport, and by the device manager to
-    order bridges ahead of their dependents.
-    """
-    cls = _DRIVER_REGISTRY.get(driver_id)
-    if cls is None:
-        return {}
-    bridge = cls.DRIVER_INFO.get("bridge") or {}
-    ports = bridge.get("ports") or []
-    result: dict[str, dict[str, Any]] = {}
-    for port in ports:
-        pid = port.get("id")
-        if pid:
-            result[pid] = dict(port)
-    return result
-
-
-def get_driver_registry() -> list[dict[str, Any]]:
-    """Return metadata for all registered drivers."""
-    return [
-        {
-            "id": driver_class.DRIVER_INFO.get("id", ""),
-            "name": driver_class.DRIVER_INFO.get("name", ""),
-            "manufacturer": driver_class.DRIVER_INFO.get("manufacturer", ""),
-            "category": driver_class.DRIVER_INFO.get("category", ""),
-            "description": driver_class.DRIVER_INFO.get("description", ""),
-            "version": driver_class.DRIVER_INFO.get("version", ""),
-            "author": driver_class.DRIVER_INFO.get("author", ""),
-            "transport": driver_class.DRIVER_INFO.get("transport", "tcp"),
-            # Multi-transport drivers ([tcp, serial]) and bridge port
-            # declarations — the connection picker offers "through a bridge"
-            # for serial-capable drivers and lists bridge devices + their ports.
-            "transports": driver_class.DRIVER_INFO.get("transports", []),
-            "bridge": driver_class.DRIVER_INFO.get("bridge", {}),
-            "commands": driver_class.DRIVER_INFO.get("commands", {}),
-            "config_schema": driver_class.DRIVER_INFO.get("config_schema", {}),
-            "default_config": driver_class.DRIVER_INFO.get("default_config", {}),
-            "state_variables": driver_class.DRIVER_INFO.get("state_variables", {}),
-            "help": driver_class.DRIVER_INFO.get("help", {}),
-            "discovery": driver_class.DRIVER_INFO.get("discovery", {}),
-            "device_settings": driver_class.DRIVER_INFO.get("device_settings", {}),
-            # Action strip + child types, so pre-device UIs (driver browser
-            # detail) can show a driver's full surface — device-level views
-            # get the resolved form via get_device_info.
-            "actions": driver_class.DRIVER_INFO.get("actions", []),
-            "quick_actions": driver_class.DRIVER_INFO.get("quick_actions", []),
-            "child_entity_types": driver_class.DRIVER_INFO.get("child_entity_types", {}),
-        }
-        for driver_class in _DRIVER_REGISTRY.values()
-    ]
-
-
-def _load_builtin_drivers() -> None:
-    """Import and register all built-in and community drivers."""
-    # Load .avcdriver YAML definitions and .py Python drivers from
-    # both the built-in definitions directory and driver_repo/. The generic
-    # devices (generic_tcp / generic_serial / generic_http) ship as
-    # .avcdriver definitions in the built-in definitions directory.
-    from server.drivers.driver_loader import load_all_drivers
-    from server.system_config import DRIVER_DEFINITIONS_DIR, DRIVER_REPO_DIR
-
-    driver_dirs = [
-        DRIVER_DEFINITIONS_DIR,
-        DRIVER_REPO_DIR,
-    ]
-    loaded = load_all_drivers(driver_dirs)
-    if loaded:
-        log.info(f"Loaded {loaded} driver(s) from definition/driver files")
-
-
-# Load built-in drivers on module import
-_load_builtin_drivers()
 
 
 # Backstop for a test-panel pause whose owner never resumes it (tab closed or
@@ -279,7 +144,7 @@ class DeviceManager:
             return
 
         # Look up driver class
-        driver_class = _DRIVER_REGISTRY.get(driver_id)
+        driver_class = get_driver_class(driver_id)
         if driver_class is None:
             log.warning(f"Driver '{driver_id}' not found for device '{device_id}' — device is orphaned")
             self._orphaned_devices[device_id] = device_config
@@ -783,7 +648,7 @@ class DeviceManager:
         driver_id = config.get("driver", "")
 
         # Check if the driver is now available
-        if driver_id not in _DRIVER_REGISTRY:
+        if not is_driver_registered(driver_id):
             return False
 
         # Remove from orphan tracking and re-add normally
@@ -803,7 +668,7 @@ class DeviceManager:
         # Snapshot before iterating — retry_orphaned_device mutates the dict
         for device_id, config in list(self._orphaned_devices.items()):
             driver_id = config.get("driver", "")
-            if driver_id not in _DRIVER_REGISTRY:
+            if not is_driver_registered(driver_id):
                 continue
             try:
                 ok = await self.retry_orphaned_device(device_id)

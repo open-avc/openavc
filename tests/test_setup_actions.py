@@ -244,7 +244,7 @@ async def test_apply_config_update_bumps_revision_without_bounce(tmp_path):
     config is updated first, so the device compare stays convergent and the
     running handler's ``self`` stays valid.
     """
-    from server.core.device_manager import register_driver, unregister_driver
+    from server.drivers.registry import register_driver, unregister_driver
     from server.core.engine import Engine
 
     register_driver(_ProvisionDriver)

@@ -262,13 +262,15 @@ def silence_register_and_refresh(monkeypatch):
         AsyncMock(return_value=None),
         raising=False,
     )
-    # Patch where the names are looked up inside the route bodies.
+    # Patch the route module, not the registry that defines these: the
+    # route imports both names at module scope, so that binding is what
+    # the handler actually calls.
     monkeypatch.setattr(
-        "server.core.device_manager.register_driver",
+        "server.api.routes.drivers.register_driver",
         lambda cls: None,
     )
     monkeypatch.setattr(
-        "server.core.device_manager.unregister_driver",
+        "server.api.routes.drivers.unregister_driver",
         lambda driver_id: None,
     )
     yield

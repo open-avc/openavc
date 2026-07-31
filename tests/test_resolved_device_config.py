@@ -12,11 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from server.core.device_manager import (
-    get_driver_default_config,
-    register_driver,
-    unregister_driver,
-)
+from server.drivers.registry import get_driver_default_config, register_driver, unregister_driver
 from server.core.engine import Engine
 from server.core.project_loader import DeviceConfig, ProjectConfig, ProjectMeta
 from server.drivers.base import BaseDriver
@@ -591,7 +587,7 @@ def fake_serial_device_driver():
 
 
 def test_get_driver_bridge_ports_reads_declaration(fake_bridge_driver):
-    from server.core.device_manager import get_driver_bridge_ports
+    from server.drivers.registry import get_driver_bridge_ports
 
     ports = get_driver_bridge_ports("fake_bridge_test")
     assert "serial:1" in ports
@@ -600,7 +596,7 @@ def test_get_driver_bridge_ports_reads_declaration(fake_bridge_driver):
 
 
 def test_get_driver_bridge_ports_non_bridge_returns_empty(fake_tcp_driver):
-    from server.core.device_manager import get_driver_bridge_ports
+    from server.drivers.registry import get_driver_bridge_ports
 
     assert get_driver_bridge_ports("fake_kramer_test") == {}
 

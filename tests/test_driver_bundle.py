@@ -60,12 +60,16 @@ def driver_repo(tmp_path, monkeypatch):
 @pytest.fixture(autouse=True)
 def stub_engine_wiring(monkeypatch):
     """No-op the engine registration / discovery refresh / orphan retry."""
-    monkeypatch.setattr(
-        "server.core.device_manager.register_driver", lambda cls: None
-    )
-    monkeypatch.setattr(
-        "server.core.device_manager.unregister_driver", lambda driver_id: None
-    )
+    # Both route modules import the registry functions at module scope, so
+    # each namespace needs its own patch (same reason the engine is patched
+    # twice below).
+    for module in ("drivers", "python_drivers"):
+        monkeypatch.setattr(
+            f"server.api.routes.{module}.register_driver", lambda cls: None
+        )
+        monkeypatch.setattr(
+            f"server.api.routes.{module}.unregister_driver", lambda driver_id: None
+        )
     monkeypatch.setattr(
         "server.api.discovery.refresh_all_device_matches",
         AsyncMock(return_value=None),

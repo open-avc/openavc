@@ -34,6 +34,12 @@ from server.api.models import (
 from server.api.routes.python_drivers import remove_python_companions
 from server.drivers.driver_loader import COMPANION_SUFFIXES
 from server.utils.logger import get_logger
+from server.drivers.registry import (
+    list_registered_drivers,
+    register_driver,
+    registered_driver_classes,
+    unregister_driver,
+)
 
 log = get_logger(__name__)
 
@@ -132,16 +138,14 @@ def _enforce_driver_id_match(
 @router.get("/drivers")
 async def list_drivers() -> dict[str, Any]:
     """List all available driver types with their metadata."""
-    from server.core.device_manager import get_driver_registry
-    return {"drivers": get_driver_registry()}
+    return {"drivers": list_registered_drivers()}
 
 
 @router.get("/drivers/{driver_id}/help")
 async def get_driver_help(driver_id: str) -> dict[str, Any]:
     """Get help text (overview + setup instructions) for an installed driver."""
-    from server.core.device_manager import get_driver_registry
 
-    for drv in get_driver_registry():
+    for drv in list_registered_drivers():
         if drv.get("id") == driver_id:
             help_info = drv.get("help")
             if help_info and isinstance(help_info, dict):
@@ -515,7 +519,6 @@ async def get_community_drivers() -> dict[str, Any]:
 async def install_community_driver(body: CommunityDriverInstallRequest) -> dict[str, Any]:
     """Download and install a driver from the community repo."""
     import httpx
-    from server.core.device_manager import register_driver
     from server.drivers.driver_loader import (
         load_driver_file,
         load_python_driver_file,
@@ -673,7 +676,6 @@ async def install_community_driver(body: CommunityDriverInstallRequest) -> dict[
 @router.post("/drivers/upload")
 async def upload_driver(request: Request) -> dict[str, Any]:
     """Upload a driver file (.avcdriver or .py) from the user's computer."""
-    from server.core.device_manager import register_driver
     from server.drivers.driver_loader import (
         load_driver_file,
         load_python_driver_file,
@@ -794,7 +796,6 @@ async def upload_driver_bundle(request: Request) -> dict[str, Any]:
     import zipfile
     from pathlib import PurePosixPath
 
-    from server.core.device_manager import register_driver
     from server.drivers.driver_loader import (
         load_driver_file,
         load_python_driver_file,
@@ -963,8 +964,7 @@ async def list_installed_community_drivers() -> dict[str, Any]:
 
         # Try to extract actual info from the loaded registry
         driver_version = ""
-        from server.core.device_manager import _DRIVER_REGISTRY
-        for reg_id, cls in _DRIVER_REGISTRY.items():
+        for reg_id, cls in registered_driver_classes():
             info = cls.DRIVER_INFO
             # Match by checking if the module was loaded from this file
             if info.get("id") and filepath.stem in getattr(
@@ -989,7 +989,6 @@ async def list_installed_community_drivers() -> dict[str, Any]:
 @router.delete("/drivers/installed/{driver_id}")
 async def uninstall_driver(driver_id: str) -> dict[str, Any]:
     """Uninstall a driver from driver_repo/ and unregister from memory."""
-    from server.core.device_manager import unregister_driver
 
     # Safety check: don't allow uninstalling if devices are using this driver
     engine = _get_engine()
@@ -1078,7 +1077,6 @@ async def uninstall_driver(driver_id: str) -> dict[str, Any]:
 async def update_driver(driver_id: str, request: Request) -> dict[str, Any]:
     """Update an installed community driver to a newer version."""
     import httpx
-    from server.core.device_manager import register_driver, unregister_driver
     from server.drivers.driver_loader import (
         load_driver_file,
         load_python_driver_file,
@@ -1390,7 +1388,6 @@ async def create_driver_definition(body: DriverDefinitionRequest) -> dict:
         validate_driver_definition,
     )
     from server.drivers.configurable import create_configurable_driver_class
-    from server.core.device_manager import register_driver
 
     dirs = _get_driver_dirs()
     # Echo only what the client sent: exclude_unset keeps model defaults
@@ -1442,7 +1439,6 @@ async def update_driver_definition(driver_id: str, body: DriverDefinitionRequest
         validate_driver_definition,
     )
     from server.drivers.configurable import create_configurable_driver_class
-    from server.core.device_manager import register_driver
 
     dirs = _get_driver_dirs()
     # Echo only what the client sent (see create_driver_definition).
@@ -1532,7 +1528,6 @@ async def patch_driver_definition(driver_id: str, body: dict) -> dict:
         validate_driver_definition,
     )
     from server.drivers.configurable import create_configurable_driver_class
-    from server.core.device_manager import register_driver
 
     dirs = _get_driver_dirs()
 
@@ -1629,7 +1624,6 @@ async def reload_driver_definition(driver_id: str) -> dict:
         validate_driver_definition,
     )
     from server.drivers.configurable import create_configurable_driver_class
-    from server.core.device_manager import register_driver
 
     filepath = find_driver_file_by_id(_get_driver_dirs(), driver_id)
     if filepath is None:

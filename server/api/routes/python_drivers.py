@@ -33,6 +33,7 @@ from server.api.errors import api_error as _api_error
 from server.api.models import PythonDriverCreateRequest
 from server.drivers.driver_loader import COMPANION_SUFFIXES
 from server.utils.logger import get_logger
+from server.drivers.registry import register_driver, unregister_driver
 
 log = get_logger(__name__)
 
@@ -218,7 +219,6 @@ async def create_python_driver(body: PythonDriverCreateRequest) -> dict:
 
     # Try to load and register immediately
     from server.drivers.driver_loader import load_python_driver_file
-    from server.core.device_manager import register_driver
 
     driver_class = load_python_driver_file(filepath)
     if driver_class:
@@ -250,7 +250,6 @@ async def delete_python_driver(driver_id: str) -> dict:
     removed_companions = remove_python_companions(filepath)
 
     # Unregister from driver registry
-    from server.core.device_manager import unregister_driver
     unregister_driver(driver_id)
 
     # Clean up sys.modules

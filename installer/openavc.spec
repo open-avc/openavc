@@ -127,7 +127,7 @@ hiddenimports = [
     'server.drivers.actions',
     'server.drivers.configurable',
     'server.drivers.driver_loader',
-    'server.drivers.generic_tcp',
+    'server.drivers.registry',
     'server.discovery.engine',
     'server.discovery.network_scanner',
     'server.discovery.port_scanner',

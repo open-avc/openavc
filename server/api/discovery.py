@@ -12,6 +12,7 @@ from server.api.auth import require_programmer_auth
 from server.api.errors import api_error as _api_error
 from server.discovery.engine import DiscoveryEngine
 from server.utils.logger import get_logger
+from server.drivers.registry import get_driver_default_config, list_registered_drivers
 
 log = get_logger(__name__)
 
@@ -58,9 +59,7 @@ async def refresh_all_device_matches() -> None:
     if _engine is None:
         return
 
-    from server.core.device_manager import get_driver_registry
-
-    _engine.load_driver_hints_from_registry(get_driver_registry())
+    _engine.load_driver_hints_from_registry(list_registered_drivers())
     # Re-fold the community catalog so un-installed drivers stay matchable
     # — discovery's whole job is suggesting what to install next.
     await _engine.refresh_signal_index_with_catalog()
@@ -434,7 +433,6 @@ async def add_device(req: AddDeviceRequest) -> dict[str, Any]:
     # Empty-string / None defaults are dropped so we don't write blanks
     # over fields the user can fill later (mirrors the manual Add Device
     # dialog's prefill behavior).
-    from server.core.device_manager import get_driver_default_config
     from server.core.project_migration import CONNECTION_FIELDS
 
     driver_defaults = {

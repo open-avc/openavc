@@ -176,7 +176,7 @@ def test_stray_usb_serial_on_network_device_does_not_clobber_port(monkeypatch):
     (tcp) driver must not rewrite its numeric port to a serial path, even when
     the config carries no explicit transport. The resolver consults the driver's
     declared transport so the empty-transport case no longer passes the gate."""
-    from server.core.device_manager import register_driver, unregister_driver
+    from server.drivers.registry import register_driver, unregister_driver
     from server.core.project_loader import DeviceConfig, ProjectConfig, ProjectMeta
     from server.drivers.base import BaseDriver
 

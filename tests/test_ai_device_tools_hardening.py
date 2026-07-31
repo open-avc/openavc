@@ -23,7 +23,7 @@ import pytest
 
 from server.api import rest, ws
 from server.cloud.ai_tool_handler import AIToolHandler
-from server.core.device_manager import register_driver, unregister_driver
+from server.drivers.registry import register_driver, unregister_driver
 from server.core.engine import Engine
 from server.core.project_loader import (
     DeviceConfig,
@@ -169,7 +169,7 @@ async def test_ai_install_completes_via_rest_path(tmp_path, monkeypatch) -> None
     repo.mkdir()
     # The REST handler reads its repo dir + engine wiring, so target those.
     monkeypatch.setattr("server.api.routes.drivers._get_driver_repo_dir", lambda: repo)
-    monkeypatch.setattr("server.core.device_manager.register_driver", lambda cls: None)
+    monkeypatch.setattr("server.api.routes.drivers.register_driver", lambda cls: None)
     monkeypatch.setattr(
         "server.api.discovery.refresh_all_device_matches",
         AsyncMock(return_value=None),

@@ -2322,7 +2322,7 @@ def create_configurable_driver_class(
 
     # Copy the bridge declaration — typed serial/IR/relay ports that other
     # devices connect *through*. Read by get_driver_bridge_ports() and the
-    # bridge resolver (engine.resolved_device_config).
+    # bridge resolver (core.device_config).
     if "bridge" in driver_def:
         driver_info["bridge"] = driver_def["bridge"]
 

@@ -7,12 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from server.core.device_manager import (
-    DeviceManager,
-    _DRIVER_REGISTRY,
-    register_driver,
-    unregister_driver,
-)
+from server.drivers.registry import _DRIVER_REGISTRY, register_driver, unregister_driver
+from server.core.device_manager import DeviceManager
 from server.core.event_bus import EventBus
 from server.drivers.base import BaseDriver
 from server.core.project_loader import (

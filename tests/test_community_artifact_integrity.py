@@ -91,7 +91,7 @@ def silence_engine(monkeypatch):
         raising=False,
     )
     monkeypatch.setattr(
-        "server.core.device_manager.register_driver", lambda cls: None
+        "server.api.routes.drivers.register_driver", lambda cls: None
     )
 
 

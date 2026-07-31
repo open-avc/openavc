@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from server.core.device_manager import (
+from server.drivers.registry import (
     get_driver_bridge_ports,
     get_driver_default_config,
     get_driver_transport,

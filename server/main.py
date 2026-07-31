@@ -60,6 +60,7 @@ from server.api.routes import root as root_routes
 from server.api.routes import setup as setup_routes
 from server.core.engine import Engine
 from server.discovery.engine import DiscoveryEngine
+from server.drivers.registry import list_registered_drivers
 from server.utils.logger import get_logger
 from server.version import __version__
 
@@ -141,8 +142,7 @@ async def _initialize_engine(app: FastAPI) -> None:
         await engine.start()
 
         # Load driver hints into discovery engine after drivers are registered
-        from server.core.device_manager import get_driver_registry
-        discovery_engine.load_driver_hints_from_registry(get_driver_registry())
+        discovery_engine.load_driver_hints_from_registry(list_registered_drivers())
 
         # Phase 9.7: load any sibling _discovery.py companions that ship
         # alongside built-in or community drivers.

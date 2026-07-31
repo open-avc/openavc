@@ -20,11 +20,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from server.core.device_manager import (
-    _DRIVER_REGISTRY,
-    _MAX_PERMANENT_FAULT_ATTEMPTS,
-    DeviceManager,
-)
+from server.drivers.registry import _DRIVER_REGISTRY
+from server.core.device_manager import DeviceManager, _MAX_PERMANENT_FAULT_ATTEMPTS
 from server.core.event_bus import EventBus
 from server.core.state_store import StateStore
 from server.drivers.base import BaseDriver, ConnectionFaultError

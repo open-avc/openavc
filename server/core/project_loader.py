@@ -30,6 +30,7 @@ class _ForwardCompatModel(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 from server.utils.logger import get_logger
+from server.drivers.registry import get_driver_class
 
 log = get_logger(__name__)
 
@@ -526,7 +527,6 @@ def load_project(path: str | Path) -> ProjectConfig:
 
 def build_driver_dependencies(project: ProjectConfig) -> list[DriverDependency]:
     """Scan project devices and build the driver dependency list."""
-    from server.core.device_manager import _DRIVER_REGISTRY
 
     seen: set[str] = set()
     deps: list[DriverDependency] = []
@@ -537,7 +537,7 @@ def build_driver_dependencies(project: ProjectConfig) -> list[DriverDependency]:
             continue
         seen.add(driver_id)
 
-        driver_class = _DRIVER_REGISTRY.get(driver_id)
+        driver_class = get_driver_class(driver_id)
         if driver_class:
             info = driver_class.DRIVER_INFO
             deps.append(DriverDependency(

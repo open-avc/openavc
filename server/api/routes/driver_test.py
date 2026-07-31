@@ -29,6 +29,7 @@ from fastapi import APIRouter, HTTPException
 from server.api._engine import _get_engine, _rate_limit_test
 from server.api.models import TestCommandRequest
 from server.utils.logger import get_logger
+from server.drivers.registry import list_registered_drivers
 
 log = get_logger(__name__)
 
@@ -99,9 +100,7 @@ async def check_connection_conflict(
     except (TypeError, ValueError):
         return {"conflicts": []}
 
-    from server.core.device_manager import get_driver_registry
-
-    registry = {d["id"]: d for d in get_driver_registry()}
+    registry = {d["id"]: d for d in list_registered_drivers()}
 
     conflicts: list[dict[str, Any]] = []
     for device in engine.project.devices:

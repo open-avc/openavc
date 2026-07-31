@@ -28,9 +28,9 @@ from server.api.routes.drivers import (
     patch_driver_definition,
     update_driver_definition,
 )
-from server.core.device_manager import (
-    get_driver_registry,
+from server.drivers.registry import (
     is_driver_registered,
+    list_registered_drivers,
     register_driver,
     unregister_driver,
 )
@@ -54,7 +54,7 @@ USER_DEF = {
 
 
 def _registry_name(driver_id: str) -> str | None:
-    for info in get_driver_registry():
+    for info in list_registered_drivers():
         if info["id"] == driver_id:
             return info["name"]
     return None

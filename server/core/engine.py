@@ -193,6 +193,15 @@ class Engine:
         except Exception:  # never block startup on the migration
             log.exception("migrate_legacy_project_dir failed")
 
+        # Register every driver on disk — built-in definitions and anything
+        # installed into driver_repo/. Has to happen here: after the repo
+        # migration above (so drivers left in the old layout are seen on this
+        # same startup) and before the project loads, since resolving a
+        # device's config and reporting its driver dependencies both ask the
+        # registry what exists.
+        from server.drivers.driver_loader import load_builtin_drivers
+        load_builtin_drivers()
+
         # Set system state keys
         from server.updater.platform import detect_deployment_type
         self.state.set("system.version", __version__, source="system")
@@ -206,9 +215,6 @@ class Engine:
         # Load project — with corruption recovery
         self.project = self._load_project_safe()
         self.state.set("system.project_name", self.project.project.name, source="system")
-
-        # Load project-level drivers (community drivers installed via IDE)
-        self._load_project_drivers()
 
         # Publish project asset catalog so plugins (e.g. audio_player) can
         # subscribe to project.assets and pick up uploaded files.

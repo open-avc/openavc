@@ -198,7 +198,7 @@ async def test_install_missing_empty_batch_returns_empty_lists(running_app):
 async def test_install_missing_activates_orphans(running_app):
     """End-to-end happy path: install registers the driver, retry sweep
     promotes the matching orphan, response lists it under activated_devices."""
-    from server.core.device_manager import _DRIVER_REGISTRY
+    from server.drivers.registry import _DRIVER_REGISTRY
     from server.drivers.base import BaseDriver
 
     class _MockSamsung(BaseDriver):

@@ -25,7 +25,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from server.core.device_manager import register_driver, unregister_driver
+from server.drivers.registry import register_driver, unregister_driver
 from server.core.engine import Engine
 from server.core.project_loader import load_project
 from server.drivers.configurable import create_configurable_driver_class

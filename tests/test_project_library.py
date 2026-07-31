@@ -615,7 +615,7 @@ class TestMissingPluginParity:
 
 class TestBundledDriverIdDedup:
     def test_bundled_driver_does_not_clobber_existing_id(self, tmp_path, monkeypatch):
-        from server.core.device_manager import _DRIVER_REGISTRY
+        from server.drivers.registry import _DRIVER_REGISTRY
 
         repo = tmp_path / "driver_repo"
         repo.mkdir()

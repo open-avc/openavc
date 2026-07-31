@@ -27,6 +27,7 @@ from server.drivers.base import (
     UnknownCommandError,
 )
 from server.drivers.child_ids import child_id_kind, coerce_child_local_id
+from server.drivers.registry import is_driver_registered
 
 router = APIRouter()
 
@@ -195,8 +196,7 @@ async def update_device(device_id: str, body: DeviceUpdateRequest) -> dict[str, 
 
         # Validate driver exists
         if new_driver != existing.driver:
-            from server.core.device_manager import _DRIVER_REGISTRY
-            if new_driver not in _DRIVER_REGISTRY:
+            if not is_driver_registered(new_driver):
                 raise HTTPException(status_code=422, detail=f"Driver '{new_driver}' is not installed")
 
         if body.config is not None:

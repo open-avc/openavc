@@ -11,6 +11,7 @@ from server.api.errors import api_error as _api_error
 from server.core.engine import ProjectRevisionConflictError
 from server.core.project_loader import ProjectConfig
 from server.utils.log_buffer import get_log_buffer
+from server.drivers.registry import is_driver_registered
 
 router = APIRouter()
 
@@ -118,7 +119,6 @@ async def save_project_config(request: Request) -> dict[str, Any]:
 @router.get("/project/validate-drivers")
 async def validate_drivers() -> dict[str, Any]:
     """Check which drivers required by the project are available or missing."""
-    from server.core.device_manager import _DRIVER_REGISTRY
 
     engine = _get_engine()
     if not engine.project:
@@ -132,7 +132,7 @@ async def validate_drivers() -> dict[str, Any]:
         if driver_id in seen:
             continue
         seen.add(driver_id)
-        if driver_id in _DRIVER_REGISTRY:
+        if is_driver_registered(driver_id):
             available.append(driver_id)
         else:
             affected = [d.id for d in engine.project.devices if d.driver == driver_id]

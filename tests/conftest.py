@@ -38,12 +38,20 @@ os.environ.setdefault("OPENAVC_STRICT_DRIVER_STATE", "1")
 
 import pytest
 
-from server.core.device_manager import register_driver
+from server.drivers.driver_loader import load_builtin_drivers
+from server.drivers.registry import register_driver
 from server.core.event_bus import EventBus
 from server.core.state_store import StateStore
 from tests.drivers.acme_display import AcmeDisplayDriver
 from tests.drivers.acme_power_relay import AcmePowerRelayDriver
 from tests.simulators.acme_display_simulator import AcmeDisplaySimulator
+
+# Register the built-in drivers (the generic tcp / serial / http devices among
+# them) that a test reaching the device layer expects to find. The server does
+# this once at engine startup; plenty of tests never start an engine, and the
+# ones that do would still be collected against an empty registry, so the whole
+# suite gets it here at conftest import.
+load_builtin_drivers()
 
 # Install the invented test drivers the moment this file is imported, before
 # any test module is collected. Tests that reach the device layer by driver id

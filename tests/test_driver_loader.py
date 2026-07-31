@@ -4,6 +4,7 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
 import yaml
 
 from server.utils.regex_safety import _regex_search_exceeds
@@ -318,8 +319,8 @@ def test_load_driver_files_registers(tmp_path):
     assert count >= 1
 
     # Verify it's in the registry
-    from server.core.device_manager import get_driver_registry
-    registry = get_driver_registry()
+    from server.drivers.registry import list_registered_drivers
+    registry = list_registered_drivers()
     ids = [d["id"] for d in registry]
     assert "test_loader_driver" in ids
 
@@ -619,10 +620,10 @@ def test_bad_driver_file_does_not_abort_the_pass(tmp_path):
 
     count = load_driver_files([tmp_path])  # must not raise
 
-    from server.core.device_manager import get_driver_registry, unregister_driver
+    from server.drivers.registry import list_registered_drivers, unregister_driver
 
     try:
-        ids = [d["id"] for d in get_driver_registry()]
+        ids = [d["id"] for d in list_registered_drivers()]
         assert "z_good" in ids  # the good driver loaded despite the bad one
         assert "a_bad" not in ids  # the bad driver was skipped
         assert count >= 1
@@ -663,9 +664,9 @@ def test_is_builtin_driver_and_delete_guard(tmp_path, monkeypatch):
 
 
 def _registry_info(driver_id):
-    from server.core.device_manager import get_driver_registry
+    from server.drivers.registry import list_registered_drivers
 
-    for info in get_driver_registry():
+    for info in list_registered_drivers():
         if info["id"] == driver_id:
             return info
     return None
@@ -685,7 +686,7 @@ def test_load_driver_files_user_copy_overrides_builtin(tmp_path):
         {**VALID_DEFINITION, "id": "acme_dup", "name": "User Copy"},
     )
 
-    from server.core.device_manager import unregister_driver
+    from server.drivers.registry import unregister_driver
 
     count = load_driver_files([builtin, user])
     try:
@@ -705,7 +706,7 @@ def test_load_driver_files_same_directory_duplicate_first_wins(tmp_path):
         {**VALID_DEFINITION, "id": "acme_dup", "name": "Second"},
     )
 
-    from server.core.device_manager import unregister_driver
+    from server.drivers.registry import unregister_driver
 
     count = load_driver_files([tmp_path])
     try:
@@ -726,7 +727,7 @@ def test_load_driver_files_invalid_user_copy_keeps_builtin(tmp_path):
     )
     (user / "d.avcdriver").write_text("{{{{not yaml!!", encoding="utf-8")
 
-    from server.core.device_manager import unregister_driver
+    from server.drivers.registry import unregister_driver
 
     count = load_driver_files([builtin, user])
     try:
@@ -753,7 +754,7 @@ def test_load_python_drivers_user_copy_overrides_builtin(tmp_path):
         template.format(name="User Copy"), encoding="utf-8"
     )
 
-    from server.core.device_manager import unregister_driver
+    from server.drivers.registry import unregister_driver
 
     count = load_python_drivers([builtin, user])
     try:
@@ -775,7 +776,7 @@ def test_restore_driver_registration_restores_builtin(tmp_path):
         {**VALID_DEFINITION, "id": "acme_dup", "name": "Built-in"},
     )
 
-    from server.core.device_manager import is_driver_registered, unregister_driver
+    from server.drivers.registry import is_driver_registered, unregister_driver
 
     try:
         # As after deleting a user override: the built-in file remains.
@@ -879,7 +880,7 @@ def test_list_python_drivers_reports_imported_but_unregistered(tmp_path, monkeyp
     module_name = "openavc_driver_ghost_driver"
     sys.modules[module_name] = object()  # stand-in resident module
     monkeypatch.setattr(
-        "server.core.device_manager.is_driver_registered", lambda _id: False
+        "server.drivers.driver_loader.is_driver_registered", lambda _id: False
     )
     try:
         listed = list_python_drivers([tmp_path])
@@ -900,7 +901,7 @@ def test_list_python_drivers_reports_not_loaded(tmp_path, monkeypatch):
     filepath.write_text(src, encoding="utf-8")
     sys.modules.pop("openavc_driver_absent_driver", None)
     monkeypatch.setattr(
-        "server.core.device_manager.is_driver_registered", lambda _id: False
+        "server.drivers.driver_loader.is_driver_registered", lambda _id: False
     )
 
     listed = list_python_drivers([tmp_path])
@@ -1375,3 +1376,48 @@ def test_the_comment_count_is_stripped_before_a_save(tmp_path):
     assert "_comment_lines" not in stripped
     assert "_source_file" not in stripped
     assert stripped["id"] == "acme_widget"
+
+
+def test_load_builtin_drivers_registers_the_generic_devices(monkeypatch):
+    """The startup pass finds the definitions that ship with the server.
+
+    Nothing registers a driver as a side effect of importing a module, so this
+    call is the only thing standing between a fresh process and an empty
+    registry.
+    """
+    from server.drivers import registry
+    from server.drivers.driver_loader import load_builtin_drivers
+
+    saved = dict(registry._DRIVER_REGISTRY)
+    registry._DRIVER_REGISTRY.clear()
+    try:
+        loaded = load_builtin_drivers()
+        assert loaded > 0
+        assert registry.is_driver_registered("generic_tcp")
+    finally:
+        registry._DRIVER_REGISTRY.clear()
+        registry._DRIVER_REGISTRY.update(saved)
+
+
+@pytest.mark.asyncio
+async def test_engine_start_registers_the_drivers_on_disk(tmp_path):
+    """Engine.start() is where driver loading happens.
+
+    It has to: a device whose driver is missing from the registry is orphaned
+    silently rather than failing loudly, so a start that skipped this would
+    look healthy and control nothing. Registered before the project loads,
+    too, since resolving a device's config asks the registry what exists.
+    """
+    from server.core.engine import Engine
+    from server.drivers import registry
+
+    saved = dict(registry._DRIVER_REGISTRY)
+    registry._DRIVER_REGISTRY.clear()
+    engine = Engine(str(tmp_path / "project.avc"))
+    try:
+        await engine.start()
+        assert registry.is_driver_registered("generic_tcp")
+    finally:
+        await engine.stop()
+        registry._DRIVER_REGISTRY.clear()
+        registry._DRIVER_REGISTRY.update(saved)

@@ -7,6 +7,7 @@ import httpx
 from server.cloud.tools import ToolEditError, apply_tool_edit
 from server.core.state_store import is_flat_primitive
 from server.utils.paths import is_safe_script_filename, safe_path_within
+from server.drivers.registry import is_driver_registered, list_registered_drivers, register_driver
 
 
 class DeviceToolsMixin:
@@ -41,8 +42,7 @@ class DeviceToolsMixin:
                 raise ToolEditError({"error": f"Device '{device_id}' not found"})
             existing = project.devices[device_idx]
             if "driver" in input and input["driver"] != existing.driver:
-                from server.core.device_manager import _DRIVER_REGISTRY
-                if input["driver"] not in _DRIVER_REGISTRY:
+                if not is_driver_registered(input["driver"]):
                     from server.utils.logger import get_logger
                     log = get_logger(__name__)
                     log.warning("update_device: driver '%s' not in registry (may not be loaded yet)", input["driver"])
@@ -138,8 +138,7 @@ class DeviceToolsMixin:
 
         driver_id = input.get("driver", "")
         if driver_id:
-            from server.core.device_manager import _DRIVER_REGISTRY
-            if driver_id not in _DRIVER_REGISTRY:
+            if not is_driver_registered(driver_id):
                 from server.utils.logger import get_logger
                 log = get_logger(__name__)
                 log.warning("add_device: driver '%s' not in registry (may not be loaded yet)", driver_id)
@@ -376,8 +375,7 @@ class DeviceToolsMixin:
     # ===== DRIVER TOOLS =====
 
     async def _list_drivers(self, input: dict) -> Any:
-        from server.core.device_manager import get_driver_registry
-        return get_driver_registry()
+        return list_registered_drivers()
 
     async def _search_community_drivers(self, input: dict) -> Any:
         """Search the community driver catalog with filters and ranking.
@@ -653,7 +651,6 @@ class DeviceToolsMixin:
     async def _create_driver_definition(self, input: dict) -> Any:
         from server.drivers.driver_loader import list_driver_definitions, save_driver_definition, validate_driver_definition
         from server.drivers.configurable import create_configurable_driver_class
-        from server.core.device_manager import register_driver
 
         definition = input.get("definition", {})
         if not definition.get("id"):
@@ -686,7 +683,6 @@ class DeviceToolsMixin:
             validate_driver_definition,
         )
         from server.drivers.configurable import create_configurable_driver_class
-        from server.core.device_manager import register_driver
         from server.system_config import DRIVER_DEFINITIONS_DIR
 
         driver_id = input.get("driver_id", "")
