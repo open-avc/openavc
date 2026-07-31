@@ -146,6 +146,13 @@ def _capture_for(param_type: str, spec: str) -> str:
     if param_type == "number":
         return r"([\d.]+)"
     if param_type == "boolean":
+        # A boolean carrying a numeric format spec goes on the wire as a
+        # number: {flag:d} sends 1/0 and {flag:02d} sends 01/00, which is
+        # how a fixed-width protocol writes a flag byte. Matching the word
+        # spellings there could never match what the send path produced.
+        if spec and spec[-1] in "dxXob":
+            base = spec_int_base(spec)
+            return _BASE_CAPTURES[base] if base else r"(\d+)"
         return r"(true|false|0|1)"
     return r"(.+)"
 
@@ -528,6 +535,30 @@ def emit_literal(pattern: str) -> str | None:
 
 # ── Value coercion ──
 
+_TRUE_WORDS = frozenset({"true", "yes", "on"})
+_FALSE_WORDS = frozenset({"false", "no", "off"})
+
+
+def coerce_bool_token(raw: Any) -> bool:
+    """Read a device's boolean token.
+
+    Devices spell a flag three ways: a word (``on``), a bare digit (``1``),
+    or a fixed-width field (``01``). The padded form is normal in protocols
+    whose fields are all the same width, so a numeric token is read by its
+    value rather than matched against a list of spellings — matching would
+    make ``01`` false, the opposite of what the device said, with nothing
+    logged and nothing to notice.
+    """
+    text = str(raw).strip().lower()
+    if text in _TRUE_WORDS:
+        return True
+    if text in _FALSE_WORDS:
+        return False
+    try:
+        return float(text) != 0.0
+    except ValueError:
+        return False
+
 
 def coerce_value(raw: str, value_type: str) -> Any:
     """Convert a raw string (a regex capture or static value) to the type."""
@@ -544,7 +575,7 @@ def coerce_value(raw: str, value_type: str) -> Any:
             log.warning("Cannot coerce %r to %s, returning raw string", raw, value_type)
             return raw
     elif value_type == "boolean":
-        return raw.lower() in ("1", "true", "yes", "on")
+        return coerce_bool_token(raw)
     return raw  # string or enum
 
 
@@ -560,7 +591,7 @@ def coerce_json_value(value: Any, value_type: str) -> Any:
     if value_type == "boolean":
         if isinstance(value, bool):
             return value
-        return str(value).strip().lower() in ("1", "true", "yes", "on")
+        return coerce_bool_token(value)
     if value_type == "integer":
         if isinstance(value, bool):
             return int(value)
@@ -600,7 +631,7 @@ def coerce_osc_value(value: Any, value_type: str) -> Any:
             return value
         if isinstance(value, (int, float)):
             return bool(value)
-        return str(value).lower() in ("1", "true", "yes", "on")
+        return coerce_bool_token(value)
     return str(value) if value is not None else None
 
 

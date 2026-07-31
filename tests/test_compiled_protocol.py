@@ -357,3 +357,31 @@ def test_emit_template_multi_single_group_matches_emit_template():
 
     for pattern in (r"In(\d+) All", r"^VOL([0-9A-F]{2})$", r"^Sig([01])\b"):
         assert emit_template_multi(pattern, {1: "{value}"}) == emit_template(pattern)
+
+
+def test_boolean_reads_a_zero_padded_flag_by_its_value():
+    """A fixed-width protocol writes its flags as ``01`` / ``00``.
+
+    Reading those by matching a list of spellings makes ``01`` false, which
+    is the opposite of what the device said, with nothing logged. Devices
+    that pad every field are common enough that the padded form has to mean
+    what the bare digit means.
+    """
+    from server.drivers.compiled_protocol import (
+        coerce_json_value,
+        coerce_osc_value,
+        coerce_value,
+    )
+
+    for reader in (coerce_value, coerce_json_value, coerce_osc_value):
+        assert reader("1", "boolean") is True, reader.__name__
+        assert reader("01", "boolean") is True, reader.__name__
+        assert reader("0", "boolean") is False, reader.__name__
+        assert reader("00", "boolean") is False, reader.__name__
+        # Words keep working, in both spellings and either case.
+        assert reader("ON", "boolean") is True, reader.__name__
+        assert reader("off", "boolean") is False, reader.__name__
+        assert reader("true", "boolean") is True, reader.__name__
+        assert reader("False", "boolean") is False, reader.__name__
+        # Anything the device sends that is neither is still false.
+        assert reader("standby", "boolean") is False, reader.__name__
