@@ -40,7 +40,9 @@ Checks performed:
 
   Python drivers (.py + _sim.py):
     1. SIMULATOR_INFO   — required fields present (driver_id, name, initial_state)
-    2. State coverage   — every DRIVER_INFO state_variable covered in initial_state
+    2. State coverage   — how much of the device the simulator seeds against
+                          how much the driver reads (a count: the two are
+                          different namespaces, so the names rarely line up)
     3. driver_id match  — DRIVER_INFO.id == SIMULATOR_INFO.driver_id
 """
 
@@ -344,6 +346,84 @@ def _check_state_coverage(
                 f"'{var_name}' will use auto-gen default {default!r}. "
                 f"Add to simulator.initial_state to override."
             )
+
+
+# How many unseeded variable names the grouped state-coverage line lists.
+_STATE_EXAMPLES = 6
+
+
+def _check_python_state_coverage(
+    result: ValidationResult,
+    driver_state_vars: dict,
+    sim_initial: dict,
+) -> None:
+    """Compare a Python driver's state variables against its simulator's seeds.
+
+    Reported as one counted line, not as a warning per name, because the two
+    sides are **different namespaces** — the same reason
+    ``_check_initial_state_types`` reports at info, and the same reason the
+    YAML half of this check was downgraded years earlier.
+
+    ``SIMULATOR_INFO.initial_state`` seeds what the device puts on the wire.
+    ``DRIVER_INFO.state_variables`` are what the driver publishes after
+    reading it, and a driver that does any work at all between the two has
+    names that cannot match. Measured over the shipped corpus on 2026-07-31,
+    this check produced 268 warnings and every one inspected was that:
+
+      viewsonic_cde   sim seeds power_code / mute_code / freeze_code /
+                      hub_temp; driver publishes power / mute / freeze /
+                      amb_temperature_c. 21 warnings, 21 correct pairs.
+      pjlink_class1   sim answers the lamp query from one lamp_hours key;
+                      the driver fans it into lamp1_hours..lamp8_hours plus
+                      six error_* flags. 17 warnings, nothing to seed.
+      epson_escvp     sim seeds the ESC/VP command tokens themselves (PWR,
+                      LAMP, ERR); driver publishes power_state, lamp_hours,
+                      error_status. 11 warnings, zero name overlap, correct.
+
+    Telling those apart from a simulator that genuinely models nothing needs
+    the driver's parsing code, which is not readable here — and every
+    threshold that looked promising (name overlap, seeds-per-variable ratio)
+    put pjlink_class1 on the wrong side of it. So the numbers are stated and
+    the judgement is left with the author, which is the honest shape: a
+    simulator seeding 3 keys against 33 state variables is visible in the
+    line without the tool having to assert what it cannot know.
+
+    The one case worth a finding needs no threshold: a simulator that seeds
+    nothing at all while the driver declares state. There is no naming
+    convention under which that models the device.
+    """
+    unseeded = [
+        name
+        for name in driver_state_vars
+        if isinstance(name, str) and name not in sim_initial
+    ]
+    if not unseeded:
+        return
+
+    if not sim_initial:
+        result.warning(
+            "state_coverage",
+            f"SIMULATOR_INFO seeds no initial_state at all, but the driver "
+            f"declares {len(driver_state_vars)} state variable(s) — the "
+            f"simulator models none of this device, so nothing it answers "
+            f"can exercise the driver's parsing."
+        )
+        return
+
+    shown = ", ".join(unseeded[:_STATE_EXAMPLES])
+    rest = len(unseeded) - _STATE_EXAMPLES
+    if rest > 0:
+        shown += f" (+{rest} more)"
+    result.info(
+        "state_coverage",
+        f"SIMULATOR_INFO seeds {len(sim_initial)} state key(s); "
+        f"{len(unseeded)} of the driver's {len(driver_state_vars)} state "
+        f"variable(s) are not among them BY NAME: {shown}. Usually correct — "
+        f"the simulator seeds what goes on the wire and the driver publishes "
+        f"what it computes from that, so the names differ. Worth a look only "
+        f"if the counts say the simulator models far less than the driver "
+        f"reads."
+    )
 
 
 def _check_command_coverage(
@@ -1524,7 +1604,17 @@ def validate_python_driver(driver_path: Path) -> ValidationResult:
     # invention instead of reported as unreadable.
     driver_state_vars = driver_info.get("state_variables", {})
     sim_initial = sim_info.get("initial_state", {})
-    if not isinstance(sim_initial, dict):
+    sim_initial_readable = isinstance(sim_initial, dict)
+    if not sim_initial_readable:
+        # The mirror of the driver-side note below, which this side was
+        # missing: a seed block built from a module constant
+        # (`dict(DEFAULT_DISPLAY)`) collapsed silently to {} here, and an
+        # unreadable block then looked exactly like an empty one.
+        result.info(
+            "state_coverage",
+            "SIMULATOR_INFO initial_state is computed, so state coverage and "
+            "initial-state types could not be checked.",
+        )
         sim_initial = {}
 
     if not isinstance(driver_state_vars, dict):
@@ -1535,15 +1625,8 @@ def validate_python_driver(driver_path: Path) -> ValidationResult:
         )
         driver_state_vars = {}
 
-    for var_name, var_def in driver_state_vars.items():
-        if not isinstance(var_name, str):
-            continue
-        if var_name not in sim_initial:
-            result.warning(
-                "state_coverage",
-                f"DRIVER_INFO state variable '{var_name}' not in "
-                f"SIMULATOR_INFO initial_state"
-            )
+    if sim_initial_readable:
+        _check_python_state_coverage(result, driver_state_vars, sim_initial)
 
     # Check type consistency for initial state — the same function the YAML
     # path calls, so a Python driver is held to the same rules.

@@ -17,7 +17,11 @@ used to be a silent no-op.
 
 from pathlib import Path
 
-from simulator.validate import ValidationResult, _check_state_coverage
+from simulator.validate import (
+    ValidationResult,
+    _check_python_state_coverage,
+    _check_state_coverage,
+)
 from simulator.validate import validate_python_driver
 
 
@@ -161,3 +165,95 @@ def test_python_simulator_prefix_only_mentions_are_still_reported(tmp_path):
     assert result.passed
     assert not result.errors
     assert any(issue.check == 'command_coverage' for issue in result.infos)
+
+
+# --- Python state coverage: a count, not a warning per name ------------------
+#
+# Same reasoning as the two checks above, found the same way. `DRIVER_INFO`
+# state variables and `SIMULATOR_INFO` initial_state are different namespaces:
+# the simulator seeds what goes on the wire, the driver publishes what it
+# computes from that. Over the shipped corpus this warned 268 times, and every
+# case inspected was a correct pair under two naming conventions
+# (`power_code` / `power`) or a fan-out with nothing to seed (one `lamp_hours`
+# key becoming `lamp1_hours`..`lamp8_hours`).
+
+
+def test_python_state_coverage_reports_one_counted_info_not_a_warning():
+    r = _result()
+    _check_python_state_coverage(
+        r,
+        {"power": {}, "source": {}, "lamp_hours": {}},
+        {"power_code": "on", "input_code": 1, "lamp": 400},
+    )
+
+    assert not r.warnings, [i.message for i in r.warnings]
+    (info,) = [i for i in r.infos if i.check == "state_coverage"]
+    # Both counts, because the judgement this leaves to the author is a
+    # comparison: 3 seeds against 33 variables reads differently from 38.
+    assert "seeds 3 state key(s)" in info.message
+    assert "3 of the driver's 3 state variable(s)" in info.message
+
+
+def test_python_state_coverage_is_silent_when_every_name_lines_up():
+    r = _result()
+    _check_python_state_coverage(r, {"power": {}}, {"power": "on", "extra": 1})
+    assert not r.issues
+
+
+def test_a_simulator_that_seeds_nothing_at_all_is_a_warning():
+    """The one case needing no threshold: it models none of the device.
+
+    Every threshold that looked promising over the corpus (name overlap,
+    seeds-per-variable ratio) put a correct driver on the wrong side of it.
+    An empty seed block needs no threshold to read.
+    """
+    r = _result()
+    _check_python_state_coverage(r, {"power": {}, "source": {}}, {})
+
+    (warning,) = r.warnings
+    assert warning.check == "state_coverage"
+    assert "models none of this device" in warning.message
+
+
+def test_a_computed_initial_state_is_not_mistaken_for_an_empty_one(tmp_path):
+    """`initial_state: dict(DEFAULTS)` is unreadable here, not empty.
+
+    The reader hands back an UNEVALUATED marker, which this side used to
+    collapse to `{}` silently — so a simulator whose seeds are built from a
+    module constant looked exactly like one that seeds nothing. Two shipped
+    drivers are written that way.
+    """
+    driver = _write(
+        tmp_path / "sample.py",
+        "class SampleDriver:\n"
+        "  DRIVER_INFO = {\n"
+        "    'id': 'sample',\n"
+        "    'name': 'Sample',\n"
+        "    'transport': 'tcp',\n"
+        "    'state_variables': {'power': {'type': 'string', 'label': 'P'}},\n"
+        "}\n",
+    )
+    _write(
+        tmp_path / "sample_sim.py",
+        "DEFAULTS = {'power': 'off'}\n\n"
+        "class SampleSimulator:\n"
+        "    SIMULATOR_INFO = {\n"
+        "        'driver_id': 'sample',\n"
+        "        'name': 'Sample Simulator',\n"
+        "        'transport': 'tcp',\n"
+        "        'initial_state': dict(DEFAULTS),\n"
+        "    }\n\n"
+        "    def handle_command(self, data):\n"
+        "        return None\n",
+    )
+
+    result = validate_python_driver(driver)
+
+    assert not [
+        i for i in result.warnings if i.check == "state_coverage"
+    ], [i.message for i in result.warnings]
+    assert any(
+        "initial_state is computed" in i.message
+        for i in result.infos
+        if i.check == "state_coverage"
+    ), [i.message for i in result.infos]
