@@ -19,7 +19,9 @@ Checks performed:
                           (OSC drivers: command/poll addresses match handler
                           address patterns, response addresses, or the
                           simulator's built-in system addresses)
-    3. Response parsing — simulator responses match the driver's response patterns
+    3. Response parsing — the answer to a query the driver polls matches one
+                          of the driver's response patterns (a reply to a
+                          write is an acknowledgement: counted, not warned)
     4. Poll coverage    — every polling query has a matching handler
                           (each_child queries are checked with a sample child id)
     5. Type consistency — boolean/enum/number types are handled correctly
@@ -45,10 +47,12 @@ Checks performed:
 from __future__ import annotations
 
 import argparse
+import ast
 import fnmatch
 import json
 import re
 import sys
+import textwrap
 from pathlib import Path
 from typing import Any
 
@@ -384,6 +388,12 @@ def _check_command_coverage(
             )
 
 
+# How many distinct acknowledgement-shaped responses the grouped info names
+# before it stops listing. The count is always exact; the examples are there
+# to recognise the shape, not to enumerate it.
+_ACK_EXAMPLES = 4
+
+
 def _check_response_parsing(
     result: ValidationResult,
     commands: dict,
@@ -396,6 +406,36 @@ def _check_response_parsing(
 
     This is the round-trip check: we simulate what the handler would respond
     with, then verify the response matches at least one response pattern.
+
+    A reply that matches nothing is only a *finding* when the driver asked a
+    question and got no answer it can read. On a protocol that acknowledges
+    every write — ``<cmd> ACK`` / ``<cmd> NAK <code>``, which is most of the
+    AV serial and TCP world — the acknowledgement carries no state by
+    construction, so no response rule exists or should. Warning on each one
+    buried the real findings: the Audio-Technica mixers reported 40-odd
+    apiece, and 324 of the 597 warnings over the whole shipped corpus were
+    this one check firing on correct drivers. Same reasoning as the
+    ``command_coverage`` downgrade below — a check that fires permanently on
+    correct drivers trains an author to skim the channel that might say
+    something real.
+
+    So the finding is stated per *handler*, in terms of what the driver does
+    rather than what the reply looks like — no keyword list, no per-protocol
+    allowance for "ACK":
+
+    * The handler answers a ``polling.queries`` entry (or an ``on_connect``
+      entry that declares ``query_for``), and **none** of its replies matches
+      a response rule. The driver polls that query to learn a value and can
+      read nothing that comes back: the state variable behind it stays at its
+      startup value forever. Warning.
+    * Anything else: a reply to a write, or an error branch of a query
+      handler whose real answer does parse. Counted and shown once, so "not
+      checked" is still visible rather than implied.
+
+    ``on_connect`` is deliberately not treated as a query list. It is a
+    bring-up sequence that mixes reads with arming writes — arming push
+    notifications, setting a mode — and those writes are acknowledged like
+    any other. An entry that declares ``query_for`` has said it is a read.
     """
     if not responses:
         return
@@ -403,6 +443,8 @@ def _check_response_parsing(
     # Compile response patterns (with config variable substitution)
     response_patterns = _compile_response_patterns(responses, driver_def)
     json_keys = _json_rule_keys(responses)
+    answering = _query_answering_handlers(sim_handlers, driver_def)
+    acknowledgements: list[str] = []
 
     # Check explicit handler responses
     for handler_def in sim_handlers:
@@ -411,60 +453,176 @@ def _check_response_parsing(
             continue
         respond_template = handler_def.get("respond")
         handler_code = handler_def.get("handler")
+        templates: list[str] = []
+        # A reply built from a capture group, an f-string or a concatenation
+        # cannot be resolved here, and the answer to a query is nearly always
+        # one of those. It is not evidence either way, so a handler with one
+        # is never the subject of the "none of its replies parses" finding.
+        any_unresolvable = False
 
         if respond_template:
             # Explicit handler with respond: template
-            # Resolve {state.key} with initial state values
-            response_text = _resolve_state_refs(respond_template, sim_initial)
-            # Strip delimiter chars that may be in the template
-            response_text = response_text.replace("\\r", "").replace("\\n", "")
-            response_text = response_text.rstrip("\r\n")
-            # Skip if it has unresolved capture group refs ({1}, {2}, etc.)
-            if re.search(r"\{\d+\}", response_text):
-                continue
-            _check_single_response(
-                result, response_text, response_patterns, handler_def, json_keys
-            )
-
+            templates = [respond_template]
         elif handler_code:
             # Script handler — extract respond() calls and try to resolve them
-            respond_calls = _extract_respond_calls(handler_code)
-            for call_template in respond_calls:
-                # Best-effort resolution with initial state
-                response_text = _resolve_state_refs(call_template, sim_initial)
-                response_text = response_text.replace("\\r", "").replace("\\n", "")
-                response_text = response_text.rstrip("\r\n")
-                # Skip if it still has unresolved variables (match groups, etc.)
-                if "{" in response_text and "}" in response_text:
-                    # Has unresolved template vars — can't validate statically
-                    continue
-                _check_single_response(
-                    result, response_text, response_patterns, handler_def, json_keys
-                )
+            templates, any_unresolvable = _extract_respond_calls(handler_code)
+
+        unmatched: list[str] = []
+        any_matched = False
+        for template in templates:
+            # Resolve {state.key} with initial state values
+            response_text = _resolve_state_refs(template, sim_initial)
+            # Capture group refs ({1}, {2}) on a respond: template, and the
+            # {state.key} refs a script handler's literal may still carry.
+            if re.search(r"\{\d+\}", response_text) or (
+                handler_code and "{" in response_text and "}" in response_text
+            ):
+                any_unresolvable = True
+                continue
+            for line in _response_lines(response_text):
+                if _matches_a_response_rule(
+                    line, response_patterns, json_keys
+                ):
+                    any_matched = True
+                elif line not in unmatched:
+                    unmatched.append(line)
+
+        if not unmatched:
+            continue
+        if (
+            id(handler_def) in answering
+            and not any_matched
+            and not any_unresolvable
+        ):
+            pattern_key = (
+                handler_def.get("receive") or handler_def.get("match", "?")
+            )
+            result.warning(
+                "response_parsing",
+                f"Simulator answers a query this driver polls with a reply no "
+                f"response rule matches: handler={pattern_key!r}, "
+                f"response={unmatched[0]!r}. Nothing reads that answer, so "
+                f"the state behind the query never updates."
+            )
+            continue
+        for text in unmatched:
+            if text not in acknowledgements:
+                acknowledgements.append(text)
+
+    if acknowledgements:
+        shown = ", ".join(repr(a) for a in acknowledgements[:_ACK_EXAMPLES])
+        rest = len(acknowledgements) - _ACK_EXAMPLES
+        if rest > 0:
+            shown += f" (+{rest} more)"
+        result.info(
+            "response_parsing",
+            f"{len(acknowledgements)} simulator reply/replies match no driver "
+            f"response rule, none of them the only answer to a polled query — "
+            f"the shape of a write acknowledgement, which carries no state: "
+            f"{shown}. A polled query whose answer nothing parses warns "
+            f"instead."
+        )
 
 
-def _check_single_response(
-    result: ValidationResult,
+def _response_lines(response_text: str) -> list[str]:
+    """One reply, split the way the driver's frame parser will split it.
+
+    A handler answering with several lines sends the driver several messages,
+    and each is matched against the response rules on its own — matching the
+    concatenation instead finds nothing and reports a driver that is fine.
+    The terminator arrives either as a real newline (a Python literal in
+    script code) or as the two characters ``\\r`` (a YAML respond: template);
+    both mean the same thing here.
+    """
+    text = (
+        response_text.replace("\\r\\n", "\n")
+        .replace("\\r", "\n")
+        .replace("\\n", "\n")
+    )
+    return [line for line in (raw.strip() for raw in text.splitlines()) if line]
+
+
+def _matches_a_response_rule(
     response_text: str,
     response_patterns: list[re.Pattern],
-    handler_def: dict,
     json_keys: set[str] = frozenset(),
-) -> None:
-    """Check if a single response text matches any response pattern."""
-    # Skip empty responses or pure ACKs
-    if not response_text or response_text in ("+OK", "OK", "sr"):
-        return
-
-    matched = any(
+) -> bool:
+    """Whether any of the driver's response rules would read this reply."""
+    return any(
         p.search(response_text) for p in response_patterns
     ) or _matches_json_rules(response_text, json_keys)
-    if not matched:
-        pattern_key = handler_def.get("receive") or handler_def.get("match", "?")
-        result.warning(
-            "response_parsing",
-            f"Handler response may not match any driver response pattern: "
-            f"handler={pattern_key!r}, response={response_text!r}"
+
+
+def _query_answering_handlers(sim_handlers: list, driver_def: dict) -> set[int]:
+    """Handlers (by identity) that answer a question the driver asks.
+
+    ``polling.queries`` is the set of strings a driver puts on the wire for
+    no reason other than to learn what comes back, which is what makes an
+    unreadable answer a defect. An ``on_connect`` entry counts only when it
+    declares ``query_for`` — the rest of that block is a bring-up sequence
+    mixing reads with arming writes, and a write's acknowledgement is not
+    something a response rule should match.
+    """
+    handler_patterns = _compile_handler_patterns(sim_handlers)
+    config = _effective_config(driver_def)
+    transport = driver_def.get("transport", "tcp")
+    commands = driver_def.get("commands", {})
+    polling = driver_def.get("polling") or {}
+
+    answering: set[int] = set()
+    entries = list(polling.get("queries") or [])
+    entries += [
+        entry
+        for entry in (driver_def.get("on_connect") or [])
+        if isinstance(entry, dict) and entry.get("query_for")
+    ]
+    for entry in entries:
+        if isinstance(entry, dict):
+            if "address" in entry:
+                # OSC bring-up message; the OSC path has its own checks.
+                continue
+            query_text = entry.get("send", "")
+        else:
+            query_text = str(entry)
+        if not query_text:
+            continue
+        # An http/udp query may name a command instead of typing its wire
+        # string; what goes out is that command's send template.
+        named = commands.get(query_text)
+        if isinstance(named, dict):
+            query_text = named.get("send", "")
+            if not query_text:
+                continue
+        handler = _find_matching_handler(
+            _normalize_query_sample(query_text, config, transport),
+            handler_patterns,
         )
+        if handler is not None:
+            answering.add(id(handler))
+    return answering
+
+
+def _normalize_query_sample(
+    query_text: str, config: dict, transport: str
+) -> str:
+    """A query string as it reaches the simulator's dispatcher.
+
+    Config substituted, an each_child template given a sample child id, the
+    line terminator stripped (the simulator frames by lines), and an HTTP raw
+    path expanded to the ``GET /path`` line the HTTP simulator dispatches —
+    without that last one every raw-path poll looks unanswered.
+    """
+    sample = _substitute_config(query_text, config)
+    sample = re.sub(
+        r"\{child_id(?::([^{}]*))?\}",
+        lambda m: format(1, m.group(1)) if m.group(1) else "1",
+        sample,
+    )
+    sample = sample.strip().replace("\\n", "").replace("\\r", "")
+    sample = sample.rstrip("\r\n").strip()
+    if transport == "http" and sample.startswith("/"):
+        sample = f"GET {sample}"
+    return sample
 
 
 def _check_poll_coverage(
@@ -505,17 +663,9 @@ def _check_poll_coverage(
 
         # Substitute config variables in query text; each_child queries get a
         # sample child id (the runtime expands them per registered child).
-        sample = _substitute_config(query_text, config)
-        sample = sample.replace("{child_id}", "1")
-        sample = sample.strip().replace("\\n", "").replace("\\r", "")
-        sample = sample.rstrip("\r\n").strip()
-
-        # An HTTP raw-path query (not a command name) is fetched with GET, and
-        # the HTTP simulator dispatches it as the synthesized line
-        # "GET /path?query" — so compare handlers against that form, not the
-        # bare path, or every raw-path poll looks uncovered.
-        if transport == "http" and sample.startswith("/"):
-            sample = f"GET {sample}"
+        # Shared with the round-trip check, which has to normalize a query the
+        # same way to tell a query's answer from a write's acknowledgement.
+        sample = _normalize_query_sample(query_text, config, transport)
 
         matched = _find_matching_handler(sample, handler_patterns)
         if not matched:
@@ -1691,16 +1841,49 @@ def _resolve_state_refs(template: str, state: dict) -> str:
     return result
 
 
-def _extract_respond_calls(handler_code: str) -> list[str]:
-    """Extract respond() call arguments from inline Python handler code.
+def _extract_respond_calls(handler_code: str) -> tuple[list[str], bool]:
+    """The literal strings an inline handler responds with.
 
-    This is a best-effort extraction — it handles simple f-string and
-    string literal arguments but not complex expressions.
+    Returns ``(literals, unreadable)`` — ``unreadable`` is True when the
+    handler responds with something this cannot evaluate: an f-string, a
+    concatenation, a variable, or code that does not parse at all. Both
+    halves matter. The literals are what gets matched against the driver's
+    response rules; ``unreadable`` is what stops "none of this handler's
+    replies parses" being said about a handler whose real answer simply
+    could not be read.
+
+    Parsed rather than pattern-matched, because a regex over the source finds
+    the *first* closing quote: ``respond("(PWR!" + str(x) + "\\r")`` gave it
+    ``(PWR!``, which then matched no response rule and warned — 14 of the
+    corpus's warnings were that, all on drivers whose replies are fine.
     """
-    results = []
-    for match in re.finditer(r'respond\(f?["\'](.+?)["\'](?:\s*\))', handler_code):
-        results.append(match.group(1))
-    return results
+    code = textwrap.dedent(handler_code)
+    try:
+        # compile(), not ast.parse(): a bare `return` parses but does not
+        # compile, and the simulator skips the whole handler when it does not
+        # compile. _check_handler_syntax is what reports that; here it just
+        # means nothing can be read, which is not the same as nothing being
+        # answered.
+        compile(code, "<handler>", "exec")
+        tree = ast.parse(code)
+    except SyntaxError:
+        return [], True
+
+    literals: list[str] = []
+    unreadable = False
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if not (isinstance(node.func, ast.Name) and node.func.id == "respond"):
+            continue
+        if not node.args:
+            continue
+        arg = node.args[0]
+        if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+            literals.append(arg.value)
+        else:
+            unreadable = True
+    return literals, unreadable
 
 
 # ── Directory scanning ──
