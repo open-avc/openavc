@@ -2525,11 +2525,12 @@ def platform_requirements(driver_def: object) -> list[tuple[str, str]]:
         for name, value in driver_def.items():
             if name in FIELDS:
                 walk(FIELDS[name], value, name)
-    return sorted(
-        ((loc, text[loc]) for loc in found),
-        key=lambda item: (found[item[0]], item[0]),
-        reverse=True,
-    )
+    # Highest floor first — the caller's answer is requirements[0] — and
+    # within one floor by location, so a message that lists several reads
+    # forwards rather than backwards.
+    ordered = sorted((loc, text[loc]) for loc in found)
+    ordered.sort(key=lambda item: found[item[0]], reverse=True)
+    return ordered
 
 
 def required_platform_version(driver_def: object) -> str | None:

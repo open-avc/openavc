@@ -535,12 +535,16 @@ def unknown_key_errors(driver_def: dict[str, Any]) -> list[str]:
 _MAX_NAMED_REQUIREMENTS = 4
 
 
-def _requirement_summary(requirements: list[tuple[str, str]], floor: str) -> str:
-    """The offending field list for a min_platform_version message."""
+def _requirement_summary(
+    requirements: list[tuple[str, str]], floor: str
+) -> tuple[str, str]:
+    """The offending field list, and how to refer back to it in the sentence."""
     names = [where for where, version in requirements if version == floor]
     shown = ", ".join(names[:_MAX_NAMED_REQUIREMENTS])
     rest = len(names) - _MAX_NAMED_REQUIREMENTS
-    return f"{shown} (+{rest} more)" if rest > 0 else shown
+    if rest > 0:
+        return f"{shown} (+{rest} more)", "those fields"
+    return shown, "that field" if len(names) == 1 else "those fields"
 
 
 def platform_version_errors(
@@ -569,14 +573,14 @@ def platform_version_errors(
     floor = requirements[0][1]
     declared = driver_def.get("min_platform_version")
 
+    named, them = _requirement_summary(requirements, floor)
     if declared is None or declared == "":
         if not require_declaration:
             return []
         return [
             f"min_platform_version is not declared, but this driver uses "
-            f"{_requirement_summary(requirements, floor)}, which needs "
-            f"platform {floor}. Without it the driver installs on older "
-            f"releases that ignore those fields. Add "
+            f"{named}, which needs platform {floor}. Without it the driver "
+            f"installs on older releases that ignore {them}. Add "
             f'min_platform_version: "{floor}".'
         ]
 
@@ -589,10 +593,9 @@ def platform_version_errors(
     if parsed >= parse_version(floor):
         return []
     return [
-        f'min_platform_version is "{declared}", but this driver uses '
-        f"{_requirement_summary(requirements, floor)}, which needs platform "
-        f'{floor}. Raise it to "{floor}" — or drop those fields if the '
-        f"driver has to keep installing on {declared}."
+        f'min_platform_version is "{declared}", but this driver uses {named}, '
+        f'which needs platform {floor}. Raise it to "{floor}" — or drop '
+        f"{them} if the driver has to keep installing on {declared}."
     ]
 
 
