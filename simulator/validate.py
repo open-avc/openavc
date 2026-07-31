@@ -490,9 +490,13 @@ def _check_poll_coverage(
         if not query_text:
             continue
 
-        # HTTP/UDP queries that name a command run as that command —
-        # command coverage checks those.
-        if transport in ("http", "udp") and query_text in commands:
+        # A query naming a declared command runs as that command on every
+        # transport, not just HTTP and UDP — which is the reason the guides
+        # tell an author to poll a framed command by name rather than retype
+        # its wire string: named that way it picks up command_prefix /
+        # command_suffix, and its reply is matched. Command coverage checks
+        # those, so checking the bare name here only ever false-fails.
+        if query_text in commands:
             continue
 
         # Substitute config variables in query text; each_child queries get a
@@ -1495,7 +1499,12 @@ def _generate_sample_command(
         elif param_type == "number":
             test_val = str(param_def.get("default", param_def.get("min", 1.0)))
         elif param_type == "boolean":
-            test_val = "true"
+            # "1", not "true": a boolean is commonly written with a numeric
+            # format spec ({flag:02d}) so a fixed-width protocol gets its
+            # 01/00 flag byte, and the word cannot be formatted that way —
+            # it would be left as a literal placeholder and reported as a
+            # command no handler matches.
+            test_val = "1"
         elif param_type == "enum":
             values = param_def.get("values", ["test"])
             test_val = str(values[0])
@@ -1664,8 +1673,8 @@ def find_drivers(path: Path) -> list[tuple[Path, str]]:
 # ── CLI ──
 
 
-def _prepend_contract_issues(result: ValidationResult, path: Path) -> None:
-    """Run the driver contract over the file and put its findings first.
+def _contract_issues(contract) -> list[Issue]:
+    """The contract checker's findings, as this module's Issue type.
 
     This command is the one the guides name, so it is where an author who has
     never heard of ``python -m server.drivers.check`` still meets the contract.
@@ -1674,10 +1683,9 @@ def _prepend_contract_issues(result: ValidationResult, path: Path) -> None:
     misspelled. The verdict and its wording come from the checker; nothing is
     re-derived here, so the terminal, catalog CI and the IDE cannot disagree.
     """
-    contract = check_driver_file(path)
     issues = [Issue("error", "contract", msg) for msg in contract.errors]
     issues += [Issue("info", "contract", note) for note in contract.notes]
-    result.issues[:0] = issues
+    return issues
 
 
 def main(argv: list[str] | None = None):
@@ -1716,11 +1724,22 @@ def main(argv: list[str] | None = None):
 
     results: list[ValidationResult] = []
     for driver_path, driver_type in drivers:
+        # The contract runs first, not merely prints first. Everything below
+        # reads the definition as though it were well formed, so a file that
+        # fails the contract takes the parity analysis down with a traceback
+        # instead of the error that explains it — a parameter YAML turned
+        # into a boolean (`on:`) used to end the run that way.
+        contract = check_driver_file(driver_path)
+        if contract.errors:
+            result = ValidationResult(str(driver_path), driver_path.stem, driver_type)
+            result.issues.extend(_contract_issues(contract))
+            results.append(result)
+            continue
         if driver_type == "yaml":
             result = validate_yaml_driver(driver_path)
         else:
             result = validate_python_driver(driver_path)
-        _prepend_contract_issues(result, driver_path)
+        result.issues[:0] = _contract_issues(contract)
         results.append(result)
 
     # Print results
