@@ -1506,8 +1506,13 @@ def _generate_sample_command(
             # command no handler matches.
             test_val = "1"
         elif param_type == "enum":
-            values = param_def.get("values", ["test"])
-            test_val = str(values[0])
+            values = param_def.get("values") or ["test"]
+            first = values[0]
+            # An enum entry is a plain wire value or a {value, label} pair.
+            # The value is what goes on the wire; the label only names it in
+            # the picker. Stringifying the pair whole put a Python dict in
+            # the sample and reported the command as one no handler matches.
+            test_val = str(first.get("value", "") if isinstance(first, dict) else first)
         else:
             test_val = str(param_def.get("default", "test"))
         test_values[param_name] = test_val
