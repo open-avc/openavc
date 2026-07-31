@@ -1400,69 +1400,45 @@ def validate_python_driver(driver_path: Path) -> ValidationResult:
 
 
 def _extract_simulator_info(sim_path: Path) -> dict | None:
-    """Extract SIMULATOR_INFO dict from a Python simulator file using AST.
+    """Extract SIMULATOR_INFO from a Python simulator file.
 
-    Falls back to regex extraction if AST literal_eval fails (e.g., when
-    the dict references module-level variables).
+    Reads the source rather than importing it, through the same lenient
+    evaluator the driver side uses. It used to be a ``literal_eval`` with a
+    regex fallback, and that fallback's worst habit was line 1458's: a value
+    it could not evaluate was stored as **its own source text**. So a
+    simulator seeding ``"volume": _DEFAULT_VOLUME`` handed the type check the
+    string ``"_DEFAULT_VOLUME"``, which then reported that an integer state
+    variable held a str — a finding about the reader, printed as a finding
+    about the driver. 16 of the 59 shipped simulators take that path.
+
+    A value that genuinely cannot be resolved now comes back as the
+    UNEVALUATED marker, which the checks skip and name instead of comparing.
     """
     import ast
 
-    source = sim_path.read_text(encoding="utf-8")
+    from server.drivers.python_info import lenient_ast_value
 
-    # Try AST parsing first (handles clean dicts)
     try:
-        tree = ast.parse(source)
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ClassDef):
-                for item in node.body:
-                    if isinstance(item, ast.Assign):
-                        for target in item.targets:
-                            if isinstance(target, ast.Name) and target.id == "SIMULATOR_INFO":
-                                return ast.literal_eval(item.value)
-    except (SyntaxError, ValueError):
-        pass
+        tree = ast.parse(sim_path.read_text(encoding="utf-8"))
+    except SyntaxError:
+        return None
 
-    # Fallback: regex extraction of key fields
-    info: dict[str, Any] = {}
-
-    m = re.search(r'"driver_id"\s*:\s*"([^"]+)"', source)
-    if m:
-        info["driver_id"] = m.group(1)
-
-    m = re.search(r'"name"\s*:\s*"([^"]+)"', source)
-    if m:
-        info["name"] = m.group(1)
-
-    m = re.search(r'"transport"\s*:\s*"([^"]+)"', source)
-    if m:
-        info["transport"] = m.group(1)
-
-    # Extract initial_state keys (not full values, but enough for validation)
-    initial_state = {}
-    in_initial = False
-    brace_depth = 0
-    for line in source.split("\n"):
-        if '"initial_state"' in line and "{" in line:
-            in_initial = True
-            brace_depth = 1
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef):
             continue
-        if in_initial:
-            brace_depth += line.count("{") - line.count("}")
-            m = re.search(r'"(\w+)"\s*:\s*(.+?)(?:,\s*$|$)', line.strip())
-            if m:
-                key = m.group(1)
-                val_str = m.group(2).strip().rstrip(",")
-                try:
-                    initial_state[key] = ast.literal_eval(val_str)
-                except (ValueError, SyntaxError):
-                    initial_state[key] = val_str  # Store raw string
-            if brace_depth <= 0:
-                in_initial = False
-
-    if initial_state:
-        info["initial_state"] = initial_state
-
-    return info if info else None
+        for item in node.body:
+            targets = []
+            if isinstance(item, ast.Assign):
+                targets = item.targets
+            elif isinstance(item, ast.AnnAssign) and item.value is not None:
+                targets = [item.target]
+            for target in targets:
+                if isinstance(target, ast.Name) and target.id == "SIMULATOR_INFO":
+                    value = lenient_ast_value(
+                        item.value, "SIMULATOR_INFO", [],
+                    )
+                    return value if isinstance(value, dict) else None
+    return None
 
 
 # ── Helper functions ──

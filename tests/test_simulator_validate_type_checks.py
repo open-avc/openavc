@@ -334,3 +334,60 @@ def test_a_driver_that_does_not_parse_is_reported_not_crashed_on(tmp_path):
     assert not result.passed
     assert any("does not parse" in i.message or "syntax" in i.message.lower()
                for i in result.errors)
+
+
+# ── The simulator side of the same reader problem ──
+
+
+def test_a_computed_simulator_info_is_read_not_faked(tmp_path):
+    """The regex fallback stored an unevaluable value as its own source text.
+
+    So a simulator seeding ``"volume": _DEFAULT`` handed the type check the
+    string ``"_DEFAULT"``, which reported that an integer state variable held
+    a str — a finding about the reader, printed as a finding about the driver.
+    It also could not see an ``initial_state`` built from a module constant at
+    all, and reported the field missing.
+    """
+    driver = tmp_path / "acme_widget.py"
+    driver.write_text(textwrap.dedent('''
+        class AcmeWidgetDriver:
+            DRIVER_INFO = {
+                "id": "acme_widget", "name": "Acme Widget", "transport": "tcp",
+                "state_variables": {"volume": {"type": "integer", "label": "Volume"}},
+                "commands": {},
+            }
+    '''), encoding="utf-8")
+    sim = tmp_path / "acme_widget_sim.py"
+    sim.write_text(textwrap.dedent('''
+        _INITIAL = {"volume": 30}
+
+        class AcmeWidgetSimulator:
+            SIMULATOR_INFO = {
+                "driver_id": "acme_widget",
+                "name": "Acme Widget Simulator",
+                "transport": "tcp",
+                "initial_state": _INITIAL,
+            }
+    '''), encoding="utf-8")
+    result = validate_python_driver(driver)
+    missing = [i for i in result.errors if "missing required field" in i.message]
+    assert not missing, "initial_state is declared, just not as a literal"
+    assert not any(
+        "is integer but initial_state value is str" in i.message
+        for i in result.issues
+    )
+
+
+def test_a_simulator_that_does_not_parse_is_reported(tmp_path):
+    driver = tmp_path / "acme_widget.py"
+    driver.write_text(textwrap.dedent('''
+        class AcmeWidgetDriver:
+            DRIVER_INFO = {
+                "id": "acme_widget", "name": "Acme Widget", "transport": "tcp",
+                "state_variables": {}, "commands": {},
+            }
+    '''), encoding="utf-8")
+    sim = tmp_path / "acme_widget_sim.py"
+    sim.write_text("class Broken:\n    SIMULATOR_INFO = {\n", encoding="utf-8")
+    result = validate_python_driver(driver)
+    assert not result.passed
