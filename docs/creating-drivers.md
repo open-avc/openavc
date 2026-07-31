@@ -225,6 +225,8 @@ For each test:
 
 Each result shows what was sent, every received chunk (with `\r` and `\n` made visible), and any state variable changes the responses produced.
 
+**Undeclared state is reported here, not quietly written.** If a response rule writes a state variable the driver doesn't declare under **State Variables**, the result row says so instead of listing it under state changes as though it worked. That write does land at runtime, and what it produces is a live value nothing knows the type of and no binding picker offers — visible on the device page, impossible to build a panel against. The message names the variable, so the fix is either to declare it or to correct the rule that writes it. It appears separately from a send or connect error because it isn't a problem with the device: the exchange worked, and the declaration is what's wrong. The check applies only to the driver being tested — devices running in your project are unaffected while the panel is open.
+
 **Production-device conflict warning.** When you type a host and port that's already used by a device in your project, the panel surfaces a warning above the Send button identifying the device. Many AV devices (Sony BVM, Christie projectors, Crestron 3-Series console) accept only one TCP control session at a time, so testing would kick the live device offline. You can:
 
 - **Pause device** — cleanly disconnect the production driver and suppress auto-reconnect for the duration of the test. The panel offers a **Resume** button to bring it back online. Closing the test tab automatically resumes any devices the panel paused, and as a safety net the server resumes a paused device on its own if the test session disappears without cleaning up (browser crash, lost connection). A paused device shows a Paused badge on the Devices page with its own Resume button.
@@ -2091,6 +2093,13 @@ The easiest way to create a Python driver is in the Programmer IDE:
 5. Click **Create Driver**
 
 The editor opens with a pre-filled template. Edit the code, then click **Save & Reload Driver** (or press Ctrl+Shift+R) to hot-reload the driver without restarting the server. If the code has errors, the old driver stays active and the error is shown in the console.
+
+**The two save buttons differ on purpose.**
+
+- **Save & Reload Driver** makes the edit the live driver, so it won't write a file that can't be parsed. If your code has a syntax error, nothing is written, the copy on disk is left alone, and the message tells you which line stopped the parser. That matters because the running driver would go on working either way — the damage shows up at the next restart, when a file that can't load takes its devices offline with it.
+- **Save** keeps whatever you've got, finished or not, because a half-written edit is the normal state of an editor and losing it would be worse. If what it kept won't parse, it says so and marks the line, so you know the file on disk no longer loads even though the device in the room is still responding.
+
+Only a *syntax* error stops the save. Code that parses but can't import yet — a package you haven't installed, a module you're about to write — saves normally; that's ordinary work in progress, and the reload is where you'll hear about it.
 
 ### A Python driver is a bundle
 
