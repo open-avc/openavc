@@ -547,6 +547,35 @@ def _check_initial_state_types(
     """Compare each declared state variable's type against its seeded value.
 
     Shared by the YAML and Python paths so the two cannot drift apart again.
+
+    Reports at ``info``, never as a finding, because the two sides are not the
+    same namespace. A state variable's declared type is the *logical* value the
+    driver publishes; ``initial_state`` seeds the *wire* value the simulator
+    puts on the socket, and the driver's own response rules map one to the
+    other. Whenever a protocol's wire form differs from the logical form the
+    two legitimately disagree, and that is the only time this check can fire at
+    all — an auto-generated seed is built from the declared type by
+    ``yaml_auto._build_info`` and matches by construction, so the check only
+    ever sees a hand-written override, which authors write precisely because
+    the wire form differs.
+
+    Measured over the shipped corpus on 2026-07-31: 26 errors across 9 drivers,
+    every one of them a correct wire value. ``at_atdm_0604`` seeds
+    ``at_link_mode: 0`` because its simulator interpolates that straight into
+    ``g_link 0000 00 NC {state["at_link_mode"]}`` and the driver parses it back
+    with ``match: 'g_link 0000 \\S+ NC 0'``; seeding the declared ``false``
+    would put ``NC False`` on the wire and match neither response rule.
+    ``lg_webos`` seeds the SSAP string ``"Active"`` for a ``[off, standby, on]``
+    enum for the same reason. Making these "pass" means breaking them.
+
+    The round-trip that *can* be checked is ``_check_response_parsing``, which
+    resolves a seed through the simulator's respond template and matches the
+    result against the driver's own response patterns — the wire namespace,
+    where the seeds actually live.
+
+    Same reasoning as the ``command_coverage`` downgrade below: a check that
+    fires permanently on correct drivers trains an author to ignore the one
+    channel that might say something real.
     """
     if not isinstance(state_vars, dict) or not isinstance(sim_initial, dict):
         return
@@ -560,10 +589,12 @@ def _check_initial_state_types(
         initial = sim_initial[var_name]
 
         if var_type == "boolean" and not isinstance(initial, bool):
-            result.error(
+            result.info(
                 "type_consistency",
                 f"State variable '{var_name}' is boolean but initial_state "
-                f"value is {type(initial).__name__}: {initial!r}"
+                f"value is {type(initial).__name__}: {initial!r}. Expected when "
+                f"the wire form differs from the logical type — confirm the "
+                f"driver's response rules map it back."
             )
 
         # bool is a subclass of int, so True would satisfy an integer
@@ -572,19 +603,23 @@ def _check_initial_state_types(
         if var_type == "integer" and (
             isinstance(initial, bool) or not isinstance(initial, int)
         ):
-            result.warning(
+            result.info(
                 "type_consistency",
                 f"State variable '{var_name}' is integer but initial_state "
-                f"value is {type(initial).__name__}: {initial!r}"
+                f"value is {type(initial).__name__}: {initial!r}. Expected when "
+                f"the wire form differs from the logical type — confirm the "
+                f"driver's response rules map it back."
             )
 
         if var_type in ("number", "float") and (
             isinstance(initial, bool) or not isinstance(initial, (int, float))
         ):
-            result.warning(
+            result.info(
                 "type_consistency",
                 f"State variable '{var_name}' is {var_type} but initial_state "
-                f"value is {type(initial).__name__}: {initial!r}"
+                f"value is {type(initial).__name__}: {initial!r}. Expected when "
+                f"the wire form differs from the logical type — confirm the "
+                f"driver's response rules map it back."
             )
 
         if var_type == "enum":
@@ -600,10 +635,12 @@ def _check_initial_state_types(
                     f"checked against them."
                 )
             elif valid_values and str(initial) not in [str(v) for v in valid_values]:
-                result.error(
+                result.info(
                     "type_consistency",
                     f"State variable '{var_name}' initial value {initial!r} "
-                    f"not in enum values: {valid_values}"
+                    f"not in enum values: {valid_values}. Expected when the wire "
+                    f"form differs from the logical type — confirm the driver's "
+                    f"response rules map it back."
                 )
 
 
@@ -644,6 +681,22 @@ def _check_type_consistency(
                         f"'True' not 'true'. Use a script handler with "
                         f"str(state[\"{ref_name}\"]).lower() instead."
                     )
+
+
+# Transports the simulator serves with a server of its own — one module each
+# under simulator/ (tcp_simulator, http_simulator, udp_simulator, osc_simulator,
+# mqtt_simulator, websocket_simulator). Anything else is a raw byte pipe with no
+# simulator server, so it is simulated over TCP instead. That substitution is
+# the platform's own: SimulationManager._apply_sim_redirect flips a serial
+# device's transport to tcp for the duration of a simulation run precisely
+# because "the simulator has no serial server"
+# (server/core/simulation.py::_driver_transport_is_serial). A driver declaring
+# `serial` or `ssh` beside a `tcp` simulator is therefore correct, and erroring
+# on it asks the author to break a working simulator to satisfy a string
+# comparison.
+_SIMULATOR_SERVED_TRANSPORTS = frozenset(
+    {"tcp", "http", "udp", "osc", "mqtt", "websocket"}
+)
 
 
 # ── OSC coverage (address-based) ──
@@ -1350,11 +1403,21 @@ def validate_python_driver(driver_path: Path) -> ValidationResult:
     driver_transport = driver_info.get("transport", "tcp")
     sim_transport = sim_info.get("transport", "tcp")
     if driver_transport != sim_transport:
-        result.error(
-            "transport_match",
-            f"DRIVER_INFO transport ({driver_transport!r}) != "
-            f"SIMULATOR_INFO transport ({sim_transport!r})"
-        )
+        if driver_transport not in _SIMULATOR_SERVED_TRANSPORTS and sim_transport == "tcp":
+            # Not a mismatch — the only way to simulate this device. See
+            # _SIMULATOR_SERVED_TRANSPORTS.
+            result.info(
+                "transport_match",
+                f"Driver transport {driver_transport!r} has no simulator server, "
+                f"so it is simulated over TCP. That is the supported "
+                f"substitution, not a mismatch."
+            )
+        else:
+            result.error(
+                "transport_match",
+                f"DRIVER_INFO transport ({driver_transport!r}) != "
+                f"SIMULATOR_INFO transport ({sim_transport!r})"
+            )
 
     # Command coverage. A Python simulator's dispatch cannot be proven
     # statically — a binary protocol answers raw bytes and never writes a

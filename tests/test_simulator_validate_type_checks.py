@@ -391,3 +391,94 @@ def test_a_simulator_that_does_not_parse_is_reported(tmp_path):
     sim.write_text("class Broken:\n    SIMULATOR_INFO = {\n", encoding="utf-8")
     result = validate_python_driver(driver)
     assert not result.passed
+
+# ── Severity: what these two checks are entitled to fail a build over ──
+
+
+@pytest.mark.parametrize(
+    ("state_vars", "initial"),
+    [
+        ('{"panel_lock": {"type": "boolean", "label": "Lock"}}', '{"panel_lock": 0}'),
+        (
+            '{"mode": {"type": "enum", "label": "Mode", "values": ["on", "off"]}}',
+            '{"mode": "Active"}',
+        ),
+        ('{"volume": {"type": "integer", "label": "Volume"}}', '{"volume": "30"}'),
+    ],
+)
+def test_initial_state_type_reports_at_info_not_as_a_failure(
+    tmp_path, state_vars, initial
+):
+    """A declared type and a seeded value are not the same namespace.
+
+    The declared type is the logical value the driver publishes; initial_state
+    seeds the wire value the simulator puts on the socket, and the driver's own
+    response rules map between them. The check can only fire on a hand-written
+    override — an auto-generated seed is built from the declared type by
+    yaml_auto._build_info and matches by construction — and an author writes an
+    override precisely when the wire form differs. So firing is the normal case,
+    not a finding.
+
+    Measured over the shipped corpus on 2026-07-31: 26 errors across 9 drivers,
+    every one a correct wire value. Making them "pass" breaks them.
+    at_atdm_0604 seeds ``at_link_mode: 0`` because its simulator interpolates
+    that into ``g_link 0000 00 NC {state["at_link_mode"]}`` and the driver parses
+    it back with ``match: 'g_link 0000 \\S+ NC 0'``; the declared ``false`` would
+    put ``NC False`` on the wire and match no response rule at all. lg_webos
+    seeds the SSAP string ``"Active"`` for an [off, standby, on] enum likewise.
+    """
+    path = _driver_and_sim(tmp_path, state_vars, initial)
+    issues = [
+        i for i in validate_python_driver(path).issues if i.check == "type_consistency"
+    ]
+    assert issues, "the check must still say something"
+    assert all(i.severity == "info" for i in issues)
+
+
+def _driver_and_sim_transports(tmp_path, driver_transport: str, sim_transport: str):
+    driver = tmp_path / "acme_widget.py"
+    driver.write_text(textwrap.dedent(f'''
+        class AcmeWidgetDriver:
+            DRIVER_INFO = {{
+                "id": "acme_widget", "name": "Acme Widget",
+                "transport": "{driver_transport}",
+                "state_variables": {{}}, "commands": {{}},
+            }}
+    '''), encoding="utf-8")
+    sim = tmp_path / "acme_widget_sim.py"
+    sim.write_text(textwrap.dedent(f'''
+        class AcmeWidgetSimulator:
+            SIMULATOR_INFO = {{
+                "driver_id": "acme_widget", "name": "Acme Widget Simulator",
+                "transport": "{sim_transport}", "initial_state": {{}},
+            }}
+    '''), encoding="utf-8")
+    return driver
+
+
+@pytest.mark.parametrize("driver_transport", ["serial", "ssh"])
+def test_a_transport_with_no_simulator_server_may_be_served_over_tcp(
+    tmp_path, driver_transport
+):
+    """Not a mismatch — it is the only way to simulate the device.
+
+    The simulator ships one server per transport (tcp/http/udp/osc/mqtt/
+    websocket) and none for a raw byte pipe, so the platform substitutes TCP
+    itself: SimulationManager._apply_sim_redirect flips a serial device's
+    transport to tcp for the duration of a run because "the simulator has no
+    serial server". Erroring here asked the author to break a working simulator
+    to satisfy a string comparison.
+    """
+    path = _driver_and_sim_transports(tmp_path, driver_transport, "tcp")
+    result = validate_python_driver(path)
+    assert not [i for i in result.errors if i.check == "transport_match"]
+    assert any(i.check == "transport_match" for i in result.issues), (
+        "the substitution should still be stated, not silently accepted"
+    )
+
+
+def test_a_real_transport_mismatch_is_still_an_error(tmp_path):
+    """Vacuity guard: udp and osc both have simulator servers of their own."""
+    path = _driver_and_sim_transports(tmp_path, "udp", "osc")
+    result = validate_python_driver(path)
+    assert any(i.check == "transport_match" for i in result.errors)

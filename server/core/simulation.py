@@ -612,20 +612,29 @@ class SimulationManager:
             Path(self._config_path).unlink(missing_ok=True)
             self._config_path = None
 
-    @staticmethod
-    def _driver_transport_is_serial(driver: Any) -> bool:
-        """True when the device's effective transport is serial.
+    # Transports with no simulator server of their own. Each is a raw byte
+    # pipe, so the simulator serves it over TCP and the driver is flipped to
+    # TCP to reach it — the same substitution the serial-over-IP bridge
+    # passthrough makes in Engine.resolved_device_config.
+    #
+    # ``ssh`` was missing here until 2026-07-31, so an SSH driver kept its
+    # declared transport under simulation and tried to open an SSH session
+    # against the simulator's plain TCP socket. netgear_m4250_m4350 ships
+    # `simulated: true` and could not in fact be simulated without the user
+    # first hand-editing `transport: tcp` into its device config.
+    _TCP_STAND_IN_TRANSPORTS = frozenset({"serial", "ssh"})
 
-        The simulator has no serial server — serial drivers are simulated over
-        a TCP loopback stand-in (the same substitution the serial-over-IP
-        bridge passthrough makes in Engine.resolved_device_config). Mirrors
-        BaseDriver.connect's resolution order: an explicit device-config
-        transport wins over the driver's DRIVER_INFO default.
+    @staticmethod
+    def _driver_transport_needs_tcp_stand_in(driver: Any) -> bool:
+        """True when the device's effective transport has no simulator server.
+
+        Mirrors BaseDriver.connect's resolution order: an explicit
+        device-config transport wins over the driver's DRIVER_INFO default.
         """
         config = getattr(driver, "config", None) or {}
         driver_info = getattr(driver, "DRIVER_INFO", None) or {}
         transport = config.get("transport") or driver_info.get("transport", "tcp")
-        return transport == "serial"
+        return transport in SimulationManager._TCP_STAND_IN_TRANSPORTS
 
     def _apply_sim_redirect(
         self, driver: Any, device_id: str, sim_port: int
@@ -633,8 +642,9 @@ class SimulationManager:
         """Point one live driver at the simulator on 127.0.0.1:sim_port and
         record its original connection so _restore_original_config can undo it.
 
-        A serial driver is flipped to TCP for the duration: the simulator
-        serves TCP, so the driver must speak TCP to reach it. An HTTPS device
+        A driver whose transport has no simulator server (serial, ssh) is
+        flipped to TCP for the duration: the simulator serves TCP, so the
+        driver must speak TCP to reach it. An HTTPS device
         (``ssl: true``) is flipped to plain HTTP the same way — simulated
         HTTP devices serve plain HTTP, so leaving TLS on would make every
         HTTPS-only device (ClickShare, Hue v2) fail its own simulator. Every
@@ -652,7 +662,7 @@ class SimulationManager:
         }
         driver.config["host"] = "127.0.0.1"
         driver.config["port"] = sim_port
-        if self._driver_transport_is_serial(driver):
+        if self._driver_transport_needs_tcp_stand_in(driver):
             driver.config["transport"] = "tcp"
         if driver.config.get("ssl"):
             driver.config["ssl"] = False

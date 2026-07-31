@@ -48,20 +48,20 @@ def _manager(dm) -> SimulationManager:
     return SimulationManager(engine=_FakeEngine(dm))
 
 
-# ── _driver_transport_is_serial: resolution order ───────────────────────────
+# ── _driver_transport_needs_tcp_stand_in: resolution order ───────────────────────────
 
 def test_transport_is_serial_from_driver_default():
-    assert SimulationManager._driver_transport_is_serial(_FakeDriver("serial"))
-    assert not SimulationManager._driver_transport_is_serial(_FakeDriver("tcp"))
+    assert SimulationManager._driver_transport_needs_tcp_stand_in(_FakeDriver("serial"))
+    assert not SimulationManager._driver_transport_needs_tcp_stand_in(_FakeDriver("tcp"))
 
 
 def test_config_transport_overrides_driver_default():
     # Device config overriding a serial driver to tcp → not serial.
     d = _FakeDriver("serial", config_transport="tcp")
-    assert not SimulationManager._driver_transport_is_serial(d)
+    assert not SimulationManager._driver_transport_needs_tcp_stand_in(d)
     # Device config overriding a tcp-default driver to serial → serial.
     d2 = _FakeDriver("tcp", config_transport="serial")
-    assert SimulationManager._driver_transport_is_serial(d2)
+    assert SimulationManager._driver_transport_needs_tcp_stand_in(d2)
 
 
 # ── _apply_sim_redirect / _restore_original_config ──────────────────────────
@@ -163,3 +163,23 @@ async def test_redirect_and_restore_connections_round_trip():
     assert driver.config["host"] == "10.0.0.5"
     assert driver.config["port"] == 4001
     assert dm.reconnected.count("dev1") == 2
+
+
+def test_ssh_also_gets_the_tcp_stand_in():
+    """An SSH driver has no simulator server either.
+
+    Until 2026-07-31 only `serial` was flipped, so an SSH driver kept its
+    declared transport under simulation and tried to open an SSH session
+    against the simulator's plain TCP socket. netgear_m4250_m4350 shipped
+    `simulated: true` and could not actually be simulated without the user
+    first hand-editing `transport: tcp` into its device config.
+    """
+    assert SimulationManager._driver_transport_needs_tcp_stand_in(_FakeDriver("ssh"))
+
+
+def test_a_transport_the_simulator_serves_is_left_alone():
+    """Vacuity guard: these have servers of their own and must not be flipped."""
+    for transport in ("tcp", "http", "udp", "osc", "mqtt", "websocket"):
+        assert not SimulationManager._driver_transport_needs_tcp_stand_in(
+            _FakeDriver(transport)
+        ), transport
