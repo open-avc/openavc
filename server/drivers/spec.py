@@ -17,6 +17,7 @@ it).
 from __future__ import annotations
 
 import ipaddress
+import re
 
 # --- top-level contract ------------------------------------------------------
 
@@ -253,6 +254,15 @@ def is_multicast_group(value: str) -> bool:
 #   min / max / emin           minimum / maximum / exclusiveMinimum
 #   min_len / min_items / min_props   minLength / minItems / minProperties
 #   doc         description shown by editors and docs
+#   since       the platform version that first understood this field. A
+#               driver that uses it must declare min_platform_version at
+#               least this high or it installs on releases that ignore it —
+#               see platform_requirements() below. Rendered into the
+#               published description, so the floor is documented and
+#               enforced from the one annotation.
+#   since_values  per-value floors for an enum whose members did not all
+#               land together, e.g. {"table": "0.23.0"} on a config field's
+#               type. Applies on top of the node's own `since`.
 #   req         top-level requiredness tier: "platform" (loader rejects
 #               without it) or "catalog" (community publishing requires it)
 #   fields      child fields of an object (ordered dict of nodes)
@@ -382,11 +392,13 @@ FIELDS = {
     },
     'command_prefix': {
         'type': 'string',
-        'doc': "Opt-in constant string prepended to every command's send string (a fixed packet header). Set it once instead of repeating it on each command. Byte-stream transports only (tcp/serial/udp); never applied to OSC or HTTP. Supports the same escape sequences and {config} substitution as send. A command can opt out with raw: true. Requires platform 0.23.0.",
+        'doc': "Opt-in constant string prepended to every command's send string (a fixed packet header). Set it once instead of repeating it on each command. Byte-stream transports only (tcp/serial/udp); never applied to OSC or HTTP. Supports the same escape sequences and {config} substitution as send. A command can opt out with raw: true.",
+        'since': '0.23.0',
     },
     'command_suffix': {
         'type': 'string',
-        'doc': "Opt-in constant string appended to every command's send string (its terminator). Set it once so you don't type \\r on each command. Byte-stream transports only (tcp/serial/udp). Supports the same escape sequences and {config} substitution as send. A command can opt out with raw: true. Requires platform 0.23.0.",
+        'doc': "Opt-in constant string appended to every command's send string (its terminator). Set it once so you don't type \\r on each command. Byte-stream transports only (tcp/serial/udp). Supports the same escape sequences and {config} substitution as send. A command can opt out with raw: true.",
+        'since': '0.23.0',
     },
     'inline_protocol': {
         'type': 'boolean',
@@ -395,6 +407,7 @@ FIELDS = {
     'ir_codes': {
         'type': 'boolean',
         'doc': 'Marks this as an IR code-set device (a device controlled by an infrared remote through an IR bridge). When true, the device page shows the IR Codes editor (learn / paste Pronto / type sendir / database search / test emit) and each code in the ir_codes map becomes a device command that emits through the bound bridge\'s IR port. A build-your-own IR device authors codes per-device; a community IR driver ships its code-set in default_config.ir_codes. Codes are stored as vendor-neutral Pronto hex plus a per-command repeat. Use transport "bridge" with this.',
+        'since': '0.22.0',
     },
     'ports': {
         'type': 'array',
@@ -423,7 +436,8 @@ FIELDS = {
     },
     'web_ui': {
         'type': ['boolean', 'string'],
-        'doc': 'Controls the \'Open Web UI\' button. Leave unset for auto-detect: the platform finds a reachable web URL (HTTP devices from config, others from a port probe / discovery scan) and adds the button on its own. true forces it on (opens https://{host}); a string forces it on with that URL template (e.g. "http://{host}:8080") with {host}/{port}/{config_key} substitution; false forces it off. Requires platform >= 0.24.0.',
+        'doc': 'Controls the \'Open Web UI\' button. Leave unset for auto-detect: the platform finds a reachable web URL (HTTP devices from config, others from a port probe / discovery scan) and adds the button on its own. true forces it on (opens https://{host}); a string forces it on with that URL template (e.g. "http://{host}:8080") with {host}/{port}/{config_key} substitution; false forces it off.',
+        'since': '0.24.0',
     },
     'min_platform_version': {
         'type': ['string', 'null'],
@@ -556,7 +570,8 @@ FIELDS = {
                         },
                         'when': {
                             'type': 'string',
-                            'doc': 'Config field gating this entry: it runs only while that field is truthy. Must name a field declared in config_schema / default_config. Requires platform 0.23.0.',
+                            'doc': 'Config field gating this entry: it runs only while that field is truthy. Must name a field declared in config_schema / default_config.',
+                            'since': '0.23.0',
                         },
                     },
                     'required': ('address',),
@@ -840,6 +855,7 @@ DEFS = {
             },
             'instances': {
                 'ref': 'childInstances',
+                'since': '0.22.0',
             },
         },
         'extra': False,
@@ -859,7 +875,8 @@ DEFS = {
             },
             'count_from_state': {
                 'type': 'string',
-                'doc': 'Name of a device-reported integer state variable (e.g. num_outputs) the roster follows once the device reports it, auto-sizing the roster to the hardware. Optional companion to count_from, which stays the offline fallback used before the device answers (a non-positive/absent value falls back to count_from). Requires platform 0.23.0.',
+                'doc': 'Name of a device-reported integer state variable (e.g. num_outputs) the roster follows once the device reports it, auto-sizing the roster to the hardware. Optional companion to count_from, which stays the offline fallback used before the device answers (a non-positive/absent value falls back to count_from).',
+                'since': '0.23.0',
             },
             'ids_from': {
                 'type': 'string',
@@ -868,7 +885,8 @@ DEFS = {
             'ids': {
                 'type': 'array',
                 'min_items': 1,
-                'doc': 'Literal fixed roster (e.g. [st, m]) — for protocol-fixed string or sparse-integer IDs that no config field should have to carry. Requires platform 0.23.0.',
+                'doc': 'Literal fixed roster (e.g. [st, m]) — for protocol-fixed string or sparse-integer IDs that no config field should have to carry.',
+                'since': '0.23.0',
                 'items': {
                     'one_of': (
                         {
@@ -982,6 +1000,7 @@ DEFS = {
     'eachChildQuery': {
         'type': 'object',
         'doc': 'Per-child query template: expands to one query per registered child of the named type, substituting {child_id} with the unpadded local ID.',
+        'since': '0.22.0',
         'fields': {
             'each_child': {
                 'type': 'string',
@@ -994,11 +1013,13 @@ DEFS = {
             },
             'when': {
                 'type': 'string',
-                'doc': 'Config field gating this entry: it runs only while that field is truthy. Must name a field declared in config_schema / default_config. Requires platform 0.23.0.',
+                'doc': 'Config field gating this entry: it runs only while that field is truthy. Must name a field declared in config_schema / default_config.',
+                'since': '0.23.0',
             },
             'query_for': {
                 'type': 'string',
-                'doc': "State variable each reply reports, from the child type's state_variables. Lets the auto-generated simulator answer the query from that child's own state instead of leaving it unmodeled. Requires platform 0.24.0.",
+                'doc': "State variable each reply reports, from the child type's state_variables. Lets the auto-generated simulator answer the query from that child's own state instead of leaving it unmodeled.",
+                'since': '0.24.0',
             },
         },
         'required': ('each_child', 'send'),
@@ -1014,11 +1035,13 @@ DEFS = {
             },
             'when': {
                 'type': 'string',
-                'doc': 'Config field gating this entry. Must name a field declared in config_schema / default_config. Requires platform 0.23.0.',
+                'doc': 'Config field gating this entry. Must name a field declared in config_schema / default_config.',
+                'since': '0.23.0',
             },
             'query_for': {
                 'type': 'string',
-                'doc': 'State variable the device reports in answer to this query. Must name a declared state variable. Requires platform 0.24.0.',
+                'doc': 'State variable the device reports in answer to this query. Must name a declared state variable.',
+                'since': '0.24.0',
             },
         },
         'required': ('send',),
@@ -1117,7 +1140,8 @@ DEFS = {
             },
             'trim': {
                 'type': 'boolean',
-                'doc': 'For string params. Default true: leading/trailing whitespace is trimmed before the value goes on the wire. Set false to pass the value through verbatim — for raw payloads where edge whitespace is meaningful (typed text, verbatim titles, relay bodies whose trailing terminator is part of the protocol). Requires platform 0.22.0.',
+                'doc': 'For string params. Default true: leading/trailing whitespace is trimmed before the value goes on the wire. Set false to pass the value through verbatim — for raw payloads where edge whitespace is meaningful (typed text, verbatim titles, relay bodies whose trailing terminator is part of the protocol).',
+                'since': '0.22.0',
             },
             'secret': {
                 'type': 'boolean',
@@ -1177,7 +1201,8 @@ DEFS = {
             },
             'raw': {
                 'type': 'boolean',
-                'doc': "Send this command's send string exactly as written, skipping the driver's command_prefix / command_suffix framing. Use it for the odd command that doesn't share the common frame. Requires platform 0.23.0.",
+                'doc': "Send this command's send string exactly as written, skipping the driver's command_prefix / command_suffix framing. Use it for the odd command that doesn't share the common frame.",
+                'since': '0.23.0',
             },
             'method': {
                 'type': 'string',
@@ -1219,18 +1244,21 @@ DEFS = {
             },
             'sets': {
                 'type': 'object',
-                'doc': 'Declared state effect: the state variables this command sets on the device, e.g. {power: true} or {master_volume: "{level}"}. A "{param}" value takes that command parameter\'s value; anything else is a literal. The auto-generated simulator applies these instead of guessing from the command name; keys must name declared state variables. On a command with exactly one child_id parameter, a key may instead name a state variable of that parameter\'s child type — the effect then applies to the addressed child. Requires platform 0.24.0.',
+                'doc': 'Declared state effect: the state variables this command sets on the device, e.g. {power: true} or {master_volume: "{level}"}. A "{param}" value takes that command parameter\'s value; anything else is a literal. The auto-generated simulator applies these instead of guessing from the command name; keys must name declared state variables. On a command with exactly one child_id parameter, a key may instead name a state variable of that parameter\'s child type — the effect then applies to the addressed child.',
+                'since': '0.24.0',
                 'extra': {
                     'type': ['string', 'integer', 'number', 'boolean'],
                 },
             },
             'query_for': {
                 'type': 'string',
-                'doc': 'Declares this command as a status query: the device answers it by reporting the named state variable. The auto-generated simulator replies with that variable\'s current value instead of inferring one from the command name. Must name a declared state variable; on a command with exactly one child_id parameter it may instead name a state variable of that parameter\'s child type. Requires platform 0.24.0.',
+                'doc': 'Declares this command as a status query: the device answers it by reporting the named state variable. The auto-generated simulator replies with that variable\'s current value instead of inferring one from the command name. Must name a declared state variable; on a command with exactly one child_id parameter it may instead name a state variable of that parameter\'s child type.',
+                'since': '0.24.0',
             },
             'available_offline': {
                 'type': 'boolean',
-                'doc': "Let this command run while the device is offline (no live connection). Default false: the platform blocks commands to a disconnected device. Set true only for a command whose handler needs no connection — the canonical case is a Wake-on-LAN power_on that sends a magic packet instead of talking to the device over its (dead) control link. Param validation still runs; the driver's handler must not assume a live transport. When such a command is promoted to a Quick Action button, the button stays available regardless of connection state. Requires platform 0.24.0.",
+                'doc': "Let this command run while the device is offline (no live connection). Default false: the platform blocks commands to a disconnected device. Set true only for a command whose handler needs no connection — the canonical case is a Wake-on-LAN power_on that sends a magic packet instead of talking to the device over its (dead) control link. Param validation still runs; the driver's handler must not assume a live transport. When such a command is promoted to a Quick Action button, the button stays available regardless of connection state.",
+                'since': '0.24.0',
             },
         },
         'extra': False,
@@ -1262,6 +1290,7 @@ DEFS = {
                 'type': 'string',
                 'enum': _YAML_ACTION_KINDS,
                 'python_enum': ACTION_KINDS,
+                'since_values': {'link': '0.24.0'},
                 'doc': "'command' promotes a declared command (runs online via send_command). 'link' opens a URL (e.g. the device's web interface) in a new tab, client-side. Offline-capable 'setup' provisioning wizards require a Python driver with a run_setup_action() handler.",
             },
             'label': {
@@ -1422,7 +1451,8 @@ DEFS = {
             'child_set': {
                 'type': 'array',
                 'min_items': 1,
-                'doc': 'Route a matched response into child-entity state. Works on regex responses (captures) and OSC address rules (address segments + positional args; platform 0.23.0+) — not json: true. May coexist with set/mappings on the same entry.',
+                'doc': 'Route a matched response into child-entity state. Works on regex responses (captures) and OSC address rules (address segments + positional args; the OSC form needs platform 0.23.0) — not json: true. May coexist with set/mappings on the same entry.',
+                'since': '0.22.0',
                 'items': {
                     'ref': 'childSetEntry',
                 },
@@ -1430,12 +1460,14 @@ DEFS = {
             'throttle': {
                 'type': 'number',
                 'emin': 0,
-                'doc': 'Optional. After this rule matches and applies, further matches of the same rule are dropped for this many seconds (drop-style; each skipped frame is superseded by the next). For continuous push telemetry like audio level meters — do not throttle ordinary replies or state-change notices. Works on regex, json, and OSC rules. Requires platform 0.23.0.',
+                'doc': 'Optional. After this rule matches and applies, further matches of the same rule are dropped for this many seconds (drop-style; each skipped frame is superseded by the next). For continuous push telemetry like audio level meters — do not throttle ordinary replies or state-change notices. Works on regex, json, and OSC rules.',
+                'since': '0.23.0',
             },
             'require': {
                 'type': ['string', 'array'],
                 'min_len': 1,
-                'doc': 'json: true rules only. Apply this rule only to bodies carrying the named JSON key (or every key in the list). Scopes a rule when different endpoints on one device reuse a field name with different meanings. Requires platform 0.23.0.',
+                'doc': 'json: true rules only. Apply this rule only to bodies carrying the named JSON key (or every key in the list). Scopes a rule when different endpoints on one device reuse a field name with different meanings.',
+                'since': '0.23.0',
                 'items': {
                     'type': 'string',
                     'min_len': 1,
@@ -1457,7 +1489,8 @@ DEFS = {
     },
     'pushBlock': {
         'type': 'object',
-        'doc': "Device-initiated push notifications arriving on a channel the platform opens (not the established control connection). type: multicast joins the device's notification group; incoming datagrams feed the driver's responses rules (split on the driver delimiter first) and are accepted only from the device's own address. type: sse holds GET path(s) open on the driver's own HTTP session with Accept: text/event-stream; each event's data block feeds the responses rules whole (pair with json: true rules for JSON payloads). type: tcp_listener opens a local TCP port the device dials back to after a registration command carrying {listener_port} tells it where; frames are parsed by the declared frame_parser, split on the driver delimiter, and accepted only from the device's own address. In every shape the subscription starts before on_connect (and any register command) runs, and stops on disconnect; a dropped SSE stream reconnects with exponential backoff. type: http_listener accepts the device's own HTTP POSTs (webhooks) on a callback path the platform assigns per device — send the URL to the device from an on_connect registration command, where the token {push_callback_url} substitutes it into command bodies, paths, and headers; request bodies feed the responses rules whole and are accepted only from the device's own address. Requires platform 0.23.0.",
+        'doc': "Device-initiated push notifications arriving on a channel the platform opens (not the established control connection). type: multicast joins the device's notification group; incoming datagrams feed the driver's responses rules (split on the driver delimiter first) and are accepted only from the device's own address. type: sse holds GET path(s) open on the driver's own HTTP session with Accept: text/event-stream; each event's data block feeds the responses rules whole (pair with json: true rules for JSON payloads). type: tcp_listener opens a local TCP port the device dials back to after a registration command carrying {listener_port} tells it where; frames are parsed by the declared frame_parser, split on the driver delimiter, and accepted only from the device's own address. In every shape the subscription starts before on_connect (and any register command) runs, and stops on disconnect; a dropped SSE stream reconnects with exponential backoff. type: http_listener accepts the device's own HTTP POSTs (webhooks) on a callback path the platform assigns per device — send the URL to the device from an on_connect registration command, where the token {push_callback_url} substitutes it into command bodies, paths, and headers; request bodies feed the responses rules whole and are accepted only from the device's own address.",
+        'since': '0.23.0',
         'fields': {
             'type': {
                 'type': 'string',
@@ -1519,6 +1552,7 @@ DEFS = {
     'authBlock': {
         'type': 'object',
         'doc': 'Telnet-style login handshake. Only valid on tcp/serial transports (it reads a raw byte stream); declaring it on udp/http/osc is rejected at load time. username_prompt and password_prompt are required. All four regexes are checked for catastrophic backtracking since they run on raw pre-auth device bytes.',
+        'since': '0.9.0',
         'fields': {
             'type': {
                 'type': 'string',
@@ -1568,6 +1602,7 @@ DEFS = {
     'livenessBlock': {
         'type': 'object',
         'doc': 'Dead-link watchdog: send a probe every `interval` seconds and await a reply; after `max_failures` consecutive silent probes the platform drops the connection with a typed no_response fault and reconnects. Only valid on tcp/serial/udp/osc transports (rejected at load time on http, where polling already awaits every response, and on bridge, which owns no transport). Any inbound data during the wait window counts as alive unless `expect` narrows it. Needed for connectionless transports (UDP/OSC, where fire-and-forget polls never notice silence) and push-mostly TCP (no FIN when the device vanishes).',
+        'since': '0.22.0',
         'fields': {
             'send': {
                 'type': 'string',
@@ -1629,17 +1664,20 @@ DEFS = {
             'length_offset': {
                 'type': 'integer',
                 'min': 0,
-                'doc': "length_prefix: constant bytes before the length field (magic + fixed header fields) when the length isn't first on the wire. e.g. eISCP puts its 4-byte length at offset 8. Default 0. Requires platform 0.23.0.",
+                'doc': "length_prefix: constant bytes before the length field (magic + fixed header fields) when the length isn't first on the wire. e.g. eISCP puts its 4-byte length at offset 8. Default 0.",
+                'since': '0.23.0',
             },
             'header_extra': {
                 'type': 'integer',
                 'min': 0,
-                'doc': "length_prefix: constant bytes after the length field, before the data (e.g. eISCP's version + reserved = 4). Full fixed header = length_offset + header_size + header_extra. Default 0. Requires platform 0.23.0.",
+                'doc': "length_prefix: constant bytes after the length field, before the data (e.g. eISCP's version + reserved = 4). Full fixed header = length_offset + header_size + header_extra. Default 0.",
+                'since': '0.23.0',
             },
             'length_endian': {
                 'type': 'string',
                 'enum': LENGTH_ENDIANS,
-                'doc': 'length_prefix / struct_frame: byte order of the length field. Default big. Requires platform 0.23.0.',
+                'doc': 'length_prefix / struct_frame: byte order of the length field. Default big.',
+                'since': '0.23.0',
             },
             'length': {
                 'type': 'integer',
@@ -1648,33 +1686,39 @@ DEFS = {
             'header_reserve': {
                 'type': 'integer',
                 'min': 0,
-                'doc': 'struct_frame: reserved bytes before the length field (discarded). Default 0. Requires platform 0.23.0.',
+                'doc': 'struct_frame: reserved bytes before the length field (discarded). Default 0.',
+                'since': '0.23.0',
             },
             'length_size': {
                 'type': 'integer',
                 'enum': STRUCT_LENGTH_SIZES,
-                'doc': 'struct_frame: bytes holding the length field. Default 2. Requires platform 0.23.0.',
+                'doc': 'struct_frame: bytes holding the length field. Default 2.',
+                'since': '0.23.0',
             },
             'length_adjust': {
                 'type': 'integer',
-                'doc': 'struct_frame: added to the decoded length value to get the payload byte count, for length fields that include constant overhead (Panasonic camera containers count payload + 8, so -8). Default 0. Requires platform 0.23.0.',
+                'doc': 'struct_frame: added to the decoded length value to get the payload byte count, for length fields that include constant overhead (Panasonic camera containers count payload + 8, so -8). Default 0.',
+                'since': '0.23.0',
             },
             'mid_reserve': {
                 'type': 'integer',
                 'min': 0,
-                'doc': 'struct_frame: reserved bytes between the length field and the payload (discarded). Default 0. Requires platform 0.23.0.',
+                'doc': 'struct_frame: reserved bytes between the length field and the payload (discarded). Default 0.',
+                'since': '0.23.0',
             },
             'trailer_reserve': {
                 'type': 'integer',
                 'min': 0,
-                'doc': 'struct_frame: reserved bytes after the payload (discarded). Default 0. Requires platform 0.23.0.',
+                'doc': 'struct_frame: reserved bytes after the payload (discarded). Default 0.',
+                'since': '0.23.0',
             },
         },
         'extra': False,
     },
     'sendFrame': {
         'type': 'object',
-        'doc': 'Send-side packet framing — the send twin of frame_parser. Wraps every byte-stream command in a binary header whose data-length is computed per message (e.g. eISCP). Requires platform 0.23.0.',
+        'doc': 'Send-side packet framing — the send twin of frame_parser. Wraps every byte-stream command in a binary header whose data-length is computed per message (e.g. eISCP).',
+        'since': '0.23.0',
         'fields': {
             'type': {
                 'type': 'string',
@@ -1708,6 +1752,7 @@ DEFS = {
             'type': {
                 'type': 'string',
                 'enum': CONFIG_FIELD_TYPES,
+                'since_values': {'table': '0.23.0'},
             },
             'label': {
                 'type': 'string',
@@ -2345,6 +2390,152 @@ def block_has_fixed_keys(node: dict) -> bool:
             if set(branch) - {"required"}:
                 return False
     return True
+
+
+def node_doc(node: dict) -> str | None:
+    """A registry node's documentation, its platform floor appended.
+
+    The floor is written once as ``since`` and rendered from there into
+    every published surface (both JSON Schemas, the Builder's types), so
+    the sentence an author reads and the version the catalog enforces are
+    the same annotation and cannot drift apart.
+    """
+    parts = [node["doc"]] if node.get("doc") else []
+    if node.get("since"):
+        parts.append(f"Requires platform {node['since']}.")
+    for value, version in sorted((node.get("since_values") or {}).items()):
+        parts.append(f'Value "{value}" requires platform {version}.')
+    return " ".join(parts) or None
+
+
+def parse_version(value: object) -> tuple[int, ...] | None:
+    """Parse ``X.Y.Z`` into a comparable tuple; None if it isn't one.
+
+    A pre-release or build suffix is dropped — a driver declaring
+    ``0.23.0-rc1`` is asking for the 0.23.0 contract.
+    """
+    if not isinstance(value, str):
+        return None
+    core = re.split(r"[-+]", value.strip(), maxsplit=1)[0]
+    parts = core.split(".")
+    if not parts or not all(p.isdigit() for p in parts):
+        return None
+    return tuple(int(p) for p in parts)
+
+
+def _fits(node: dict, value: object) -> bool:
+    """Whether a combinator branch is plausibly the one this value satisfies.
+
+    A ``one_of``/``any_of`` list holds alternative shapes, and only the one
+    the value actually matches imposes its floors — an ``on_connect`` entry
+    written as ``{send, when}`` is a plain query, not the per-child template
+    that happens to sit in the same list. Deciding that exactly would mean
+    running a JSON Schema validator here; requiredness plus the declared key
+    set discriminates every branch the registry actually has, and a branch
+    this misjudges is caught by the min() in the caller.
+    """
+    if "ref" in node:
+        node = DEFS.get(node["ref"], {})
+    declared = node.get("type")
+    if declared is not None:
+        names = (declared,) if isinstance(declared, str) else tuple(declared)
+        actual = (
+            "object" if isinstance(value, dict)
+            else "array" if isinstance(value, list)
+            else "boolean" if isinstance(value, bool)
+            else "string" if isinstance(value, str)
+            else "number" if isinstance(value, (int, float))
+            else "null" if value is None
+            else None
+        )
+        if actual not in names and not (
+            actual == "number" and "integer" in names
+        ):
+            return False
+    if not isinstance(value, dict):
+        return True
+    fields = node.get("fields")
+    if isinstance(fields, dict):
+        if any(key not in value for key in node.get("required", ())):
+            return False
+        if node.get("extra") is False and set(value) - set(fields):
+            return False
+    return True
+
+
+def platform_requirements(driver_def: object) -> list[tuple[str, str]]:
+    """Platform-version floors this definition's own fields impose.
+
+    Returns ``(location, version)`` pairs — ``("commands.set_input.query_for",
+    "0.24.0")`` — one per field or enum value carrying a ``since``. The
+    highest of them is the lowest platform release that understands the
+    driver; declaring ``min_platform_version`` below it ships a driver that
+    installs on releases which silently ignore part of it.
+
+    Only what the definition *declares* is visible here. A Python driver
+    that reaches for a platform API in code, or builds part of its
+    DRIVER_INFO at runtime, can need a newer platform than this can see —
+    the result is a floor, never a ceiling.
+    """
+    found: dict[str, tuple[int, ...]] = {}
+    text: dict[str, str] = {}
+
+    def record(location: str, version: str) -> None:
+        parsed = parse_version(version)
+        if parsed is None:
+            return
+        # min(): where several branches fit, the definition only has to be
+        # valid under one of them, so the lowest floor is the honest answer.
+        if location not in found or parsed < found[location]:
+            found[location] = parsed
+            text[location] = version
+
+    def walk(node: object, value: object, loc: str, depth: int = 0) -> None:
+        if not isinstance(node, dict) or depth > 40:
+            return
+        if "ref" in node:
+            if node.get("since"):
+                record(loc, node["since"])
+            walk(DEFS.get(node["ref"]), value, loc, depth + 1)
+            return
+        if node.get("since"):
+            record(loc, node["since"])
+        since_values = node.get("since_values")
+        if since_values and isinstance(value, str) and value in since_values:
+            record(f"{loc}: {value}", since_values[value])
+        if isinstance(value, list):
+            item = node.get("items")
+            for index, entry in enumerate(value):
+                walk(item, entry, f"{loc}[{index}]", depth + 1)
+        elif isinstance(value, dict):
+            fields = node.get("fields") or {}
+            extra = node.get("extra")
+            for key, sub in value.items():
+                where = f"{loc}.{key}" if loc else str(key)
+                if key in fields:
+                    walk(fields[key], sub, where, depth + 1)
+                elif isinstance(extra, dict):
+                    walk(extra, sub, where, depth + 1)
+        for combinator in ("one_of", "any_of", "all_of"):
+            for branch in node.get(combinator, ()):
+                if combinator == "all_of" or _fits(branch, value):
+                    walk(branch, value, loc, depth + 1)
+
+    if isinstance(driver_def, dict):
+        for name, value in driver_def.items():
+            if name in FIELDS:
+                walk(FIELDS[name], value, name)
+    return sorted(
+        ((loc, text[loc]) for loc in found),
+        key=lambda item: (found[item[0]], item[0]),
+        reverse=True,
+    )
+
+
+def required_platform_version(driver_def: object) -> str | None:
+    """The highest platform floor in a definition, or None if it has none."""
+    requirements = platform_requirements(driver_def)
+    return requirements[0][1] if requirements else None
 
 
 # Cross-field rules that live at the document root (JSON Schema allOf):

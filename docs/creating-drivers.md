@@ -1472,9 +1472,17 @@ the file is missing the driver is refused at load with a message naming the
 path it looked for, rather than loading into a state where the device is
 theoretically matchable and never actually found.
 
-When you bump a driver to use a new schema field your platform target may lack, set `min_platform_version` in `index.json` so older OpenAVC instances grey out the driver instead of trying to parse fields they don't understand.
+When you bump a driver to use a new schema field your platform target may lack, set `min_platform_version` so older OpenAVC instances grey out the driver instead of trying to parse fields they don't understand.
 
-CI in the community-driver repo enforces the same rules across the whole catalog before any driver enters the index.
+You don't have to work that version out by hand. Every field that arrived in a particular release says so in its description — "Requires platform 0.23.0" — and the checks read the same annotation, so the floor is computed from the driver rather than remembered:
+
+```bash
+python -m server.drivers.check switchers/acme_widget.avcdriver
+```
+
+A `min_platform_version` lower than a field the driver uses is an error, and the message names the field. Declaring too low is not a style problem: the install gate believes the declaration, so the driver installs on a release that reads the file, ignores the fields it doesn't recognise, and runs wrong — a push subscription that never arms, a command whose framing is quietly dropped. Raising the floor costs something in the other direction (nobody on an older release can install the driver at all), so it's worth knowing which field is buying it.
+
+CI in the community-driver repo enforces the same rules across the whole catalog before any driver enters the index, and additionally requires a `min_platform_version` on any driver that uses a field with a floor.
 
 #### Protocol Declaration
 

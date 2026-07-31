@@ -445,9 +445,9 @@ export interface DriverResponseDef {
   mappings?: DriverResponseMapping[];
   /**
    * Route a matched response into child-entity state. Works on regex responses
-   * (captures) and OSC address rules (address segments + positional args;
-   * platform 0.23.0+) — not json: true. May coexist with set/mappings on the
-   * same entry.
+   * (captures) and OSC address rules (address segments + positional args; the
+   * OSC form needs platform 0.23.0) — not json: true. May coexist with
+   * set/mappings on the same entry. Requires platform 0.22.0.
    */
   child_set?: DriverChildSetEntry[];
   /**
@@ -469,7 +469,8 @@ export interface DriverResponseDef {
 
 /**
  * Per-child query template: expands to one query per registered child of the
- * named type, substituting {child_id} with the unpadded local ID.
+ * named type, substituting {child_id} with the unpadded local ID. Requires
+ * platform 0.22.0.
  */
 export interface DriverEachChildQuery {
   /** A declared child_entity_types name (must have an instances: roster). */
@@ -555,7 +556,7 @@ export interface DriverActionDef {
    * 'command' promotes a declared command (runs online via send_command).
    * 'link' opens a URL (e.g. the device's web interface) in a new tab, client-
    * side. Offline-capable 'setup' provisioning wizards require a Python driver
-   * with a run_setup_action() handler.
+   * with a run_setup_action() handler. Value "link" requires platform 0.24.0.
    */
   kind?: "command" | "link";
   /** Button label. Defaults to the promoted command's label, else the id. */
@@ -874,6 +875,7 @@ export interface DriverChildEntityType {
    * to, so leave it off for YAML drivers.
    */
   dynamic?: boolean;
+  /** Requires platform 0.22.0. */
   instances?: DriverChildInstances;
 }
 
@@ -904,7 +906,7 @@ export interface DriverCompatibleModelsEntry {
  * a raw byte stream); declaring it on udp/http/osc is rejected at load time.
  * username_prompt and password_prompt are required. All four regexes are
  * checked for catastrophic backtracking since they run on raw pre-auth device
- * bytes.
+ * bytes. Requires platform 0.9.0.
  */
 export interface DriverAuthDef {
   /** Handshake type. Only telnet_login is implemented and accepted. */
@@ -1014,7 +1016,7 @@ export interface DriverPushDef {
  * inbound data during the wait window counts as alive unless `expect` narrows
  * it. Needed for connectionless transports (UDP/OSC, where fire-and-forget
  * polls never notice silence) and push-mostly TCP (no FIN when the device
- * vanishes).
+ * vanishes). Requires platform 0.22.0.
  */
 export interface DriverLivenessDef {
   /**
@@ -1160,7 +1162,8 @@ export interface DriverDefinition {
    * emits through the bound bridge's IR port. A build-your-own IR device
    * authors codes per-device; a community IR driver ships its code-set in
    * default_config.ir_codes. Codes are stored as vendor-neutral Pronto hex
-   * plus a per-command repeat. Use transport "bridge" with this.
+   * plus a per-command repeat. Use transport "bridge" with this. Requires
+   * platform 0.22.0.
    */
   ir_codes?: boolean;
   /** TCP/UDP ports the device listens on (catalog metadata only). */
@@ -1183,7 +1186,7 @@ export interface DriverDefinition {
    * a port probe / discovery scan) and adds the button on its own. true forces
    * it on (opens https://{host}); a string forces it on with that URL template
    * (e.g. "http://{host}:8080") with {host}/{port}/{config_key} substitution;
-   * false forces it off. Requires platform >= 0.24.0.
+   * false forces it off. Requires platform 0.24.0.
    */
   web_ui?: boolean | string;
   /**

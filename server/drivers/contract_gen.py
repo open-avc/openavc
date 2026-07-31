@@ -75,6 +75,10 @@ _HANDLED_KEYS = frozenset(
         "any", "ref", "enum", "python_enum", "doc", "req", "fields",
         "required", "extra", "prop_names", "items", "one_of", "any_of",
         "all_of", "not_", "raw",
+        # Platform floors are rendered into the description (spec.node_doc)
+        # rather than emitted as keywords of their own — JSON Schema has no
+        # way to say "reading this field needs a newer platform".
+        "since", "since_values",
     }
 )
 
@@ -99,8 +103,9 @@ def _node_to_schema(node: dict[str, Any], tier: str) -> Any:
         if tier == "python" and "python_enum" in node:
             enum = node["python_enum"]
         out["enum"] = list(enum)
-    if "doc" in node:
-        out["description"] = node["doc"]
+    doc = spec.node_doc(node)
+    if doc:
+        out["description"] = doc
     if "required" in node:
         out["required"] = list(node["required"])
     if "fields" in node:

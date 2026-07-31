@@ -26,6 +26,7 @@ from server.drivers.avcdriver_semantic import (
     UNEVALUATED_KEY,
     child_param_reference_errors,
     device_setting_state_key_errors,
+    platform_version_errors,
     validate_actions,
 )
 
@@ -232,6 +233,13 @@ def python_driver_info_issues(
     # ``validate_actions`` is surface-neutral: the one YAML-only action rule
     # (kind:"setup" needs a Python driver) lives in its caller, not in it.
     issues.extend(validate_actions(info))
+
+    # The same rule the YAML half gets from validate_driver_definition's
+    # strict pass: a min_platform_version that undershoots what DRIVER_INFO
+    # actually uses. Decidable from the dict alone — a block this driver
+    # builds at runtime is simply invisible here, which understates the floor
+    # and never invents one.
+    issues.extend(platform_version_errors(info))
 
     actions = info.get("actions")
     declares_setup = isinstance(actions, list) and any(

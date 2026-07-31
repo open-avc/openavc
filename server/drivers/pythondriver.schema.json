@@ -155,7 +155,7 @@
     },
     "ir_codes": {
       "type": "boolean",
-      "description": "Marks this as an IR code-set device (a device controlled by an infrared remote through an IR bridge). When true, the device page shows the IR Codes editor (learn / paste Pronto / type sendir / database search / test emit) and each code in the ir_codes map becomes a device command that emits through the bound bridge's IR port. A build-your-own IR device authors codes per-device; a community IR driver ships its code-set in default_config.ir_codes. Codes are stored as vendor-neutral Pronto hex plus a per-command repeat. Use transport \"bridge\" with this."
+      "description": "Marks this as an IR code-set device (a device controlled by an infrared remote through an IR bridge). When true, the device page shows the IR Codes editor (learn / paste Pronto / type sendir / database search / test emit) and each code in the ir_codes map becomes a device command that emits through the bound bridge's IR port. A build-your-own IR device authors codes per-device; a community IR driver ships its code-set in default_config.ir_codes. Codes are stored as vendor-neutral Pronto hex plus a per-command repeat. Use transport \"bridge\" with this. Requires platform 0.22.0."
     },
     "ports": {
       "type": "array",
@@ -187,7 +187,7 @@
         "boolean",
         "string"
       ],
-      "description": "Controls the 'Open Web UI' button. Leave unset for auto-detect: the platform finds a reachable web URL (HTTP devices from config, others from a port probe / discovery scan) and adds the button on its own. true forces it on (opens https://{host}); a string forces it on with that URL template (e.g. \"http://{host}:8080\") with {host}/{port}/{config_key} substitution; false forces it off. Requires platform >= 0.24.0."
+      "description": "Controls the 'Open Web UI' button. Leave unset for auto-detect: the platform finds a reachable web URL (HTTP devices from config, others from a port probe / discovery scan) and adds the button on its own. true forces it on (opens https://{host}); a string forces it on with that URL template (e.g. \"http://{host}:8080\") with {host}/{port}/{config_key} substitution; false forces it off. Requires platform 0.24.0."
     },
     "min_platform_version": {
       "type": [
@@ -699,7 +699,8 @@
           "description": "Mark a type whose children each carry their own control set, discovered at connect time rather than declared here (a DSP's user-built components, a hub's attached devices). Only a driver that registers children in code can populate one: register_child(..., schema=...) refuses a per-child schema unless the type declares this, and the {source: child_schema} param picker reads those schemas. A declarative roster has nothing to attach a schema to, so leave it off for YAML drivers."
         },
         "instances": {
-          "$ref": "#/$defs/childInstances"
+          "$ref": "#/$defs/childInstances",
+          "description": "Requires platform 0.22.0."
         }
       },
       "additionalProperties": false
@@ -869,7 +870,7 @@
     },
     "eachChildQuery": {
       "type": "object",
-      "description": "Per-child query template: expands to one query per registered child of the named type, substituting {child_id} with the unpadded local ID.",
+      "description": "Per-child query template: expands to one query per registered child of the named type, substituting {child_id} with the unpadded local ID. Requires platform 0.22.0.",
       "required": [
         "each_child",
         "send"
@@ -1201,7 +1202,7 @@
             "setup",
             "link"
           ],
-          "description": "'command' promotes a declared command (runs online via send_command). 'link' opens a URL (e.g. the device's web interface) in a new tab, client-side. Offline-capable 'setup' provisioning wizards require a Python driver with a run_setup_action() handler."
+          "description": "'command' promotes a declared command (runs online via send_command). 'link' opens a URL (e.g. the device's web interface) in a new tab, client-side. Offline-capable 'setup' provisioning wizards require a Python driver with a run_setup_action() handler. Value \"link\" requires platform 0.24.0."
         },
         "label": {
           "type": "string",
@@ -1396,7 +1397,7 @@
         "child_set": {
           "type": "array",
           "minItems": 1,
-          "description": "Route a matched response into child-entity state. Works on regex responses (captures) and OSC address rules (address segments + positional args; platform 0.23.0+) — not json: true. May coexist with set/mappings on the same entry.",
+          "description": "Route a matched response into child-entity state. Works on regex responses (captures) and OSC address rules (address segments + positional args; the OSC form needs platform 0.23.0) — not json: true. May coexist with set/mappings on the same entry. Requires platform 0.22.0.",
           "items": {
             "$ref": "#/$defs/childSetEntry"
           }
@@ -1586,7 +1587,7 @@
     },
     "authBlock": {
       "type": "object",
-      "description": "Telnet-style login handshake. Only valid on tcp/serial transports (it reads a raw byte stream); declaring it on udp/http/osc is rejected at load time. username_prompt and password_prompt are required. All four regexes are checked for catastrophic backtracking since they run on raw pre-auth device bytes.",
+      "description": "Telnet-style login handshake. Only valid on tcp/serial transports (it reads a raw byte stream); declaring it on udp/http/osc is rejected at load time. username_prompt and password_prompt are required. All four regexes are checked for catastrophic backtracking since they run on raw pre-auth device bytes. Requires platform 0.9.0.",
       "required": [
         "username_prompt",
         "password_prompt"
@@ -1640,7 +1641,7 @@
     },
     "livenessBlock": {
       "type": "object",
-      "description": "Dead-link watchdog: send a probe every `interval` seconds and await a reply; after `max_failures` consecutive silent probes the platform drops the connection with a typed no_response fault and reconnects. Only valid on tcp/serial/udp/osc transports (rejected at load time on http, where polling already awaits every response, and on bridge, which owns no transport). Any inbound data during the wait window counts as alive unless `expect` narrows it. Needed for connectionless transports (UDP/OSC, where fire-and-forget polls never notice silence) and push-mostly TCP (no FIN when the device vanishes).",
+      "description": "Dead-link watchdog: send a probe every `interval` seconds and await a reply; after `max_failures` consecutive silent probes the platform drops the connection with a typed no_response fault and reconnects. Only valid on tcp/serial/udp/osc transports (rejected at load time on http, where polling already awaits every response, and on bridge, which owns no transport). Any inbound data during the wait window counts as alive unless `expect` narrows it. Needed for connectionless transports (UDP/OSC, where fire-and-forget polls never notice silence) and push-mostly TCP (no FIN when the device vanishes). Requires platform 0.22.0.",
       "required": [
         "send"
       ],
@@ -1811,7 +1812,8 @@
             "boolean",
             "enum",
             "table"
-          ]
+          ],
+          "description": "Value \"table\" requires platform 0.23.0."
         },
         "label": {
           "type": "string"

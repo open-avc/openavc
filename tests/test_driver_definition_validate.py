@@ -102,6 +102,11 @@ SECTION_CASES: list[tuple[str, dict[str, Any], str]] = [
         "command_suffix",
     ),
     (
+        "min_platform_version",
+        _d(min_platform_version="0.20.0", web_ui=True),
+        "min_platform_version",
+    ),
+    (
         "responses",
         _d(responses={"not": "a list"}),
         "responses",

@@ -677,7 +677,7 @@ def _render_member(
     if "req" in override:
         required = override["req"]
     ts = override.get("type") or _mechanical_ts(node)
-    doc = override.get("doc", node.get("doc"))
+    doc = override.get("doc", spec.node_doc(node))
     out = _doc_block(doc, "  ") if doc else ""
     opt = "" if required else "?"
     return out + f"  {name}{opt}: {ts};\n"
@@ -696,7 +696,7 @@ def _render_interface(
     if unknown:
         raise ValueError(f"{ts_name}: overrides for unknown members {sorted(unknown)}")
     schema_required = set(node.get("required", ()))
-    doc = options.get("doc", node.get("doc"))
+    doc = options.get("doc", spec.node_doc(node))
     out = _doc_block(doc, "") if doc else ""
     out += f"export interface {ts_name} {{\n"
     for member, sub in fields.items():
