@@ -107,6 +107,12 @@ def _build_commands_meta(commands_def: dict[str, Any]) -> dict[str, Any]:
     return commands_meta
 
 
+# One {name} / {name:spec} token left unsubstituted on the way to the wire.
+# Same shape the authoring check uses, so both agree on what counts as a
+# placeholder and a literal JSON brace is neither.
+_WIRE_PLACEHOLDER = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)(?::[^{}]*)?\}")
+
+
 class ConfigurableDriver(BaseDriver):
     """
     A driver that interprets a YAML (.avcdriver) definition at runtime.
@@ -134,6 +140,9 @@ class ConfigurableDriver(BaseDriver):
         # producing a per-instance _definition + DRIVER_INFO. Runs before the
         # response compile + derived-config below so the config-authored
         # responses are compiled and config commands are visible to the IDE.
+        # (template location, token) pairs already warned about — see
+        # _substitute_for_wire.
+        self._warned_unresolved: set[tuple[str, str]] = set()
         self._merge_config_protocol()
 
         # Child rosters can size themselves from a device-reported state var
@@ -566,7 +575,10 @@ class ConfigurableDriver(BaseDriver):
             if query in commands:
                 await self.send_command(query)
             else:
-                formatted = self._safe_substitute(query, self.config) if "{" in query else query
+                formatted = (
+                    self._substitute_for_wire("polling query", query, self.config)
+                    if "{" in query else query
+                )
                 response = await self.transport.get(formatted)
                 # Same handler as the command path: response matching plus the
                 # poll cycle's auth tally. A raw path is the most common HTTP
@@ -576,7 +588,10 @@ class ConfigurableDriver(BaseDriver):
             if query in commands:
                 await self.send_command(query)
             else:
-                formatted = self._safe_substitute(query, self.config) if "{" in query else query
+                formatted = (
+                    self._substitute_for_wire("polling query", query, self.config)
+                    if "{" in query else query
+                )
                 await self.transport.send(_safe_encode_escapes(formatted))
         else:  # tcp / serial
             if query in commands:
@@ -589,7 +604,10 @@ class ConfigurableDriver(BaseDriver):
                 # queries reach the device correctly.
                 await self.send_command(query)
             else:
-                formatted = self._safe_substitute(query, self.config) if "{" in query else query
+                formatted = (
+                    self._substitute_for_wire("polling query", query, self.config)
+                    if "{" in query else query
+                )
                 await self.transport.send(
                     self._apply_send_frame(_safe_encode_escapes(formatted))
                 )
@@ -1211,7 +1229,7 @@ class ConfigurableDriver(BaseDriver):
         # braces must be preserved — only {name} tokens matching known params
         # are replaced, all other braces are left alone.
         all_params = {**self.config, **self._push_params(), **params}
-        formatted = self._safe_substitute(raw, all_params)
+        formatted = self._substitute_for_wire(f"commands.{command}.send", raw, all_params)
 
         # Encode (handle explicit escape sequences only — safe subset), then
         # wrap in the send_frame packet header (no-op unless declared).
@@ -1269,7 +1287,9 @@ class ConfigurableDriver(BaseDriver):
         all_params = {**self.config, **params}
 
         raw_address = cmd_def.get("address", "")
-        address = self._safe_substitute(raw_address, all_params)
+        address = self._substitute_for_wire(
+            f"commands.{command}.address", raw_address, all_params
+        )
 
         args = self._build_osc_args(cmd_def.get("args", []), all_params)
         data = osc_encode_message(address, args)
@@ -1377,7 +1397,7 @@ class ConfigurableDriver(BaseDriver):
         headers = self._build_http_headers(cmd_def.get("headers"), all_params)
 
         # Substitute params in path using safe substitution
-        path = self._safe_substitute(raw_path, all_params)
+        path = self._substitute_for_wire(f"commands.{command}.path", raw_path, all_params)
 
         # Substitute params in body. A body that parses as JSON is sent as
         # JSON; anything else (XML, form text, a bare token) goes out as raw
@@ -1387,7 +1407,9 @@ class ConfigurableDriver(BaseDriver):
         json_body = None
         content = None
         if raw_body:
-            body_str = self._safe_substitute(raw_body, all_params)
+            body_str = self._substitute_for_wire(
+                f"commands.{command}.body", raw_body, all_params
+            )
             try:
                 json_body = json.loads(body_str)
             except (json.JSONDecodeError, ValueError):
@@ -1445,6 +1467,41 @@ class ConfigurableDriver(BaseDriver):
     # implementation for every surface (see compiled_protocol module docs).
     # Kept as a staticmethod so existing callers (API routes, tests) work.
     _safe_substitute = staticmethod(compiled_protocol.safe_substitute)
+
+    def _substitute_for_wire(
+        self, where: str, template: str, params: dict[str, Any]
+    ) -> str:
+        """Substitute, and say so when a placeholder survives it.
+
+        ``safe_substitute`` leaves an unknown ``{name}`` in place rather than
+        raising, so a JSON body full of braces cannot crash a send. The token
+        then goes to the device as literal text: the command looks like it ran
+        and the device ignores it, or a poll query is never answered and the
+        device eventually drops on its watchdog. Nothing said a word.
+
+        The authoring check (``validate_substitutions``) catches this before a
+        driver is saved, but only where the file alone is wrong. It cannot
+        cover a command that declares no params, because the caller may
+        legitimately supply one at call time — which is exactly the case only
+        the send path can settle, since here the params are known.
+
+        Warned once per template and token: polls run on a timer, and a warning
+        that repeats every few seconds is one nobody reads.
+        """
+        out = self._safe_substitute(template, params)
+        if "{" not in out:
+            return out
+        for name in _WIRE_PLACEHOLDER.findall(out):
+            if (where, name) in self._warned_unresolved:
+                continue
+            self._warned_unresolved.add((where, name))
+            log.warning(
+                "[%s] %s: '{%s}' was not substituted and goes to the device "
+                "literally — it names no parameter passed to this call and no "
+                "config field. Declare it, or pass it when calling the command.",
+                self.device_id, where, name,
+            )
+        return out
 
     async def _process_http_response(
         self, command: str, response: Any

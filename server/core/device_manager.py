@@ -11,11 +11,13 @@ Handles:
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from typing import Any, TYPE_CHECKING
 
 from server.core.connection_fault import (
     classify_connection_fault,
     is_permanent_fault,
+    no_simulator_fault,
     typed_fault_from_exc,
 )
 from server.drivers.avcdriver_semantic import undeclared_child_type_reason
@@ -229,6 +231,14 @@ class DeviceManager:
         # In-flight web-UI probes, keyed by device id — holds a task reference
         # (so it isn't GC'd) and dedupes the add-time and connect-time triggers.
         self._web_ui_probe_tasks: dict[str, asyncio.Task] = {}
+        # Set by SimulationManager while a simulated bench is running: given a
+        # device id, returns its driver id when that device has no simulator
+        # and so was never redirected. Such a device fails against its REAL
+        # address, which classifies as a perfectly accurate connection_refused
+        # and sends the author to check a port that was never the problem.
+        # A callable rather than an import, so the device manager goes on
+        # knowing nothing about simulation; None whenever it isn't running.
+        self.unsimulated_driver: Callable[[str], str | None] | None = None
 
         # Auto-reconnect when a device transport drops mid-session
         self.events.on(
@@ -1123,7 +1133,14 @@ class DeviceManager:
                     last_error = fresh
             host, port, transport = self._connection_descriptor(driver)
 
-        fault = typed_fault_from_exc(exc, host=host, port=port)
+        # A device a running simulation could not simulate is failing against
+        # its real address, so every signal below is about a socket that was
+        # never meant to be reached. Answer the question the author is actually
+        # asking before the classifier answers a different one correctly.
+        gap = self.unsimulated_driver(device_id) if self.unsimulated_driver else None
+        fault = no_simulator_fault(gap) if gap else None
+        if fault is None:
+            fault = typed_fault_from_exc(exc, host=host, port=port)
         if fault is None and driver is not None:
             fault = getattr(driver, "last_fault", None)
         if fault is None:

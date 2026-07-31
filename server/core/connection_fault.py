@@ -34,6 +34,7 @@ CLIENT_MISSING = "client_missing"
 INVALID_CONFIG = "invalid_config"  # bad connection settings (baud/parity/port/...)
 TRANSPORT_DISCONNECTED = "transport_disconnected"  # generic fallback
 BRIDGE_OFFLINE = "bridge_offline"  # a bridge-routed device whose bridge is down
+NO_SIMULATOR = "no_simulator"  # simulating, but this driver ships no simulator
 
 
 @dataclass(frozen=True)
@@ -532,3 +533,29 @@ def bridge_offline_fault(bridge_label: str = "") -> ConnectionFault:
             "back when the bridge reconnects."
         )
     return ConnectionFault(BRIDGE_OFFLINE, message)
+
+
+def no_simulator_fault(driver_id: str = "") -> ConnectionFault:
+    """Offline reason for a device left behind by a running simulation.
+
+    Simulation redirects each device to a simulator the platform starts for
+    it. A driver with no simulator gets none, so that device alone keeps
+    pointing at its real address and fails there — and the classifier, reading
+    a genuine refused socket, correctly reported ``connection_refused`` and
+    asked whether the port was right. The port was right; nothing was
+    listening, and the answer was in the server log rather than on the card.
+
+    Auto-generation covers a YAML driver with no ``simulator:`` section but
+    cannot invent one for a Python driver, whose protocol lives in code — that
+    driver needs a companion ``<name>_sim.py``. Said here so the device card
+    says it too.
+    """
+    who = (driver_id or "").strip()
+    named = f"'{who}' " if who else ""
+    return ConnectionFault(
+        NO_SIMULATOR,
+        f"Simulation is running, but the driver {named}has no simulator, so "
+        f"nothing is listening for this device. Add a simulator for it "
+        f"(a Python driver needs a companion _sim.py file), or stop "
+        f"simulation to reach the real device.",
+    )

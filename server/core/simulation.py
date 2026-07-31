@@ -408,6 +408,9 @@ class SimulationManager:
                 port += 1
 
         self._active = True
+        # Let the device manager explain a device this run could not simulate,
+        # instead of it reporting a refused socket at the device's real address.
+        self.engine.devices.unsimulated_driver = self._unsimulated_driver
 
         # Redirect device connections
         await self._redirect_connections()
@@ -516,6 +519,21 @@ class SimulationManager:
         except Exception as e:
             log.warning("Stream drain (%s) ended: %s", label, e)
 
+    def _unsimulated_driver(self, device_id: str) -> str | None:
+        """The driver id of a device this run has no simulator for, else None.
+
+        Derived rather than recorded: a device is unsimulated exactly when a
+        run is active and it never got a port. That covers the start path and
+        every later sync from one place, so a refusal cannot be missed by a
+        call site that forgot to note it.
+        """
+        if not self._active or device_id in self._sim_ports:
+            return None
+        config = self.engine.devices.get_device_config(device_id)
+        if config is None:
+            return None
+        return config.get("driver") or ""
+
     async def stop(self) -> None:
         """Stop simulation and restore original device connections."""
         if not self._active:
@@ -527,6 +545,10 @@ class SimulationManager:
             return
 
         log.info("Stopping simulation...")
+
+        # Devices point back at their real addresses from here on, so a refused
+        # socket means what it usually means again.
+        self.engine.devices.unsimulated_driver = None
 
         # Cancel process monitor
         if self._monitor_task and not self._monitor_task.done():

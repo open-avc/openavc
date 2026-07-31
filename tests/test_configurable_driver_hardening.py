@@ -783,3 +783,89 @@ def test_validator_accepts_pad_width_zero():
         },
     ))
     assert errs == [], errs
+
+
+# ── A placeholder that survives substitution reaches the device ─────────────
+#
+# safe_substitute leaves an unknown {name} in place so a JSON body full of
+# braces cannot crash a send. The token then goes out as literal text and the
+# command silently does nothing. The authoring check refuses this in a file,
+# but it cannot judge a command that declares no params — the caller may
+# legitimately supply one — so only the send path, which knows what arrived,
+# can settle that case.
+
+def _sub_definition() -> dict:
+    return {
+        "id": "acme_widget",
+        "name": "Acme Widget",
+        "transport": "tcp",
+        "default_config": {"host": "", "port": 5000},
+        "state_variables": {"input": {"type": "integer", "label": "In"}},
+        # No params block: the caller is expected to supply `input`.
+        "commands": {"set_input": {"label": "Set Input", "send": "IN{input}\r\n"}},
+        "polling": {"queries": ["{missing_tag} STA\r\n"]},
+    }
+
+
+class _RecordingTCP:
+    connected = True
+
+    def __init__(self):
+        self.sent: list[bytes] = []
+
+    async def send(self, data):
+        self.sent.append(data)
+        return True
+
+
+def test_a_supplied_param_substitutes_and_says_nothing(caplog):
+    drv = _make_driver(_sub_definition(), {"host": "h", "port": 1})
+    drv.transport = _RecordingTCP()
+    drv._connected = True
+    with caplog.at_level("WARNING"):
+        asyncio.run(drv.send_command("set_input", {"input": 3}))
+    assert drv.transport.sent == [b"IN3\r\n"]
+    assert "not substituted" not in caplog.text
+
+
+def test_an_unsupplied_placeholder_warns_and_names_the_command(caplog):
+    drv = _make_driver(_sub_definition(), {"host": "h", "port": 1})
+    drv.transport = _RecordingTCP()
+    drv._connected = True
+    with caplog.at_level("WARNING"):
+        asyncio.run(drv.send_command("set_input", {}))
+    # The braces really do go out — the warning is the only signal there is.
+    assert drv.transport.sent == [b"IN{input}\r\n"]
+    assert "commands.set_input.send" in caplog.text
+    assert "{input}" in caplog.text
+
+
+def test_a_polling_query_placeholder_warns_once_not_every_cycle(caplog):
+    """Polls run on a timer; a warning that repeats every few seconds is one
+    nobody reads."""
+    drv = _make_driver(_sub_definition(), {"host": "h", "port": 1})
+    drv.transport = _RecordingTCP()
+    drv._connected = True
+    with caplog.at_level("WARNING"):
+        asyncio.run(drv.poll())
+        asyncio.run(drv.poll())
+        asyncio.run(drv.poll())
+    assert caplog.text.count("{missing_tag}") == 1
+
+
+def test_literal_json_braces_are_not_mistaken_for_a_placeholder(caplog):
+    """The reason the runtime tolerates unknown braces at all."""
+    definition = _sub_definition()
+    definition["commands"]["set_input"] = {
+        "label": "Set Input",
+        "send": '{"input": {value}}',
+        "params": {"value": {"type": "integer", "label": "Value"}},
+    }
+    definition["polling"] = {"queries": []}
+    drv = _make_driver(definition, {"host": "h", "port": 1})
+    drv.transport = _RecordingTCP()
+    drv._connected = True
+    with caplog.at_level("WARNING"):
+        asyncio.run(drv.send_command("set_input", {"value": 7}))
+    assert drv.transport.sent == [b'{"input": 7}']
+    assert "not substituted" not in caplog.text

@@ -428,3 +428,61 @@ def test_typed_fault_bridge_offline_not_declarable():
     """bridge_offline is assigned by the DeviceManager, never by a driver."""
     with pytest.raises(ValueError):
         ConnectionFaultError("x", code="bridge_offline")
+
+
+# ── A device a running simulation could not simulate ────────────────────────
+#
+# Simulation redirects each device to a simulator it starts. A driver with no
+# simulator gets none, so that device alone keeps pointing at its real address
+# and fails there — and the classifier, reading a genuinely refused socket,
+# correctly answered a question the author was not asking ("is the port
+# right?"). It was; nothing was listening.
+
+def test_no_simulator_fault_names_the_driver_and_the_fix():
+    from server.core.connection_fault import NO_SIMULATOR, no_simulator_fault
+
+    fault = no_simulator_fault("acme_widget")
+    assert fault.code == NO_SIMULATOR
+    assert "acme_widget" in fault.message
+    assert "_sim.py" in fault.message          # says what to add
+    assert "port" not in fault.message.lower()  # and does not blame the port
+
+
+def test_no_simulator_fault_reads_without_a_driver_id():
+    from server.core.connection_fault import no_simulator_fault
+
+    message = no_simulator_fault("").message
+    assert "''" not in message and "  " not in message
+
+
+def test_the_simulation_gap_wins_over_a_refused_socket():
+    """The device really was refused, so every other signal is accurate and
+    misleading at once. The gap has to be checked before them."""
+    from server.core.connection_fault import NO_SIMULATOR
+    from server.core.device_manager import DeviceManager
+    from server.core.event_bus import EventBus
+    from server.core.state_store import StateStore
+
+    state = StateStore()
+    manager = DeviceManager(state, EventBus())
+    exc = ConnectionRefusedError(errno.ECONNREFUSED, "Connection refused")
+
+    # Without the hook: the honest, unhelpful answer.
+    assert manager._set_offline_reason("dev1", None, exc=exc) == CONNECTION_REFUSED
+
+    manager.unsimulated_driver = lambda device_id: "acme_widget"
+    assert manager._set_offline_reason("dev1", None, exc=exc) == NO_SIMULATOR
+    assert "acme_widget" in state.get("device.dev1.offline_detail")
+
+
+def test_a_simulated_device_is_left_to_the_normal_classifier():
+    """The hook answers None for a device that did get a simulator, so a real
+    fault inside a simulated bench still classifies normally."""
+    from server.core.device_manager import DeviceManager
+    from server.core.event_bus import EventBus
+    from server.core.state_store import StateStore
+
+    manager = DeviceManager(StateStore(), EventBus())
+    manager.unsimulated_driver = lambda device_id: None
+    exc = ConnectionRefusedError(errno.ECONNREFUSED, "Connection refused")
+    assert manager._set_offline_reason("dev1", None, exc=exc) == CONNECTION_REFUSED
