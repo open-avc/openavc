@@ -19,8 +19,10 @@ defects:
 
 Two layers: the harness bundles the real ``routingMatrixHelpers.ts`` with
 the esbuild in ``web/programmer/node_modules`` (skips when the Node
-toolchain is absent), and source-level checks pin SurfaceConfigurator.tsx
-to the fixed shapes.
+toolchain is absent), and source-level checks pin the surface editors to
+the fixed shapes. Those checks read ``surface/RoutingMatrix.tsx`` for the
+crosspoint ones and the whole ``surface/`` directory for the assignment
+shape, which several editors draw.
 """
 from __future__ import annotations
 
@@ -47,15 +49,18 @@ HELPERS_TS = (
     / "plugins"
     / "routingMatrixHelpers.ts"
 )
-CONFIGURATOR_TSX = (
-    OPENAVC_ROOT
-    / "web"
-    / "programmer"
-    / "src"
-    / "components"
-    / "plugins"
-    / "SurfaceConfigurator.tsx"
+SURFACE_DIR = (
+    OPENAVC_ROOT / "web" / "programmer" / "src" / "components" / "plugins" / "surface"
 )
+MATRIX_TSX = SURFACE_DIR / "RoutingMatrix.tsx"
+
+
+def _surface_sources() -> str:
+    """Every surface editor concatenated — the assignment shape is drawn in
+    several of them, and which file holds which is not what these pin."""
+    return "\n".join(
+        f.read_text(encoding="utf-8") for f in sorted(SURFACE_DIR.glob("*.ts*"))
+    )
 NODE_MODULES = OPENAVC_ROOT / "web" / "programmer" / "node_modules"
 ESBUILD_DIR = NODE_MODULES / "esbuild"
 
@@ -69,6 +74,8 @@ def _toolchain_reason() -> str | None:
         return "routing matrix harness missing"
     if not HELPERS_TS.is_file():
         return "routingMatrixHelpers.ts missing"
+    if not MATRIX_TSX.is_file():
+        return "RoutingMatrix.tsx missing"
     return None
 
 
@@ -133,7 +140,7 @@ def test_helper_scenarios(helper_results: dict, scenario: str) -> None:
 
 
 def test_cell_state_goes_through_explicit_truthiness() -> None:
-    src = CONFIGURATOR_TSX.read_text(encoding="utf-8")
+    src = MATRIX_TSX.read_text(encoding="utf-8")
     assert "isCellRouted(liveState[key])" in src
     # The crosspoint read specifically; plugin flags documented as booleans
     # (connected, preset_dirty, …) legitimately use Boolean().
@@ -144,7 +151,7 @@ def test_cell_state_goes_through_explicit_truthiness() -> None:
 
 
 def test_matrix_axes_use_wildcard_matcher() -> None:
-    src = CONFIGURATOR_TSX.read_text(encoding="utf-8")
+    src = MATRIX_TSX.read_text(encoding="utf-8")
     assert "matchStateKeys(" in src
     assert 'state_pattern ?? "").replace("*"' not in src, (
         "row/col enumeration must not assume a trailing wildcard"
@@ -152,7 +159,7 @@ def test_matrix_axes_use_wildcard_matcher() -> None:
 
 
 def test_assignment_checks_use_press_length() -> None:
-    src = CONFIGURATOR_TSX.read_text(encoding="utf-8")
+    src = _surface_sources()
     assert not re.search(r"bindings\?\.press\s*;", src), (
         "an empty press array ([] is truthy) must not count as assigned"
     )
@@ -160,7 +167,7 @@ def test_assignment_checks_use_press_length() -> None:
 
 
 def test_crosspoint_clicks_guard_in_flight_actions() -> None:
-    src = CONFIGURATOR_TSX.read_text(encoding="utf-8")
+    src = MATRIX_TSX.read_text(encoding="utf-8")
     assert "pendingCells" in src, (
         "a rapid double-click must not emit the same route/unroute twice"
     )
