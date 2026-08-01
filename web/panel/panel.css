@@ -1,7 +1,8 @@
 /* OpenAVC Panel UI
  *
  * Element styles are in panel-elements.css (shared with the Programmer IDE builder).
- * This file contains panel-only styles: globals, page layout, overlays, responsive.
+ * This file contains panel-only styles: the type scale, globals, page layout,
+ * overlays and transitions.
  */
 
 @import './panel-elements.css';
@@ -14,9 +15,28 @@
     box-sizing: border-box;
 }
 
+/* The type scale. vmin resolves against the viewport, so 1.75vmin is 14px at
+   the 1280x800 reference -- the size the panel used to hard-code -- and every
+   rem measurement below it now grows and shrinks with the glass. It stays
+   height-driven under a 16:10 to 16:9 stretch, which is why type holds steady
+   while boxes stretch slightly.
+
+   --panel-vmin is the override an embedder sets when the panel is not the
+   viewport: the builder previewing an overlay in a 400px iframe hands us the
+   screen preset's vmin so preview type matches runtime. It lives here, on the
+   document root, because rem resolves against the root -- and this file is
+   loaded only by the panel document, so it cannot reach the IDE's own chrome. */
+:root {
+    font-size: calc(var(--panel-type-scale, 1.75) * var(--panel-vmin, 1vmin));
+}
+
 html, body {
     width: 100%;
     height: 100%;
+    /* dvh so a phone browser's URL bar can never crop the panel. Declared
+       after the percentage so a WebView without dvh support keeps the old
+       rule instead of falling back to auto. */
+    height: 100dvh;
     overflow: hidden;
     background: var(--panel-bg);
     color: var(--panel-text);
@@ -45,10 +65,6 @@ button.panel-element {
 #panel-root {
     width: 100%;
     height: 100%;
-    /* Padding is on .panel-page (below). Putting it here would cause
-       `.panel-page { height: 100% }` to resolve to border-box height, making
-       the grid overflow the content area by `padding * 2` pixels — a 2px-per-row
-       error that breaks alignment with the design-mode overlay. */
 }
 
 /* ===== Connection Status ===== */
@@ -95,31 +111,40 @@ button.panel-element {
 
 /* ===== Page Layout ===== */
 
+/* The page is a positioning context, nothing more. Elements place themselves
+   inside it with four percentages, which is what makes the same design fill
+   any screen of the same shape. */
 .panel-page {
-    display: grid;
+    position: relative;
     width: 100%;
     height: 100%;
-    padding: var(--panel-grid-gap);
-    gap: var(--panel-grid-gap);
-    position: relative;
 }
 
-/* Page background layers (image, gradient) */
-.panel-page-bg-image,
-.panel-page-bg-gradient {
-    grid-column: 1 / -1;
-    grid-row: 1 / -1;
-}
-
-.panel-page > :not(.panel-page-bg-image):not(.panel-page-bg-gradient):not(.panel-page-grid-overlay) {
-    position: relative;
+/* Elements paint above the page's background layers (the image sits at
+   z-index 0, the gradient at 1) and above the design-time snap overlay.
+   Nothing else supplies this: drop it and every element renders *behind* the
+   page background, silently, with no error and no visible clue where it went.
+   tests/test_panel_js.py pins it. */
+.panel-page > :not(.panel-page-bg-image):not(.panel-page-bg-gradient):not(.panel-page-snap-overlay) {
     z-index: 2;
 }
 
-/* Edit-mode grid overlay — sits behind all elements */
-.panel-page > .panel-page-grid-overlay {
+/* An aspect-locked element sits inside a placement box: the box takes the
+   layout rect, the element shrinks to its ratio within it and stays centred,
+   never spilling past. Pointer events pass through the box so the gap around
+   the element isn't a dead click target. */
+.panel-placement {
+    display: grid;
+    place-items: center;
+    pointer-events: none;
+}
+.panel-placement > .panel-element {
     position: relative;
-    z-index: 0;
+    pointer-events: auto;
+    height: 100%;
+    width: auto;
+    max-width: 100%;
+    max-height: 100%;
 }
 
 /* ===== Overlay / Popup System ===== */
@@ -307,11 +332,6 @@ button.panel-element {
     transform: none;
 }
 
-/* Overlay grid needs padding */
-.panel-overlay .panel-page {
-    padding: var(--panel-grid-gap);
-}
-
 /* ===== Offline Overlay ===== */
 
 #offline-overlay {
@@ -427,7 +447,6 @@ button.panel-element {
 .panel-page-transition {
     position: absolute;
     inset: 0;
-    padding: var(--panel-grid-gap);
 }
 
 /* Fade */
@@ -534,91 +553,22 @@ button.panel-element {
     to { opacity: 1; transform: scale(1); }
 }
 
-/* ===== Orientation ===== */
-
-[data-orientation="portrait"] #panel-root {
-    max-width: 100vh;
-    margin: 0 auto;
-}
-
-/* Portrait mode */
-@media (orientation: portrait) {
-    html, body {
-        height: 100dvh;
-    }
-    #panel-root {
-        height: 100dvh;
-    }
-    .panel-page {
-        height: 100dvh;
-    }
-    .panel-grid {
-        grid-auto-flow: dense;
-    }
-    .panel-button {
-        font-size: 14px;
-    }
-    .panel-label {
-        font-size: 13px;
-    }
-}
-
-/* Tablet */
-@media (min-width: 601px) and (max-width: 1024px) {
-    :root {
-        --panel-grid-gap: 6px;
-    }
-    html, body {
-        overflow: auto;
-    }
-    .panel-page {
-        overflow: auto;
-        min-height: 100vh;
-    }
-    .panel-button {
-        font-size: 14px;
-    }
-}
-
-/* Mobile */
-@media (max-width: 600px) {
-    :root {
-        --panel-grid-gap: 4px;
-        --panel-border-radius: 6px;
-    }
-    html, body {
-        overflow: auto;
-    }
-    #panel-root {
-        height: auto;
-        min-height: 100%;
-    }
-    .panel-page {
-        height: auto;
-        min-height: 100vh;
-    }
-    .panel-button {
-        font-size: 13px;
-        padding: 6px;
-    }
-    .panel-label {
-        font-size: 13px;
-    }
-    .panel-select label,
-    .panel-slider label,
-    .panel-text-input label {
-        font-size: 11px;
-    }
-}
-
-/* Touch-friendly targets */
-@media (pointer: coarse) {
-    .panel-button,
-    .panel-page-nav,
-    .panel-select select,
-    .panel-text-input input,
-    .panel-slider input[type="range"]::-webkit-slider-thumb {
-        min-height: 44px;
-        min-width: 44px;
-    }
-}
+/* ===== Small glass =====
+ *
+ * There is deliberately nothing here. The panel renders one way on every
+ * screen: it fills the viewport and holds its proportions. The tablet and
+ * phone scroll-and-grow modes, the per-breakpoint gap steps and the portrait
+ * pillarbox all assumed a grid whose rows grew with their content, which
+ * percentage geometry has no equivalent of -- absolutely positioned children
+ * can never make the page overflow, so the affordance had nothing to do. The
+ * hard px font overrides are replaced by the vmin type scale at the top of
+ * this file, which already does the right thing as the glass gets smaller.
+ *
+ * The `pointer: coarse` 44px minimums went too, and that one mattered most:
+ * as a runtime clamp they overrode small percentage heights and pushed
+ * elements out of their boxes into overlap, on every touch panel, breaking
+ * the same-shape-looks-the-same guarantee to enforce a touch target. It is a
+ * warning in the builder instead -- free positioning warns, it does not
+ * prevent. A phone is just a small portrait viewport: it gets the portrait
+ * layout if one was authored, and the stretched primary if not.
+ */

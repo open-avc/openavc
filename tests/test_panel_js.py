@@ -88,6 +88,22 @@ SCENARIOS = [
     "select_look_applies_matching_option_style",
     "select_look_registered_and_dispatched",
     "slider_fader_step_no_float_noise",
+    # Layout engine (percentage geometry, project format 0.8.0).
+    "layout_elements_paint_above_page_background",
+    "layout_placement_is_percentages",
+    "layout_selected_by_orientation",
+    "layout_falls_back_to_primary",
+    "layout_inherits_merges_deltas",
+    "layout_container_children_render_inside_parent",
+    "layout_containers_nest",
+    "layout_parent_cycle_does_not_hang",
+    "layout_aspect_lock_centres_within_its_box",
+    "layout_unlocked_elements_take_their_box",
+    "layout_overlay_uses_percentages",
+    "layout_master_elements_place_by_orientation",
+    "layout_snap_overlay_follows_page_snap",
+    "layout_style_units_are_rem",
+    "layout_vmin_override_hook",
 ]
 
 

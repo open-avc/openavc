@@ -86,6 +86,24 @@
 })();
 // ---------------------------------------------------------------------------
 
+// Every stored measurement is rem, and the root type scale makes 1rem equal
+// 14px at the 1280x800 reference. Runtime defaults are written as
+// <old px> / REM_BASE_PX so they still land on the pixel they always did.
+const REM_BASE_PX = 14;
+
+// Overlay and sidebar boxes, as percentages of the viewport. These are the
+// old hardcoded pixel defaults (400x300 dialog, 320-wide sidebar) measured
+// against the 1280x800 reference, so an overlay that never set a size keeps
+// the proportions it had.
+const OVERLAY_DEFAULTS = {
+    dialogWidth: 31.25,
+    dialogHeight: 37.5,
+    sidebarWidth: 25,
+};
+
+// The snap increment a page falls back to: the old 12x8 grid's spacing.
+const SNAP_FALLBACK = { x: 100 / 12, y: 100 / 8 };
+
 class PanelApp {
     constructor() {
         const params = new URLSearchParams(window.location.search);
@@ -97,6 +115,13 @@ class PanelApp {
         // parent is authoritative for the project definition; WS is used only
         // for live device state. Standalone tabs stay on the WS path for both.
         this.embedded = (window.parent && window.parent !== window);
+        // Type scales with the panel via vmin, which resolves against the
+        // viewport. That is right on real glass and inside overlays, but wrong
+        // when the panel is embedded in a box smaller than the screen it stands
+        // for -- the builder previewing a 400px overlay would render text at a
+        // third of runtime size. An embedder pins the scale by handing us the
+        // preset's vmin in px.
+        this._applyVminOverride(params.get('vmin'));
         this.ws = null;
         this.state = {};
         this.uiDef = null;
@@ -238,7 +263,7 @@ class PanelApp {
                 this.uiSettings = proj.ui.settings || {};
                 this.state = {};
                 this.snapshotReceived = true;
-                this.applyOrientation();
+                this._setupViewportListener();
                 this.renderCurrentPage();
             })
             .catch(err => console.warn('[panel-edit] fetch failed:', err));
@@ -265,6 +290,12 @@ class PanelApp {
                     this.uiSettings = ui.settings || {};
                     if (msg.pageId) this.currentPage = msg.pageId;
                     if (typeof msg.showGrid === 'boolean') this._editShowGrid = msg.showGrid;
+                    // The builder sizes an overlay preview to the overlay box,
+                    // not the screen, so it hands us the preset's vmin to keep
+                    // preview type the size it will be at runtime.
+                    if (Object.prototype.hasOwnProperty.call(msg, 'vmin')) {
+                        this._applyVminOverride(msg.vmin);
+                    }
                     // The Theme Studio sends a live working-copy theme so edits
                     // apply within a frame (no fetch). When omitted, fall back to
                     // the normal /api/themes/<id> fetch path.
@@ -282,16 +313,25 @@ class PanelApp {
                             : {};
                     }
                     this.snapshotReceived = true;
-                    this.applyOrientation();
+                    this._setupViewportListener();
                     this.renderCurrentPage();
                     this._postToParent({ type: 'openavc:editor-ready' });
                     break;
                 }
                 case 'openavc:editor-page': {
+                    // A page change can move the preview between a full-screen
+                    // page and an overlay box, which is exactly when the vmin
+                    // the builder wants us to use changes.
+                    let rerender = false;
+                    if (Object.prototype.hasOwnProperty.call(msg, 'vmin')) {
+                        this._applyVminOverride(msg.vmin);
+                        rerender = true;
+                    }
                     if (msg.pageId && msg.pageId !== this.currentPage) {
                         this.currentPage = msg.pageId;
-                        this.renderCurrentPage();
+                        rerender = true;
                     }
+                    if (rerender) this.renderCurrentPage();
                     break;
                 }
             }
@@ -463,7 +503,7 @@ class PanelApp {
                 if (this.embedded) break;
                 this.uiDef = msg.ui;
                 this.uiSettings = msg.ui?.settings || {};
-                this.applyOrientation();
+                this._setupViewportListener();
                 if (this.snapshotReceived) {
                     this.renderCurrentPage();
                 }
@@ -648,47 +688,35 @@ class PanelApp {
         // Content panel
         const content = document.createElement('div');
 
+        // The box itself is a percentage of the viewport now, so an overlay
+        // scales with the glass instead of being the one part of a panel still
+        // pinned to hard pixels.
         if (pageType === 'sidebar') {
             const side = overlay.side || 'right';
-            const width = overlay.width || 320;
+            const width = this._pct(overlay.width, OVERLAY_DEFAULTS.sidebarWidth);
             content.className = `overlay-content overlay-sidebar overlay-sidebar-${side}`;
-            content.style.width = width + 'px';
+            content.style.width = width + '%';
         } else {
-            const width = overlay.width || 400;
-            const height = overlay.height || 300;
+            const width = this._pct(overlay.width, OVERLAY_DEFAULTS.dialogWidth);
+            const height = this._pct(overlay.height, OVERLAY_DEFAULTS.dialogHeight);
             const position = overlay.position || 'center';
             content.className = `overlay-content overlay-dialog overlay-pos-${position}`;
-            content.style.width = width + 'px';
-            content.style.height = height + 'px';
+            content.style.width = width + '%';
+            content.style.height = height + '%';
         }
 
-        // Grid inside overlay content
-        const grid = document.createElement('div');
-        grid.className = 'panel-page';
-        const cols = page.grid?.columns || 4;
-        const rows = page.grid?.rows || 4;
-        grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
-        grid.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
-        if (page.grid_gap != null) {
-            grid.style.gap = `${page.grid_gap}px`;
-        }
-        grid.style.width = '100%';
-        grid.style.height = '100%';
+        // The overlay's surface runs the same renderer as a full page. Its
+        // elements are percentages of the overlay box, exactly like a
+        // container's children.
+        const surface = document.createElement('div');
+        surface.className = 'panel-page';
+        surface.style.width = '100%';
+        surface.style.height = '100%';
 
-        for (const element of (page.elements || [])) {
-            const el = this.renderElement(element);
-            if (el) {
-                const area = element.grid_area || {};
-                el.style.gridColumn = `${area.col || 1} / span ${area.col_span || 1}`;
-                el.style.gridRow = `${area.row || 1} / span ${area.row_span || 1}`;
-                el.dataset.elementType = element.type;
-                this.registerVisibleWhen(el, element);
-                grid.appendChild(el);
-            }
-        }
+        this._renderPageElements(page, surface);
 
-        this._applyPageBackground(grid, page.background);
-        content.appendChild(grid);
+        this._applyPageBackground(surface, page.background);
+        content.appendChild(surface);
         container.appendChild(content);
 
         // Append to root (on top of everything)
@@ -704,6 +732,254 @@ class PanelApp {
 
         // Evaluate bindings for new elements
         this.evaluateAllBindings();
+    }
+
+    // --- Layout ---
+
+    /** A number, or the fallback when the value isn't one. */
+    _pct(value, fallback) {
+        const n = typeof value === 'number' ? value : parseFloat(value);
+        return Number.isFinite(n) ? n : fallback;
+    }
+
+    /** Which way the glass is turned right now. */
+    _viewportOrientation() {
+        const w = window.innerWidth || document.documentElement.clientWidth || 0;
+        const h = window.innerHeight || document.documentElement.clientHeight || 0;
+        return w >= h ? 'landscape' : 'portrait';
+    }
+
+    /**
+     * Pin the type scale to a fixed vmin instead of the live viewport.
+     * Pass nothing to hand it back to the viewport.
+     */
+    _applyVminOverride(value) {
+        const root = document.documentElement;
+        if (value == null || value === '') {
+            root.style.removeProperty('--panel-vmin');
+            return;
+        }
+        const px = parseFloat(value);
+        if (!Number.isFinite(px) || px <= 0) return;
+        root.style.setProperty('--panel-vmin', `${px}px`);
+    }
+
+    /**
+     * The arrangement this page should render in at this viewport.
+     *
+     * Pick the layout whose orientation matches the screen, fall back to the
+     * primary when none does, then fold the `inherits` chain down so a
+     * secondary layout only has to say what moved -- anything it leaves alone
+     * follows the layout it inherits from.
+     */
+    _selectLayout(page) {
+        const layouts = Array.isArray(page?.layouts) ? page.layouts : [];
+        const empty = { placements: {}, hidden: new Set(), id: null, orientation: null };
+        if (!layouts.length) return empty;
+
+        const primary = layouts.find(l => l && l.primary) || layouts[0];
+        const wanted = this._viewportOrientation();
+        const chosen = layouts.find(l => l && l.orientation === wanted) || primary;
+        if (!chosen) return empty;
+
+        // Walk to the root of the inherits chain, then apply from the base
+        // down so the chosen layout's own placements win. The seen-set is a
+        // cycle guard: a hand-edited project can point two layouts at each
+        // other, and the panel still has to draw something.
+        const chain = [];
+        const seen = new Set();
+        let cursor = chosen;
+        while (cursor && !seen.has(cursor.id)) {
+            seen.add(cursor.id);
+            chain.unshift(cursor);
+            cursor = cursor.inherits ? layouts.find(l => l && l.id === cursor.inherits) : null;
+        }
+
+        const placements = {};
+        const hidden = new Set();
+        for (const layout of chain) {
+            Object.assign(placements, layout.placements || {});
+            for (const id of (layout.hidden || [])) hidden.add(id);
+        }
+        return { placements, hidden, id: chosen.id, orientation: chosen.orientation };
+    }
+
+    /**
+     * A master element's box for this viewport. Masters carry their own
+     * orientation-keyed placements because they have to be valid on every page
+     * they appear on, whatever those pages are arranged like.
+     */
+    _masterPlacement(master) {
+        const placements = master?.placements || {};
+        return placements[this._viewportOrientation()]
+            || placements.landscape
+            || placements.portrait
+            || Object.values(placements)[0]
+            || null;
+    }
+
+    /**
+     * The ratio an element holds under a stretch, or null to stretch freely.
+     *
+     * Deliberately no per-type default here. A renderer that locked, say,
+     * every status LED to 1:1 would re-shape elements in a project that was
+     * migrated, not authored, against the promise that a migrated panel looks
+     * exactly like it used to. The default belongs where the element is
+     * created, so a *new* LED is locked and an existing one is left alone.
+     */
+    _aspectLockFor(element) {
+        if (!element || element.aspect_lock == null) return null;
+        const n = parseFloat(element.aspect_lock);
+        return Number.isFinite(n) && n > 0 ? n : null;
+    }
+
+    /**
+     * THE placement path. Page elements, container children, overlay contents
+     * and master elements all get their box from here: four percentages of
+     * whatever they sit inside. That is what makes a panel drawn once the same
+     * panel on any screen of the same shape.
+     *
+     * Returns the node to append, which is the element itself unless it is
+     * aspect-locked -- CSS can only hold a ratio when one axis is free, and
+     * "shrink to fit, stay centred" needs a box to shrink inside, so a locked
+     * element gets a placement box and sits within it.
+     */
+    _placeElement(el, placement, element) {
+        const p = placement || {};
+        const x = this._pct(p.x, 0);
+        const y = this._pct(p.y, 0);
+        const w = this._pct(p.w, 100);
+        const h = this._pct(p.h, 100);
+
+        const ratio = this._aspectLockFor(element);
+        if (ratio) {
+            const box = document.createElement('div');
+            box.className = 'panel-placement';
+            if (element?.id) box.dataset.placementFor = element.id;
+            box.style.position = 'absolute';
+            box.style.left = `${x}%`;
+            box.style.top = `${y}%`;
+            box.style.width = `${w}%`;
+            box.style.height = `${h}%`;
+            el.style.aspectRatio = String(ratio);
+            box.appendChild(el);
+            return box;
+        }
+
+        el.style.position = 'absolute';
+        el.style.left = `${x}%`;
+        el.style.top = `${y}%`;
+        el.style.width = `${w}%`;
+        el.style.height = `${h}%`;
+        return el;
+    }
+
+    /**
+     * Render one element, and anything that names it as a parent, into `host`.
+     *
+     * A container is a real parent now: its children are percentages *of it*,
+     * so moving or resizing the container carries them along and one
+     * visible_when on the container hides the whole group.
+     */
+    _renderElementTree(element, ctx, host) {
+        if (!element || !element.id) return null;
+        // Guard against an element listed twice, or a parent cycle a
+        // hand-edited project could introduce.
+        if (ctx.rendered.has(element.id)) return null;
+        ctx.rendered.add(element.id);
+        if (ctx.layout.hidden.has(element.id)) return null;
+
+        const el = this.renderElement(element);
+        if (!el) return null;
+        el.dataset.elementType = element.type;
+
+        const children = ctx.byParent.get(element.id) || [];
+        if (children.length) {
+            // Containers do not clip. A child nudged past the edge stays
+            // visible -- the builder's out-of-bounds badge is what says so,
+            // consistent with free positioning warning rather than preventing.
+            el.style.overflow = 'visible';
+            el.style.pointerEvents = 'auto';
+            for (const child of children) {
+                this._renderElementTree(child, ctx, el);
+            }
+        }
+
+        const node = this._placeElement(el, ctx.layout.placements[element.id], element);
+        if (ctx.entryAnimation && ctx.entryAnimation !== 'none') {
+            this._applyEntryAnimation(node, ctx);
+        }
+        this.registerVisibleWhen(node, element);
+        host.appendChild(node);
+        return node;
+    }
+
+    _applyEntryAnimation(node, ctx) {
+        const index = ctx.order++;
+        node.style.opacity = '0';
+        const staggerStyle = this.uiSettings.element_stagger_style || 'fade-up';
+        const animClass = ctx.entryAnimation === 'stagger'
+            ? `element-entry-${staggerStyle}`
+            : `element-entry-${ctx.entryAnimation}`;
+        setTimeout(() => {
+            node.style.opacity = '';
+            node.classList.add(animClass);
+        }, ctx.staggerMs * index);
+    }
+
+    /**
+     * Render every element of a page onto a surface, in the arrangement this
+     * viewport calls for. Shared by full pages and by overlays/sidebars, which
+     * used to carry their own copy of the placement math -- and were the last
+     * part of a panel still measured in hard pixels because of it.
+     */
+    _renderPageElements(page, surface, opts = {}) {
+        const layout = this._selectLayout(page);
+        const elements = Array.isArray(page.elements) ? page.elements : [];
+
+        // Group by parent. A parent id that names nothing on this page is
+        // treated as page-level, so an orphaned child still draws.
+        const ids = new Set(elements.map(e => e && e.id).filter(Boolean));
+        const byParent = new Map();
+        for (const element of elements) {
+            if (!element || !element.id) continue;
+            const key = (element.parent && ids.has(element.parent)) ? element.parent : null;
+            if (!byParent.has(key)) byParent.set(key, []);
+            byParent.get(key).push(element);
+        }
+
+        const ctx = {
+            layout,
+            byParent,
+            rendered: new Set(),
+            order: 0,
+            entryAnimation: opts.entryAnimation || 'none',
+            staggerMs: opts.staggerMs || 30,
+        };
+        for (const element of (byParent.get(null) || [])) {
+            this._renderElementTree(element, ctx, surface);
+        }
+        return layout;
+    }
+
+    /**
+     * Re-render when the glass changes orientation, so a page with a portrait
+     * layout picks it up. Nothing else needs a re-render: percentage geometry
+     * reflows on its own, and redrawing on every resize tick would restart
+     * entry animations for no reason.
+     */
+    _setupViewportListener() {
+        if (this._viewportListenerSetup) return;
+        this._viewportListenerSetup = true;
+        let last = this._viewportOrientation();
+        const onChange = () => {
+            const now = this._viewportOrientation();
+            if (now === last) return;
+            last = now;
+            if (this.uiDef) this.renderCurrentPage();
+        };
+        window.addEventListener('resize', onChange);
+        window.addEventListener('orientationchange', onChange);
     }
 
     // --- Rendering ---
@@ -767,7 +1043,6 @@ class PanelApp {
             oldGrid.classList.add(`page-exit-${pageTransition}`);
             oldGrid.style.position = 'absolute';
             oldGrid.style.inset = '0';
-            oldGrid.style.padding = 'var(--panel-grid-gap)';
             setTimeout(() => oldGrid.remove(), transitionDuration);
         } else {
             this.root.innerHTML = '';
@@ -792,103 +1067,79 @@ class PanelApp {
         this.root.style.position = 'relative';
         this.root.style.overflow = 'hidden';
 
-        // Create grid with safe defaults
-        const grid = document.createElement('div');
-        grid.className = 'panel-page';
-        const cols = page.grid?.columns || 12;
-        const rows = page.grid?.rows || 8;
-        grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
-        grid.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
-        if (page.grid_gap != null) {
-            grid.style.gap = `${page.grid_gap}px`;
-        }
+        // The page surface. Elements are absolutely positioned inside it in
+        // percentages, so the same design fills any screen of the same shape.
+        const surface = document.createElement('div');
+        surface.className = 'panel-page';
 
         // Apply per-page background
-        this._applyPageBackground(grid, page.background);
+        this._applyPageBackground(surface, page.background);
 
         // Apply page enter animation
         if (pageTransition !== 'none') {
-            grid.classList.add(`page-enter-${pageTransition}`);
+            surface.classList.add(`page-enter-${pageTransition}`);
         }
 
-        // Edit-mode grid overlay (dashed cells). Rendered inside the grid so elements
-        // stack above it and the iframe's real backgrounds are preserved.
-        if (this.editMode && this._editShowGrid !== false) {
-            const gridGap = page.grid_gap != null ? page.grid_gap : 8;
-            const gridOverlay = document.createElement('div');
-            gridOverlay.className = 'panel-page-grid-overlay';
-            gridOverlay.style.cssText = [
-                'grid-column: 1 / -1',
-                'grid-row: 1 / -1',
-                `display: grid`,
-                `grid-template-columns: repeat(${cols}, 1fr)`,
-                `grid-template-rows: repeat(${rows}, 1fr)`,
-                `gap: ${gridGap}px`,
-                'pointer-events: none',
-                'z-index: 0',
-            ].join(';');
-            for (let i = 0; i < cols * rows; i++) {
-                const cell = document.createElement('div');
-                cell.style.cssText = 'border:1px dashed rgba(255,255,255,0.18);border-radius:4px;';
-                gridOverlay.appendChild(cell);
-            }
-            grid.appendChild(gridOverlay);
-        }
+        // Design-time snap overlay. The grid is a ruler now rather than a
+        // container, so this only draws where things will snap to -- showing
+        // or hiding it moves nothing.
+        this._renderSnapOverlay(page, surface);
 
-        // Render master elements (persistent across pages, below page elements)
+        // Master elements come first, so DOM order alone keeps them behind the
+        // page's own elements. They used to carry an inline z-index for that,
+        // which also dropped them behind the page's gradient layer.
         const masterElements = this.uiDef.master_elements || [];
         for (const mEl of masterElements) {
             const mPages = mEl.pages;
             const showOnPage = mPages === '*' || (Array.isArray(mPages) && mPages.includes(page.id));
-            if (!showOnPage) continue;
+            if (!showOnPage || mEl.hidden) continue;
             const el = this.renderElement(mEl);
-            if (el) {
-                const area = mEl.grid_area || {};
-                el.style.gridColumn = `${area.col || 1} / span ${area.col_span || 1}`;
-                el.style.gridRow = `${area.row || 1} / span ${area.row_span || 1}`;
-                el.style.zIndex = '0';  // Below page elements
-                el.dataset.elementType = mEl.type;
-                this.registerVisibleWhen(el, mEl);
-                grid.appendChild(el);
-            }
+            if (!el) continue;
+            el.dataset.elementType = mEl.type;
+            const node = this._placeElement(el, this._masterPlacement(mEl), mEl);
+            this.registerVisibleWhen(node, mEl);
+            surface.appendChild(node);
         }
 
-        // Render elements
-        const elements = page.elements || [];
-        for (let i = 0; i < elements.length; i++) {
-            const element = elements[i];
-            const el = this.renderElement(element);
-            if (el) {
-                const area = element.grid_area || {};
-                el.style.gridColumn = `${area.col || 1} / span ${area.col_span || 1}`;
-                el.style.gridRow = `${area.row || 1} / span ${area.row_span || 1}`;
-                el.dataset.elementType = element.type;
+        this._renderPageElements(page, surface, { entryAnimation, staggerMs });
 
-                // Element entry animation
-                if (entryAnimation !== 'none') {
-                    el.style.opacity = '0';
-                    const staggerStyle = this.uiSettings.element_stagger_style || 'fade-up';
-                    const animClass = entryAnimation === 'stagger' ? `element-entry-${staggerStyle}` : `element-entry-${entryAnimation}`;
-                    const delay = staggerMs * i;
-                    setTimeout(() => {
-                        el.style.opacity = '';
-                        el.classList.add(animClass);
-                    }, delay);
-                }
-
-                this.registerVisibleWhen(el, element);
-                grid.appendChild(el);
-            }
-        }
-
-        this.root.appendChild(grid);
+        this.root.appendChild(surface);
         this.evaluateAllBindings();
 
         // Theme Studio direct manipulation — click any element in the preview
         // to jump to its section in the editor. Hover shows an outline + type label.
         if (this.editMode) {
-            this._setupThemeStudioInteraction(grid);
+            this._setupThemeStudioInteraction(surface);
         }
+    }
+
+    /**
+     * Draw the snap increment behind the page while designing. Two repeating
+     * gradients rather than a div per cell: the increment is a float now
+     * (8.3333% is the old 12-column spacing), and a background-size in percent
+     * lands on it exactly at any page size.
+     */
+    _renderSnapOverlay(page, surface) {
+        if (!this.editMode || this._editShowGrid === false) return;
+        const snap = page.snap || {};
+        if (snap.enabled === false) return;
+        const stepX = this._pct(snap.x, SNAP_FALLBACK.x);
+        const stepY = this._pct(snap.y, SNAP_FALLBACK.y);
+        if (!(stepX > 0) || !(stepY > 0)) return;
+
+        const overlay = document.createElement('div');
+        overlay.className = 'panel-page-snap-overlay';
+        const line = 'rgba(255,255,255,0.18)';
+        overlay.style.cssText = [
+            'position: absolute',
+            'inset: 0',
+            'pointer-events: none',
+            'z-index: 0',
+            `background-image: linear-gradient(to right, ${line} 1px, transparent 1px),`
+                + ` linear-gradient(to bottom, ${line} 1px, transparent 1px)`,
+            `background-size: ${stepX}% ${stepY}%`,
+        ].join(';');
+        surface.appendChild(overlay);
     }
 
     _setupThemeStudioInteraction(grid) {
@@ -1280,7 +1531,7 @@ class PanelApp {
         // Thumb size: per-element value wins, otherwise theme element_default, otherwise 44.
         el.style.setProperty(
             '--thumb-size',
-            (element.thumb_size ?? themedSliderStyle.thumb_size ?? 44) + 'px',
+            (element.thumb_size ?? themedSliderStyle.thumb_size ?? 44 / REM_BASE_PX) + 'rem',
         );
 
         if (element.label) {
@@ -1706,7 +1957,7 @@ class PanelApp {
         el.dataset.elementId = element.id;
 
         const listStyle = element.list_style || 'selectable';
-        const itemHeight = element.item_height || 44;
+        const itemHeight = element.item_height || 44 / REM_BASE_PX;
         // Merge theme element_defaults so `item_bg` / `item_active_bg` from
         // the theme actually drive list row colors. Reading raw element.style
         // here was a long-standing bug — theme edits looked dead because
@@ -1753,7 +2004,7 @@ class PanelApp {
             for (const item of items) {
                 const row = document.createElement('div');
                 row.className = 'list-item';
-                row.style.minHeight = itemHeight + 'px';
+                row.style.minHeight = itemHeight + 'rem';
                 row.style.backgroundColor = itemBg;
                 row.textContent = item.label || item.value || '';
                 row.dataset.value = item.value || '';
@@ -1901,7 +2152,7 @@ class PanelApp {
         const style = this.getThemedStyle('matrix', element.style);
         const activeColor = style.crosspoint_active_color || '#4CAF50';
         const inactiveColor = style.crosspoint_inactive_color || '#333333';
-        const cellSize = style.cell_size || 44;
+        const cellSize = style.cell_size || 44 / REM_BASE_PX;
 
         this.applyStyle(el, style);
 
@@ -2066,8 +2317,8 @@ class PanelApp {
             if (showMute) extraColDefs.push('28px');
             const table = document.createElement('div');
             table.className = 'matrix-grid';
-            table.style.gridTemplateColumns = `auto repeat(${inputCount}, ${cellSize}px) ${extraColDefs.join(' ')}`.trim();
-            table.style.gridTemplateRows = `auto repeat(${outputCount}, ${cellSize}px)`;
+            table.style.gridTemplateColumns = `auto repeat(${inputCount}, ${cellSize}rem) ${extraColDefs.join(' ')}`.trim();
+            table.style.gridTemplateRows = `auto repeat(${outputCount}, ${cellSize}rem)`;
 
             // Top-left corner cell
             const corner = document.createElement('div');
@@ -3469,7 +3720,7 @@ class PanelApp {
                 '--panel-button-bg', '--panel-button-text', '--panel-button-border',
                 '--panel-surface', '--panel-surface-border',
                 '--panel-danger', '--panel-success', '--panel-warning',
-                '--panel-grid-gap', '--panel-border-radius']) {
+                '--panel-border-radius']) {
                 themeVars[prop] = getComputedStyle(root).getPropertyValue(prop).trim();
             }
             const stateSnapshot = {};
@@ -4340,13 +4591,6 @@ class PanelApp {
         });
     }
 
-    // --- Orientation ---
-
-    applyOrientation() {
-        const orientation = this.uiSettings?.orientation || 'landscape';
-        document.documentElement.setAttribute('data-orientation', orientation);
-    }
-
     // --- Helpers ---
 
     applyTheme(settings) {
@@ -4432,7 +4676,6 @@ class PanelApp {
             warning: '--panel-warning',
             surface: '--panel-surface',
             surface_border: '--panel-surface-border',
-            grid_gap: '--panel-grid-gap',
             border_radius: '--panel-border-radius',
         };
 
@@ -4624,9 +4867,9 @@ class PanelApp {
         }
 
         if (style.text_color) el.style.color = style.text_color;
-        if (style.font_size) el.style.fontSize = style.font_size + 'px';
+        if (style.font_size) el.style.fontSize = style.font_size + 'rem';
         if (style.font_weight) el.style.fontWeight = style.font_weight;
-        if (style.border_radius != null) el.style.borderRadius = style.border_radius + 'px';
+        if (style.border_radius != null) el.style.borderRadius = style.border_radius + 'rem';
 
         // Text alignment → maps to justify-content (fixes flexbox override bug)
         if (style.text_align) {
@@ -4645,7 +4888,11 @@ class PanelApp {
         // Elements that rely on CSS variables for border-color (e.g. buttons
         // using --panel-button-border) must not be clobbered by a fallback.
         if (style.border_width) {
-            el.style.borderWidth = style.border_width + 'px';
+            // Hairlines stay visible. A blanket rem would turn a 1px border
+            // into 0.0714rem, which on a small phone resolves to a third of a
+            // pixel and can render as nothing at all -- while a deliberately
+            // thick border should still scale with the panel.
+            el.style.borderWidth = `max(1px, ${style.border_width}rem)`;
             el.style.borderStyle = style.border_style || 'solid';
             if (style.border_color) {
                 el.style.borderColor = style.border_color;
@@ -4668,15 +4915,15 @@ class PanelApp {
         if (style.margin != null) {
             const mv = style.margin_vertical != null ? style.margin_vertical : style.margin;
             const mh = style.margin_horizontal != null ? style.margin_horizontal : style.margin;
-            el.style.margin = `${mv}px ${mh}px`;
+            el.style.margin = `${mv}rem ${mh}rem`;
         } else {
             if (style.margin_vertical != null) {
-                el.style.marginTop = style.margin_vertical + 'px';
-                el.style.marginBottom = style.margin_vertical + 'px';
+                el.style.marginTop = style.margin_vertical + 'rem';
+                el.style.marginBottom = style.margin_vertical + 'rem';
             }
             if (style.margin_horizontal != null) {
-                el.style.marginLeft = style.margin_horizontal + 'px';
-                el.style.marginRight = style.margin_horizontal + 'px';
+                el.style.marginLeft = style.margin_horizontal + 'rem';
+                el.style.marginRight = style.margin_horizontal + 'rem';
             }
         }
 
@@ -4684,21 +4931,21 @@ class PanelApp {
         if (style.padding != null) {
             const pv = style.padding_vertical != null ? style.padding_vertical : style.padding;
             const ph = style.padding_horizontal != null ? style.padding_horizontal : style.padding;
-            el.style.padding = `${pv}px ${ph}px`;
+            el.style.padding = `${pv}rem ${ph}rem`;
         } else {
             if (style.padding_vertical != null) {
-                el.style.paddingTop = style.padding_vertical + 'px';
-                el.style.paddingBottom = style.padding_vertical + 'px';
+                el.style.paddingTop = style.padding_vertical + 'rem';
+                el.style.paddingBottom = style.padding_vertical + 'rem';
             }
             if (style.padding_horizontal != null) {
-                el.style.paddingLeft = style.padding_horizontal + 'px';
-                el.style.paddingRight = style.padding_horizontal + 'px';
+                el.style.paddingLeft = style.padding_horizontal + 'rem';
+                el.style.paddingRight = style.padding_horizontal + 'rem';
             }
         }
 
         // Typography
         if (style.text_transform) el.style.textTransform = style.text_transform;
-        if (style.letter_spacing) el.style.letterSpacing = style.letter_spacing + 'px';
+        if (style.letter_spacing) el.style.letterSpacing = style.letter_spacing + 'rem';
         if (style.line_height) el.style.lineHeight = String(style.line_height);
 
         // White space (multi-line labels)
@@ -4926,6 +5173,7 @@ class PanelApp {
         }
     }
 
+    /** `size` is in rem, so an icon scales with the rest of the panel. */
     renderIcon(iconName, size, color) {
         if (!iconName) return null;
 
@@ -4933,8 +5181,8 @@ class PanelApp {
         if (iconName.startsWith('assets://')) {
             const img = document.createElement('img');
             img.src = this.resolveAssetUrl(iconName);
-            img.style.width = `${size}px`;
-            img.style.height = `${size}px`;
+            img.style.width = `${size}rem`;
+            img.style.height = `${size}rem`;
             img.style.flexShrink = '0';
             if (color) img.style.filter = `brightness(0) saturate(100%)`;
             return img;
@@ -4950,8 +5198,10 @@ class PanelApp {
         use.setAttribute('href', iconUrl);
         use.setAttributeNS('http://www.w3.org/1999/xlink', 'href', iconUrl);
         svg.appendChild(use);
-        svg.setAttribute('width', String(size));
-        svg.setAttribute('height', String(size));
+        // Sized in CSS rather than the width/height attributes: SVG attributes
+        // are user units and can't carry rem, and CSS wins over them anyway.
+        svg.style.width = `${size}rem`;
+        svg.style.height = `${size}rem`;
         svg.setAttribute('viewBox', '0 0 24 24');
         svg.setAttribute('fill', 'none');
         svg.setAttribute('stroke', color || 'currentColor');
@@ -4967,7 +5217,7 @@ class PanelApp {
         if (!icon) return; // No icon, text is already set
 
         const iconPos = element.style?.icon_position || element.icon_position || 'left';
-        const iconSize = element.style?.icon_size || element.icon_size || 24;
+        const iconSize = element.style?.icon_size || element.icon_size || 24 / REM_BASE_PX;
         const iconColor = element.style?.icon_color || element.icon_color || null;
 
         // Preserve the image layer (an element child) when rebuilding content.

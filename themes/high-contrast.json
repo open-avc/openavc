@@ -28,8 +28,8 @@
     },
     "element_defaults": {
         "button": {
-            "border_width": 2,
-            "border_radius": 4,
+            "border_width": 0.1429,
+            "border_radius": 0.2857,
             "box_shadow": "none"
         },
         "label": {
@@ -42,34 +42,34 @@
         },
         "slider": {
             "bg_color": "#111111",
-            "border_width": 2,
+            "border_width": 0.1429,
             "border_color": "#333333",
-            "border_radius": 4,
+            "border_radius": 0.2857,
             "box_shadow": "none",
             "text_color": "#ffffff",
-            "thumb_size": 44
+            "thumb_size": 3.1429
         },
         "page_nav": {
             "bg_color": "#111111",
             "text_color": "#ffffff",
-            "border_width": 2,
+            "border_width": 0.1429,
             "border_color": "#333333",
-            "border_radius": 4,
+            "border_radius": 0.2857,
             "box_shadow": "none"
         },
         "select": {
             "bg_color": "#111111",
             "text_color": "#ffffff",
-            "border_width": 2,
+            "border_width": 0.1429,
             "border_color": "#333333",
-            "border_radius": 4
+            "border_radius": 0.2857
         },
         "text_input": {
             "bg_color": "#111111",
             "text_color": "#ffffff",
-            "border_width": 2,
+            "border_width": 0.1429,
             "border_color": "#333333",
-            "border_radius": 4
+            "border_radius": 0.2857
         },
         "status_led": {
             "bg_color": "transparent",
@@ -87,9 +87,9 @@
         "camera_preset": {
             "bg_color": "#1a1a1a",
             "text_color": "#ffffff",
-            "border_width": 2,
+            "border_width": 0.1429,
             "border_color": "#444444",
-            "border_radius": 4,
+            "border_radius": 0.2857,
             "box_shadow": "none"
         },
         "gauge": {
@@ -116,9 +116,9 @@
         "group": {
             "bg_color": "rgba(255,255,255,0.04)",
             "text_color": "#888888",
-            "border_width": 2,
+            "border_width": 0.1429,
             "border_color": "#333333",
-            "border_radius": 4
+            "border_radius": 0.2857
         },
         "clock": {
             "bg_color": "transparent",
@@ -129,25 +129,25 @@
         "keypad": {
             "bg_color": "#111111",
             "text_color": "#ffffff",
-            "border_width": 2,
+            "border_width": 0.1429,
             "border_color": "#333333",
-            "border_radius": 4
+            "border_radius": 0.2857
         },
         "list": {
             "bg_color": "#000000",
             "text_color": "#ffffff",
-            "border_width": 2,
+            "border_width": 0.1429,
             "border_color": "#333333",
-            "border_radius": 4,
+            "border_radius": 0.2857,
             "item_bg": "#111111",
             "item_active_bg": "#00E676"
         },
         "matrix": {
             "bg_color": "#000000",
             "text_color": "#ffffff",
-            "border_width": 2,
+            "border_width": 0.1429,
             "border_color": "#333333",
-            "border_radius": 4,
+            "border_radius": 0.2857,
             "crosspoint_active_color": "#00E676",
             "crosspoint_inactive_color": "#333333"
         }

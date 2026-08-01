@@ -24,7 +24,6 @@
     --panel-warning: #FF9800;
     --panel-surface: #2a2a4a;
     --panel-surface-border: #3a3a5c;
-    --panel-grid-gap: 8px;
     --panel-border-radius: 8px;
 }
 
@@ -36,7 +35,10 @@
     justify-content: center;
     border-radius: var(--panel-border-radius);
     overflow: hidden;
-    font-size: 14px;
+    /* 1rem is 14px at the reference size and scales with the panel from there.
+       The rest of this file's px measurements are converted in the same sweep
+       that this rule opens. */
+    font-size: 1rem;
     color: var(--panel-text);
     transition: background-color 0.2s, color 0.2s, opacity 0.2s, transform 0.1s, box-shadow 0.2s, border-color 0.2s;
 }
@@ -777,11 +779,12 @@
 
 /* ===== Group ===== */
 
+/* A group is a real container now: its children live inside it, measure
+   their percentages against it, and move with it. It used to be a decorative
+   frame painted behind peers that only looked like children, which is why it
+   was click-through and pinned below everything. Both of those had to go. */
 .panel-group {
-    position: relative;
     border-radius: 12px;
-    pointer-events: none;
-    z-index: 0;
 }
 .panel-group .group-label {
     position: absolute;
