@@ -1,4 +1,4 @@
-import type { UIPage, UIElement, GridArea, MasterElement, PageGroup, MacroConfig, MacroStep, VariableConfig, ScriptConfig, ProjectConfig } from "../../api/types";
+import type { UIPage, UIElement, Placement, Layout, SnapConfig, MasterElement, PageGroup, MacroConfig, MacroStep, VariableConfig, ScriptConfig, ProjectConfig } from "../../api/types";
 import type { PluginExtension } from "../../api/pluginClient";
 
 // --- Binding type definitions ---
@@ -61,7 +61,7 @@ export const ELEMENT_TYPES: ElementTypeInfo[] = [
   { type: "status_led", label: "Status LED", category: "display", description: "Color indicator that changes based on device state" },
   { type: "image", label: "Image", category: "display", description: "Display an image or logo" },
   { type: "clock", label: "Clock", category: "display", description: "Live clock, date, countdown, or meeting timer" },
-  { type: "group", label: "Group", category: "display", description: "Visual container to group related elements together" },
+  { type: "group", label: "Container", category: "display", description: "A real container: elements dropped inside move, resize and hide with it" },
   { type: "spacer", label: "Spacer", category: "display", description: "Empty space for layout alignment" },
   { type: "gauge", label: "Gauge", category: "data", description: "Circular dial for displaying a single value (temperature, level)" },
   { type: "level_meter", label: "Level Meter", category: "data", description: "Segmented bar for audio levels (VU/PPM style)" },
@@ -193,43 +193,112 @@ function generateId(type: string, existingIds: Set<string>): string {
 
 // --- Create default element ---
 
+/**
+ * How big a freshly-dropped element is, as a percentage of the page.
+ *
+ * These are the old per-type cell spans read against the 12x8 grid that used to
+ * BE the model, so a new panel starts out shaped exactly the way it always did.
+ * They also land on whole snap increments at the default snap setting, which is
+ * why a dropped control still lines up with its neighbours for free.
+ */
+export const DEFAULT_ELEMENT_SIZES: Record<string, { w: number; h: number }> = {
+  button: { w: 25, h: 25 },
+  label: { w: 25, h: 12.5 },
+  status_led: { w: 16.6667, h: 12.5 },
+  slider: { w: 33.3333, h: 12.5 },
+  page_nav: { w: 16.6667, h: 12.5 },
+  select: { w: 25, h: 12.5 },
+  text_input: { w: 25, h: 12.5 },
+  image: { w: 25, h: 37.5 },
+  spacer: { w: 8.3333, h: 12.5 },
+  camera_preset: { w: 16.6667, h: 25 },
+  gauge: { w: 25, h: 37.5 },
+  level_meter: { w: 8.3333, h: 50 },
+  fader: { w: 16.6667, h: 62.5 },
+  group: { w: 50, h: 50 },
+  clock: { w: 25, h: 12.5 },
+  keypad: { w: 25, h: 62.5 },
+  list: { w: 25, h: 50 },
+  matrix: { w: 50, h: 62.5 },
+};
+
+/** Fallback size for an element type with no entry above (incl. plugins). */
+export const FALLBACK_ELEMENT_SIZE = { w: 33.3333, h: 37.5 };
+
+/**
+ * The ratio a NEW element of this type is locked to.
+ *
+ * This lives here, in the authoring surface, and deliberately NOT in the panel
+ * renderer. A renderer that locked every status LED to 1:1 would re-shape
+ * elements in projects that were migrated rather than authored, against the
+ * promise that a migrated panel looks exactly like it used to. So the runtime
+ * honours a lock when it finds one and invents nothing; the palette is what
+ * gives a new control its sensible shape.
+ *
+ * `image` is absent on purpose: its "intrinsic" ratio is not knowable when the
+ * element is created with no picture in it. It gets its lock the moment a
+ * source is chosen, measured from the file (see BasicProperties).
+ */
+export const DEFAULT_ASPECT_LOCKS: Record<string, number> = {
+  status_led: 1.0,
+  camera_preset: 1.0,
+};
+
+/** 16:9, for the plugin elements that show a picture (camera/video panels). */
+export const VIDEO_ASPECT_LOCK = 16 / 9;
+
+/** Plugin element types whose content is a video image and must not skew. */
+const VIDEO_PLUGIN_TYPES = new Set(["video_stream", "video_panel", "camera_panel"]);
+
+/** The default box for an element type, honouring a plugin's own declaration. */
+export function defaultElementSize(
+  type: string,
+  panelElements: PluginExtension[] = [],
+): { w: number; h: number } {
+  if (type.startsWith("plugin:")) {
+    const parts = type.split(":");
+    const ext = panelElements.find(
+      (e) => e.plugin_id === parts[1] && e.type === parts.slice(2).join(":"),
+    );
+    return {
+      w: ext?.default_size?.w ?? FALLBACK_ELEMENT_SIZE.w,
+      h: ext?.default_size?.h ?? FALLBACK_ELEMENT_SIZE.h,
+    };
+  }
+  return DEFAULT_ELEMENT_SIZES[type] ?? FALLBACK_ELEMENT_SIZE;
+}
+
+/** The aspect lock a new element of this type is born with, or null. */
+export function defaultAspectLock(type: string): number | null {
+  if (type.startsWith("plugin:")) {
+    const pluginType = type.split(":").slice(2).join(":");
+    return VIDEO_PLUGIN_TYPES.has(pluginType) ? VIDEO_ASPECT_LOCK : null;
+  }
+  return DEFAULT_ASPECT_LOCKS[type] ?? null;
+}
+
 export function createDefaultElement(
   type: string,
-  col: number,
-  row: number,
   existingIds: Set<string>,
-  panelElements: PluginExtension[] = [],
 ): UIElement {
   const id = generateId(type, existingIds);
+  const aspect = defaultAspectLock(type);
   const base: UIElement = {
     id,
     type,
-    grid_area: { col, row, col_span: 2, row_span: 1 },
+    parent: null,
+    aspect_lock: aspect,
     style: {},
     bindings: {},
   };
 
   switch (type) {
     case "button":
-      return {
-        ...base,
-        label: "Button",
-        grid_area: { col, row, col_span: 3, row_span: 2 },
-        style: {},
-      };
+      return { ...base, label: "Button" };
     case "label":
-      return {
-        ...base,
-        text: "Label",
-        grid_area: { col, row, col_span: 3, row_span: 1 },
-        style: {},
-      };
+      return { ...base, text: "Label" };
     case "status_led":
-      return {
-        ...base,
-        label: "Status",
-        grid_area: { col, row, col_span: 2, row_span: 1 },
-      };
+      return { ...base, label: "Status" };
     case "slider":
       return {
         ...base,
@@ -239,16 +308,9 @@ export function createDefaultElement(
         step: 1,
         scale_to_full: true,
         response: "linear",
-        grid_area: { col, row, col_span: 4, row_span: 1 },
       };
     case "page_nav":
-      return {
-        ...base,
-        label: "Next Page",
-        target_page: "",
-        grid_area: { col, row, col_span: 2, row_span: 1 },
-        style: {},
-      };
+      return { ...base, label: "Next Page", target_page: "" };
     case "select":
       return {
         ...base,
@@ -257,34 +319,15 @@ export function createDefaultElement(
           { label: "Option 1", value: "option_1" },
           { label: "Option 2", value: "option_2" },
         ],
-        grid_area: { col, row, col_span: 3, row_span: 1 },
       };
     case "text_input":
-      return {
-        ...base,
-        label: "Input",
-        placeholder: "Type here...",
-        grid_area: { col, row, col_span: 3, row_span: 1 },
-      };
+      return { ...base, label: "Input", placeholder: "Type here..." };
     case "image":
-      return {
-        ...base,
-        label: "",
-        grid_area: { col, row, col_span: 3, row_span: 3 },
-      };
+      return { ...base, label: "" };
     case "spacer":
-      return {
-        ...base,
-        grid_area: { col, row, col_span: 1, row_span: 1 },
-      };
+      return { ...base };
     case "camera_preset":
-      return {
-        ...base,
-        label: "Preset",
-        preset_number: 1,
-        grid_area: { col, row, col_span: 2, row_span: 2 },
-        style: {},
-      };
+      return { ...base, label: "Preset", preset_number: 1 };
     case "gauge":
       return {
         ...base,
@@ -293,7 +336,6 @@ export function createDefaultElement(
         max: 100,
         unit: "%",
         arc_angle: 240,
-        grid_area: { col, row, col_span: 3, row_span: 3 },
         style: { gauge_width: 8, show_value: true, show_ticks: true, tick_count: 5 },
       };
     case "level_meter":
@@ -303,7 +345,6 @@ export function createDefaultElement(
         min: -60,
         max: 0,
         orientation: "vertical",
-        grid_area: { col, row, col_span: 1, row_span: 4 },
         style: { meter_segments: 20, show_peak: true, peak_hold_ms: 1500 },
       };
     case "fader":
@@ -317,24 +358,12 @@ export function createDefaultElement(
         scale_to_full: true,
         response: "linear",
         orientation: "vertical",
-        grid_area: { col, row, col_span: 2, row_span: 5 },
         style: { show_value: true, show_scale: true },
       };
     case "group":
-      return {
-        ...base,
-        label: "Group",
-        label_position: "top-left",
-        grid_area: { col, row, col_span: 6, row_span: 4 },
-        style: {},
-      };
+      return { ...base, label: "Container", label_position: "top-left" };
     case "clock":
-      return {
-        ...base,
-        clock_mode: "time",
-        grid_area: { col, row, col_span: 3, row_span: 1 },
-        style: {},
-      };
+      return { ...base, clock_mode: "time" };
     case "keypad":
       return {
         ...base,
@@ -343,22 +372,18 @@ export function createDefaultElement(
         auto_send: false,
         keypad_style: "numeric",
         show_display: true,
-        grid_area: { col, row, col_span: 3, row_span: 5 },
-        style: {},
       };
     case "list":
       return {
         ...base,
         label: "Sources",
         list_style: "selectable",
-        item_height: 44,
+        item_height: 44 / 14,
         items: [
           { label: "Item 1", value: "1" },
           { label: "Item 2", value: "2" },
           { label: "Item 3", value: "3" },
         ],
-        grid_area: { col, row, col_span: 3, row_span: 4 },
-        style: {},
       };
     case "matrix":
       return {
@@ -372,8 +397,7 @@ export function createDefaultElement(
           route_key_pattern: "",
         },
         matrix_style: "crosspoint",
-        grid_area: { col, row, col_span: 6, row_span: 5 },
-        style: { cell_size: 44 },
+        style: { cell_size: 44 / 14 },
       };
     default:
       // Plugin element: type is "plugin:<plugin_id>:<plugin_type>"
@@ -381,11 +405,6 @@ export function createDefaultElement(
         const parts = type.split(":");
         const pluginId = parts[1];
         const pluginType = parts.slice(2).join(":");
-        const ext = panelElements.find(
-          (e) => e.plugin_id === pluginId && e.type === pluginType,
-        );
-        const colSpan = ext?.default_size?.col_span ?? 4;
-        const rowSpan = ext?.default_size?.row_span ?? 3;
         return {
           ...base,
           type: "plugin",
@@ -393,86 +412,438 @@ export function createDefaultElement(
           plugin_type: pluginType,
           plugin_id: pluginId,
           plugin_config: {},
-          grid_area: { col, row, col_span: colSpan, row_span: rowSpan },
         };
       }
       return { ...base, label: type };
   }
 }
 
-// --- Grid geometry helpers ---
+// --- Percentage geometry ---
+//
+// Geometry is a percentage of the parent box -- the page, or the container an
+// element names as its parent. Free-form and floating point: there are no cells
+// to land in and nothing clamps a control to a track. The grid that used to BE
+// the model is now a ruler you can change or switch off without moving a thing.
 
 /**
- * Clamp an element origin so the element's full span stays inside the grid.
- * Both the palette-drop and click-to-add paths place an element of a known
- * span; neither may push col+col_span past `columns` (or row+row_span past
- * `rows`), which overflows the grid and trips validateProject's "extends
- * beyond the NxN grid" warning. Mirrors the canvas-move clamp.
+ * Percentages are stored to 4 decimal places, at every write path.
+ *
+ * Without a canonical rounding, px<->% round-trips jitter in the last digits
+ * (12.500001 != 12.5), and that jitter dirties the save-reconcile diff and arms
+ * phantom autosaves on a panel nobody touched.
  */
-export function clampOriginToGrid(
-  col: number,
-  row: number,
-  colSpan: number,
-  rowSpan: number,
-  columns: number,
-  rows: number,
-): { col: number; row: number } {
+export const GEOMETRY_PRECISION = 4;
+
+export function roundPct(value: number): number {
+  const factor = 10 ** GEOMETRY_PRECISION;
+  return Math.round(value * factor) / factor;
+}
+
+/** Round a whole box in one go. */
+export function roundPlacement(p: Placement): Placement {
+  return { x: roundPct(p.x), y: roundPct(p.y), w: roundPct(p.w), h: roundPct(p.h) };
+}
+
+/** The snap increment a page falls back to: the old 12x8 grid's spacing. */
+export const SNAP_FALLBACK: SnapConfig = { enabled: true, x: 100 / 12, y: 100 / 8 };
+
+/** Where a placement lands when the page has never heard of the element. */
+export const DEFAULT_PLACEMENT: Placement = { x: 0, y: 0, w: 25, h: 12.5 };
+
+/**
+ * How close (in percent) an edge has to be before element-edge magnetism grabs
+ * it. Roughly a fifth of a default snap cell, so the grid still wins in open
+ * space and edges win when you are genuinely near one.
+ */
+export const MAGNET_TOLERANCE = 1.5;
+
+/** The page's snap setting, with the old grid's spacing as the fallback. */
+export function pageSnap(page: Pick<UIPage, "snap"> | undefined): SnapConfig {
+  const s = page?.snap;
+  if (!s) return { ...SNAP_FALLBACK };
   return {
-    col: Math.max(1, Math.min(columns - colSpan + 1, col)),
-    row: Math.max(1, Math.min(rows - rowSpan + 1, row)),
+    enabled: s.enabled !== false,
+    x: typeof s.x === "number" && s.x > 0 ? s.x : SNAP_FALLBACK.x,
+    y: typeof s.y === "number" && s.y > 0 ? s.y : SNAP_FALLBACK.y,
   };
 }
 
 /**
- * Find the first grid position where an element of the given span fits without
- * overlapping any existing element. Scans row-major. Falls back to a clamped
- * (1,1) when nothing fits (element larger than the free area) so the result is
- * always on-grid. Used by click-to-add so a multi-cell element doesn't overflow
- * the grid or land on top of a neighbour.
+ * The layout the builder authors into: the page's primary.
+ *
+ * Layout variants (a portrait arrangement of the same controls) are authored
+ * through a switcher of their own; every other edit path means "the layout I am
+ * looking at", and until one is picked that is the primary.
  */
-export function findFreeGridPosition(
-  elements: { grid_area: GridArea }[],
-  colSpan: number,
-  rowSpan: number,
-  columns: number,
-  rows: number,
-): { col: number; row: number } {
-  const occupied = new Set<string>();
-  for (const el of elements) {
-    const { col, row, col_span, row_span } = el.grid_area;
-    for (let r = row; r < row + row_span; r++)
-      for (let c = col; c < col + col_span; c++) occupied.add(`${c},${r}`);
+export function primaryLayout(page: UIPage | undefined): Layout | undefined {
+  const layouts = page?.layouts ?? [];
+  return layouts.find((l) => l.primary) ?? layouts[0];
+}
+
+/** A page's layout by id, or its primary when the id is unknown. */
+export function layoutById(page: UIPage, layoutId?: string | null): Layout | undefined {
+  if (layoutId) {
+    const found = page.layouts?.find((l) => l.id === layoutId);
+    if (found) return found;
   }
-  for (let r = 1; r + rowSpan - 1 <= rows; r++) {
-    for (let c = 1; c + colSpan - 1 <= columns; c++) {
-      let fits = true;
-      for (let rr = r; rr < r + rowSpan && fits; rr++)
-        for (let cc = c; cc < c + colSpan && fits; cc++)
-          if (occupied.has(`${cc},${rr}`)) fits = false;
-      if (fits) return { col: c, row: r };
-    }
-  }
-  return clampOriginToGrid(1, 1, colSpan, rowSpan, columns, rows);
+  return primaryLayout(page);
 }
 
 /**
- * Map a pointer coordinate to a 1-based grid cell index. The canvas grid is
- * drawn inside a container whose CSS padding (outerGap) renders at `pad` screen
- * pixels; that padding is NOT part of the cell area, so it must be removed from
- * both the origin and the length before dividing into cells. Without this the
- * mapping is biased toward the start by ~one pad-width near the far edge,
- * landing edge drops one cell off.
+ * Fold an inherits chain down to one placement map, base first so the chosen
+ * layout's own placements win. The seen-set is a cycle guard -- a hand-edited
+ * project can point two layouts at each other and the builder still has to draw
+ * something. Mirrors the panel runtime's _selectLayout.
  */
-export function pointerToCell(
+export function resolvePlacements(
+  page: UIPage,
+  layoutId?: string | null,
+): Record<string, Placement> {
+  const layouts = page.layouts ?? [];
+  const chosen = layoutById(page, layoutId);
+  if (!chosen) return {};
+  const chain: Layout[] = [];
+  const seen = new Set<string>();
+  let cursor: Layout | undefined = chosen;
+  while (cursor && !seen.has(cursor.id)) {
+    seen.add(cursor.id);
+    chain.unshift(cursor);
+    cursor = cursor.inherits ? layouts.find((l) => l.id === cursor!.inherits) : undefined;
+  }
+  const placements: Record<string, Placement> = {};
+  for (const layout of chain) Object.assign(placements, layout.placements ?? {});
+  return placements;
+}
+
+/** One element's box on a page, or a sane default when it has never been placed. */
+export function getPlacement(
+  page: UIPage,
+  elementId: string,
+  layoutId?: string | null,
+): Placement {
+  const p = resolvePlacements(page, layoutId)[elementId];
+  return p ? { x: p.x, y: p.y, w: p.w, h: p.h } : { ...DEFAULT_PLACEMENT };
+}
+
+/** Write one element's box into a page's layout (rounded on the way in). */
+export function withPlacement(
+  page: UIPage,
+  elementId: string,
+  placement: Placement,
+  layoutId?: string | null,
+): UIPage {
+  return withPlacements(page, { [elementId]: placement }, layoutId);
+}
+
+/** Write several boxes at once -- one store mutation for a multi-select drag. */
+export function withPlacements(
+  page: UIPage,
+  placements: Record<string, Placement>,
+  layoutId?: string | null,
+): UIPage {
+  const target = layoutById(page, layoutId);
+  if (!target) return page;
+  const rounded: Record<string, Placement> = {};
+  for (const [id, p] of Object.entries(placements)) rounded[id] = roundPlacement(p);
+  return {
+    ...page,
+    layouts: (page.layouts ?? []).map((l) =>
+      l.id === target.id ? { ...l, placements: { ...l.placements, ...rounded } } : l,
+    ),
+  };
+}
+
+/** Drop an element's box from every layout -- used when the element is deleted. */
+export function withoutPlacement(page: UIPage, elementId: string): UIPage {
+  return {
+    ...page,
+    layouts: (page.layouts ?? []).map((l) => {
+      if (!l.placements || !(elementId in l.placements)) {
+        return l.hidden?.includes(elementId)
+          ? { ...l, hidden: l.hidden.filter((id) => id !== elementId) }
+          : l;
+      }
+      const next = { ...l.placements };
+      delete next[elementId];
+      return { ...l, placements: next, hidden: (l.hidden ?? []).filter((id) => id !== elementId) };
+    }),
+  };
+}
+
+/**
+ * Map a pointer coordinate to a percentage of the box it fell in.
+ *
+ * The page carries no padding any more (the grid's gutter died with the grid),
+ * so this is the whole rect edge to edge -- the pointer lands exactly where the
+ * pointer is.
+ */
+export function pointerToPercent(
   pointerPx: number,
   rectStart: number,
   rectLength: number,
-  pad: number,
-  count: number,
 ): number {
-  const inner = Math.max(1, rectLength - 2 * pad);
-  const frac = (pointerPx - (rectStart + pad)) / inner;
-  return Math.floor(frac * count) + 1;
+  if (!(rectLength > 0)) return 0;
+  return ((pointerPx - rectStart) / rectLength) * 100;
+}
+
+/** Round a value onto the nearest multiple of an increment. */
+export function snapToIncrement(value: number, increment: number): number {
+  if (!(increment > 0)) return value;
+  return Math.round(value / increment) * increment;
+}
+
+// --- Magnetic snapping ---
+
+/** What a gesture can be pulled toward, and what it takes to suspend it. */
+export interface SnapContext {
+  /** The page's snap increment. `enabled: false` leaves only edge magnetism. */
+  snap: SnapConfig;
+  /** Alt/Option held: suspend snapping entirely for this gesture, grid AND
+   *  element-edge magnetism, so the control lands on the exact pointer. */
+  bypass?: boolean;
+  /** Sibling boxes to be magnetic against (same parent, moving ones excluded). */
+  others?: Placement[];
+}
+
+/** A snapped gesture: the adjusted box, plus the guides worth drawing. */
+export interface SnapOutcome {
+  placement: Placement;
+  /** Percent offsets where a vertical guide line should be drawn. */
+  guidesX: number[];
+  /** Percent offsets where a horizontal guide line should be drawn. */
+  guidesY: number[];
+}
+
+/** Every line a moving edge can be attracted to on one axis. */
+function magnetTargets(others: Placement[], axis: "x" | "y"): number[] {
+  const targets = [0, 100 / 3, 50, (100 * 2) / 3, 100];
+  for (const o of others) {
+    const start = axis === "x" ? o.x : o.y;
+    const size = axis === "x" ? o.w : o.h;
+    targets.push(start, start + size / 2, start + size);
+  }
+  return targets;
+}
+
+/**
+ * Pull one moving edge onto the nearest attractive line.
+ *
+ * Element edges, page edges, centre and thirds win when they are within
+ * MAGNET_TOLERANCE, because being flush with a neighbour is what the author
+ * meant. Failing that the snap increment takes it, which is a coarser pull with
+ * no tolerance -- there is always a nearest increment.
+ */
+function snapAxis(
+  edges: number[],
+  increment: number,
+  gridOn: boolean,
+  targets: number[],
+): { delta: number; guides: number[] } {
+  let best: { delta: number; guide: number } | null = null;
+  for (const edge of edges) {
+    for (const target of targets) {
+      const delta = target - edge;
+      if (Math.abs(delta) > MAGNET_TOLERANCE) continue;
+      if (!best || Math.abs(delta) < Math.abs(best.delta)) best = { delta, guide: target };
+    }
+  }
+  if (best) {
+    // Every edge that ends up on an attractive line gets a guide, so a flush
+    // top AND a flush left both draw.
+    const moved = edges.map((e) => e + best!.delta);
+    const guides = targets.filter((t) => moved.some((m) => Math.abs(m - t) < 1e-6));
+    return { delta: best.delta, guides: [...new Set(guides)] };
+  }
+  if (gridOn) {
+    let gridBest: number | null = null;
+    for (const edge of edges) {
+      const delta = snapToIncrement(edge, increment) - edge;
+      if (gridBest === null || Math.abs(delta) < Math.abs(gridBest)) gridBest = delta;
+    }
+    if (gridBest !== null) return { delta: gridBest, guides: [] };
+  }
+  return { delta: 0, guides: [] };
+}
+
+/**
+ * Snap a box that is being MOVED: the size is fixed, so both edges and the
+ * centre travel together and whichever of them is nearest something decides.
+ */
+export function snapMove(rect: Placement, ctx: SnapContext): SnapOutcome {
+  if (ctx.bypass) return { placement: roundPlacement(rect), guidesX: [], guidesY: [] };
+  const snap = ctx.snap;
+  const others = ctx.others ?? [];
+  const gridOn = snap.enabled !== false;
+
+  const xr = snapAxis(
+    [rect.x, rect.x + rect.w / 2, rect.x + rect.w],
+    snap.x,
+    gridOn,
+    magnetTargets(others, "x"),
+  );
+  const yr = snapAxis(
+    [rect.y, rect.y + rect.h / 2, rect.y + rect.h],
+    snap.y,
+    gridOn,
+    magnetTargets(others, "y"),
+  );
+
+  return {
+    placement: roundPlacement({ ...rect, x: rect.x + xr.delta, y: rect.y + yr.delta }),
+    guidesX: xr.guides,
+    guidesY: yr.guides,
+  };
+}
+
+/**
+ * Snap a box that is being RESIZED. Only the edges the handle actually drags
+ * are attracted -- an east drag must not pull the west edge along with it.
+ */
+export function snapResize(
+  rect: Placement,
+  direction: string,
+  ctx: SnapContext,
+): SnapOutcome {
+  if (ctx.bypass) return { placement: roundPlacement(rect), guidesX: [], guidesY: [] };
+  const snap = ctx.snap;
+  const others = ctx.others ?? [];
+  const gridOn = snap.enabled !== false;
+  const next = { ...rect };
+  let guidesX: number[] = [];
+  let guidesY: number[] = [];
+
+  if (direction.includes("w")) {
+    const r = snapAxis([next.x], snap.x, gridOn, magnetTargets(others, "x"));
+    next.x += r.delta;
+    next.w -= r.delta;
+    guidesX = r.guides;
+  } else if (direction.includes("e")) {
+    const r = snapAxis([next.x + next.w], snap.x, gridOn, magnetTargets(others, "x"));
+    next.w += r.delta;
+    guidesX = r.guides;
+  }
+  if (direction.includes("n")) {
+    const r = snapAxis([next.y], snap.y, gridOn, magnetTargets(others, "y"));
+    next.y += r.delta;
+    next.h -= r.delta;
+    guidesY = r.guides;
+  } else if (direction.includes("s")) {
+    const r = snapAxis([next.y + next.h], snap.y, gridOn, magnetTargets(others, "y"));
+    next.h += r.delta;
+    guidesY = r.guides;
+  }
+
+  return { placement: roundPlacement(next), guidesX, guidesY };
+}
+
+// --- Auto-placement (the pointerless paths) ---
+
+/** The smallest box a resize or an auto-place will produce, in percent. */
+export const MIN_ELEMENT_SIZE = 1;
+
+/** Each successive cascade step, in percent, when there is no grid to scan. */
+const CASCADE_STEP = 2.5;
+
+/** True when two boxes share any area at all. */
+export function placementsOverlap(a: Placement, b: Placement): boolean {
+  return (
+    a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
+  );
+}
+
+/**
+ * Where a control lands when nobody pointed at anything -- click-to-add from
+ * the palette, duplicate, paste.
+ *
+ * With snap on this is the first free snap cell scanning row-major, which is
+ * exactly what the old grid did for free, so click-to-add is visually unchanged
+ * by the whole move to percentages. With snap off "first free cell" is
+ * meaningless, so it falls back to the page centre plus a cascade -- the
+ * down-right nudge every design tool uses for a paste.
+ */
+export function autoPlace(
+  occupied: Placement[],
+  size: { w: number; h: number },
+  snap: SnapConfig,
+  cascadeIndex = 0,
+): Placement {
+  const w = Math.max(MIN_ELEMENT_SIZE, size.w);
+  const h = Math.max(MIN_ELEMENT_SIZE, size.h);
+
+  if (snap.enabled !== false && snap.x > 0 && snap.y > 0) {
+    const cols = Math.max(1, Math.floor(100 / snap.x));
+    const rows = Math.max(1, Math.floor(100 / snap.y));
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const x = c * snap.x;
+        const y = r * snap.y;
+        if (x + w > 100 + 1e-6 || y + h > 100 + 1e-6) continue;
+        const candidate = { x, y, w, h };
+        if (!occupied.some((o) => placementsOverlap(candidate, o))) {
+          return roundPlacement(candidate);
+        }
+      }
+    }
+  }
+
+  // Nothing free (or no grid to scan): page centre, nudged down-right per add,
+  // wrapped so a long cascade can't march an element off the page.
+  const offset = (cascadeIndex * CASCADE_STEP) % 20;
+  return roundPlacement({
+    x: Math.max(0, Math.min(100 - w, 50 - w / 2 + offset)),
+    y: Math.max(0, Math.min(100 - h, 50 - h / 2 + offset)),
+    w,
+    h,
+  });
+}
+
+/** How many elements already sit at (near) this spot -- drives the cascade. */
+export function cascadeIndexFor(occupied: Placement[]): number {
+  return occupied.length;
+}
+
+/**
+ * Which container a box dropped at page coordinates belongs to, and what its
+ * coordinates are once it is in there.
+ *
+ * Dropping a control inside a container is how you say it belongs to it, so a
+ * drop that lands fully inside one adopts into it -- the same rule the 0.8.0
+ * migration used on existing projects. Innermost (smallest) wins when
+ * containers nest, and a partial overlap adopts nothing: it stays a page-level
+ * peer rendered over the frame, which is conservative and never surprising.
+ */
+export function resolveDropParent(
+  page: UIPage,
+  box: Placement,
+  layoutId?: string | null,
+): { parentId: string | null; relative: Placement } {
+  const placements = resolvePlacements(page, layoutId);
+  let best: { id: string; area: number; box: Placement } | null = null;
+  for (const el of page.elements) {
+    if (el.type !== "group") continue;
+    const c = placements[el.id];
+    if (!c) continue;
+    const contains =
+      box.x >= c.x - BOUNDS_EPSILON &&
+      box.y >= c.y - BOUNDS_EPSILON &&
+      box.x + box.w <= c.x + c.w + BOUNDS_EPSILON &&
+      box.y + box.h <= c.y + c.h + BOUNDS_EPSILON;
+    if (!contains) continue;
+    const area = c.w * c.h;
+    if (!best || area < best.area) best = { id: el.id, area, box: c };
+  }
+  if (!best || best.box.w <= 0 || best.box.h <= 0) {
+    return { parentId: null, relative: roundPlacement(box) };
+  }
+  return {
+    parentId: best.id,
+    relative: roundPlacement({
+      x: ((box.x - best.box.x) / best.box.w) * 100,
+      y: ((box.y - best.box.y) / best.box.h) * 100,
+      w: (box.w / best.box.w) * 100,
+      h: (box.h / best.box.h) * 100,
+    }),
+  };
 }
 
 // --- Page mutations (return new pages array) ---
@@ -501,17 +872,24 @@ export function addPage(
   const newPage: UIPage = {
     id,
     name,
-    grid: pageType === "page"
-      ? { columns: 12, rows: 8 }
-      : { columns: 4, rows: 4 },
+    // An overlay is a smaller canvas, so it gets a coarser ruler -- the old
+    // 4x4 overlay grid's spacing, the same way a page gets the old 12x8's.
+    snap: pageType === "page"
+      ? { enabled: true, ...{ x: 100 / 12, y: 100 / 8 } }
+      : { enabled: true, x: 25, y: 25 },
     elements: [],
+    layouts: [
+      { id: "landscape", orientation: "landscape", primary: true, placements: {}, hidden: [] },
+    ],
   };
 
   if (pageType === "overlay") {
     newPage.page_type = "overlay";
     newPage.overlay = {
-      width: 400,
-      height: 300,
+      // Percentages of the viewport now, not raw px: 400x300 on the 1280x800
+      // reference is what an overlay has always looked like.
+      width: 31.25,
+      height: 37.5,
       position: "center",
       backdrop: "dim",
       dismiss_on_backdrop: true,
@@ -520,7 +898,7 @@ export function addPage(
   } else if (pageType === "sidebar") {
     newPage.page_type = "sidebar";
     newPage.overlay = {
-      width: 320,
+      width: 25,
       side: "right",
       backdrop: "dim",
       dismiss_on_backdrop: true,
@@ -748,38 +1126,11 @@ export function removePageAndScrubRefs(
   };
 }
 
-/** Clamp every element's grid_area into the given grid bounds, with the same
- *  rules the layout inspector and canvas resize use (position clamps into
- *  range first, then the span shrinks to fit). Used when the page grid gets
- *  smaller so elements can't silently fall off the live panel. Returns the
- *  ORIGINAL array when every element already fits — callers identity-check
- *  the result. */
-export function clampElementsToGrid(
-  elements: UIElement[],
-  columns: number,
-  rows: number,
-): UIElement[] {
-  let changed = false;
-  const next = elements.map((el) => {
-    const a = el.grid_area;
-    if (!a) return el;
-    const col = Math.max(1, Math.min(columns, a.col));
-    const row = Math.max(1, Math.min(rows, a.row));
-    const col_span = Math.max(1, Math.min(columns - col + 1, a.col_span));
-    const row_span = Math.max(1, Math.min(rows - row + 1, a.row_span));
-    if (
-      col === a.col &&
-      row === a.row &&
-      col_span === a.col_span &&
-      row_span === a.row_span
-    ) {
-      return el;
-    }
-    changed = true;
-    return { ...el, grid_area: { ...a, col, row, col_span, row_span } };
-  });
-  return changed ? next : elements;
-}
+// There is deliberately no successor to the old clampElementsToGrid. Changing
+// the snap increment -- or switching it off -- moves nothing now, because the
+// increment is a ruler rather than a container. That used to rewrite every
+// element's coordinates to fit a shrinking grid, which is exactly the surprise
+// percentage geometry exists to remove.
 
 export function renamePage(
   pages: UIPage[],
@@ -795,22 +1146,59 @@ export function addElementToPage(
   pages: UIPage[],
   pageId: string,
   element: UIElement,
+  placement?: Placement,
 ): UIPage[] {
-  return pages.map((p) =>
-    p.id === pageId ? { ...p, elements: [...p.elements, element] } : p,
-  );
+  return pages.map((p) => {
+    if (p.id !== pageId) return p;
+    const withEl = { ...p, elements: [...p.elements, element] };
+    return placement ? withPlacement(withEl, element.id, placement) : withEl;
+  });
 }
 
+/**
+ * Delete an element, its box in every layout, and -- if it was a container --
+ * re-home whatever was living inside it.
+ *
+ * Children are kept rather than deleted with the parent: they are controls the
+ * author wired up, and losing six of them to one wrong Delete is not a trade
+ * anybody wants. They come back out to page level, keeping the position they
+ * appeared to have, so nothing jumps.
+ */
 export function removeElementFromPage(
   pages: UIPage[],
   pageId: string,
   elementId: string,
 ): UIPage[] {
-  return pages.map((p) =>
-    p.id === pageId
-      ? { ...p, elements: p.elements.filter((e) => e.id !== elementId) }
-      : p,
-  );
+  return pages.map((p) => {
+    if (p.id !== pageId) return p;
+    const target = p.elements.find((e) => e.id === elementId);
+    const children = p.elements.filter((e) => e.parent === elementId);
+
+    let next: UIPage = { ...p, elements: p.elements.filter((e) => e.id !== elementId) };
+
+    if (target && children.length) {
+      const parentBox = getPlacement(p, elementId);
+      const promoted: Record<string, Placement> = {};
+      for (const child of children) {
+        const rel = getPlacement(p, child.id);
+        promoted[child.id] = {
+          x: parentBox.x + (rel.x / 100) * parentBox.w,
+          y: parentBox.y + (rel.y / 100) * parentBox.h,
+          w: (rel.w / 100) * parentBox.w,
+          h: (rel.h / 100) * parentBox.h,
+        };
+      }
+      next = {
+        ...next,
+        elements: next.elements.map((e) =>
+          e.parent === elementId ? { ...e, parent: target.parent ?? null } : e,
+        ),
+      };
+      next = withPlacements(next, promoted);
+    }
+
+    return withoutPlacement(next, elementId);
+  });
 }
 
 export function updateElementInPage(
@@ -831,15 +1219,29 @@ export function updateElementInPage(
   );
 }
 
+/** Move/resize one element by writing its box into the page's active layout. */
 export function moveElementInPage(
   pages: UIPage[],
   pageId: string,
   elementId: string,
-  newGridArea: GridArea,
+  placement: Placement,
+  layoutId?: string | null,
 ): UIPage[] {
-  return updateElementInPage(pages, pageId, elementId, {
-    grid_area: newGridArea,
-  });
+  return pages.map((p) =>
+    p.id === pageId ? withPlacement(p, elementId, placement, layoutId) : p,
+  );
+}
+
+/** Move/resize several elements in one mutation -- a multi-select drag. */
+export function moveElementsInPage(
+  pages: UIPage[],
+  pageId: string,
+  placements: Record<string, Placement>,
+  layoutId?: string | null,
+): UIPage[] {
+  return pages.map((p) =>
+    p.id === pageId ? withPlacements(p, placements, layoutId) : p,
+  );
 }
 
 export function duplicateElementInPage(
@@ -859,32 +1261,20 @@ export function duplicateElementInPage(
   const existingIds = new Set(pages.flatMap((p) => p.elements.map((e) => e.id)));
   for (const id of reservedIds) existingIds.add(id);
   const newId = generateId(element.type, existingIds);
-  // Place duplicate adjacent, clamped to grid bounds
-  let newCol = element.grid_area.col + element.grid_area.col_span;
-  let newRow = element.grid_area.row;
-  // If it would overflow horizontally, try placing below instead
-  if (newCol + element.grid_area.col_span - 1 > page.grid.columns) {
-    newCol = element.grid_area.col;
-    newRow = element.grid_area.row + element.grid_area.row_span;
-  }
-  // Clamp to grid
-  newCol = Math.max(1, Math.min(page.grid.columns - element.grid_area.col_span + 1, newCol));
-  newRow = Math.max(1, Math.min(page.grid.rows - element.grid_area.row_span + 1, newRow));
+
+  // Place the copy down-right of the original, the nudge every design tool
+  // uses, and pull it back inside the parent box if that would push it off.
+  const src = getPlacement(page, elementId);
+  const nudge = { x: src.x + 2.5, y: src.y + 2.5, w: src.w, h: src.h };
+  if (nudge.x + nudge.w > 100) nudge.x = Math.max(0, 100 - nudge.w);
+  if (nudge.y + nudge.h > 100) nudge.y = Math.max(0, 100 - nudge.h);
 
   // Rewrite self-referencing ui.<oldId>.* state keys (bindings, visibility)
   // to the duplicate's id — same machinery the rename path uses — so the
   // copy is wired to its own state, not the original's.
   const clone = JSON.parse(JSON.stringify(element)) as UIElement;
   const rewritten = rewriteElement(clone, element.id, newId);
-  const newElement: UIElement = {
-    ...rewritten,
-    grid_area: {
-      ...element.grid_area,
-      col: newCol,
-      row: newRow,
-    },
-  };
-  return addElementToPage(pages, pageId, newElement);
+  return addElementToPage(pages, pageId, rewritten, nudge);
 }
 
 export function reorderElement(
@@ -1033,59 +1423,55 @@ export function alignElements(
   pageId: string,
   elementIds: string[],
   action: AlignAction,
-  gridConfig: { columns: number; rows: number },
+  layoutId?: string | null,
 ): UIPage[] {
   return pages.map((p) => {
     if (p.id !== pageId) return p;
     const targets = p.elements.filter((el) => elementIds.includes(el.id));
     if (targets.length === 0) return p;
 
-    // When multiple elements are selected, align relative to the selection
-    // bounding box. Single element aligns to the page grid.
-    const useSelectionBounds = targets.length > 1;
-    let boundsLeft: number, boundsRight: number, boundsTop: number, boundsBottom: number;
-    if (useSelectionBounds) {
-      boundsLeft = Math.min(...targets.map((el) => el.grid_area.col));
-      boundsRight = Math.max(...targets.map((el) => el.grid_area.col + el.grid_area.col_span - 1));
-      boundsTop = Math.min(...targets.map((el) => el.grid_area.row));
-      boundsBottom = Math.max(...targets.map((el) => el.grid_area.row + el.grid_area.row_span - 1));
-    } else {
-      boundsLeft = 1;
-      boundsRight = gridConfig.columns;
-      boundsTop = 1;
-      boundsBottom = gridConfig.rows;
-    }
-    const boundsW = boundsRight - boundsLeft + 1;
-    const boundsH = boundsBottom - boundsTop + 1;
+    const boxes = new Map(targets.map((el) => [el.id, getPlacement(p, el.id, layoutId)]));
 
-    return {
-      ...p,
-      elements: p.elements.map((el) => {
-        if (!elementIds.includes(el.id)) return el;
-        const area = { ...el.grid_area };
-        switch (action) {
-          case "align-left":
-            area.col = boundsLeft;
-            break;
-          case "align-center":
-            area.col = Math.max(1, boundsLeft + Math.round((boundsW - area.col_span) / 2));
-            break;
-          case "align-right":
-            area.col = boundsRight - area.col_span + 1;
-            break;
-          case "align-top":
-            area.row = boundsTop;
-            break;
-          case "align-middle":
-            area.row = Math.max(1, boundsTop + Math.round((boundsH - area.row_span) / 2));
-            break;
-          case "align-bottom":
-            area.row = boundsBottom - area.row_span + 1;
-            break;
-        }
-        return { ...el, grid_area: area };
-      }),
-    };
+    // Several selected: align to the selection's own bounding box, which is
+    // what "line these up with each other" means. One selected: align to its
+    // parent box, which is the whole page (0..100) or the container it sits in
+    // -- and in percentages the container IS 0..100 of itself, so it is the
+    // same arithmetic either way.
+    let left = 0, right = 100, top = 0, bottom = 100;
+    if (targets.length > 1) {
+      const all = [...boxes.values()];
+      left = Math.min(...all.map((b) => b.x));
+      right = Math.max(...all.map((b) => b.x + b.w));
+      top = Math.min(...all.map((b) => b.y));
+      bottom = Math.max(...all.map((b) => b.y + b.h));
+    }
+
+    const moved: Record<string, Placement> = {};
+    for (const el of targets) {
+      const box = { ...boxes.get(el.id)! };
+      switch (action) {
+        case "align-left":
+          box.x = left;
+          break;
+        case "align-center":
+          box.x = left + (right - left - box.w) / 2;
+          break;
+        case "align-right":
+          box.x = right - box.w;
+          break;
+        case "align-top":
+          box.y = top;
+          break;
+        case "align-middle":
+          box.y = top + (bottom - top - box.h) / 2;
+          break;
+        case "align-bottom":
+          box.y = bottom - box.h;
+          break;
+      }
+      moved[el.id] = box;
+    }
+    return withPlacements(p, moved, layoutId);
   });
 }
 
@@ -1094,9 +1480,9 @@ export function alignElement(
   pageId: string,
   elementId: string,
   action: AlignAction,
-  gridConfig: { columns: number; rows: number },
+  layoutId?: string | null,
 ): UIPage[] {
-  return alignElements(pages, pageId, [elementId], action, gridConfig);
+  return alignElements(pages, pageId, [elementId], action, layoutId);
 }
 
 // --- Master element helpers ---
@@ -1112,10 +1498,18 @@ export function promoteToMaster(
   const element = page.elements.find(e => e.id === elementId);
   if (!element) return { pages, masterElements };
 
-  // Remove from page
+  // A master's box is a percentage of the VIEWPORT, so it is valid on every
+  // page whatever those pages are arranged like. Take the box it had on the
+  // page it is being promoted from as its landscape placement.
+  const box = getPlacement(page, elementId);
+
+  // Remove from page (and drop the box it no longer needs there)
   const newPages = pages.map(p =>
     p.id === pageId
-      ? { ...p, elements: p.elements.filter(e => e.id !== elementId) }
+      ? withoutPlacement(
+          { ...p, elements: p.elements.filter(e => e.id !== elementId) },
+          elementId,
+        )
       : p
   );
 
@@ -1133,7 +1527,12 @@ export function promoteToMaster(
   }
 
   // Add to master elements with pages: "*"
-  const masterEl: MasterElement = { ...promoted, pages: "*" };
+  const masterEl: MasterElement = {
+    ...promoted,
+    pages: "*",
+    placements: { landscape: roundPlacement(box) },
+    hidden: false,
+  };
   return { pages: newPages, masterElements: [...masterElements, masterEl] };
 }
 
@@ -1149,9 +1548,15 @@ export function demoteFromMaster(
   // Remove from masters
   const newMasters = masterElements.filter(m => m.id !== masterElementId);
 
-  // Strip the pages field
-  const { pages: _pagesField, ...elementFields } = masterEl;
+  // Strip the master-only fields; the box comes back as a page placement.
+  const { pages: _pagesField, placements: masterPlacements, hidden: _hidden, ...elementFields } =
+    masterEl;
   let demoted = elementFields as UIElement;
+  const box =
+    masterPlacements?.landscape ??
+    masterPlacements?.portrait ??
+    Object.values(masterPlacements ?? {})[0] ??
+    { ...DEFAULT_PLACEMENT };
 
   // The destination shares the ui.<id> namespace with every page element and
   // the remaining masters. On collision (e.g. a page element was created with
@@ -1169,7 +1574,7 @@ export function demoteFromMaster(
 
   const newPages = pages.map(p =>
     p.id === targetPageId
-      ? { ...p, elements: [...p.elements, demoted] }
+      ? withPlacement({ ...p, elements: [...p.elements, demoted] }, demoted.id, box)
       : p
   );
 
@@ -1448,28 +1853,153 @@ export function renameElement(
 
 // --- Project validation ---
 
-/** True when an element's grid span extends beyond the page grid. */
-export function isOutOfBounds(
-  area: GridArea,
-  grid: { columns: number; rows: number },
-): boolean {
+/** Percentages are floats; a hair over 100 is rounding, not a mistake. */
+const BOUNDS_EPSILON = 0.01;
+
+/**
+ * True when a box hangs outside its parent.
+ *
+ * Free positioning WARNS, it does not prevent -- containers don't clip, and a
+ * control nudged past an edge stays visible. This is what puts the badge on it.
+ */
+export function isOutOfBounds(p: Placement): boolean {
   return (
-    area.col < 1 || area.row < 1 ||
-    area.col + area.col_span - 1 > grid.columns ||
-    area.row + area.row_span - 1 > grid.rows
+    p.x < -BOUNDS_EPSILON ||
+    p.y < -BOUNDS_EPSILON ||
+    p.x + p.w > 100 + BOUNDS_EPSILON ||
+    p.y + p.h > 100 + BOUNDS_EPSILON
   );
 }
 
-/** IDs of elements whose grid span extends beyond the page grid. Used by the
- *  canvas to badge orphaned elements live (e.g. right after a grid shrink),
- *  not just when Validate is pressed. */
+/** IDs of elements hanging outside their parent -- the page, or the container
+ *  they belong to. A child's percentages are of its container, so the same
+ *  0..100 test covers both cases; only the box it is measured against changes.
+ *  Used by the canvas to badge live, not just when Validate is pressed. */
 export function findOutOfBoundsIds(
-  elements: UIElement[],
-  grid: { columns: number; rows: number },
+  page: UIPage,
+  layoutId?: string | null,
 ): Set<string> {
+  const placements = resolvePlacements(page, layoutId);
   const ids = new Set<string>();
-  for (const el of elements) {
-    if (isOutOfBounds(el.grid_area, grid)) ids.add(el.id);
+  for (const el of page.elements) {
+    const p = placements[el.id];
+    if (p && isOutOfBounds(p)) ids.add(el.id);
+  }
+  return ids;
+}
+
+/** IDs of elements that overlap a sibling under the same parent.
+ *
+ *  Containers are excluded: overlapping their children is the entire point of
+ *  being a container. Siblings are only compared within one parent, because a
+ *  child's percentages mean nothing next to a page-level element's. */
+export function findOverlappingIds(
+  page: UIPage,
+  layoutId?: string | null,
+): Set<string> {
+  const placements = resolvePlacements(page, layoutId);
+  const ids = new Set<string>();
+  const byParent = new Map<string, UIElement[]>();
+  for (const el of page.elements) {
+    if (el.type === "group") continue;
+    const key = el.parent ?? "";
+    const list = byParent.get(key);
+    if (list) list.push(el);
+    else byParent.set(key, [el]);
+  }
+  for (const siblings of byParent.values()) {
+    for (let i = 0; i < siblings.length; i++) {
+      const a = placements[siblings[i].id];
+      if (!a) continue;
+      for (let j = i + 1; j < siblings.length; j++) {
+        const b = placements[siblings[j].id];
+        if (b && placementsOverlap(a, b)) {
+          ids.add(siblings[i].id);
+          ids.add(siblings[j].id);
+        }
+      }
+    }
+  }
+  return ids;
+}
+
+// --- Touch-target warning (plan section 3.7) ---
+
+/** The reference glass every warning is estimated against: 1280x800, and a
+ *  15-inch panel at that resolution is ~100 px per inch. */
+export const TOUCH_REFERENCE = { width: 1280, height: 800, pxPerInch: 100 };
+
+/** Below this many reference pixels a control is uncomfortable to hit. This is
+ *  the 44px minimum that used to be a runtime clamp -- as a clamp it overrode
+ *  small percentage heights and shoved elements out of their boxes into overlap
+ *  on every touch panel, so it lives here as advice instead. */
+export const TOUCH_MIN_PX = 44;
+
+export interface TouchWarning {
+  /** Which axis is too small, for the message. */
+  axis: "width" | "height" | "both";
+  /** Estimated size at the reference, in px. */
+  widthPx: number;
+  heightPx: number;
+  /** The same estimate in millimetres of finger. */
+  widthMm: number;
+  heightMm: number;
+}
+
+/**
+ * Flag a control that would be awkward to touch, with the physical size shown
+ * so the author can judge it. A warning, never a clamp: an author who wants a
+ * 20px status dot is allowed to have one.
+ */
+export function touchTargetWarning(
+  p: Placement,
+  parentPx?: { width: number; height: number },
+): TouchWarning | null {
+  const ref = parentPx ?? { width: TOUCH_REFERENCE.width, height: TOUCH_REFERENCE.height };
+  const widthPx = (p.w / 100) * ref.width;
+  const heightPx = (p.h / 100) * ref.height;
+  const narrow = widthPx < TOUCH_MIN_PX;
+  const short = heightPx < TOUCH_MIN_PX;
+  if (!narrow && !short) return null;
+  const toMm = (px: number) => (px / TOUCH_REFERENCE.pxPerInch) * 25.4;
+  return {
+    axis: narrow && short ? "both" : narrow ? "width" : "height",
+    widthPx: Math.round(widthPx),
+    heightPx: Math.round(heightPx),
+    widthMm: Math.round(toMm(widthPx) * 10) / 10,
+    heightMm: Math.round(toMm(heightPx) * 10) / 10,
+  };
+}
+
+/** Element types a finger actually has to hit. A label being small is fine. */
+const TOUCHABLE_TYPES = new Set([
+  "button", "page_nav", "camera_preset", "select", "text_input", "keypad", "list",
+]);
+
+/** IDs of interactive elements whose box is under the comfortable touch size. */
+export function findSmallTouchTargetIds(
+  page: UIPage,
+  layoutId?: string | null,
+): Set<string> {
+  const placements = resolvePlacements(page, layoutId);
+  const ids = new Set<string>();
+  for (const el of page.elements) {
+    if (!TOUCHABLE_TYPES.has(el.type)) continue;
+    const p = placements[el.id];
+    // A child is a percentage of its container, so the reference box is the
+    // container's own pixels, not the page's -- half a page-width inside a
+    // quarter-page container is an eighth of the panel.
+    let ref: { width: number; height: number } | undefined;
+    if (el.parent) {
+      const box = placements[el.parent];
+      if (box) {
+        ref = {
+          width: (box.w / 100) * TOUCH_REFERENCE.width,
+          height: (box.h / 100) * TOUCH_REFERENCE.height,
+        };
+      }
+    }
+    if (p && touchTargetWarning(p, ref)) ids.add(el.id);
   }
   return ids;
 }
@@ -1583,10 +2113,23 @@ export function validateProject(project: ProjectConfig): ValidationIssue[] {
 
   // Check page elements
   for (const page of project.ui.pages) {
+    const placements = resolvePlacements(page);
+    const byId = new Map(page.elements.map((e) => [e.id, e]));
     for (const el of page.elements) {
       checkElement(el, page.id, page.name);
-      if (isOutOfBounds(el.grid_area, page.grid)) {
-        issues.push({ severity: "warning", message: `Element extends beyond the ${page.grid.columns}\u00d7${page.grid.rows} grid`, location: `${page.name} > ${el.id}`, pageId: page.id, elementId: el.id });
+      const p = placements[el.id];
+      if (p && isOutOfBounds(p)) {
+        const where = el.parent ? `its container` : `the page`;
+        issues.push({ severity: "warning", message: `Element extends beyond ${where}`, location: `${page.name} > ${el.id}`, pageId: page.id, elementId: el.id });
+      }
+      // A parent that doesn't exist leaves the child unrendered \u2014 the runtime
+      // draws children into their container, and there is no container.
+      if (el.parent && !byId.has(el.parent)) {
+        issues.push({ severity: "error", message: `Container "${el.parent}" does not exist`, location: `${page.name} > ${el.id}`, pageId: page.id, elementId: el.id });
+      }
+      const touch = p ? touchTargetWarning(p) : null;
+      if (touch && TOUCHABLE_TYPES.has(el.type)) {
+        issues.push({ severity: "warning", message: `Small touch target (about ${touch.widthPx}\u00d7${touch.heightPx}px, ${touch.widthMm}\u00d7${touch.heightMm}mm on a 15-inch panel)`, location: `${page.name} > ${el.id}`, pageId: page.id, elementId: el.id });
       }
     }
   }

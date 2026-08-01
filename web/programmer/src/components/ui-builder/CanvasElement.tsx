@@ -1,280 +1,162 @@
-import { useRef, useState, useCallback, useEffect } from "react";
-import { useDraggable } from "@dnd-kit/core";
-import type { UIElement, GridArea } from "../../api/types";
+import type { UIElement, Placement } from "../../api/types";
 
 interface CanvasElementProps {
   element: UIElement;
-  pageId: string;
-  selected: boolean;
-  multiSelected?: boolean;
+  /** Container tree, so a container draws its children inside itself. */
+  childrenByParent: Map<string, UIElement[]>;
+  /** Where this element sits right now — live during a gesture, stored otherwise. */
+  placementFor: (id: string) => Placement;
+  selectedIds: string[];
   previewMode: boolean;
-  columns: number;
-  rows: number;
-  hasOverlap?: boolean;
-  outOfBounds?: boolean;
-  locked?: boolean;
+  overlappingIds: Set<string>;
+  outOfBoundsIds: Set<string>;
+  smallTouchIds: Set<string>;
+  lockedIds: Set<string>;
+  /** Non-null while a gesture is in flight, which suppresses the handles. */
+  gestureKind: "move" | "resize" | null;
   onSelect: (id: string, shiftKey?: boolean) => void;
-  onCommitResize: (elementId: string, gridArea: GridArea) => void;
+  onGestureStart: (
+    elementId: string,
+    kind: "move" | "resize",
+    direction: string,
+    e: React.PointerEvent,
+  ) => void;
   onContextMenu: (e: React.MouseEvent, elementId: string) => void;
 }
 
-const HANDLE_SIZE = 18;
+const HANDLE_SIZE = 12;
 
-const HANDLE_POSITIONS: Record<
-  string,
-  React.CSSProperties
-> = {
-  n: {
-    top: -HANDLE_SIZE / 2,
-    left: "50%",
-    transform: "translateX(-50%)",
-    cursor: "ns-resize",
-    width: HANDLE_SIZE * 2,
-    height: HANDLE_SIZE,
-  },
-  s: {
-    bottom: -HANDLE_SIZE / 2,
-    left: "50%",
-    transform: "translateX(-50%)",
-    cursor: "ns-resize",
-    width: HANDLE_SIZE * 2,
-    height: HANDLE_SIZE,
-  },
-  e: {
-    right: -HANDLE_SIZE / 2,
-    top: "50%",
-    transform: "translateY(-50%)",
-    cursor: "ew-resize",
-    width: HANDLE_SIZE,
-    height: HANDLE_SIZE * 2,
-  },
-  w: {
-    left: -HANDLE_SIZE / 2,
-    top: "50%",
-    transform: "translateY(-50%)",
-    cursor: "ew-resize",
-    width: HANDLE_SIZE,
-    height: HANDLE_SIZE * 2,
-  },
-  ne: {
-    top: -HANDLE_SIZE / 2,
-    right: -HANDLE_SIZE / 2,
-    cursor: "nesw-resize",
-    width: HANDLE_SIZE,
-    height: HANDLE_SIZE,
-  },
-  nw: {
-    top: -HANDLE_SIZE / 2,
-    left: -HANDLE_SIZE / 2,
-    cursor: "nwse-resize",
-    width: HANDLE_SIZE,
-    height: HANDLE_SIZE,
-  },
-  se: {
-    bottom: -HANDLE_SIZE / 2,
-    right: -HANDLE_SIZE / 2,
-    cursor: "nwse-resize",
-    width: HANDLE_SIZE,
-    height: HANDLE_SIZE,
-  },
-  sw: {
-    bottom: -HANDLE_SIZE / 2,
-    left: -HANDLE_SIZE / 2,
-    cursor: "nesw-resize",
-    width: HANDLE_SIZE,
-    height: HANDLE_SIZE,
-  },
+/** The eight grips, and which edges each one drags. */
+const HANDLE_POSITIONS: Record<string, React.CSSProperties> = {
+  n: { top: -HANDLE_SIZE / 2, left: "50%", marginLeft: -HANDLE_SIZE / 2, cursor: "ns-resize" },
+  s: { bottom: -HANDLE_SIZE / 2, left: "50%", marginLeft: -HANDLE_SIZE / 2, cursor: "ns-resize" },
+  e: { right: -HANDLE_SIZE / 2, top: "50%", marginTop: -HANDLE_SIZE / 2, cursor: "ew-resize" },
+  w: { left: -HANDLE_SIZE / 2, top: "50%", marginTop: -HANDLE_SIZE / 2, cursor: "ew-resize" },
+  ne: { top: -HANDLE_SIZE / 2, right: -HANDLE_SIZE / 2, cursor: "nesw-resize" },
+  nw: { top: -HANDLE_SIZE / 2, left: -HANDLE_SIZE / 2, cursor: "nwse-resize" },
+  se: { bottom: -HANDLE_SIZE / 2, right: -HANDLE_SIZE / 2, cursor: "nwse-resize" },
+  sw: { bottom: -HANDLE_SIZE / 2, left: -HANDLE_SIZE / 2, cursor: "nesw-resize" },
 };
 
+/**
+ * A transparent hit box sitting on top of the iframe, which paints the real
+ * element. This one handles selection, drag, resize, the context menu and the
+ * warning badges — and, for a container, hosts its children's hit boxes so the
+ * whole tree lines up with what the runtime draws.
+ */
 export function CanvasElement({
   element,
-  pageId,
-  selected,
-  multiSelected,
+  childrenByParent,
+  placementFor,
+  selectedIds,
   previewMode,
-  columns,
-  rows,
-  hasOverlap,
-  outOfBounds,
-  locked,
+  overlappingIds,
+  outOfBoundsIds,
+  smallTouchIds,
+  lockedIds,
+  gestureKind,
   onSelect,
-  onCommitResize,
+  onGestureStart,
   onContextMenu,
 }: CanvasElementProps) {
-  const [tempGridArea, setTempGridArea] = useState<GridArea | null>(null);
-  const tempGridAreaRef = useRef<GridArea | null>(null);
-  const isResizing = useRef(false);
-  // Tears down an in-progress resize (removes the document listeners, clears
-  // isResizing). Held in a ref so the unmount effect below can call it.
-  const cleanupResizeRef = useRef<(() => void) | null>(null);
+  const box = placementFor(element.id);
+  const selected = selectedIds.includes(element.id);
+  const multiSelected = selected && selectedIds.length > 1;
+  const locked = lockedIds.has(element.id);
+  const hasOverlap = overlappingIds.has(element.id);
+  const outOfBounds = outOfBoundsIds.has(element.id);
+  const smallTouch = smallTouchIds.has(element.id);
+  const children = childrenByParent.get(element.id) ?? [];
 
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: `canvas-${element.id}`,
-    data: { source: "canvas", elementId: element.id, pageId },
-    disabled: previewMode || isResizing.current || !!locked,
-  });
+  const handlePointerDown = (e: React.PointerEvent) => {
+    if (previewMode || locked || e.button !== 0) return;
+    // Select on the way down so a drag that starts on an unselected element
+    // moves that element, not whatever was selected before.
+    if (!selected) onSelect(element.id, e.shiftKey);
+    else if (e.shiftKey) onSelect(element.id, true);
+    onGestureStart(element.id, "move", "", e);
+  };
 
-  const gridArea = tempGridArea || element.grid_area;
+  const handleRightClick = (e: React.MouseEvent) => {
+    if (previewMode || locked) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (!selected) onSelect(element.id);
+    onContextMenu(e, element.id);
+  };
 
-  const handleClick = useCallback(
-    (e: React.MouseEvent) => {
-      if (previewMode || locked) return;
-      e.stopPropagation();
-      onSelect(element.id, e.shiftKey);
-    },
-    [previewMode, locked, onSelect, element.id],
-  );
+  const warning = outOfBounds
+    ? element.parent
+      ? "This element extends beyond its container"
+      : "This element extends beyond the page"
+    : hasOverlap
+    ? "This element overlaps another"
+    : smallTouch
+    ? "Smaller than a comfortable touch target — see the Layout panel for the physical size"
+    : null;
 
-  const handleRightClick = useCallback(
-    (e: React.MouseEvent) => {
-      if (previewMode || locked) return;
-      e.preventDefault();
-      e.stopPropagation();
-      if (!selected) onSelect(element.id);
-      onContextMenu(e, element.id);
-    },
-    [previewMode, locked, selected, onSelect, onContextMenu, element.id],
-  );
-
-  const handleResizeStart = useCallback(
-    (direction: string, e: React.PointerEvent) => {
-      e.stopPropagation();
-      e.preventDefault();
-
-      const startX = e.clientX;
-      const startY = e.clientY;
-      const startGrid = { ...element.grid_area };
-
-      // Measure grid cells from the canvas grid container (attached by Canvas.tsx via data-canvas-grid).
-      const gridEl = (e.currentTarget as HTMLElement).closest(
-        "[data-canvas-grid]",
-      );
-      const gridRect = gridEl?.getBoundingClientRect();
-      // Bail before flagging the resize — flipping isResizing.current true first
-      // would leave it stuck true on a transient miss, permanently disabling
-      // drag for this element (disabled reads it) until the element remounts.
-      if (!gridRect) return;
-      isResizing.current = true;
-
-      const cellW = gridRect.width / columns;
-      const cellH = gridRect.height / rows;
-
-      const handlePointerMove = (moveEvent: PointerEvent) => {
-        const dxCells = Math.round((moveEvent.clientX - startX) / cellW);
-        const dyCells = Math.round((moveEvent.clientY - startY) / cellH);
-
-        let { col, row, col_span, row_span } = startGrid;
-
-        if (direction.includes("e"))
-          col_span = Math.max(1, startGrid.col_span + dxCells);
-        if (direction.includes("w")) {
-          col = startGrid.col + dxCells;
-          col_span = startGrid.col_span - dxCells;
-        }
-        if (direction.includes("s"))
-          row_span = Math.max(1, startGrid.row_span + dyCells);
-        if (direction.includes("n")) {
-          row = startGrid.row + dyCells;
-          row_span = startGrid.row_span - dyCells;
-        }
-
-        // Clamp
-        col = Math.max(1, Math.min(columns, col));
-        row = Math.max(1, Math.min(rows, row));
-        col_span = Math.max(1, Math.min(columns - col + 1, col_span));
-        row_span = Math.max(1, Math.min(rows - row + 1, row_span));
-
-        const newArea = { col, row, col_span, row_span };
-        setTempGridArea(newArea);
-        tempGridAreaRef.current = newArea;
-      };
-
-      const cleanup = () => {
-        document.removeEventListener("pointermove", handlePointerMove);
-        document.removeEventListener("pointerup", handlePointerUp);
-        document.removeEventListener("keydown", handleKeyDown);
-        isResizing.current = false;
-        cleanupResizeRef.current = null;
-      };
-
-      const handlePointerUp = () => {
-        const finalGrid = tempGridAreaRef.current;
-        cleanup();
-        setTempGridArea(null);
-        tempGridAreaRef.current = null;
-
-        if (
-          finalGrid &&
-          (finalGrid.col !== element.grid_area.col ||
-            finalGrid.row !== element.grid_area.row ||
-            finalGrid.col_span !== element.grid_area.col_span ||
-            finalGrid.row_span !== element.grid_area.row_span)
-        ) {
-          onCommitResize(element.id, finalGrid);
-        }
-      };
-
-      const handleKeyDown = (keyEvent: KeyboardEvent) => {
-        if (keyEvent.key === "Escape") {
-          cleanup();
-          setTempGridArea(null);
-          tempGridAreaRef.current = null;
-        }
-      };
-
-      cleanupResizeRef.current = cleanup;
-      document.addEventListener("pointermove", handlePointerMove);
-      document.addEventListener("pointerup", handlePointerUp);
-      document.addEventListener("keydown", handleKeyDown);
-    },
-    [element.grid_area, element.id, columns, rows, onCommitResize],
-  );
-
-  // If the element unmounts mid-resize (deleted or its page switched while a
-  // handle is held), tear down the document listeners so the leaked closure
-  // can't fire handlePointerUp and commit a resize on a gone element.
-  useEffect(() => () => cleanupResizeRef.current?.(), []);
-
-  // Transparent hit-box sitting on top of the iframe. The iframe renders the element's
-  // pixels; this wrapper handles selection, drag, resize, context menu, and the selection
-  // outline / overlap badge.
   return (
     <div
-      ref={setNodeRef}
-      {...(!previewMode ? { ...listeners, ...attributes } : {})}
-      onClick={handleClick}
+      data-canvas-element={element.id}
+      onPointerDown={handlePointerDown}
       onContextMenu={handleRightClick}
       style={{
-        gridColumn: `${gridArea.col} / span ${gridArea.col_span}`,
-        gridRow: `${gridArea.row} / span ${gridArea.row_span}`,
-        position: "relative",
-        outline: selected && !previewMode
-          ? multiSelected
-            ? "2px dashed var(--accent)"
-            : "2px solid var(--accent)"
-          : (hasOverlap || outOfBounds) && !previewMode
-          ? "1px dashed var(--color-warning)"
-          : "none",
+        position: "absolute",
+        left: `${box.x}%`,
+        top: `${box.y}%`,
+        width: `${box.w}%`,
+        height: `${box.h}%`,
+        outline:
+          selected && !previewMode
+            ? multiSelected
+              ? "2px dashed var(--accent)"
+              : "2px solid var(--accent)"
+            : warning && !previewMode
+            ? "1px dashed var(--color-warning)"
+            : "none",
         outlineOffset: "1px",
-        opacity: isDragging ? 0.3 : 1,
         cursor: previewMode ? "default" : locked ? "not-allowed" : "move",
         zIndex: selected ? 10 : 1,
-        minWidth: 0,
-        minHeight: 0,
-        // Hit-box itself is transparent — the iframe below paints the real element.
+        // Containers do not clip, here or at runtime: a child nudged past the
+        // edge stays visible and gets a badge rather than disappearing.
+        overflow: "visible",
         background: "transparent",
       }}
     >
-      {selected && !previewMode && (
+      {/* Children live INSIDE the container's box, because their percentages
+          are of it. Nesting the hit boxes is what keeps the overlay honest. */}
+      {children.map((child) => (
+        <CanvasElement
+          key={child.id}
+          element={child}
+          childrenByParent={childrenByParent}
+          placementFor={placementFor}
+          selectedIds={selectedIds}
+          previewMode={previewMode}
+          overlappingIds={overlappingIds}
+          outOfBoundsIds={outOfBoundsIds}
+          smallTouchIds={smallTouchIds}
+          lockedIds={lockedIds}
+          gestureKind={gestureKind}
+          onSelect={onSelect}
+          onGestureStart={onGestureStart}
+          onContextMenu={onContextMenu}
+        />
+      ))}
+
+      {selected && !previewMode && !locked && !gestureKind && (
         <>
           {Object.entries(HANDLE_POSITIONS).map(([dir, style]) => (
             <div
               key={dir}
-              onPointerDown={(e) => handleResizeStart(dir, e)}
+              onPointerDown={(e) => onGestureStart(element.id, "resize", dir, e)}
               style={{
                 position: "absolute",
+                width: HANDLE_SIZE,
+                height: HANDLE_SIZE,
                 ...style,
                 backgroundColor: "var(--accent)",
+                border: "1px solid rgba(0,0,0,0.4)",
                 borderRadius: 2,
                 zIndex: 20,
               }}
@@ -282,16 +164,10 @@ export function CanvasElement({
           ))}
         </>
       )}
-      {/* Overlap / out-of-bounds warning indicator */}
-      {(hasOverlap || outOfBounds) && !previewMode && (
+
+      {warning && !previewMode && (
         <div
-          title={
-            outOfBounds && hasOverlap
-              ? "This element extends beyond the page grid and overlaps with another element"
-              : outOfBounds
-              ? "This element extends beyond the page grid and will not be visible on panels"
-              : "This element overlaps with another element"
-          }
+          title={warning}
           style={{
             position: "absolute",
             top: 2,
@@ -314,12 +190,13 @@ export function CanvasElement({
           !
         </div>
       )}
-      {/* Resize tooltip showing position/size */}
-      {tempGridArea && !previewMode && (
+
+      {/* Live readout while the element is under the pointer. */}
+      {selected && gestureKind && !previewMode && (
         <div
           style={{
             position: "absolute",
-            bottom: -22,
+            bottom: -20,
             left: "50%",
             transform: "translateX(-50%)",
             padding: "2px 8px",
@@ -333,7 +210,7 @@ export function CanvasElement({
             fontFamily: "monospace",
           }}
         >
-          {tempGridArea.col_span}&times;{tempGridArea.row_span} at col {tempGridArea.col}, row {tempGridArea.row}
+          {box.w.toFixed(1)}&times;{box.h.toFixed(1)}% at {box.x.toFixed(1)},{box.y.toFixed(1)}
         </div>
       )}
     </div>

@@ -121,7 +121,7 @@ export function OutlinePanel({
         }}
         onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = "var(--bg-hover)"; }}
         onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = "transparent"; }}
-        title={`${el.id} (${el.type}) — ${el.grid_area.col_span}×${el.grid_area.row_span} at col ${el.grid_area.col}, row ${el.grid_area.row}`}
+        title={`${el.id} (${el.type})`}
       >
         <span style={{ color: "var(--text-muted)", flexShrink: 0 }}>{icon}</span>
         <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>

@@ -8,6 +8,7 @@ import { StyleProperties } from "./PropertySections/StyleProperties";
 import { BindingProperties } from "./PropertySections/BindingProperties";
 import { AssetPicker } from "./AssetPicker";
 import { InlineColorPicker } from "../shared/InlineColorPicker";
+import { getPlacement, withPlacement, pageSnap } from "./uiBuilderHelpers";
 
 interface ThemeSummary {
   id: string;
@@ -248,6 +249,10 @@ export function PropertiesPanel({
           element={element}
           pages={project.ui.pages}
           macros={(project.macros || []).map((m) => ({ id: m.id, name: m.name }))}
+          placement={getPlacement(page, element.id)}
+          onChangePlacement={(placement) =>
+            onPageChange?.({ layouts: withPlacement(page, element.id, placement).layouts })
+          }
           onChange={handleChange}
           onRename={onRenameElement ? (newId) => onRenameElement(element.id, newId) : undefined}
         />
@@ -256,7 +261,16 @@ export function PropertiesPanel({
       <Section title="Layout" defaultOpen>
         <LayoutProperties
           element={element}
-          gridConfig={page.grid}
+          placement={getPlacement(page, element.id)}
+          containers={page.elements
+            .filter((e) => e.type === "group" && e.id !== element.id)
+            .map((e) => ({ id: e.id, label: e.label || e.id }))}
+          onChangePlacement={(placement) => {
+            // Geometry lives in the page's layout, so a typed coordinate is a
+            // page change, not an element change.
+            const next = withPlacement(page, element.id, placement);
+            onPageChange?.({ layouts: next.layouts });
+          }}
           onChange={handleChange}
         />
       </Section>
@@ -408,7 +422,19 @@ function MasterElementProperties({
       <Section title="Layout" defaultOpen>
         <LayoutProperties
           element={masterElement}
-          gridConfig={page.grid}
+          // A master's box is a percentage of the VIEWPORT, keyed by
+          // orientation, so it is valid on every page it appears on.
+          placement={
+            masterElement.placements?.landscape ??
+            masterElement.placements?.portrait ??
+            Object.values(masterElement.placements ?? {})[0] ?? { x: 0, y: 0, w: 25, h: 12.5 }
+          }
+          containers={[]}
+          onChangePlacement={(placement) =>
+            handleElementChange({
+              placements: { ...masterElement.placements, landscape: placement },
+            })
+          }
           onChange={handleElementChange}
         />
       </Section>
@@ -740,50 +766,49 @@ function PageProperties({
         </>
       )}
 
-      {sectionHeader("Grid", true)}
+      {sectionHeader("Snapping", true)}
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
-        <FieldRow label="Grid Cols">
+        <FieldRow label="Snap">
+          <label style={{ display: "flex", alignItems: "center", gap: 6, flex: 1 }}>
+            <input
+              type="checkbox"
+              checked={pageSnap(page).enabled}
+              onChange={(e) =>
+                onChange({ snap: { ...pageSnap(page), enabled: e.target.checked } })
+              }
+            />
+            <span style={{ fontSize: 11 }}>Snap while dragging</span>
+          </label>
+        </FieldRow>
+
+        <FieldRow label="Columns">
           <input
             type="number"
-            value={page.grid.columns}
+            value={Math.round(100 / pageSnap(page).x)}
             onChange={(e) =>
-              onChange({ grid: { ...page.grid, columns: Math.max(1, Number(e.target.value)) } })
+              onChange({ snap: { ...pageSnap(page), x: 100 / Math.max(1, Number(e.target.value)) } })
             }
             min={1}
-            max={24}
+            max={48}
             style={{ flex: 1 }}
           />
         </FieldRow>
 
-        <FieldRow label="Grid Rows">
+        <FieldRow label="Rows">
           <input
             type="number"
-            value={page.grid.rows}
+            value={Math.round(100 / pageSnap(page).y)}
             onChange={(e) =>
-              onChange({ grid: { ...page.grid, rows: Math.max(1, Number(e.target.value)) } })
+              onChange({ snap: { ...pageSnap(page), y: 100 / Math.max(1, Number(e.target.value)) } })
             }
             min={1}
-            max={24}
+            max={48}
             style={{ flex: 1 }}
           />
-        </FieldRow>
-
-        <FieldRow label="Grid Gap">
-          <input
-            type="number"
-            value={page.grid_gap ?? ""}
-            onChange={(e) =>
-              onChange({ grid_gap: e.target.value ? Number(e.target.value) : undefined })
-            }
-            placeholder="theme"
-            min={0}
-            max={24}
-            style={{ flex: 1 }}
-          />
-          <span style={{ fontSize: 10, color: "var(--text-muted)" }}>px</span>
         </FieldRow>
         <div style={{ fontSize: 10, color: "var(--text-muted)", fontStyle: "italic", padding: "0 0 0 76px" }}>
-          Space between grid cells. Leave blank for theme default.
+          A ruler, not a container. Changing it — or switching it off — moves nothing
+          that is already placed. Hold Alt while dragging to ignore it for one move.
         </div>
       </div>
 

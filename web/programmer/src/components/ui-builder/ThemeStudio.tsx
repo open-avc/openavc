@@ -8,7 +8,7 @@ import {
   ThemeExistsError,
   type ThemeDefinition, type ThemeSummary,
 } from "../../api/restClient";
-import type { ProjectConfig, UIPage, UIElement } from "../../api/types";
+import type { ProjectConfig, UIPage, UIElement, Placement } from "../../api/types";
 import { ConfirmDialog } from "../shared/ConfirmDialog";
 import { Modal } from "../shared/Modal";
 import {
@@ -313,13 +313,36 @@ function ColorPickerCell({ value, onChange, fallback }: ColorPickerCellProps) {
 
 const GALLERY_PAGE_ID = "_studio_gallery";
 
+// The gallery's arrangement, as percentages of the preview page. These were
+// the 16x16 cells this page used to be authored in, converted once — the
+// layout is identical, it is just expressed the way every panel is now.
+const GALLERY_PLACEMENTS: Record<string, Placement> = {
+  g_header: { x: 0, y: 0, w: 100, h: 6.25 },
+  g_button: { x: 0, y: 6.25, w: 18.75, h: 12.5 },
+  g_button_active: { x: 18.75, y: 6.25, w: 18.75, h: 12.5 },
+  g_label_demo: { x: 37.5, y: 6.25, w: 18.75, h: 12.5 },
+  g_led_ok: { x: 56.25, y: 6.25, w: 6.25, h: 12.5 },
+  g_led_warn: { x: 62.5, y: 6.25, w: 6.25, h: 12.5 },
+  g_clock: { x: 68.75, y: 6.25, w: 18.75, h: 12.5 },
+  g_camera: { x: 87.5, y: 6.25, w: 12.5, h: 12.5 },
+  g_slider: { x: 0, y: 18.75, w: 31.25, h: 12.5 },
+  g_pagenav: { x: 31.25, y: 18.75, w: 25, h: 12.5 },
+  g_select: { x: 56.25, y: 18.75, w: 18.75, h: 12.5 },
+  g_text: { x: 75, y: 18.75, w: 25, h: 12.5 },
+  g_gauge: { x: 0, y: 31.25, w: 18.75, h: 37.5 },
+  g_meter: { x: 18.75, y: 31.25, w: 6.25, h: 37.5 },
+  g_fader: { x: 25, y: 31.25, w: 18.75, h: 37.5 },
+  g_keypad: { x: 43.75, y: 31.25, w: 31.25, h: 37.5 },
+  g_list: { x: 75, y: 31.25, w: 25, h: 37.5 },
+  g_matrix: { x: 0, y: 68.75, w: 50, h: 31.25 },
+};
+
 function buildGalleryPage(): UIPage {
   const elements: UIElement[] = [
     {
       id: "g_header",
       type: "label",
       text: "Theme Preview Gallery",
-      grid_area: { col: 1, row: 1, col_span: 16, row_span: 1 },
       style: { font_size: 16, text_align: "center", font_weight: 700 },
       bindings: {},
     },
@@ -327,7 +350,6 @@ function buildGalleryPage(): UIPage {
       id: "g_button",
       type: "button",
       label: "Button",
-      grid_area: { col: 1, row: 2, col_span: 3, row_span: 2 },
       style: {},
       bindings: {},
     },
@@ -338,7 +360,6 @@ function buildGalleryPage(): UIPage {
       id: "g_button_active",
       type: "button",
       label: "Active",
-      grid_area: { col: 4, row: 2, col_span: 3, row_span: 2 },
       style: {
         bg_color: "var(--panel-accent)",
         text_color: "var(--panel-button-text)",
@@ -349,7 +370,6 @@ function buildGalleryPage(): UIPage {
       id: "g_label_demo",
       type: "label",
       text: "Demo label text",
-      grid_area: { col: 7, row: 2, col_span: 3, row_span: 2 },
       style: {},
       bindings: {},
     },
@@ -359,7 +379,6 @@ function buildGalleryPage(): UIPage {
       id: "g_led_ok",
       type: "status_led",
       label: "OK",
-      grid_area: { col: 10, row: 2, col_span: 1, row_span: 2 },
       style: {},
       bindings: {
         color: {
@@ -373,7 +392,6 @@ function buildGalleryPage(): UIPage {
       id: "g_led_warn",
       type: "status_led",
       label: "Warn",
-      grid_area: { col: 11, row: 2, col_span: 1, row_span: 2 },
       style: {},
       bindings: {
         color: {
@@ -388,7 +406,6 @@ function buildGalleryPage(): UIPage {
       type: "clock",
       clock_mode: "current_time",
       format: "HH:mm",
-      grid_area: { col: 12, row: 2, col_span: 3, row_span: 2 },
       style: {},
       bindings: {},
     },
@@ -397,7 +414,6 @@ function buildGalleryPage(): UIPage {
       type: "camera_preset",
       label: "Preset",
       preset_number: 1,
-      grid_area: { col: 15, row: 2, col_span: 2, row_span: 2 },
       style: {},
       bindings: {},
     },
@@ -408,7 +424,6 @@ function buildGalleryPage(): UIPage {
       min: 0,
       max: 100,
       orientation: "horizontal",
-      grid_area: { col: 1, row: 4, col_span: 5, row_span: 2 },
       style: { show_value: true },
       bindings: { value: { key: "gallery.slider" } },
     },
@@ -417,7 +432,6 @@ function buildGalleryPage(): UIPage {
       type: "page_nav",
       label: "Pages",
       target_page: GALLERY_PAGE_ID,
-      grid_area: { col: 6, row: 4, col_span: 4, row_span: 2 },
       style: {},
       bindings: {},
     },
@@ -429,7 +443,6 @@ function buildGalleryPage(): UIPage {
         { label: "HDMI 2", value: "hdmi2" },
         { label: "USB-C", value: "usbc" },
       ],
-      grid_area: { col: 10, row: 4, col_span: 3, row_span: 2 },
       style: {},
       bindings: { value: { key: "gallery.select" } },
     },
@@ -437,7 +450,6 @@ function buildGalleryPage(): UIPage {
       id: "g_text",
       type: "text_input",
       placeholder: "Type here…",
-      grid_area: { col: 13, row: 4, col_span: 4, row_span: 2 },
       style: {},
       bindings: { value: { key: "gallery.text" } },
     },
@@ -448,7 +460,6 @@ function buildGalleryPage(): UIPage {
       min: 0,
       max: 100,
       unit: "%",
-      grid_area: { col: 1, row: 6, col_span: 3, row_span: 6 },
       style: {},
       bindings: { value: { key: "gallery.gauge" } },
     },
@@ -458,7 +469,6 @@ function buildGalleryPage(): UIPage {
       min: -60,
       max: 0,
       orientation: "vertical",
-      grid_area: { col: 4, row: 6, col_span: 1, row_span: 6 },
       style: {},
       bindings: { value: { key: "gallery.meter" } },
     },
@@ -469,7 +479,6 @@ function buildGalleryPage(): UIPage {
       min: -60,
       max: 10,
       orientation: "vertical",
-      grid_area: { col: 5, row: 6, col_span: 3, row_span: 6 },
       style: {},
       bindings: { value: { key: "gallery.fader" } },
     },
@@ -479,7 +488,6 @@ function buildGalleryPage(): UIPage {
       digits: 4,
       keypad_style: "numeric",
       show_display: true,
-      grid_area: { col: 8, row: 6, col_span: 5, row_span: 6 },
       style: {},
       bindings: {},
     },
@@ -492,7 +500,6 @@ function buildGalleryPage(): UIPage {
         { label: "Presentation", value: "p3" },
         { label: "Hybrid", value: "p4" },
       ],
-      grid_area: { col: 13, row: 6, col_span: 4, row_span: 6 },
       style: {},
       bindings: { selected: { key: "gallery.list" } },
     },
@@ -506,7 +513,6 @@ function buildGalleryPage(): UIPage {
         output_labels: ["Main", "Conf", "Stream"],
         route_key_pattern: "gallery.route.*",
       },
-      grid_area: { col: 1, row: 12, col_span: 8, row_span: 5 },
       style: { cell_size: 32 },
       bindings: {},
     },
@@ -516,9 +522,17 @@ function buildGalleryPage(): UIPage {
     id: GALLERY_PAGE_ID,
     name: "Element Gallery",
     page_type: "page",
-    grid: { columns: 16, rows: 16 },
-    grid_gap: 8,
+    snap: { enabled: true, x: 100 / 16, y: 100 / 16 },
     elements,
+    layouts: [
+      {
+        id: "landscape",
+        orientation: "landscape",
+        primary: true,
+        placements: GALLERY_PLACEMENTS,
+        hidden: [],
+      },
+    ],
   };
 }
 

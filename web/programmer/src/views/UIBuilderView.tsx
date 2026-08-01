@@ -14,7 +14,7 @@ import {
   PanelGroup,
   PanelResizeHandle,
 } from "react-resizable-panels";
-import type { UIElement, UIPage, UISettings, GridArea, MasterElement } from "../api/types";
+import type { UIElement, UIPage, UISettings, Placement, MasterElement } from "../api/types";
 import * as wsClient from "../api/wsClient";
 import { listThemes, getTunnelPrefix } from "../api/restClient";
 import { showError } from "../store/toastStore";
@@ -37,7 +37,7 @@ import {
   addElementToPage,
   removeElementFromPage,
   updateElementInPage,
-  moveElementInPage,
+  moveElementsInPage,
   duplicateElementInPage,
   reorderElement,
   swapElementsInOrder,
@@ -48,13 +48,22 @@ import {
   renameElement,
   validateElementId,
   validateProject,
-  clampOriginToGrid,
-  findFreeGridPosition,
-  pointerToCell,
+  autoPlace,
+  defaultElementSize,
+  getPlacement,
+  pageSnap,
+  pointerToPercent,
+  resolveDropParent,
+  roundPlacement,
+  snapMove,
   type ValidationIssue,
 } from "../components/ui-builder/uiBuilderHelpers";
 import { isLightColor } from "../components/ui-builder/colorUtils";
 import { showSuccess, showInfo } from "../store/toastStore";
+
+/** Arrow-key travel, in percent, when snapping is off or bypassed. Small
+ *  enough to place a control by eye, large enough to see it move. */
+const FINE_NUDGE = 0.25;
 
 export function UIBuilderView() {
   const project = useProjectStore((s) => s.project);
@@ -127,21 +136,27 @@ export function UIBuilderView() {
   const dragStartPointer = useRef<{ x: number; y: number } | null>(null);
   const dragElementType = useRef<string | null>(null);
   const draggedElement = useRef<UIElement | null>(null);
-  const dragCellSize = useRef<{ w: number; h: number }>({ w: 60, h: 50 });
-  // Grid offset between pointer and element's top-left at drag start (in grid cells)
-  const dragGridOffset = useRef<{ col: number; row: number }>({ col: 0, row: 0 });
+  /** The box a palette drop will land at, in percent. */
+  const dragElementSize = useRef<{ w: number; h: number } | null>(null);
+  /** The same box in screen pixels, for the ghost. */
+  const dragGhostSize = useRef<{ w: number; h: number }>({ w: 120, h: 60 });
   // Pixel offset of the pointer within the palette button at drag start. The
   // drag overlay is anchored to the button origin, but a palette button is a
-  // fixed size while the ghost footprint is sized to (zoom-scaled) grid cells —
-  // so for palette drags the overlay is re-centred under the pointer using this.
+  // fixed size while the ghost footprint is sized to the landing box — so for
+  // palette drags the overlay is re-centred under the pointer using this.
   const dragGrabPx = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  /** Alt state, tracked because a drop only learns about it at drag start. */
+  const altHeld = useRef(false);
 
-  // Canvas grid container padding (matches Canvas.tsx outerGap / the panel's
-  // grid gap). The drop math must exclude it from the cell area.
-  const outerGap = useMemo(
-    () => (typeof themeVariables.grid_gap === "number" ? themeVariables.grid_gap : 8),
-    [themeVariables],
-  );
+  useEffect(() => {
+    const track = (e: KeyboardEvent) => { altHeld.current = e.altKey; };
+    window.addEventListener("keydown", track);
+    window.addEventListener("keyup", track);
+    return () => {
+      window.removeEventListener("keydown", track);
+      window.removeEventListener("keyup", track);
+    };
+  }, []);
 
   // Auto-select first page if none selected
   useEffect(() => {
@@ -273,69 +288,61 @@ export function UIBuilderView() {
         return;
       }
 
-      // Arrow keys — move all selected elements by 1 grid cell
+      // Arrow keys — nudge the selection. One snap increment per press, ten
+      // with shift; holding Alt suspends snapping and nudges by a hair, the
+      // same bypass a drag gets.
       if (
         (e.key === "ArrowUp" || e.key === "ArrowDown" ||
          e.key === "ArrowLeft" || e.key === "ArrowRight") && currentPage
       ) {
+        const snap = pageSnap(currentPage);
+        const stepX = e.altKey || !snap.enabled ? FINE_NUDGE : snap.x;
+        const stepY = e.altKey || !snap.enabled ? FINE_NUDGE : snap.y;
+        const mult = e.shiftKey ? 10 : 1;
+        const dx =
+          e.key === "ArrowLeft" ? -stepX * mult : e.key === "ArrowRight" ? stepX * mult : 0;
+        const dy =
+          e.key === "ArrowUp" ? -stepY * mult : e.key === "ArrowDown" ? stepY * mult : 0;
+
         // Nudge master element
         if (selectedMasterElementId && masterElements.length > 0) {
           if (lockedElementIds.has(selectedMasterElementId)) return;
           const mel = masterElements.find((m) => m.id === selectedMasterElementId);
           if (!mel) return;
           e.preventDefault();
-          const { columns, rows: gridRows } = currentPage.grid;
-          const { col, row, col_span, row_span } = mel.grid_area;
-          if (e.key === "ArrowLeft" && col <= 1) return;
-          if (e.key === "ArrowRight" && col + col_span > columns) return;
-          if (e.key === "ArrowUp" && row <= 1) return;
-          if (e.key === "ArrowDown" && row + row_span > gridRows) return;
-          let newCol = col, newRow = row;
-          if (e.key === "ArrowLeft") newCol = col - 1;
-          if (e.key === "ArrowRight") newCol = col + 1;
-          if (e.key === "ArrowUp") newRow = row - 1;
-          if (e.key === "ArrowDown") newRow = row + 1;
+          const current =
+            mel.placements?.landscape ??
+            mel.placements?.portrait ??
+            Object.values(mel.placements ?? {})[0];
+          if (!current) return;
           handleMasterElementPropertyChange(selectedMasterElementId, {
-            grid_area: { col: newCol, row: newRow, col_span, row_span },
+            placements: {
+              ...mel.placements,
+              landscape: roundPlacement({ ...current, x: current.x + dx, y: current.y + dy }),
+            },
           } as Partial<MasterElement>);
           return;
         }
 
-        // Nudge page elements
+        // Nudge page elements. Nothing clamps: free positioning warns rather
+        // than prevents, and the out-of-bounds badge is what says so.
         if (selectedElementIds.length > 0) {
           if (selectedElementIds.some(eid => lockedElementIds.has(eid))) return;
           e.preventDefault();
-          const { columns, rows: gridRows } = currentPage.grid;
-          const elementsToMove = selectedElementIds
-            .map((eid) => currentPage.elements.find((el) => el.id === eid))
-            .filter((el): el is typeof currentPage.elements[0] => !!el);
-          if (elementsToMove.length === 0) return;
-
-          const canMove = elementsToMove.every((el) => {
-            const { col, row, col_span, row_span } = el.grid_area;
-            if (e.key === "ArrowLeft") return col > 1;
-            if (e.key === "ArrowRight") return col + col_span <= columns;
-            if (e.key === "ArrowUp") return row > 1;
-            if (e.key === "ArrowDown") return row + row_span <= gridRows;
-            return false;
-          });
-          if (!canMove) return;
+          const movable = selectedElementIds.filter((eid) =>
+            currentPage.elements.some((el) => el.id === eid),
+          );
+          if (movable.length === 0) return;
 
           applyMutation((pages) => {
-            let result = pages;
-            for (const el of elementsToMove) {
-              const { col, row, col_span, row_span } = el.grid_area;
-              let newCol = col;
-              let newRow = row;
-              if (e.key === "ArrowLeft") newCol = col - 1;
-              if (e.key === "ArrowRight") newCol = col + 1;
-              if (e.key === "ArrowUp") newRow = row - 1;
-              if (e.key === "ArrowDown") newRow = row + 1;
-              result = moveElementInPage(result, currentPage.id, el.id, {
-                col: newCol, row: newRow, col_span, row_span,
-              });
+            const target = pages.find((p) => p.id === currentPage.id);
+            if (!target) return pages;
+            const moved: Record<string, Placement> = {};
+            for (const eid of movable) {
+              const box = getPlacement(target, eid);
+              moved[eid] = roundPlacement({ ...box, x: box.x + dx, y: box.y + dy });
             }
-            return result;
+            return moveElementsInPage(pages, currentPage.id, moved);
           }, `Nudge ${e.key.replace("Arrow", "").toLowerCase()}`, true);
           return;
         }
@@ -497,21 +504,26 @@ export function UIBuilderView() {
       const els = elementIds
         .map((eid) => currentPage.elements.find((e) => e.id === eid))
         .filter((e): e is UIElement => !!e);
-      if (els.length > 0) setClipboard(JSON.parse(JSON.stringify(els)));
+      if (els.length === 0) return;
+      const placements: Record<string, Placement> = {};
+      for (const el of els) placements[el.id] = getPlacement(currentPage, el.id);
+      setClipboard({ elements: JSON.parse(JSON.stringify(els)), placements });
     },
     [currentPage, setClipboard],
   );
 
   const handlePasteElement = useCallback(() => {
-    if (!clipboard || clipboard.length === 0 || !currentPage) return;
+    if (!clipboard || clipboard.elements.length === 0 || !currentPage) return;
     // Page element ids and master ids share the ui.<id> runtime namespace, so a
     // pasted element must avoid colliding with either.
     const existingIds = new Set([
       ...pages.flatMap((p) => p.elements.map((e) => e.id)),
       ...masterElements.map((m) => m.id),
     ]);
-    const newElements: UIElement[] = [];
-    for (const src of clipboard) {
+    const snap = pageSnap(currentPage);
+    const occupied = currentPage.elements.map((el) => getPlacement(currentPage, el.id));
+    const pasted: { element: UIElement; placement: Placement }[] = [];
+    for (const src of clipboard.elements) {
       let id = src.id;
       if (existingIds.has(id)) {
         let counter = 1;
@@ -522,23 +534,20 @@ export function UIBuilderView() {
         }
       }
       existingIds.add(id);
-      newElements.push({
-        ...JSON.parse(JSON.stringify(src)),
-        id,
-        grid_area: {
-          ...src.grid_area,
-          col: Math.max(1, Math.min(src.grid_area.col + 1, currentPage.grid.columns - src.grid_area.col_span + 1)),
-          row: Math.max(1, Math.min(src.grid_area.row + 1, currentPage.grid.rows - src.grid_area.row_span + 1)),
-        },
-      });
+      // Paste has no pointer, so it takes the auto-placement rule: the first
+      // free snap cell, or the page centre plus a cascade with snap off.
+      const size = clipboard.placements[src.id] ?? { w: 25, h: 12.5 };
+      const placement = autoPlace(occupied, size, snap, pasted.length);
+      occupied.push(placement);
+      pasted.push({ element: { ...JSON.parse(JSON.stringify(src)), id, parent: null }, placement });
     }
     applyMutation((p) => {
       let result = p;
-      for (const el of newElements) {
-        result = addElementToPage(result, currentPage.id, el);
+      for (const { element, placement } of pasted) {
+        result = addElementToPage(result, currentPage.id, element, placement);
       }
       return result;
-    }, `Paste ${newElements.length === 1 ? "element" : `${newElements.length} elements`}`);
+    }, `Paste ${pasted.length === 1 ? "element" : `${pasted.length} elements`}`);
   }, [clipboard, currentPage, pages, masterElements, applyMutation]);
 
   const handleBringToFront = useCallback(
@@ -854,58 +863,38 @@ export function UIBuilderView() {
         y: pointerEvent.clientY,
       };
 
-      // Capture element for drag overlay preview
-      const cp = pages.find((p) => p.id === selectedPageId) || pages[0] || null;
-      if (data?.source === "canvas" && data?.elementId && cp) {
-        draggedElement.current = cp.elements.find((e) => e.id === data.elementId) || null;
-      } else if (data?.source === "palette" && data?.elementType) {
-        draggedElement.current = createDefaultElement(data.elementType, 1, 1, new Set(), panelElements);
+      // Only the palette drags through dnd-kit now — moving an element that is
+      // already on the canvas is a pointer gesture Canvas owns, so it can snap
+      // live and commit once on pointer-up.
+      if (data?.source === "palette" && data?.elementType) {
+        draggedElement.current = createDefaultElement(data.elementType, new Set());
+        dragElementSize.current = defaultElementSize(data.elementType, panelElements);
       } else {
         draggedElement.current = null;
+        dragElementSize.current = null;
       }
 
-      // Measure canvas cell size for overlay dimensions. The grid container's
-      // padding (outerGap, zoom-scaled on screen) isn't part of the cell area,
-      // so exclude it — both here and in pointerToCell below.
       const canvasGrid = document.querySelector("[data-canvas-grid]");
-      if (canvasGrid) {
+      if (canvasGrid && draggedElement.current && dragElementSize.current) {
         const rect = canvasGrid.getBoundingClientRect();
-        const cols = cp?.grid.columns || 12;
-        const rows = cp?.grid.rows || 8;
-        const pad = outerGap * zoom;
-        const innerW = Math.max(1, rect.width - 2 * pad);
-        const innerH = Math.max(1, rect.height - 2 * pad);
-        dragCellSize.current = { w: innerW / cols, h: innerH / rows };
-
-        // Calculate grid offset: how far the pointer is from the element's top-left
-        if (data?.source === "canvas" && draggedElement.current) {
-          // For canvas drags, compute pointer offset within the element (in grid cells)
-          const pointerCol = pointerToCell(pointerEvent.clientX, rect.left, rect.width, pad, cols);
-          const pointerRow = pointerToCell(pointerEvent.clientY, rect.top, rect.height, pad, rows);
-          dragGridOffset.current = {
-            col: pointerCol - draggedElement.current.grid_area.col,
-            row: pointerRow - draggedElement.current.grid_area.row,
-          };
-        } else if (draggedElement.current) {
-          // For palette/template drags, centre the element under the pointer.
-          // This is zoom-independent (the old "pointer-px / scaled-cell" math
-          // ballooned the offset as zoom fell). The DragOverlay is re-centred to
-          // match using dragGrabPx so the ghost and the landing spot agree.
-          const activeRect = event.active.rect.current.initial;
-          dragGrabPx.current = {
-            x: activeRect ? pointerEvent.clientX - activeRect.left : 0,
-            y: activeRect ? pointerEvent.clientY - activeRect.top : 0,
-          };
-          dragGridOffset.current = {
-            col: Math.floor(draggedElement.current.grid_area.col_span / 2),
-            row: Math.floor(draggedElement.current.grid_area.row_span / 2),
-          };
-        } else {
-          dragGridOffset.current = { col: 0, row: 0 };
-        }
+        const size = dragElementSize.current;
+        // The ghost is drawn at the size the element will actually land at,
+        // which is a percentage of the canvas — zoom included, since the rect
+        // is already the scaled one.
+        dragGhostSize.current = {
+          w: (size.w / 100) * rect.width,
+          h: (size.h / 100) * rect.height,
+        };
+        // Centre the element under the pointer, and re-centre the DragOverlay
+        // to match so the ghost and the landing spot agree.
+        const activeRect = event.active.rect.current.initial;
+        dragGrabPx.current = {
+          x: activeRect ? pointerEvent.clientX - activeRect.left : 0,
+          y: activeRect ? pointerEvent.clientY - activeRect.top : 0,
+        };
       }
     },
-    [setActiveDragSource, pages, selectedPageId, panelElements, outerGap, zoom],
+    [setActiveDragSource, panelElements],
   );
 
   const handleDragEnd = useCallback(
@@ -923,81 +912,58 @@ export function UIBuilderView() {
         | undefined;
       if (!data) return;
 
-      // Calculate drop grid cell
       const canvasGrid = document.querySelector("[data-canvas-grid]");
       const canvasRect = canvasGrid?.getBoundingClientRect();
       if (!canvasRect) return;
+      if (data.source !== "palette" || !data.elementType) return;
 
       const pointerX = dragStartPointer.current.x + delta.x;
       const pointerY = dragStartPointer.current.y + delta.y;
 
-      const { columns, rows } = currentPage.grid;
-      const pad = outerGap * zoom;
-      // Grid cell under the pointer (padding excluded from the cell area)
-      const rawCol = pointerToCell(pointerX, canvasRect.left, canvasRect.width, pad, columns);
-      const rawRow = pointerToCell(pointerY, canvasRect.top, canvasRect.height, pad, rows);
-      // Element top-left = cell under pointer minus the grab/centre offset
-      // captured at drag start. Span clamping happens per-branch below, since
-      // only there is the element's span known.
-      const col = rawCol - dragGridOffset.current.col;
-      const row = rawRow - dragGridOffset.current.row;
+      // Create new element — collect IDs from ALL pages AND master_elements
+      // (shared ui.<id> namespace) to avoid collisions.
+      const existingIds = new Set([
+        ...pages.flatMap((p) => p.elements.map((e) => e.id)),
+        ...masterElements.map((m) => m.id),
+      ]);
+      const newElement = createDefaultElement(data.elementType, existingIds);
+      const size = defaultElementSize(data.elementType, panelElements);
 
-      if (data.source === "palette" && data.elementType) {
-        // Create new element — collect IDs from ALL pages AND master_elements
-        // (shared ui.<id> namespace) to avoid collisions.
-        const existingIds = new Set([
-          ...pages.flatMap((p) => p.elements.map((e) => e.id)),
-          ...masterElements.map((m) => m.id),
-        ]);
-        const newElement = createDefaultElement(
-          data.elementType,
-          col,
-          row,
-          existingIds,
-          panelElements,
-        );
-        // Clamp so the element's full span stays on-grid (origin alone isn't
-        // enough — a wide element dropped near the right/bottom edge overflows).
-        const placed = clampOriginToGrid(
-          col, row,
-          newElement.grid_area.col_span, newElement.grid_area.row_span,
-          columns, rows,
-        );
-        newElement.grid_area.col = placed.col;
-        newElement.grid_area.row = placed.row;
-        applyMutation(
-          (p) => addElementToPage(p, currentPage.id, newElement),
-          `Add ${data.elementType}`,
-        );
-        selectElement(newElement.id);
-      } else if (data.source === "canvas" && data.elementId) {
-        // Move existing element
-        const element = currentPage.elements.find(
-          (e) => e.id === data.elementId,
-        );
-        if (element) {
-          const newGridArea: GridArea = {
-            col: Math.max(
-              1,
-              Math.min(columns - element.grid_area.col_span + 1, col),
-            ),
-            row: Math.max(
-              1,
-              Math.min(rows - element.grid_area.row_span + 1, row),
-            ),
-            col_span: element.grid_area.col_span,
-            row_span: element.grid_area.row_span,
-          };
-          applyMutation(
-            (p) => moveElementInPage(p, currentPage.id, data.elementId!, newGridArea),
-            "Move element",
-          );
-        }
-      }
+      // The element lands centred on the pointer, snapped like any other drag
+      // and bypassing snap when Alt is held — a drop is a drag that ends.
+      const centreX = pointerToPercent(pointerX, canvasRect.left, canvasRect.width);
+      const centreY = pointerToPercent(pointerY, canvasRect.top, canvasRect.height);
+      const raw: Placement = {
+        x: centreX - size.w / 2,
+        y: centreY - size.h / 2,
+        w: size.w,
+        h: size.h,
+      };
+      const siblings = currentPage.elements
+        .filter((el) => !el.parent)
+        .map((el) => getPlacement(currentPage, el.id));
+      const bypass = !!(event.activatorEvent as PointerEvent | undefined)?.altKey || altHeld.current;
+      const placement = snapMove(raw, {
+        snap: pageSnap(currentPage),
+        bypass,
+        others: siblings,
+      }).placement;
+
+      // A drop inside a container becomes a child of it, with coordinates
+      // re-expressed relative to that container — which is what the author
+      // just showed you they meant by dropping it there.
+      const { parentId, relative } = resolveDropParent(currentPage, placement);
+      if (parentId) newElement.parent = parentId;
+
+      applyMutation(
+        (p) => addElementToPage(p, currentPage.id, newElement, relative),
+        `Add ${data.elementType}`,
+      );
+      selectElement(newElement.id);
 
       dragStartPointer.current = null;
     },
-    [currentPage, pages, masterElements, project, applyMutation, selectElement, setActiveDragSource, panelElements, outerGap, zoom],
+    [currentPage, pages, masterElements, project, applyMutation, selectElement, setActiveDragSource, panelElements],
   );
 
   const handleDragCancel = useCallback(() => {
@@ -1201,21 +1167,22 @@ export function UIBuilderView() {
                             ...pages.flatMap((p) => p.elements.map((e) => e.id)),
                             ...masterElements.map((m) => m.id),
                           ]);
-                          const { columns, rows: gridRows } = currentPage.grid;
-                          const newElement = createDefaultElement(type, 1, 1, existingIds, panelElements);
-                          // Place at the first spot where the element's full span
-                          // fits without overlapping a neighbour (not just the
-                          // first free single cell), so it can't overflow or overlap.
-                          const placed = findFreeGridPosition(
-                            currentPage.elements,
-                            newElement.grid_area.col_span,
-                            newElement.grid_area.row_span,
-                            columns, gridRows,
+                          const newElement = createDefaultElement(type, existingIds);
+                          // Click-to-add has no pointer to land on, so it takes
+                          // the auto-placement rule: the first free snap cell,
+                          // scanning row-major — which is exactly where the old
+                          // grid would have put it — or the page centre plus a
+                          // cascade when snap is off.
+                          const placement = autoPlace(
+                            currentPage.elements
+                              .filter((el) => !el.parent)
+                              .map((el) => getPlacement(currentPage, el.id)),
+                            defaultElementSize(type, panelElements),
+                            pageSnap(currentPage),
+                            currentPage.elements.length,
                           );
-                          newElement.grid_area.col = placed.col;
-                          newElement.grid_area.row = placed.row;
                           applyMutation(
-                            (p) => addElementToPage(p, currentPage.id, newElement),
+                            (p) => addElementToPage(p, currentPage.id, newElement, placement),
                             `Add ${type}`,
                           );
                           selectElement(newElement.id);
@@ -1334,15 +1301,12 @@ export function UIBuilderView() {
         {activeDragSource && draggedElement.current ? (() => {
           const ghost = draggedElement.current;
           if (!ghost) return null;
-          const ghostW = ghost.grid_area.col_span * dragCellSize.current.w;
-          const ghostH = ghost.grid_area.row_span * dragCellSize.current.h;
-          // dnd-kit anchors the overlay to the palette button's origin. For a
-          // palette drag, shift the (cell-sized) ghost so its centre sits under
-          // the pointer — matching the centred drop placement. Canvas drags keep
-          // the grab point, so no shift.
-          const recenter = activeDragSource === "palette"
-            ? `translate(${dragGrabPx.current.x - ghostW / 2}px, ${dragGrabPx.current.y - ghostH / 2}px)`
-            : undefined;
+          const ghostW = dragGhostSize.current.w;
+          const ghostH = dragGhostSize.current.h;
+          // dnd-kit anchors the overlay to the palette button's origin, so
+          // shift the ghost until its centre sits under the pointer — matching
+          // where the centred drop actually lands.
+          const recenter = `translate(${dragGrabPx.current.x - ghostW / 2}px, ${dragGrabPx.current.y - ghostH / 2}px)`;
           return (
             <div
               style={{
@@ -1627,20 +1591,11 @@ function UISettingsDialog({
               </select>
             </div>
 
-            <div style={fieldStyle}>
-              <label style={labelStyle}>Orientation</label>
-              <select
-                value={draft.orientation}
-                onChange={(e) => patch({ orientation: e.target.value })}
-                style={inputStyle}
-              >
-                <option value="landscape">Landscape</option>
-                <option value="portrait">Portrait</option>
-              </select>
-              <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
-                Affects the deployed panel. Canvas preview uses screen presets for sizing.
-              </div>
-            </div>
+            {/* Orientation used to be one setting for the whole project, which
+                is what stopped a project serving a landscape wall panel and a
+                portrait phone at the same time. It belongs to a layout now:
+                each page can carry a portrait arrangement of the same controls,
+                and the panel picks by the viewport it finds itself on. */}
 
             <div style={fieldStyle}>
               <label style={labelStyle}>Lock Code (PIN)</label>

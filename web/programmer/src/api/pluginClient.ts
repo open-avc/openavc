@@ -158,7 +158,8 @@ export interface PluginExtension {
   // panel_elements specific
   type?: string;
   renderer_url?: string;
-  default_size?: { col_span: number; row_span: number };
+  /** How big the element is when dropped, as a percentage of the page. */
+  default_size?: { w: number; h: number };
   config_schema?: Array<{
     key: string;
     label: string;

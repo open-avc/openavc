@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { UIElement } from "../api/types";
+import type { UIElement, Placement } from "../api/types";
 import { useProjectStore } from "./projectStore";
 import {
   computeRollbackPatch,
@@ -21,7 +21,9 @@ interface UIBuilderStore {
   screenPresetIndex: number;
   customWidth: number;
   customHeight: number;
-  clipboard: UIElement[] | null;
+  /** Copied elements plus where they sat — geometry lives in the page's
+   *  layout now, not on the element, so a copy has to carry both halves. */
+  clipboard: { elements: UIElement[]; placements: Record<string, Placement> } | null;
   contextMenu: { x: number; y: number; elementId: string; isMaster?: boolean } | null;
   undoStack: UndoEntry[];
   redoStack: UndoEntry[];
@@ -38,7 +40,9 @@ interface UIBuilderStore {
   setZoom: (zoom: number) => void;
   setScreenPresetIndex: (index: number) => void;
   setCustomSize: (w: number, h: number) => void;
-  setClipboard: (el: UIElement[] | null) => void;
+  setClipboard: (
+    el: { elements: UIElement[]; placements: Record<string, Placement> } | null,
+  ) => void;
   setContextMenu: (
     menu: { x: number; y: number; elementId: string; isMaster?: boolean } | null,
   ) => void;

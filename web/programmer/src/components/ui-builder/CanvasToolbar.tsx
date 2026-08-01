@@ -29,7 +29,7 @@ import {
   AlignVerticalDistributeCenter,
   Home,
 } from "lucide-react";
-import type { UIPage, PageGroup } from "../../api/types";
+import type { UIPage, PageGroup, Placement, SnapConfig } from "../../api/types";
 import { useUIBuilderStore } from "../../store/uiBuilderStore";
 import { useProjectStore } from "../../store/projectStore";
 import { ConfirmDialog } from "../shared/ConfirmDialog";
@@ -38,7 +38,9 @@ import {
   SCREEN_PRESETS,
   addPage,
   removePageAndScrubRefs,
-  clampElementsToGrid,
+  getPlacement,
+  moveElementsInPage,
+  pageSnap,
   renamePage,
   reorderPage,
   duplicatePage,
@@ -259,7 +261,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate }: CanvasToolb
     const page = ui.pages.find((p) => p.id === selectedPageId);
     if (!page) return;
     applyPageMutation(
-      (p) => alignElements(p, selectedPageId!, selectedElementIds, action, page.grid),
+      (p) => alignElements(p, selectedPageId!, selectedElementIds, action),
       `Align ${action}`,
     );
   };
@@ -273,43 +275,24 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate }: CanvasToolb
       .filter((el): el is typeof page.elements[0] => !!el);
     if (elements.length < 3) return;
 
-    if (direction === "horizontal") {
-      const sorted = [...elements].sort((a, b) => a.grid_area.col - b.grid_area.col);
-      const first = sorted[0].grid_area.col;
-      const last = sorted[sorted.length - 1].grid_area.col;
-      const step = (last - first) / (sorted.length - 1);
-      applyPageMutation((p) => {
-        let result = p;
-        sorted.forEach((el, i) => {
-          if (i === 0 || i === sorted.length - 1) return;
-          const newCol = Math.round(first + step * i);
-          result = result.map((pg) =>
-            pg.id === selectedPageId
-              ? { ...pg, elements: pg.elements.map((e) => e.id === el.id ? { ...e, grid_area: { ...e.grid_area, col: newCol } } : e) }
-              : pg
-          );
-        });
-        return result;
-      }, "Distribute horizontally");
-    } else {
-      const sorted = [...elements].sort((a, b) => a.grid_area.row - b.grid_area.row);
-      const first = sorted[0].grid_area.row;
-      const last = sorted[sorted.length - 1].grid_area.row;
-      const step = (last - first) / (sorted.length - 1);
-      applyPageMutation((p) => {
-        let result = p;
-        sorted.forEach((el, i) => {
-          if (i === 0 || i === sorted.length - 1) return;
-          const newRow = Math.round(first + step * i);
-          result = result.map((pg) =>
-            pg.id === selectedPageId
-              ? { ...pg, elements: pg.elements.map((e) => e.id === el.id ? { ...e, grid_area: { ...e.grid_area, row: newRow } } : e) }
-              : pg
-          );
-        });
-        return result;
-      }, "Distribute vertically");
-    }
+    // Spread the origins evenly between the first and last, in percentages.
+    const axis = direction === "horizontal" ? "x" : "y";
+    const boxes = new Map(elements.map((el) => [el.id, getPlacement(page, el.id)]));
+    const sorted = [...elements].sort(
+      (a, b) => boxes.get(a.id)![axis] - boxes.get(b.id)![axis],
+    );
+    const first = boxes.get(sorted[0].id)![axis];
+    const last = boxes.get(sorted[sorted.length - 1].id)![axis];
+    const step = (last - first) / (sorted.length - 1);
+    const moved: Record<string, Placement> = {};
+    sorted.forEach((el, i) => {
+      if (i === 0 || i === sorted.length - 1) return;
+      moved[el.id] = { ...boxes.get(el.id)!, [axis]: first + step * i };
+    });
+    applyPageMutation(
+      (p) => moveElementsInPage(p, selectedPageId!, moved),
+      direction === "horizontal" ? "Distribute horizontally" : "Distribute vertically",
+    );
   };
 
   const preset = SCREEN_PRESETS[screenPresetIndex];
@@ -452,7 +435,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate }: CanvasToolb
                   }}
                   onClick={() => selectPage(page.id)}
                   onDoubleClick={() => handleDoubleClick(page.id, page.name)}
-                  title={`${page.name}${page.page_type ? ` (${page.page_type})` : ""} — ${page.elements.length} element${page.elements.length !== 1 ? "s" : ""}, ${page.grid.columns}×${page.grid.rows} grid`}
+                  title={`${page.name}${page.page_type ? ` (${page.page_type})` : ""} — ${page.elements.length} element${page.elements.length !== 1 ? "s" : ""}`}
                 >
                   {/* Page type icon */}
                   {!page.page_type && (
@@ -775,29 +758,18 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate }: CanvasToolb
         </button>
       )}
 
-      {/* Grid configuration quick-access (11.2) */}
+      {/* Snap settings quick-access. These used to size a grid the elements
+          lived in; the grid is a ruler now, so changing them moves nothing. */}
       {!previewMode && showGrid && (() => {
         const currentPage = pages.find((p) => p.id === selectedPageId);
         if (!currentPage || !ui) return null;
-        const handleGridChange = (patch: Record<string, number>) => {
-          const sizeChanged = "columns" in patch || "rows" in patch;
-          const updatedPages = ui.pages.map((p) => {
-            if (p.id !== currentPage.id) return p;
-            const grid = { ...p.grid, ...(sizeChanged ? patch : {}) };
-            return {
-              ...p,
-              grid,
-              // Shrinking the grid must not strand elements out of bounds —
-              // they'd still hold a grid_area but render off the live panel.
-              // Same clamp rules as the layout inspector; a no-op on grow.
-              elements: sizeChanged
-                ? clampElementsToGrid(p.elements, grid.columns, grid.rows)
-                : p.elements,
-              ...("grid_gap" in patch ? { grid_gap: patch.grid_gap } : {}),
-            };
-          });
+        const snap = pageSnap(currentPage);
+        const handleSnapChange = (patch: Partial<SnapConfig>) => {
+          const updatedPages = ui.pages.map((p) =>
+            p.id === currentPage.id ? { ...p, snap: { ...snap, ...patch } } : p,
+          );
           if (!gridUndoPushed.current) {
-            pushUndo({ pages: ui.pages }, "Edit grid");
+            pushUndo({ pages: ui.pages }, "Edit snap");
             gridUndoPushed.current = true;
           }
           update({ ui: { ...ui, pages: updatedPages } });
@@ -807,28 +779,39 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate }: CanvasToolb
             gridUndoPushed.current = false;
           }, 800);
         };
+        const numberStyle: React.CSSProperties = {
+          width: 36, padding: "1px 3px", fontSize: 11, textAlign: "center",
+          background: "var(--bg-primary)", border: "1px solid var(--border-color)",
+          borderRadius: 3, color: "var(--text-primary)",
+        };
         return (
           <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
+            <label
+              style={{ fontSize: 10, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 3 }}
+              title="Snap while dragging. Hold Alt to ignore it for one move."
+            >
+              <input
+                type="checkbox"
+                checked={snap.enabled}
+                onChange={(e) => handleSnapChange({ enabled: e.target.checked })}
+              />
+              Snap
+            </label>
             <label style={{ fontSize: 10, color: "var(--text-muted)" }}>Cols</label>
             <input
-              type="number" min={1} max={24}
-              value={currentPage.grid.columns}
-              onChange={(e) => handleGridChange({ columns: Math.max(1, parseInt(e.target.value) || 1) })}
-              style={{ width: 36, padding: "1px 3px", fontSize: 11, textAlign: "center", background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 3, color: "var(--text-primary)" }}
+              type="number" min={1} max={48}
+              value={Math.round(100 / snap.x)}
+              onChange={(e) => handleSnapChange({ x: 100 / Math.max(1, parseInt(e.target.value) || 1) })}
+              style={numberStyle}
+              title="Snap increment across. Changing it never moves an element."
             />
             <label style={{ fontSize: 10, color: "var(--text-muted)" }}>Rows</label>
             <input
-              type="number" min={1} max={24}
-              value={currentPage.grid.rows}
-              onChange={(e) => handleGridChange({ rows: Math.max(1, parseInt(e.target.value) || 1) })}
-              style={{ width: 36, padding: "1px 3px", fontSize: 11, textAlign: "center", background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 3, color: "var(--text-primary)" }}
-            />
-            <label style={{ fontSize: 10, color: "var(--text-muted)" }}>Gap</label>
-            <input
-              type="number" min={0} max={32}
-              value={currentPage.grid_gap ?? 8}
-              onChange={(e) => handleGridChange({ grid_gap: Math.max(0, parseInt(e.target.value) || 0) })}
-              style={{ width: 32, padding: "1px 3px", fontSize: 11, textAlign: "center", background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 3, color: "var(--text-primary)" }}
+              type="number" min={1} max={48}
+              value={Math.round(100 / snap.y)}
+              onChange={(e) => handleSnapChange({ y: 100 / Math.max(1, parseInt(e.target.value) || 1) })}
+              style={numberStyle}
+              title="Snap increment down. Changing it never moves an element."
             />
           </div>
         );

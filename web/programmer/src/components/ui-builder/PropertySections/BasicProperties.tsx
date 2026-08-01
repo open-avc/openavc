@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { Plus, X } from "lucide-react";
-import type { UIElement, UIPage, UIElementOption } from "../../../api/types";
+import type { UIElement, UIPage, UIElementOption, Placement } from "../../../api/types";
 import { CopyButton } from "../../shared/CopyButton";
 import { IconPicker } from "../IconPicker";
 import { AssetPicker } from "../AssetPicker";
+import { getAssetUrl } from "../../../api/systemClient";
 import { InlineColorPicker } from "../../shared/InlineColorPicker";
 import { VariableKeyPicker } from "../../shared/VariableKeyPicker";
 import { parseStateOptionList } from "../../shared/paramOptions";
@@ -24,6 +25,10 @@ interface BasicPropertiesProps {
   element: UIElement;
   pages: UIPage[];
   macros?: { id: string; name: string }[];
+  /** Where the element sits — geometry lives in the page's layout now, so the
+   *  fader/meter orientation swap has to be handed both halves. */
+  placement?: Placement;
+  onChangePlacement?: (placement: Placement) => void;
   onChange: (patch: Partial<UIElement>) => void;
   onRename?: (newId: string) => void;
 }
@@ -32,6 +37,8 @@ export function BasicProperties({
   element,
   pages,
   macros = [],
+  placement,
+  onChangePlacement,
   onChange,
   onRename,
 }: BasicPropertiesProps) {
@@ -287,12 +294,15 @@ export function BasicProperties({
                 const newOrientation = e.target.value;
                 const oldOrientation = element.orientation || "horizontal";
                 const patch: Partial<typeof element> = { orientation: newOrientation };
-                if (newOrientation !== oldOrientation) {
-                  const ga = element.grid_area;
-                  patch.grid_area = { ...ga, col_span: ga.row_span, row_span: ga.col_span };
-                  showInfo(`Swapped dimensions to ${ga.row_span}x${ga.col_span} for ${newOrientation} layout`);
-                }
                 onChange(patch);
+                // A fader turned on its side wants its box turned with it.
+                if (newOrientation !== oldOrientation && placement && onChangePlacement) {
+                  const swapped = { ...placement, w: placement.h, h: placement.w };
+                  onChangePlacement(swapped);
+                  showInfo(
+                    `Swapped the box to ${swapped.w.toFixed(1)}% x ${swapped.h.toFixed(1)}% for ${newOrientation} layout`,
+                  );
+                }
               }}
               style={{ flex: 1 }}
             >
@@ -373,13 +383,19 @@ export function BasicProperties({
           <FieldRow label="Image">
             <AssetPicker
               value={element.src || ""}
-              onChange={(v) => onChange({ src: v || undefined })}
+              onChange={(v) => {
+                onChange({ src: v || undefined });
+                adoptIntrinsicAspect(v, element, onChange);
+              }}
             />
           </FieldRow>
           <FieldRow label="URL">
             <input
               value={element.src?.startsWith("assets://") ? "" : (element.src || "")}
-              onChange={(e) => onChange({ src: e.target.value || undefined })}
+              onChange={(e) => {
+                onChange({ src: e.target.value || undefined });
+                adoptIntrinsicAspect(e.target.value, element, onChange);
+              }}
               placeholder="Or enter external URL..."
               style={{ flex: 1, fontSize: 11 }}
             />
@@ -1081,6 +1097,34 @@ export function BasicProperties({
  *  fresh ids; removeAt keeps the survivors' ids with their rows. Lists are
  *  only ever appended to or deleted from (no reorder), so length-sync plus
  *  removeAt covers every mutation. */
+/**
+ * Give a picture element the shape of the picture in it.
+ *
+ * This is the "intrinsic" aspect lock. It can't be written when the element is
+ * created — a fresh image element has no picture and therefore no shape — so it
+ * is written the moment a source is chosen, and only if the author has not
+ * already set a lock of their own. The renderer invents nothing on its own, so
+ * if the authoring surface doesn't do this, nothing does.
+ */
+function adoptIntrinsicAspect(
+  src: string | undefined,
+  element: UIElement,
+  onChange: (patch: Partial<UIElement>) => void,
+) {
+  if (!src || element.aspect_lock != null) return;
+  const url = src.startsWith("assets://")
+    ? getAssetUrl(src.slice("assets://".length))
+    : src;
+  const probe = new Image();
+  probe.onload = () => {
+    if (!probe.naturalWidth || !probe.naturalHeight) return;
+    onChange({
+      aspect_lock: Math.round((probe.naturalWidth / probe.naturalHeight) * 10000) / 10000,
+    });
+  };
+  probe.src = url;
+}
+
 function useRowKeys(length: number) {
   const next = useRef(0);
   const keysRef = useRef<number[]>([]);

@@ -1,69 +1,23 @@
 import { useRef, useCallback, useMemo, useEffect, useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
-import type { UIPage, UIElement, MasterElement, GridArea } from "../../api/types";
+import type { UIPage, MasterElement, Placement } from "../../api/types";
 import { useUIBuilderStore } from "../../store/uiBuilderStore";
 import { useProjectStore } from "../../store/projectStore";
 import { CanvasElement } from "./CanvasElement";
-import { moveElementInPage, findOutOfBoundsIds } from "./uiBuilderHelpers";
+import {
+  moveElementsInPage,
+  findOutOfBoundsIds,
+  findOverlappingIds,
+  findSmallTouchTargetIds,
+  resolvePlacements,
+  pageSnap,
+  snapMove,
+  snapResize,
+  getPlacement,
+  roundPlacement,
+  MIN_ELEMENT_SIZE,
+} from "./uiBuilderHelpers";
 import { getTunnelPrefix } from "../../api/restClient";
-
-/** Check if two grid areas overlap. */
-function areasOverlap(a: GridArea, b: GridArea): boolean {
-  const aRight = a.col + a.col_span;
-  const aBottom = a.row + a.row_span;
-  const bRight = b.col + b.col_span;
-  const bBottom = b.row + b.row_span;
-  return a.col < bRight && aRight > b.col && a.row < bBottom && aBottom > b.row;
-}
-
-/** Spans above this cell count skip the cell hash below and check pairwise —
- *  a page-sized background would otherwise dominate the map for no gain. */
-const LARGE_ELEMENT_CELLS = 256;
-
-/** Return set of element IDs that overlap with at least one other element.
- *  Group elements are excluded — they are containers and overlap with their children by design.
- *
- *  Uses a grid-cell hash rather than all-pairs checks: each element marks the
- *  cells it covers and a collision is an overlap, so cost tracks covered cells
- *  instead of n² — this recomputes on every mutation during a drag. */
-function findOverlappingIds(elements: UIElement[]): Set<string> {
-  const ids = new Set<string>();
-  const cells = new Map<string, UIElement>();
-  const normal: UIElement[] = [];
-  const large: UIElement[] = [];
-
-  for (const el of elements) {
-    if (el.type === "group") continue;
-    const a = el.grid_area;
-    (a.col_span * a.row_span > LARGE_ELEMENT_CELLS ? large : normal).push(el);
-  }
-
-  for (const el of normal) {
-    const a = el.grid_area;
-    for (let c = a.col; c < a.col + a.col_span; c++) {
-      for (let r = a.row; r < a.row + a.row_span; r++) {
-        const key = `${c}:${r}`;
-        const other = cells.get(key);
-        if (other) {
-          ids.add(el.id);
-          ids.add(other.id);
-        } else {
-          cells.set(key, el);
-        }
-      }
-    }
-  }
-
-  for (let i = 0; i < large.length; i++) {
-    for (const el of [...normal, ...large.slice(i + 1)]) {
-      if (areasOverlap(large[i].grid_area, el.grid_area)) {
-        ids.add(large[i].id);
-        ids.add(el.id);
-      }
-    }
-  }
-  return ids;
-}
 
 interface CanvasProps {
   page: UIPage;
@@ -74,6 +28,16 @@ interface CanvasProps {
   screenHeight: number;
   masterElements?: MasterElement[];
   themeVariables?: Record<string, unknown>;
+}
+
+/** A gesture in flight: what is moving, and where it has got to so far. */
+interface LiveGesture {
+  kind: "move" | "resize";
+  /** Boxes as they look right now, keyed by element id. Local state only —
+   *  the store is written once, on pointer-up (plan section 9.2). */
+  placements: Record<string, Placement>;
+  guidesX: number[];
+  guidesY: number[];
 }
 
 export function Canvas({
@@ -91,7 +55,6 @@ export function Canvas({
   const [iframeReady, setIframeReady] = useState(false);
   const { setNodeRef } = useDroppable({ id: "canvas-drop" });
 
-  const selectedElementId = useUIBuilderStore((s) => s.selectedElementId);
   const selectedElementIds = useUIBuilderStore((s) => s.selectedElementIds);
   const selectedMasterElementId = useUIBuilderStore((s) => s.selectedMasterElementId);
   const selectElement = useUIBuilderStore((s) => s.selectElement);
@@ -116,13 +79,23 @@ export function Canvas({
   // The iframe always receives the in-memory project via postMessage — in edit
   // mode this is the only source; in preview mode it takes priority over any
   // WS ui.definition from the server so unsaved edits stay visible.
+  // The vmin the iframe should pin its type scale to. Read through a ref so the
+  // load handler's closure stays stable.
+  const vminRef = useRef(8);
+
   const handleIframeLoad = useCallback(() => {
     const iframe = iframeRef.current;
     const p = projectRef.current;
     if (!iframe?.contentWindow || !p) return;
     console.log("[canvas] iframe loaded — posting editor-init");
     iframe.contentWindow.postMessage(
-      { type: "openavc:editor-init", project: p, pageId: pageIdRef.current, showGrid },
+      {
+        type: "openavc:editor-init",
+        project: p,
+        pageId: pageIdRef.current,
+        showGrid,
+        vmin: vminRef.current,
+      },
       "*",
     );
     setIframeReady(true);
@@ -135,7 +108,7 @@ export function Canvas({
     if (!iframe?.contentWindow) return;
     const timer = setTimeout(() => {
       iframe.contentWindow?.postMessage(
-        { type: "openavc:editor-project", project, pageId: page.id, showGrid },
+        { type: "openavc:editor-project", project, pageId: page.id, showGrid, vmin: vminRef.current },
         "*",
       );
     }, 50);
@@ -144,25 +117,49 @@ export function Canvas({
 
   // iframeReady is informational for now — kept to allow future gating if needed.
   void iframeReady;
-
-  // Outer padding must match the iframe's #panel-root padding (var(--panel-grid-gap), default 8)
-  // so the overlay grid aligns with the iframe's panel-page grid cell-for-cell.
-  const outerGap = useMemo(() => {
-    const v = themeVariables?.grid_gap;
-    return typeof v === "number" ? v : 8;
-  }, [themeVariables]);
+  void themeVariables;
 
   const overlappingIds = useMemo(
-    () => (previewMode ? new Set<string>() : findOverlappingIds(page.elements)),
-    [page.elements, previewMode],
+    () => (previewMode ? new Set<string>() : findOverlappingIds(page)),
+    [page, previewMode],
   );
 
-  // Elements whose span extends beyond the page grid render off-panel — flag
-  // them live (e.g. immediately after a grid shrink), not just on Validate.
+  // Elements hanging outside their parent still render (containers don't clip)
+  // but usually by accident — flag them live, not just on Validate.
   const outOfBoundsIds = useMemo(
-    () => (previewMode ? new Set<string>() : findOutOfBoundsIds(page.elements, page.grid)),
-    [page.elements, page.grid, previewMode],
+    () => (previewMode ? new Set<string>() : findOutOfBoundsIds(page)),
+    [page, previewMode],
   );
+
+  // The 44px touch minimum that used to be a runtime clamp. As a clamp it
+  // shoved elements out of their boxes into overlap on every touch panel, so
+  // it advises here instead.
+  const smallTouchIds = useMemo(
+    () => (previewMode ? new Set<string>() : findSmallTouchTargetIds(page)),
+    [page, previewMode],
+  );
+
+  const placements = useMemo(() => resolvePlacements(page), [page]);
+  const snap = useMemo(() => pageSnap(page), [page]);
+
+  // The container tree the hit-box overlay mirrors. An element whose named
+  // parent is missing renders at page level rather than vanishing — the
+  // validator flags it, the canvas still shows it.
+  const { topLevel, childrenByParent } = useMemo(() => {
+    const ids = new Set(page.elements.map((e) => e.id));
+    const byParent = new Map<string, typeof page.elements>();
+    const roots: typeof page.elements = [];
+    for (const el of page.elements) {
+      if (el.parent && ids.has(el.parent) && el.parent !== el.id) {
+        const list = byParent.get(el.parent);
+        if (list) list.push(el);
+        else byParent.set(el.parent, [el]);
+      } else {
+        roots.push(el);
+      }
+    }
+    return { topLevel: roots, childrenByParent: byParent };
+  }, [page.elements]);
 
   const handleCanvasClick = useCallback(() => {
     if (!previewMode) {
@@ -181,20 +178,269 @@ export function Canvas({
     [previewMode, selectElement, selectMasterElement],
   );
 
-  const handleCommitResize = useCallback(
-    (elementId: string, gridArea: GridArea) => {
-      if (!project) return;
-      pushUndo({ pages: project.ui.pages }, "Resize element");
-      const newPages = moveElementInPage(
-        project.ui.pages,
-        page.id,
-        elementId,
-        gridArea,
+  // --- Gestures: free drag and 8-handle resize, both in percentages ---
+  //
+  // Geometry reaches the store ONCE, on pointer-up. Everything in between is
+  // local state plus a live message to the iframe, so a drag costs one save
+  // rather than one per frame — the same budget the dnd-kit end-of-drag commit
+  // used to hold, kept by construction rather than by tuning.
+
+  const [gesture, setGesture] = useState<LiveGesture | null>(null);
+  const gestureRef = useRef<LiveGesture | null>(null);
+  const cleanupGestureRef = useRef<(() => void) | null>(null);
+
+  const previewRaf = useRef<number | null>(null);
+  const pendingPreview = useRef<Record<string, Placement> | null>(null);
+  const pushLivePreview = useCallback((next: Record<string, Placement>) => {
+    pendingPreview.current = next;
+    if (previewRaf.current !== null) return;
+    previewRaf.current = requestAnimationFrame(() => {
+      previewRaf.current = null;
+      const payload = pendingPreview.current;
+      pendingPreview.current = null;
+      if (!payload) return;
+      iframeRef.current?.contentWindow?.postMessage(
+        { type: "openavc:editor-placements", placements: payload },
+        "*",
       );
-      update({ ui: { ...project.ui, pages: newPages } });
+    });
+  }, []);
+
+  const commitPlacements = useCallback(
+    (next: Record<string, Placement>, label: string) => {
+      if (!project) return;
+      pushUndo({ pages: project.ui.pages }, label);
+      update({
+        ui: {
+          ...project.ui,
+          pages: moveElementsInPage(project.ui.pages, page.id, next),
+        },
+      });
       touchMutation();
     },
     [project, page.id, pushUndo, update, touchMutation],
+  );
+
+  const beginGesture = useCallback(
+    (elementId: string, kind: "move" | "resize", direction: string, e: React.PointerEvent) => {
+      if (previewMode || !project) return;
+      e.stopPropagation();
+      e.preventDefault();
+      cleanupGestureRef.current?.();
+
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const store = useUIBuilderStore.getState();
+
+      // A move carries the whole selection; a resize only ever reshapes the
+      // element whose handle you grabbed.
+      const selection =
+        kind === "move" && store.selectedElementIds.includes(elementId)
+          ? store.selectedElementIds
+          : [elementId];
+      const moving = selection.filter((id) => !store.lockedElementIds.has(id));
+      if (!moving.length) return;
+
+      // Percentages are of the PARENT box, so each element converts pixels
+      // against its own: the same travel is four times as many percent inside
+      // a quarter-page container as it is on the page.
+      const parentRects = new Map<string, DOMRect>();
+      const startBoxes: Record<string, Placement> = {};
+      for (const id of moving) {
+        const node = overlayRef.current?.querySelector(`[data-canvas-element="${CSS.escape(id)}"]`);
+        const rect = (node?.parentElement ?? overlayRef.current)?.getBoundingClientRect();
+        if (rect) parentRects.set(id, rect);
+        startBoxes[id] = getPlacement(page, id);
+      }
+
+      const primaryRect = parentRects.get(elementId);
+      if (!primaryRect || !(primaryRect.width > 0) || !(primaryRect.height > 0)) return;
+
+      const element = page.elements.find((el) => el.id === elementId);
+      const lock =
+        typeof element?.aspect_lock === "number" && element.aspect_lock > 0
+          ? element.aspect_lock
+          : null;
+
+      // Siblings under the same parent are what edges snap to — a box in
+      // another container is not a line this one should stick to.
+      const movingSet = new Set(moving);
+      const parentId = element?.parent ?? null;
+      const siblings = page.elements
+        .filter((el) => (el.parent ?? null) === parentId && !movingSet.has(el.id))
+        .map((el) => placements[el.id])
+        .filter((p): p is Placement => !!p);
+
+      const apply = (ev: PointerEvent | KeyboardEvent, dx: number, dy: number) => {
+        const bypass = ev.altKey;
+        const constrain = ev.shiftKey;
+        const next: Record<string, Placement> = {};
+        let guidesX: number[] = [];
+        let guidesY: number[] = [];
+
+        if (kind === "move") {
+          // Shift locks the drag to whichever axis has travelled further —
+          // the standard "keep it in line" modifier.
+          let px = dx;
+          let py = dy;
+          if (constrain) {
+            if (Math.abs(dx) >= Math.abs(dy)) py = 0;
+            else px = 0;
+          }
+          const start = startBoxes[elementId];
+          const raw = {
+            ...start,
+            x: start.x + (px / primaryRect.width) * 100,
+            y: start.y + (py / primaryRect.height) * 100,
+          };
+          const snapped = snapMove(raw, { snap, bypass, others: siblings });
+          guidesX = snapped.guidesX;
+          guidesY = snapped.guidesY;
+          // The primary decides where the selection lands; everyone else
+          // travels by the same amount so the group keeps its shape.
+          const deltaX = snapped.placement.x - start.x;
+          const deltaY = snapped.placement.y - start.y;
+          for (const id of moving) {
+            const rect = parentRects.get(id) ?? primaryRect;
+            const b = startBoxes[id];
+            if (id === elementId) {
+              next[id] = snapped.placement;
+            } else {
+              // Convert the primary's percentage travel back to pixels, then
+              // into this element's own parent's percentages.
+              next[id] = roundPlacement({
+                ...b,
+                x: b.x + ((deltaX / 100) * primaryRect.width / rect.width) * 100,
+                y: b.y + ((deltaY / 100) * primaryRect.height / rect.height) * 100,
+              });
+            }
+          }
+        } else {
+          const start = startBoxes[elementId];
+          const raw = { ...start };
+          const ddx = (dx / primaryRect.width) * 100;
+          const ddy = (dy / primaryRect.height) * 100;
+          if (direction.includes("e")) raw.w = start.w + ddx;
+          if (direction.includes("w")) {
+            raw.x = start.x + ddx;
+            raw.w = start.w - ddx;
+          }
+          if (direction.includes("s")) raw.h = start.h + ddy;
+          if (direction.includes("n")) {
+            raw.y = start.y + ddy;
+            raw.h = start.h - ddy;
+          }
+          raw.w = Math.max(MIN_ELEMENT_SIZE, raw.w);
+          raw.h = Math.max(MIN_ELEMENT_SIZE, raw.h);
+
+          const snapped = snapResize(raw, direction, { snap, bypass, others: siblings });
+          const box = { ...snapped.placement };
+          guidesX = snapped.guidesX;
+          guidesY = snapped.guidesY;
+
+          // An aspect-locked element keeps its ratio while you resize it, and
+          // shift asks any element to keep the ratio it started with. The
+          // ratio is in PIXELS, so converting it back to percentages has to go
+          // through the parent's own proportions.
+          const ratio =
+            lock ??
+            (constrain && start.h > 0
+              ? ((start.w / 100) * primaryRect.width) / ((start.h / 100) * primaryRect.height)
+              : null);
+          if (ratio) {
+            const drivenByWidth = direction.includes("e") || direction.includes("w");
+            if (drivenByWidth) {
+              const hPx = ((box.w / 100) * primaryRect.width) / ratio;
+              const newH = (hPx / primaryRect.height) * 100;
+              if (direction.includes("n")) box.y += box.h - newH;
+              box.h = Math.max(MIN_ELEMENT_SIZE, newH);
+            } else {
+              const wPx = ((box.h / 100) * primaryRect.height) * ratio;
+              const newW = (wPx / primaryRect.width) * 100;
+              if (direction.includes("w")) box.x += box.w - newW;
+              box.w = Math.max(MIN_ELEMENT_SIZE, newW);
+            }
+          }
+          next[elementId] = roundPlacement(box);
+        }
+
+        const live: LiveGesture = { kind, placements: next, guidesX, guidesY };
+        gestureRef.current = live;
+        setGesture(live);
+        pushLivePreview(next);
+      };
+
+      let lastEvent: PointerEvent | null = null;
+      const onMove = (ev: PointerEvent) => {
+        lastEvent = ev;
+        apply(ev, ev.clientX - startX, ev.clientY - startY);
+      };
+
+      const cleanup = () => {
+        document.removeEventListener("pointermove", onMove);
+        document.removeEventListener("pointerup", onUp);
+        document.removeEventListener("keydown", onKey);
+        cleanupGestureRef.current = null;
+      };
+
+      const revert = () => {
+        pushLivePreview(startBoxes);
+        gestureRef.current = null;
+        setGesture(null);
+      };
+
+      const onUp = () => {
+        const finished = gestureRef.current;
+        cleanup();
+        gestureRef.current = null;
+        setGesture(null);
+        if (!finished) return;
+        const changed = Object.entries(finished.placements).some(([id, p]) => {
+          const before = startBoxes[id];
+          return !before || before.x !== p.x || before.y !== p.y || before.w !== p.w || before.h !== p.h;
+        });
+        if (changed) {
+          commitPlacements(finished.placements, kind === "move" ? "Move element" : "Resize element");
+        } else {
+          // Nothing moved, but the iframe has been told about intermediate
+          // boxes — put it back where the store says it is.
+          pushLivePreview(startBoxes);
+        }
+      };
+
+      const onKey = (ev: KeyboardEvent) => {
+        if (ev.key === "Escape") {
+          cleanup();
+          revert();
+          return;
+        }
+        // Alt and Shift change the answer mid-gesture, so re-run the last
+        // pointer position through the new modifiers rather than waiting for
+        // the pointer to twitch.
+        if ((ev.key === "Alt" || ev.key === "Shift") && lastEvent) {
+          apply(ev, lastEvent.clientX - startX, lastEvent.clientY - startY);
+        }
+      };
+
+      cleanupGestureRef.current = cleanup;
+      document.addEventListener("pointermove", onMove);
+      document.addEventListener("pointerup", onUp);
+      document.addEventListener("keydown", onKey);
+      document.addEventListener("keyup", onKey);
+    },
+    [previewMode, project, page, placements, snap, commitPlacements, pushLivePreview],
+  );
+
+  // A gesture in flight when the canvas unmounts (page switched, project
+  // reloaded) would otherwise leave document listeners holding a dead closure.
+  useEffect(() => () => cleanupGestureRef.current?.(), []);
+
+  // Where a hit box draws: the live box while it is being dragged, the stored
+  // one otherwise.
+  const placementFor = useCallback(
+    (id: string): Placement =>
+      gesture?.placements[id] ?? placements[id] ?? { x: 0, y: 0, w: 25, h: 12.5 },
+    [gesture, placements],
   );
 
   const handleContextMenu = useCallback(
@@ -212,13 +458,36 @@ export function Canvas({
     [setNodeRef],
   );
 
-  // Overlay/sidebar pages use their configured dimensions.
+  // Overlay/sidebar pages use their configured box, which is a percentage of
+  // the viewport now rather than raw px.
   const pageType = page.page_type || "page";
   const isOverlay = pageType === "overlay" || pageType === "sidebar";
-  const overlayWidth = isOverlay ? (page.overlay?.width ?? (pageType === "sidebar" ? 320 : 400)) : screenWidth;
+  const overlayWidth = isOverlay
+    ? Math.round((((page.overlay?.width ?? (pageType === "sidebar" ? 25 : 31.25)) / 100) * screenWidth))
+    : screenWidth;
   const overlayHeight = isOverlay
-    ? (pageType === "sidebar" ? screenHeight : (page.overlay?.height ?? 300))
+    ? (pageType === "sidebar"
+        ? screenHeight
+        : Math.round((((page.overlay?.height ?? 37.5) / 100) * screenHeight)))
     : screenHeight;
+
+  // Type scales with vmin, which on real glass resolves against the SCREEN —
+  // including inside an overlay, where screen-sized text is exactly right. The
+  // builder sizes an overlay preview to the overlay box, so without this the
+  // preview renders type against a 400x300 iframe and lands ~2.7x too small.
+  // This is the one place preview and runtime can silently disagree.
+  const previewVmin = useMemo(
+    () => Math.min(screenWidth, screenHeight) / 100,
+    [screenWidth, screenHeight],
+  );
+
+  useEffect(() => {
+    vminRef.current = previewVmin;
+    iframeRef.current?.contentWindow?.postMessage(
+      { type: "openavc:editor-page", pageId: page.id, vmin: previewVmin },
+      "*",
+    );
+  }, [previewVmin, page.id]);
 
   const tunnelPrefix = getTunnelPrefix();
   // Trailing slash on /panel/ so the StaticFiles mount serves index.html
@@ -286,152 +555,146 @@ export function Canvas({
             style={{
               position: "absolute",
               inset: 0,
-              padding: `${outerGap}px`,
               pointerEvents: "auto",
               overflow: "visible",
               borderRadius: "inherit",
             }}
           >
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: `repeat(${page.grid.columns}, 1fr)`,
-                gridTemplateRows: `repeat(${page.grid.rows}, 1fr)`,
-                gap: `${page.grid_gap ?? outerGap}px`,
-                width: "100%",
-                height: "100%",
-                position: "relative",
-              }}
-            >
-              {/* Grid lines are rendered INSIDE the iframe's .panel-page now
-                  (see panel.js renderCurrentPage). That keeps them behind
-                  element backgrounds so dropped controls aren't "see-through". */}
-              {showGrid && (
-                <div
-                  style={{
-                    position: "absolute",
-                    top: 2,
-                    left: 10,
-                    fontSize: 10,
-                    color: "rgba(255,255,255,0.3)",
-                    pointerEvents: "none",
-                    zIndex: 2,
-                    fontFamily: "monospace",
-                  }}
-                >
-                  {page.grid.columns} &times; {page.grid.rows}
-                </div>
-              )}
+            {/* The snap increment itself is drawn INSIDE the iframe (panel.js
+                renders it behind the elements so dropped controls aren't
+                see-through); this is just the readout. */}
+            {showGrid && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: 2,
+                  left: 10,
+                  fontSize: 10,
+                  color: "rgba(255,255,255,0.3)",
+                  pointerEvents: "none",
+                  zIndex: 2,
+                  fontFamily: "monospace",
+                }}
+              >
+                {snap.enabled
+                  ? `snap ${snap.x.toFixed(2)}% × ${snap.y.toFixed(2)}%`
+                  : "snap off"}
+              </div>
+            )}
 
-              {/* Master element hit-boxes (selection + badge, iframe renders the pixels) */}
-              {(masterElements || [])
-                .filter((m) => m.pages === "*" || (Array.isArray(m.pages) && m.pages.includes(page.id)))
-                .map((el) => {
-                  const isMasterSelected = selectedMasterElementId === el.id;
-                  return (
-                    <div
-                      key={`master-${el.id}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        selectMasterElement(el.id);
-                      }}
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setContextMenu({ x: e.clientX, y: e.clientY, elementId: el.id, isMaster: true });
-                      }}
-                      style={{
-                        gridColumn: `${el.grid_area.col} / span ${el.grid_area.col_span}`,
-                        gridRow: `${el.grid_area.row} / span ${el.grid_area.row_span}`,
-                        position: "relative",
-                        cursor: "pointer",
-                        outline: isMasterSelected ? "2px solid #9C27B0" : "none",
-                        outlineOffset: 1,
-                        borderRadius: 4,
-                        zIndex: 0,
-                      }}
-                      title={`Master element: ${el.id}`}
-                    >
-                      <div
-                        style={{
-                          position: "absolute",
-                          top: 2,
-                          left: 4,
-                          fontSize: 9,
-                          padding: "1px 5px",
-                          borderRadius: 3,
-                          background: "rgba(156,39,176,0.85)",
-                          color: "#fff",
-                          pointerEvents: "none",
-                          zIndex: 1,
-                          fontWeight: 600,
-                          letterSpacing: "0.02em",
-                        }}
-                      >
-                        Master
-                      </div>
-                    </div>
-                  );
-                })}
-
-              {/* Element hit-boxes (selection + drag + resize, iframe renders the pixels) */}
-              {page.elements.map((el) => (
-                <CanvasElement
-                  key={el.id}
-                  element={el}
-                  pageId={page.id}
-                  selected={selectedElementIds.includes(el.id)}
-                  multiSelected={selectedElementIds.length > 1 && selectedElementIds.includes(el.id)}
-                  previewMode={false}
-                  columns={page.grid.columns}
-                  rows={page.grid.rows}
-                  hasOverlap={overlappingIds.has(el.id)}
-                  outOfBounds={outOfBoundsIds.has(el.id)}
-                  locked={lockedElementIds.has(el.id)}
-                  onSelect={(id, shiftKey) => (shiftKey ? toggleSelectElement(id) : selectElement(id))}
-                  onCommitResize={handleCommitResize}
-                  onContextMenu={handleContextMenu}
-                />
-              ))}
-
-              {/* Snap guides (alignment lines for selected element) */}
-              {selectedElementId && page.elements.length > 1 && (
-                <SnapGuides
-                  elements={page.elements}
-                  selectedId={selectedElementId}
-                  columns={page.grid.columns}
-                  rows={page.grid.rows}
-                />
-              )}
-
-              {/* Empty state */}
-              {page.elements.length === 0 && (
-                <div
-                  style={{
-                    gridColumn: "1 / -1",
-                    gridRow: "1 / -1",
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "var(--text-muted)",
-                    fontSize: "var(--font-size-lg)",
-                    pointerEvents: "none",
-                    gap: "var(--space-sm)",
-                  }}
-                >
-                  <span>Drag elements from the palette to get started</span>
-                  <a
-                    href="https://docs.openavc.com/ui-builder"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ color: "var(--accent)", fontSize: "var(--font-size-sm)", pointerEvents: "auto" }}
+            {/* Master element hit-boxes (selection + badge, iframe renders the pixels) */}
+            {(masterElements || [])
+              .filter((m) => m.pages === "*" || (Array.isArray(m.pages) && m.pages.includes(page.id)))
+              .map((el) => {
+                const box =
+                  el.placements?.landscape ??
+                  el.placements?.portrait ??
+                  Object.values(el.placements ?? {})[0];
+                if (!box) return null;
+                const isMasterSelected = selectedMasterElementId === el.id;
+                return (
+                  <div
+                    key={`master-${el.id}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      selectMasterElement(el.id);
+                    }}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setContextMenu({ x: e.clientX, y: e.clientY, elementId: el.id, isMaster: true });
+                    }}
+                    style={{
+                      position: "absolute",
+                      left: `${box.x}%`,
+                      top: `${box.y}%`,
+                      width: `${box.w}%`,
+                      height: `${box.h}%`,
+                      cursor: "pointer",
+                      outline: isMasterSelected ? "2px solid #9C27B0" : "none",
+                      outlineOffset: 1,
+                      borderRadius: 4,
+                      zIndex: 0,
+                    }}
+                    title={`Master element: ${el.id}`}
                   >
-                    Learn about the UI Builder
-                  </a>
-                </div>
-              )}
-            </div>
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: 2,
+                        left: 4,
+                        fontSize: 9,
+                        padding: "1px 5px",
+                        borderRadius: 3,
+                        background: "rgba(156,39,176,0.85)",
+                        color: "#fff",
+                        pointerEvents: "none",
+                        zIndex: 1,
+                        fontWeight: 600,
+                        letterSpacing: "0.02em",
+                      }}
+                    >
+                      Master
+                    </div>
+                  </div>
+                );
+              })}
+
+            {/* Element hit-boxes (selection + drag + resize, iframe renders the
+                pixels). Rendered as a tree: a container's children are absolute
+                percentages OF IT, exactly like the runtime, so a hit box lands
+                on the control it belongs to however deep it sits. */}
+            {topLevel.map((el) => (
+              <CanvasElement
+                key={el.id}
+                element={el}
+                childrenByParent={childrenByParent}
+                placementFor={placementFor}
+                selectedIds={selectedElementIds}
+                previewMode={false}
+                overlappingIds={overlappingIds}
+                outOfBoundsIds={outOfBoundsIds}
+                smallTouchIds={smallTouchIds}
+                lockedIds={lockedElementIds}
+                gestureKind={gesture?.kind ?? null}
+                onSelect={(id, shiftKey) => (shiftKey ? toggleSelectElement(id) : selectElement(id))}
+                onGestureStart={beginGesture}
+                onContextMenu={handleContextMenu}
+              />
+            ))}
+
+            {/* Live smart-guides — the lines a gesture is actually stuck to. */}
+            {gesture && (
+              <SnapGuides guidesX={gesture.guidesX} guidesY={gesture.guidesY} />
+            )}
+
+            {/* Empty state */}
+            {page.elements.length === 0 && (
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "var(--text-muted)",
+                  fontSize: "var(--font-size-lg)",
+                  pointerEvents: "none",
+                  gap: "var(--space-sm)",
+                }}
+              >
+                <span>Drag elements from the palette to get started</span>
+                <a
+                  href="https://docs.openavc.com/ui-builder"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: "var(--accent)", fontSize: "var(--font-size-sm)", pointerEvents: "auto" }}
+                >
+                  Learn about the UI Builder
+                </a>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -439,82 +702,40 @@ export function Canvas({
   );
 }
 
-
-function SnapGuides({
-  elements,
-  selectedId,
-  columns,
-  rows,
-}: {
-  elements: UIElement[];
-  selectedId: string;
-  columns: number;
-  rows: number;
-}) {
-  const selected = elements.find((e) => e.id === selectedId);
-  if (!selected) return null;
-
-  const a = selected.grid_area;
-  const selLeft = a.col;
-  const selRight = a.col + a.col_span;
-  const selTop = a.row;
-  const selBottom = a.row + a.row_span;
-
-  const vLines = new Set<number>();
-  const hLines = new Set<number>();
-
-  for (const el of elements) {
-    if (el.id === selectedId) continue;
-    const b = el.grid_area;
-    const elLeft = b.col;
-    const elRight = b.col + b.col_span;
-    const elTop = b.row;
-    const elBottom = b.row + b.row_span;
-
-    // Vertical alignment (column edges match)
-    if (selLeft === elLeft || selLeft === elRight) vLines.add(selLeft);
-    if (selRight === elLeft || selRight === elRight) vLines.add(selRight);
-    // Horizontal alignment (row edges match)
-    if (selTop === elTop || selTop === elBottom) hLines.add(selTop);
-    if (selBottom === elTop || selBottom === elBottom) hLines.add(selBottom);
-  }
-
-  if (vLines.size === 0 && hLines.size === 0) return null;
-
+/**
+ * The lines a gesture is currently magnetised to.
+ *
+ * This is what "SnapGuides gains magnetism" means: it used to compute exact
+ * edge matches and draw hairlines that attracted nothing. Now the snapping is
+ * done by the gesture and these are simply the answer, drawn.
+ */
+function SnapGuides({ guidesX, guidesY }: { guidesX: number[]; guidesY: number[] }) {
+  if (!guidesX.length && !guidesY.length) return null;
   return (
-    <div
-      style={{
-        position: "absolute",
-        inset: 0,
-        pointerEvents: "none",
-        zIndex: 100,
-      }}
-    >
-      {[...vLines].map((col) => (
+    <div style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 100 }}>
+      {guidesX.map((x) => (
         <div
-          key={`v-${col}`}
+          key={`v-${x}`}
           style={{
             position: "absolute",
-            left: `calc(${((col - 1) / columns) * 100}% + 4px)`,
+            left: `${x}%`,
             top: 0,
             bottom: 0,
             width: 1,
-            background: "rgba(33, 150, 243, 0.6)",
-            zIndex: 100,
+            background: "rgba(33, 150, 243, 0.9)",
           }}
         />
       ))}
-      {[...hLines].map((row) => (
+      {guidesY.map((y) => (
         <div
-          key={`h-${row}`}
+          key={`h-${y}`}
           style={{
             position: "absolute",
-            top: `calc(${((row - 1) / rows) * 100}% + 4px)`,
+            top: `${y}%`,
             left: 0,
             right: 0,
             height: 1,
-            background: "rgba(33, 150, 243, 0.6)",
-            zIndex: 100,
+            background: "rgba(33, 150, 243, 0.9)",
           }}
         />
       ))}

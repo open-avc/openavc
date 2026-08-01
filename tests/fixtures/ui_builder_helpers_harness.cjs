@@ -22,68 +22,256 @@ const H = moduleObj.exports;
 const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const results = {};
 
-// --- H-038: clampOriginToGrid keeps the full span on-grid ---
+// A 0.8.0 page: an authoring-only snap increment, and geometry in a layout.
+const SNAP = { enabled: true, x: 100 / 12, y: 100 / 8 };
+const LANDSCAPE = (placements = {}) => ({
+  id: "landscape", orientation: "landscape", primary: true, placements, hidden: [],
+});
+
+const SNAP_ON = { enabled: true, x: 100 / 12, y: 100 / 8 };
+const SNAP_OFF = { enabled: false, x: 100 / 12, y: 100 / 8 };
+const near = (a, b, tol = 1e-4) => Math.abs(a - b) < tol;
+
+// --- H-038: pointerToPercent maps the pointer to the box it fell in ---
+// The page carries no padding any more (the gutter died with the grid), so
+// this is the whole rect edge to edge and the drop lands under the pointer.
 {
-  const fits = H.clampOriginToGrid(5, 3, 2, 2, 12, 8);
-  results.h038_clamp_fits = { pass: eq(fits, { col: 5, row: 3 }), detail: fits };
+  const r = H.pointerToPercent(0, 0, 120);
+  results.h038_ptp_origin = { pass: r === 0, detail: r };
 }
 {
-  // col 11 + span 3 would reach col 13 on a 12-col grid; clamp to 12-3+1 = 10.
-  const r = H.clampOriginToGrid(11, 1, 3, 2, 12, 8);
-  results.h038_clamp_overflow_right = { pass: eq(r, { col: 10, row: 1 }), detail: r };
+  const r = H.pointerToPercent(60, 0, 120);
+  results.h038_ptp_centre = { pass: r === 50, detail: r };
 }
 {
-  // row 8 + span 3 overflows an 8-row grid; clamp to 8-3+1 = 6.
-  const r = H.clampOriginToGrid(1, 8, 2, 3, 12, 8);
-  results.h038_clamp_overflow_bottom = { pass: eq(r, { col: 1, row: 6 }), detail: r };
+  // Offset rect: the pointer is measured from the rect's own left edge.
+  const r = H.pointerToPercent(130, 100, 120);
+  results.h038_ptp_offset_rect = { pass: near(r, 25), detail: r };
 }
 {
-  const r = H.clampOriginToGrid(-2, 0, 3, 2, 12, 8);
-  results.h038_clamp_min = { pass: eq(r, { col: 1, row: 1 }), detail: r };
+  // Past the far edge is over 100, not clamped — free positioning WARNS
+  // rather than prevents, so the number has to survive to be warned about.
+  const r = H.pointerToPercent(150, 0, 120);
+  results.h038_ptp_past_edge = { pass: r === 125, detail: r };
+}
+{
+  // A zero-width rect can't be divided into; answer 0 rather than NaN.
+  const r = H.pointerToPercent(50, 0, 0);
+  results.h038_ptp_zero_rect = { pass: r === 0, detail: r };
 }
 
-// --- M-077: findFreeGridPosition is span- and overlap-aware ---
+// --- H-038: percentages are stored to 4 decimal places, at every write ---
 {
-  const r = H.findFreeGridPosition([], 3, 2, 12, 8);
-  results.m077_free_empty = { pass: eq(r, { col: 1, row: 1 }), detail: r };
+  const r = H.roundPct(100 / 3);
+  results.h038_round_precision = { pass: r === 33.3333, detail: r };
 }
 {
-  // A 3x2 element sits at (1,1); the next 3x2 must skip past it to (4,1),
-  // not land on the first free single cell inside it.
-  const els = [{ grid_area: { col: 1, row: 1, col_span: 3, row_span: 2 } }];
-  const r = H.findFreeGridPosition(els, 3, 2, 12, 8);
-  results.m077_free_avoid_overlap = { pass: eq(r, { col: 4, row: 1 }), detail: r };
-}
-{
-  // 4x4 grid, (1,1,3,2) taken — a 3x2 can't fit on rows 1-2, drops to (1,3).
-  const els = [{ grid_area: { col: 1, row: 1, col_span: 3, row_span: 2 } }];
-  const r = H.findFreeGridPosition(els, 3, 2, 4, 4);
-  results.m077_free_drop_down = { pass: eq(r, { col: 1, row: 3 }), detail: r };
-}
-{
-  // Element wider than the grid → clamped (1,1) fallback, never off-grid.
-  const r = H.findFreeGridPosition([], 6, 2, 4, 4);
-  results.m077_free_too_big_fallback = { pass: eq(r, { col: 1, row: 1 }), detail: r };
+  // The jitter this exists to stop: a px<->% round trip must come back equal,
+  // or the save-reconcile diff dirties and arms a phantom autosave.
+  const once = H.roundPct((37 / 120) * 100);
+  const twice = H.roundPct((once / 100) * 120 / 120 * 100);
+  results.h038_round_stable_round_trip = { pass: once === twice, detail: { once, twice } };
 }
 
-// --- L-051: pointerToCell excludes the container padding from the cell area ---
+// --- M-077: snapMove pulls a drag onto the nearest attractive line ---
 {
-  const r = H.pointerToCell(0, 0, 120, 0, 12);
-  results.l051_ptc_basic = { pass: r === 1, detail: r };
+  // Just past a snap increment (8.3333) -> pulled back onto it.
+  const r = H.snapMove({ x: 9, y: 13, w: 25, h: 12.5 }, { snap: SNAP_ON });
+  results.m077_snap_grid = {
+    pass: near(r.placement.x, 8.3333) && near(r.placement.y, 12.5),
+    detail: r.placement,
+  };
 }
 {
-  // 120px rect, 8px pad → 104px cell area. The centre (60) maps to cell 7.
-  const r = H.pointerToCell(60, 0, 120, 8, 12);
-  results.l051_ptc_center = { pass: r === 7, detail: r };
+  // Alt held: the element lands on the EXACT pointer, no attraction at all.
+  // This is the affordance that makes "free positioning" actually free.
+  const raw = { x: 9.13, y: 13.77, w: 25, h: 12.5 };
+  const r = H.snapMove(raw, { snap: SNAP_ON, bypass: true });
+  results.m077_snap_bypass_exact = {
+    pass: r.placement.x === 9.13 && r.placement.y === 13.77 &&
+      r.guidesX.length === 0 && r.guidesY.length === 0,
+    detail: r,
+  };
 }
 {
-  // x=15 sits in cell 1 once the 8px left pad is removed; the un-padded mapping
-  // (x/120*12) would mis-bin it as cell 2.
-  const padded = H.pointerToCell(15, 0, 120, 8, 12);
-  const unpadded = Math.floor((15 / 120) * 12) + 1;
-  results.l051_ptc_pad_corrects_edge = {
-    pass: padded === 1 && unpadded === 2,
-    detail: { padded, unpadded },
+  // A neighbour's left edge is nearer than the snap increment, so being flush
+  // with it wins — and the guide that says so is drawn.
+  const others = [{ x: 40, y: 0, w: 20, h: 20 }];
+  const r = H.snapMove({ x: 40.4, y: 60, w: 10, h: 10 }, { snap: SNAP_ON, others });
+  results.m077_snap_element_edge_wins = {
+    pass: near(r.placement.x, 40) && r.guidesX.includes(40),
+    detail: r,
+  };
+}
+{
+  // Element-edge magnetism works with grid snap switched OFF — the two are
+  // independent, exactly as the design says.
+  const others = [{ x: 40, y: 0, w: 20, h: 20 }];
+  // y is deliberately clear of the page centre and thirds AND of the
+  // sibling's own top/bottom, all of which are magnetic in their own right.
+  const r = H.snapMove({ x: 40.4, y: 42.3, w: 10, h: 10 }, { snap: SNAP_OFF, others });
+  results.m077_edge_magnetism_without_grid = {
+    pass: near(r.placement.x, 40) && r.placement.y === 42.3,
+    detail: r.placement,
+  };
+}
+{
+  // The moving box's RIGHT edge can be what sticks, not just its left.
+  const others = [{ x: 40, y: 0, w: 20, h: 20 }];
+  const r = H.snapMove({ x: 29.7, y: 60, w: 10, h: 10 }, { snap: SNAP_OFF, others });
+  results.m077_snap_right_edge = {
+    pass: near(r.placement.x, 30) && r.guidesX.includes(40),
+    detail: r,
+  };
+}
+{
+  // Nothing near, no grid: the box stays exactly where it was put. Both
+  // coordinates are clear of the page edges, centre and thirds.
+  const r = H.snapMove({ x: 17.3, y: 20.4, w: 10, h: 10 }, { snap: SNAP_OFF, others: [] });
+  results.m077_no_attraction_no_move = {
+    pass: r.placement.x === 17.3 && r.placement.y === 20.4,
+    detail: r.placement,
+  };
+}
+
+// --- M-077: snapResize only attracts the edges the handle drags ---
+{
+  // An east drag must not pull the west edge along with it.
+  const r = H.snapResize({ x: 3.1, y: 10, w: 30.2, h: 20 }, "e", { snap: SNAP_ON });
+  results.m077_resize_east_leaves_x = {
+    pass: r.placement.x === 3.1 && near(r.placement.x + r.placement.w, 33.3333),
+    detail: r.placement,
+  };
+}
+{
+  // A west drag moves the origin and takes the width out of it, so the far
+  // edge stays put.
+  const before = { x: 9.1, y: 10, w: 30, h: 20 };
+  const r = H.snapResize(before, "w", { snap: SNAP_ON });
+  results.m077_resize_west_holds_far_edge = {
+    pass: near(r.placement.x, 8.3333) &&
+      near(r.placement.x + r.placement.w, before.x + before.w),
+    detail: r.placement,
+  };
+}
+{
+  const r = H.snapResize({ x: 0, y: 0, w: 20, h: 26 }, "s", { snap: SNAP_ON });
+  results.m077_resize_south = {
+    pass: near(r.placement.h, 25) && r.placement.y === 0,
+    detail: r.placement,
+  };
+}
+{
+  const r = H.snapResize({ x: 3.1, y: 10.4, w: 30.2, h: 20.7 }, "se", { snap: SNAP_ON, bypass: true });
+  results.m077_resize_bypass_exact = {
+    pass: eq(r.placement, { x: 3.1, y: 10.4, w: 30.2, h: 20.7 }),
+    detail: r.placement,
+  };
+}
+
+// --- L-051: auto-placement for the paths that have no pointer ---
+{
+  // Click-to-add on an empty page lands at the origin, which is where the old
+  // grid put it — so this whole change is invisible at the palette.
+  const r = H.autoPlace([], { w: 25, h: 12.5 }, SNAP_ON);
+  results.l051_autoplace_empty = { pass: eq(r, { x: 0, y: 0, w: 25, h: 12.5 }), detail: r };
+}
+{
+  // Row-major: a 25%-wide element with the first three cells taken skips past
+  // the occupant rather than landing on top of it.
+  const taken = [{ x: 0, y: 0, w: 25, h: 12.5 }];
+  const r = H.autoPlace(taken, { w: 25, h: 12.5 }, SNAP_ON);
+  results.l051_autoplace_skips_occupied = {
+    pass: near(r.x, 25) && r.y === 0,
+    detail: r,
+  };
+}
+{
+  // A full first row pushes the next add down a row, still row-major.
+  const taken = [{ x: 0, y: 0, w: 100, h: 12.5 }];
+  const r = H.autoPlace(taken, { w: 25, h: 12.5 }, SNAP_ON);
+  results.l051_autoplace_next_row = { pass: near(r.y, 12.5) && r.x === 0, detail: r };
+}
+{
+  // With snap off there are no cells to scan, so it falls back to the page
+  // centre plus a cascade — the down-right nudge every design tool uses.
+  const first = H.autoPlace([], { w: 20, h: 20 }, SNAP_OFF, 0);
+  const second = H.autoPlace([], { w: 20, h: 20 }, SNAP_OFF, 1);
+  results.l051_autoplace_cascade_when_snap_off = {
+    pass: near(first.x, 40) && near(first.y, 40) &&
+      second.x > first.x && second.y > first.y,
+    detail: { first, second },
+  };
+}
+{
+  // Bigger than any free space -> centre fallback, never off the page.
+  const taken = [{ x: 0, y: 0, w: 100, h: 100 }];
+  const r = H.autoPlace(taken, { w: 50, h: 50 }, SNAP_ON);
+  results.l051_autoplace_no_room_falls_back = {
+    pass: r.x >= 0 && r.y >= 0 && r.x + r.w <= 100 && r.y + r.h <= 100,
+    detail: r,
+  };
+}
+
+// --- L-051: a drop inside a container adopts into it ---
+{
+  const page = {
+    id: "p1", name: "P1", snap: SNAP_ON,
+    elements: [{ id: "box", type: "group" }],
+    layouts: [LANDSCAPE({ box: { x: 20, y: 20, w: 40, h: 40 } })],
+  };
+  // Fully inside -> adopted, and re-expressed relative to the container.
+  const inside = H.resolveDropParent(page, { x: 30, y: 30, w: 10, h: 10 });
+  results.l051_drop_adopts_when_contained = {
+    pass: inside.parentId === "box" && eq(inside.relative, { x: 25, y: 25, w: 25, h: 25 }),
+    detail: inside,
+  };
+}
+{
+  const page = {
+    id: "p1", name: "P1", snap: SNAP_ON,
+    elements: [{ id: "box", type: "group" }],
+    layouts: [LANDSCAPE({ box: { x: 20, y: 20, w: 40, h: 40 } })],
+  };
+  // Half in, half out -> stays a page-level peer. Conservative on purpose.
+  const partial = H.resolveDropParent(page, { x: 55, y: 30, w: 20, h: 10 });
+  results.l051_drop_partial_overlap_not_adopted = {
+    pass: partial.parentId === null && eq(partial.relative, { x: 55, y: 30, w: 20, h: 10 }),
+    detail: partial,
+  };
+}
+{
+  const page = {
+    id: "p1", name: "P1", snap: SNAP_ON,
+    elements: [{ id: "outer", type: "group" }, { id: "inner", type: "group" }],
+    layouts: [LANDSCAPE({
+      outer: { x: 0, y: 0, w: 80, h: 80 },
+      inner: { x: 10, y: 10, w: 40, h: 40 },
+    })],
+  };
+  // Nested containers -> the innermost (smallest) wins.
+  const r = H.resolveDropParent(page, { x: 20, y: 20, w: 10, h: 10 });
+  results.l051_drop_innermost_container_wins = { pass: r.parentId === "inner", detail: r };
+}
+
+// --- L-051: the 44px touch minimum, as advice rather than a clamp ---
+{
+  // As a runtime clamp this used to override small percentage heights and
+  // shove elements out of their boxes into overlap on every touch panel.
+  const small = H.touchTargetWarning({ x: 0, y: 0, w: 2, h: 2 });
+  const fine = H.touchTargetWarning({ x: 0, y: 0, w: 25, h: 25 });
+  results.l051_touch_warning = {
+    pass: !!small && small.axis === "both" && small.widthPx === 26 && fine === null,
+    detail: { small, fine },
+  };
+}
+{
+  // A child is measured against its CONTAINER's pixels: half a container that
+  // is itself a quarter of the page is an eighth of the panel.
+  const inContainer = H.touchTargetWarning({ x: 0, y: 0, w: 20, h: 50 }, { width: 200, height: 100 });
+  results.l051_touch_warning_container_relative = {
+    pass: !!inContainer && inContainer.axis === "width" && inContainer.widthPx === 40,
+    detail: inContainer,
   };
 }
 
@@ -92,9 +280,9 @@ const results = {};
   const pages = [
     {
       id: "p1",
-      grid: { columns: 12, rows: 8 },
+      snap: SNAP, layouts: [LANDSCAPE()],
       elements: [
-        { id: "button_1", type: "button", grid_area: { col: 1, row: 1, col_span: 3, row_span: 2 }, style: {}, bindings: {} },
+        { id: "button_1", type: "button", style: {}, bindings: {} },
       ],
     },
   ];
@@ -115,8 +303,8 @@ function makeProject(macroKey) {
     pages: [
       {
         id: "p1",
-        grid: { columns: 12, rows: 8 },
-        elements: [{ id: "btn", type: "button", grid_area: { col: 1, row: 1, col_span: 3, row_span: 2 }, style: {}, bindings: {} }],
+        snap: SNAP, layouts: [LANDSCAPE()],
+        elements: [{ id: "btn", type: "button", style: {}, bindings: {} }],
       },
     ],
     masters: [],
@@ -162,7 +350,7 @@ function makeProject(macroKey) {
 function makeValidationProject(elements) {
   return {
     ui: {
-      pages: [{ id: "p1", name: "Page 1", grid: { columns: 12, rows: 8 }, elements }],
+      pages: [{ id: "p1", name: "Page 1", snap: SNAP, layouts: [LANDSCAPE()], elements }],
       master_elements: [],
       settings: {},
     },
@@ -170,11 +358,10 @@ function makeValidationProject(elements) {
     macros: [{ id: "real_macro", name: "M", steps: [] }],
   };
 }
-const AREA = { col: 1, row: 1, col_span: 2, row_span: 1 };
 {
   // Array-shaped do.press binding to a deleted device must be flagged.
   const proj = makeValidationProject([
-    { id: "b1", type: "button", grid_area: AREA, style: {}, bindings: { do: { press: [{ action: "device.command", device: "ghost_dev", command: "go" }] } } },
+    { id: "b1", type: "button", style: {}, bindings: { do: { press: [{ action: "device.command", device: "ghost_dev", command: "go" }] } } },
   ]);
   const issues = H.validateProject(proj).filter((i) => i.severity === "error");
   results.h086_validate_array_device = {
@@ -185,7 +372,7 @@ const AREA = { col: 1, row: 1, col_span: 2, row_span: 1 };
 {
   // Second action in the array is checked too (navigate to deleted page).
   const proj = makeValidationProject([
-    { id: "b1", type: "button", grid_area: AREA, style: {}, bindings: { do: { press: [{ action: "device.command", device: "real_dev", command: "go" }, { action: "navigate", page: "gone_page" }] } } },
+    { id: "b1", type: "button", style: {}, bindings: { do: { press: [{ action: "device.command", device: "real_dev", command: "go" }, { action: "navigate", page: "gone_page" }] } } },
   ]);
   const issues = H.validateProject(proj).filter((i) => i.severity === "error");
   results.h086_validate_array_navigate = {
@@ -196,7 +383,7 @@ const AREA = { col: 1, row: 1, col_span: 2, row_span: 1 };
 {
   // do.change: array-shaped macro action to a deleted macro.
   const proj = makeValidationProject([
-    { id: "s1", type: "select", grid_area: AREA, style: {}, bindings: { do: { change: [{ action: "macro", macro: "ghost_macro" }] } } },
+    { id: "s1", type: "select", style: {}, bindings: { do: { change: [{ action: "macro", macro: "ghost_macro" }] } } },
   ]);
   const issues = H.validateProject(proj).filter((i) => i.severity === "error");
   results.h086_validate_array_change_macro = {
@@ -207,7 +394,7 @@ const AREA = { col: 1, row: 1, col_span: 2, row_span: 1 };
 {
   // A do.<interaction> holding a single action object (not an array) is still validated.
   const proj = makeValidationProject([
-    { id: "b1", type: "button", grid_area: AREA, style: {}, bindings: { do: { press: { action: "device.command", device: "ghost_dev", command: "go" } } } },
+    { id: "b1", type: "button", style: {}, bindings: { do: { press: { action: "device.command", device: "ghost_dev", command: "go" } } } },
   ]);
   const issues = H.validateProject(proj).filter((i) => i.severity === "error");
   results.h086_validate_legacy_object = {
@@ -218,7 +405,7 @@ const AREA = { col: 1, row: 1, col_span: 2, row_span: 1 };
 {
   // Valid references in do action lists produce NO false positives.
   const proj = makeValidationProject([
-    { id: "b1", type: "button", grid_area: AREA, style: {}, bindings: { do: { press: [{ action: "device.command", device: "real_dev", command: "go" }, { action: "macro", macro: "real_macro" }] } } },
+    { id: "b1", type: "button", style: {}, bindings: { do: { press: [{ action: "device.command", device: "real_dev", command: "go" }, { action: "macro", macro: "real_macro" }] } } },
   ]);
   const issues = H.validateProject(proj).filter((i) => i.severity === "error");
   results.h086_validate_valid_refs_pass = { pass: issues.length === 0, detail: issues };
@@ -228,10 +415,10 @@ const AREA = { col: 1, row: 1, col_span: 2, row_span: 1 };
 {
   const pages = [
     {
-      id: "p1", name: "P1", grid: { columns: 12, rows: 8 },
+      id: "p1", name: "P1", snap: SNAP, layouts: [LANDSCAPE()],
       elements: [
         {
-          id: "b1", type: "button", grid_area: AREA, style: {},
+          id: "b1", type: "button", style: {},
           bindings: {
             do: {
               press: [{ action: "navigate", page: "p2" }, { action: "device.command", device: "d1", command: "go" }],
@@ -242,7 +429,7 @@ const AREA = { col: 1, row: 1, col_span: 2, row_span: 1 };
         },
       ],
     },
-    { id: "p2", name: "P2", grid: { columns: 12, rows: 8 }, elements: [] },
+    { id: "p2", name: "P2", snap: SNAP, layouts: [LANDSCAPE()], elements: [] },
   ];
   const after = H.removePage(pages, "p2");
   const d = after[0].elements[0].bindings.do;
@@ -258,10 +445,10 @@ const AREA = { col: 1, row: 1, col_span: 2, row_span: 1 };
 {
   const pages = [
     {
-      id: "p1", name: "P1", grid: { columns: 12, rows: 8 },
+      id: "p1", name: "P1", snap: SNAP, layouts: [LANDSCAPE()],
       elements: [
         {
-          id: "btn_x", type: "button", grid_area: AREA, style: {},
+          id: "btn_x", type: "button", style: {},
           bindings: { show: { look: { source: "state", key: "ui.btn_x.value", condition: { equals: true }, style_active: {}, style_inactive: {} } } },
         },
       ],
@@ -280,10 +467,10 @@ const AREA = { col: 1, row: 1, col_span: 2, row_span: 1 };
   // duplicatePage rewrites self-refs AND sibling refs to the copied siblings.
   const pages = [
     {
-      id: "p1", name: "P1", grid: { columns: 12, rows: 8 },
+      id: "p1", name: "P1", snap: SNAP, layouts: [LANDSCAPE()],
       elements: [
-        { id: "btn_a", type: "button", grid_area: AREA, style: {}, bindings: { show: { look: { source: "state", key: "ui.btn_a.value", condition: { equals: true }, style_active: {}, style_inactive: {} } } } },
-        { id: "lbl_b", type: "label", grid_area: { ...AREA, row: 2 }, style: {}, bindings: { show: { value: { source: "state", key: "ui.btn_a.value" } } } },
+        { id: "btn_a", type: "button", style: {}, bindings: { show: { look: { source: "state", key: "ui.btn_a.value", condition: { equals: true }, style_active: {}, style_inactive: {} } } } },
+        { id: "lbl_b", type: "label", style: {}, bindings: { show: { value: { source: "state", key: "ui.btn_a.value" } } } },
       ],
     },
   ];
@@ -301,8 +488,8 @@ const AREA = { col: 1, row: 1, col_span: 2, row_span: 1 };
 {
   // duplicatePage respects reserved (master) ids when naming copies.
   const pages = [
-    { id: "p1", name: "P1", grid: { columns: 12, rows: 8 }, elements: [
-      { id: "btn_a", type: "button", grid_area: AREA, style: {}, bindings: {} },
+    { id: "p1", name: "P1", snap: SNAP, layouts: [LANDSCAPE()], elements: [
+      { id: "btn_a", type: "button", style: {}, bindings: {} },
     ] },
   ];
   const after = H.duplicatePage(pages, "p1", ["button_p1_copy_1"]);
@@ -317,11 +504,11 @@ const AREA = { col: 1, row: 1, col_span: 2, row_span: 1 };
 {
   // Demote onto a page that already has an element with the master's id.
   const masters = [
-    { id: "shared_btn", type: "button", pages: "*", grid_area: AREA, style: {}, bindings: { show: { look: { source: "state", key: "ui.shared_btn.value", condition: { equals: true }, style_active: {}, style_inactive: {} } } } },
+    { id: "shared_btn", type: "button", pages: "*", style: {}, bindings: { show: { look: { source: "state", key: "ui.shared_btn.value", condition: { equals: true }, style_active: {}, style_inactive: {} } } } },
   ];
   const pages = [
-    { id: "p1", name: "P1", grid: { columns: 12, rows: 8 }, elements: [
-      { id: "shared_btn", type: "button", grid_area: AREA, style: {}, bindings: {} },
+    { id: "p1", name: "P1", snap: SNAP, layouts: [LANDSCAPE()], elements: [
+      { id: "shared_btn", type: "button", style: {}, bindings: {} },
     ] },
   ];
   const r = H.demoteFromMaster(pages, masters, "shared_btn", "p1");
@@ -336,8 +523,8 @@ const AREA = { col: 1, row: 1, col_span: 2, row_span: 1 };
 }
 {
   // No collision -> id is kept.
-  const masters = [{ id: "solo_btn", type: "button", pages: "*", grid_area: AREA, style: {}, bindings: {} }];
-  const pages = [{ id: "p1", name: "P1", grid: { columns: 12, rows: 8 }, elements: [] }];
+  const masters = [{ id: "solo_btn", type: "button", pages: "*", style: {}, bindings: {} }];
+  const pages = [{ id: "p1", name: "P1", snap: SNAP, layouts: [LANDSCAPE()], elements: [] }];
   const r = H.demoteFromMaster(pages, masters, "solo_btn", "p1");
   results.m144_demote_no_collision_keeps_id = {
     pass: r.pages[0].elements.length === 1 && r.pages[0].elements[0].id === "solo_btn",
@@ -346,10 +533,10 @@ const AREA = { col: 1, row: 1, col_span: 2, row_span: 1 };
 }
 {
   // Promote when a master already holds the id -> promoted copy renamed.
-  const masters = [{ id: "dup_btn", type: "button", pages: "*", grid_area: AREA, style: {}, bindings: {} }];
+  const masters = [{ id: "dup_btn", type: "button", pages: "*", style: {}, bindings: {} }];
   const pages = [
-    { id: "p1", name: "P1", grid: { columns: 12, rows: 8 }, elements: [
-      { id: "dup_btn", type: "button", grid_area: AREA, style: {}, bindings: { show: { look: { source: "state", key: "ui.dup_btn.value", condition: { equals: true }, style_active: {}, style_inactive: {} } } } },
+    { id: "p1", name: "P1", snap: SNAP, layouts: [LANDSCAPE()], elements: [
+      { id: "dup_btn", type: "button", style: {}, bindings: { show: { look: { source: "state", key: "ui.dup_btn.value", condition: { equals: true }, style_active: {}, style_inactive: {} } } } },
     ] },
   ];
   const r = H.promoteToMaster(pages, masters, "p1", "dup_btn");
@@ -363,8 +550,8 @@ const AREA = { col: 1, row: 1, col_span: 2, row_span: 1 };
 {
   // Promote without collision keeps the id.
   const pages = [
-    { id: "p1", name: "P1", grid: { columns: 12, rows: 8 }, elements: [
-      { id: "lone_btn", type: "button", grid_area: AREA, style: {}, bindings: {} },
+    { id: "p1", name: "P1", snap: SNAP, layouts: [LANDSCAPE()], elements: [
+      { id: "lone_btn", type: "button", style: {}, bindings: {} },
     ] },
   ];
   const r = H.promoteToMaster(pages, [], "p1", "lone_btn");
@@ -378,7 +565,7 @@ const AREA = { col: 1, row: 1, col_span: 2, row_span: 1 };
 {
   const proj = makeValidationProject([
     {
-      id: "s1", type: "select", grid_area: AREA, style: {},
+      id: "s1", type: "select", style: {},
       bindings: {
         do: {
           change: [{
@@ -404,67 +591,71 @@ const AREA = { col: 1, row: 1, col_span: 2, row_span: 1 };
   };
 }
 
-// --- L-088: findOutOfBoundsIds flags spans beyond the grid ---
+// --- L-088: findOutOfBoundsIds flags boxes hanging outside their parent ---
 {
-  const grid = { columns: 12, rows: 8 };
-  const els = [
-    { id: "ok", type: "button", grid_area: { col: 1, row: 1, col_span: 3, row_span: 2 } },
-    { id: "off_right", type: "button", grid_area: { col: 11, row: 1, col_span: 3, row_span: 1 } },
-    { id: "off_bottom", type: "button", grid_area: { col: 1, row: 8, col_span: 1, row_span: 2 } },
-    { id: "edge_fit", type: "button", grid_area: { col: 10, row: 7, col_span: 3, row_span: 2 } },
-  ];
-  const flagged = [...H.findOutOfBoundsIds(els, grid)].sort();
+  const page = {
+    id: "p1", name: "P1", snap: SNAP,
+    elements: [
+      { id: "ok", type: "button" },
+      { id: "off_right", type: "button" },
+      { id: "off_bottom", type: "button" },
+      { id: "edge_fit", type: "button" },
+      // A child is a percentage of its CONTAINER, so the same 0..100 test
+      // covers it -- only the box it is measured against changes.
+      { id: "kid_out", type: "button", parent: "box" },
+      { id: "kid_in", type: "button", parent: "box" },
+      { id: "box", type: "group" },
+    ],
+    layouts: [LANDSCAPE({
+      ok: { x: 0, y: 0, w: 25, h: 25 },
+      off_right: { x: 85, y: 0, w: 25, h: 12.5 },
+      off_bottom: { x: 0, y: 90, w: 10, h: 25 },
+      edge_fit: { x: 75, y: 75, w: 25, h: 25 },
+      kid_out: { x: 80, y: 10, w: 40, h: 20 },
+      kid_in: { x: 10, y: 10, w: 40, h: 20 },
+      box: { x: 0, y: 0, w: 50, h: 50 },
+    })],
+  };
+  const flagged = [...H.findOutOfBoundsIds(page)].sort();
   results.l088_out_of_bounds_ids = {
-    pass: eq(flagged, ["off_bottom", "off_right"]),
+    pass: eq(flagged, ["kid_out", "off_bottom", "off_right"]),
     detail: flagged,
   };
 }
 
-// --- M-231: grid shrink clamps element areas instead of stranding them ---
+// --- M-231: changing the snap increment moves NOTHING ---
+// The old clampElementsToGrid rewrote every element to fit a shrinking grid.
+// It has no successor, and this is the assertion that says so: the increment
+// is a ruler now, so it can change to anything -- or switch off -- and the
+// page is untouched. This is the regression that used to happen silently.
 {
-  // 12x8 grid shrinking to 6x4: the out-of-bounds element is pulled inside
-  // (position clamps into range, span shrinks to fit — the inspector's
-  // rules); the in-bounds element keeps its identity.
-  try {
-    const els = [
-      { id: "a", grid_area: { col: 5, row: 5, col_span: 4, row_span: 2 } },
-      { id: "b", grid_area: { col: 1, row: 1, col_span: 2, row_span: 2 } },
-    ];
-    const r = H.clampElementsToGrid(els, 6, 4);
-    results.m231_shrink_clamps_out_of_bounds = {
-      pass:
-        eq(r[0].grid_area, { col: 5, row: 4, col_span: 2, row_span: 1 }) &&
-        r[1] === els[1],
-      detail: r,
-    };
-  } catch (e) {
-    results.m231_shrink_clamps_out_of_bounds = { pass: false, detail: String(e) };
-  }
+  const before = {
+    id: "p1", name: "P1", snap: SNAP,
+    elements: [{ id: "a", type: "button" }, { id: "b", type: "button" }],
+    layouts: [LANDSCAPE({
+      a: { x: 33.3333, y: 50, w: 33.3333, h: 25 },
+      b: { x: 0, y: 0, w: 16.6667, h: 25 },
+    })],
+  };
+  const denser = { ...before, snap: { enabled: true, x: 100 / 5, y: 100 / 3 } };
+  const off = { ...before, snap: { enabled: false, x: 100 / 12, y: 100 / 8 } };
+  results.m231_snap_change_moves_nothing = {
+    pass:
+      eq(H.getPlacement(denser, "a"), H.getPlacement(before, "a")) &&
+      eq(H.getPlacement(denser, "b"), H.getPlacement(before, "b")) &&
+      eq(H.getPlacement(off, "a"), H.getPlacement(before, "a")),
+    detail: { a: H.getPlacement(denser, "a"), b: H.getPlacement(denser, "b") },
+  };
 }
 {
-  // Everything already fits -> the SAME array back (identity), so callers can
-  // cheaply detect "nothing to clamp" (and undo diffs stay minimal).
-  try {
-    const els = [{ id: "a", grid_area: { col: 1, row: 1, col_span: 3, row_span: 2 } }];
-    const r = H.clampElementsToGrid(els, 12, 8);
-    results.m231_identity_when_fits = { pass: r === els, detail: { same: r === els } };
-  } catch (e) {
-    results.m231_identity_when_fits = { pass: false, detail: String(e) };
-  }
-}
-{
-  // Wider than the whole new grid -> the span itself shrinks (an origin-only
-  // clamp could never bring a full-width element back in bounds).
-  try {
-    const els = [{ id: "w", grid_area: { col: 1, row: 1, col_span: 12, row_span: 1 } }];
-    const r = H.clampElementsToGrid(els, 8, 8);
-    results.m231_span_shrinks_to_grid = {
-      pass: eq(r[0].grid_area, { col: 1, row: 1, col_span: 8, row_span: 1 }),
-      detail: r,
-    };
-  } catch (e) {
-    results.m231_span_shrinks_to_grid = { pass: false, detail: String(e) };
-  }
+  // clampElementsToGrid is gone on purpose; nothing may quietly resurrect it.
+  results.m231_no_clamp_successor = {
+    pass: H.clampElementsToGrid === undefined && H.clampOriginToGrid === undefined,
+    detail: {
+      clampElementsToGrid: typeof H.clampElementsToGrid,
+      clampOriginToGrid: typeof H.clampOriginToGrid,
+    },
+  };
 }
 
 // --- L-142: page-delete scrub returns the ORIGINAL arrays when untouched ---
@@ -473,7 +664,7 @@ const AREA = { col: 1, row: 1, col_span: 2, row_span: 1 };
   // identity, so the changed-only undo snapshot actually skips them (the
   // old .map() always allocated, making the caller's !== guard dead code).
   const pages = [{ id: "p1", elements: [] }, { id: "p2", elements: [] }];
-  const masters = [{ id: "m1", pages: "*", grid_area: { col: 1, row: 1, col_span: 1, row_span: 1 } }];
+  const masters = [{ id: "m1", pages: "*", }];
   const macros = [{ id: "mac1", triggers: [{ conditions: [{ key: "var.x", value: "1" }] }] }];
   const r = H.removePageAndScrubRefs(pages, "p2", masters, macros);
   results.l142_scrub_identity_when_untouched = {

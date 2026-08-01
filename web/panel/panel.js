@@ -318,6 +318,15 @@ class PanelApp {
                     this._postToParent({ type: 'openavc:editor-ready' });
                     break;
                 }
+                case 'openavc:editor-placements': {
+                    // A drag in progress. The builder commits geometry to its
+                    // store once, on pointer-up, so between those it just tells
+                    // us where the boxes are and we move the nodes we already
+                    // have -- four inline styles instead of rebuilding a page
+                    // sixty times a second.
+                    this._applyLivePlacements(msg.placements);
+                    break;
+                }
                 case 'openavc:editor-page': {
                     // A page change can move the preview between a full-screen
                     // page and an overlay box, which is exactly when the vmin
@@ -747,6 +756,29 @@ class PanelApp {
         const w = window.innerWidth || document.documentElement.clientWidth || 0;
         const h = window.innerHeight || document.documentElement.clientHeight || 0;
         return w >= h ? 'landscape' : 'portrait';
+    }
+
+    /**
+     * Move already-rendered elements to new boxes, without a re-render.
+     *
+     * Design-time only: this is what the builder sends while a control is
+     * actually under the pointer. The node to move is the placement box when
+     * the element is aspect-locked (that box is what holds the position) and
+     * the element itself otherwise.
+     */
+    _applyLivePlacements(placements) {
+        if (!this.editMode || !placements || typeof placements !== 'object') return;
+        for (const [id, p] of Object.entries(placements)) {
+            if (!p) continue;
+            const node = document.querySelector(
+                `[data-placement-for="${CSS.escape(id)}"]`,
+            ) || document.querySelector(`[data-element-id="${CSS.escape(id)}"]`);
+            if (!node) continue;
+            node.style.left = `${this._pct(p.x, 0)}%`;
+            node.style.top = `${this._pct(p.y, 0)}%`;
+            node.style.width = `${this._pct(p.w, 100)}%`;
+            node.style.height = `${this._pct(p.h, 100)}%`;
+        }
     }
 
     /**
