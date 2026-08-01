@@ -8,7 +8,7 @@ import { StyleProperties } from "./PropertySections/StyleProperties";
 import { BindingProperties } from "./PropertySections/BindingProperties";
 import { AssetPicker } from "./AssetPicker";
 import { InlineColorPicker } from "../shared/InlineColorPicker";
-import { getPlacement, withPlacement, pageSnap } from "./uiBuilderHelpers";
+import { getPlacement, withPlacement, pageSnap, referenceParentBox } from "./uiBuilderHelpers";
 
 interface ThemeSummary {
   id: string;
@@ -265,6 +265,7 @@ export function PropertiesPanel({
           containers={page.elements
             .filter((e) => e.type === "group" && e.id !== element.id)
             .map((e) => ({ id: e.id, label: e.label || e.id }))}
+          parentPx={referenceParentBox(page, element.id)}
           onChangePlacement={(placement) => {
             // Geometry lives in the page's layout, so a typed coordinate is a
             // page change, not an element change.
@@ -430,6 +431,9 @@ function MasterElementProperties({
             Object.values(masterElement.placements ?? {})[0] ?? { x: 0, y: 0, w: 25, h: 12.5 }
           }
           containers={[]}
+          // A master is a percentage of the viewport, so its parent IS the
+          // reference screen.
+          parentPx={{ width: 1280, height: 800 }}
           onChangePlacement={(placement) =>
             handleElementChange({
               placements: { ...masterElement.placements, landscape: placement },

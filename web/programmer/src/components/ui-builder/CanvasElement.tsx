@@ -77,6 +77,14 @@ export function CanvasElement({
     onGestureStart(element.id, "move", "", e);
   };
 
+  // Selection happens on pointer-down, but the click still has to be stopped
+  // here — the canvas background clears the selection on click, so letting it
+  // bubble deselects the element the pointer-down just picked.
+  const handleClick = (e: React.MouseEvent) => {
+    if (previewMode) return;
+    e.stopPropagation();
+  };
+
   const handleRightClick = (e: React.MouseEvent) => {
     if (previewMode || locked) return;
     e.preventDefault();
@@ -99,6 +107,7 @@ export function CanvasElement({
     <div
       data-canvas-element={element.id}
       onPointerDown={handlePointerDown}
+      onClick={handleClick}
       onContextMenu={handleRightClick}
       style={{
         position: "absolute",

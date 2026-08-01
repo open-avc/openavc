@@ -1,5 +1,5 @@
 import type { UIElement, Placement } from "../../../api/types";
-import { touchTargetWarning, TOUCH_REFERENCE } from "../uiBuilderHelpers";
+import { touchTargetWarning } from "../uiBuilderHelpers";
 
 interface LayoutPropertiesProps {
   element: UIElement;
@@ -7,6 +7,9 @@ interface LayoutPropertiesProps {
   placement: Placement;
   /** Containers on this page it could be parented to (never itself). */
   containers: { id: string; label: string }[];
+  /** The box the percentages are OF, in reference pixels. An aspect lock is a
+   *  pixel ratio, so it only means anything against the real parent. */
+  parentPx: { width: number; height: number };
   onChangePlacement: (placement: Placement) => void;
   onChange: (patch: Partial<UIElement>) => void;
 }
@@ -15,6 +18,7 @@ export function LayoutProperties({
   element,
   placement,
   containers,
+  parentPx,
   onChangePlacement,
   onChange,
 }: LayoutPropertiesProps) {
@@ -34,15 +38,15 @@ export function LayoutProperties({
     // The ratio is in pixels, so it goes through the reference proportions.
     if (lock && (field === "w" || field === "h")) {
       if (field === "w") {
-        next.h = round((((next.w / 100) * TOUCH_REFERENCE.width) / lock / TOUCH_REFERENCE.height) * 100);
+        next.h = round((((next.w / 100) * parentPx.width) / lock / parentPx.height) * 100);
       } else {
-        next.w = round(((((next.h / 100) * TOUCH_REFERENCE.height) * lock) / TOUCH_REFERENCE.width) * 100);
+        next.w = round(((((next.h / 100) * parentPx.height) * lock) / parentPx.width) * 100);
       }
     }
     onChangePlacement(next);
   };
 
-  const touch = touchTargetWarning(placement);
+  const touch = touchTargetWarning(placement, parentPx);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
@@ -88,8 +92,8 @@ export function LayoutProperties({
               onChange({
                 aspect_lock: e.target.checked
                   ? round(
-                      ((placement.w / 100) * TOUCH_REFERENCE.width) /
-                        Math.max(0.0001, (placement.h / 100) * TOUCH_REFERENCE.height),
+                      ((placement.w / 100) * parentPx.width) /
+                        Math.max(0.0001, (placement.h / 100) * parentPx.height),
                     )
                   : null,
               })

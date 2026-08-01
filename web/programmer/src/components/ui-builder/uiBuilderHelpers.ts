@@ -1971,6 +1971,43 @@ export function touchTargetWarning(
   };
 }
 
+/**
+ * The pixel box an element's percentages are measured against, at the
+ * reference size -- the page, or the container it sits in, walked up through
+ * however many containers that takes.
+ *
+ * Anything expressed as a real-world ratio needs this. An aspect lock is a
+ * PIXEL ratio (that is what CSS aspect-ratio means), so seeding one from an
+ * element's current shape has to go through the box it actually sits in: a
+ * child that is 50% wide and 50% tall inside a wide container is a wide
+ * element, not a square one.
+ */
+export function referenceParentBox(
+  page: UIPage,
+  elementId: string,
+  layoutId?: string | null,
+): { width: number; height: number } {
+  const placements = resolvePlacements(page, layoutId);
+  const byId = new Map(page.elements.map((e) => [e.id, e]));
+  const chain: string[] = [];
+  let cursor = byId.get(elementId)?.parent ?? null;
+  const seen = new Set<string>([elementId]);
+  while (cursor && byId.has(cursor) && !seen.has(cursor)) {
+    seen.add(cursor);
+    chain.unshift(cursor);
+    cursor = byId.get(cursor)?.parent ?? null;
+  }
+  let width = TOUCH_REFERENCE.width;
+  let height = TOUCH_REFERENCE.height;
+  for (const id of chain) {
+    const box = placements[id];
+    if (!box) continue;
+    width = (box.w / 100) * width;
+    height = (box.h / 100) * height;
+  }
+  return { width, height };
+}
+
 /** Element types a finger actually has to hit. A label being small is fine. */
 const TOUCHABLE_TYPES = new Set([
   "button", "page_nav", "camera_preset", "select", "text_input", "keypad", "list",
@@ -1989,17 +2026,9 @@ export function findSmallTouchTargetIds(
     // A child is a percentage of its container, so the reference box is the
     // container's own pixels, not the page's -- half a page-width inside a
     // quarter-page container is an eighth of the panel.
-    let ref: { width: number; height: number } | undefined;
-    if (el.parent) {
-      const box = placements[el.parent];
-      if (box) {
-        ref = {
-          width: (box.w / 100) * TOUCH_REFERENCE.width,
-          height: (box.h / 100) * TOUCH_REFERENCE.height,
-        };
-      }
+    if (p && touchTargetWarning(p, referenceParentBox(page, el.id, layoutId))) {
+      ids.add(el.id);
     }
-    if (p && touchTargetWarning(p, ref)) ids.add(el.id);
   }
   return ids;
 }
