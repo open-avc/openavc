@@ -71,11 +71,11 @@ button.panel-element {
 
 #connection-status {
     position: fixed;
-    top: 4px;
-    right: 8px;
-    font-size: 11px;
-    padding: 2px 8px;
-    border-radius: 4px;
+    top: 0.2857rem;
+    right: 0.5714rem;
+    font-size: 0.7857rem;
+    padding: 2px 0.5714rem;
+    border-radius: 0.2857rem;
     z-index: 1000;
     opacity: 0.8;
     transition: opacity 0.3s;
@@ -101,9 +101,9 @@ button.panel-element {
 /* Reconnection info */
 #reconnect-info {
     position: fixed;
-    bottom: 8px;
-    right: 8px;
-    font-size: 11px;
+    bottom: 0.5714rem;
+    right: 0.5714rem;
+    font-size: 0.7857rem;
     color: var(--panel-text);
     opacity: 0.5;
     z-index: 1000;
@@ -169,8 +169,8 @@ button.panel-element {
 }
 .overlay-backdrop-blur {
     background: rgba(0, 0, 0, 0.3);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(0.5714rem);
+    -webkit-backdrop-filter: blur(0.5714rem);
 }
 .overlay-backdrop-none {
     background: transparent;
@@ -183,25 +183,25 @@ button.panel-element {
     background: var(--panel-bg, #1a1a2e);
     border-radius: var(--panel-border-radius);
     overflow: hidden;
-    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+    box-shadow: 0 1.1429rem 3.4286rem rgba(0, 0, 0, 0.6);
 }
 
 /* Dialog positioning */
 .overlay-dialog {
-    border-radius: 12px;
+    border-radius: 0.8571rem;
 }
 .overlay-pos-center {
     /* default — centered by parent flex */
 }
 .overlay-pos-top {
     position: absolute;
-    top: 32px;
+    top: 2.2857rem;
     left: 50%;
     transform: translateX(-50%);
 }
 .overlay-pos-bottom {
     position: absolute;
-    bottom: 32px;
+    bottom: 2.2857rem;
     left: 50%;
     transform: translateX(-50%);
 }
@@ -268,7 +268,7 @@ button.panel-element {
 /* Slide-up animation */
 .panel-overlay-slide-up .overlay-content {
     opacity: 0;
-    transform: translateY(40px);
+    transform: translateY(2.8571rem);
     transition: opacity 0.2s ease, transform 0.25s cubic-bezier(0.2, 0, 0.2, 1);
 }
 .panel-overlay-slide-up.active .overlay-content {
@@ -277,7 +277,7 @@ button.panel-element {
 }
 .panel-overlay-slide-up.dismissing .overlay-content {
     opacity: 0;
-    transform: translateY(40px);
+    transform: translateY(2.8571rem);
 }
 
 /* Slide-down animation */
@@ -354,17 +354,17 @@ button.panel-element {
     color: #fff;
 }
 .offline-icon {
-    font-size: 48px;
-    margin-bottom: 12px;
+    font-size: 3.4286rem;
+    margin-bottom: 0.8571rem;
     animation: pulse 1.5s infinite;
 }
 .offline-title {
-    font-size: 24px;
+    font-size: 1.7143rem;
     font-weight: 600;
-    margin-bottom: 8px;
+    margin-bottom: 0.5714rem;
 }
 .offline-message {
-    font-size: 14px;
+    font-size: 1rem;
     opacity: 0.7;
 }
 
@@ -382,31 +382,31 @@ button.panel-element {
 
 .lock-container {
     text-align: center;
-    padding: 40px;
+    padding: 2.8571rem;
 }
 
 .lock-icon {
-    font-size: 48px;
-    margin-bottom: 16px;
+    font-size: 3.4286rem;
+    margin-bottom: 1.1429rem;
 }
 
 .lock-title {
-    font-size: 24px;
+    font-size: 1.7143rem;
     font-weight: 600;
     color: var(--panel-text, #fff);
-    margin-bottom: 24px;
+    margin-bottom: 1.7143rem;
 }
 
 .lock-input {
     display: block;
-    width: 200px;
-    margin: 0 auto 16px;
-    padding: 12px 16px;
-    font-size: 24px;
+    width: 14.2857rem;
+    margin: 0 auto 1.1429rem;
+    padding: 0.8571rem 1.1429rem;
+    font-size: 1.7143rem;
     text-align: center;
-    letter-spacing: 8px;
+    letter-spacing: 0.5714rem;
     border: 2px solid var(--panel-accent, #2196F3);
-    border-radius: 8px;
+    border-radius: 0.5714rem;
     background: color-mix(in srgb, var(--panel-text) 10%, var(--panel-bg));
     color: var(--panel-text, #fff);
     outline: none;
@@ -414,18 +414,18 @@ button.panel-element {
 
 .lock-input:focus {
     border-color: var(--panel-accent, #2196F3);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--panel-accent, #2196F3) 30%, transparent);
+    box-shadow: 0 0 0 0.2143rem color-mix(in srgb, var(--panel-accent, #2196F3) 30%, transparent);
 }
 
 .lock-submit {
     display: block;
-    width: 200px;
+    width: 14.2857rem;
     margin: 0 auto;
-    padding: 12px;
-    font-size: 16px;
+    padding: 0.8571rem;
+    font-size: 1.1429rem;
     font-weight: 600;
     border: none;
-    border-radius: 8px;
+    border-radius: 0.5714rem;
     background: var(--panel-accent, #2196F3);
     color: var(--panel-button-text, #fff);
     cursor: pointer;
@@ -437,9 +437,9 @@ button.panel-element {
 
 .lock-error {
     color: var(--panel-danger, #ef4444);
-    font-size: 14px;
-    margin-top: 12px;
-    min-height: 20px;
+    font-size: 1rem;
+    margin-top: 0.8571rem;
+    min-height: 1.4286rem;
 }
 
 /* ===== Page Transitions ===== */
@@ -545,7 +545,7 @@ button.panel-element {
     to { opacity: 1; }
 }
 @keyframes elFadeUp {
-    from { opacity: 0; transform: translateY(12px); }
+    from { opacity: 0; transform: translateY(0.8571rem); }
     to { opacity: 1; transform: translateY(0); }
 }
 @keyframes elScaleIn {

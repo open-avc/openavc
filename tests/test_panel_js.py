@@ -104,6 +104,8 @@ SCENARIOS = [
     "layout_snap_overlay_follows_page_snap",
     "layout_style_units_are_rem",
     "layout_vmin_override_hook",
+    "layout_stylesheets_are_rem_except_hairlines",
+    "layout_type_scale_calibration",
 ]
 
 

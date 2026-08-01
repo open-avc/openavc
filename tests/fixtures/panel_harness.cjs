@@ -885,6 +885,41 @@ const tests = {
         assert(node.style.letterSpacing.endsWith('rem'), `tracking in rem, got ${node.style.letterSpacing}`);
     },
 
+    // The panel stylesheets are rem so a design scales with the glass. The
+    // exceptions are deliberate and narrow -- border/outline widths and
+    // anything <= 2px, which exist to be thin lines and would round away on a
+    // phone. Anything else left in px is a value that silently stops scaling.
+    layout_stylesheets_are_rem_except_hairlines() {
+        const offenders = [];
+        // Strip comments first. Prose mentions pixel sizes ("14px at the
+        // reference"), and a line-by-line skip misses the middle of a
+        // multi-line comment -- which is exactly how the sweep that wrote
+        // this rule managed to rewrite its own documentation.
+        for (const line of css.replace(/\/\*[\s\S]*?\*\//g, '').split('\n')) {
+            const decl = line.trim();
+            if (!decl.includes(':')) continue;
+            const prop = decl.split(':')[0].trim();
+            if (/^(border|outline)(-(top|right|bottom|left))?(-width)?$/.test(prop)) continue;
+            for (const m of decl.matchAll(/(?<![\w.-])(\d+(?:\.\d+)?)px/g)) {
+                if (parseFloat(m[1]) > 2) offenders.push(`${prop}: ${m[0]}`);
+            }
+        }
+        assert(offenders.length === 0,
+            `panel stylesheets must be rem; found ${offenders.length}: ${offenders.slice(0, 6).join(', ')}`);
+    },
+
+    // The type scale has to land on the old base size at the reference, or
+    // every rem below it is off by a constant and the migration's divide-by-14
+    // stops being exact.
+    layout_type_scale_calibration() {
+        const root = /:root\s*\{[^}]*font-size:\s*calc\(var\(--panel-type-scale,\s*([\d.]+)\)/.exec(css);
+        assert(root, 'the :root type scale rule is present');
+        const scale = parseFloat(root[1]);
+        // vmin at the 1280x800 reference is 8px.
+        assert(Math.abs(scale * 8 - 14) < 0.001,
+            `${scale}vmin must be 14px at the reference, got ${scale * 8}`);
+    },
+
     // The builder previews an overlay page in a box the size of the overlay,
     // not the screen, so it pins the type scale to the preset's vmin.
     layout_vmin_override_hook() {

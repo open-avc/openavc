@@ -1315,7 +1315,7 @@ class PanelApp {
                 tintColor: themedStyle.bg_color,
             });
             if (displayMode === 'image_text') {
-                el.style.textShadow = '0 1px 3px rgba(0,0,0,0.8)';
+                el.style.textShadow = '0 1px 0.2143rem rgba(0,0,0,0.8)';
             }
         }
 
@@ -1869,7 +1869,7 @@ class PanelApp {
                 const placeholder = document.createElement('div');
                 placeholder.textContent = 'Image not found';
                 placeholder.title = element.src;
-                placeholder.style.cssText = 'display:flex;align-items:center;justify-content:center;width:100%;height:100%;color:var(--panel-text);opacity:0.5;font-size:12px;';
+                placeholder.style.cssText = 'display:flex;align-items:center;justify-content:center;width:100%;height:100%;color:var(--panel-text);opacity:0.5;font-size:0.8571rem;';
                 el.appendChild(placeholder);
             };
             el.appendChild(img);
@@ -2313,8 +2313,8 @@ class PanelApp {
         } else {
             // --- Crosspoint view ---
             const extraColDefs = [];
-            if (showLock) extraColDefs.push('28px');
-            if (showMute) extraColDefs.push('28px');
+            if (showLock) extraColDefs.push('2rem');
+            if (showMute) extraColDefs.push('2rem');
             const table = document.createElement('div');
             table.className = 'matrix-grid';
             table.style.gridTemplateColumns = `auto repeat(${inputCount}, ${cellSize}rem) ${extraColDefs.join(' ')}`.trim();
@@ -2341,14 +2341,14 @@ class PanelApp {
                 const lockHdr = document.createElement('div');
                 lockHdr.className = 'matrix-header';
                 lockHdr.textContent = '\uD83D\uDD12';
-                lockHdr.style.fontSize = '10px';
+                lockHdr.style.fontSize = '0.7143rem';
                 table.appendChild(lockHdr);
             }
             if (showMute) {
                 const muteHdr = document.createElement('div');
                 muteHdr.className = 'matrix-header';
                 muteHdr.textContent = 'M';
-                muteHdr.style.fontSize = '10px';
+                muteHdr.style.fontSize = '0.7143rem';
                 table.appendChild(muteHdr);
             }
 
@@ -3298,12 +3298,12 @@ class PanelApp {
                 label.style.bottom = '0';
             }
             if (labelPos.endsWith('left')) {
-                label.style.left = '8px';
+                label.style.left = '0.5714rem';
             } else if (labelPos.endsWith('center')) {
                 label.style.left = '50%';
                 label.style.transform = 'translateX(-50%)';
             } else if (labelPos.endsWith('right')) {
-                label.style.right = '8px';
+                label.style.right = '0.5714rem';
             }
 
             el.appendChild(label);
@@ -3626,7 +3626,7 @@ class PanelApp {
             el.textContent = 'Plugin element (unconfigured)';
             el.style.color = 'var(--panel-text)';
             el.style.opacity = '0.5';
-            el.style.fontSize = '12px';
+            el.style.fontSize = '0.8571rem';
             el.style.display = 'flex';
             el.style.alignItems = 'center';
             el.style.justifyContent = 'center';
@@ -3693,7 +3693,7 @@ class PanelApp {
         // Loading indicator
         const loadingIndicator = document.createElement('div');
         loadingIndicator.textContent = 'Loading plugin...';
-        loadingIndicator.style.cssText = 'display:flex;align-items:center;justify-content:center;width:100%;height:100%;color:var(--panel-text);opacity:0.5;font-size:12px;position:absolute;inset:0;z-index:1;';
+        loadingIndicator.style.cssText = 'display:flex;align-items:center;justify-content:center;width:100%;height:100%;color:var(--panel-text);opacity:0.5;font-size:0.8571rem;position:absolute;inset:0;z-index:1;';
         el.style.position = 'relative';
         el.appendChild(loadingIndicator);
 
@@ -4372,9 +4372,9 @@ class PanelApp {
 
         // Add glow effect for active states
         if (color !== defaultColor) {
-            element.style.boxShadow = `0 0 10px ${color}`;
+            element.style.boxShadow = `0 0 0.7143rem ${color}`;
         } else {
-            element.style.boxShadow = '0 0 6px rgba(0,0,0,0.3)';
+            element.style.boxShadow = '0 0 0.4286rem rgba(0,0,0,0.3)';
         }
     }
 
@@ -4681,7 +4681,10 @@ class PanelApp {
 
         for (const [key, cssVar] of Object.entries(varMap)) {
             if (vars[key] != null) {
-                const val = typeof vars[key] === 'number' ? vars[key] + 'px' : vars[key];
+                // Numeric theme variables are measurements, and every stored
+                // measurement is rem now -- the same unit the stylesheets and
+                // the migration speak.
+                const val = typeof vars[key] === 'number' ? vars[key] + 'rem' : vars[key];
                 root.style.setProperty(cssVar, val);
             }
         }
@@ -4902,11 +4905,11 @@ class PanelApp {
         // Box shadow with presets
         if (style.box_shadow && style.box_shadow !== 'none') {
             const shadowPresets = {
-                sm: '0 2px 4px rgba(0,0,0,0.2)',
-                md: '0 4px 8px rgba(0,0,0,0.3)',
-                lg: '0 8px 16px rgba(0,0,0,0.4)',
-                glow: `0 0 12px ${style.text_color || 'rgba(33,150,243,0.5)'}`,
-                inset: 'inset 0 2px 4px rgba(0,0,0,0.3)',
+                sm: '0 0.1429rem 0.2857rem rgba(0,0,0,0.2)',
+                md: '0 0.2857rem 0.5714rem rgba(0,0,0,0.3)',
+                lg: '0 0.5714rem 1.1429rem rgba(0,0,0,0.4)',
+                glow: `0 0 0.8571rem ${style.text_color || 'rgba(33,150,243,0.5)'}`,
+                inset: 'inset 0 0.1429rem 0.2857rem rgba(0,0,0,0.3)',
             };
             el.style.boxShadow = shadowPresets[style.box_shadow] || style.box_shadow;
         }
@@ -5251,7 +5254,7 @@ class PanelApp {
 
         if (iconPos === 'top' || iconPos === 'bottom') {
             el.style.flexDirection = 'column';
-            el.style.gap = '4px';
+            el.style.gap = '0.2857rem';
             if (iconPos === 'top') {
                 el.appendChild(iconEl);
                 el.appendChild(textSpan);
@@ -5260,7 +5263,7 @@ class PanelApp {
                 el.appendChild(iconEl);
             }
         } else {
-            el.style.gap = '6px';
+            el.style.gap = '0.4286rem';
             if (iconPos === 'left') {
                 el.appendChild(iconEl);
                 el.appendChild(textSpan);

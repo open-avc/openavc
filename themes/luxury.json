@@ -22,8 +22,7 @@
         "warning": "#d4ac0d",
         "surface": "#141414",
         "surface_border": "#2a2620",
-        "grid_gap": 8,
-        "border_radius": 8,
+        "border_radius": 0.5714,
         "font_family": "Georgia, 'Times New Roman', serif"
     },
     "element_defaults": {
