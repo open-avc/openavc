@@ -19,7 +19,6 @@ from typing import Any
 
 from server import config
 from server.core.project_loader import (
-    GridConfig,
     ISCConfig,
     ProjectConfig,
     ProjectMeta,
@@ -441,7 +440,7 @@ def create_blank_project(project_id: str, project_name: str) -> ProjectConfig:
         ui=UIConfig(
             settings=UISettings(),
             pages=[
-                UIPage(id="main", name="Main", grid=GridConfig(), elements=[]),
+                UIPage(id="main", name="Main", elements=[]),
             ],
         ),
         scripts=[],

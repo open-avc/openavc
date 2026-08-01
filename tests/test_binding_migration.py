@@ -182,14 +182,14 @@ def test_master_elements_are_migrated():
 
 def test_version_bumped():
     out = migrate_0_6_to_0_7(_wrap({"value": {"source": "state", "key": "var.x"}}))
-    assert out["openavc_version"] == "0.7.0"
+    assert out["openavc_version"] == "0.8.0"
 
 
 def test_full_chain_from_0_6_reaches_current():
     data = _wrap({"variable": {"key": "var.volume"}, "change": [{"action": "macro", "macro": "m"}]})
     out, migrated = migrate_project(data)
     assert migrated is True
-    assert out["openavc_version"] == CURRENT_VERSION == "0.7.0"
+    assert out["openavc_version"] == CURRENT_VERSION == "0.8.0"
     b = _el_bindings(out)
     assert b["show"]["value"]["write_back"] is True
     assert b["do"]["change"] == [{"action": "macro", "macro": "m"}]

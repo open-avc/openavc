@@ -57,7 +57,7 @@ def _make_project():
     from server.core.project_loader import (
         ProjectConfig, ProjectMeta, DeviceConfig, VariableConfig,
         MacroConfig, MacroStep, TriggerConfig, UIConfig, UIPage,
-        UIElement, GridArea, GridConfig, ScriptConfig,
+        UIElement, Layout, Placement, ScriptConfig,
     )
     return ProjectConfig(
         project=ProjectMeta(id="test_project", name="Test Room"),
@@ -83,11 +83,15 @@ def _make_project():
             MacroConfig(id="presentation", name="Presentation Mode", steps=[]),
         ],
         ui=UIConfig(pages=[
-            UIPage(id="main", name="Main Control", grid=GridConfig(columns=12, rows=8), elements=[
-                UIElement(id="btn_on", type="button", label="System On", grid_area=GridArea(col=1, row=1, col_span=2, row_span=1)),
-                UIElement(id="btn_off", type="button", label="System Off", grid_area=GridArea(col=3, row=1, col_span=2, row_span=1)),
-                UIElement(id="vol_slider", type="slider", label="Volume", grid_area=GridArea(col=1, row=3, col_span=6, row_span=1)),
-            ]),
+            UIPage(id="main", name="Main Control", elements=[
+                UIElement(id="btn_on", type="button", label="System On"),
+                UIElement(id="btn_off", type="button", label="System Off"),
+                UIElement(id="vol_slider", type="slider", label="Volume"),
+            ], layouts=[Layout(id="landscape", orientation="landscape", primary=True, placements={
+                "btn_on": Placement(x=0.625, y=1.0, w=15.9375, h=11.375),
+                "btn_off": Placement(x=17.1875, y=1.0, w=15.9375, h=11.375),
+                "vol_slider": Placement(x=0.625, y=26.5, w=48.4375, h=11.375),
+            })]),
             UIPage(id="settings", name="Settings", elements=[]),
         ]),
         scripts=[
@@ -262,7 +266,7 @@ async def test_get_ui_page(handler, mock_agent, mock_engine):
     assert result["id"] == "main"
     assert result["name"] == "Main Control"
     assert len(result["elements"]) == 3
-    assert result["grid"]["columns"] == 12
+    assert result["layouts"][0]["primary"] is True
 
 
 @pytest.mark.asyncio
@@ -693,7 +697,7 @@ async def test_add_ui_page(handler, mock_agent, mock_engine):
             msg = _make_tool_call_msg("add_ui_page", {
                 "id": "lighting",
                 "name": "Lighting Control",
-                "grid": {"columns": 6, "rows": 4},
+                "snap": {"x": 12.5, "y": 20.0},
             })
             await handler.handle(msg)
         await _drain()
@@ -704,7 +708,7 @@ async def test_add_ui_page(handler, mock_agent, mock_engine):
 
     page = next(p for p in mock_engine.project.ui.pages if p.id == "lighting")
     assert page.name == "Lighting Control"
-    assert page.grid.columns == 6
+    assert page.snap.x == 12.5
 
 
 @pytest.mark.asyncio
@@ -756,9 +760,9 @@ async def test_add_ui_elements(handler, mock_agent, mock_engine):
                 "page_id": "main",
                 "elements": [
                     {"id": "led_power", "type": "status_led", "label": "Power",
-                     "grid_area": {"col": 1, "row": 5}},
+                     },
                     {"id": "lbl_status", "type": "label", "text": "Ready",
-                     "grid_area": {"col": 3, "row": 5, "col_span": 2}},
+                     },
                 ],
             })
             await handler.handle(msg)
@@ -832,12 +836,12 @@ async def test_update_ui_element(handler, mock_agent, mock_engine):
 
 
 @pytest.mark.asyncio
-async def test_update_ui_element_grid_area(handler, mock_agent, mock_engine):
+async def test_update_ui_element_placement(handler, mock_agent, mock_engine):
     with patch.object(handler, "_get_engine", return_value=mock_engine):
         with patch("server.core.project_loader.save_project"):
             msg = _make_tool_call_msg("update_ui_element", {
                 "element_id": "btn_on",
-                "grid_area": {"col": 5, "row": 2, "col_span": 3, "row_span": 2},
+                "placement": {"x": 30.0, "y": 12.5, "w": 25.0, "h": 22.75},
             })
             await handler.handle(msg)
         await _drain()
@@ -847,9 +851,10 @@ async def test_update_ui_element_grid_area(handler, mock_agent, mock_engine):
 
     page = next(p for p in mock_engine.project.ui.pages if p.id == "main")
     el = next(e for e in page.elements if e.id == "btn_on")
-    assert el.grid_area.col == 5
-    assert el.grid_area.row == 2
-    assert el.grid_area.col_span == 3
+    place = page.layouts[0].placements[el.id]
+    assert place.x == 30.0
+    assert place.y == 12.5
+    assert place.w == 25.0
 
 
 @pytest.mark.asyncio
@@ -999,38 +1004,38 @@ async def test_simulate_action_filters_background_state_changes(handler, mock_ag
 
 
 @pytest.mark.asyncio
-async def test_update_ui_page_grid_partial_merge(handler, mock_engine):
+async def test_update_ui_page_snap_partial_merge(handler, mock_engine):
     """M-137: a partial grid update keeps omitted fields + forward-compat keys."""
-    from server.core.project_loader import GridConfig
+    from server.core.project_loader import SnapConfig
 
     page = next(p for p in mock_engine.project.ui.pages if p.id == "main")
-    page.grid = GridConfig(columns=12, rows=4, custom_hint="keep-me")  # non-default + extra
+    page.snap = SnapConfig(enabled=True, x=12.5, y=20.0, custom_hint="keep-me")  # non-default + extra
 
     with patch.object(handler, "_get_engine", return_value=mock_engine):
         with patch("server.core.project_loader.save_project"):
-            result = await handler._update_ui_page({"page_id": "main", "grid": {"columns": 6}})
+            result = await handler._update_ui_page({"page_id": "main", "snap": {"x": 25.0}})
 
     assert result.get("status") == "updated"
     page = next(p for p in mock_engine.project.ui.pages if p.id == "main")
-    assert page.grid.columns == 6        # applied
-    assert page.grid.rows == 4           # NOT reset to the default (8)
-    assert page.grid.model_dump().get("custom_hint") == "keep-me"  # forward-compat survived
+    assert page.snap.x == 25.0           # applied
+    assert page.snap.y == 20.0           # NOT reset to the default (12.5)
+    assert page.snap.model_dump().get("custom_hint") == "keep-me"  # forward-compat survived
 
 
 @pytest.mark.asyncio
-async def test_update_ui_element_grid_area_partial_merge(handler, mock_engine):
-    """M-137: a partial grid_area update keeps omitted fields (no snap to 1)."""
+async def test_update_ui_element_placement_partial_merge(handler, mock_engine):
+    """M-137: a partial placement update keeps omitted fields (no snap to 0)."""
     with patch.object(handler, "_get_engine", return_value=mock_engine):
         with patch("server.core.project_loader.save_project"):
             # btn_on starts at col=1,row=1,col_span=2,row_span=1; move col only.
-            result = await handler._update_ui_element({"element_id": "btn_on", "grid_area": {"col": 5}})
+            result = await handler._update_ui_element({"element_id": "btn_on", "placement": {"x": 50.0}})
 
     assert result.get("status") == "updated"
     page = next(p for p in mock_engine.project.ui.pages if p.id == "main")
-    el = next(e for e in page.elements if e.id == "btn_on")
-    assert el.grid_area.col == 5         # applied
-    assert el.grid_area.col_span == 2    # NOT reset to the default (1)
-    assert el.grid_area.row == 1
+    place = page.layouts[0].placements["btn_on"]
+    assert place.x == 50.0        # applied
+    assert place.w == 15.9375     # NOT reset to the default (100.0)
+    assert place.y == 1.0
 
 
 # ===== SCHEDULE TOOLS =====
@@ -1097,7 +1102,7 @@ async def test_ui_tools_apply_through_seam(handler, mock_agent, mock_engine):
         with patch("server.core.project_loader.save_project"):
             msg = _make_tool_call_msg("add_ui_elements", {
                 "page_id": "main",
-                "elements": [{"id": "new_btn", "type": "button", "grid_area": {"col": 1, "row": 7}}],
+                "elements": [{"id": "new_btn", "type": "button"}],
             })
             await handler.handle(msg)
         await _drain()

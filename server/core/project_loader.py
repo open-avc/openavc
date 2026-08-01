@@ -15,7 +15,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class _ForwardCompatModel(BaseModel):
@@ -246,11 +246,49 @@ class MacroConfig(_ForwardCompatModel):
     cooldown_seconds: float = 0
 
 
-class GridArea(_ForwardCompatModel):
-    col: int = 1
-    row: int = 1
-    col_span: int = 1
-    row_span: int = 1
+class Placement(_ForwardCompatModel):
+    """Where an element sits, as a percentage of its parent box.
+
+    The parent is the page, or a container element the child names via
+    ``UIElement.parent``. Percentages mean a panel drawn once looks the same on
+    any screen of the same shape, which whole-cell grid coordinates could never
+    promise.
+    """
+
+    x: float = 0.0
+    y: float = 0.0
+    w: float = 100.0
+    h: float = 100.0
+
+
+class Layout(_ForwardCompatModel):
+    """One arrangement of a page's elements.
+
+    The elements themselves live on the page and are shared by every layout, so
+    adding a control adds it everywhere. A layout only says where things sit,
+    and a secondary layout only has to say what *moved* -- anything it leaves
+    out is inherited from the layout named in ``inherits``.
+    """
+
+    id: str
+    orientation: Literal["landscape", "portrait"] = "landscape"
+    primary: bool = False
+    inherits: str | None = None
+    placements: dict[str, Placement] = Field(default_factory=dict)
+    hidden: list[str] = Field(default_factory=list)
+
+
+class SnapConfig(_ForwardCompatModel):
+    """Authoring-only snap increment, in percent.
+
+    This is a ruler, not a container: changing it -- or switching it off --
+    never moves anything that is already placed. The defaults are the old
+    12x8 grid's spacing, so a fresh page still behaves the way it used to.
+    """
+
+    enabled: bool = True
+    x: float = 100.0 / 12
+    y: float = 100.0 / 8
 
 
 class UIElement(_ForwardCompatModel):
@@ -276,7 +314,10 @@ class UIElement(_ForwardCompatModel):
     preset_number: int | None = None
     icon: str | None = None  # Lucide icon name or assets:// reference
     icon_position: str | None = None  # left, right, top, bottom, center
-    icon_size: int | None = None  # px (12-64, default 24)
+    # Sizes are fractional on purpose: the layout engine stores them as rem
+    # (px / 14), so 24px lands as 1.7142857.... An int here would reject every
+    # migrated value.
+    icon_size: float | None = None  # rem (default 24px-equivalent)
     icon_color: str | None = None  # hex color, inherits text_color if not set
     display_mode: str | None = None  # text, icon_text, icon_only, image, image_text
     button_image: str | None = None  # asset ref or URL for the button image
@@ -303,7 +344,11 @@ class UIElement(_ForwardCompatModel):
     label_position: str | None = None  # group: label position
     collapsible: bool | None = None  # group: allow collapse/expand
     list_style: str | None = None  # list: static/selectable/multi_select/action
-    item_height: int | None = None  # list: row height in px
+    item_height: float | None = None  # list: row height in rem (see icon_size)
+    # Read by the slider renderer as element.thumb_size, honoured per-element
+    # and per-theme, but never declared here — it only round-tripped because
+    # the base model allows extras. Declared now so it is part of the contract.
+    thumb_size: float | None = None  # slider/fader: thumb size in rem
     items: list[dict[str, Any]] | None = None  # list/select: static items
     matrix_config: dict[str, Any] | None = None  # matrix: inputs/outputs/labels/route pattern
     matrix_style: str | None = None  # matrix: crosspoint/list
@@ -311,7 +356,12 @@ class UIElement(_ForwardCompatModel):
     plugin_type: str | None = None  # plugin-defined element type name
     plugin_id: str | None = None  # which plugin provides this element
     plugin_config: dict[str, Any] = Field(default_factory=dict)
-    grid_area: GridArea = Field(default_factory=GridArea)
+    # Geometry lives in the page's layouts, not on the element, so the same
+    # control can sit in different places in the landscape and portrait
+    # arrangements without being duplicated.
+    parent: str | None = None  # container element id, or None for page-level
+    aspect_lock: float | None = None  # width/height ratio to hold under stretch
+    css_class: str | None = None  # power-user hook; no editor yet
     style: dict[str, Any] = Field(default_factory=dict)
     bindings: dict[str, Any] = Field(default_factory=dict)
 
@@ -319,11 +369,6 @@ class UIElement(_ForwardCompatModel):
     @classmethod
     def id_no_dots(cls, v: str) -> str:
         return _validate_id(v, "UI element ID")
-
-
-class GridConfig(_ForwardCompatModel):
-    columns: int = 12
-    rows: int = 8
 
 
 class PageBackground(_ForwardCompatModel):
@@ -336,8 +381,11 @@ class PageBackground(_ForwardCompatModel):
 
 
 class OverlayConfig(_ForwardCompatModel):
-    width: int | None = None
-    height: int | None = None
+    # Percentages of the viewport, not pixels. An overlay used to be the one
+    # part of a panel still measured in hard px, which is why it was the first
+    # thing to look wrong on a different screen.
+    width: float | None = None
+    height: float | None = None
     position: str = "center"
     backdrop: str = "dim"
     dismiss_on_backdrop: bool = True
@@ -351,13 +399,35 @@ class UIPage(_ForwardCompatModel):
     page_type: str = "page"
     overlay: OverlayConfig | None = None
     background: PageBackground | None = None
-    grid: GridConfig = Field(default_factory=GridConfig)
+    snap: SnapConfig = Field(default_factory=SnapConfig)
     elements: list[UIElement] = Field(default_factory=list)
+    layouts: list[Layout] = Field(default_factory=list)
 
     @field_validator("id")
     @classmethod
     def id_no_dots(cls, v: str) -> str:
         return _validate_id(v, "UI page ID")
+
+    @model_validator(mode="after")
+    def ensure_one_primary_layout(self) -> "UIPage":
+        """A page always has exactly one primary layout to fall back to.
+
+        The runtime picks a layout by orientation and falls back to the primary
+        when nothing matches, so a page with no primary (or with several) has no
+        answer for an unmatched screen. Rather than reject the file, settle it:
+        an empty list gets a landscape primary, and if nobody is marked, the
+        first one is it.
+        """
+        if not self.layouts:
+            self.layouts = [Layout(id="landscape", orientation="landscape", primary=True)]
+            return self
+        primaries = [lay for lay in self.layouts if lay.primary]
+        if not primaries:
+            self.layouts[0].primary = True
+        elif len(primaries) > 1:
+            for extra in primaries[1:]:
+                extra.primary = False
+        return self
 
 
 class UISettings(_ForwardCompatModel):
@@ -369,7 +439,9 @@ class UISettings(_ForwardCompatModel):
     lock_code: str = ""
     idle_timeout_seconds: int = 0
     idle_page: str = "main"
-    orientation: str = "landscape"
+    # orientation removed in 0.8.0 -- it was one string for the whole project,
+    # which is exactly what stopped a project serving a landscape wall panel and
+    # a portrait phone at the same time. Orientation is now a layout property.
     page_transition: str = "none"
     page_transition_duration: int = 200
     element_entry: str = "none"
@@ -378,7 +450,17 @@ class UISettings(_ForwardCompatModel):
 
 
 class MasterElement(UIElement):
+    """An element repeated across pages.
+
+    It carries its own placements rather than borrowing a page's, because it has
+    to be valid on every page it appears on. They are percentages of the
+    viewport, keyed by orientation, and the runtime picks one the same way it
+    picks a page layout.
+    """
+
     pages: str | list[str] = "*"
+    placements: dict[str, Placement] = Field(default_factory=dict)
+    hidden: bool = False
 
 
 class PageGroup(_ForwardCompatModel):

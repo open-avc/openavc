@@ -39,7 +39,10 @@ class ProjectToolsMixin:
             "pages": [
                 {
                     "id": pg.id, "name": pg.name,
-                    "grid": pg.grid.model_dump(mode="json"),
+                    "layouts": [
+                        {"id": lay.id, "orientation": lay.orientation, "primary": lay.primary}
+                        for lay in pg.layouts
+                    ],
                     "element_ids": [el.id for el in pg.elements],
                 }
                 for pg in p.ui.pages

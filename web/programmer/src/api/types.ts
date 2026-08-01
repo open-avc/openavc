@@ -140,11 +140,33 @@ export interface MacroConfig {
   cooldown_seconds?: number;
 }
 
-export interface GridArea {
-  col: number;
-  row: number;
-  col_span: number;
-  row_span: number;
+/** Where an element sits, as a percentage of its parent box. */
+export interface Placement {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/**
+ * One arrangement of a page's elements. Elements live on the page and are
+ * shared by every layout; a layout only says where they sit, and a secondary
+ * layout only has to say what moved.
+ */
+export interface Layout {
+  id: string;
+  orientation: 'landscape' | 'portrait';
+  primary: boolean;
+  inherits?: string | null;
+  placements: Record<string, Placement>;
+  hidden: string[];
+}
+
+/** Authoring-only snap increment, in percent. Changing it moves nothing. */
+export interface SnapConfig {
+  enabled: boolean;
+  x: number;
+  y: number;
 }
 
 export interface UIElementOption {
@@ -231,14 +253,11 @@ export interface UIElement {
   plugin_type?: string;
   plugin_id?: string;
   plugin_config?: Record<string, unknown>;
-  grid_area: GridArea;
+  parent?: string | null;
+  aspect_lock?: number | null;
+  css_class?: string | null;
   style: Record<string, unknown>;
   bindings: Record<string, unknown>;
-}
-
-export interface GridConfig {
-  columns: number;
-  rows: number;
 }
 
 export interface OverlayConfig {
@@ -271,9 +290,9 @@ export interface UIPage {
   page_type?: string;
   overlay?: OverlayConfig;
   background?: PageBackground;
-  grid: GridConfig;
-  grid_gap?: number;
+  snap: SnapConfig;
   elements: UIElement[];
+  layouts: Layout[];
 }
 
 export interface UISettings {
@@ -285,7 +304,6 @@ export interface UISettings {
   lock_code: string;
   idle_timeout_seconds: number;
   idle_page: string;
-  orientation: string;
   page_transition: string;
   page_transition_duration: number;
   element_entry: string;
@@ -295,6 +313,9 @@ export interface UISettings {
 
 export interface MasterElement extends UIElement {
   pages: string | string[];
+  /** Viewport percentages keyed by orientation, so it is valid on every page. */
+  placements: Record<string, Placement>;
+  hidden: boolean;
 }
 
 export interface PageGroup {

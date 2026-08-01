@@ -21,7 +21,7 @@ def _migrate(elements, master_elements=None):
     }
     data, changed = migrate_project(project)
     assert changed is True
-    assert data["openavc_version"] == "0.7.0"
+    assert data["openavc_version"] == "0.8.0"
     return data["ui"]
 
 

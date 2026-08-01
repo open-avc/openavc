@@ -15,6 +15,18 @@ _SIMULATE_IGNORED_SOURCES = frozenset({
 })
 
 
+def _primary_layout(page: Any) -> Any:
+    """The layout a geometry edit lands in when the caller names no other.
+
+    The loader guarantees a page has exactly one primary, so this always finds
+    something; the fallback only exists for a page built by hand in a test.
+    """
+    for layout in page.layouts:
+        if layout.primary:
+            return layout
+    return page.layouts[0]
+
+
 def _merge_forward_compat(existing: Any, model_cls: type, partial: dict) -> Any:
     """Apply a partial update to a forward-compat (extra='allow') sub-model.
 
@@ -71,7 +83,7 @@ class UIToolsMixin:
             new_page = UIPage(
                 id=page_id,
                 name=input.get("name", page_id),
-                grid=input.get("grid", {}),
+                snap=input.get("snap", {}),
                 elements=elements,
             )
             # A UI-only change just swaps the project and pushes the new
@@ -104,12 +116,12 @@ class UIToolsMixin:
             if "name" in input:
                 page.name = input["name"]
                 changed.append("name")
-            if "grid" in input:
-                from server.core.project_loader import GridConfig
-                # Partial merge: keep omitted fields (don't reset rows/columns to
-                # defaults) and preserve any forward-compat keys.
-                page.grid = _merge_forward_compat(page.grid, GridConfig, input["grid"])
-                changed.append("grid")
+            if "snap" in input:
+                from server.core.project_loader import SnapConfig
+                # Partial merge: keep omitted fields (don't reset the increment
+                # to defaults) and preserve any forward-compat keys.
+                page.snap = _merge_forward_compat(page.snap, SnapConfig, input["snap"])
+                changed.append("snap")
             if "page_type" in input:
                 page.page_type = input["page_type"]
                 changed.append("page_type")
@@ -247,11 +259,20 @@ class UIToolsMixin:
                 target_el.label = input["label"]
             if "text" in input:
                 target_el.text = input["text"]
-            if "grid_area" in input:
-                from server.core.project_loader import GridArea
-                # Partial merge: keep omitted fields (don't snap col/row back to 1)
-                # and preserve any forward-compat keys.
-                target_el.grid_area = _merge_forward_compat(target_el.grid_area, GridArea, input["grid_area"])
+            if "placement" in input:
+                from server.core.project_loader import Placement
+                # Partial merge: keep omitted fields (don't snap x/y back to 0)
+                # and preserve any forward-compat keys. The placement lives on
+                # the page's layout, not the element.
+                layout = _primary_layout(page)
+                existing = layout.placements.get(target_el.id, Placement())
+                layout.placements[target_el.id] = _merge_forward_compat(
+                    existing, Placement, input["placement"],
+                )
+            if "parent" in input:
+                target_el.parent = input["parent"]
+            if "aspect_lock" in input:
+                target_el.aspect_lock = input["aspect_lock"]
             if "style" in input:
                 target_el.style = input["style"]
             if "bindings" in input:
