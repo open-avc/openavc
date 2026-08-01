@@ -9,6 +9,7 @@ import {
   type ThemeDefinition, type ThemeSummary,
 } from "../../api/restClient";
 import type { ProjectConfig, UIPage, UIElement, Placement } from "../../api/types";
+import { displayStyleValue, storeStyleValue, REM_BASE_PX } from "./uiBuilderHelpers";
 import { ConfirmDialog } from "../shared/ConfirmDialog";
 import { Modal } from "../shared/Modal";
 import {
@@ -343,7 +344,7 @@ function buildGalleryPage(): UIPage {
       id: "g_header",
       type: "label",
       text: "Theme Preview Gallery",
-      style: { font_size: 16, text_align: "center", font_weight: 700 },
+      style: { font_size: 16 / REM_BASE_PX, text_align: "center", font_weight: 700 },
       bindings: {},
     },
     {
@@ -513,7 +514,7 @@ function buildGalleryPage(): UIPage {
         output_labels: ["Main", "Conf", "Stream"],
         route_key_pattern: "gallery.route.*",
       },
-      style: { cell_size: 32 },
+      style: { cell_size: 32 / REM_BASE_PX },
       bindings: {},
     },
   ];
@@ -868,7 +869,7 @@ export function ThemeStudio({
       } else if (style === "layered") {
         for (const el of borderEls) {
           if (!defaults[el]) defaults[el] = {};
-          defaults[el].border_width = 1;
+          defaults[el].border_width = 1 / REM_BASE_PX;
         }
         if (!defaults.button) defaults.button = {};
         defaults.button.box_shadow = "0 2px 4px rgba(0,0,0,0.3)";
@@ -882,7 +883,7 @@ export function ThemeStudio({
       } else {
         for (const el of borderEls) {
           if (!defaults[el]) defaults[el] = {};
-          defaults[el].border_width = 1;
+          defaults[el].border_width = 1 / REM_BASE_PX;
         }
         for (const el of shadowEls) {
           if (!defaults[el]) defaults[el] = {};
@@ -2796,8 +2797,10 @@ function EditorColumn({
                     ) : tok.type === "number" ? (
                       <input
                         type="number"
-                        value={Number(val || 0)}
-                        onChange={(e) => onSetVar(tok.key, Number(e.target.value))}
+                        // A numeric theme variable is a measurement, and the
+                        // panel reads stored measurements as rem. Show px.
+                        value={(displayStyleValue(tok.key, Number(val || 0)) as number) ?? 0}
+                        onChange={(e) => onSetVar(tok.key, storeStyleValue(tok.key, Number(e.target.value)))}
                         min={0}
                         max={64}
                         style={{ flex: 1, fontSize: 11 }}
@@ -2959,9 +2962,17 @@ function EditorColumn({
                             ) : control.type === "number" ? (
                               <input
                                 type="number"
-                                value={val == null || val === "" ? "" : Number(val)}
+                                value={
+                                  val == null || val === ""
+                                    ? ""
+                                    : (displayStyleValue(control.source.key, Number(val)) as number)
+                                }
                                 onChange={(e) =>
-                                  setControl(e.target.value === "" ? undefined : Number(e.target.value))
+                                  setControl(
+                                    e.target.value === ""
+                                      ? undefined
+                                      : storeStyleValue(control.source.key, Number(e.target.value)),
+                                  )
                                 }
                                 style={{ flex: 1, fontSize: 10 }}
                               />

@@ -71,6 +71,13 @@ def helper_results() -> dict:
 
 # One pytest case per harness scenario, so a failure names the exact behaviour.
 SCENARIOS = [
+    "s001_px_to_rem",
+    "s001_rem_to_px",
+    "s001_round_trip_is_stable",
+    "s001_blank_clears",
+    "s001_only_lengths_convert",
+    "s001_display_and_store",
+    "s001_hairline_survives",
     "h038_ptp_origin",
     "h038_ptp_centre",
     "h038_ptp_offset_rect",

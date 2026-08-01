@@ -418,6 +418,88 @@ export function createDefaultElement(
   }
 }
 
+// --- Style units: the px the author types, the rem the panel stores ---
+//
+// Every stored measurement on an element is `rem`, because the panel's type
+// scale is the panel's size (1rem = 1.75vmin) and that is what makes a control
+// look the same on a 7" tablet and a 21" wall panel. But nobody designs in rem:
+// an integrator asks for a 24px label, not a 1.7143rem one.
+//
+// So the editors keep speaking px and convert at the boundary, which is exactly
+// what the 0.8.0 migration did to every existing project (px / 14). Get this
+// wrong in one direction and a typed 24 renders at 336px; get it wrong in the
+// other and every panel in the field silently shrinks by a factor of fourteen.
+
+/** 1rem at the 1280x800 reference, where `1.75vmin` resolves to 14px. */
+export const REM_BASE_PX = 14;
+
+/**
+ * Style keys the panel renders as `rem`.
+ *
+ * Everything else in `style` is a colour, a keyword, a unitless multiplier
+ * (`line_height`), a count (`meter_segments`, `tick_count`), a duration
+ * (`peak_hold_ms`) or an SVG viewBox width (`gauge_width`) -- none of which are
+ * lengths, and none of which convert.
+ */
+export const REM_STYLE_KEYS: ReadonlySet<string> = new Set([
+  "font_size",
+  "border_radius",
+  "border_width",
+  "padding",
+  "padding_vertical",
+  "padding_horizontal",
+  "margin",
+  "margin_vertical",
+  "margin_horizontal",
+  "letter_spacing",
+  "cell_size",
+]);
+
+/** Top-level element fields the panel renders as `rem`. */
+export const REM_ELEMENT_KEYS: ReadonlySet<string> = new Set([
+  "icon_size",
+  "item_height",
+  "thumb_size",
+]);
+
+/** Theme variables that are measurements rather than colours. */
+export const REM_THEME_VARIABLE_KEYS: ReadonlySet<string> = new Set(["border_radius"]);
+
+/** True when this key's value is a length the panel will suffix with `rem`. */
+export function isRemStyleKey(key: string): boolean {
+  return REM_STYLE_KEYS.has(key) || REM_ELEMENT_KEYS.has(key);
+}
+
+/** A stored rem value as the px an author recognises, at the reference size. */
+export function remToPx(rem: number | string | null | undefined): number | null {
+  if (rem === "" || rem == null) return null;
+  const n = typeof rem === "number" ? rem : Number(rem);
+  if (!Number.isFinite(n)) return null;
+  // Round to 2dp so a value that was authored in whole px comes back as whole
+  // px rather than 23.999999999999996.
+  return Math.round(n * REM_BASE_PX * 100) / 100;
+}
+
+/** The px an author typed, as the rem the panel stores. */
+export function pxToRem(px: number | string | null | undefined): number | null {
+  if (px === "" || px == null) return null;
+  const n = typeof px === "number" ? px : Number(px);
+  if (!Number.isFinite(n)) return null;
+  return Math.round((n / REM_BASE_PX) * 10 ** GEOMETRY_PRECISION) / 10 ** GEOMETRY_PRECISION;
+}
+
+/** Read a style/element field for display: px if it is a length, else as-is. */
+export function displayStyleValue(key: string, value: unknown): unknown {
+  if (!isRemStyleKey(key) || typeof value !== "number") return value;
+  return remToPx(value);
+}
+
+/** Write a style/element field from an editor: px in, rem out for lengths. */
+export function storeStyleValue(key: string, value: unknown): unknown {
+  if (!isRemStyleKey(key) || typeof value !== "number") return value;
+  return pxToRem(value);
+}
+
 // --- Percentage geometry ---
 //
 // Geometry is a percentage of the parent box -- the page, or the container an

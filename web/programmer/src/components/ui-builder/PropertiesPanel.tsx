@@ -8,7 +8,14 @@ import { StyleProperties } from "./PropertySections/StyleProperties";
 import { BindingProperties } from "./PropertySections/BindingProperties";
 import { AssetPicker } from "./AssetPicker";
 import { InlineColorPicker } from "../shared/InlineColorPicker";
-import { getPlacement, withPlacement, pageSnap, referenceParentBox } from "./uiBuilderHelpers";
+import {
+  getPlacement,
+  withPlacement,
+  pageSnap,
+  referenceParentBox,
+  displayStyleValue,
+  storeStyleValue,
+} from "./uiBuilderHelpers";
 
 interface ThemeSummary {
   id: string;
@@ -142,11 +149,25 @@ export function PropertiesPanel({
                 <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                   <input
                     type="number"
-                    value={common != null ? Number(common) : ""}
+                    // Measurements are shown in px and stored in rem, the same
+                    // boundary the single-element editor keeps.
+                    value={common != null ? (displayStyleValue(key, Number(common)) as number) : ""}
                     // "mixed" only when the elements genuinely disagree; a shared
                     // unset value shows the inherited theme default instead.
-                    placeholder={mixed ? "mixed" : themeDefault != null ? String(themeDefault) : ""}
-                    onChange={(e) => applyStyleToAll({ [key]: e.target.value ? Number(e.target.value) : undefined })}
+                    placeholder={
+                      mixed
+                        ? "mixed"
+                        : themeDefault != null
+                        ? String(displayStyleValue(key, Number(themeDefault)))
+                        : ""
+                    }
+                    onChange={(e) =>
+                      applyStyleToAll({
+                        [key]: e.target.value
+                          ? storeStyleValue(key, Number(e.target.value))
+                          : undefined,
+                      })
+                    }
                     style={{ width: 60, padding: "2px 4px", fontSize: 11, borderRadius: 3, border: "1px solid var(--border-color)", background: "var(--bg-primary)", color: "var(--text-primary)", textAlign: "center" }}
                   />
                   {unit && <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{unit}</span>}

@@ -1,4 +1,5 @@
 import type { UIElement } from "../../../api/types";
+import { displayStyleValue, storeStyleValue } from "../uiBuilderHelpers";
 import { AssetPicker } from "../AssetPicker";
 import { InlineColorPicker } from "../../shared/InlineColorPicker";
 
@@ -20,8 +21,29 @@ const SHADOW_PRESETS: Record<string, string> = {
 export function StyleProperties({ element, onChange, themeDefaults }: StylePropertiesProps) {
   const style = element.style || {};
 
+  // Measurements are typed in px and stored in rem — the panel's own unit, so
+  // a 24px label stays 24px on the reference panel and scales from there. A raw
+  // number written straight through would be read as rem and render fourteen
+  // times too big.
   const handleStyleChange = (key: string, value: unknown) => {
-    onChange({ style: { ...style, [key]: value === undefined || value === "" ? undefined : value } });
+    const stored = value === undefined || value === "" ? undefined : storeStyleValue(key, value);
+    onChange({ style: { ...style, [key]: stored } });
+  };
+
+  /** What the editor shows for a key: px for measurements, as-is otherwise. */
+  const shown = (key: string): number | string => {
+    const v = style[key];
+    if (v == null || v === "") return "";
+    const display = displayStyleValue(key, Number(v));
+    return typeof display === "number" ? display : "";
+  };
+
+  /** The inherited theme value, in the same px the editor shows. */
+  const shownDefault = (key: string): string => {
+    const v = themeDefaults?.[key];
+    if (v == null || v === "") return "";
+    const display = displayStyleValue(key, Number(v));
+    return display == null ? "" : String(display);
   };
 
   // Check if a style property is explicitly set on this element (vs inherited from theme)
@@ -168,14 +190,14 @@ export function StyleProperties({ element, onChange, themeDefaults }: StylePrope
       <StyleRow label="Font Size" tooltip="Text size in pixels">
         <input
           type="number"
-          value={style.font_size != null ? Number(style.font_size) : ""}
+          value={shown("font_size")}
           onChange={(e) =>
             handleStyleChange(
               "font_size",
               e.target.value ? Number(e.target.value) : undefined,
             )
           }
-          placeholder={themeDefaults?.font_size != null ? String(themeDefaults.font_size) : "14"}
+          placeholder={shownDefault("font_size") || "14"}
           min={8}
           max={72}
           style={{ width: 64, padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
@@ -190,11 +212,11 @@ export function StyleProperties({ element, onChange, themeDefaults }: StylePrope
                 borderRadius: 3,
                 fontSize: 10,
                 color:
-                  Number(style.font_size) === size
+                  shown("font_size") === size
                     ? "var(--accent)"
                     : "var(--text-muted)",
                 background:
-                  Number(style.font_size) === size
+                  shown("font_size") === size
                     ? "var(--accent-dim)"
                     : "transparent",
               }}
@@ -293,7 +315,7 @@ export function StyleProperties({ element, onChange, themeDefaults }: StylePrope
       <StyleRow label="Letter Spacing" tooltip="Space between individual letters (pixels)">
         <input
           type="number"
-          value={style.letter_spacing != null ? Number(style.letter_spacing) : ""}
+          value={shown("letter_spacing")}
           onChange={(e) =>
             handleStyleChange(
               "letter_spacing",
@@ -311,7 +333,7 @@ export function StyleProperties({ element, onChange, themeDefaults }: StylePrope
       <StyleRow label="Line Height" tooltip="Space between lines of text (multiplier of font size, e.g. 1.5 = 50% extra space)">
         <input
           type="number"
-          value={style.line_height != null ? Number(style.line_height) : ""}
+          value={shown("line_height")}
           onChange={(e) =>
             handleStyleChange(
               "line_height",
@@ -350,14 +372,14 @@ export function StyleProperties({ element, onChange, themeDefaults }: StylePrope
       >
         <input
           type="number"
-          value={style.border_width != null ? Number(style.border_width) : ""}
+          value={shown("border_width")}
           onChange={(e) =>
             handleStyleChange(
               "border_width",
               e.target.value ? Number(e.target.value) : undefined,
             )
           }
-          placeholder={themeDefaults?.border_width != null ? String(themeDefaults.border_width) : "0"}
+          placeholder={shownDefault("border_width") || "0"}
           min={0}
           max={20}
           style={{ width: 56, padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
@@ -407,14 +429,14 @@ export function StyleProperties({ element, onChange, themeDefaults }: StylePrope
       >
         <input
           type="number"
-          value={style.border_radius != null ? Number(style.border_radius) : ""}
+          value={shown("border_radius")}
           onChange={(e) =>
             handleStyleChange(
               "border_radius",
               e.target.value ? Number(e.target.value) : undefined,
             )
           }
-          placeholder={themeDefaults?.border_radius != null ? String(themeDefaults.border_radius) : "8"}
+          placeholder={shownDefault("border_radius") || "8"}
           min={0}
           max={50}
           style={{ width: 64, padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
@@ -461,10 +483,10 @@ export function StyleProperties({ element, onChange, themeDefaults }: StylePrope
       {/* --- Margin --- */}
       <SectionLabel>Margin</SectionLabel>
 
-      <StyleRow label="All Sides" tooltip="Space between the element edges and its grid cell (pixels)">
+      <StyleRow label="All Sides" tooltip="Space between the element edges and its box (pixels)">
         <input
           type="number"
-          value={style.margin != null ? Number(style.margin) : ""}
+          value={shown("margin")}
           onChange={(e) =>
             handleStyleChange(
               "margin",
@@ -482,7 +504,7 @@ export function StyleProperties({ element, onChange, themeDefaults }: StylePrope
       <StyleRow label="Horizontal" tooltip="Left and right margin (overrides All Sides for left/right)">
         <input
           type="number"
-          value={style.margin_horizontal != null ? Number(style.margin_horizontal) : ""}
+          value={shown("margin_horizontal")}
           onChange={(e) =>
             handleStyleChange(
               "margin_horizontal",
@@ -500,7 +522,7 @@ export function StyleProperties({ element, onChange, themeDefaults }: StylePrope
       <StyleRow label="Vertical" tooltip="Top and bottom margin (overrides All Sides for top/bottom)">
         <input
           type="number"
-          value={style.margin_vertical != null ? Number(style.margin_vertical) : ""}
+          value={shown("margin_vertical")}
           onChange={(e) =>
             handleStyleChange(
               "margin_vertical",
@@ -521,7 +543,7 @@ export function StyleProperties({ element, onChange, themeDefaults }: StylePrope
       <StyleRow label="All Sides" tooltip="Equal padding on all four sides of the element (pixels)">
         <input
           type="number"
-          value={style.padding != null ? Number(style.padding) : ""}
+          value={shown("padding")}
           onChange={(e) =>
             handleStyleChange(
               "padding",
@@ -539,7 +561,7 @@ export function StyleProperties({ element, onChange, themeDefaults }: StylePrope
       <StyleRow label="Horizontal" tooltip="Left and right padding (overrides All Sides for left/right)">
         <input
           type="number"
-          value={style.padding_horizontal != null ? Number(style.padding_horizontal) : ""}
+          value={shown("padding_horizontal")}
           onChange={(e) =>
             handleStyleChange(
               "padding_horizontal",
@@ -557,7 +579,7 @@ export function StyleProperties({ element, onChange, themeDefaults }: StylePrope
       <StyleRow label="Vertical" tooltip="Top and bottom padding (overrides All Sides for top/bottom)">
         <input
           type="number"
-          value={style.padding_vertical != null ? Number(style.padding_vertical) : ""}
+          value={shown("padding_vertical")}
           onChange={(e) =>
             handleStyleChange(
               "padding_vertical",
@@ -763,7 +785,7 @@ export function StyleProperties({ element, onChange, themeDefaults }: StylePrope
       <StyleRow label="Transition Speed" tooltip="How fast this element's style changes animate (in milliseconds). Affects feedback state transitions.">
         <input
           type="number"
-          value={style.transition_duration != null ? Number(style.transition_duration) : ""}
+          value={shown("transition_duration")}
           onChange={(e) => handleStyleChange("transition_duration", e.target.value ? Number(e.target.value) : undefined)}
           placeholder="200"
           min={0}

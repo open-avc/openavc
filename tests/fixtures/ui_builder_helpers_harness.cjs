@@ -32,6 +32,79 @@ const SNAP_ON = { enabled: true, x: 100 / 12, y: 100 / 8 };
 const SNAP_OFF = { enabled: false, x: 100 / 12, y: 100 / 8 };
 const near = (a, b, tol = 1e-4) => Math.abs(a - b) < tol;
 
+// --- S-001: the px<->rem boundary between the editors and the panel ---
+// Every stored measurement is rem, because the panel's type scale is its own
+// size. Nobody designs in rem, so the editors speak px and convert here. Get
+// this backwards and a 24px font renders at 336px on real glass.
+{
+  results.s001_px_to_rem = {
+    pass: H.pxToRem(14) === 1 && H.pxToRem(24) === 1.7143 && H.pxToRem(0) === 0,
+    detail: {14: H.pxToRem(14), 24: H.pxToRem(24), 0: H.pxToRem(0) },
+  };
+}
+{
+  results.s001_rem_to_px = {
+    pass: H.remToPx(1) === 14 && H.remToPx(1.7143) === 24 && H.remToPx(0) === 0,
+    detail: { 1: H.remToPx(1), "1.7143": H.remToPx(1.7143), 0: H.remToPx(0) },
+  };
+}
+{
+  // A value typed in px must survive the round trip unchanged, or every save
+  // walks it a little further from what the author asked for.
+  const sizes = [8, 10, 12, 14, 16, 18, 20, 24, 28, 32, 44, 64];
+  const bad = sizes.filter((px) => H.remToPx(H.pxToRem(px)) !== px);
+  results.s001_round_trip_is_stable = { pass: bad.length === 0, detail: bad };
+}
+{
+  // Empty and non-numeric input clears rather than storing NaN.
+  results.s001_blank_clears = {
+    pass: H.pxToRem("") === null && H.pxToRem(null) === null &&
+      H.pxToRem(undefined) === null && H.pxToRem("abc") === null,
+    detail: { blank: H.pxToRem(""), nul: H.pxToRem(null), junk: H.pxToRem("abc") },
+  };
+}
+{
+  // Only lengths convert. A line height is a multiplier, an opacity is a
+  // fraction, a segment count is a count -- converting any of them is a bug.
+  const lengths = ["font_size", "border_radius", "border_width", "padding",
+    "padding_vertical", "padding_horizontal", "margin", "margin_vertical",
+    "margin_horizontal", "letter_spacing", "cell_size", "icon_size",
+    "item_height", "thumb_size"];
+  const notLengths = ["line_height", "opacity", "background_opacity",
+    "meter_segments", "tick_count", "peak_hold_ms", "gauge_width", "arc_angle",
+    "font_weight", "transition_duration", "image_opacity"];
+  results.s001_only_lengths_convert = {
+    pass: lengths.every((k) => H.isRemStyleKey(k)) &&
+      notLengths.every((k) => !H.isRemStyleKey(k)),
+    detail: {
+      missed: lengths.filter((k) => !H.isRemStyleKey(k)),
+      overreached: notLengths.filter((k) => H.isRemStyleKey(k)),
+    },
+  };
+}
+{
+  // The display/store pair is what the editors actually call.
+  results.s001_display_and_store = {
+    pass: H.displayStyleValue("font_size", 1.7143) === 24 &&
+      H.storeStyleValue("font_size", 24) === 1.7143 &&
+      H.displayStyleValue("line_height", 1.2) === 1.2 &&
+      H.storeStyleValue("line_height", 1.2) === 1.2 &&
+      H.displayStyleValue("bg_color", "#fff") === "#fff",
+    detail: {
+      fontShown: H.displayStyleValue("font_size", 1.7143),
+      fontStored: H.storeStyleValue("font_size", 24),
+      lineHeight: H.displayStyleValue("line_height", 1.2),
+    },
+  };
+}
+{
+  // A 1px hairline must not round away to nothing on the way to rem and back.
+  results.s001_hairline_survives = {
+    pass: H.remToPx(H.pxToRem(1)) === 1 && H.pxToRem(1) > 0,
+    detail: { rem: H.pxToRem(1), backToPx: H.remToPx(H.pxToRem(1)) },
+  };
+}
+
 // --- H-038: pointerToPercent maps the pointer to the box it fell in ---
 // The page carries no padding any more (the gutter died with the grid), so
 // this is the whole rect edge to edge and the drop lands under the pointer.

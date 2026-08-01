@@ -5,6 +5,7 @@ import { CopyButton } from "../../shared/CopyButton";
 import { IconPicker } from "../IconPicker";
 import { AssetPicker } from "../AssetPicker";
 import { getAssetUrl } from "../../../api/systemClient";
+import { pxToRem, remToPx } from "../uiBuilderHelpers";
 import { InlineColorPicker } from "../../shared/InlineColorPicker";
 import { VariableKeyPicker } from "../../shared/VariableKeyPicker";
 import { parseStateOptionList } from "../../shared/paramOptions";
@@ -313,8 +314,8 @@ export function BasicProperties({
           <FieldRow label="Thumb Size">
             <input
               type="number"
-              value={element.thumb_size ?? ""}
-              onChange={(e) => onChange({ thumb_size: numOrUndefined(e.target.value) })}
+              value={remToPx(element.thumb_size) ?? ""}
+              onChange={(e) => onChange({ thumb_size: pxToRem(numOrUndefined(e.target.value)) ?? undefined })}
               placeholder="44"
               style={{ flex: 1 }}
               min={16}
@@ -794,7 +795,7 @@ export function BasicProperties({
             </select>
           </FieldRow>
           <FieldRow label="Item Height">
-            <input type="number" value={element.item_height ?? ""} onChange={(e) => onChange({ item_height: numOrUndefined(e.target.value) })} placeholder="44" min={24} max={120} style={{ flex: 1 }} />
+            <input type="number" value={remToPx(element.item_height) ?? ""} onChange={(e) => onChange({ item_height: pxToRem(numOrUndefined(e.target.value)) ?? undefined })} placeholder="44" min={24} max={120} style={{ flex: 1 }} />
             <span style={{ fontSize: 10, color: "var(--text-muted)" }}>px</span>
           </FieldRow>
           <ListItemsEditor
@@ -969,8 +970,8 @@ export function BasicProperties({
           <FieldRow label="Cell Size">
             <input
               type="number"
-              value={(element.style?.cell_size as number) ?? 44}
-              onChange={(e) => onChange({ style: { ...element.style, cell_size: e.target.value ? Number(e.target.value) : undefined } })}
+              value={remToPx(element.style?.cell_size as number) ?? 44}
+              onChange={(e) => onChange({ style: { ...element.style, cell_size: e.target.value ? pxToRem(Number(e.target.value)) : undefined } })}
               min={24} max={80} style={{ flex: 1 }}
             />
             <span style={{ fontSize: 10, color: "var(--text-muted)" }}>px</span>
@@ -1057,10 +1058,10 @@ export function BasicProperties({
               <FieldRow label="Icon Size">
                 <input
                   type="number"
-                  value={element.icon_size ?? 24}
+                  value={remToPx(element.icon_size) ?? 24}
                   onChange={(e) =>
                     onChange({
-                      icon_size: e.target.value ? Number(e.target.value) : undefined,
+                      icon_size: e.target.value ? pxToRem(Number(e.target.value)) ?? undefined : undefined,
                     })
                   }
                   min={12}
