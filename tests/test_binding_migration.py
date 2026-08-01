@@ -182,7 +182,7 @@ def test_master_elements_are_migrated():
 
 def test_version_bumped():
     out = migrate_0_6_to_0_7(_wrap({"value": {"source": "state", "key": "var.x"}}))
-    assert out["openavc_version"] == "0.8.0"
+    assert out["openavc_version"] == "0.7.0"
 
 
 def test_full_chain_from_0_6_reaches_current():

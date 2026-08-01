@@ -374,7 +374,8 @@ def test_overlay_page():
     page = project.ui.pages[0]
     assert page.page_type == "overlay"
     assert page.overlay is not None
-    assert page.overlay.width == 400
+    # 400px on the 1280-wide reference, now stored as a viewport percentage
+    assert page.overlay.width == 31.25
     assert page.overlay.backdrop == "dim"
 
 
@@ -554,11 +555,17 @@ def test_installer_seed_project_matches_v04_schema():
     )
     assert page_extras == set(), f"ui.pages[0] extras: {page_extras}"
 
-    # ui.pages[0].grid — only columns, rows
-    grid_extras = set(data["ui"]["pages"][0]["grid"].keys()) - set(
-        type(project.ui.pages[0].grid).model_fields.keys()
+    # ui.pages[0].snap — only enabled, x, y
+    snap_extras = set(data["ui"]["pages"][0]["snap"].keys()) - set(
+        type(project.ui.pages[0].snap).model_fields.keys()
     )
-    assert grid_extras == set(), f"grid extras: {grid_extras}"
+    assert snap_extras == set(), f"snap extras: {snap_extras}"
+
+    # ui.pages[0].layouts[0] — the primary layout the runtime falls back to
+    layout_extras = set(data["ui"]["pages"][0]["layouts"][0].keys()) - set(
+        type(project.ui.pages[0].layouts[0]).model_fields.keys()
+    )
+    assert layout_extras == set(), f"layout extras: {layout_extras}"
 
     # isc — uses shared_state, auth_key, enabled (not instance_name, shared_variables)
     isc_extras = set(data["isc"].keys()) - set(type(project.isc).model_fields.keys())

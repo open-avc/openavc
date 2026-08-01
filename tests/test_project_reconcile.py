@@ -43,7 +43,7 @@ STARTUP_MACRO = {
 def _project_dict(*, name="P", variables=None, macros=None, scripts=None,
                   ui_elements=None, devices=None, connections=None):
     return {
-        "openavc_version": "0.7.0",
+        "openavc_version": "0.8.0",
         "project": {"id": "p", "name": name},
         "variables": variables or [],
         "macros": macros or [],
@@ -55,9 +55,17 @@ def _project_dict(*, name="P", variables=None, macros=None, scripts=None,
         "ui": {
             "settings": {},
             "pages": [
+                # Built at the current version on purpose: this fixture is
+                # both written to disk (and so migrated on load) and handed
+                # straight to ProjectConfig. An older shape would take the two
+                # paths to different UI sections and every edit would look like
+                # a UI edit.
                 {"id": "main", "name": "Main",
-                 "grid": {"columns": 12, "rows": 8},
-                 "elements": ui_elements or []},
+                 "snap": {"enabled": True, "x": 8.3333, "y": 12.5},
+                 "elements": ui_elements or [],
+                 "layouts": [{"id": "landscape", "orientation": "landscape",
+                              "primary": True, "inherits": None,
+                              "placements": {}, "hidden": []}]},
             ],
         },
         "isc": {"enabled": False, "shared_state": [], "peers": [], "auth_key": ""},

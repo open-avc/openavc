@@ -142,12 +142,13 @@ def test_master_elements_are_migrated_too():
 
 
 def test_already_migrated_project_is_not_remangled():
-    # A 0.7.0 project must pass through untouched (the version gate protects the
-    # non-idempotent transform from wiping already-migrated bindings).
+    # A current-version project must pass through untouched (the version gate
+    # protects the non-idempotent transform from wiping already-migrated
+    # bindings).
     showdo = {"show": {"value": {"source": "state", "key": "var.v", "write_back": True}},
               "do": {"press": [{"action": "macro", "macro": "m"}]}}
     project = {
-        "openavc_version": "0.7.0",
+        "openavc_version": "0.8.0",
         "ui": {"pages": [{"id": "p1", "elements": [{"id": "e", "bindings": showdo}]}]},
     }
     data, changed = migrate_project(project)

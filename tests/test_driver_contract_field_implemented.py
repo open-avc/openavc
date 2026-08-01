@@ -100,6 +100,12 @@ NOT_AN_IMPLEMENTATION = frozenset({
     "server/drivers/spec.py",
     "server/drivers/contract_gen.py",
     "server/drivers/contract_gen_ts.py",
+    # The project-file format migration. It reads the 0.7.0 UI page grid,
+    # whose `columns`/`rows` share a spelling with a config table's, so it
+    # supplies configSchemaEntry's anchor while implementing nothing in the
+    # driver contract -- and a dict `.values()` call beside it was enough to
+    # make config_schema.*.values look read by the runtime.
+    "server/core/project_migration.py",
 })
 
 # The runtime half is the whole server plus the simulator: a contract field is
@@ -154,6 +160,26 @@ RUNTIME_OPT_OUT = {
     "configSchemaEntry.secret":
         "Connection-form presentation: render masked "
         "(configFieldKind -> password). The value is stored as typed.",
+    # These four were passing on a coincidence until 2026-08-01. The scoped
+    # search wants `columns` -- configSchemaEntry's distinctive sibling -- in
+    # the same file as the field, and the only `columns` in reach was
+    # GridConfig.columns, the UI page grid's column count, which has nothing
+    # to do with a config table. Deleting the grid for the layout engine took
+    # the anchor with it and the search correctly reported it had no evidence.
+    # It never had any: the runtime hands config_schema to the IDE whole and
+    # reads only `secret` and `default` (avcdriver_semantic's masked-default
+    # warning), so these belong here beside the rest of the block.
+    "configSchemaEntry.required":
+        "Connection-form validation: the field is mandatory in the device "
+        "config form. Nothing on the wire consults it.",
+    "configSchemaEntry.description":
+        "Connection-form presentation: prose shown beside the input.",
+    "configSchemaEntry.min":
+        "Connection-form validation: numeric lower bound applied by the IDE "
+        "while editing.",
+    "configSchemaEntry.max":
+        "Connection-form validation: numeric upper bound applied by the IDE "
+        "while editing.",
     # config_schema's `columns` and help's `overview`/`connection` belong here
     # on the same reasoning, and are deliberately NOT listed: each is declared
     # in only one block, so it takes the unscoped grep and passes on ordinary
@@ -169,6 +195,13 @@ RUNTIME_OPT_OUT = {
 # that proves it. Keep them near-empty: a growing list means the scoping rule
 # needs rethinking, not more entries.
 RUNTIME_BLIND_SPOTS = {
+    "configSchemaEntry.default":
+        "Read by avcdriver_semantic's masked-default check "
+        "(`field_def.get(\"default\")` inside its config_schema loop), which "
+        "is what refuses to ship a real password baked into a driver file. "
+        "That file names neither `columns` nor `row_label`, configSchemaEntry's "
+        "only two anchors, so the scoped search cannot see it. It passed until "
+        "2026-08-01 on the UI page grid's `columns` living in project_loader.py.",
     "deviceSettingEntry.regex":
         "Read by base.py's _coerce_device_setting_value "
         "(`sdef.get(\"regex\") or sdef.get(\"pattern\")`). deviceSettingEntry "
@@ -176,13 +209,31 @@ RUNTIME_BLIND_SPOTS = {
         "and that function names none of them.",
 }
 
-FRONTEND_BLIND_SPOTS: dict[str, str] = {}
+FRONTEND_BLIND_SPOTS = {
+    "configSchemaEntry.secret":
+        "Edited by ConfigSchemaEditor (the 'Secret' checkbox writes "
+        "field.secret). That file names no distinctive sibling of "
+        "configSchemaEntry -- its anchors are `columns` and `row_label`, "
+        "both of which live in ConfigTableEditor instead -- so the scoped "
+        "search cannot see it. It read as implemented until 2026-08-01 only "
+        "because api/types.ts happened to declare `secret` beside the UI "
+        "page grid's `columns`.",
+}
 
 # Fields with no editor in the Programmer IDE. An entry here is a statement
 # that an author has to write this field by hand in YAML, so keep it short
 # and keep the reason honest: "deliberate" and "not built yet" are different
 # things and the difference is what a later reader needs.
 FRONTEND_OPT_OUT = {
+    # Not built yet, as opposed to deliberate. ConfigSchemaEditor writes
+    # label, description, required, secret and values; a config field's
+    # `regex` has no control anywhere in the IDE, so an author has to add it
+    # by hand in YAML. This was masked the same way secret was: types.ts
+    # carried `regex` next to the UI grid's `columns`, and deleting the grid
+    # for the layout engine took the false evidence with it.
+    "configSchemaEntry.regex":
+        "Not built yet: no control writes a config field's regex. Authors "
+        "add it by hand in YAML. Tracked in the backlog.",
     "simulatorSection.receive":
         "Deliberate: simulator command handlers have no form UI. The "
         "editor shows a count and says to edit the file directly.",

@@ -1,5 +1,5 @@
 {
-    "openavc_version": "0.7.0",
+    "openavc_version": "0.8.0",
     "project": {
         "id": "New_Room",
         "name": "New Room",
@@ -25,7 +25,6 @@
             "lock_code": "",
             "idle_timeout_seconds": 0,
             "idle_page": "main",
-            "orientation": "landscape",
             "page_transition": "none",
             "page_transition_duration": 200,
             "element_entry": "none",
@@ -37,11 +36,22 @@
                 "id": "main",
                 "name": "Main",
                 "page_type": "page",
-                "grid": {
-                    "columns": 12,
-                    "rows": 8
+                "snap": {
+                    "enabled": true,
+                    "x": 8.3333,
+                    "y": 12.5
                 },
-                "elements": []
+                "elements": [],
+                "layouts": [
+                    {
+                        "id": "landscape",
+                        "orientation": "landscape",
+                        "primary": true,
+                        "inherits": null,
+                        "placements": {},
+                        "hidden": []
+                    }
+                ]
             }
         ],
         "master_elements": [],
