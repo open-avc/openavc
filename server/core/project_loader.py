@@ -278,6 +278,29 @@ class Layout(_ForwardCompatModel):
     hidden: list[str] = Field(default_factory=list)
 
 
+def normalize_primary_layout(layouts: list[Layout]) -> list[Layout]:
+    """Settle a page's layouts on exactly one primary.
+
+    The runtime picks a layout by orientation and falls back to the primary when
+    nothing matches, so a page with no primary (or with several) has no answer
+    for an unmatched screen. Rather than reject the file, settle it: an empty
+    list gets a landscape primary, and if nobody is marked, the first one is it.
+
+    It lives out here rather than inside the validator because anything that
+    edits ``page.layouts`` in place -- the AI tools add and remove arrangements
+    -- has to re-settle it, and assignment does not re-run validation.
+    """
+    if not layouts:
+        return [Layout(id="landscape", orientation="landscape", primary=True)]
+    primaries = [lay for lay in layouts if lay.primary]
+    if not primaries:
+        layouts[0].primary = True
+    elif len(primaries) > 1:
+        for extra in primaries[1:]:
+            extra.primary = False
+    return layouts
+
+
 class SnapConfig(_ForwardCompatModel):
     """Authoring-only snap increment, in percent.
 
@@ -415,23 +438,8 @@ class UIPage(_ForwardCompatModel):
 
     @model_validator(mode="after")
     def ensure_one_primary_layout(self) -> "UIPage":
-        """A page always has exactly one primary layout to fall back to.
-
-        The runtime picks a layout by orientation and falls back to the primary
-        when nothing matches, so a page with no primary (or with several) has no
-        answer for an unmatched screen. Rather than reject the file, settle it:
-        an empty list gets a landscape primary, and if nobody is marked, the
-        first one is it.
-        """
-        if not self.layouts:
-            self.layouts = [Layout(id="landscape", orientation="landscape", primary=True)]
-            return self
-        primaries = [lay for lay in self.layouts if lay.primary]
-        if not primaries:
-            self.layouts[0].primary = True
-        elif len(primaries) > 1:
-            for extra in primaries[1:]:
-                extra.primary = False
+        """A page always has exactly one primary layout to fall back to."""
+        self.layouts = normalize_primary_layout(self.layouts)
         return self
 
 

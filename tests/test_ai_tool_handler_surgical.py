@@ -1038,6 +1038,474 @@ async def test_update_ui_element_placement_partial_merge(handler, mock_engine):
     assert place.y == 1.0
 
 
+# ===== LAYOUT ENGINE (project format 0.8.0) =====
+# Geometry moved off the element and onto the page's arrangements, so the tools
+# had to learn a shape the model has never spoken. These pin the parts a schema
+# alone cannot teach: where a new control's box lands, what a variant stores,
+# and that reparenting converts rather than teleports.
+
+
+def _page(mock_engine, page_id="main"):
+    return next(p for p in mock_engine.project.ui.pages if p.id == page_id)
+
+
+def _layout(page, layout_id):
+    return next(lay for lay in page.layouts if lay.id == layout_id)
+
+
+def _drawn(page, element_id, layout_id=None):
+    """An element's box in page percentages, container nesting flattened.
+
+    Computed here from the stored numbers rather than by calling the helper
+    under test, so a reparent that quietly changed the drawn position fails.
+    """
+    from server.core.project_loader import Placement
+
+    placements: dict = {}
+    by_id = {lay.id: lay for lay in page.layouts}
+    chain = []
+    cursor = by_id.get(layout_id or next(lay.id for lay in page.layouts if lay.primary))
+    while cursor is not None:
+        chain.insert(0, cursor)
+        cursor = by_id.get(cursor.inherits) if cursor.inherits else None
+    for lay in chain:
+        placements.update(lay.placements)
+
+    elements = {el.id: el for el in page.elements}
+    box = placements.get(element_id, Placement())
+    parent_id = elements[element_id].parent
+    x, y, w, h = box.x, box.y, box.w, box.h
+    while parent_id:
+        base = placements[parent_id]
+        x = base.x + (x / 100) * base.w
+        y = base.y + (y / 100) * base.h
+        w = (w / 100) * base.w
+        h = (h / 100) * base.h
+        parent_id = elements[parent_id].parent
+    return (round(x, 6), round(y, 6), round(w, 6), round(h, 6))
+
+
+@pytest.mark.asyncio
+async def test_add_ui_elements_places_into_the_primary_layout(handler, mock_engine):
+    """A new control's box belongs in the primary -- every variant inherits it."""
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        with patch("server.core.project_loader.save_project"):
+            result = await handler._add_ui_elements({
+                "page_id": "main",
+                "elements": [{
+                    "id": "btn_mute", "type": "button", "label": "Mute",
+                    "placement": {"x": 60.0, "y": 12.5, "w": 20.0, "h": 10.0},
+                }],
+            })
+
+    assert result["status"] == "created"
+    page = _page(mock_engine)
+    assert any(el.id == "btn_mute" for el in page.elements)
+    place = _layout(page, "landscape").placements["btn_mute"]
+    assert (place.x, place.y, place.w, place.h) == (60.0, 12.5, 20.0, 10.0)
+    # The box does not ride along on the element -- that is the whole 0.8.0 split.
+    element = next(el for el in page.elements if el.id == "btn_mute")
+    assert "placement" not in element.model_dump()
+
+
+@pytest.mark.asyncio
+async def test_add_ui_elements_rejects_grid_area(handler, mock_engine):
+    """A stale prompt gets told, not silently parked in the forward-compat extras."""
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        result = await handler._add_ui_elements({
+            "page_id": "main",
+            "elements": [{"id": "btn_old", "type": "button",
+                          "grid_area": {"col": 1, "row": 1, "col_span": 2, "row_span": 1}}],
+        })
+
+    assert "grid_area" in result["error"]
+    assert "placement" in result["error"]
+    assert not any(el.id == "btn_old" for el in _page(mock_engine).elements)
+
+
+@pytest.mark.asyncio
+async def test_add_ui_elements_rejects_a_container_that_is_not_there(handler, mock_engine):
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        result = await handler._add_ui_elements({
+            "page_id": "main",
+            "elements": [{"id": "btn_lost", "type": "button", "parent": "no_such_group"}],
+        })
+
+    assert "no_such_group" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_add_ui_page_with_inline_placements_and_a_variant(handler, mock_engine):
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        with patch("server.core.project_loader.save_project"):
+            result = await handler._add_ui_page({
+                "id": "lighting", "name": "Lighting",
+                "elements": [{"id": "btn_scene", "type": "button",
+                              "placement": {"x": 10.0, "y": 10.0, "w": 30.0, "h": 20.0}}],
+                "layouts": [
+                    {"id": "landscape", "orientation": "landscape", "primary": True},
+                    {"id": "portrait", "orientation": "portrait", "inherits": "landscape"},
+                ],
+            })
+
+    assert result["status"] == "created"
+    page = _page(mock_engine, "lighting")
+    assert [lay.id for lay in page.layouts] == ["landscape", "portrait"]
+    assert _layout(page, "landscape").placements["btn_scene"].w == 30.0
+    # The variant stores only what moved, and nothing has moved yet.
+    assert _layout(page, "portrait").placements == {}
+
+
+@pytest.mark.asyncio
+async def test_update_ui_page_adds_a_variant_that_inherits_the_primary(handler, mock_engine):
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        with patch("server.core.project_loader.save_project"):
+            result = await handler._update_ui_page({
+                "page_id": "main",
+                "layouts": [{"id": "portrait", "orientation": "portrait"}],
+            })
+
+    assert "layouts" in result["changed"]
+    page = _page(mock_engine)
+    variant = _layout(page, "portrait")
+    assert variant.inherits == "landscape"   # defaulted to the primary
+    assert variant.primary is False
+    assert sum(1 for lay in page.layouts if lay.primary) == 1
+
+
+@pytest.mark.asyncio
+async def test_update_ui_page_refuses_to_move_the_primary(handler, mock_engine):
+    """The primary is what an unmatched screen falls back to; it is not a toggle."""
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        result = await handler._update_ui_page({
+            "page_id": "main",
+            "layouts": [{"id": "landscape", "primary": False}],
+        })
+
+    assert "primary" in result["error"]
+    assert _layout(_page(mock_engine), "landscape").primary is True
+
+
+@pytest.mark.asyncio
+async def test_update_ui_element_writes_a_variant_delta_only(handler, mock_engine):
+    from server.core.project_loader import Layout
+
+    page = _page(mock_engine)
+    page.layouts.append(Layout(id="portrait", orientation="portrait", inherits="landscape"))
+    before = dict(_layout(page, "landscape").placements)
+
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        with patch("server.core.project_loader.save_project"):
+            result = await handler._update_ui_element({
+                "element_id": "vol_slider", "layout_id": "portrait",
+                "placement": {"x": 5.0, "y": 70.0, "w": 90.0, "h": 10.0},
+            })
+
+    assert result["status"] == "updated"
+    page = _page(mock_engine)
+    assert list(_layout(page, "portrait").placements) == ["vol_slider"]
+    assert _layout(page, "landscape").placements == before   # the primary did not move
+
+
+@pytest.mark.asyncio
+async def test_update_ui_element_variant_placement_merges_over_the_inherited_box(handler, mock_engine):
+    """A partial edit in a variant keeps what it inherited, not the model defaults."""
+    from server.core.project_loader import Layout
+
+    _page(mock_engine).layouts.append(
+        Layout(id="portrait", orientation="portrait", inherits="landscape")
+    )
+
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        with patch("server.core.project_loader.save_project"):
+            await handler._update_ui_element({
+                "element_id": "btn_on", "layout_id": "portrait", "placement": {"y": 80.0},
+            })
+
+    place = _layout(_page(mock_engine), "portrait").placements["btn_on"]
+    assert place.y == 80.0
+    assert place.w == 15.9375   # inherited from landscape, not reset to 100
+    assert place.x == 0.625
+
+
+@pytest.mark.asyncio
+async def test_update_ui_element_unknown_layout_names_the_ones_that_exist(handler, mock_engine):
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        result = await handler._update_ui_element({
+            "element_id": "btn_on", "layout_id": "tablet", "placement": {"x": 1.0},
+        })
+
+    assert "tablet" in result["error"]
+    assert "landscape" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_update_ui_element_hides_in_one_arrangement_only(handler, mock_engine):
+    from server.core.project_loader import Layout
+
+    _page(mock_engine).layouts.append(
+        Layout(id="portrait", orientation="portrait", inherits="landscape")
+    )
+
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        with patch("server.core.project_loader.save_project"):
+            await handler._update_ui_element({
+                "element_id": "btn_off", "layout_id": "portrait", "hidden": True,
+            })
+
+    page = _page(mock_engine)
+    assert _layout(page, "portrait").hidden == ["btn_off"]
+    assert _layout(page, "landscape").hidden == []
+    assert any(el.id == "btn_off" for el in page.elements)   # still a control, just not drawn
+
+
+@pytest.mark.asyncio
+async def test_update_ui_element_cannot_unhide_what_it_inherited(handler, mock_engine):
+    """`hidden` unions down the chain, so say where the hide came from."""
+    from server.core.project_loader import Layout
+
+    page = _page(mock_engine)
+    _layout(page, "landscape").hidden = ["btn_off"]
+    page.layouts.append(Layout(id="portrait", orientation="portrait", inherits="landscape"))
+
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        result = await handler._update_ui_element({
+            "element_id": "btn_off", "layout_id": "portrait", "hidden": False,
+        })
+
+    assert "landscape" in result["error"]
+    assert _layout(_page(mock_engine), "landscape").hidden == ["btn_off"]
+
+
+@pytest.mark.asyncio
+async def test_update_ui_element_reparent_keeps_the_drawn_box(handler, mock_engine):
+    """Percentages are of the parent, so a reparent converts instead of teleporting."""
+    from server.core.project_loader import Placement, UIElement
+
+    page = _page(mock_engine)
+    page.elements.append(UIElement(id="grp_audio", type="group", label="Audio"))
+    _layout(page, "landscape").placements["grp_audio"] = Placement(x=50.0, y=40.0, w=40.0, h=40.0)
+    before = _drawn(page, "btn_off")
+
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        with patch("server.core.project_loader.save_project"):
+            result = await handler._update_ui_element({
+                "element_id": "btn_off", "parent": "grp_audio",
+            })
+
+    assert result["status"] == "updated"
+    page = _page(mock_engine)
+    assert next(el for el in page.elements if el.id == "btn_off").parent == "grp_audio"
+    assert _drawn(page, "btn_off") == before          # nothing moved on screen
+    assert _layout(page, "landscape").placements["btn_off"].x != before[0]  # but the numbers did
+
+
+@pytest.mark.asyncio
+async def test_update_ui_element_reparent_converts_every_arrangement(handler, mock_engine):
+    """Nothing shifts in the layout the caller is not looking at."""
+    from server.core.project_loader import Layout, Placement, UIElement
+
+    page = _page(mock_engine)
+    page.elements.append(UIElement(id="grp_audio", type="group"))
+    _layout(page, "landscape").placements["grp_audio"] = Placement(x=50.0, y=40.0, w=40.0, h=40.0)
+    page.layouts.append(Layout(
+        id="portrait", orientation="portrait", inherits="landscape",
+        placements={
+            "grp_audio": Placement(x=5.0, y=5.0, w=90.0, h=30.0),
+            "btn_off": Placement(x=10.0, y=60.0, w=80.0, h=8.0),
+        },
+    ))
+    before = {lay.id: _drawn(page, "btn_off", lay.id) for lay in page.layouts}
+
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        with patch("server.core.project_loader.save_project"):
+            await handler._update_ui_element({"element_id": "btn_off", "parent": "grp_audio"})
+
+    page = _page(mock_engine)
+    assert {lay.id: _drawn(page, "btn_off", lay.id) for lay in page.layouts} == before
+
+
+@pytest.mark.asyncio
+async def test_update_ui_element_reparent_with_an_explicit_box_is_taken_literally(handler, mock_engine):
+    """Given both, the caller has already said where it goes in the new parent."""
+    from server.core.project_loader import Placement, UIElement
+
+    page = _page(mock_engine)
+    page.elements.append(UIElement(id="grp_audio", type="group"))
+    _layout(page, "landscape").placements["grp_audio"] = Placement(x=50.0, y=40.0, w=40.0, h=40.0)
+
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        with patch("server.core.project_loader.save_project"):
+            await handler._update_ui_element({
+                "element_id": "btn_off", "parent": "grp_audio",
+                "placement": {"x": 0.0, "y": 0.0, "w": 100.0, "h": 25.0},
+            })
+
+    page = _page(mock_engine)
+    place = _layout(page, "landscape").placements["btn_off"]
+    assert (place.x, place.y, place.w, place.h) == (0.0, 0.0, 100.0, 25.0)
+    assert _drawn(page, "btn_off") == (50.0, 40.0, 40.0, 10.0)   # of the container
+
+
+@pytest.mark.asyncio
+async def test_update_ui_element_refuses_a_container_cycle(handler, mock_engine):
+    from server.core.project_loader import Placement, UIElement
+
+    page = _page(mock_engine)
+    page.elements.append(UIElement(id="grp_outer", type="group"))
+    page.elements.append(UIElement(id="grp_inner", type="group", parent="grp_outer"))
+    _layout(page, "landscape").placements["grp_outer"] = Placement(x=0, y=0, w=50, h=50)
+    _layout(page, "landscape").placements["grp_inner"] = Placement(x=10, y=10, w=50, h=50)
+
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        result = await handler._update_ui_element({
+            "element_id": "grp_outer", "parent": "grp_inner",
+        })
+
+    assert "itself" in result["error"]
+    assert next(el for el in _page(mock_engine).elements if el.id == "grp_outer").parent is None
+
+
+@pytest.mark.asyncio
+async def test_delete_ui_elements_clears_the_layout_entries(handler, mock_engine):
+    from server.core.project_loader import Layout
+
+    page = _page(mock_engine)
+    page.layouts.append(Layout(
+        id="portrait", orientation="portrait", inherits="landscape", hidden=["btn_off"],
+    ))
+
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        with patch("server.core.project_loader.save_project"):
+            await handler._delete_ui_elements({"element_ids": ["btn_off"]})
+
+    page = _page(mock_engine)
+    assert "btn_off" not in _layout(page, "landscape").placements
+    assert _layout(page, "portrait").hidden == []
+
+
+@pytest.mark.asyncio
+async def test_delete_a_container_leaves_its_contents_where_they_were(handler, mock_engine):
+    from server.core.project_loader import Placement, UIElement
+
+    page = _page(mock_engine)
+    page.elements.append(UIElement(id="grp_audio", type="group"))
+    _layout(page, "landscape").placements["grp_audio"] = Placement(x=50.0, y=40.0, w=40.0, h=40.0)
+    child = next(el for el in page.elements if el.id == "btn_off")
+    child.parent = "grp_audio"
+    _layout(page, "landscape").placements["btn_off"] = Placement(x=10.0, y=10.0, w=50.0, h=25.0)
+    before = _drawn(page, "btn_off")
+
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        with patch("server.core.project_loader.save_project"):
+            await handler._delete_ui_elements({"element_ids": ["grp_audio"]})
+
+    page = _page(mock_engine)
+    assert next(el for el in page.elements if el.id == "btn_off").parent is None
+    assert _drawn(page, "btn_off") == before
+
+
+@pytest.mark.asyncio
+async def test_add_master_element_takes_placements_keyed_by_orientation(handler, mock_engine):
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        with patch("server.core.project_loader.save_project"):
+            result = await handler._add_master_element({
+                "id": "home_btn", "type": "page_nav", "target_page": "main", "pages": "*",
+                "placements": {
+                    "landscape": {"x": 2.0, "y": 2.0, "w": 8.0, "h": 10.0},
+                    "portrait": {"x": 2.0, "y": 90.0, "w": 20.0, "h": 8.0},
+                },
+            })
+
+    assert result["status"] == "created"
+    master = next(el for el in mock_engine.project.ui.master_elements if el.id == "home_btn")
+    assert master.placements["landscape"].w == 8.0
+    assert master.placements["portrait"].y == 90.0
+
+
+@pytest.mark.asyncio
+async def test_add_master_element_rejects_a_page_style_placement(handler, mock_engine):
+    """A master borrows no page's layout -- that is what §34.17 used to be."""
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        result = await handler._add_master_element({
+            "id": "home_btn", "type": "page_nav",
+            "placement": {"x": 2.0, "y": 2.0, "w": 8.0, "h": 10.0},
+        })
+
+    assert "placements" in result["error"]
+    assert not any(el.id == "home_btn" for el in mock_engine.project.ui.master_elements)
+
+
+@pytest.mark.asyncio
+async def test_layout_round_trip_through_the_tool_handlers(handler, mock_engine):
+    """The §11 round trip, entirely through the tools: create, add, move,
+    reparent, hide in a variant, and read it back."""
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        with patch("server.core.project_loader.save_project"):
+            assert (await handler._add_ui_page({
+                "id": "av", "name": "AV",
+                "elements": [
+                    {"id": "grp_sources", "type": "group", "label": "Sources",
+                     "placement": {"x": 5.0, "y": 5.0, "w": 45.0, "h": 60.0}},
+                ],
+            }))["status"] == "created"
+
+            assert (await handler._add_ui_elements({
+                "page_id": "av",
+                "elements": [
+                    {"id": "btn_hdmi", "type": "button", "label": "HDMI",
+                     "parent": "grp_sources",
+                     "placement": {"x": 5.0, "y": 5.0, "w": 90.0, "h": 20.0}},
+                    {"id": "lbl_banner", "type": "label", "text": "Welcome",
+                     "placement": {"x": 55.0, "y": 5.0, "w": 40.0, "h": 15.0}},
+                    {"id": "sld_volume", "type": "slider", "label": "Volume",
+                     "placement": {"x": 55.0, "y": 30.0, "w": 40.0, "h": 10.0}},
+                ],
+            }))["status"] == "created"
+
+            # Move one, in the primary.
+            await handler._update_ui_element({
+                "element_id": "sld_volume", "placement": {"y": 45.0},
+            })
+            # Reparent one, which must not move it.
+            page = _page(mock_engine, "av")
+            drawn_before = _drawn(page, "sld_volume")
+            await handler._update_ui_element({
+                "element_id": "sld_volume", "parent": "grp_sources",
+            })
+            # Author a portrait arrangement and hide the banner in it only.
+            await handler._update_ui_page({
+                "page_id": "av",
+                "layouts": [{"id": "portrait", "orientation": "portrait"}],
+            })
+            await handler._update_ui_element({
+                "element_id": "grp_sources", "layout_id": "portrait",
+                "placement": {"x": 5.0, "y": 5.0, "w": 90.0, "h": 40.0},
+            })
+            await handler._update_ui_element({
+                "element_id": "lbl_banner", "layout_id": "portrait", "hidden": True,
+            })
+
+            read_back = await handler._get_ui_page({"page_id": "av"})
+
+    # Read it back the way the model would.
+    assert [el["id"] for el in read_back["elements"]] == [
+        "grp_sources", "btn_hdmi", "lbl_banner", "sld_volume",
+    ]
+    landscape = next(lay for lay in read_back["layouts"] if lay["primary"])
+    portrait = next(lay for lay in read_back["layouts"] if lay["id"] == "portrait")
+    assert landscape["orientation"] == "landscape"
+    assert portrait["inherits"] == "landscape"
+    # The controls are shared; only the boxes that moved are stored in the variant.
+    assert set(landscape["placements"]) == {"grp_sources", "btn_hdmi", "lbl_banner", "sld_volume"}
+    assert set(portrait["placements"]) == {"grp_sources"}
+    assert portrait["hidden"] == ["lbl_banner"]
+    assert landscape["hidden"] == []
+    # The move landed, the reparent did not move it, and the child is a child.
+    assert next(el for el in read_back["elements"] if el["id"] == "sld_volume")["parent"] == "grp_sources"
+    assert _drawn(_page(mock_engine, "av"), "sld_volume") == drawn_before
+
+
 # ===== SCHEDULE TOOLS =====
 
 
