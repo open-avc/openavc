@@ -176,11 +176,19 @@ export function Canvas({
     return { topLevel: roots, childrenByParent: byParent };
   }, [page.elements]);
 
+  // A finished marquee is followed by a click on the canvas, and the canvas
+  // clears the selection on click -- so without this the band selects a row and
+  // then immediately unselects it.
+  const swallowNextClick = useRef(false);
+
   const handleCanvasClick = useCallback(() => {
-    if (!previewMode) {
-      selectElement(null);
-      selectMasterElement(null);
+    if (previewMode) return;
+    if (swallowNextClick.current) {
+      swallowNextClick.current = false;
+      return;
     }
+    selectElement(null);
+    selectMasterElement(null);
   }, [previewMode, selectElement, selectMasterElement]);
 
   const handleBackgroundContextMenu = useCallback(
@@ -252,6 +260,7 @@ export function Canvas({
         cleanup();
         setMarquee(null);
         if (!live) return;
+        swallowNextClick.current = true;
         // A locked element cannot be picked up on the canvas, so a band that
         // sweeps over one leaves it alone rather than quietly selecting it.
         const hits = elementsIntersectingRect(page, live, activeLayoutId).filter(
