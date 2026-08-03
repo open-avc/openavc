@@ -886,47 +886,30 @@ export function cascadeIndexFor(occupied: Placement[]): number {
 
 /**
  * Which container a box dropped at page coordinates belongs to, and what its
- * coordinates are once it is in there.
- *
- * Dropping a control inside a container is how you say it belongs to it, so a
- * drop that lands fully inside one adopts into it -- the same rule the 0.8.0
- * migration used on existing projects. Innermost (smallest) wins when
- * containers nest, and a partial overlap adopts nothing: it stays a page-level
- * peer rendered over the frame, which is conservative and never surprising.
+ * coordinates are once it is in there. The palette's half of `dropTargetFor`:
+ * same rule, answered as a box.
  */
 export function resolveDropParent(
   page: UIPage,
   box: Placement,
   layoutId?: string | null,
+  elementId = "",
 ): { parentId: string | null; relative: Placement } {
+  const parentId = dropTargetFor(page, elementId, box, layoutId);
   // Page space, not stored percentages: a container inside another container is
   // stored as a fraction of ITS parent, so comparing that to a pointer's page
   // coordinate would test the wrong rectangle the moment containers nest.
-  const placements = absolutePlacements(page, layoutId);
-  let best: { id: string; area: number; box: Placement } | null = null;
-  for (const el of page.elements) {
-    if (el.type !== "group") continue;
-    const c = placements[el.id];
-    if (!c) continue;
-    const contains =
-      box.x >= c.x - BOUNDS_EPSILON &&
-      box.y >= c.y - BOUNDS_EPSILON &&
-      box.x + box.w <= c.x + c.w + BOUNDS_EPSILON &&
-      box.y + box.h <= c.y + c.h + BOUNDS_EPSILON;
-    if (!contains) continue;
-    const area = c.w * c.h;
-    if (!best || area < best.area) best = { id: el.id, area, box: c };
-  }
-  if (!best || best.box.w <= 0 || best.box.h <= 0) {
+  const base = parentId ? absolutePlacements(page, layoutId)[parentId] : null;
+  if (!base || !(base.w > 0) || !(base.h > 0)) {
     return { parentId: null, relative: roundPlacement(box) };
   }
   return {
-    parentId: best.id,
+    parentId,
     relative: roundPlacement({
-      x: ((box.x - best.box.x) / best.box.w) * 100,
-      y: ((box.y - best.box.y) / best.box.h) * 100,
-      w: (box.w / best.box.w) * 100,
-      h: (box.h / best.box.h) * 100,
+      x: ((box.x - base.x) / base.w) * 100,
+      y: ((box.y - base.y) / base.h) * 100,
+      w: (box.w / base.w) * 100,
+      h: (box.h / base.h) * 100,
     }),
   };
 }
@@ -1855,6 +1838,118 @@ export function outlineRows(
     });
   });
   return rows;
+}
+
+/** A parent-relative box, expressed in page space. */
+export function toPageBox(relative: Placement, parentBox?: Placement | null): Placement {
+  if (!parentBox || !(parentBox.w > 0) || !(parentBox.h > 0)) return { ...relative };
+  return {
+    x: parentBox.x + (relative.x / 100) * parentBox.w,
+    y: parentBox.y + (relative.y / 100) * parentBox.h,
+    w: (relative.w / 100) * parentBox.w,
+    h: (relative.h / 100) * parentBox.h,
+  };
+}
+
+/** Do two page-space boxes share any area at all? */
+function boxesOverlap(a: Placement, b: Placement): boolean {
+  return (
+    a.x < b.x + b.w - BOUNDS_EPSILON &&
+    a.x + a.w > b.x + BOUNDS_EPSILON &&
+    a.y < b.y + b.h - BOUNDS_EPSILON &&
+    a.y + a.h > b.y + BOUNDS_EPSILON
+  );
+}
+
+/**
+ * Which container a dragged element belongs to, given where it ended up.
+ *
+ * Dragging a control onto a container is how anyone expects to put it in one --
+ * the palette drop has always worked that way, and a builder where a NEW button
+ * joins the container but an EXISTING one dragged to the same spot does not is
+ * a builder that contradicts itself.
+ *
+ * The rule, in order:
+ *
+ *  - Fully inside a container? It joins it. Innermost wins when they nest.
+ *    Same rule as the palette drop and the 0.8.0 migration.
+ *  - Otherwise, still touching the container it is already in? It stays there.
+ *    Containers do not clip, and a control deliberately bled over its frame's
+ *    edge is a design -- ejecting it the moment it crossed the line would make
+ *    that impossible to author.
+ *  - Otherwise it is out, at page level.
+ */
+export function dropTargetFor(
+  page: UIPage,
+  elementId: string,
+  pageBox: Placement,
+  layoutId?: string | null,
+): string | null {
+  // An id the page has never heard of is a brand-new element being dropped in
+  // from the palette: nothing inside it, and nowhere it is already living.
+  const element = page.elements.find((e) => e.id === elementId);
+  const absolute = absolutePlacements(page, layoutId);
+  const banned = descendantIds(page, elementId);
+  banned.add(elementId);
+
+  let best: { id: string; area: number } | null = null;
+  for (const el of page.elements) {
+    if (el.type !== "group" || banned.has(el.id)) continue;
+    const c = absolute[el.id];
+    if (!c) continue;
+    const contains =
+      pageBox.x >= c.x - BOUNDS_EPSILON &&
+      pageBox.y >= c.y - BOUNDS_EPSILON &&
+      pageBox.x + pageBox.w <= c.x + c.w + BOUNDS_EPSILON &&
+      pageBox.y + pageBox.h <= c.y + c.h + BOUNDS_EPSILON;
+    if (!contains) continue;
+    const area = c.w * c.h;
+    if (!best || area < best.area) best = { id: el.id, area };
+  }
+  if (best) return best.id;
+
+  const current = element?.parent ?? null;
+  if (current && !banned.has(current)) {
+    const box = absolute[current];
+    if (box && boxesOverlap(pageBox, box)) return current;
+  }
+  return null;
+}
+
+/**
+ * Commit a finished canvas gesture: where everything landed, and what it
+ * landed IN.
+ *
+ * The two halves have to happen together. Writing the boxes first and then
+ * asking about containers is what lets the reparent measure from the position
+ * the gesture actually produced, so the control does not move again on the way
+ * into its new home.
+ */
+export function commitGesturePlacements(
+  pages: UIPage[],
+  pageId: string,
+  placements: Record<string, Placement>,
+  layoutId?: string | null,
+): UIPage[] {
+  return pages.map((p) => {
+    if (p.id !== pageId) return p;
+    let next = withPlacements(p, placements, layoutId);
+    const absolute = absolutePlacements(next, layoutId);
+    const adopted: { id: string; parent: string | null }[] = [];
+    for (const id of Object.keys(placements)) {
+      const element = next.elements.find((e) => e.id === id);
+      const box = absolute[id];
+      if (!element || !box) continue;
+      const target = dropTargetFor(next, id, box, layoutId);
+      if (target !== (element.parent ?? null)) adopted.push({ id, parent: target });
+    }
+    // Each conversion is pixel-preserving, so a container that moves in the
+    // same gesture is still at the rect the next element measures against.
+    for (const move of adopted) {
+      next = reparentElement([next], pageId, move.id, move.parent)[0];
+    }
+    return next;
+  });
 }
 
 /**

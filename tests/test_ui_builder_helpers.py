@@ -175,6 +175,16 @@ SCENARIOS = [
     "c109_picker_hides_self_and_descendants",
     "c110_orphans_rehome_without_moving",
     "c111_nested_container_adopts_in_page_space",
+    "c112_drag_into_a_container_adopts",
+    "c112_partial_overlap_does_not_adopt",
+    "c112_bleeding_over_the_edge_stays_inside",
+    "c112_drag_between_containers",
+    "c112_innermost_container_wins",
+    "c112_container_never_adopts_into_its_own",
+    "c112_commit_writes_box_and_parent_together",
+    "c112_commit_leaves_parents_alone_when_nothing_changed",
+    "c112_multi_select_drag_adopts_each",
+    "c112_palette_drop_shares_the_rule",
 ]
 
 

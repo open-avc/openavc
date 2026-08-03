@@ -5,6 +5,7 @@ import { useUIBuilderStore } from "../../store/uiBuilderStore";
 import { useProjectStore } from "../../store/projectStore";
 import { CanvasElement } from "./CanvasElement";
 import {
+  commitGesturePlacements,
   moveElementsInPage,
   findOutOfBoundsIds,
   findOverlappingIds,
@@ -17,6 +18,9 @@ import {
   roundPlacement,
   topmostSelection,
   elementsIntersectingRect,
+  dropTargetFor,
+  toPageBox,
+  absolutePlacements,
   lockedIdsFor,
   MIN_ELEMENT_SIZE,
 } from "./uiBuilderHelpers";
@@ -41,6 +45,9 @@ interface LiveGesture {
   placements: Record<string, Placement>;
   guidesX: number[];
   guidesY: number[];
+  /** The container this gesture would drop into, when that is a change. Drawn
+   *  on the canvas while the drag is live, so nobody has to guess. */
+  adoptInto: string | null;
 }
 
 export function Canvas({
@@ -153,6 +160,13 @@ export function Canvas({
 
   const placements = useMemo(
     () => resolvePlacements(page, activeLayoutId),
+    [page, activeLayoutId],
+  );
+  // The same boxes with container nesting flattened. Adoption is decided in
+  // page space, because "is this inside that" is a question about what is
+  // drawn, not about percentages of different parents.
+  const absolute = useMemo(
+    () => absolutePlacements(page, activeLayoutId),
     [page, activeLayoutId],
   );
   const snap = useMemo(() => pageSnap(page), [page]);
@@ -323,13 +337,21 @@ export function Canvas({
   }, []);
 
   const commitPlacements = useCallback(
-    (next: Record<string, Placement>, label: string) => {
+    (next: Record<string, Placement>, kind: "move" | "resize") => {
       if (!project) return;
-      pushUndo({ pages: project.ui.pages }, label);
+      pushUndo({ pages: project.ui.pages }, kind === "move" ? "Move element" : "Resize element");
       update({
         ui: {
           ...project.ui,
-          pages: moveElementsInPage(project.ui.pages, page.id, next, activeLayoutId),
+          // A MOVE says where it landed and what it landed in, in one mutation:
+          // dragging a control onto a container is how anyone expects to put it
+          // inside one. A resize only ever reshapes the box you grabbed --
+          // shrinking a button until it happens to fit inside a frame behind it
+          // is not a request to join that frame.
+          pages:
+            kind === "move"
+              ? commitGesturePlacements(project.ui.pages, page.id, next, activeLayoutId)
+              : moveElementsInPage(project.ui.pages, page.id, next, activeLayoutId),
         },
       });
       touchMutation();
@@ -502,7 +524,24 @@ export function Canvas({
           next[anchorId] = roundPlacement(box);
         }
 
-        const live: LiveGesture = { kind, placements: next, guidesX, guidesY };
+        // What this drag would put the element into, live. Only a move can
+        // change a parent -- a resize reshapes the box you grabbed and nothing
+        // else -- and only a change is worth drawing.
+        let adoptInto: string | null = null;
+        if (kind === "move") {
+          const landed = next[anchorId];
+          if (landed) {
+            const target = dropTargetFor(
+              page,
+              anchorId,
+              toPageBox(landed, parentId ? absolute[parentId] : null),
+              activeLayoutId,
+            );
+            if (target !== parentId) adoptInto = target;
+          }
+        }
+
+        const live: LiveGesture = { kind, placements: next, guidesX, guidesY, adoptInto };
         gestureRef.current = live;
         setGesture(live);
         pushLivePreview(next);
@@ -538,7 +577,7 @@ export function Canvas({
           return !before || before.x !== p.x || before.y !== p.y || before.w !== p.w || before.h !== p.h;
         });
         if (changed) {
-          commitPlacements(finished.placements, kind === "move" ? "Move element" : "Resize element");
+          commitPlacements(finished.placements, kind);
         } else {
           // Nothing moved, but the iframe has been told about intermediate
           // boxes — put it back where the store says it is.
@@ -566,7 +605,8 @@ export function Canvas({
       document.addEventListener("keydown", onKey);
       document.addEventListener("keyup", onKey);
     },
-    [previewMode, project, page, placements, snap, commitPlacements, pushLivePreview],
+    [previewMode, project, page, placements, absolute, snap, activeLayoutId,
+     commitPlacements, pushLivePreview],
   );
 
   // A gesture in flight when the canvas unmounts (page switched, project
@@ -796,6 +836,7 @@ export function Canvas({
                 smallTouchIds={smallTouchIds}
                 lockedIds={lockedElementIds}
                 gestureKind={gesture?.kind ?? null}
+                adoptTargetId={gesture?.adoptInto ?? null}
                 onSelect={(id, shiftKey) => (shiftKey ? toggleSelectElement(id) : selectElement(id))}
                 onGestureStart={beginGesture}
                 onContextMenu={handleContextMenu}

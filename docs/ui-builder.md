@@ -397,11 +397,15 @@ A **Container** is a real parent, not just a frame drawn behind things. Whatever
 
 There are three ways to put a control in one:
 
-- **Drop it inside on the canvas.** A control dropped fully inside a container joins it. If containers overlap, the smallest one wins. A control that only partly overlaps stays where it was, on the page.
+- **Drag it inside on the canvas.** Drag any control until it sits wholly inside a container and the container lights up: let go and it belongs to it. This works for a control you are placing from the palette and for one that is already on the page. If containers overlap, the smallest one wins.
 - **Drag its row onto the container in the Outline.** Drop on a container to go inside it, or on any other row to land beside that element, under the same parent. Drop on the **Page** header or the blank space under the list to bring it back out to page level.
 - **Pick a container in the Layout section** of the properties panel.
 
 However you do it, the control does not move on screen. Its stored percentages change (20% of a quarter-page container is not 20% of the page) but the box it draws stays exactly where you put it.
+
+**Getting a control back out** is the same gesture in reverse: drag it clear of the container and drop it on the page. A control that still overlaps its container stays inside it, so you can deliberately bleed a control over the frame's edge without it jumping out. Only a *move* changes what a control belongs to. Resizing one, or nudging it with the arrow keys, leaves it where it is in the tree.
+
+If the container does not light up, the control is not entirely inside it yet and dropping will leave it on the page. Nothing adopts on a partial overlap, which is what stops a control that merely crosses a frame from being swallowed by it.
 
 A container cannot be moved inside itself or inside anything already inside it, so the Outline refuses those drops. Deleting a container does not delete its contents: they come back out to the level above, keeping the position they had.
 

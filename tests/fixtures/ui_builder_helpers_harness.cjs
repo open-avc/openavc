@@ -1671,4 +1671,148 @@ const alignPage = (elements, placements) => ({
   };
 }
 
+// --- C-112: a drag onto a container puts the control in it ---
+// The palette drop has always worked this way. A builder where a NEW button
+// joins the container but an EXISTING one dragged to the same spot does not is
+// a builder that contradicts itself.
+const dragPage = () => alignPage(
+  [
+    { id: "box", type: "group" },
+    { id: "kid", type: "button", parent: "box" },
+    { id: "loose", type: "button" },
+    { id: "other", type: "group" },
+  ],
+  {
+    box: { x: 10, y: 10, w: 40, h: 40 },
+    kid: { x: 10, y: 10, w: 20, h: 20 },
+    loose: { x: 70, y: 70, w: 10, h: 10 },
+    other: { x: 60, y: 10, w: 30, h: 30 },
+  },
+);
+{
+  const page = dragPage();
+  // Dropped fully inside the container: 20,20 5x5 of the page sits well within
+  // the box at 10,10 40x40.
+  const target = H.dropTargetFor(page, "loose", { x: 20, y: 20, w: 5, h: 5 });
+  results.c112_drag_into_a_container_adopts = { pass: target === "box", detail: target };
+}
+{
+  const page = dragPage();
+  // Only clipping the corner is not "inside", so it stays where it was --
+  // the same conservative rule the palette drop and the migration use.
+  const target = H.dropTargetFor(page, "loose", { x: 45, y: 45, w: 10, h: 10 });
+  results.c112_partial_overlap_does_not_adopt = { pass: target === null, detail: target };
+}
+{
+  const page = dragPage();
+  // Containers do not clip, so a child deliberately bled over its frame's edge
+  // has to stay a child. Ejecting it the moment it crossed the line would make
+  // that impossible to author.
+  const stillTouching = H.dropTargetFor(page, "kid", { x: 45, y: 20, w: 10, h: 10 });
+  const clearAway = H.dropTargetFor(page, "kid", { x: 80, y: 80, w: 10, h: 10 });
+  results.c112_bleeding_over_the_edge_stays_inside = {
+    pass: stillTouching === "box" && clearAway === null,
+    detail: { stillTouching, clearAway },
+  };
+}
+{
+  const page = dragPage();
+  // Straight from one container into another.
+  const target = H.dropTargetFor(page, "kid", { x: 65, y: 15, w: 10, h: 10 });
+  results.c112_drag_between_containers = { pass: target === "other", detail: target };
+}
+{
+  const page = alignPage(
+    [
+      { id: "outer", type: "group" },
+      { id: "inner", type: "group", parent: "outer" },
+      { id: "loose", type: "button" },
+    ],
+    {
+      outer: { x: 0, y: 0, w: 60, h: 60 },
+      inner: { x: 50, y: 50, w: 50, h: 50 },
+      other: { x: 0, y: 0, w: 0, h: 0 },
+      loose: { x: 90, y: 90, w: 5, h: 5 },
+    },
+  );
+  // inner is 30,30 30x30 of the page. A box inside both wins the innermost.
+  const target = H.dropTargetFor(page, "loose", { x: 35, y: 35, w: 5, h: 5 });
+  results.c112_innermost_container_wins = { pass: target === "inner", detail: target };
+}
+{
+  const page = dragPage();
+  // A container cannot swallow itself, or anything already inside it.
+  const self = H.dropTargetFor(page, "box", { x: 12, y: 12, w: 5, h: 5 });
+  results.c112_container_never_adopts_into_its_own = { pass: self === null, detail: self };
+}
+{
+  // The whole gesture in one call: the box the drag produced, plus the
+  // container it landed in, with the drawn rect unchanged by the adoption.
+  const page = dragPage();
+  const moved = { loose: { x: 20, y: 20, w: 5, h: 5 } };
+  const out = H.commitGesturePlacements([page], "pg", moved);
+  const el = out[0].elements.find((e) => e.id === "loose");
+  const stored = out[0].layouts[0].placements.loose;
+  const abs = H.absolutePlacements(out[0]);
+  results.c112_commit_writes_box_and_parent_together = {
+    pass:
+      el.parent === "box" &&
+      near(abs.loose.x, 20) && near(abs.loose.y, 20) &&
+      near(abs.loose.w, 5) && near(abs.loose.h, 5) &&
+      // 20,20 of the page is 25,25 of a box at 10,10 that is 40 across.
+      near(stored.x, 25) && near(stored.y, 25) &&
+      near(stored.w, 12.5) && near(stored.h, 12.5),
+    detail: { parent: el.parent, stored, drawn: abs.loose },
+  };
+}
+{
+  // A drag that changes no parent is just a move.
+  const page = dragPage();
+  const out = H.commitGesturePlacements([page], "pg", { loose: { x: 75, y: 75, w: 10, h: 10 } });
+  const el = out[0].elements.find((e) => e.id === "loose");
+  results.c112_commit_leaves_parents_alone_when_nothing_changed = {
+    pass: (el.parent ?? null) === null && eq(out[0].layouts[0].placements.loose, { x: 75, y: 75, w: 10, h: 10 }),
+    detail: { parent: el.parent ?? null, stored: out[0].layouts[0].placements.loose },
+  };
+}
+{
+  // A multi-select drag: everything that ended up inside joins, each converted
+  // against the container on its own.
+  const page = alignPage(
+    [
+      { id: "box", type: "group" },
+      { id: "a", type: "button" },
+      { id: "b", type: "button" },
+    ],
+    {
+      box: { x: 10, y: 10, w: 40, h: 40 },
+      a: { x: 70, y: 10, w: 5, h: 5 },
+      b: { x: 80, y: 10, w: 5, h: 5 },
+    },
+  );
+  const out = H.commitGesturePlacements([page], "pg", {
+    a: { x: 15, y: 15, w: 5, h: 5 },
+    b: { x: 25, y: 15, w: 5, h: 5 },
+  });
+  const abs = H.absolutePlacements(out[0]);
+  const parents = Object.fromEntries(out[0].elements.map((e) => [e.id, e.parent ?? null]));
+  results.c112_multi_select_drag_adopts_each = {
+    pass:
+      parents.a === "box" && parents.b === "box" &&
+      near(abs.a.x, 15) && near(abs.b.x, 25) &&
+      near(abs.a.w, 5) && near(abs.b.w, 5),
+    detail: { parents, drawn: { a: abs.a, b: abs.b } },
+  };
+}
+{
+  // The palette's drop asks the same question, so a brand-new id -- one the
+  // page has never heard of -- has to be answerable.
+  const page = dragPage();
+  const drop = H.resolveDropParent(page, { x: 20, y: 20, w: 5, h: 5 });
+  results.c112_palette_drop_shares_the_rule = {
+    pass: drop.parentId === "box" && near(drop.relative.x, 25) && near(drop.relative.w, 12.5),
+    detail: drop,
+  };
+}
+
 process.stdout.write(JSON.stringify(results));

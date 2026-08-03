@@ -14,6 +14,9 @@ interface CanvasElementProps {
   lockedIds: Set<string>;
   /** Non-null while a gesture is in flight, which suppresses the handles. */
   gestureKind: "move" | "resize" | null;
+  /** The container the live drag would drop into. Lit up so you can see where
+   *  a control is about to land before you let go of it. */
+  adoptTargetId: string | null;
   onSelect: (id: string, shiftKey?: boolean) => void;
   onGestureStart: (
     elementId: string,
@@ -55,6 +58,7 @@ export function CanvasElement({
   smallTouchIds,
   lockedIds,
   gestureKind,
+  adoptTargetId,
   onSelect,
   onGestureStart,
   onContextMenu,
@@ -66,6 +70,7 @@ export function CanvasElement({
   const hasOverlap = overlappingIds.has(element.id);
   const outOfBounds = outOfBoundsIds.has(element.id);
   const smallTouch = smallTouchIds.has(element.id);
+  const isAdoptTarget = adoptTargetId === element.id;
   const children = childrenByParent.get(element.id) ?? [];
 
   const handlePointerDown = (e: React.PointerEvent) => {
@@ -115,8 +120,9 @@ export function CanvasElement({
         top: `${box.y}%`,
         width: `${box.w}%`,
         height: `${box.h}%`,
-        outline:
-          selected && !previewMode
+        outline: isAdoptTarget
+          ? "2px dashed var(--accent)"
+          : selected && !previewMode
             ? multiSelected
               ? "2px dashed var(--accent)"
               : "2px solid var(--accent)"
@@ -129,7 +135,7 @@ export function CanvasElement({
         // Containers do not clip, here or at runtime: a child nudged past the
         // edge stays visible and gets a badge rather than disappearing.
         overflow: "visible",
-        background: "transparent",
+        background: isAdoptTarget ? "rgba(33, 150, 243, 0.12)" : "transparent",
       }}
     >
       {/* Children live INSIDE the container's box, because their percentages
@@ -147,6 +153,7 @@ export function CanvasElement({
           smallTouchIds={smallTouchIds}
           lockedIds={lockedIds}
           gestureKind={gestureKind}
+          adoptTargetId={adoptTargetId}
           onSelect={onSelect}
           onGestureStart={onGestureStart}
           onContextMenu={onContextMenu}
