@@ -1815,4 +1815,355 @@ const dragPage = () => alignPage(
   };
 }
 
+// --- V-113: layout variants ---
+// One set of controls, one or more arrangements of them. The whole promise is
+// that a variant is DELTAS: it stores what you moved and nothing else, so a
+// control you never touch follows the primary forever. Every check below is
+// really the same check from a different direction.
+
+/** A page with a primary landscape arrangement and nothing else. */
+const variantPage = () => ({
+  id: "pg",
+  name: "Main",
+  snap: SNAP,
+  elements: [
+    { id: "a", type: "button" },
+    { id: "b", type: "button" },
+    { id: "c", type: "label" },
+  ],
+  layouts: [
+    LANDSCAPE({
+      a: { x: 10, y: 10, w: 20, h: 20 },
+      b: { x: 40, y: 10, w: 20, h: 20 },
+      c: { x: 70, y: 10, w: 20, h: 20 },
+    }),
+  ],
+});
+
+{
+  // A new variant is born empty and inheriting, which is what makes it deltas.
+  // Ship it with the primary's placements copied in and every one of them
+  // becomes a value that stops tracking the primary the moment it is written.
+  const page = H.addLayout(variantPage(), "portrait");
+  const added = page.layouts[1];
+  results.v113_new_variant_is_pure_deltas = {
+    pass:
+      page.layouts.length === 2 &&
+      added.id === "portrait" &&
+      added.orientation === "portrait" &&
+      added.primary === false &&
+      added.inherits === "landscape" &&
+      Object.keys(added.placements).length === 0 &&
+      eq(added.hidden, []),
+    detail: added,
+  };
+}
+{
+  // Adding one must not disturb the arrangement it inherits from.
+  const before = variantPage();
+  const after = H.addLayout(before, "portrait");
+  results.v113_adding_leaves_the_primary_alone = {
+    pass: eq(after.layouts[0], before.layouts[0]),
+    detail: { before: before.layouts[0], after: after.layouts[0] },
+  };
+}
+{
+  // Ids stay unique even when an orientation already has an arrangement, so a
+  // hand-edited project can never end up with two layouts answering to one id.
+  const page = H.addLayout(H.addLayout(variantPage(), "portrait"), "portrait");
+  results.v113_layout_ids_stay_unique = {
+    pass: page.layouts.length === 3 && page.layouts[2].id === "portrait_2",
+    detail: page.layouts.map((l) => l.id),
+  };
+}
+{
+  // What the switcher offers: only the shapes this page has no arrangement for.
+  const bare = variantPage();
+  const withPortrait = H.addLayout(bare, "portrait");
+  results.v113_offers_only_missing_orientations = {
+    pass:
+      eq(H.missingOrientations(bare), ["portrait"]) &&
+      eq(H.missingOrientations(withPortrait), []) &&
+      eq(H.missingOrientations(undefined), ["landscape", "portrait"]),
+    detail: { bare: H.missingOrientations(bare), both: H.missingOrientations(withPortrait) },
+  };
+}
+{
+  // THE delta test. Move one control in the variant and exactly one entry is
+  // written there. A variant that materialises a row per element is the failure
+  // mode this whole model exists to avoid.
+  const page = H.addLayout(variantPage(), "portrait");
+  const moved = H.withPlacement(page, "a", { x: 5, y: 60, w: 90, h: 10 }, "portrait");
+  const variant = moved.layouts[1];
+  results.v113_editing_writes_one_entry_only = {
+    pass:
+      eq(Object.keys(variant.placements), ["a"]) &&
+      near(variant.placements.a.x, 5) && near(variant.placements.a.y, 60),
+    detail: variant.placements,
+  };
+}
+{
+  // The other half: what you did NOT move still resolves through inherits, and
+  // the primary's own numbers are untouched by the variant edit.
+  const page = H.addLayout(variantPage(), "portrait");
+  const moved = H.withPlacement(page, "a", { x: 5, y: 60, w: 90, h: 10 }, "portrait");
+  const inPortrait = H.resolvePlacements(moved, "portrait");
+  const inLandscape = H.resolvePlacements(moved, "landscape");
+  results.v113_untouched_elements_follow_the_primary = {
+    pass:
+      near(inPortrait.a.x, 5) &&
+      near(inPortrait.b.x, 40) && near(inPortrait.c.x, 70) &&
+      near(inLandscape.a.x, 10) && near(inLandscape.b.x, 40),
+    detail: { portrait: inPortrait, landscape: inLandscape },
+  };
+}
+{
+  // A whole multi-select drag in the variant writes only the ids it was handed.
+  const page = H.addLayout(variantPage(), "portrait");
+  const moved = H.withPlacements(
+    page,
+    { a: { x: 0, y: 0, w: 10, h: 10 }, b: { x: 0, y: 20, w: 10, h: 10 } },
+    "portrait",
+  );
+  results.v113_multi_edit_still_writes_only_what_moved = {
+    pass: eq(Object.keys(moved.layouts[1].placements).sort(), ["a", "b"]),
+    detail: Object.keys(moved.layouts[1].placements),
+  };
+}
+{
+  // Deleting a variant takes its deltas and nothing else with it.
+  const page = H.withPlacement(
+    H.addLayout(variantPage(), "portrait"), "a", { x: 5, y: 60, w: 90, h: 10 }, "portrait",
+  );
+  const gone = H.removeLayout(page, "portrait");
+  const primary = gone.layouts[0];
+  results.v113_deleting_a_variant_leaves_the_primary = {
+    pass:
+      gone.layouts.length === 1 &&
+      primary.primary === true &&
+      eq(Object.keys(primary.placements).sort(), ["a", "b", "c"]) &&
+      near(primary.placements.a.x, 10) && near(primary.placements.a.y, 10),
+    detail: primary.placements,
+  };
+}
+{
+  // The primary is what an unmatched screen falls back to. Remove it and a page
+  // has no answer at all, so the request is refused rather than obeyed.
+  const page = H.addLayout(variantPage(), "portrait");
+  const same = H.removeLayout(page, "landscape");
+  results.v113_the_primary_is_not_removable = {
+    pass: same.layouts.length === 2 && same.layouts[0].primary === true,
+    detail: same.layouts.map((l) => ({ id: l.id, primary: l.primary })),
+  };
+}
+{
+  // A chain must never point at a layout that is gone: whatever inherited from
+  // the removed one inherits what IT inherited.
+  const page = {
+    ...variantPage(),
+    layouts: [
+      LANDSCAPE({ a: { x: 10, y: 10, w: 20, h: 20 } }),
+      { id: "mid", orientation: "portrait", inherits: "landscape", placements: { a: { x: 50, y: 50, w: 5, h: 5 } }, hidden: [] },
+      { id: "leaf", orientation: "portrait", inherits: "mid", placements: {}, hidden: [] },
+    ],
+  };
+  const gone = H.removeLayout(page, "mid");
+  results.v113_removing_a_link_repairs_the_chain = {
+    pass:
+      gone.layouts.length === 2 &&
+      gone.layouts[1].inherits === "landscape" &&
+      near(H.resolvePlacements(gone, "leaf").a.x, 10),
+    detail: { inherits: gone.layouts[1].inherits, resolved: H.resolvePlacements(gone, "leaf") },
+  };
+}
+{
+  // Hiding is per-arrangement and accumulates down the chain, exactly the way
+  // the panel runtime unions it. A variant can add a hide; it cannot take back
+  // one the layout above it made.
+  const page = {
+    ...variantPage(),
+    layouts: [
+      { ...LANDSCAPE({ a: { x: 10, y: 10, w: 20, h: 20 } }), hidden: ["c"] },
+      { id: "portrait", orientation: "portrait", inherits: "landscape", placements: {}, hidden: [] },
+    ],
+  };
+  const hidB = H.withHidden(page, "b", true, "portrait");
+  results.v113_hidden_unions_down_the_chain = {
+    pass:
+      eq([...H.resolveHidden(hidB, "portrait")].sort(), ["b", "c"]) &&
+      eq([...H.resolveHidden(hidB, "landscape")], ["c"]) &&
+      H.isHiddenInLayout(hidB, "b", "portrait") === true &&
+      H.isHiddenInLayout(hidB, "c", "portrait") === false,
+    detail: {
+      portrait: [...H.resolveHidden(hidB, "portrait")],
+      landscape: [...H.resolveHidden(hidB, "landscape")],
+    },
+  };
+}
+{
+  // Hiding writes to the arrangement being authored and nowhere else, and
+  // un-hiding is the exact inverse.
+  const page = H.addLayout(variantPage(), "portrait");
+  const hid = H.withHidden(page, "c", true, "portrait");
+  const shown = H.withHidden(hid, "c", false, "portrait");
+  results.v113_hiding_touches_one_layout = {
+    pass:
+      eq(hid.layouts[0].hidden, []) && eq(hid.layouts[1].hidden, ["c"]) &&
+      eq(shown.layouts[1].hidden, []),
+    detail: { primary: hid.layouts[0].hidden, variant: hid.layouts[1].hidden },
+  };
+}
+{
+  // Deleting an element clears it out of every arrangement, hides included, or
+  // a deleted id lingers in a list forever.
+  const page = H.withHidden(H.addLayout(variantPage(), "portrait"), "c", true, "portrait");
+  const gone = H.withoutPlacement(page, "c");
+  results.v113_deleting_an_element_clears_every_layout = {
+    pass:
+      !("c" in gone.layouts[0].placements) &&
+      eq(gone.layouts[1].hidden, []),
+    detail: { primary: Object.keys(gone.layouts[0].placements), variantHidden: gone.layouts[1].hidden },
+  };
+}
+{
+  // A control is born in the PRIMARY whichever arrangement is on screen, so it
+  // exists everywhere from the moment it exists at all. Write it into a variant
+  // instead and it would have no box in any other layout.
+  const page = H.addLayout(variantPage(), "portrait");
+  const out = H.addElementToPage([page], "pg", { id: "d", type: "button" }, { x: 1, y: 2, w: 3, h: 4 });
+  results.v113_new_controls_are_born_in_the_primary = {
+    pass:
+      near(out[0].layouts[0].placements.d.x, 1) &&
+      !("d" in out[0].layouts[1].placements) &&
+      near(H.getPlacement(out[0], "d", "portrait").x, 1),
+    detail: {
+      primary: out[0].layouts[0].placements.d,
+      variant: out[0].layouts[1].placements,
+    },
+  };
+}
+{
+  // A duplicate is measured against the arrangement on screen -- the copy lands
+  // beside the control the author can actually see -- and stored in the primary
+  // like any other new control.
+  const page = H.withPlacement(
+    H.addLayout(variantPage(), "portrait"), "a", { x: 50, y: 50, w: 10, h: 10 }, "portrait",
+  );
+  const out = H.duplicateElementInPage([page], "pg", "a", [], "portrait");
+  const copy = out[0].elements[out[0].elements.length - 1];
+  results.v113_duplicate_measures_the_layout_on_screen = {
+    pass:
+      near(out[0].layouts[0].placements[copy.id].x, 52.5) &&
+      near(out[0].layouts[0].placements[copy.id].y, 52.5) &&
+      !(copy.id in out[0].layouts[1].placements),
+    detail: { id: copy.id, stored: out[0].layouts[0].placements[copy.id] },
+  };
+}
+{
+  // The orientation being authored, which is what keys a master's box and turns
+  // the canvas.
+  const page = H.addLayout(variantPage(), "portrait");
+  results.v113_layout_orientation_follows_the_active = {
+    pass:
+      H.layoutOrientation(page, "portrait") === "portrait" &&
+      H.layoutOrientation(page, null) === "landscape" &&
+      H.layoutOrientation(page, "nonexistent") === "landscape" &&
+      H.layoutOrientation(undefined) === "landscape",
+    detail: {
+      portrait: H.layoutOrientation(page, "portrait"),
+      fallback: H.layoutOrientation(page, "nonexistent"),
+    },
+  };
+}
+{
+  // A master carries its own orientation-keyed boxes because it renders across
+  // pages that can be arranged differently. Same fallback order the panel uses.
+  const both = { placements: { landscape: { x: 1, y: 0, w: 10, h: 10 }, portrait: { x: 2, y: 0, w: 10, h: 10 } } };
+  const onlyLandscape = { placements: { landscape: { x: 3, y: 0, w: 10, h: 10 } } };
+  const odd = { placements: { square: { x: 4, y: 0, w: 10, h: 10 } } };
+  results.v113_master_box_is_keyed_by_orientation = {
+    pass:
+      H.masterPlacement(both, "portrait").x === 2 &&
+      H.masterPlacement(both, "landscape").x === 1 &&
+      H.masterPlacement(onlyLandscape, "portrait").x === 3 &&
+      H.masterPlacement(odd, "portrait").x === 4 &&
+      H.masterPlacement({ placements: {} }, "landscape") === null &&
+      H.masterPlacement(undefined, "landscape") === null,
+    detail: {
+      portrait: H.masterPlacement(both, "portrait"),
+      fallback: H.masterPlacement(onlyLandscape, "portrait"),
+    },
+  };
+}
+{
+  // The presets are all landscape. A portrait arrangement gets the same screen
+  // turned, because nobody can author a portrait panel on a landscape canvas.
+  const preset = { width: 1280, height: 800 };
+  const land = H.presetForOrientation(preset, "landscape");
+  const port = H.presetForOrientation(preset, "portrait");
+  results.v113_preset_turns_for_a_portrait_layout = {
+    pass:
+      eq(land, { width: 1280, height: 800 }) &&
+      eq(port, { width: 800, height: 1280 }) &&
+      // Already-portrait input stays put rather than flipping back.
+      eq(H.presetForOrientation({ width: 800, height: 1280 }, "portrait"), { width: 800, height: 1280 }) &&
+      eq(H.presetForOrientation({ width: 800, height: 1280 }, "landscape"), { width: 1280, height: 800 }),
+    detail: { land, port },
+  };
+}
+{
+  // vmin is the shorter edge either way, so turning the canvas must not resize
+  // a single glyph. This is the claim the whole "type stays stable" story rests
+  // on, and it is one line of arithmetic away from being wrong.
+  const preset = { width: 1280, height: 800 };
+  const land = H.presetForOrientation(preset, "landscape");
+  const port = H.presetForOrientation(preset, "portrait");
+  results.v113_turning_the_canvas_does_not_resize_type = {
+    pass: Math.min(land.width, land.height) === Math.min(port.width, port.height),
+    detail: { land: Math.min(land.width, land.height), port: Math.min(port.width, port.height) },
+  };
+}
+{
+  // A cycle is reachable by hand-editing a file, and the builder still has to
+  // draw something rather than hang.
+  const page = {
+    ...variantPage(),
+    layouts: [
+      { id: "landscape", orientation: "landscape", primary: true, placements: { a: { x: 1, y: 1, w: 5, h: 5 } }, hidden: ["a"] },
+      { id: "l1", orientation: "portrait", inherits: "l2", placements: {}, hidden: ["b"] },
+      { id: "l2", orientation: "portrait", inherits: "l1", placements: {}, hidden: ["c"] },
+    ],
+  };
+  results.v113_cycles_terminate = {
+    pass:
+      eq([...H.resolveHidden(page, "l1")].sort(), ["b", "c"]) &&
+      eq(H.resolvePlacements(page, "l1"), {}) &&
+      H.layoutChain(page, "l1").length === 2,
+    detail: { hidden: [...H.resolveHidden(page, "l1")], chain: H.layoutChain(page, "l1").map((l) => l.id) },
+  };
+}
+{
+  // A drop measured against the variant asks about the variant's rectangles.
+  // The same container can sit somewhere else entirely in the primary, and the
+  // pointer was over the one on screen.
+  const page = {
+    id: "pg",
+    snap: SNAP,
+    elements: [{ id: "box", type: "group" }, { id: "loose", type: "button" }],
+    layouts: [
+      LANDSCAPE({ box: { x: 0, y: 0, w: 30, h: 30 }, loose: { x: 90, y: 90, w: 5, h: 5 } }),
+      { id: "portrait", orientation: "portrait", inherits: "landscape",
+        placements: { box: { x: 60, y: 60, w: 30, h: 30 } }, hidden: [] },
+    ],
+  };
+  // 70,70 is inside the container where PORTRAIT puts it and nowhere near
+  // where landscape does.
+  const inPortrait = H.dropTargetFor(page, "loose", { x: 70, y: 70, w: 5, h: 5 }, "portrait");
+  const inLandscape = H.dropTargetFor(page, "loose", { x: 70, y: 70, w: 5, h: 5 }, "landscape");
+  results.v113_drops_measure_the_layout_on_screen = {
+    pass: inPortrait === "box" && inLandscape === null,
+    detail: { portrait: inPortrait, landscape: inLandscape },
+  };
+}
+
 process.stdout.write(JSON.stringify(results));

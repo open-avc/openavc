@@ -22,6 +22,9 @@ import {
   toPageBox,
   absolutePlacements,
   lockedIdsFor,
+  masterPlacement,
+  layoutOrientation,
+  resolveHidden,
   MIN_ELEMENT_SIZE,
 } from "./uiBuilderHelpers";
 import { getTunnelPrefix } from "../../api/restClient";
@@ -170,6 +173,15 @@ export function Canvas({
     [page, activeLayoutId],
   );
   const snap = useMemo(() => pageSnap(page), [page]);
+  // The shape of glass this arrangement is for. Masters are keyed by it, and
+  // so is the canvas the preset hands us.
+  const canvasOrientation = layoutOrientation(page, activeLayoutId);
+  // Elements this arrangement hides. They still get a hit-box so they can be
+  // selected and un-hidden; the badge on them says why they are not drawn.
+  const hiddenIds = useMemo(
+    () => (previewMode ? new Set<string>() : resolveHidden(page, activeLayoutId)),
+    [page, previewMode, activeLayoutId],
+  );
 
   // The container tree the hit-box overlay mirrors. An element whose named
   // parent is missing renders at page level rather than vanishing — the
@@ -765,10 +777,10 @@ export function Canvas({
             {(masterElements || [])
               .filter((m) => m.pages === "*" || (Array.isArray(m.pages) && m.pages.includes(page.id)))
               .map((el) => {
-                const box =
-                  el.placements?.landscape ??
-                  el.placements?.portrait ??
-                  Object.values(el.placements ?? {})[0];
+                // The same box the panel would draw at this shape of glass, so
+                // the hit-box sits on top of the pixels rather than beside them
+                // the moment a portrait arrangement is being authored.
+                const box = masterPlacement(el, canvasOrientation);
                 if (!box) return null;
                 const isMasterSelected = selectedMasterElementId === el.id;
                 return (
@@ -835,6 +847,7 @@ export function Canvas({
                 outOfBoundsIds={outOfBoundsIds}
                 smallTouchIds={smallTouchIds}
                 lockedIds={lockedElementIds}
+                hiddenIds={hiddenIds}
                 gestureKind={gesture?.kind ?? null}
                 adoptTargetId={gesture?.adoptInto ?? null}
                 onSelect={(id, shiftKey) => (shiftKey ? toggleSelectElement(id) : selectElement(id))}

@@ -572,18 +572,17 @@ export function layoutById(page: UIPage, layoutId?: string | null): Layout | und
 }
 
 /**
- * Fold an inherits chain down to one placement map, base first so the chosen
- * layout's own placements win. The seen-set is a cycle guard -- a hand-edited
- * project can point two layouts at each other and the builder still has to draw
- * something. Mirrors the panel runtime's _selectLayout.
+ * The layouts that feed a chosen one, base first, so whatever the chosen layout
+ * says for itself wins over what it inherits.
+ *
+ * The seen-set is a cycle guard -- a hand-edited project can point two layouts
+ * at each other and the builder still has to draw something. Mirrors the panel
+ * runtime's _selectLayout, which walks the same chain for the same reason.
  */
-export function resolvePlacements(
-  page: UIPage,
-  layoutId?: string | null,
-): Record<string, Placement> {
+export function layoutChain(page: UIPage, layoutId?: string | null): Layout[] {
   const layouts = page.layouts ?? [];
   const chosen = layoutById(page, layoutId);
-  if (!chosen) return {};
+  if (!chosen) return [];
   const chain: Layout[] = [];
   const seen = new Set<string>();
   let cursor: Layout | undefined = chosen;
@@ -592,8 +591,22 @@ export function resolvePlacements(
     chain.unshift(cursor);
     cursor = cursor.inherits ? layouts.find((l) => l.id === cursor!.inherits) : undefined;
   }
+  return chain;
+}
+
+/**
+ * Fold an inherits chain down to one placement map. This is what makes a
+ * variant deltas: it only stores what moved, and everything it stays quiet
+ * about is answered by the layout it inherits from.
+ */
+export function resolvePlacements(
+  page: UIPage,
+  layoutId?: string | null,
+): Record<string, Placement> {
   const placements: Record<string, Placement> = {};
-  for (const layout of chain) Object.assign(placements, layout.placements ?? {});
+  for (const layout of layoutChain(page, layoutId)) {
+    Object.assign(placements, layout.placements ?? {});
+  }
   return placements;
 }
 
@@ -650,6 +663,166 @@ export function withoutPlacement(page: UIPage, elementId: string): UIPage {
       return { ...l, placements: next, hidden: (l.hidden ?? []).filter((id) => id !== elementId) };
     }),
   };
+}
+
+// --- Layout variants ---
+//
+// A page holds one set of controls and one or more arrangements of them. The
+// primary is the arrangement everything falls back to; a variant says only what
+// moved. Everything below keeps that promise: a variant is written to sparsely,
+// read through its inherits chain, and removable without touching the primary.
+
+export type Orientation = "landscape" | "portrait";
+
+export const ORIENTATIONS: Orientation[] = ["landscape", "portrait"];
+
+/** The shape being authored: the active layout's orientation, or the primary's. */
+export function layoutOrientation(
+  page: UIPage | undefined,
+  layoutId?: string | null,
+): Orientation {
+  if (!page) return "landscape";
+  return layoutById(page, layoutId)?.orientation ?? "landscape";
+}
+
+/** Orientations this page has no arrangement for yet -- what "add" can offer. */
+export function missingOrientations(page: UIPage | undefined): Orientation[] {
+  const have = new Set((page?.layouts ?? []).map((l) => l.orientation));
+  return ORIENTATIONS.filter((o) => !have.has(o));
+}
+
+/**
+ * Add an arrangement for an orientation this page does not have one for.
+ *
+ * It starts as pure deltas: no placements at all, inheriting the primary. So the
+ * moment it is created it looks exactly like the primary, and every control you
+ * leave alone keeps following the primary forever. Only what you actually move
+ * gets stored here.
+ */
+export function addLayout(page: UIPage, orientation: Orientation): UIPage {
+  const layouts = page.layouts ?? [];
+  const primary = primaryLayout(page);
+  const taken = new Set(layouts.map((l) => l.id));
+  let id: string = orientation;
+  let counter = 1;
+  while (taken.has(id)) {
+    counter++;
+    id = `${orientation}_${counter}`;
+  }
+  const variant: Layout = {
+    id,
+    orientation,
+    primary: false,
+    inherits: primary ? primary.id : null,
+    placements: {},
+    hidden: [],
+  };
+  return { ...page, layouts: [...layouts, variant] };
+}
+
+/**
+ * Drop an arrangement. The primary is not removable -- it is what an unmatched
+ * screen falls back to, so a page without one has no answer at all.
+ *
+ * Anything that inherited FROM the removed layout inherits what *it* inherited,
+ * so a chain can never be left pointing at a layout that is gone.
+ */
+export function removeLayout(page: UIPage, layoutId: string): UIPage {
+  const layouts = page.layouts ?? [];
+  const target = layouts.find((l) => l.id === layoutId);
+  if (!target || target.primary) return page;
+  return {
+    ...page,
+    layouts: layouts
+      .filter((l) => l.id !== layoutId)
+      .map((l) => (l.inherits === layoutId ? { ...l, inherits: target.inherits ?? null } : l)),
+  };
+}
+
+/**
+ * Everything hidden in this arrangement, inherited hides included.
+ *
+ * Hiding accumulates down the chain the same way the panel runtime does it: a
+ * variant can hide something the primary shows, but it cannot un-hide something
+ * the primary hid -- you would go and un-hide it there. The properties panel
+ * says which layout a hide came from so that is visible rather than mysterious.
+ */
+export function resolveHidden(page: UIPage, layoutId?: string | null): Set<string> {
+  const hidden = new Set<string>();
+  for (const layout of layoutChain(page, layoutId)) {
+    for (const id of layout.hidden ?? []) hidden.add(id);
+  }
+  return hidden;
+}
+
+/** Hidden by THIS layout specifically, rather than by something it inherits. */
+export function isHiddenInLayout(
+  page: UIPage,
+  elementId: string,
+  layoutId?: string | null,
+): boolean {
+  return (layoutById(page, layoutId)?.hidden ?? []).includes(elementId);
+}
+
+/** Hide or show one element in one arrangement, leaving every other alone. */
+export function withHidden(
+  page: UIPage,
+  elementId: string,
+  hidden: boolean,
+  layoutId?: string | null,
+): UIPage {
+  const target = layoutById(page, layoutId);
+  if (!target) return page;
+  return {
+    ...page,
+    layouts: (page.layouts ?? []).map((l) => {
+      if (l.id !== target.id) return l;
+      const current = l.hidden ?? [];
+      const has = current.includes(elementId);
+      if (hidden === has) return l;
+      return {
+        ...l,
+        hidden: hidden ? [...current, elementId] : current.filter((id) => id !== elementId),
+      };
+    }),
+  };
+}
+
+/**
+ * A master element's box for an orientation.
+ *
+ * Masters carry their own orientation-keyed placements rather than living in any
+ * page's layouts, because they render across pages that can be arranged
+ * differently. Mirrors the panel runtime's _masterPlacement, fallbacks included.
+ */
+export function masterPlacement(
+  master: Pick<MasterElement, "placements"> | undefined,
+  orientation: Orientation,
+): Placement | null {
+  const p = master?.placements ?? {};
+  return p[orientation] ?? p.landscape ?? p.portrait ?? Object.values(p)[0] ?? null;
+}
+
+/**
+ * The canvas size for an arrangement.
+ *
+ * The screen presets are all landscape, and a portrait layout authored on a
+ * landscape canvas is not something anyone can design in -- you would be placing
+ * controls for a shape you cannot see. So the preset follows the layout: same
+ * screen, turned. vmin is the shorter edge either way, so turning the canvas
+ * does not resize a single glyph.
+ */
+export function presetForOrientation(
+  preset: { width: number; height: number } | undefined,
+  orientation: Orientation,
+): { width: number; height: number } {
+  const width = preset?.width ?? 1024;
+  const height = preset?.height ?? 600;
+  const long = Math.max(width, height);
+  const short = Math.min(width, height);
+  return orientation === "portrait"
+    ? { width: short, height: long }
+    : { width: long, height: short };
 }
 
 /**
@@ -1210,6 +1383,17 @@ export function renamePage(
 
 // --- Element mutations (return new pages array) ---
 
+/**
+ * Add an element to a page.
+ *
+ * The box goes into the PRIMARY layout, whichever arrangement is being authored
+ * at the time. A control exists in every layout the moment it exists at all, and
+ * the primary is what the others inherit from -- write it into a variant instead
+ * and the control would have no box anywhere else and fall back to the default
+ * corner. Where the author actually dropped it is still honoured: the coordinate
+ * handed in was measured against the layout on screen, and percentages of a
+ * container mean the same thing in every arrangement of it.
+ */
 export function addElementToPage(
   pages: UIPage[],
   pageId: string,
@@ -1310,6 +1494,7 @@ export function duplicateElementInPage(
   pageId: string,
   elementId: string,
   reservedIds: string[] = [],
+  layoutId?: string | null,
 ): UIPage[] {
   const page = pages.find((p) => p.id === pageId);
   if (!page) return pages;
@@ -1325,7 +1510,10 @@ export function duplicateElementInPage(
 
   // Place the copy down-right of the original, the nudge every design tool
   // uses, and pull it back inside the parent box if that would push it off.
-  const src = getPlacement(page, elementId);
+  // Measured against the arrangement on screen, so the copy lands beside the
+  // control the author is actually looking at; stored in the primary by
+  // addElementToPage, because a copy is a new control and exists everywhere.
+  const src = getPlacement(page, elementId, layoutId);
   const nudge = { x: src.x + 2.5, y: src.y + 2.5, w: src.w, h: src.h };
   if (nudge.x + nudge.w > 100) nudge.x = Math.max(0, 100 - nudge.w);
   if (nudge.y + nudge.h > 100) nudge.y = Math.max(0, 100 - nudge.h);

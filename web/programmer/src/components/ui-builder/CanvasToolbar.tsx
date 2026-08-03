@@ -31,6 +31,8 @@ import {
   MoveVertical,
   Scaling,
   Home,
+  RectangleHorizontal,
+  RectangleVertical,
 } from "lucide-react";
 import type { UIPage, PageGroup, SnapConfig } from "../../api/types";
 import { useUIBuilderStore } from "../../store/uiBuilderStore";
@@ -52,9 +54,16 @@ import {
   removePageGroup,
   renamePageGroup,
   assignPageToGroup,
+  addLayout,
+  removeLayout,
+  layoutById,
+  missingOrientations,
+  presetForOrientation,
+  layoutOrientation,
   type AlignAction,
   type DistributeAxis,
   type MatchSizeAction,
+  type Orientation,
 } from "./uiBuilderHelpers";
 
 interface CanvasToolbarProps {
@@ -75,6 +84,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate }: CanvasToolb
   const setScreenPresetIndex = useUIBuilderStore((s) => s.setScreenPresetIndex);
   const selectedElementIds = useUIBuilderStore((s) => s.selectedElementIds);
   const activeLayoutId = useUIBuilderStore((s) => s.activeLayoutId);
+  const selectLayout = useUIBuilderStore((s) => s.selectLayout);
   const pushUndo = useUIBuilderStore((s) => s.pushUndo);
   const touchMutation = useUIBuilderStore((s) => s.touchMutation);
 
@@ -99,6 +109,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate }: CanvasToolb
   const [pendingDeletePageId, setPendingDeletePageId] = useState<string | null>(null);
   const [pendingDeleteGroup, setPendingDeleteGroup] = useState<string | null>(null);
   const [showNewGroupPrompt, setShowNewGroupPrompt] = useState(false);
+  const [pendingDeleteLayoutId, setPendingDeleteLayoutId] = useState<string | null>(null);
   const addMenuRef = useRef<HTMLDivElement>(null);
   const gridUndoPushed = useRef(false);
   const gridUndoTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -290,7 +301,47 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate }: CanvasToolb
     );
   };
 
+  // --- Layout variants ---
+  // One set of controls, one or more arrangements of them. The primary is what
+  // every unmatched screen falls back to; a variant stores only what moved.
+
+  const currentPage = pages.find((p) => p.id === selectedPageId) ?? null;
+  const layouts = currentPage?.layouts ?? [];
+  const activeLayout = currentPage ? layoutById(currentPage, activeLayoutId) : undefined;
+  const addable = missingOrientations(currentPage ?? undefined);
+
+  const handleAddLayout = (orientation: Orientation) => {
+    if (!currentPage) return;
+    const before = new Set(currentPage.layouts?.map((l) => l.id) ?? []);
+    const grown = addLayout(currentPage, orientation);
+    const created = (grown.layouts ?? []).find((l) => !before.has(l.id));
+    applyPageMutation(
+      (p) => p.map((pg) => (pg.id === currentPage.id ? grown : pg)),
+      `Add ${orientation} layout`,
+    );
+    // Switch straight to it: you added it to author it, and it looks identical
+    // to the primary until you move something, so there is nothing to lose.
+    if (created) selectLayout(created.id);
+  };
+
+  const confirmDeleteLayout = () => {
+    if (!currentPage || !pendingDeleteLayoutId) return;
+    applyPageMutation(
+      (p) =>
+        p.map((pg) => (pg.id === currentPage.id ? removeLayout(pg, pendingDeleteLayoutId) : pg)),
+      "Delete layout",
+    );
+    if (activeLayoutId === pendingDeleteLayoutId) selectLayout(null);
+    setPendingDeleteLayoutId(null);
+  };
+
+  // The presets are all landscape; a portrait arrangement gets the same screen
+  // turned, because nobody can design a portrait panel on a landscape canvas.
   const preset = SCREEN_PRESETS[screenPresetIndex];
+  const presetSize = presetForOrientation(
+    preset,
+    layoutOrientation(currentPage ?? undefined, activeLayoutId),
+  );
 
   return (
     <div
@@ -713,6 +764,94 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate }: CanvasToolb
         }}
       />
 
+      {/* Layout variants. One set of controls, arranged per orientation. The
+          panel picks by the shape of the glass at runtime; this picks which
+          arrangement you are authoring. */}
+      {!previewMode && currentPage && (
+        <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+          <span style={{ fontSize: 10, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+            Layout
+          </span>
+          {layouts.map((layout) => {
+            const isActive = layout.id === (activeLayout?.id ?? null);
+            const Icon = layout.orientation === "portrait" ? RectangleVertical : RectangleHorizontal;
+            const label = layout.orientation === "portrait" ? "Portrait" : "Landscape";
+            return (
+              <button
+                key={layout.id}
+                onClick={() => selectLayout(layout.primary ? null : layout.id)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 3,
+                  padding: "2px 6px",
+                  fontSize: 11,
+                  borderRadius: 3,
+                  border: "1px solid",
+                  borderColor: isActive ? "var(--accent)" : "var(--border-color)",
+                  background: isActive ? "var(--accent-dim)" : "transparent",
+                  color: isActive ? "var(--accent)" : "var(--text-muted)",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+                title={
+                  layout.primary
+                    ? `${label} is the primary arrangement. Every screen that has no layout of its own falls back to it.`
+                    : `${label} arrangement. It stores only what you move here; everything else follows the primary.`
+                }
+              >
+                <Icon size={11} />
+                {label}
+                {layout.primary && (
+                  <Home size={9} style={{ opacity: 0.7 }} />
+                )}
+              </button>
+            );
+          })}
+          {addable.map((orientation) => (
+            <button
+              key={`add-${orientation}`}
+              onClick={() => handleAddLayout(orientation)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 2,
+                padding: "2px 5px",
+                fontSize: 11,
+                borderRadius: 3,
+                border: "1px dashed var(--border-color)",
+                background: "transparent",
+                color: "var(--text-muted)",
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+              title={`Add a ${orientation} arrangement of these same controls. It starts identical to the primary and stores only what you move.`}
+            >
+              <Plus size={10} />
+              {orientation === "portrait" ? "Portrait" : "Landscape"}
+            </button>
+          ))}
+          {activeLayout && !activeLayout.primary && (
+            <button
+              onClick={() => setPendingDeleteLayoutId(activeLayout.id)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                padding: "2px 4px",
+                borderRadius: 3,
+                background: "transparent",
+                border: "none",
+                color: "var(--text-muted)",
+                cursor: "pointer",
+              }}
+              title="Delete this arrangement. The controls and the primary arrangement are untouched."
+            >
+              <X size={11} />
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Screen preset */}
       {!previewMode && (
         <select
@@ -1117,8 +1256,21 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate }: CanvasToolb
             color: "var(--text-muted)",
           }}
         >
-          {preset.width}x{preset.height}
+          {presetSize.width}x{presetSize.height}
         </span>
+      )}
+
+      {pendingDeleteLayoutId && currentPage && (
+        <ConfirmDialog
+          title="Delete Layout"
+          message={`Delete the ${
+            layoutById(currentPage, pendingDeleteLayoutId)?.orientation ?? ""
+          } arrangement of "${currentPage.name}"? The controls stay, and the primary arrangement is untouched. Only the positions you set here are lost.`}
+          confirmLabel="Delete"
+          destructive
+          onConfirm={confirmDeleteLayout}
+          onCancel={() => setPendingDeleteLayoutId(null)}
+        />
       )}
 
       {pendingDeletePageId && (

@@ -3,7 +3,7 @@ import {
   MousePointerClick, SlidersHorizontal, ChevronDown, TextCursorInput,
   Type, Circle, Image, Square, ArrowRight, Camera, Gauge, BarChart3,
   SlidersVertical, Group, Clock, Grid3X3, LayoutGrid, List, Puzzle,
-  Search, Lock, Unlock, ChevronUp, ChevronDown as ChDown, ChevronRight,
+  Search, Lock, Unlock, Eye, EyeOff, ChevronUp, ChevronDown as ChDown, ChevronRight,
   Star, Layers,
 } from "lucide-react";
 import type { UIPage, UIElement, MasterElement } from "../../api/types";
@@ -52,6 +52,9 @@ interface OutlinePanelProps {
   selectedElementIds: string[];
   selectedMasterElementId: string | null;
   lockedElementIds: Set<string>;
+  /** Elements the arrangement being authored leaves out. Per-layout, so the
+   *  same element can be hidden here and shown in another. */
+  hiddenElementIds: Set<string>;
   /** Containers the author has folded shut. A view preference, not project
    *  data, so it lives in the builder store rather than the .avc. */
   collapsedIds: string[];
@@ -60,6 +63,7 @@ interface OutlinePanelProps {
   onSelectMasterElement: (id: string) => void;
   onMoveOrder: (elementId: string, neighborId: string) => void;
   onToggleLock: (elementId: string) => void;
+  onToggleHidden: (elementId: string) => void;
   onReparent: (elementId: string, newParentId: string | null) => void;
 }
 
@@ -69,12 +73,14 @@ export function OutlinePanel({
   selectedElementIds,
   selectedMasterElementId,
   lockedElementIds,
+  hiddenElementIds,
   collapsedIds,
   onToggleCollapse,
   onSelectElement,
   onSelectMasterElement,
   onMoveOrder,
   onToggleLock,
+  onToggleHidden,
   onReparent,
 }: OutlinePanelProps) {
   const [search, setSearch] = useState("");
@@ -220,6 +226,7 @@ export function OutlinePanel({
       ? selectedMasterElementId === el.id
       : selectedElementIds.includes(el.id);
     const isLocked = lockedElementIds.has(el.id);
+    const isHidden = !isMaster && hiddenElementIds.has(el.id);
     const displayLabel = el.label || el.text || "";
     const icon = ICONS[el.type] || <Square size={12} />;
     const depth = tree?.depth ?? 0;
@@ -253,7 +260,7 @@ export function OutlinePanel({
           padding: "3px 8px", paddingLeft: 8 + depth * 12,
           cursor: isMaster ? "pointer" : isLocked ? "pointer" : "grab",
           fontSize: 11, borderRadius: 3, userSelect: "none",
-          opacity: isDragging ? 0.45 : 1,
+          opacity: isDragging ? 0.45 : isHidden ? 0.55 : 1,
           background,
           color: isSelected ? "var(--accent)" : "var(--text-primary)",
           borderLeft: isSelected ? "2px solid var(--accent)" : "2px solid transparent",
@@ -313,6 +320,19 @@ export function OutlinePanel({
               <ChDown size={10} />
             </button>
           </>
+        )}
+        {/* Per-layout visibility. Not a binding — this is the arrangement
+            leaving a control out, and the control is still there in the rest. */}
+        {!isMaster && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onToggleHidden(el.id); }}
+            style={{ ...iconBtnStyle, color: isHidden ? "var(--accent)" : "var(--border-color)" }}
+            title={isHidden
+              ? "Show in this layout"
+              : "Hide in this layout (the control stays, and other layouts still show it)"}
+          >
+            {isHidden ? <EyeOff size={10} /> : <Eye size={10} />}
+          </button>
         )}
         {/* Lock toggle */}
         <button

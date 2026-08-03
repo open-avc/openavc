@@ -16,6 +16,16 @@ interface LayoutPropertiesProps {
   /** Changing the container is NOT a plain patch: the percentages are of
    *  whatever holds the element, so they have to be re-expressed or it jumps. */
   onChangeParent: (parentId: string | null) => void;
+  /** Per-layout visibility. Omitted for masters, which have no page layout to
+   *  be hidden in. `inheritedFrom` names the layout a hide came from when it
+   *  was not this one — hiding accumulates down an inherits chain, so a variant
+   *  can add a hide but cannot take back one the layout above it made. */
+  hidden?: {
+    value: boolean;
+    layoutLabel: string;
+    inheritedFrom: string | null;
+    onChange: (hidden: boolean) => void;
+  };
 }
 
 export function LayoutProperties({
@@ -26,6 +36,7 @@ export function LayoutProperties({
   onChangePlacement,
   onChange,
   onChangeParent,
+  hidden,
 }: LayoutPropertiesProps) {
   const lock =
     typeof element.aspect_lock === "number" && element.aspect_lock > 0
@@ -87,6 +98,28 @@ export function LayoutProperties({
           it is on screen. You can also drag it there in the Outline.
         </div>
       </div>
+
+      {hidden && (
+        <div>
+          <label style={labelStyle}>Show in this layout</label>
+          <div style={{ display: "flex", gap: "var(--space-sm)", alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={!hidden.value}
+              disabled={!!hidden.inheritedFrom}
+              onChange={(e) => hidden.onChange(!e.target.checked)}
+            />
+            <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>
+              {hidden.value ? "Hidden" : "Shown"} in {hidden.layoutLabel}
+            </span>
+          </div>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
+            {hidden.inheritedFrom
+              ? `Hidden by the ${hidden.inheritedFrom} layout, which this one follows. Show it there to bring it back everywhere.`
+              : "Leave a control out of one arrangement without deleting it. Every other layout still shows it."}
+          </div>
+        </div>
+      )}
 
       <div>
         <label style={labelStyle}>Aspect Lock</label>

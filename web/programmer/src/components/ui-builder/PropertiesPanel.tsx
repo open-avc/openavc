@@ -17,6 +17,12 @@ import {
   containerChoices,
   displayStyleValue,
   storeStyleValue,
+  layoutOrientation,
+  masterPlacement,
+  isHiddenInLayout,
+  resolveHidden,
+  withHidden,
+  layoutById,
 } from "./uiBuilderHelpers";
 
 interface ThemeSummary {
@@ -306,6 +312,28 @@ export function PropertiesPanel({
           }}
           onChange={handleChange}
           onChangeParent={(parentId) => onReparent?.(element.id, parentId)}
+          hidden={(() => {
+            const active = layoutById(page, activeLayoutId);
+            const own = isHiddenInLayout(page, element.id, activeLayoutId);
+            const resolved = resolveHidden(page, activeLayoutId).has(element.id);
+            // Hidden, but not by the layout being authored: it came down the
+            // inherits chain, and the checkbox here cannot take it back.
+            const inheritedFrom =
+              resolved && !own
+                ? (page.layouts ?? []).find(
+                    (l) => l.id !== active?.id && (l.hidden ?? []).includes(element.id),
+                  )?.orientation ?? "inherited"
+                : null;
+            return {
+              value: resolved,
+              layoutLabel: active?.orientation ?? "this layout",
+              inheritedFrom,
+              onChange: (next: boolean) => {
+                const page2 = withHidden(page, element.id, next, activeLayoutId);
+                onPageChange?.({ layouts: page2.layouts });
+              },
+            };
+          })()}
         />
       </Section>
 
@@ -379,6 +407,11 @@ function MasterElementProperties({
   onDelete: (elementId: string) => void;
 }) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  // A master has no page layout of its own — its boxes are keyed by orientation
+  // — so the arrangement being authored on this page is what says which key an
+  // edit lands on.
+  const activeLayoutId = useUIBuilderStore((s) => s.activeLayoutId);
+  const masterOrientation = layoutOrientation(page, activeLayoutId);
   const pagesValue = masterElement.pages;
   const isAllPages = pagesValue === "*";
   const selectedPageIds = Array.isArray(pagesValue) ? pagesValue : [];
@@ -457,19 +490,25 @@ function MasterElementProperties({
         <LayoutProperties
           element={masterElement}
           // A master's box is a percentage of the VIEWPORT, keyed by
-          // orientation, so it is valid on every page it appears on.
+          // orientation, so it is valid on every page it appears on whatever
+          // those pages are arranged like. Which key you are editing follows the
+          // arrangement being authored: turn the canvas portrait and you are
+          // placing the master for portrait glass, not silently rewriting the
+          // landscape one.
           placement={
-            masterElement.placements?.landscape ??
-            masterElement.placements?.portrait ??
-            Object.values(masterElement.placements ?? {})[0] ?? { x: 0, y: 0, w: 25, h: 12.5 }
+            masterPlacement(masterElement, masterOrientation) ?? { x: 0, y: 0, w: 25, h: 12.5 }
           }
           containers={[]}
           // A master is a percentage of the viewport, so its parent IS the
-          // reference screen.
-          parentPx={{ width: 1280, height: 800 }}
+          // reference screen — turned, when the arrangement is portrait.
+          parentPx={
+            masterOrientation === "portrait"
+              ? { width: 800, height: 1280 }
+              : { width: 1280, height: 800 }
+          }
           onChangePlacement={(placement) =>
             handleElementChange({
-              placements: { ...masterElement.placements, landscape: placement },
+              placements: { ...masterElement.placements, [masterOrientation]: placement },
             })
           }
           onChange={handleElementChange}
@@ -477,6 +516,12 @@ function MasterElementProperties({
           // to be in and the picker above it is empty.
           onChangeParent={() => undefined}
         />
+        {masterOrientation === "portrait" && !masterElement.placements?.portrait && (
+          <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
+            No portrait position of its own yet, so it is showing the landscape one. Move it
+            and it gets one.
+          </div>
+        )}
       </Section>
 
       <Section title="Style" defaultOpen>

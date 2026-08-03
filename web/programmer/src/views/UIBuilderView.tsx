@@ -58,6 +58,10 @@ import {
   resolveDropParent,
   roundPlacement,
   snapMove,
+  presetForOrientation,
+  layoutOrientation,
+  resolveHidden,
+  withHidden,
   type ValidationIssue,
 } from "../components/ui-builder/uiBuilderHelpers";
 import { isLightColor } from "../components/ui-builder/colorUtils";
@@ -424,7 +428,7 @@ export function UIBuilderView() {
             applyMutation((pages) => {
               let result = pages;
               for (const eid of selectedElementIds) {
-                result = duplicateElementInPage(result, currentPage.id, eid, masterIds);
+                result = duplicateElementInPage(result, currentPage.id, eid, masterIds, activeLayoutId);
               }
               return result;
             }, `Duplicate ${selectedElementIds.length} elements`);
@@ -449,10 +453,21 @@ export function UIBuilderView() {
   // Lock is a project field now rather than session state, so it comes off the
   // elements themselves and survives a reload.
   const lockedElementIds = lockedIdsFor(currentPage ?? undefined, masterElements);
+  // What the arrangement being authored leaves out. Inherited hides included,
+  // because that is what the panel would actually draw.
+  const hiddenElementIds = currentPage
+    ? resolveHidden(currentPage, activeLayoutId)
+    : new Set<string>();
 
+  // The screen presets are all landscape. A portrait arrangement gets the same
+  // screen turned, because a portrait panel authored on a landscape canvas is
+  // not something anyone can design in. vmin is the shorter edge either way, so
+  // turning the canvas does not resize a single glyph.
   const preset = SCREEN_PRESETS[screenPresetIndex];
-  const screenWidth = preset?.width ?? 1024;
-  const screenHeight = preset?.height ?? 600;
+  const { width: screenWidth, height: screenHeight } = presetForOrientation(
+    preset,
+    layoutOrientation(currentPage ?? undefined, activeLayoutId),
+  );
 
   // Property changes debounce undo: push undo only once per editing burst,
   // not on every keystroke. The timer resets on each change; the flag clears
@@ -504,9 +519,28 @@ export function UIBuilderView() {
     (elementId: string) => {
       if (!currentPage) return;
       const masterIds = masterElements.map((m) => m.id);
-      applyMutation((p) => duplicateElementInPage(p, currentPage.id, elementId, masterIds), "Duplicate element");
+      applyMutation((p) => duplicateElementInPage(p, currentPage.id, elementId, masterIds, activeLayoutId), "Duplicate element");
     },
-    [currentPage, masterElements, applyMutation],
+    [currentPage, masterElements, applyMutation, activeLayoutId],
+  );
+
+  // Hiding is per-arrangement: it writes to the layout being authored and leaves
+  // every other one showing the control.
+  const handleToggleHidden = useCallback(
+    (elementId: string) => {
+      if (!currentPage) return;
+      const hidden = resolveHidden(currentPage, activeLayoutId).has(elementId);
+      applyMutation(
+        (p) =>
+          p.map((pg) =>
+            pg.id === currentPage.id
+              ? withHidden(pg, elementId, !hidden, activeLayoutId)
+              : pg,
+          ),
+        hidden ? "Show in this layout" : "Hide in this layout",
+      );
+    },
+    [currentPage, activeLayoutId, applyMutation],
   );
 
   const handleCopyElement = useCallback(
@@ -559,7 +593,7 @@ export function UIBuilderView() {
       }
       return result;
     }, `Paste ${pasted.length === 1 ? "element" : `${pasted.length} elements`}`);
-  }, [clipboard, currentPage, pages, masterElements, applyMutation]);
+  }, [clipboard, currentPage, pages, masterElements, applyMutation, activeLayoutId]);
 
   const handleBringToFront = useCallback(
     (elementId: string) => {
@@ -978,8 +1012,10 @@ export function UIBuilderView() {
 
       // A drop inside a container becomes a child of it, with coordinates
       // re-expressed relative to that container — which is what the author
-      // just showed you they meant by dropping it there.
-      const { parentId, relative } = resolveDropParent(currentPage, placement);
+      // just showed you they meant by dropping it there. Measured against the
+      // arrangement on screen: a container can sit somewhere else entirely in
+      // another layout, and the pointer was over THIS one.
+      const { parentId, relative } = resolveDropParent(currentPage, placement, activeLayoutId);
       if (parentId) newElement.parent = parentId;
 
       applyMutation(
@@ -990,7 +1026,7 @@ export function UIBuilderView() {
 
       dragStartPointer.current = null;
     },
-    [currentPage, pages, masterElements, project, applyMutation, selectElement, setActiveDragSource, panelElements],
+    [currentPage, pages, masterElements, project, applyMutation, selectElement, setActiveDragSource, panelElements, activeLayoutId],
   );
 
   const handleDragCancel = useCallback(() => {
@@ -1222,8 +1258,10 @@ export function UIBuilderView() {
                         selectedElementIds={selectedElementIds}
                         selectedMasterElementId={selectedMasterElementId}
                         lockedElementIds={lockedElementIds}
+                        hiddenElementIds={hiddenElementIds}
                         collapsedIds={collapsedOutlineIds}
                         onToggleCollapse={toggleOutlineCollapse}
+                        onToggleHidden={handleToggleHidden}
                         onReparent={handleReparentElement}
                         onSelectElement={(id, shift) => {
                           if (shift) {
@@ -1395,7 +1433,7 @@ export function UIBuilderView() {
               applyMutation((pages) => {
                 let result = pages;
                 for (const eid of selectedElementIds) {
-                  result = duplicateElementInPage(result, currentPage.id, eid, masterIds);
+                  result = duplicateElementInPage(result, currentPage.id, eid, masterIds, activeLayoutId);
                 }
                 return result;
               }, `Duplicate ${selectedElementIds.length} elements`);
@@ -1426,8 +1464,11 @@ export function UIBuilderView() {
           onRefreshThemes={loadThemes}
           onThemeSaved={() => setThemeFetchKey((k) => k + 1)}
           onResetElementStyles={() => setConfirmResetStyles(true)}
-          panelWidth={screenWidth}
-          panelHeight={screenHeight}
+          // The raw preset, NOT the layout-turned one: a theme preview is about
+          // colour and type, and it should not change shape because of which
+          // arrangement happened to be selected behind the dialog.
+          panelWidth={preset?.width ?? 1024}
+          panelHeight={preset?.height ?? 600}
         />
       )}
       {confirmResetStyles && (

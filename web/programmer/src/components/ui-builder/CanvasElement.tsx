@@ -12,6 +12,9 @@ interface CanvasElementProps {
   outOfBoundsIds: Set<string>;
   smallTouchIds: Set<string>;
   lockedIds: Set<string>;
+  /** Elements this arrangement hides. The iframe draws nothing for them, so the
+   *  hit box is the only thing left to select them by — and un-hide them. */
+  hiddenIds: Set<string>;
   /** Non-null while a gesture is in flight, which suppresses the handles. */
   gestureKind: "move" | "resize" | null;
   /** The container the live drag would drop into. Lit up so you can see where
@@ -57,6 +60,7 @@ export function CanvasElement({
   outOfBoundsIds,
   smallTouchIds,
   lockedIds,
+  hiddenIds,
   gestureKind,
   adoptTargetId,
   onSelect,
@@ -67,6 +71,7 @@ export function CanvasElement({
   const selected = selectedIds.includes(element.id);
   const multiSelected = selected && selectedIds.length > 1;
   const locked = lockedIds.has(element.id);
+  const hidden = hiddenIds.has(element.id);
   const hasOverlap = overlappingIds.has(element.id);
   const outOfBounds = outOfBoundsIds.has(element.id);
   const smallTouch = smallTouchIds.has(element.id);
@@ -128,6 +133,10 @@ export function CanvasElement({
               : "2px solid var(--accent)"
             : warning && !previewMode
             ? "1px dashed var(--color-warning)"
+            // Nothing is painted here at runtime, so without an outline the
+            // element is an invisible rectangle you can still bump into.
+            : hidden && !previewMode
+            ? "1px dashed var(--text-muted)"
             : "none",
         outlineOffset: "1px",
         cursor: previewMode ? "default" : locked ? "not-allowed" : "move",
@@ -152,6 +161,7 @@ export function CanvasElement({
           outOfBoundsIds={outOfBoundsIds}
           smallTouchIds={smallTouchIds}
           lockedIds={lockedIds}
+          hiddenIds={hiddenIds}
           gestureKind={gestureKind}
           adoptTargetId={adoptTargetId}
           onSelect={onSelect}
@@ -204,6 +214,30 @@ export function CanvasElement({
           }}
         >
           !
+        </div>
+      )}
+
+      {hidden && !previewMode && (
+        <div
+          title="Hidden in this layout. It still exists, and other layouts still show it."
+          style={{
+            position: "absolute",
+            top: 2,
+            left: 2,
+            padding: "0 4px",
+            borderRadius: 3,
+            background: "rgba(0,0,0,0.6)",
+            color: "var(--text-muted)",
+            fontSize: 9,
+            fontWeight: 600,
+            letterSpacing: "0.02em",
+            zIndex: 25,
+            lineHeight: 1.6,
+            pointerEvents: "none",
+            whiteSpace: "nowrap",
+          }}
+        >
+          hidden
         </div>
       )}
 
