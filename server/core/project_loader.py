@@ -362,6 +362,11 @@ class UIElement(_ForwardCompatModel):
     parent: str | None = None  # container element id, or None for page-level
     aspect_lock: float | None = None  # width/height ratio to hold under stretch
     css_class: str | None = None  # power-user hook; no editor yet
+    # Authoring-time protection: a locked element cannot be dragged, resized,
+    # nudged or deleted in the Builder. It has no runtime meaning -- the panel
+    # renders a locked element exactly like any other -- but it has to live in
+    # the project, or pinning the background art survives until the next reload.
+    locked: bool = False
     style: dict[str, Any] = Field(default_factory=dict)
     bindings: dict[str, Any] = Field(default_factory=dict)
 

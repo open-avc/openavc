@@ -1496,6 +1496,122 @@ export function duplicatePage(
 
 // --- Alignment helpers ---
 
+/**
+ * Every element's box in PAGE percentages, with container nesting flattened.
+ *
+ * A child's stored percentages are of its container, so two elements under
+ * different parents cannot be compared directly -- 20% wide means two different
+ * widths on screen. The alignment tools all reason in this space and convert
+ * back on the way out, because "line these up" means line them up where the eye
+ * sees them, not where the numbers happen to agree.
+ */
+export function absolutePlacements(
+  page: UIPage,
+  layoutId?: string | null,
+): Record<string, Placement> {
+  const placements = resolvePlacements(page, layoutId);
+  const byId = new Map(page.elements.map((e) => [e.id, e]));
+  const out: Record<string, Placement> = {};
+
+  const resolve = (id: string, seen: Set<string>): Placement | null => {
+    const memo = out[id];
+    if (memo) return memo;
+    const p = placements[id];
+    if (!p) return null;
+    const named = byId.get(id)?.parent;
+    // A parent that is missing, self-referential or already on the chain gets
+    // treated as no parent -- a hand-edited project still has to draw.
+    const parentId = named && named !== id && byId.has(named) && !seen.has(named) ? named : null;
+    if (!parentId) {
+      out[id] = { ...p };
+      return out[id];
+    }
+    const base = resolve(parentId, new Set(seen).add(parentId));
+    out[id] = base
+      ? {
+          x: base.x + (p.x / 100) * base.w,
+          y: base.y + (p.y / 100) * base.h,
+          w: (p.w / 100) * base.w,
+          h: (p.h / 100) * base.h,
+        }
+      : { ...p };
+    return out[id];
+  };
+
+  for (const el of page.elements) resolve(el.id, new Set([el.id]));
+  return out;
+}
+
+/** The page-space box an element's own percentages are measured against. */
+function parentAbsoluteBox(
+  page: UIPage,
+  elementId: string,
+  absolute: Record<string, Placement>,
+): Placement {
+  const parent = page.elements.find((e) => e.id === elementId)?.parent;
+  const box = parent && parent !== elementId ? absolute[parent] : undefined;
+  return box && box.w > 0 && box.h > 0 ? box : { x: 0, y: 0, w: 100, h: 100 };
+}
+
+/** Write page-space boxes back as percentages of whatever each element's own
+ *  parent is. The inverse of absolutePlacements, and the only way an alignment
+ *  computed across containers lands where it was computed. */
+function withAbsolutePlacements(
+  page: UIPage,
+  absoluteBoxes: Record<string, Placement>,
+  absolute: Record<string, Placement>,
+  layoutId?: string | null,
+): UIPage {
+  const relative: Record<string, Placement> = {};
+  for (const [id, box] of Object.entries(absoluteBoxes)) {
+    const base = parentAbsoluteBox(page, id, absolute);
+    relative[id] = {
+      x: ((box.x - base.x) / base.w) * 100,
+      y: ((box.y - base.y) / base.h) * 100,
+      w: (box.w / base.w) * 100,
+      h: (box.h / base.h) * 100,
+    };
+  }
+  return withPlacements(page, relative, layoutId);
+}
+
+/**
+ * Drop any element whose container is also selected.
+ *
+ * A container's children are percentages OF it, so moving or resizing the
+ * container already carries them. Acting on both writes the same travel twice
+ * and the child ends up somewhere nobody asked for. Easy to hit now that a
+ * marquee can sweep a container and its contents in one gesture.
+ */
+/**
+ * A locked element never moves, but it still counts.
+ *
+ * Aligning a row of buttons to the pinned frame behind them is a real thing an
+ * integrator wants, so lock removes an element from what gets *written*, not
+ * from the geometry the answer is measured against.
+ */
+function movableIds(page: UIPage, elementIds: Iterable<string>): Set<string> {
+  const byId = new Map(page.elements.map((e) => [e.id, e]));
+  const ids = new Set<string>();
+  for (const id of elementIds) if (!byId.get(id)?.locked) ids.add(id);
+  return ids;
+}
+
+export function topmostSelection(page: UIPage, elementIds: string[]): string[] {
+  const selected = new Set(elementIds);
+  const byId = new Map(page.elements.map((e) => [e.id, e]));
+  return elementIds.filter((id) => {
+    const seen = new Set<string>([id]);
+    let cursor = byId.get(id)?.parent ?? null;
+    while (cursor && byId.has(cursor) && !seen.has(cursor)) {
+      if (selected.has(cursor)) return false;
+      seen.add(cursor);
+      cursor = byId.get(cursor)?.parent ?? null;
+    }
+    return true;
+  });
+}
+
 export type AlignAction =
   | "align-left" | "align-center" | "align-right"
   | "align-top" | "align-middle" | "align-bottom";
@@ -1509,16 +1625,19 @@ export function alignElements(
 ): UIPage[] {
   return pages.map((p) => {
     if (p.id !== pageId) return p;
-    const targets = p.elements.filter((el) => elementIds.includes(el.id));
+    const ids = new Set(topmostSelection(p, elementIds));
+    const targets = p.elements.filter((el) => ids.has(el.id));
     if (targets.length === 0) return p;
 
-    const boxes = new Map(targets.map((el) => [el.id, getPlacement(p, el.id, layoutId)]));
+    const absolute = absolutePlacements(p, layoutId);
+    const boxes = new Map(
+      targets.map((el) => [el.id, absolute[el.id] ?? { ...DEFAULT_PLACEMENT }]),
+    );
 
     // Several selected: align to the selection's own bounding box, which is
-    // what "line these up with each other" means. One selected: align to its
-    // parent box, which is the whole page (0..100) or the container it sits in
-    // -- and in percentages the container IS 0..100 of itself, so it is the
-    // same arithmetic either way.
+    // what "line these up with each other" means. One selected: align to the
+    // page, which in this flattened space is the whole 0..100 box -- so a lone
+    // element centres on the page rather than sitting still.
     let left = 0, right = 100, top = 0, bottom = 100;
     if (targets.length > 1) {
       const all = [...boxes.values()];
@@ -1528,8 +1647,10 @@ export function alignElements(
       bottom = Math.max(...all.map((b) => b.y + b.h));
     }
 
+    const movable = movableIds(p, ids);
     const moved: Record<string, Placement> = {};
     for (const el of targets) {
+      if (!movable.has(el.id)) continue;
       const box = { ...boxes.get(el.id)! };
       switch (action) {
         case "align-left":
@@ -1553,7 +1674,8 @@ export function alignElements(
       }
       moved[el.id] = box;
     }
-    return withPlacements(p, moved, layoutId);
+    if (Object.keys(moved).length === 0) return p;
+    return withAbsolutePlacements(p, moved, absolute, layoutId);
   });
 }
 
@@ -1565,6 +1687,164 @@ export function alignElement(
   layoutId?: string | null,
 ): UIPage[] {
   return alignElements(pages, pageId, [elementId], action, layoutId);
+}
+
+export type DistributeAxis = "horizontal" | "vertical";
+
+/**
+ * Even out the GAPS between elements, not their origins.
+ *
+ * Spacing origins evenly is the obvious implementation and the wrong one: with
+ * a wide element next to a narrow one it leaves visibly uneven space, because
+ * the eye measures the air between boxes, not the distance between their
+ * top-left corners. So the outermost two hold still, their span is measured,
+ * the elements' own sizes come off it, and what is left is split equally
+ * between each adjacent pair.
+ *
+ * Overlapping elements produce a negative gap, which spreads the overlap evenly
+ * rather than refusing -- the same thing every design tool does.
+ */
+export function distributeElements(
+  pages: UIPage[],
+  pageId: string,
+  elementIds: string[],
+  axis: DistributeAxis,
+  layoutId?: string | null,
+): UIPage[] {
+  return pages.map((p) => {
+    if (p.id !== pageId) return p;
+    const ids = new Set(topmostSelection(p, elementIds));
+    const targets = p.elements.filter((el) => ids.has(el.id));
+    if (targets.length < 3) return p;
+
+    const absolute = absolutePlacements(p, layoutId);
+    const pos = axis === "horizontal" ? "x" : "y";
+    const size = axis === "horizontal" ? "w" : "h";
+    const boxes = new Map(
+      targets.map((el) => [el.id, { ...(absolute[el.id] ?? DEFAULT_PLACEMENT) }]),
+    );
+
+    // Leading edge decides the order, with the far edge and then the id as
+    // tie-breaks so two elements starting at the same coordinate still sort
+    // the same way every time this runs.
+    const sorted = [...targets].sort((a, b) => {
+      const ba = boxes.get(a.id)!;
+      const bb = boxes.get(b.id)!;
+      return (
+        ba[pos] - bb[pos] ||
+        ba[pos] + ba[size] - (bb[pos] + bb[size]) ||
+        (a.id < b.id ? -1 : 1)
+      );
+    });
+
+    const first = boxes.get(sorted[0].id)!;
+    const last = boxes.get(sorted[sorted.length - 1].id)!;
+    const span = last[pos] + last[size] - first[pos];
+    const occupied = sorted.reduce((sum, el) => sum + boxes.get(el.id)![size], 0);
+    const gap = (span - occupied) / (sorted.length - 1);
+
+    // A locked element in the middle holds its place, and the run carries on
+    // from where it sits -- the gaps either side of it still even out.
+    const movable = movableIds(p, ids);
+    const moved: Record<string, Placement> = {};
+    let cursor = first[pos] + first[size];
+    for (let i = 1; i < sorted.length - 1; i++) {
+      const box = { ...boxes.get(sorted[i].id)! };
+      box[pos] = cursor + gap;
+      cursor = box[pos] + box[size];
+      if (movable.has(sorted[i].id)) moved[sorted[i].id] = box;
+    }
+    if (Object.keys(moved).length === 0) return p;
+    return withAbsolutePlacements(p, moved, absolute, layoutId);
+  });
+}
+
+export type MatchSizeAction = "match-width" | "match-height" | "match-both";
+
+/**
+ * Give every selected element the size of the first one selected.
+ *
+ * The first is the anchor because it is the one whose numbers the Properties
+ * panel is showing -- "make these look like the one I'm editing". Sizes are
+ * matched as they RENDER, so a control inside a half-width container ends up
+ * the same width on screen as its page-level neighbour rather than the same
+ * percentage of a different box.
+ */
+export function matchSizeElements(
+  pages: UIPage[],
+  pageId: string,
+  elementIds: string[],
+  action: MatchSizeAction,
+  layoutId?: string | null,
+): UIPage[] {
+  return pages.map((p) => {
+    if (p.id !== pageId) return p;
+    const kept = topmostSelection(p, elementIds);
+    if (kept.length < 2) return p;
+    const anchorId = kept[0];
+
+    const absolute = absolutePlacements(p, layoutId);
+    const anchor = absolute[anchorId];
+    if (!anchor) return p;
+
+    const movable = movableIds(p, kept);
+    const moved: Record<string, Placement> = {};
+    for (const id of kept.slice(1)) {
+      if (!movable.has(id)) continue;
+      const box = absolute[id];
+      if (!box) continue;
+      const next = { ...box };
+      if (action !== "match-height") next.w = anchor.w;
+      if (action !== "match-width") next.h = anchor.h;
+      // An aspect-locked element is centred inside its box by the renderer, so
+      // resizing the box is still the right write -- the lock reshapes what is
+      // drawn inside it, exactly as it does during a handle drag.
+      moved[id] = next;
+    }
+    if (Object.keys(moved).length === 0) return p;
+    return withAbsolutePlacements(p, moved, absolute, layoutId);
+  });
+}
+
+/**
+ * Which elements a marquee has touched, in page percentages.
+ *
+ * Touched, not enclosed: sweeping a band across a row of buttons should take
+ * the whole row, which is the behaviour every design tool ships and the one an
+ * integrator expects. Containers are hit like anything else -- and because a
+ * marquee sweeping a page picks up a container AND its children, the callers
+ * pass the result through topmostSelection before acting on it.
+ */
+export function elementsIntersectingRect(
+  page: UIPage,
+  rect: Placement,
+  layoutId?: string | null,
+): string[] {
+  const absolute = absolutePlacements(page, layoutId);
+  const left = Math.min(rect.x, rect.x + rect.w);
+  const top = Math.min(rect.y, rect.y + rect.h);
+  const right = Math.max(rect.x, rect.x + rect.w);
+  const bottom = Math.max(rect.y, rect.y + rect.h);
+  return page.elements
+    .filter((el) => {
+      const b = absolute[el.id];
+      if (!b) return false;
+      return b.x < right && b.x + b.w > left && b.y < bottom && b.y + b.h > top;
+    })
+    .map((el) => el.id);
+}
+
+/** Ids of every element on the page the author has pinned, plus any pinned
+ *  master. One set, because the canvas and the outline both ask "can this
+ *  move?" without caring which list the element came from. */
+export function lockedIdsFor(
+  page: UIPage | undefined,
+  masterElements: MasterElement[] | undefined,
+): Set<string> {
+  const ids = new Set<string>();
+  for (const el of page?.elements ?? []) if (el.locked) ids.add(el.id);
+  for (const el of masterElements ?? []) if (el.locked) ids.add(el.id);
+  return ids;
 }
 
 // --- Master element helpers ---

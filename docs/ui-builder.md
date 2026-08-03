@@ -396,26 +396,41 @@ To create a group, click the folder icon in the page tab bar and give the group 
 
 ## Multi-Select
 
-Hold Ctrl (or Cmd) and click multiple elements to select them together. Multi-selected elements show a dashed blue outline (vs. solid for single selection). With multiple elements selected:
+Two ways to select several elements at once:
+
+- **Shift-click** each one in turn, on the canvas or in the Outline list.
+- **Drag a box** across empty canvas. Everything the box touches is selected, so you can sweep a band across a row of buttons rather than lassoing each one completely. Hold Shift while you drag to add to what is already selected.
+
+Multi-selected elements show a dashed blue outline (vs. solid for single selection). With several selected:
 
 - The Properties panel shows common editable properties (font size, padding, colors) with "Apply to all"
-- **Distribute Horizontally** and **Distribute Vertically** buttons in the toolbar space elements evenly (requires 3+ elements)
+- The alignment, match-size and distribute buttons appear in the toolbar
 - Right-click for a context menu with Delete All, Duplicate All, and alignment options
+
+Dragging any element in the selection moves the whole selection together. If you have a container and something inside it selected at the same time, only the container moves: its contents are positioned relative to it, so they come along automatically.
 
 ## Alignment Tools
 
-The builder toolbar includes 6 alignment buttons for precise element placement:
+The builder toolbar shows these once something is selected.
 
 | Button | Action |
 |--------|--------|
-| Align Left | Snap the element's left edge to the nearest grid column |
-| Align Center (H) | Center the element horizontally on the page grid |
-| Align Right | Snap the element's right edge to the nearest grid column |
-| Align Top | Snap the element's top edge to the nearest grid row |
-| Align Middle (V) | Center the element vertically on the page grid |
-| Align Bottom | Snap the element's bottom edge to the nearest grid row |
+| Align Left / Center / Right | Line the selection up on its left edges, centers, or right edges |
+| Align Top / Middle / Bottom | The same three, vertically |
+| Match Width / Height / Both | Give every selected element the size of the **first** one you selected, which is the one the Properties panel is showing |
+| Distribute Horizontally / Vertically | Even out the space between elements, keeping the outermost two where they are (needs 3 or more) |
 
-Select an element on the canvas, then click any alignment button. Alignment is relative to the full page grid. These also work on multi-selected elements, aligning all selected elements together.
+With one element selected, the six align buttons position it against the page. With several, they line the selection up against its own outer edges.
+
+Distribute evens out the **gaps** between elements, not the distance between their corners. A wide element next to a narrow one still ends up with equal air on both sides.
+
+Alignment works on what you see, so it behaves the same whether the elements sit side by side on the page or one of them lives inside a container.
+
+## Locking an Element
+
+Click the padlock on an element's row in the **Outline** tab to lock it. A locked element cannot be selected on the canvas, dragged, resized, nudged, aligned, or deleted, which is what you want for background artwork or a header you have finished with. It stays visible and works normally on the panel itself.
+
+Locks are saved with the project, so they are still there next time you open it. Alignment can still measure against a locked element without moving it, so you can line a row of buttons up on a pinned frame. Click the padlock again to unlock.
 
 ## Page Transitions & Animations
 

@@ -12,6 +12,10 @@ export type { UndoEntry, UndoScope } from "./uiBuilderStore.helpers";
 
 interface UIBuilderStore {
   selectedPageId: string | null;
+  /** The layout being authored. null means the page's primary, which is the
+   *  only one there is until a page grows a second arrangement. Every geometry
+   *  read and write passes this through rather than assuming the primary. */
+  activeLayoutId: string | null;
   selectedElementId: string | null;
   selectedElementIds: string[];
   selectedMasterElementId: string | null;
@@ -29,10 +33,11 @@ interface UIBuilderStore {
   redoStack: UndoEntry[];
   lastMutationTime: number;
   activeDragSource: string | null;
-  lockedElementIds: Set<string>;
 
   selectPage: (id: string | null) => void;
+  selectLayout: (layoutId: string | null) => void;
   selectElement: (id: string | null) => void;
+  selectElements: (ids: string[]) => void;
   toggleSelectElement: (id: string) => void;
   selectMasterElement: (id: string | null) => void;
   setPreviewMode: (v: boolean) => void;
@@ -57,6 +62,7 @@ interface UIBuilderStore {
 
 export const useUIBuilderStore = create<UIBuilderStore>((set, get) => ({
   selectedPageId: null,
+  activeLayoutId: null,
   selectedElementId: null,
   selectedElementIds: [],
   selectedMasterElementId: null,
@@ -72,13 +78,26 @@ export const useUIBuilderStore = create<UIBuilderStore>((set, get) => ({
   redoStack: [],
   lastMutationTime: 0,
   activeDragSource: null,
-  lockedElementIds: new Set(),
 
-  selectPage: (id) => set({ selectedPageId: id, selectedElementId: null, selectedElementIds: [], selectedMasterElementId: null }),
+  // Switching pages drops back to the primary layout: a layout id belongs to
+  // one page, so carrying it across would point at nothing.
+  selectPage: (id) => set({ selectedPageId: id, activeLayoutId: null, selectedElementId: null, selectedElementIds: [], selectedMasterElementId: null }),
+
+  selectLayout: (activeLayoutId) => set({ activeLayoutId }),
 
   selectElement: (id) => set({
     selectedElementId: id,
     selectedElementIds: id ? [id] : [],
+    selectedMasterElementId: null,
+    contextMenu: null,
+  }),
+
+  // A whole selection at once -- what a marquee produces. The first id is the
+  // primary, so it is the one the Properties panel shows and the one match-size
+  // measures against.
+  selectElements: (ids) => set({
+    selectedElementIds: ids,
+    selectedElementId: ids[0] ?? null,
     selectedMasterElementId: null,
     contextMenu: null,
   }),
@@ -200,10 +219,49 @@ export const useUIBuilderStore = create<UIBuilderStore>((set, get) => ({
 
   setActiveDragSource: (activeDragSource) => set({ activeDragSource }),
 
+  // Lock lives in the project, not here: a lock that evaporates on reload is
+  // worse than none, because you only find out after something has moved.
   toggleLock: (elementId) => {
-    const next = new Set(get().lockedElementIds);
-    if (next.has(elementId)) next.delete(elementId); else next.add(elementId);
-    set({ lockedElementIds: next });
+    const projectStore = useProjectStore.getState();
+    const project = projectStore.project;
+    if (!project) return;
+    const ui = project.ui;
+
+    const master = (ui.master_elements ?? []).find((m) => m.id === elementId);
+    if (master) {
+      get().pushUndo({ master_elements: ui.master_elements ?? [] }, master.locked ? "Unlock element" : "Lock element");
+      projectStore.update({
+        ui: {
+          ...ui,
+          master_elements: (ui.master_elements ?? []).map((m) =>
+            m.id === elementId ? { ...m, locked: !m.locked } : m,
+          ),
+        },
+      });
+      get().touchMutation();
+      return;
+    }
+
+    const page = ui.pages.find((p) => p.elements.some((el) => el.id === elementId));
+    if (!page) return;
+    const element = page.elements.find((el) => el.id === elementId)!;
+    get().pushUndo({ pages: ui.pages }, element.locked ? "Unlock element" : "Lock element");
+    projectStore.update({
+      ui: {
+        ...ui,
+        pages: ui.pages.map((p) =>
+          p.id === page.id
+            ? {
+                ...p,
+                elements: p.elements.map((el) =>
+                  el.id === elementId ? { ...el, locked: !el.locked } : el,
+                ),
+              }
+            : p,
+        ),
+      },
+    });
+    get().touchMutation();
   },
 
 }));

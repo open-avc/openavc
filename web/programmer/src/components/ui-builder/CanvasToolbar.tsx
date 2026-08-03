@@ -27,9 +27,12 @@ import {
   Loader2,
   AlignHorizontalDistributeCenter,
   AlignVerticalDistributeCenter,
+  MoveHorizontal,
+  MoveVertical,
+  Scaling,
   Home,
 } from "lucide-react";
-import type { UIPage, PageGroup, Placement, SnapConfig } from "../../api/types";
+import type { UIPage, PageGroup, SnapConfig } from "../../api/types";
 import { useUIBuilderStore } from "../../store/uiBuilderStore";
 import { useProjectStore } from "../../store/projectStore";
 import { ConfirmDialog } from "../shared/ConfirmDialog";
@@ -38,18 +41,20 @@ import {
   SCREEN_PRESETS,
   addPage,
   removePageAndScrubRefs,
-  getPlacement,
-  moveElementsInPage,
   pageSnap,
   renamePage,
   reorderPage,
   duplicatePage,
   alignElements,
+  distributeElements,
+  matchSizeElements,
   addPageGroup,
   removePageGroup,
   renamePageGroup,
   assignPageToGroup,
   type AlignAction,
+  type DistributeAxis,
+  type MatchSizeAction,
 } from "./uiBuilderHelpers";
 
 interface CanvasToolbarProps {
@@ -69,6 +74,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate }: CanvasToolb
   const screenPresetIndex = useUIBuilderStore((s) => s.screenPresetIndex);
   const setScreenPresetIndex = useUIBuilderStore((s) => s.setScreenPresetIndex);
   const selectedElementIds = useUIBuilderStore((s) => s.selectedElementIds);
+  const activeLayoutId = useUIBuilderStore((s) => s.activeLayoutId);
   const pushUndo = useUIBuilderStore((s) => s.pushUndo);
   const touchMutation = useUIBuilderStore((s) => s.touchMutation);
 
@@ -257,41 +263,30 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate }: CanvasToolb
   };
 
   const handleAlign = (action: AlignAction) => {
-    if (selectedElementIds.length === 0 || !selectedPageId || !ui) return;
-    const page = ui.pages.find((p) => p.id === selectedPageId);
-    if (!page) return;
+    if (selectedElementIds.length === 0 || !selectedPageId) return;
     applyPageMutation(
-      (p) => alignElements(p, selectedPageId!, selectedElementIds, action),
+      (p) => alignElements(p, selectedPageId!, selectedElementIds, action, activeLayoutId),
       `Align ${action}`,
     );
   };
 
-  const handleDistribute = (direction: "horizontal" | "vertical") => {
-    if (selectedElementIds.length < 3 || !selectedPageId || !ui) return;
-    const page = ui.pages.find((p) => p.id === selectedPageId);
-    if (!page) return;
-    const elements = selectedElementIds
-      .map((eid) => page.elements.find((el) => el.id === eid))
-      .filter((el): el is typeof page.elements[0] => !!el);
-    if (elements.length < 3) return;
-
-    // Spread the origins evenly between the first and last, in percentages.
-    const axis = direction === "horizontal" ? "x" : "y";
-    const boxes = new Map(elements.map((el) => [el.id, getPlacement(page, el.id)]));
-    const sorted = [...elements].sort(
-      (a, b) => boxes.get(a.id)![axis] - boxes.get(b.id)![axis],
-    );
-    const first = boxes.get(sorted[0].id)![axis];
-    const last = boxes.get(sorted[sorted.length - 1].id)![axis];
-    const step = (last - first) / (sorted.length - 1);
-    const moved: Record<string, Placement> = {};
-    sorted.forEach((el, i) => {
-      if (i === 0 || i === sorted.length - 1) return;
-      moved[el.id] = { ...boxes.get(el.id)!, [axis]: first + step * i };
-    });
+  const handleDistribute = (axis: DistributeAxis) => {
+    if (selectedElementIds.length < 3 || !selectedPageId) return;
     applyPageMutation(
-      (p) => moveElementsInPage(p, selectedPageId!, moved),
-      direction === "horizontal" ? "Distribute horizontally" : "Distribute vertically",
+      (p) => distributeElements(p, selectedPageId!, selectedElementIds, axis, activeLayoutId),
+      axis === "horizontal" ? "Distribute horizontally" : "Distribute vertically",
+    );
+  };
+
+  const handleMatchSize = (action: MatchSizeAction) => {
+    if (selectedElementIds.length < 2 || !selectedPageId) return;
+    applyPageMutation(
+      (p) => matchSizeElements(p, selectedPageId!, selectedElementIds, action, activeLayoutId),
+      action === "match-width"
+        ? "Match width"
+        : action === "match-height"
+        ? "Match height"
+        : "Match size",
     );
   };
 
@@ -858,14 +853,51 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate }: CanvasToolb
                 {item.icon}
               </button>
             ))}
-            {/* Distribute buttons (11.3, visible with 3+ selected) */}
+            {/* Match size: needs a second element to match against, and the
+                first one selected is the one being matched TO. */}
+            {selectedElementIds.length >= 2 && (
+              <>
+                <div style={{ width: 1, height: 14, background: "var(--border-color)", margin: "0 2px" }} />
+                {(
+                  [
+                    {
+                      action: "match-width" as MatchSizeAction,
+                      icon: <MoveHorizontal size={13} />,
+                      title: "Match width to the first element selected",
+                    },
+                    {
+                      action: "match-height" as MatchSizeAction,
+                      icon: <MoveVertical size={13} />,
+                      title: "Match height to the first element selected",
+                    },
+                    {
+                      action: "match-both" as MatchSizeAction,
+                      icon: <Scaling size={13} />,
+                      title: "Match width and height to the first element selected",
+                    },
+                  ] as const
+                ).map((item) => (
+                  <button
+                    key={item.action}
+                    onClick={() => handleMatchSize(item.action)}
+                    style={{ display: "flex", padding: 3, color: "var(--text-muted)", borderRadius: 3, background: "transparent", border: "none", cursor: "pointer" }}
+                    title={item.title}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                  >
+                    {item.icon}
+                  </button>
+                ))}
+              </>
+            )}
+            {/* Distribute needs a middle to move, so it wants three. */}
             {selectedElementIds.length >= 3 && (
               <>
                 <div style={{ width: 1, height: 14, background: "var(--border-color)", margin: "0 2px" }} />
                 <button
                   onClick={() => handleDistribute("horizontal")}
                   style={{ display: "flex", padding: 3, color: "var(--text-muted)", borderRadius: 3, background: "transparent", border: "none", cursor: "pointer" }}
-                  title="Distribute horizontally (even spacing)"
+                  title="Distribute horizontally (equal gaps between elements)"
                   onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
                   onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                 >
@@ -874,7 +906,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate }: CanvasToolb
                 <button
                   onClick={() => handleDistribute("vertical")}
                   style={{ display: "flex", padding: 3, color: "var(--text-muted)", borderRadius: 3, background: "transparent", border: "none", cursor: "pointer" }}
-                  title="Distribute vertically (even spacing)"
+                  title="Distribute vertically (equal gaps between elements)"
                   onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
                   onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                 >

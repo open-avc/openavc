@@ -875,4 +875,389 @@ const idsOf = (pages) => pages[0].elements.map((e) => e.id);
   };
 }
 
+// --- A-101: the alignment toolkit reasons in PAGE space ---
+// A child's stored percentages are of its container, so 20% wide means two
+// different widths on screen depending on where the element lives. Comparing
+// them raw lines elements up where the numbers agree instead of where the eye
+// sees them, which is the wrong answer as soon as a marquee can sweep a
+// container and a page-level control into one selection.
+
+/** A page with a container at 10,10 40x40 and whatever else is passed in. */
+const alignPage = (elements, placements) => ({
+  id: "pg",
+  elements,
+  snap: SNAP,
+  layouts: [LANDSCAPE(placements)],
+});
+
+{
+  // The container sits at 10,10 40x40 of the page; its child at 50,50 50x50 of
+  // the container is therefore 30,30 20x20 of the page.
+  const page = alignPage(
+    [{ id: "box", type: "group" }, { id: "kid", type: "button", parent: "box" }],
+    { box: { x: 10, y: 10, w: 40, h: 40 }, kid: { x: 50, y: 50, w: 50, h: 50 } },
+  );
+  const abs = H.absolutePlacements(page);
+  results.a101_absolute_flattens_container = {
+    pass:
+      eq(abs.box, { x: 10, y: 10, w: 40, h: 40 }) &&
+      near(abs.kid.x, 30) && near(abs.kid.y, 30) &&
+      near(abs.kid.w, 20) && near(abs.kid.h, 20),
+    detail: abs,
+  };
+}
+{
+  // A parent that points at itself, or a pair pointing at each other, still has
+  // to draw -- a hand-edited project must not hang the builder.
+  const page = alignPage(
+    [{ id: "a", type: "group", parent: "b" }, { id: "b", type: "group", parent: "a" }],
+    { a: { x: 10, y: 10, w: 20, h: 20 }, b: { x: 5, y: 5, w: 50, h: 50 } },
+  );
+  const abs = H.absolutePlacements(page);
+  results.a101_absolute_survives_parent_cycle = {
+    pass: !!abs.a && !!abs.b && Number.isFinite(abs.a.x) && Number.isFinite(abs.b.x),
+    detail: abs,
+  };
+}
+{
+  // Align-left across a container boundary: the child ends up at the same
+  // SCREEN x as the page-level element, which means a different stored x.
+  const page = alignPage(
+    [
+      { id: "box", type: "group" },
+      { id: "kid", type: "button", parent: "box" },
+      { id: "free", type: "button" },
+    ],
+    {
+      box: { x: 10, y: 10, w: 40, h: 40 },
+      kid: { x: 50, y: 50, w: 50, h: 50 },
+      free: { x: 70, y: 10, w: 20, h: 10 },
+    },
+  );
+  const out = H.alignElements([page], "pg", ["kid", "free"], "align-left");
+  const abs = H.absolutePlacements(out[0]);
+  const stored = out[0].layouts[0].placements;
+  results.a101_align_left_across_container = {
+    pass: near(abs.kid.x, abs.free.x) && near(abs.kid.x, 30) && !near(stored.kid.x, stored.free.x),
+    detail: { absKid: abs.kid.x, absFree: abs.free.x, storedKid: stored.kid.x, storedFree: stored.free.x },
+  };
+}
+{
+  // Selecting a container AND its child then aligning must move the container
+  // only: the child is a percentage OF it and already travels along. Writing
+  // both moves the child twice.
+  const page = alignPage(
+    [
+      { id: "box", type: "group" },
+      { id: "kid", type: "button", parent: "box" },
+      { id: "free", type: "button" },
+    ],
+    {
+      box: { x: 10, y: 10, w: 40, h: 40 },
+      kid: { x: 50, y: 50, w: 50, h: 50 },
+      free: { x: 70, y: 70, w: 20, h: 10 },
+    },
+  );
+  const kept = H.topmostSelection(page, ["box", "kid", "free"]);
+  const out = H.alignElements([page], "pg", ["box", "kid", "free"], "align-left");
+  const stored = out[0].layouts[0].placements;
+  results.a101_topmost_selection_drops_children = {
+    pass: eq(kept, ["box", "free"]) && eq(stored.kid, { x: 50, y: 50, w: 50, h: 50 }),
+    detail: { kept, kid: stored.kid, box: stored.box },
+  };
+}
+{
+  // A locked element is a ruler, not a target: it anchors the bounding box and
+  // does not move.
+  const page = alignPage(
+    [
+      { id: "pinned", type: "group", locked: true },
+      { id: "a", type: "button" },
+      { id: "b", type: "button" },
+    ],
+    {
+      pinned: { x: 5, y: 5, w: 20, h: 10 },
+      a: { x: 40, y: 20, w: 20, h: 10 },
+      b: { x: 60, y: 40, w: 20, h: 10 },
+    },
+  );
+  const out = H.alignElements([page], "pg", ["pinned", "a", "b"], "align-left");
+  const stored = out[0].layouts[0].placements;
+  results.a101_locked_anchors_but_does_not_move = {
+    pass: near(stored.pinned.x, 5) && near(stored.a.x, 5) && near(stored.b.x, 5),
+    detail: stored,
+  };
+}
+
+// --- A-102: distribute evens the GAPS, not the origins ---
+// Spacing origins evenly is the obvious implementation and the wrong one: put a
+// wide element next to a narrow one and the air between boxes comes out
+// visibly uneven, because the eye measures the gap, not the corner-to-corner
+// distance.
+{
+  const page = alignPage(
+    [{ id: "a", type: "button" }, { id: "b", type: "button" }, { id: "c", type: "button" }],
+    {
+      a: { x: 0, y: 0, w: 10, h: 10 },
+      b: { x: 20, y: 0, w: 40, h: 10 },
+      c: { x: 90, y: 0, w: 10, h: 10 },
+    },
+  );
+  const out = H.distributeElements([page], "pg", ["a", "b", "c"], "horizontal");
+  const p = out[0].layouts[0].placements;
+  // span 0..100 = 100, widths 10+40+10 = 60, so each of the two gaps is 20.
+  const gap1 = p.b.x - (p.a.x + p.a.w);
+  const gap2 = p.c.x - (p.b.x + p.b.w);
+  // What the old origin-spacing did: b.x would land at 45, leaving gaps of
+  // 35 and 5 -- the exact lopsidedness this fixes.
+  results.a102_distribute_evens_gaps = {
+    pass: near(gap1, 20) && near(gap2, 20) && near(p.b.x, 30),
+    detail: { gap1, gap2, bx: p.b.x, oldOriginSpacingWouldBe: 45 },
+  };
+}
+{
+  // The outermost two never move -- that is what makes it a redistribution
+  // rather than a re-layout.
+  const page = alignPage(
+    [{ id: "a", type: "button" }, { id: "b", type: "button" }, { id: "c", type: "button" }],
+    {
+      a: { x: 3, y: 0, w: 10, h: 10 },
+      b: { x: 20, y: 0, w: 40, h: 10 },
+      c: { x: 77, y: 0, w: 10, h: 10 },
+    },
+  );
+  // Span is edge to edge -- 3 to 87 is 84, less 60 of element leaves 24 to
+  // split, so b starts one 12-wide gap after a's far edge at 13. Passing the
+  // ids out of order proves the helper sorts rather than trusting the caller.
+  const out = H.distributeElements([page], "pg", ["c", "a", "b"], "horizontal");
+  const p = out[0].layouts[0].placements;
+  results.a102_distribute_pins_first_and_last = {
+    pass: near(p.a.x, 3) && near(p.c.x, 77) && near(p.b.x, 25),
+    detail: p,
+  };
+}
+{
+  // Vertical is the same arithmetic on the other axis, and x is untouched.
+  const page = alignPage(
+    [{ id: "a", type: "button" }, { id: "b", type: "button" }, { id: "c", type: "button" }],
+    {
+      a: { x: 5, y: 0, w: 10, h: 10 },
+      b: { x: 5, y: 30, w: 10, h: 20 },
+      c: { x: 5, y: 90, w: 10, h: 10 },
+    },
+  );
+  const out = H.distributeElements([page], "pg", ["a", "b", "c"], "vertical");
+  const p = out[0].layouts[0].placements;
+  const gap1 = p.b.y - (p.a.y + p.a.h);
+  const gap2 = p.c.y - (p.b.y + p.b.h);
+  results.a102_distribute_vertical_evens_gaps = {
+    pass: near(gap1, gap2) && near(gap1, 30) && near(p.b.x, 5),
+    detail: { gap1, gap2, bx: p.b.x },
+  };
+}
+{
+  // Fewer than three has no middle to move, so it is a no-op rather than an
+  // error -- the toolbar hides the button, but the helper must agree.
+  const page = alignPage(
+    [{ id: "a", type: "button" }, { id: "b", type: "button" }],
+    { a: { x: 0, y: 0, w: 10, h: 10 }, b: { x: 50, y: 0, w: 10, h: 10 } },
+  );
+  const out = H.distributeElements([page], "pg", ["a", "b"], "horizontal");
+  results.a102_distribute_needs_three = { pass: out[0] === page, detail: out[0] === page };
+}
+
+// --- A-103: match size copies the FIRST selected element's rendered box ---
+// First, because that is the one whose numbers the Properties panel is showing.
+{
+  const page = alignPage(
+    [{ id: "a", type: "button" }, { id: "b", type: "button" }, { id: "c", type: "button" }],
+    {
+      a: { x: 0, y: 0, w: 25, h: 12 },
+      b: { x: 40, y: 0, w: 10, h: 30 },
+      c: { x: 70, y: 0, w: 5, h: 5 },
+    },
+  );
+  const w = H.matchSizeElements([page], "pg", ["a", "b", "c"], "match-width")[0]
+    .layouts[0].placements;
+  const h = H.matchSizeElements([page], "pg", ["a", "b", "c"], "match-height")[0]
+    .layouts[0].placements;
+  const both = H.matchSizeElements([page], "pg", ["a", "b", "c"], "match-both")[0]
+    .layouts[0].placements;
+  results.a103_match_width_height_both = {
+    pass:
+      near(w.b.w, 25) && near(w.b.h, 30) && near(w.c.w, 25) &&
+      near(h.b.h, 12) && near(h.b.w, 10) &&
+      near(both.c.w, 25) && near(both.c.h, 12) &&
+      near(both.a.w, 25) && near(both.a.h, 12),
+    detail: { width: w, height: h, both },
+  };
+}
+{
+  // Across a container the match is on RENDERED size: the child of a 40%-wide
+  // container needs 62.5% of its parent to draw the same width as a 25%
+  // page-level element (25 / 40 * 100).
+  const page = alignPage(
+    [
+      { id: "free", type: "button" },
+      { id: "box", type: "group" },
+      { id: "kid", type: "button", parent: "box" },
+    ],
+    {
+      free: { x: 0, y: 0, w: 25, h: 10 },
+      box: { x: 50, y: 0, w: 40, h: 50 },
+      kid: { x: 0, y: 0, w: 10, h: 10 },
+    },
+  );
+  const out = H.matchSizeElements([page], "pg", ["free", "kid"], "match-width");
+  const stored = out[0].layouts[0].placements;
+  const abs = H.absolutePlacements(out[0]);
+  results.a103_match_width_matches_what_is_drawn = {
+    pass: near(stored.kid.w, 62.5) && near(abs.kid.w, 25),
+    detail: { storedKidW: stored.kid.w, absKidW: abs.kid.w, absFreeW: abs.free.w },
+  };
+}
+{
+  // A locked element is still a valid source to match TO, and still never moves.
+  const page = alignPage(
+    [{ id: "a", type: "button" }, { id: "b", type: "button", locked: true }],
+    { a: { x: 0, y: 0, w: 25, h: 12 }, b: { x: 40, y: 0, w: 10, h: 30 } },
+  );
+  const out = H.matchSizeElements([page], "pg", ["a", "b"], "match-both");
+  results.a103_match_skips_locked_target = { pass: out[0] === page, detail: "unchanged" };
+}
+
+// --- A-104: the marquee selects what it TOUCHES ---
+// Touched, not enclosed. Sweeping a band across a row of buttons should take
+// the row; making an integrator lasso every control completely is the kind of
+// precision a design tool exists to avoid.
+{
+  const page = alignPage(
+    [
+      { id: "box", type: "group" },
+      { id: "kid", type: "button", parent: "box" },
+      { id: "far", type: "button" },
+    ],
+    {
+      box: { x: 10, y: 10, w: 40, h: 40 },
+      kid: { x: 50, y: 50, w: 50, h: 50 },
+      far: { x: 80, y: 80, w: 10, h: 10 },
+    },
+  );
+  // A band clipping the container's top-left corner only.
+  const grazed = H.elementsIntersectingRect(page, { x: 0, y: 0, w: 15, h: 15 });
+  // A band over the child's page-space box (30,30 20x20) but not the far one.
+  const overKid = H.elementsIntersectingRect(page, { x: 28, y: 28, w: 5, h: 5 });
+  results.a104_marquee_selects_what_it_touches = {
+    pass:
+      eq(grazed, ["box"]) &&
+      overKid.includes("kid") && overKid.includes("box") && !overKid.includes("far"),
+    detail: { grazed, overKid },
+  };
+}
+{
+  // A band drawn right-to-left / bottom-to-top is the same band.
+  const page = alignPage(
+    [{ id: "a", type: "button" }],
+    { a: { x: 40, y: 40, w: 10, h: 10 } },
+  );
+  const forward = H.elementsIntersectingRect(page, { x: 30, y: 30, w: 30, h: 30 });
+  const backward = H.elementsIntersectingRect(page, { x: 60, y: 60, w: -30, h: -30 });
+  results.a104_marquee_normalises_direction = {
+    pass: eq(forward, ["a"]) && eq(backward, ["a"]),
+    detail: { forward, backward },
+  };
+}
+{
+  // Touching edge-to-edge is not touching: a band that stops exactly where an
+  // element starts leaves it alone, so a drag in the gap between two rows
+  // picks up neither.
+  const page = alignPage(
+    [{ id: "a", type: "button" }],
+    { a: { x: 40, y: 40, w: 10, h: 10 } },
+  );
+  const flush = H.elementsIntersectingRect(page, { x: 20, y: 20, w: 20, h: 20 });
+  results.a104_marquee_excludes_flush_edge = { pass: eq(flush, []), detail: flush };
+}
+
+// --- A-105: lock is a project field, not session state ---
+// A lock that evaporates on reload is worse than none, because you only find
+// out after something has moved.
+{
+  const page = alignPage(
+    [
+      { id: "a", type: "button", locked: true },
+      { id: "b", type: "button" },
+      { id: "c", type: "group" },
+    ],
+    {
+      a: { x: 0, y: 0, w: 10, h: 10 },
+      b: { x: 20, y: 0, w: 10, h: 10 },
+      c: { x: 40, y: 0, w: 10, h: 10 },
+    },
+  );
+  const masters = [{ id: "m1", type: "label", locked: true }, { id: "m2", type: "label" }];
+  const ids = H.lockedIdsFor(page, masters);
+  results.a105_locked_ids_span_page_and_masters = {
+    pass: ids.has("a") && ids.has("m1") && !ids.has("b") && !ids.has("m2") && ids.size === 2,
+    detail: [...ids],
+  };
+}
+{
+  // An element with no `locked` key at all -- every project saved before the
+  // field existed -- reads as unlocked rather than as undefined-and-therefore-
+  // truthy-somewhere.
+  const page = alignPage([{ id: "a", type: "button" }], { a: { x: 0, y: 0, w: 10, h: 10 } });
+  results.a105_absent_lock_reads_unlocked = {
+    pass: H.lockedIdsFor(page, undefined).size === 0 && H.lockedIdsFor(undefined, undefined).size === 0,
+    detail: [...H.lockedIdsFor(page, undefined)],
+  };
+}
+
+// --- A-106: geometry writes go to the layout being authored ---
+// Every helper takes an explicit layout id rather than assuming the primary,
+// because the layout switcher is coming and a portrait edit that silently
+// rewrote the landscape arrangement would be a very quiet bug.
+{
+  const page = {
+    id: "pg",
+    elements: [{ id: "a", type: "button" }, { id: "b", type: "button" }],
+    snap: SNAP,
+    layouts: [
+      { id: "landscape", orientation: "landscape", primary: true, placements: {
+        a: { x: 10, y: 0, w: 10, h: 10 }, b: { x: 60, y: 0, w: 10, h: 10 } }, hidden: [] },
+      { id: "portrait", orientation: "portrait", inherits: "landscape", placements: {
+        a: { x: 80, y: 40, w: 10, h: 10 } }, hidden: [] },
+    ],
+  };
+  const out = H.alignElements([page], "pg", ["a", "b"], "align-left", "portrait");
+  const landscape = out[0].layouts[0].placements;
+  const portrait = out[0].layouts[1].placements;
+  results.a106_align_writes_named_layout_only = {
+    pass:
+      near(landscape.a.x, 10) && near(landscape.b.x, 60) &&
+      near(portrait.a.x, 60) && near(portrait.b.x, 60),
+    detail: { landscape, portrait },
+  };
+}
+{
+  // The inherited box is what a variant edit is measured from: `b` has no
+  // portrait entry, so its landscape 60,0 is the one that gets read.
+  const page = {
+    id: "pg",
+    elements: [{ id: "a", type: "button" }, { id: "b", type: "button" }],
+    snap: SNAP,
+    layouts: [
+      { id: "landscape", orientation: "landscape", primary: true, placements: {
+        a: { x: 10, y: 0, w: 10, h: 10 }, b: { x: 60, y: 20, w: 30, h: 10 } }, hidden: [] },
+      { id: "portrait", orientation: "portrait", inherits: "landscape", placements: {
+        a: { x: 80, y: 40, w: 10, h: 10 } }, hidden: [] },
+    ],
+  };
+  const abs = H.absolutePlacements(page, "portrait");
+  results.a106_variant_reads_through_inherits = {
+    pass: near(abs.a.x, 80) && near(abs.b.x, 60) && near(abs.b.w, 30),
+    detail: abs,
+  };
+}
+
 process.stdout.write(JSON.stringify(results));

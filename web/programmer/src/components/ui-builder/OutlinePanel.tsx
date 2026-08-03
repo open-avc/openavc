@@ -163,7 +163,7 @@ export function OutlinePanel({
         <button
           onClick={(e) => { e.stopPropagation(); onToggleLock(el.id); }}
           style={{ ...iconBtnStyle, color: isLocked ? "var(--accent)" : "var(--border-color)" }}
-          title={isLocked ? "Unlock element" : "Lock element (prevent selection on canvas)"}
+          title={isLocked ? "Unlock element" : "Lock element (no selecting, dragging or aligning on the canvas; saved with the project)"}
         >
           {isLocked ? <Lock size={10} /> : <Unlock size={10} />}
         </button>

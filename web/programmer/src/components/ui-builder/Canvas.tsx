@@ -15,6 +15,9 @@ import {
   snapResize,
   getPlacement,
   roundPlacement,
+  topmostSelection,
+  elementsIntersectingRect,
+  lockedIdsFor,
   MIN_ELEMENT_SIZE,
 } from "./uiBuilderHelpers";
 import { getTunnelPrefix } from "../../api/restClient";
@@ -57,13 +60,22 @@ export function Canvas({
 
   const selectedElementIds = useUIBuilderStore((s) => s.selectedElementIds);
   const selectedMasterElementId = useUIBuilderStore((s) => s.selectedMasterElementId);
+  const activeLayoutId = useUIBuilderStore((s) => s.activeLayoutId);
   const selectElement = useUIBuilderStore((s) => s.selectElement);
+  const selectElements = useUIBuilderStore((s) => s.selectElements);
   const toggleSelectElement = useUIBuilderStore((s) => s.toggleSelectElement);
   const selectMasterElement = useUIBuilderStore((s) => s.selectMasterElement);
   const pushUndo = useUIBuilderStore((s) => s.pushUndo);
   const touchMutation = useUIBuilderStore((s) => s.touchMutation);
   const setContextMenu = useUIBuilderStore((s) => s.setContextMenu);
-  const lockedElementIds = useUIBuilderStore((s) => s.lockedElementIds);
+
+  // Lock lives on the element now, so it survives a reload. One set covering
+  // page elements and masters alike, because every consumer only asks "can
+  // this move?".
+  const lockedElementIds = useMemo(
+    () => lockedIdsFor(page, masterElements),
+    [page, masterElements],
+  );
 
   const project = useProjectStore((s) => s.project);
   const update = useProjectStore((s) => s.update);
@@ -120,26 +132,29 @@ export function Canvas({
   void themeVariables;
 
   const overlappingIds = useMemo(
-    () => (previewMode ? new Set<string>() : findOverlappingIds(page)),
-    [page, previewMode],
+    () => (previewMode ? new Set<string>() : findOverlappingIds(page, activeLayoutId)),
+    [page, previewMode, activeLayoutId],
   );
 
   // Elements hanging outside their parent still render (containers don't clip)
   // but usually by accident — flag them live, not just on Validate.
   const outOfBoundsIds = useMemo(
-    () => (previewMode ? new Set<string>() : findOutOfBoundsIds(page)),
-    [page, previewMode],
+    () => (previewMode ? new Set<string>() : findOutOfBoundsIds(page, activeLayoutId)),
+    [page, previewMode, activeLayoutId],
   );
 
   // The 44px touch minimum that used to be a runtime clamp. As a clamp it
   // shoved elements out of their boxes into overlap on every touch panel, so
   // it advises here instead.
   const smallTouchIds = useMemo(
-    () => (previewMode ? new Set<string>() : findSmallTouchTargetIds(page)),
-    [page, previewMode],
+    () => (previewMode ? new Set<string>() : findSmallTouchTargetIds(page, activeLayoutId)),
+    [page, previewMode, activeLayoutId],
   );
 
-  const placements = useMemo(() => resolvePlacements(page), [page]);
+  const placements = useMemo(
+    () => resolvePlacements(page, activeLayoutId),
+    [page, activeLayoutId],
+  );
   const snap = useMemo(() => pageSnap(page), [page]);
 
   // The container tree the hit-box overlay mirrors. An element whose named
@@ -178,6 +193,98 @@ export function Canvas({
     [previewMode, selectElement, selectMasterElement],
   );
 
+  // --- Marquee: drag on empty canvas to select everything it touches ---
+  //
+  // Touches, not encloses. Sweeping a band across a row of buttons should take
+  // the row -- an integrator should not have to lasso every control completely
+  // to pick it up. Shift adds to the selection instead of replacing it.
+
+  const [marquee, setMarquee] = useState<Placement | null>(null);
+  const cleanupMarqueeRef = useRef<(() => void) | null>(null);
+
+  /** Below this much travel it was a click, and a click clears the selection. */
+  const MARQUEE_THRESHOLD_PX = 3;
+
+  const handleOverlayPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      // Only from bare canvas: a pointer-down that landed on an element (even a
+      // locked one, which does not start a drag) is not a marquee.
+      if (previewMode || e.button !== 0 || e.target !== e.currentTarget) return;
+      const rect = overlayRef.current?.getBoundingClientRect();
+      if (!rect || !(rect.width > 0) || !(rect.height > 0)) return;
+
+      cleanupMarqueeRef.current?.();
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const baseSelection = e.shiftKey
+        ? useUIBuilderStore.getState().selectedElementIds
+        : [];
+      let live: Placement | null = null;
+
+      const toRect = (ev: PointerEvent): Placement => {
+        const x0 = ((startX - rect.left) / rect.width) * 100;
+        const y0 = ((startY - rect.top) / rect.height) * 100;
+        const x1 = ((ev.clientX - rect.left) / rect.width) * 100;
+        const y1 = ((ev.clientY - rect.top) / rect.height) * 100;
+        return { x: Math.min(x0, x1), y: Math.min(y0, y1), w: Math.abs(x1 - x0), h: Math.abs(y1 - y0) };
+      };
+
+      const onMove = (ev: PointerEvent) => {
+        if (
+          !live &&
+          Math.abs(ev.clientX - startX) < MARQUEE_THRESHOLD_PX &&
+          Math.abs(ev.clientY - startY) < MARQUEE_THRESHOLD_PX
+        ) {
+          return;
+        }
+        live = toRect(ev);
+        setMarquee(live);
+      };
+
+      const cleanup = () => {
+        document.removeEventListener("pointermove", onMove);
+        document.removeEventListener("pointerup", onUp);
+        document.removeEventListener("keydown", onKey);
+        cleanupMarqueeRef.current = null;
+      };
+
+      const onUp = () => {
+        cleanup();
+        setMarquee(null);
+        if (!live) return;
+        // A locked element cannot be picked up on the canvas, so a band that
+        // sweeps over one leaves it alone rather than quietly selecting it.
+        const hits = elementsIntersectingRect(page, live, activeLayoutId).filter(
+          (id) => !lockedElementIds.has(id),
+        );
+        if (!hits.length && !baseSelection.length) {
+          selectElement(null);
+          return;
+        }
+        const merged = [...baseSelection];
+        for (const id of hits) if (!merged.includes(id)) merged.push(id);
+        selectElements(merged);
+      };
+
+      const onKey = (ev: KeyboardEvent) => {
+        if (ev.key !== "Escape") return;
+        cleanup();
+        live = null;
+        setMarquee(null);
+      };
+
+      cleanupMarqueeRef.current = cleanup;
+      document.addEventListener("pointermove", onMove);
+      document.addEventListener("pointerup", onUp);
+      document.addEventListener("keydown", onKey);
+    },
+    [previewMode, page, activeLayoutId, lockedElementIds, selectElement, selectElements],
+  );
+
+  // A band still being dragged when the canvas unmounts would leave document
+  // listeners holding a dead closure.
+  useEffect(() => () => cleanupMarqueeRef.current?.(), []);
+
   // --- Gestures: free drag and 8-handle resize, both in percentages ---
   //
   // Geometry reaches the store ONCE, on pointer-up. Everything in between is
@@ -213,12 +320,12 @@ export function Canvas({
       update({
         ui: {
           ...project.ui,
-          pages: moveElementsInPage(project.ui.pages, page.id, next),
+          pages: moveElementsInPage(project.ui.pages, page.id, next, activeLayoutId),
         },
       });
       touchMutation();
     },
-    [project, page.id, pushUndo, update, touchMutation],
+    [project, page.id, activeLayoutId, pushUndo, update, touchMutation],
   );
 
   const beginGesture = useCallback(
@@ -238,8 +345,30 @@ export function Canvas({
         kind === "move" && store.selectedElementIds.includes(elementId)
           ? store.selectedElementIds
           : [elementId];
-      const moving = selection.filter((id) => !store.lockedElementIds.has(id));
+      // A container already carries its children (their percentages are of
+      // it), so writing both moves the child twice. Easy to hit now a marquee
+      // can sweep a container and its contents in one gesture.
+      const moving = topmostSelection(page, selection).filter(
+        (id) => !lockedElementIds.has(id),
+      );
       if (!moving.length) return;
+
+      // Whichever box actually moves drives the gesture. Grab a child while
+      // its container is also selected and the container is what travels, so
+      // the container is what the snapping and the guides are measured on.
+      const anchorId = (() => {
+        if (moving.includes(elementId)) return elementId;
+        const byId = new Map(page.elements.map((el) => [el.id, el]));
+        const seen = new Set<string>([elementId]);
+        let cursor = byId.get(elementId)?.parent ?? null;
+        while (cursor && byId.has(cursor) && !seen.has(cursor)) {
+          if (moving.includes(cursor)) return cursor;
+          seen.add(cursor);
+          cursor = byId.get(cursor)?.parent ?? null;
+        }
+        return null;
+      })();
+      if (!anchorId) return;
 
       // Percentages are of the PARENT box, so each element converts pixels
       // against its own: the same travel is four times as many percent inside
@@ -250,13 +379,13 @@ export function Canvas({
         const node = overlayRef.current?.querySelector(`[data-canvas-element="${CSS.escape(id)}"]`);
         const rect = (node?.parentElement ?? overlayRef.current)?.getBoundingClientRect();
         if (rect) parentRects.set(id, rect);
-        startBoxes[id] = getPlacement(page, id);
+        startBoxes[id] = getPlacement(page, id, activeLayoutId);
       }
 
-      const primaryRect = parentRects.get(elementId);
+      const primaryRect = parentRects.get(anchorId);
       if (!primaryRect || !(primaryRect.width > 0) || !(primaryRect.height > 0)) return;
 
-      const element = page.elements.find((el) => el.id === elementId);
+      const element = page.elements.find((el) => el.id === anchorId);
       const lock =
         typeof element?.aspect_lock === "number" && element.aspect_lock > 0
           ? element.aspect_lock
@@ -287,7 +416,7 @@ export function Canvas({
             if (Math.abs(dx) >= Math.abs(dy)) py = 0;
             else px = 0;
           }
-          const start = startBoxes[elementId];
+          const start = startBoxes[anchorId];
           const raw = {
             ...start,
             x: start.x + (px / primaryRect.width) * 100,
@@ -303,7 +432,7 @@ export function Canvas({
           for (const id of moving) {
             const rect = parentRects.get(id) ?? primaryRect;
             const b = startBoxes[id];
-            if (id === elementId) {
+            if (id === anchorId) {
               next[id] = snapped.placement;
             } else {
               // Convert the primary's percentage travel back to pixels, then
@@ -316,7 +445,7 @@ export function Canvas({
             }
           }
         } else {
-          const start = startBoxes[elementId];
+          const start = startBoxes[anchorId];
           const raw = { ...start };
           const ddx = (dx / primaryRect.width) * 100;
           const ddy = (dy / primaryRect.height) * 100;
@@ -361,7 +490,7 @@ export function Canvas({
               box.w = Math.max(MIN_ELEMENT_SIZE, newW);
             }
           }
-          next[elementId] = roundPlacement(box);
+          next[anchorId] = roundPlacement(box);
         }
 
         const live: LiveGesture = { kind, placements: next, guidesX, guidesY };
@@ -551,6 +680,7 @@ export function Canvas({
             ref={combinedRef}
             data-canvas-grid=""
             onClick={handleCanvasClick}
+            onPointerDown={handleOverlayPointerDown}
             onContextMenu={handleBackgroundContextMenu}
             style={{
               position: "absolute",
@@ -666,6 +796,24 @@ export function Canvas({
             {/* Live smart-guides — the lines a gesture is actually stuck to. */}
             {gesture && (
               <SnapGuides guidesX={gesture.guidesX} guidesY={gesture.guidesY} />
+            )}
+
+            {/* The rubber band itself. */}
+            {marquee && (
+              <div
+                data-canvas-marquee=""
+                style={{
+                  position: "absolute",
+                  left: `${marquee.x}%`,
+                  top: `${marquee.y}%`,
+                  width: `${marquee.w}%`,
+                  height: `${marquee.h}%`,
+                  border: "1px solid var(--accent)",
+                  background: "rgba(33, 150, 243, 0.12)",
+                  pointerEvents: "none",
+                  zIndex: 90,
+                }}
+              />
             )}
 
             {/* Empty state */}

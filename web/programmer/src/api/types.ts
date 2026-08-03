@@ -256,6 +256,9 @@ export interface UIElement {
   parent?: string | null;
   aspect_lock?: number | null;
   css_class?: string | null;
+  /** Authoring-time protection: no drag, resize, nudge or delete. Absent on a
+   *  project saved before the field existed, which reads the same as false. */
+  locked?: boolean;
   style: Record<string, unknown>;
   bindings: Record<string, unknown>;
 }

@@ -51,6 +51,7 @@ import {
   autoPlace,
   defaultElementSize,
   getPlacement,
+  lockedIdsFor,
   pageSnap,
   pointerToPercent,
   resolveDropParent,
@@ -76,7 +77,7 @@ export function UIBuilderView() {
   const selectedElementIds = useUIBuilderStore((s) => s.selectedElementIds);
   const selectedMasterElementId = useUIBuilderStore((s) => s.selectedMasterElementId);
   const previewMode = useUIBuilderStore((s) => s.previewMode);
-  const lockedElementIds = useUIBuilderStore((s) => s.lockedElementIds);
+  const activeLayoutId = useUIBuilderStore((s) => s.activeLayoutId);
   const showGrid = useUIBuilderStore((s) => s.showGrid);
   const zoom = useUIBuilderStore((s) => s.zoom);
   const screenPresetIndex = useUIBuilderStore((s) => s.screenPresetIndex);
@@ -343,10 +344,10 @@ export function UIBuilderView() {
             if (!target) return pages;
             const moved: Record<string, Placement> = {};
             for (const eid of movable) {
-              const box = getPlacement(target, eid);
+              const box = getPlacement(target, eid, activeLayoutId);
               moved[eid] = roundPlacement({ ...box, x: box.x + dx, y: box.y + dy });
             }
-            return moveElementsInPage(pages, currentPage.id, moved);
+            return moveElementsInPage(pages, currentPage.id, moved, activeLayoutId);
           }, `Nudge ${e.key.replace("Arrow", "").toLowerCase()}`, true);
           return;
         }
@@ -442,6 +443,9 @@ export function UIBuilderView() {
   const selectedMasterElement = selectedMasterElementId
     ? masterElements.find((m) => m.id === selectedMasterElementId) || null
     : null;
+  // Lock is a project field now rather than session state, so it comes off the
+  // elements themselves and survives a reload.
+  const lockedElementIds = lockedIdsFor(currentPage ?? undefined, masterElements);
 
   const preset = SCREEN_PRESETS[screenPresetIndex];
   const screenWidth = preset?.width ?? 1024;
@@ -510,10 +514,10 @@ export function UIBuilderView() {
         .filter((e): e is UIElement => !!e);
       if (els.length === 0) return;
       const placements: Record<string, Placement> = {};
-      for (const el of els) placements[el.id] = getPlacement(currentPage, el.id);
+      for (const el of els) placements[el.id] = getPlacement(currentPage, el.id, activeLayoutId);
       setClipboard({ elements: JSON.parse(JSON.stringify(els)), placements });
     },
-    [currentPage, setClipboard],
+    [currentPage, activeLayoutId, setClipboard],
   );
 
   const handlePasteElement = useCallback(() => {
@@ -525,7 +529,7 @@ export function UIBuilderView() {
       ...masterElements.map((m) => m.id),
     ]);
     const snap = pageSnap(currentPage);
-    const occupied = currentPage.elements.map((el) => getPlacement(currentPage, el.id));
+    const occupied = currentPage.elements.map((el) => getPlacement(currentPage, el.id, activeLayoutId));
     const pasted: { element: UIElement; placement: Placement }[] = [];
     for (const src of clipboard.elements) {
       let id = src.id;
@@ -945,7 +949,7 @@ export function UIBuilderView() {
       };
       const siblings = currentPage.elements
         .filter((el) => !el.parent)
-        .map((el) => getPlacement(currentPage, el.id));
+        .map((el) => getPlacement(currentPage, el.id, activeLayoutId));
       const bypass = !!(event.activatorEvent as PointerEvent | undefined)?.altKey || altHeld.current;
       const placement = snapMove(raw, {
         snap: pageSnap(currentPage),
@@ -1180,7 +1184,7 @@ export function UIBuilderView() {
                           const placement = autoPlace(
                             currentPage.elements
                               .filter((el) => !el.parent)
-                              .map((el) => getPlacement(currentPage, el.id)),
+                              .map((el) => getPlacement(currentPage, el.id, activeLayoutId)),
                             defaultElementSize(type, panelElements),
                             pageSnap(currentPage),
                             currentPage.elements.length,

@@ -8,6 +8,7 @@ import { StyleProperties } from "./PropertySections/StyleProperties";
 import { BindingProperties } from "./PropertySections/BindingProperties";
 import { AssetPicker } from "./AssetPicker";
 import { InlineColorPicker } from "../shared/InlineColorPicker";
+import { useUIBuilderStore } from "../../store/uiBuilderStore";
 import {
   getPlacement,
   withPlacement,
@@ -57,6 +58,11 @@ export function PropertiesPanel({
   onDemoteMaster,
   onDeleteMaster,
 }: PropertiesPanelProps) {
+  // Typed coordinates belong to the layout being authored, not to whichever
+  // one happens to be primary. Read before the early returns below so the hook
+  // order never changes.
+  const activeLayoutId = useUIBuilderStore((s) => s.activeLayoutId);
+
   // Master element selected — show master element properties
   if (masterElement && page) {
     return (
@@ -270,9 +276,11 @@ export function PropertiesPanel({
           element={element}
           pages={project.ui.pages}
           macros={(project.macros || []).map((m) => ({ id: m.id, name: m.name }))}
-          placement={getPlacement(page, element.id)}
+          placement={getPlacement(page, element.id, activeLayoutId)}
           onChangePlacement={(placement) =>
-            onPageChange?.({ layouts: withPlacement(page, element.id, placement).layouts })
+            onPageChange?.({
+              layouts: withPlacement(page, element.id, placement, activeLayoutId).layouts,
+            })
           }
           onChange={handleChange}
           onRename={onRenameElement ? (newId) => onRenameElement(element.id, newId) : undefined}
@@ -282,15 +290,15 @@ export function PropertiesPanel({
       <Section title="Layout" defaultOpen>
         <LayoutProperties
           element={element}
-          placement={getPlacement(page, element.id)}
+          placement={getPlacement(page, element.id, activeLayoutId)}
           containers={page.elements
             .filter((e) => e.type === "group" && e.id !== element.id)
             .map((e) => ({ id: e.id, label: e.label || e.id }))}
-          parentPx={referenceParentBox(page, element.id)}
+          parentPx={referenceParentBox(page, element.id, activeLayoutId)}
           onChangePlacement={(placement) => {
             // Geometry lives in the page's layout, so a typed coordinate is a
             // page change, not an element change.
-            const next = withPlacement(page, element.id, placement);
+            const next = withPlacement(page, element.id, placement, activeLayoutId);
             onPageChange?.({ layouts: next.layouts });
           }}
           onChange={handleChange}
