@@ -14,6 +14,7 @@ import {
   withPlacement,
   pageSnap,
   referenceParentBox,
+  containerChoices,
   displayStyleValue,
   storeStyleValue,
 } from "./uiBuilderHelpers";
@@ -37,6 +38,9 @@ interface PropertiesPanelProps {
   onChange: (elementId: string, patch: Partial<UIElement>) => void;
   onRenameElement?: (oldId: string, newId: string) => void;
   onPageChange?: (patch: Partial<UIPage>) => void;
+  /** Moving an element into or out of a container. Not a plain patch — the
+   *  box has to be re-expressed against the new parent or it teleports. */
+  onReparent?: (elementId: string, parentId: string | null) => void;
   onMasterElementChange?: (elementId: string, patch: Partial<MasterElement>) => void;
   onDemoteMaster?: (elementId: string) => void;
   onDeleteMaster?: (elementId: string) => void;
@@ -54,6 +58,7 @@ export function PropertiesPanel({
   onChange,
   onRenameElement,
   onPageChange,
+  onReparent,
   onMasterElementChange,
   onDemoteMaster,
   onDeleteMaster,
@@ -291,9 +296,7 @@ export function PropertiesPanel({
         <LayoutProperties
           element={element}
           placement={getPlacement(page, element.id, activeLayoutId)}
-          containers={page.elements
-            .filter((e) => e.type === "group" && e.id !== element.id)
-            .map((e) => ({ id: e.id, label: e.label || e.id }))}
+          containers={containerChoices(page, element.id)}
           parentPx={referenceParentBox(page, element.id, activeLayoutId)}
           onChangePlacement={(placement) => {
             // Geometry lives in the page's layout, so a typed coordinate is a
@@ -302,6 +305,7 @@ export function PropertiesPanel({
             onPageChange?.({ layouts: next.layouts });
           }}
           onChange={handleChange}
+          onChangeParent={(parentId) => onReparent?.(element.id, parentId)}
         />
       </Section>
 
@@ -469,6 +473,9 @@ function MasterElementProperties({
             })
           }
           onChange={handleElementChange}
+          // A master is not on any page's element tree, so it has no container
+          // to be in and the picker above it is empty.
+          onChangeParent={() => undefined}
         />
       </Section>
 

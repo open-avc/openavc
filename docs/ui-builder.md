@@ -6,16 +6,15 @@ Design touch panel pages for your AV spaces using the visual UI Builder.
 
 ## Layout
 
-**Left panel: Element Palette.** Drag elements onto the canvas. Use the search box at the top to filter elements by name. Hover over an element to see a description tooltip. Switch to the **Outline** tab to see all elements on the current page, search by ID, and manage z-order, lock, and visibility.
+**Left panel: Element Palette.** Drag elements onto the canvas. Use the search box at the top to filter elements by name. Hover over an element to see a description tooltip. Switch to the **Outline** tab for a tree of everything on the current page, where you can search by ID, fold containers away, drag controls in and out of them, and manage z-order and lock.
 - **Controls**: Button, Slider, Select, Text Input, Fader, Keypad
-- **Display**: Label, Status LED, Image, Spacer, Gauge, Level Meter, Clock, List, Matrix
-- **Layout**: Group
+- **Display**: Label, Status LED, Image, Container, Spacer, Gauge, Level Meter, Clock, List, Matrix
 - **Navigation**: Page Nav, Camera Preset
 
 Toggle the palette with **Ctrl+E**.
 
 **Center panel: Canvas.** Visual representation of the panel page:
-- Grid overlay shows the layout grid (configure columns, rows, and gap directly in the canvas toolbar)
+- Grid overlay shows the snap increment (set it, or turn snapping off, in the canvas toolbar)
 - Drag elements to reposition
 - Drag corners to resize
 - Page tabs at the top for multi-page designs (with thumbnail previews and page type icons)
@@ -47,7 +46,7 @@ Toggle the palette with **Ctrl+E**.
 | **Gauge** | Circular arc meter with value binding | Temperature, signal level, volume position |
 | **Level Meter** | Segmented bar (audio VU style) | Audio levels, signal strength |
 | **Fader** | Mixing console style fader with handle | Audio volume, lighting level |
-| **Group** | Visual frame with label (sits behind elements) | "Audio Controls", "Display Settings" section |
+| **Container** | A labelled frame that really holds things: whatever you put inside moves, resizes and hides with it | "Audio Controls", "Display Settings" section |
 | **Clock** | Time, date, countdown, elapsed, meeting timer | Current time display, meeting countdown |
 | **Keypad** | Numeric 0-9 pad with display | TV channel entry, passcode input |
 | **List** | Scrollable list (static, selectable, multi-select, action) | Source list, room schedule, preset recall |
@@ -387,6 +386,26 @@ Common use cases:
 | Clock | All pages | Current time display |
 | Room name label | Control pages only | Hide on settings/advanced pages |
 | Status indicator row | All pages | Connection status LEDs |
+
+## Containers
+
+A **Container** is a real parent, not just a frame drawn behind things. Whatever sits inside one is positioned as a percentage of the container, so:
+
+- Moving or resizing the container carries its contents with it.
+- One **Visibility** rule on the container shows or hides everything inside it, instead of repeating the same rule on every control.
+- Containers can hold other containers, as deep as you like.
+
+There are three ways to put a control in one:
+
+- **Drop it inside on the canvas.** A control dropped fully inside a container joins it. If containers overlap, the smallest one wins. A control that only partly overlaps stays where it was, on the page.
+- **Drag its row onto the container in the Outline.** Drop on a container to go inside it, or on any other row to land beside that element, under the same parent. Drop on the **Page** header or the blank space under the list to bring it back out to page level.
+- **Pick a container in the Layout section** of the properties panel.
+
+However you do it, the control does not move on screen. Its stored percentages change (20% of a quarter-page container is not 20% of the page) but the box it draws stays exactly where you put it.
+
+A container cannot be moved inside itself or inside anything already inside it, so the Outline refuses those drops. Deleting a container does not delete its contents: they come back out to the level above, keeping the position they had.
+
+**Z-order inside a container** is the order of its own contents, not of the whole page. The up and down arrows on a selected row in the Outline move it among its neighbours under the same parent.
 
 ## Page Groups
 

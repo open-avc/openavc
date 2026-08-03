@@ -693,6 +693,39 @@ const tests = {
             'the child is not also a peer on the page');
     },
 
+    // A container's box and its contents' coordinate space have to be the SAME
+    // box. CSS resolves an absolutely positioned child against its ancestor's
+    // padding box -- border box minus the border -- so the theme's 1px frame
+    // would quietly move everything inside in by a pixel and shrink it by two,
+    // while the builder measures against the rectangle it drew. An outline
+    // draws the same frame and takes no space.
+    layout_container_border_does_not_shift_its_contents() {
+        const app = mkApp();
+        renderProject(app, project({
+            elements: [
+                Object.assign(el('box', 'group'), { style: { border_width: 1, border_color: '#123456' } }),
+                Object.assign(el('inner', 'button'), { parent: 'box' }),
+                Object.assign(el('leaf', 'button'), { style: { border_width: 1, border_color: '#123456' } }),
+            ],
+            placements: {
+                box: { x: 10, y: 10, w: 50, h: 50 },
+                inner: { x: 0, y: 0, w: 100, h: 100 },
+                leaf: { x: 70, y: 70, w: 10, h: 10 },
+            },
+        }));
+        const box = document.querySelector('[data-element-id="box"]');
+        const leaf = document.querySelector('[data-element-id="leaf"]');
+        assert(parseFloat(box.style.borderWidth) === 0, `a container carries no border width, got ${box.style.borderWidth}`);
+        assert(box.style.outline.includes('rgb(18, 52, 86)') && box.style.outline.includes('solid'),
+            `the frame survives as an outline, got ${box.style.outline}`);
+        assert(/^calc\(0px - /.test(box.style.outlineOffset),
+            `the outline draws inside the box, got ${box.style.outlineOffset}`);
+        // A leaf element's border is nobody's frame of reference, so it keeps it.
+        assert(leaf.style.borderWidth && leaf.style.borderWidth !== '0',
+            `a leaf keeps its border, got ${leaf.style.borderWidth}`);
+        assert(!leaf.style.outline, `a leaf gets no outline, got ${leaf.style.outline}`);
+    },
+
     layout_containers_nest() {
         const app = mkApp();
         renderProject(app, project({

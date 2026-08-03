@@ -899,7 +899,10 @@ export function resolveDropParent(
   box: Placement,
   layoutId?: string | null,
 ): { parentId: string | null; relative: Placement } {
-  const placements = resolvePlacements(page, layoutId);
+  // Page space, not stored percentages: a container inside another container is
+  // stored as a fraction of ITS parent, so comparing that to a pointer's page
+  // coordinate would test the wrong rectangle the moment containers nest.
+  const placements = absolutePlacements(page, layoutId);
   let best: { id: string; area: number; box: Placement } | null = null;
   for (const el of page.elements) {
     if (el.type !== "group") continue;
@@ -1259,24 +1262,17 @@ export function removeElementFromPage(
     let next: UIPage = { ...p, elements: p.elements.filter((e) => e.id !== elementId) };
 
     if (target && children.length) {
-      const parentBox = getPlacement(p, elementId);
-      const promoted: Record<string, Placement> = {};
-      for (const child of children) {
-        const rel = getPlacement(p, child.id);
-        promoted[child.id] = {
-          x: parentBox.x + (rel.x / 100) * parentBox.w,
-          y: parentBox.y + (rel.y / 100) * parentBox.h,
-          w: (rel.w / 100) * parentBox.w,
-          h: (rel.h / 100) * parentBox.h,
-        };
-      }
+      const grandparent = target.parent ?? null;
       next = {
         ...next,
         elements: next.elements.map((e) =>
-          e.parent === elementId ? { ...e, parent: target.parent ?? null } : e,
+          e.parent === elementId ? { ...e, parent: grandparent } : e,
         ),
       };
-      next = withPlacements(next, promoted);
+      // Same conversion a reparent does, for the same reason: the children keep
+      // the position they appeared to have, so nothing jumps when their
+      // container goes away.
+      next = reparentPlacements(p, next, children.map((c) => c.id), grandparent);
     }
 
     return withoutPlacement(next, elementId);
@@ -1382,11 +1378,11 @@ export function reorderElement(
 
 // Swap two elements' positions in a page's element array (the array order IS
 // the z-order). Callers pass the moving element and the neighbour it should
-// trade places with — the OutlinePanel passes the *visible* neighbour from its
-// (possibly search-filtered) list, so reordering swaps the element the user
-// actually sees adjacent to it, not a hidden full-list neighbour. With no
-// filter the visible neighbour is the full-list adjacent, so this reduces to a
-// plain adjacent move.
+// trade places with — the OutlinePanel passes the visible neighbour UNDER THE
+// SAME PARENT (`OutlineRow.prevSiblingId` / `nextSiblingId`), because z-order
+// inside a container is position among its siblings and the row drawn above a
+// child may belong to another container entirely. With a flat page and no
+// search filter that reduces to a plain adjacent move, as it always was.
 export function swapElementsInOrder(
   pages: UIPage[],
   pageId: string,
@@ -1542,6 +1538,9 @@ export function absolutePlacements(
   return out;
 }
 
+/** The whole page, as a box. What a page-level element's percentages are of. */
+const PAGE_BOX: Placement = { x: 0, y: 0, w: 100, h: 100 };
+
 /** The page-space box an element's own percentages are measured against. */
 function parentAbsoluteBox(
   page: UIPage,
@@ -1550,7 +1549,7 @@ function parentAbsoluteBox(
 ): Placement {
   const parent = page.elements.find((e) => e.id === elementId)?.parent;
   const box = parent && parent !== elementId ? absolute[parent] : undefined;
-  return box && box.w > 0 && box.h > 0 ? box : { x: 0, y: 0, w: 100, h: 100 };
+  return box && box.w > 0 && box.h > 0 ? box : { ...PAGE_BOX };
 }
 
 /** Write page-space boxes back as percentages of whatever each element's own
@@ -1595,6 +1594,289 @@ function movableIds(page: UIPage, elementIds: Iterable<string>): Set<string> {
   const ids = new Set<string>();
   for (const id of elementIds) if (!byId.get(id)?.locked) ids.add(id);
   return ids;
+}
+
+// --- Containers: the tree, and moving things around in it ---
+
+/** Everything hanging off an element, however deep. */
+export function descendantIds(page: UIPage, elementId: string): Set<string> {
+  const byParent = new Map<string, string[]>();
+  for (const el of page.elements) {
+    const parent = el.parent;
+    if (!parent || parent === el.id) continue;
+    const list = byParent.get(parent);
+    if (list) list.push(el.id);
+    else byParent.set(parent, [el.id]);
+  }
+  const out = new Set<string>();
+  const walk = (id: string) => {
+    for (const child of byParent.get(id) ?? []) {
+      if (out.has(child)) continue;
+      out.add(child);
+      walk(child);
+    }
+  };
+  walk(elementId);
+  return out;
+}
+
+/**
+ * Whether an element may be put inside a container.
+ *
+ * The tree makes cycles reachable for the first time: a container dropped into
+ * itself, or into something already inside it, would parent a box to its own
+ * descendant. The renderer survives that (it guards), but the page becomes a
+ * thing nobody can draw or explain, so it is refused at the door instead.
+ */
+export function canReparent(
+  page: UIPage,
+  elementId: string,
+  newParentId: string | null,
+): boolean {
+  if (!page.elements.some((e) => e.id === elementId)) return false;
+  if (newParentId === null) return true;
+  if (newParentId === elementId) return false;
+  const parent = page.elements.find((e) => e.id === newParentId);
+  if (!parent || parent.type !== "group") return false;
+  return !descendantIds(page, elementId).has(newParentId);
+}
+
+/**
+ * Re-express boxes against a different parent, in every layout that carries
+ * one of their own.
+ *
+ * `parent` is a property of the element, not of a layout, so a reparent has to
+ * be answered once per arrangement -- the same element sits at a different
+ * page-space rect in a portrait layout, and so does its new container.
+ */
+function reparentPlacements(
+  source: UIPage,
+  target: UIPage,
+  ids: string[],
+  newParentId: string | null,
+): UIPage {
+  const primaryId = primaryLayout(source)?.id;
+  let next = target;
+  for (const layout of source.layouts ?? []) {
+    const absolute = absolutePlacements(source, layout.id);
+    const base = newParentId ? absolute[newParentId] : { ...PAGE_BOX };
+    if (!base || !(base.w > 0) || !(base.h > 0)) continue;
+    const own = layout.placements ?? {};
+    const rewritten: Record<string, Placement> = {};
+    for (const id of ids) {
+      // A variant only gets a delta if it already had one; inventing entries
+      // there would pin boxes that were happily inheriting.
+      if (layout.id !== primaryId && !(id in own)) continue;
+      const box = absolute[id];
+      if (!box) continue;
+      rewritten[id] = {
+        x: ((box.x - base.x) / base.w) * 100,
+        y: ((box.y - base.y) / base.h) * 100,
+        w: (box.w / base.w) * 100,
+        h: (box.h / base.h) * 100,
+      };
+    }
+    if (Object.keys(rewritten).length) next = withPlacements(next, rewritten, layout.id);
+  }
+  return next;
+}
+
+/**
+ * Sit an element next to its new siblings in the array.
+ *
+ * Array order is z-order among siblings, and something you just dropped into a
+ * container belongs on top of what is already in there -- so it lands after the
+ * last of them, or straight after the container itself when it is the first.
+ */
+function reseatAmongSiblings(
+  elements: UIElement[],
+  elementId: string,
+  parentId: string | null,
+): UIElement[] {
+  const idx = elements.findIndex((e) => e.id === elementId);
+  if (idx === -1) return elements;
+  const rest = [...elements];
+  const [moved] = rest.splice(idx, 1);
+  let at = -1;
+  for (let i = 0; i < rest.length; i++) {
+    if ((rest[i].parent ?? null) === parentId) at = i;
+  }
+  if (at === -1 && parentId) at = rest.findIndex((e) => e.id === parentId);
+  rest.splice(at + 1, 0, moved);
+  return rest;
+}
+
+/**
+ * Put an element inside a container (or back out to the page) without moving it
+ * on screen.
+ *
+ * A child's percentages are of its container, so changing the parent and
+ * nothing else teleports the element -- 20% of a quarter-page box is not 20% of
+ * the page. The box is converted out to page space against the old parent and
+ * back in against the new one, which is the whole job: the numbers change, the
+ * pixels do not.
+ */
+export function reparentElement(
+  pages: UIPage[],
+  pageId: string,
+  elementId: string,
+  newParentId: string | null,
+): UIPage[] {
+  return pages.map((p) => {
+    if (p.id !== pageId) return p;
+    if (!canReparent(p, elementId, newParentId)) return p;
+    const element = p.elements.find((e) => e.id === elementId);
+    if (!element || (element.parent ?? null) === newParentId) return p;
+
+    let next: UIPage = {
+      ...p,
+      elements: p.elements.map((e) =>
+        e.id === elementId ? { ...e, parent: newParentId } : e,
+      ),
+    };
+    next = reparentPlacements(p, next, [elementId], newParentId);
+    return { ...next, elements: reseatAmongSiblings(next.elements, elementId, newParentId) };
+  });
+}
+
+/** Containers on a page an element could move into -- never itself, never
+ *  something already inside it. */
+export function containerChoices(
+  page: UIPage,
+  elementId: string,
+): { id: string; label: string }[] {
+  const banned = descendantIds(page, elementId);
+  banned.add(elementId);
+  return page.elements
+    .filter((e) => e.type === "group" && !banned.has(e.id))
+    .map((e) => ({ id: e.id, label: e.label || e.id }));
+}
+
+/** One row of the Outline tree. */
+export interface OutlineRow {
+  id: string;
+  /** Nesting depth, 0 for a page-level element. Drives the indent. */
+  depth: number;
+  hasChildren: boolean;
+  collapsed: boolean;
+  /** The visible neighbour under the SAME parent. Z-order inside a container is
+   *  position among its siblings, so this is what the order buttons swap with —
+   *  the row above might be a child of something else entirely. */
+  prevSiblingId?: string;
+  nextSiblingId?: string;
+}
+
+/**
+ * Flatten a page's elements into the rows the Outline draws.
+ *
+ * Containers are real parents now, so the panel that lists them has to be a
+ * tree or the hierarchy is invisible in the one place it should be obvious.
+ * A search keeps any row that matches or has a match somewhere under it, and
+ * ignores collapse -- a hit three levels down is useless if the containers
+ * above it were filtered away.
+ */
+export function outlineRows(
+  elements: UIElement[],
+  opts: { collapsed?: Iterable<string>; matchIds?: ReadonlySet<string> | null } = {},
+): OutlineRow[] {
+  const collapsed = new Set(opts.collapsed ?? []);
+  const match = opts.matchIds ?? null;
+  const ids = new Set(elements.map((e) => e.id));
+  const byParent = new Map<string | null, UIElement[]>();
+  for (const el of elements) {
+    const named = el.parent;
+    const key = named && named !== el.id && ids.has(named) ? named : null;
+    const list = byParent.get(key);
+    if (list) list.push(el);
+    else byParent.set(key, [el]);
+  }
+
+  const visible = new Set<string>();
+  if (match) {
+    const keep = (el: UIElement, seen: Set<string>): boolean => {
+      let show = match.has(el.id);
+      for (const child of byParent.get(el.id) ?? []) {
+        if (seen.has(child.id)) continue;
+        if (keep(child, new Set(seen).add(child.id))) show = true;
+      }
+      if (show) visible.add(el.id);
+      return show;
+    };
+    for (const el of byParent.get(null) ?? []) keep(el, new Set([el.id]));
+  }
+
+  // Everything with a path down from a root, whether or not it is drawn today.
+  // Kept apart from what gets emitted, so a folded container is not mistaken
+  // for an unreachable one.
+  const reachable = new Set<string>();
+  const reach = (siblings: UIElement[], seen: Set<string>) => {
+    for (const el of siblings) {
+      if (reachable.has(el.id)) continue;
+      reachable.add(el.id);
+      reach((byParent.get(el.id) ?? []).filter((c) => !seen.has(c.id)), new Set([...seen, el.id]));
+    }
+  };
+  reach(byParent.get(null) ?? [], new Set());
+
+  const rows: OutlineRow[] = [];
+  const emit = (siblings: UIElement[], depth: number, seen: Set<string>) => {
+    const shown = match ? siblings.filter((el) => visible.has(el.id)) : siblings;
+    shown.forEach((el, i) => {
+      const kids = (byParent.get(el.id) ?? []).filter((c) => !seen.has(c.id));
+      const shownKids = match ? kids.filter((c) => visible.has(c.id)) : kids;
+      const isCollapsed = !match && collapsed.has(el.id) && shownKids.length > 0;
+      rows.push({
+        id: el.id,
+        depth,
+        hasChildren: shownKids.length > 0,
+        collapsed: isCollapsed,
+        prevSiblingId: shown[i - 1]?.id,
+        nextSiblingId: shown[i + 1]?.id,
+      });
+      if (shownKids.length && !isCollapsed) emit(kids, depth + 1, new Set([...seen, el.id]));
+    });
+  };
+  emit(byParent.get(null) ?? [], 0, new Set());
+
+  // A hand-edited parent cycle leaves elements with no path down from a root.
+  // The renderer drops them; the Outline is where you would go to fix that, so
+  // it shows them at page level rather than pretending they aren't there.
+  const stranded = elements.filter(
+    (el) => !reachable.has(el.id) && (!match || match.has(el.id)),
+  );
+  stranded.forEach((el, i) => {
+    rows.push({
+      id: el.id,
+      depth: 0,
+      hasChildren: false,
+      collapsed: false,
+      prevSiblingId: stranded[i - 1]?.id,
+      nextSiblingId: stranded[i + 1]?.id,
+    });
+  });
+  return rows;
+}
+
+/**
+ * Where dropping onto an Outline row puts the dragged element.
+ *
+ * Drop on a container and you are putting it IN. Drop on anything else and you
+ * are putting it WHERE THAT IS -- beside it, under the same parent -- which is
+ * also how a child comes back out: drop it on any page-level element, or on the
+ * page row itself. `undefined` means the drop is refused.
+ */
+export function outlineDropParent(
+  page: UIPage,
+  draggedId: string,
+  targetId: string | null,
+): string | null | undefined {
+  if (targetId === null) return canReparent(page, draggedId, null) ? null : undefined;
+  if (targetId === draggedId) return undefined;
+  const target = page.elements.find((e) => e.id === targetId);
+  if (!target) return undefined;
+  if (descendantIds(page, draggedId).has(targetId)) return undefined;
+  const parentId = target.type === "group" ? target.id : target.parent ?? null;
+  return canReparent(page, draggedId, parentId) ? parentId : undefined;
 }
 
 export function topmostSelection(page: UIPage, elementIds: string[]): string[] {

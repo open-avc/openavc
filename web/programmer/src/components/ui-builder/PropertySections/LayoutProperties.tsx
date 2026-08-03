@@ -5,13 +5,17 @@ interface LayoutPropertiesProps {
   element: UIElement;
   /** Where the element sits, as a percentage of its parent box. */
   placement: Placement;
-  /** Containers on this page it could be parented to (never itself). */
+  /** Containers on this page it could be parented to — never itself, and never
+   *  something already inside it. */
   containers: { id: string; label: string }[];
   /** The box the percentages are OF, in reference pixels. An aspect lock is a
    *  pixel ratio, so it only means anything against the real parent. */
   parentPx: { width: number; height: number };
   onChangePlacement: (placement: Placement) => void;
   onChange: (patch: Partial<UIElement>) => void;
+  /** Changing the container is NOT a plain patch: the percentages are of
+   *  whatever holds the element, so they have to be re-expressed or it jumps. */
+  onChangeParent: (parentId: string | null) => void;
 }
 
 export function LayoutProperties({
@@ -21,6 +25,7 @@ export function LayoutProperties({
   parentPx,
   onChangePlacement,
   onChange,
+  onChangeParent,
 }: LayoutPropertiesProps) {
   const lock =
     typeof element.aspect_lock === "number" && element.aspect_lock > 0
@@ -66,7 +71,7 @@ export function LayoutProperties({
         <label style={labelStyle}>Container</label>
         <select
           value={element.parent ?? ""}
-          onChange={(e) => onChange({ parent: e.target.value || null })}
+          onChange={(e) => onChangeParent(e.target.value || null)}
           style={selectStyle}
         >
           <option value="">Page (no container)</option>
@@ -78,7 +83,8 @@ export function LayoutProperties({
         </select>
         <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
           A container carries its contents when it moves, and one visibility rule on it
-          shows or hides everything inside.
+          shows or hides everything inside. Moving one in or out keeps it exactly where
+          it is on screen. You can also drag it there in the Outline.
         </div>
       </div>
 

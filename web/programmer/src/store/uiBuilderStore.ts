@@ -33,6 +33,10 @@ interface UIBuilderStore {
   redoStack: UndoEntry[];
   lastMutationTime: number;
   activeDragSource: string | null;
+  /** Containers folded shut in the Outline tree. A view preference, not project
+   *  data, but it lives here rather than in the panel so it survives switching
+   *  to the palette tab and back. */
+  collapsedOutlineIds: string[];
 
   selectPage: (id: string | null) => void;
   selectLayout: (layoutId: string | null) => void;
@@ -58,6 +62,7 @@ interface UIBuilderStore {
   touchMutation: () => void;
   setActiveDragSource: (source: string | null) => void;
   toggleLock: (elementId: string) => void;
+  toggleOutlineCollapse: (elementId: string) => void;
 }
 
 export const useUIBuilderStore = create<UIBuilderStore>((set, get) => ({
@@ -78,6 +83,7 @@ export const useUIBuilderStore = create<UIBuilderStore>((set, get) => ({
   redoStack: [],
   lastMutationTime: 0,
   activeDragSource: null,
+  collapsedOutlineIds: [],
 
   // Switching pages drops back to the primary layout: a layout id belongs to
   // one page, so carrying it across would point at nothing.
@@ -263,5 +269,12 @@ export const useUIBuilderStore = create<UIBuilderStore>((set, get) => ({
     });
     get().touchMutation();
   },
+
+  toggleOutlineCollapse: (elementId) =>
+    set((s) => ({
+      collapsedOutlineIds: s.collapsedOutlineIds.includes(elementId)
+        ? s.collapsedOutlineIds.filter((id) => id !== elementId)
+        : [...s.collapsedOutlineIds, elementId],
+    })),
 
 }));

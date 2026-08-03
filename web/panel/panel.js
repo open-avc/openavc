@@ -907,6 +907,31 @@ class PanelApp {
     }
 
     /**
+     * Make a container's box and its contents' coordinate space the same box.
+     *
+     * A child's percentages are OF its container, and CSS resolves an absolutely
+     * positioned box against its ancestor's PADDING box -- which is the border
+     * box minus the border. So a container with the theme's 1px frame quietly
+     * moves everything inside it in by a pixel and shrinks it by two, while the
+     * builder measures against the rectangle it drew. The two disagree, and a
+     * control shuffles a little every time it moves in or out of a container.
+     *
+     * An outline draws the same rectangle and takes up no space at all, so the
+     * frame stays exactly where it was and the coordinate space becomes the
+     * whole box. Only containers need this; a leaf element's border is nobody's
+     * frame of reference.
+     */
+    _makeCoordinateSpace(el) {
+        const width = el.style.borderWidth;
+        if (!width || width === '0px' || width === '0') return;
+        const style = el.style.borderStyle || 'solid';
+        const color = el.style.borderColor || 'currentColor';
+        el.style.outline = `${width} ${style} ${color}`;
+        el.style.outlineOffset = `calc(0px - ${width})`;
+        el.style.borderWidth = '0';
+    }
+
+    /**
      * Render one element, and anything that names it as a parent, into `host`.
      *
      * A container is a real parent now: its children are percentages *of it*,
@@ -932,6 +957,7 @@ class PanelApp {
             // consistent with free positioning warning rather than preventing.
             el.style.overflow = 'visible';
             el.style.pointerEvents = 'auto';
+            this._makeCoordinateSpace(el);
             for (const child of children) {
                 this._renderElementTree(child, ctx, el);
             }

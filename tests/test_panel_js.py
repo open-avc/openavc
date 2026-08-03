@@ -96,6 +96,7 @@ SCENARIOS = [
     "layout_inherits_merges_deltas",
     "layout_container_children_render_inside_parent",
     "layout_containers_nest",
+    "layout_container_border_does_not_shift_its_contents",
     "layout_parent_cycle_does_not_hang",
     "layout_aspect_lock_centres_within_its_box",
     "layout_unlocked_elements_take_their_box",

@@ -41,6 +41,7 @@ import {
   duplicateElementInPage,
   reorderElement,
   swapElementsInOrder,
+  reparentElement,
   promoteToMaster,
   demoteFromMaster,
   updateMasterElement,
@@ -110,6 +111,8 @@ export function UIBuilderView() {
   const setContextMenu = useUIBuilderStore((s) => s.setContextMenu);
   const setActiveDragSource = useUIBuilderStore((s) => s.setActiveDragSource);
   const activeDragSource = useUIBuilderStore((s) => s.activeDragSource);
+  const collapsedOutlineIds = useUIBuilderStore((s) => s.collapsedOutlineIds);
+  const toggleOutlineCollapse = useUIBuilderStore((s) => s.toggleOutlineCollapse);
   const panelElements = usePluginStore((s) => s.extensions.panel_elements);
 
   const [showSettings, setShowSettings] = useState(false);
@@ -823,6 +826,22 @@ export function UIBuilderView() {
     [currentPage, project, pushUndo, update, touchMutation],
   );
 
+  // Moving a control into a container (or back out) is a geometry change as
+  // much as a structural one: its percentages are of whatever holds it, so the
+  // helper converts through page space and the element stays exactly where it
+  // is drawn.
+  const handleReparentElement = useCallback(
+    (elementId: string, newParentId: string | null) => {
+      if (!currentPage) return;
+      applyMutation(
+        (p) => reparentElement(p, currentPage.id, elementId, newParentId),
+        newParentId ? "Move into container" : "Move out of container",
+      );
+      selectElement(elementId);
+    },
+    [currentPage, applyMutation, selectElement],
+  );
+
   const handleMasterElementPropertyChange = useCallback(
     (elementId: string, patch: Partial<MasterElement>) => {
       if (!project) return;
@@ -1198,11 +1217,14 @@ export function UIBuilderView() {
                       />
                     ) : (
                       <OutlinePanel
-                        elements={currentPage?.elements || []}
+                        page={currentPage ?? null}
                         masterElements={masterElements}
                         selectedElementIds={selectedElementIds}
                         selectedMasterElementId={selectedMasterElementId}
                         lockedElementIds={lockedElementIds}
+                        collapsedIds={collapsedOutlineIds}
+                        onToggleCollapse={toggleOutlineCollapse}
+                        onReparent={handleReparentElement}
                         onSelectElement={(id, shift) => {
                           if (shift) {
                             useUIBuilderStore.getState().toggleSelectElement(id);
@@ -1293,6 +1315,7 @@ export function UIBuilderView() {
                     onChange={handlePropertyChange}
                     onRenameElement={handleRenameElement}
                     onPageChange={handlePageChange}
+                    onReparent={handleReparentElement}
                     onMasterElementChange={handleMasterElementPropertyChange}
                     onDemoteMaster={handleDemoteFromMaster}
                     onDeleteMaster={handleDeleteMasterElement}

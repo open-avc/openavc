@@ -1260,4 +1260,415 @@ const alignPage = (elements, placements) => ({
   };
 }
 
+// --- C-107: the container tree the Outline draws ---
+// Containers are real parents, so the panel that lists them has to be a tree or
+// the hierarchy is invisible in the one place it should be obvious.
+{
+  const page = alignPage(
+    [
+      { id: "outer", type: "group" },
+      { id: "inner", type: "group", parent: "outer" },
+      { id: "deep", type: "button", parent: "inner" },
+      { id: "loose", type: "label" },
+    ],
+    {
+      outer: { x: 0, y: 0, w: 50, h: 50 },
+      inner: { x: 0, y: 0, w: 50, h: 50 },
+      deep: { x: 0, y: 0, w: 50, h: 50 },
+      loose: { x: 60, y: 0, w: 10, h: 10 },
+    },
+  );
+  const rows = H.outlineRows(page.elements);
+  results.c107_tree_indents_by_depth = {
+    pass: eq(
+      rows.map((r) => [r.id, r.depth]),
+      [["outer", 0], ["inner", 1], ["deep", 2], ["loose", 0]],
+    ),
+    detail: rows,
+  };
+}
+{
+  // A folded container hides its whole subtree, however deep, and says so.
+  const page = alignPage(
+    [
+      { id: "outer", type: "group" },
+      { id: "inner", type: "group", parent: "outer" },
+      { id: "deep", type: "button", parent: "inner" },
+      { id: "loose", type: "label" },
+    ],
+    {
+      outer: { x: 0, y: 0, w: 50, h: 50 },
+      inner: { x: 0, y: 0, w: 50, h: 50 },
+      deep: { x: 0, y: 0, w: 50, h: 50 },
+      loose: { x: 60, y: 0, w: 10, h: 10 },
+    },
+  );
+  const rows = H.outlineRows(page.elements, { collapsed: ["outer"] });
+  const outer = rows.find((r) => r.id === "outer");
+  results.c107_collapse_hides_subtree = {
+    pass: eq(rows.map((r) => r.id), ["outer", "loose"]) &&
+      outer.collapsed === true && outer.hasChildren === true,
+    detail: rows,
+  };
+}
+{
+  // A search hit three levels down is useless if the containers above it were
+  // filtered away, so an ancestor of a match shows even when it doesn't match.
+  const page = alignPage(
+    [
+      { id: "outer", type: "group" },
+      { id: "inner", type: "group", parent: "outer" },
+      { id: "btn_mute", type: "button", parent: "inner" },
+      { id: "loose", type: "label" },
+    ],
+    {
+      outer: { x: 0, y: 0, w: 50, h: 50 },
+      inner: { x: 0, y: 0, w: 50, h: 50 },
+      btn_mute: { x: 0, y: 0, w: 50, h: 50 },
+      loose: { x: 60, y: 0, w: 10, h: 10 },
+    },
+  );
+  // Collapsed too: a search overrides the fold, or the hit stays hidden.
+  const rows = H.outlineRows(page.elements, {
+    collapsed: ["outer", "inner"],
+    matchIds: new Set(["btn_mute"]),
+  });
+  results.c107_search_keeps_ancestors = {
+    pass: eq(rows.map((r) => [r.id, r.depth]), [["outer", 0], ["inner", 1], ["btn_mute", 2]]),
+    detail: rows,
+  };
+}
+{
+  // Z-order inside a container is position among its SIBLINGS, so the order
+  // buttons swap with the neighbour under the same parent -- the row drawn
+  // above a child usually belongs to something else entirely.
+  const page = alignPage(
+    [
+      { id: "box", type: "group" },
+      { id: "a", type: "button", parent: "box" },
+      { id: "b", type: "button", parent: "box" },
+      { id: "after", type: "label" },
+    ],
+    {
+      box: { x: 0, y: 0, w: 50, h: 50 },
+      a: { x: 0, y: 0, w: 10, h: 10 },
+      b: { x: 20, y: 0, w: 10, h: 10 },
+      after: { x: 60, y: 0, w: 10, h: 10 },
+    },
+  );
+  const rows = H.outlineRows(page.elements);
+  const a = rows.find((r) => r.id === "a");
+  const b = rows.find((r) => r.id === "b");
+  const box = rows.find((r) => r.id === "box");
+  results.c107_order_buttons_pair_siblings = {
+    pass:
+      a.prevSiblingId === undefined && a.nextSiblingId === "b" &&
+      b.prevSiblingId === "a" && b.nextSiblingId === undefined &&
+      box.nextSiblingId === "after",
+    detail: rows,
+  };
+}
+{
+  // A hand-edited parent cycle leaves elements with no path down from a root.
+  // The renderer drops them; the Outline is where you would go to fix that.
+  const page = alignPage(
+    [
+      { id: "a", type: "group", parent: "b" },
+      { id: "b", type: "group", parent: "a" },
+      { id: "ok", type: "label" },
+    ],
+    { a: { x: 0, y: 0, w: 10, h: 10 }, b: { x: 0, y: 0, w: 10, h: 10 }, ok: { x: 0, y: 0, w: 10, h: 10 } },
+  );
+  const rows = H.outlineRows(page.elements);
+  results.c107_cycle_members_still_listed = {
+    pass: rows.length === 3 && rows.some((r) => r.id === "a") && rows.some((r) => r.id === "b"),
+    detail: rows,
+  };
+}
+
+// --- C-108: reparenting must not move anything on screen ---
+// A child's percentages are of its parent, so changing the parent without
+// recomputing them teleports the element.
+{
+  const page = alignPage(
+    [{ id: "box", type: "group" }, { id: "kid", type: "button" }],
+    { box: { x: 10, y: 10, w: 40, h: 40 }, kid: { x: 30, y: 30, w: 20, h: 20 } },
+  );
+  const before = H.absolutePlacements(page);
+  const out = H.reparentElement([page], "pg", "kid", "box");
+  const after = H.absolutePlacements(out[0]);
+  const stored = out[0].layouts[0].placements.kid;
+  results.c108_reparent_keeps_the_pixels = {
+    pass:
+      near(after.kid.x, before.kid.x) && near(after.kid.y, before.kid.y) &&
+      near(after.kid.w, before.kid.w) && near(after.kid.h, before.kid.h) &&
+      // and the stored numbers genuinely changed: 30,30 of the page is 50,50
+      // of a container that starts at 10,10 and is 40 wide.
+      near(stored.x, 50) && near(stored.y, 50) && near(stored.w, 50) && near(stored.h, 50),
+    detail: { before: before.kid, after: after.kid, stored },
+  };
+}
+{
+  // ...and back out again lands on the number it started with.
+  const page = alignPage(
+    [{ id: "box", type: "group" }, { id: "kid", type: "button", parent: "box" }],
+    { box: { x: 10, y: 10, w: 40, h: 40 }, kid: { x: 50, y: 50, w: 50, h: 50 } },
+  );
+  const before = H.absolutePlacements(page);
+  const out = H.reparentElement([page], "pg", "kid", null);
+  const after = H.absolutePlacements(out[0]);
+  const stored = out[0].layouts[0].placements.kid;
+  const el = out[0].elements.find((e) => e.id === "kid");
+  results.c108_reparent_out_to_page_level = {
+    pass:
+      (el.parent ?? null) === null &&
+      near(after.kid.x, before.kid.x) && near(after.kid.y, before.kid.y) &&
+      near(stored.x, 30) && near(stored.y, 30) && near(stored.w, 20) && near(stored.h, 20),
+    detail: { before: before.kid, after: after.kid, stored, parent: el.parent ?? null },
+  };
+}
+{
+  // A container carries its contents, so moving one keeps everything under it
+  // exactly where it was drawn without touching a single child's numbers.
+  const page = alignPage(
+    [
+      { id: "outer", type: "group" },
+      { id: "box", type: "group" },
+      { id: "kid", type: "button", parent: "box" },
+    ],
+    {
+      outer: { x: 50, y: 0, w: 50, h: 100 },
+      box: { x: 10, y: 10, w: 40, h: 40 },
+      kid: { x: 50, y: 50, w: 50, h: 50 },
+    },
+  );
+  const before = H.absolutePlacements(page);
+  const out = H.reparentElement([page], "pg", "box", "outer");
+  const after = H.absolutePlacements(out[0]);
+  const kidStored = out[0].layouts[0].placements.kid;
+  results.c108_children_ride_along_untouched = {
+    pass:
+      near(after.kid.x, before.kid.x) && near(after.kid.y, before.kid.y) &&
+      near(after.kid.w, before.kid.w) && near(after.kid.h, before.kid.h) &&
+      eq(kidStored, { x: 50, y: 50, w: 50, h: 50 }),
+    detail: { beforeKid: before.kid, afterKid: after.kid, kidStored, box: after.box },
+  };
+}
+{
+  // The variant a layout switcher will author has its own boxes, and its own
+  // container rect, so the conversion has to be answered once per layout.
+  const page = {
+    id: "pg",
+    snap: SNAP,
+    elements: [{ id: "box", type: "group" }, { id: "kid", type: "button" }],
+    layouts: [
+      { id: "landscape", orientation: "landscape", primary: true, placements: {
+        box: { x: 10, y: 10, w: 40, h: 40 }, kid: { x: 30, y: 30, w: 20, h: 20 } }, hidden: [] },
+      { id: "portrait", orientation: "portrait", inherits: "landscape", placements: {
+        box: { x: 0, y: 0, w: 100, h: 20 }, kid: { x: 50, y: 10, w: 10, h: 5 } }, hidden: [] },
+    ],
+  };
+  const beforeL = H.absolutePlacements(page, "landscape");
+  const beforeP = H.absolutePlacements(page, "portrait");
+  const out = H.reparentElement([page], "pg", "kid", "box");
+  const afterL = H.absolutePlacements(out[0], "landscape");
+  const afterP = H.absolutePlacements(out[0], "portrait");
+  results.c108_every_layout_reconverted = {
+    pass:
+      near(afterL.kid.x, beforeL.kid.x) && near(afterL.kid.y, beforeL.kid.y) &&
+      near(afterP.kid.x, beforeP.kid.x) && near(afterP.kid.y, beforeP.kid.y) &&
+      near(afterP.kid.w, beforeP.kid.w) &&
+      !eq(out[0].layouts[0].placements.kid, out[0].layouts[1].placements.kid),
+    detail: { beforeP: beforeP.kid, afterP: afterP.kid, storedP: out[0].layouts[1].placements.kid },
+  };
+}
+{
+  // Something dropped into a container belongs on top of what is already in
+  // there, and array order IS z-order among siblings.
+  const page = alignPage(
+    [
+      { id: "box", type: "group" },
+      { id: "first", type: "button", parent: "box" },
+      { id: "mover", type: "label" },
+    ],
+    {
+      box: { x: 0, y: 0, w: 50, h: 50 },
+      first: { x: 0, y: 0, w: 10, h: 10 },
+      mover: { x: 60, y: 60, w: 10, h: 10 },
+    },
+  );
+  const out = H.reparentElement([page], "pg", "mover", "box");
+  results.c108_lands_on_top_of_its_new_siblings = {
+    pass: eq(out[0].elements.map((e) => e.id), ["box", "first", "mover"]),
+    detail: out[0].elements.map((e) => [e.id, e.parent ?? null]),
+  };
+}
+
+// --- C-109: the cycles the tree makes reachable ---
+// A container cannot go inside itself, or inside anything already inside it.
+{
+  const page = alignPage(
+    [
+      { id: "outer", type: "group" },
+      { id: "inner", type: "group", parent: "outer" },
+      { id: "deep", type: "button", parent: "inner" },
+      { id: "plain", type: "button" },
+    ],
+    {
+      outer: { x: 0, y: 0, w: 50, h: 50 },
+      inner: { x: 0, y: 0, w: 50, h: 50 },
+      deep: { x: 0, y: 0, w: 50, h: 50 },
+      plain: { x: 60, y: 0, w: 10, h: 10 },
+    },
+  );
+  results.c109_descendants_are_found_at_any_depth = {
+    pass: eq([...H.descendantIds(page, "outer")].sort(), ["deep", "inner"]),
+    detail: [...H.descendantIds(page, "outer")],
+  };
+  results.c109_cannot_parent_into_itself_or_its_own = {
+    pass:
+      H.canReparent(page, "outer", "outer") === false &&
+      H.canReparent(page, "outer", "inner") === false &&
+      H.canReparent(page, "outer", null) === true &&
+      H.canReparent(page, "plain", "inner") === true,
+    detail: {
+      self: H.canReparent(page, "outer", "outer"),
+      descendant: H.canReparent(page, "outer", "inner"),
+      out: H.canReparent(page, "outer", null),
+      legal: H.canReparent(page, "plain", "inner"),
+    },
+  };
+}
+{
+  // Refused means refused: the illegal move returns the page untouched rather
+  // than half-applying the parent change.
+  const page = alignPage(
+    [{ id: "outer", type: "group" }, { id: "inner", type: "group", parent: "outer" }],
+    { outer: { x: 0, y: 0, w: 50, h: 50 }, inner: { x: 0, y: 0, w: 50, h: 50 } },
+  );
+  const out = H.reparentElement([page], "pg", "outer", "inner");
+  results.c109_illegal_reparent_is_a_no_op = {
+    pass: out[0] === page,
+    detail: out[0].elements.map((e) => [e.id, e.parent ?? null]),
+  };
+}
+{
+  // A non-container is not a container: dropping onto a plain button means
+  // "put it beside that", which is also how a child comes back out.
+  const page = alignPage(
+    [
+      { id: "box", type: "group" },
+      { id: "kid", type: "button", parent: "box" },
+      { id: "peer", type: "button" },
+      { id: "mover", type: "label" },
+    ],
+    {
+      box: { x: 0, y: 0, w: 50, h: 50 },
+      kid: { x: 0, y: 0, w: 10, h: 10 },
+      peer: { x: 60, y: 0, w: 10, h: 10 },
+      mover: { x: 60, y: 20, w: 10, h: 10 },
+    },
+  );
+  results.c109_drop_on_container_goes_in = {
+    pass: H.outlineDropParent(page, "mover", "box") === "box",
+    detail: H.outlineDropParent(page, "mover", "box"),
+  };
+  results.c109_drop_on_a_peer_joins_its_parent = {
+    pass:
+      H.outlineDropParent(page, "mover", "kid") === "box" &&
+      H.outlineDropParent(page, "kid", "peer") === null &&
+      H.outlineDropParent(page, "kid", null) === null,
+    detail: {
+      ontoChild: H.outlineDropParent(page, "mover", "kid"),
+      ontoPageLevelPeer: H.outlineDropParent(page, "kid", "peer"),
+      ontoPageZone: H.outlineDropParent(page, "kid", null),
+    },
+  };
+  results.c109_drop_onto_itself_or_its_own_is_refused = {
+    pass:
+      H.outlineDropParent(page, "box", "box") === undefined &&
+      H.outlineDropParent(page, "box", "kid") === undefined &&
+      H.outlineDropParent(page, "mover", "nope") === undefined,
+    detail: {
+      self: H.outlineDropParent(page, "box", "box"),
+      own: H.outlineDropParent(page, "box", "kid"),
+      unknown: H.outlineDropParent(page, "mover", "nope"),
+    },
+  };
+}
+{
+  // The picker in the Layout panel is the same door, so it offers the same set.
+  const page = alignPage(
+    [
+      { id: "outer", type: "group" },
+      { id: "inner", type: "group", parent: "outer" },
+      { id: "other", type: "group" },
+    ],
+    {
+      outer: { x: 0, y: 0, w: 50, h: 50 },
+      inner: { x: 0, y: 0, w: 50, h: 50 },
+      other: { x: 60, y: 0, w: 20, h: 20 },
+    },
+  );
+  results.c109_picker_hides_self_and_descendants = {
+    pass: eq(H.containerChoices(page, "outer").map((c) => c.id), ["other"]),
+    detail: H.containerChoices(page, "outer"),
+  };
+}
+
+// --- C-110: deleting a container still re-homes what was inside it ---
+// Children are controls the author wired up; losing six of them to one wrong
+// Delete is not a trade anybody wants.
+{
+  const page = alignPage(
+    [
+      { id: "outer", type: "group" },
+      { id: "box", type: "group", parent: "outer" },
+      { id: "kid", type: "button", parent: "box" },
+    ],
+    {
+      outer: { x: 20, y: 20, w: 60, h: 60 },
+      box: { x: 10, y: 10, w: 40, h: 40 },
+      kid: { x: 50, y: 50, w: 50, h: 50 },
+    },
+  );
+  const before = H.absolutePlacements(page);
+  const out = H.removeElementFromPage([page], "pg", "box");
+  const after = H.absolutePlacements(out[0]);
+  const kid = out[0].elements.find((e) => e.id === "kid");
+  results.c110_orphans_rehome_without_moving = {
+    pass:
+      out[0].elements.length === 2 && kid.parent === "outer" &&
+      near(after.kid.x, before.kid.x) && near(after.kid.y, before.kid.y) &&
+      near(after.kid.w, before.kid.w) && near(after.kid.h, before.kid.h),
+    detail: { before: before.kid, after: after.kid, parent: kid.parent },
+  };
+}
+
+// --- C-111: a drop lands in the container it looks like it landed in ---
+// The canvas hands this a PAGE-space box, so a nested container has to be
+// compared in page space too -- its stored numbers are a fraction of its own
+// parent and would test the wrong rectangle.
+{
+  const page = alignPage(
+    [
+      { id: "outer", type: "group" },
+      { id: "inner", type: "group", parent: "outer" },
+    ],
+    {
+      outer: { x: 0, y: 0, w: 50, h: 50 },
+      // 50,50 50x50 OF outer = 25,25 25x25 of the page.
+      inner: { x: 50, y: 50, w: 50, h: 50 },
+    },
+  );
+  const drop = H.resolveDropParent(page, { x: 30, y: 30, w: 10, h: 10 });
+  results.c111_nested_container_adopts_in_page_space = {
+    pass:
+      drop.parentId === "inner" &&
+      near(drop.relative.x, 20) && near(drop.relative.y, 20) &&
+      near(drop.relative.w, 40) && near(drop.relative.h, 40),
+    detail: drop,
+  };
+}
+
 process.stdout.write(JSON.stringify(results));
