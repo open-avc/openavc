@@ -108,6 +108,13 @@ SCENARIOS = [
     "layout_vmin_override_hook",
     "layout_stylesheets_are_rem_except_hairlines",
     "layout_type_scale_calibration",
+    # Power-user hooks (element.css_class + the ui.custom_css stylesheet).
+    "power_css_class_on_element",
+    "power_css_class_on_master",
+    "power_css_class_under_aspect_lock",
+    "power_css_class_tolerates_ragged_input",
+    "power_custom_css_injected",
+    "power_custom_css_replaced_and_cleared",
 ]
 
 
@@ -116,3 +123,15 @@ def test_panel_js_behaviour(harness_results: dict, scenario: str) -> None:
     assert scenario in harness_results, f"harness did not run {scenario}"
     result = harness_results[scenario]
     assert result["pass"], f"{scenario} failed: {result.get('error')}\n{result.get('stack')}"
+
+
+def test_every_harness_scenario_is_listed(harness_results: dict) -> None:
+    """The list above is hand-maintained, so a new scenario can be written and
+    never run -- the suite stays green and the behaviour is untested. Only this
+    direction matters; the other one is already covered per-scenario above.
+    """
+    unlisted = sorted(set(harness_results) - set(SCENARIOS))
+    assert not unlisted, (
+        "these harness scenarios are not in SCENARIOS, so they never run: "
+        + ", ".join(unlisted)
+    )

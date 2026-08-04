@@ -291,6 +291,8 @@ export interface UIPage {
   id: string;
   name: string;
   page_type?: string;
+  /** Reserved for the hand-coded page. Nothing implements "custom" yet. */
+  render_mode?: "elements" | "custom";
   overlay?: OverlayConfig;
   background?: PageBackground;
   snap: SnapConfig;
@@ -328,6 +330,8 @@ export interface PageGroup {
 
 export interface UIConfig {
   settings: UISettings;
+  /** Project stylesheet; the other half of UIElement.css_class. No editor yet. */
+  custom_css?: string;
   pages: UIPage[];
   master_elements?: MasterElement[];
   page_groups?: PageGroup[];

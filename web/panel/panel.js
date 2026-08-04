@@ -884,6 +884,13 @@ class PanelApp {
         const w = this._pct(p.w, 100);
         const h = this._pct(p.h, 100);
 
+        // The author's own classes, for the project stylesheet to target. Every
+        // element type sets its own className, so this is the one place both
+        // page elements and master elements pass through. It lands on the
+        // element itself rather than the aspect-lock wrapper below, because the
+        // wrapper is the placement box and the element is what was styled.
+        this._applyCssClass(el, element);
+
         const ratio = this._aspectLockFor(element);
         if (ratio) {
             const box = document.createElement('div');
@@ -905,6 +912,57 @@ class PanelApp {
         el.style.width = `${w}%`;
         el.style.height = `${h}%`;
         return el;
+    }
+
+    _applyCssClass(el, element) {
+        const raw = element?.css_class;
+        if (!el || typeof raw !== 'string') return;
+        // Space-separated, like the class attribute it becomes. Tokens are
+        // filtered rather than handed straight to classList, which throws on an
+        // empty or whitespace-bearing name and would take the whole page down
+        // over one stray space in a hand-written field.
+        for (const name of raw.split(/\s+/)) {
+            if (!name) continue;
+            try {
+                el.classList.add(name);
+            } catch {
+                console.warn(`[panel] ignoring invalid css_class '${name}' on element '${element?.id}'`);
+            }
+        }
+    }
+
+    /**
+     * The project stylesheet (ui.custom_css), paired with element.css_class.
+     *
+     * Appended to the head so it comes after panel.css and panel-elements.css
+     * and wins ties on specificity. It does NOT beat the inline styles the
+     * renderer writes -- applyStyle puts colors, sizes and radii straight on the
+     * node -- so a rule that fights one of those needs !important. That is a
+     * property of the escape hatch, not a bug in it: the panel's own styling
+     * stays authoritative unless the author insists.
+     *
+     * One style node, reused, and only rewritten when the text actually changes:
+     * this runs on every page render, and reassigning textContent re-parses the
+     * sheet and forces a restyle even when nothing differs.
+     */
+    _applyCustomCss(css) {
+        const text = typeof css === 'string' ? css : '';
+        let node = this._customCssNode;
+        if (!node || !node.isConnected) {
+            node = document.getElementById('panel-custom-css');
+        }
+        if (!text) {
+            if (node) node.remove();
+            this._customCssNode = null;
+            return;
+        }
+        if (!node) {
+            node = document.createElement('style');
+            node.id = 'panel-custom-css';
+            document.head.appendChild(node);
+        }
+        this._customCssNode = node;
+        if (node.textContent !== text) node.textContent = text;
     }
 
     /**
@@ -1159,6 +1217,10 @@ class PanelApp {
 
         // Apply theme
         this.applyTheme(this.uiDef.settings || {});
+
+        // The project stylesheet goes on after the theme, so an author's rule
+        // can override what a theme variable produced.
+        this._applyCustomCss(this.uiDef.custom_css);
 
         // Make root relative for absolute positioning during transitions
         this.root.style.position = 'relative';

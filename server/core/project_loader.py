@@ -384,7 +384,10 @@ class UIElement(_ForwardCompatModel):
     # arrangements without being duplicated.
     parent: str | None = None  # container element id, or None for page-level
     aspect_lock: float | None = None  # width/height ratio to hold under stretch
-    css_class: str | None = None  # power-user hook; no editor yet
+    # Power-user hook: names one or more classes the project stylesheet
+    # (ui.custom_css) can target. The renderer puts them on the element's node;
+    # there is no editor for it yet, so today it is written by hand.
+    css_class: str | None = None
     # Authoring-time protection: a locked element cannot be dragged, resized,
     # nudged or deleted in the Builder. It has no runtime meaning -- the panel
     # renders a locked element exactly like any other -- but it has to live in
@@ -425,6 +428,12 @@ class UIPage(_ForwardCompatModel):
     id: str
     name: str
     page_type: str = "page"
+    # Reserved for the hand-coded page. "elements" is every page today: the
+    # renderer lays out the elements below. "custom" is the seat kept warm for
+    # a page whose markup the author writes themselves -- nothing implements it
+    # yet, and a page carrying it still renders its elements, which is the right
+    # fallback for a reservation.
+    render_mode: Literal["elements", "custom"] = "elements"
     overlay: OverlayConfig | None = None
     background: PageBackground | None = None
     snap: SnapConfig = Field(default_factory=SnapConfig)
@@ -483,6 +492,13 @@ class PageGroup(_ForwardCompatModel):
 
 class UIConfig(_ForwardCompatModel):
     settings: UISettings = Field(default_factory=UISettings)
+    # The project stylesheet, and the other half of element.css_class. It sits
+    # here rather than in settings on purpose: settings is a flat bag of small
+    # scalar knobs that the IDE and the AI tools patch and merge wholesale, and
+    # a stylesheet is a document that can run to kilobytes. As a peer of pages it
+    # diffs on its own, reads as content rather than configuration, and a partial
+    # merge of settings can never mangle it.
+    custom_css: str = ""
     pages: list[UIPage] = Field(default_factory=list)
     master_elements: list[MasterElement] = Field(default_factory=list)
     page_groups: list[PageGroup] = Field(default_factory=list)

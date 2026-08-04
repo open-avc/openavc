@@ -1000,6 +1000,111 @@ const tests = {
         assert(root.style.getPropertyValue('--panel-vmin') === '',
             'clearing hands the scale back to the viewport');
     },
+
+    // --- Power-user hooks: element.css_class + ui.custom_css ----------------
+
+    // The author's classes reach the rendered node, alongside the ones the
+    // renderer puts there itself.
+    power_css_class_on_element() {
+        const app = mkApp();
+        renderProject(app, project({
+            elements: [el('tile', 'button', { css_class: 'brand-tile accent' })],
+            placements: { tile: { x: 0, y: 0, w: 50, h: 50 } },
+        }));
+        const node = app.root.querySelector('[data-element-id="tile"]');
+        assert(node, 'the element rendered');
+        assert(node.classList.contains('brand-tile'), 'first authored class applied');
+        assert(node.classList.contains('accent'), 'second authored class applied');
+        assert(node.classList.contains('panel-element'),
+            'the renderer\'s own classes survive');
+    },
+
+    // Master elements go through the same placement chokepoint, so they get the
+    // hook too -- they are the page furniture most likely to want restyling.
+    power_css_class_on_master() {
+        const app = mkApp();
+        const proj = project({ elements: [], placements: {} });
+        proj.ui.master_elements = [Object.assign(
+            el('logo', 'label', { css_class: 'brand-logo' }),
+            { pages: '*', placements: { landscape: { x: 0, y: 0, w: 20, h: 10 } } },
+        )];
+        renderProject(app, proj);
+        const node = app.root.querySelector('[data-element-id="logo"]');
+        assert(node, 'the master element rendered');
+        assert(node.classList.contains('brand-logo'), 'authored class applied to a master');
+    },
+
+    // An aspect-locked element is wrapped in a placement box. The class belongs
+    // on the element that was styled, not on the box that positions it.
+    power_css_class_under_aspect_lock() {
+        const app = mkApp();
+        renderProject(app, project({
+            elements: [el('led', 'status_led', { css_class: 'brand-led', aspect_lock: 1.0 })],
+            placements: { led: { x: 0, y: 0, w: 40, h: 20 } },
+        }));
+        const box = app.root.querySelector('.panel-placement');
+        assert(box, 'the aspect-lock wrapper exists');
+        assert(!box.classList.contains('brand-led'),
+            'the wrapper is not what the author styled');
+        const node = app.root.querySelector('[data-element-id="led"]');
+        assert(node && node.classList.contains('brand-led'),
+            'the element inside carries the class');
+    },
+
+    // The field is hand-written today, so it will arrive ragged. Stray
+    // whitespace must not add empty classes, and an invalid name must not take
+    // the whole page down.
+    power_css_class_tolerates_ragged_input() {
+        const app = mkApp();
+        renderProject(app, project({
+            elements: [el('tile', 'button', { css_class: '  spaced   out  ' })],
+            placements: { tile: { x: 0, y: 0, w: 50, h: 50 } },
+        }));
+        const node = app.root.querySelector('[data-element-id="tile"]');
+        assert(node.classList.contains('spaced') && node.classList.contains('out'),
+            'both real tokens applied');
+        for (const name of node.classList) {
+            assert(name.trim() !== '', 'no empty class name was added');
+        }
+    },
+
+    // The project stylesheet lands in the head, after the panel's own sheets so
+    // it wins ties, and carries the authored text verbatim.
+    power_custom_css_injected() {
+        const app = mkApp();
+        const proj = project({
+            elements: [el('tile', 'button', { css_class: 'brand-tile' })],
+            placements: { tile: { x: 0, y: 0, w: 50, h: 50 } },
+        });
+        proj.ui.custom_css = '.brand-tile { border-radius: 0; }';
+        renderProject(app, proj);
+        const style = document.getElementById('panel-custom-css');
+        assert(style, 'the stylesheet node exists');
+        assert(style.parentNode === document.head, 'it lives in the head');
+        assert(style.textContent === '.brand-tile { border-radius: 0; }',
+            `text is verbatim, got ${style.textContent}`);
+        assert(document.head.lastElementChild === style,
+            'it comes last so it wins ties against panel-elements.css');
+    },
+
+    // Re-rendering must not stack up style nodes, and clearing the field must
+    // actually take the rules away rather than leave the last ones applied.
+    power_custom_css_replaced_and_cleared() {
+        const app = mkApp();
+        const proj = project({ elements: [], placements: {} });
+        proj.ui.custom_css = '.a { color: red; }';
+        renderProject(app, proj);
+        proj.ui.custom_css = '.b { color: blue; }';
+        renderProject(app, proj);
+        assert(document.querySelectorAll('#panel-custom-css').length === 1,
+            'exactly one stylesheet node, not one per render');
+        assert(document.getElementById('panel-custom-css').textContent === '.b { color: blue; }',
+            'the node was updated in place');
+        proj.ui.custom_css = '';
+        renderProject(app, proj);
+        assert(!document.getElementById('panel-custom-css'),
+            'clearing the field removes the sheet');
+    },
 };
 
 const results = {};
