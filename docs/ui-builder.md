@@ -14,20 +14,33 @@ Design touch panel pages for your AV spaces using the visual UI Builder.
 Toggle the palette with **Ctrl+E**.
 
 **Center panel: Canvas.** Visual representation of the panel page:
+- Drag elements anywhere, drag the handles to resize
 - Grid overlay shows the snap increment (set it, or turn snapping off, in the canvas toolbar)
-- Drag elements to reposition
-- Drag corners to resize
 - Page tabs at the top for multi-page designs (with thumbnail previews and page type icons)
+- Arrangement tabs below them (Landscape / Portrait) when a page has more than one
 - Screen preset selector (7" Tablet, 10" Tablet, iPad, 1080p)
 - Preview mode toggle (**Ctrl+P**) to test interactions with live state
 - Breadcrumb showing current page context (e.g., "Main > Settings (overlay)")
 
 **Right panel: Properties.** Configure the selected element:
 - Basic properties (ID, type, label)
-- Layout (grid position and span)
+- Layout (position and size in percent, container, aspect lock)
 - Style (colors, font size, border radius)
 - Bindings (the critical programming section, where logic meets the UI)
 - Theme tab (shows which styles are inherited from the theme vs. overridden per-element)
+
+## Positioning
+
+Put controls where you want them. Position and size are stored as a percentage of the page (or of the container an element sits in), so a panel you design once looks the same on any screen of that shape. A 1280x800 design fills a 1920x1200 display at the same proportions, with the text and corners scaled up to match. Nothing is letterboxed.
+
+**Snapping** is on by default at the same spacing as a 12-across, 8-down grid. Elements are pulled to that increment and to each other: edges, centers, the page center and thirds. Guides show what you are stuck to.
+
+- Change the increment, or switch snapping off, in the canvas toolbar. It is a ruler, not a container, so changing it never moves anything already placed.
+- **Hold Alt** (Option on a Mac) during a drag, resize or arrow-key nudge to ignore snapping and put the control exactly where the pointer is.
+
+**Aspect Lock** in the Layout section holds an element's shape when a screen stretches. A locked element shrinks to fit its box and stays centered, so a round indicator stays round and a camera image is not squashed. Status LEDs, camera presets and video elements get one automatically when you drop them.
+
+The Layout section also shows a warning when a control is smaller than a finger can reliably hit, with the physical size it works out to on a real panel.
 
 ## Element Types
 
@@ -63,6 +76,19 @@ Click the **+** tab to add pages. Common patterns for AV rooms:
 - **Advanced**: Technical controls, diagnostics, IP info
 
 Most rooms need 2-4 pages. Start with a Main page that handles the 80% use case, then add pages for less common tasks. Right-click a page tab for options including **Set as Home Page**.
+
+## Arrangements (Landscape and Portrait)
+
+A page can hold a second arrangement of the same controls, for panels turned the other way. Most projects never need one: a single arrangement stretches to fit any screen, and the difference between 16:9 and 16:10 is not something anyone notices. A phone or a portrait wall panel is where it pays off.
+
+Click the dashed **Portrait** chip beside the arrangement tabs to add one. The canvas turns, and the new arrangement starts out identical to the primary. Move a control here and only that control is stored. Everything you leave alone follows the primary, so you are not maintaining two panels by hand.
+
+- The house glyph marks the **primary** arrangement. Any screen with no arrangement of its own falls back to it, so it cannot be deleted.
+- Controls are shared. Adding one adds it to every arrangement; deleting one removes it everywhere. Only positions differ.
+- **Show in this layout** in the Layout section leaves a control out of one arrangement without deleting it. The eye icon in the Outline does the same thing.
+- New controls are always born in the primary, wherever you drop them, so they have a position in every arrangement from the start.
+
+Delete an arrangement with the **x** on its tab. The controls and the primary are untouched; only the positions you set there are lost.
 
 ## Overlays & Sidebars
 
@@ -333,7 +359,7 @@ Projects can include uploaded image assets (PNG, JPG, SVG, etc.) stored in the p
 
 ## Preview Mode
 
-Toggle preview mode (button at the top of the canvas) to hide the grid overlay and test your panel with live device state. Button presses send real commands, sliders move real faders, and state feedback updates in real time. Use this to verify your bindings before deploying to a production touch panel.
+Toggle preview mode (button at the top of the canvas) to hide the snap overlay and test your panel with live device state. Button presses send real commands, sliders move real faders, and state feedback updates in real time. Use this to verify your bindings before deploying to a production touch panel.
 
 ## Panel Settings
 
@@ -344,7 +370,6 @@ Click the gear icon in the UI Builder toolbar to open Panel Settings:
 - **Lock Code**: optional PIN to prevent unauthorized access on a deployed panel
 - **Idle Timeout**: seconds of inactivity before the panel returns to the idle page
 - **Idle Page**: which page to display when the idle timeout triggers
-- **Orientation**: landscape or portrait layout
 
 ## Themes
 
@@ -502,7 +527,7 @@ Each control shows a "modified" label when its value differs from the saved them
 
 ### Theme tokens and element defaults
 
-Below Quick Adjust, the **Theme** section exposes every color variable (background, text, accent, surface, status colors, border radius, grid gap, font). The **Elements** section exposes per-element-type styling: button colors, slider track colors, gauge fill, list item backgrounds, matrix crosspoint colors, and more. Page Nav, Camera Preset, and Keypad have their own sections so you can override their colors independently of buttons. Clearing a color reverts that element to the theme or button default it inherits, and the field shows the inherited value so you always see what the panel actually renders.
+Below Quick Adjust, the **Theme** section exposes every color variable (background, text, accent, surface, status colors, border radius, font). The **Elements** section exposes per-element-type styling: button colors, slider track colors, gauge fill, list item backgrounds, matrix crosspoint colors, and more. Page Nav, Camera Preset, and Keypad have their own sections so you can override their colors independently of buttons. Clearing a color reverts that element to the theme or button default it inherits, and the field shows the inherited value so you always see what the panel actually renders.
 
 Modified values turn accent-colored, and a reset icon appears to revert any value to its saved state.
 
@@ -548,7 +573,8 @@ Press **Ctrl+/** anywhere in the Programmer IDE to open the keyboard shortcuts r
 | Ctrl+Y | Redo |
 | Ctrl+C / Ctrl+V | Copy / Paste element |
 | Delete | Remove selected element |
-| Arrow keys | Nudge position |
+| Arrow keys | Nudge position (Shift for a larger step) |
+| Alt / Option (held) | Ignore snapping for this drag, resize or nudge |
 | Ctrl+P | Toggle preview mode |
 | Ctrl+E | Toggle element palette |
 | Ctrl+Shift+R | Reload scripts (in Script Editor) |
