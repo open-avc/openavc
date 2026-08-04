@@ -44,7 +44,6 @@ const THEME_TOKENS: ThemeTokenDef[] = [
   { key: "success", label: "Success", type: "color", hint: "Green zone of level meters, OK states" },
   { key: "warning", label: "Warning", type: "color", hint: "Yellow zone of level meters, lock indicators, caution states" },
   { key: "border_radius", label: "Border Radius (px)", type: "number", hint: "Roundness of every element. 0 sharp, 16+ very round" },
-  { key: "grid_gap", label: "Grid Gap (px)", type: "number", hint: "Space between elements on every page" },
   { key: "font_family", label: "Font Family", type: "font", hint: "Typeface across the entire panel" },
 ];
 
@@ -173,9 +172,6 @@ const ELEMENT_CONTROLS: Record<string, ElementControl[]> = {
     { label: "Background", type: "color", source: { kind: "default", key: "bg_color" } },
     ...STANDARD_BORDER_CONTROLS,
   ],
-  spacer: [
-    { label: "Background", type: "color", source: { kind: "default", key: "bg_color" } },
-  ],
   group: [
     { label: "Background", type: "color", source: { kind: "default", key: "bg_color" } },
     { label: "Title Color", type: "color", source: { kind: "default", key: "text_color" }, hint: "Group label text" },
@@ -196,7 +192,7 @@ const ELEMENT_ORDER = [
   "label", "slider", "fader", "select", "text_input",
   "status_led", "gauge", "level_meter",
   "list", "matrix", "group",
-  "image", "clock", "spacer",
+  "image", "clock",
 ];
 
 const ELEMENT_TYPE_LABELS: Record<string, string> = {
@@ -208,7 +204,6 @@ const ELEMENT_TYPE_LABELS: Record<string, string> = {
   text_input: "Text Input",
   status_led: "Status LED",
   image: "Image",
-  spacer: "Spacer",
   camera_preset: "Camera Preset",
   gauge: "Gauge",
   level_meter: "Level Meter",

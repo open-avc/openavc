@@ -726,6 +726,41 @@ const tests = {
         assert(!leaf.style.outline, `a leaf gets no outline, got ${leaf.style.outline}`);
     },
 
+    // The same rule, for a border that never went through applyStyle. A theme
+    // writes borders inline, but a stylesheet can put one on a container just
+    // as easily -- panel-elements.css already does, and css_class plus a
+    // project stylesheet is a reserved hook -- and one that isn't converted
+    // shifts every child inside it by its width. This is why the conversion
+    // reads computed style and runs after the page is in the document.
+    layout_container_border_from_a_stylesheet_is_converted_too() {
+        const sheet = document.createElement('style');
+        sheet.textContent = '[data-element-id="ssbox"] { border: 3px solid rgb(1, 2, 3); }';
+        document.head.appendChild(sheet);
+        try {
+            const app = mkApp();
+            renderProject(app, project({
+                elements: [
+                    el('ssbox', 'group'),
+                    Object.assign(el('inner', 'button'), { parent: 'ssbox' }),
+                ],
+                placements: {
+                    ssbox: { x: 10, y: 10, w: 50, h: 50 },
+                    inner: { x: 0, y: 0, w: 100, h: 100 },
+                },
+            }));
+            const box = document.querySelector('[data-element-id="ssbox"]');
+            assert(box, 'the container rendered');
+            assert(window.getComputedStyle(box).borderTopWidth === '0px',
+                `a stylesheet border is taken off the container too, got ${window.getComputedStyle(box).borderTopWidth}`);
+            assert(box.style.outline.includes('3px') && box.style.outline.includes('rgb(1, 2, 3)'),
+                `the stylesheet frame survives as an outline, got ${box.style.outline}`);
+            assert(/^calc\(0px - /.test(box.style.outlineOffset),
+                `the outline draws inside the box, got ${box.style.outlineOffset}`);
+        } finally {
+            sheet.remove();
+        }
+    },
+
     layout_containers_nest() {
         const app = mkApp();
         renderProject(app, project({

@@ -1,5 +1,5 @@
 {
-    "openavc_version": "0.7.0",
+    "openavc_version": "0.8.0",
     "project": {
         "id": "advanced_av_suite",
         "name": "Advanced AV Suite",
@@ -188,37 +188,22 @@
             {
                 "id": "main",
                 "name": "Main",
-                "grid": {
-                    "columns": 6,
-                    "rows": 5
-                },
                 "elements": [
                     {
                         "id": "lbl_title",
                         "type": "label",
                         "text": "AV Suite",
-                        "grid_area": {
-                            "col": 1,
-                            "row": 1,
-                            "col_span": 3,
-                            "row_span": 1
-                        },
                         "style": {
-                            "font_size": 20
-                        }
+                            "font_size": 1.4286
+                        },
+                        "parent": null
                     },
                     {
                         "id": "lbl_display_status",
                         "type": "label",
                         "text": "",
-                        "grid_area": {
-                            "col": 4,
-                            "row": 1,
-                            "col_span": 1,
-                            "row_span": 1
-                        },
                         "style": {
-                            "font_size": 11,
+                            "font_size": 0.7857,
                             "text_align": "center"
                         },
                         "bindings": {
@@ -228,18 +213,13 @@
                                     "format": "{value}"
                                 }
                             }
-                        }
+                        },
+                        "parent": null
                     },
                     {
                         "id": "btn_on",
                         "type": "button",
                         "label": "System On",
-                        "grid_area": {
-                            "col": 5,
-                            "row": 1,
-                            "col_span": 1,
-                            "row_span": 1
-                        },
                         "bindings": {
                             "show": {
                                 "look": {
@@ -263,18 +243,13 @@
                                     }
                                 ]
                             }
-                        }
+                        },
+                        "parent": null
                     },
                     {
                         "id": "btn_off",
                         "type": "button",
                         "label": "System Off",
-                        "grid_area": {
-                            "col": 6,
-                            "row": 1,
-                            "col_span": 1,
-                            "row_span": 1
-                        },
                         "bindings": {
                             "show": {
                                 "look": {
@@ -298,18 +273,13 @@
                                     }
                                 ]
                             }
-                        }
+                        },
+                        "parent": null
                     },
                     {
                         "id": "btn_laptop",
                         "type": "button",
                         "label": "Laptop",
-                        "grid_area": {
-                            "col": 1,
-                            "row": 2,
-                            "col_span": 2,
-                            "row_span": 1
-                        },
                         "bindings": {
                             "show": {
                                 "look": {
@@ -336,18 +306,13 @@
                                     }
                                 ]
                             }
-                        }
+                        },
+                        "parent": null
                     },
                     {
                         "id": "btn_wireless",
                         "type": "button",
                         "label": "Wireless",
-                        "grid_area": {
-                            "col": 3,
-                            "row": 2,
-                            "col_span": 2,
-                            "row_span": 1
-                        },
                         "bindings": {
                             "show": {
                                 "look": {
@@ -374,18 +339,13 @@
                                     }
                                 ]
                             }
-                        }
+                        },
+                        "parent": null
                     },
                     {
                         "id": "btn_bluray",
                         "type": "button",
                         "label": "Blu-ray",
-                        "grid_area": {
-                            "col": 5,
-                            "row": 2,
-                            "col_span": 2,
-                            "row_span": 1
-                        },
                         "bindings": {
                             "show": {
                                 "look": {
@@ -412,7 +372,8 @@
                                     }
                                 ]
                             }
-                        }
+                        },
+                        "parent": null
                     },
                     {
                         "id": "sld_volume",
@@ -421,12 +382,6 @@
                         "min": 0,
                         "max": 100,
                         "step": 1,
-                        "grid_area": {
-                            "col": 1,
-                            "row": 3,
-                            "col_span": 4,
-                            "row_span": 1
-                        },
                         "bindings": {
                             "show": {
                                 "value": {
@@ -435,18 +390,13 @@
                                     "write_back": true
                                 }
                             }
-                        }
+                        },
+                        "parent": null
                     },
                     {
                         "id": "btn_mic_mute",
                         "type": "button",
                         "label": "Mic Mute",
-                        "grid_area": {
-                            "col": 5,
-                            "row": 3,
-                            "col_span": 2,
-                            "row_span": 1
-                        },
                         "bindings": {
                             "show": {
                                 "look": {
@@ -472,17 +422,12 @@
                                     }
                                 ]
                             }
-                        }
+                        },
+                        "parent": null
                     },
                     {
                         "id": "led_occupancy",
                         "type": "status_led",
-                        "grid_area": {
-                            "col": 1,
-                            "row": 4,
-                            "col_span": 1,
-                            "row_span": 1
-                        },
                         "bindings": {
                             "show": {
                                 "look": {
@@ -494,20 +439,15 @@
                                     "default": "#9E9E9E"
                                 }
                             }
-                        }
+                        },
+                        "parent": null
                     },
                     {
                         "id": "lbl_occupancy",
                         "type": "label",
                         "text": "",
-                        "grid_area": {
-                            "col": 2,
-                            "row": 4,
-                            "col_span": 2,
-                            "row_span": 1
-                        },
                         "style": {
-                            "font_size": 12
+                            "font_size": 0.8571
                         },
                         "bindings": {
                             "show": {
@@ -520,20 +460,15 @@
                                     "text_false": "Room Empty"
                                 }
                             }
-                        }
+                        },
+                        "parent": null
                     },
                     {
                         "id": "lbl_shutdown_warn",
                         "type": "label",
                         "text": "",
-                        "grid_area": {
-                            "col": 4,
-                            "row": 4,
-                            "col_span": 3,
-                            "row_span": 1
-                        },
                         "style": {
-                            "font_size": 12,
+                            "font_size": 0.8571,
                             "text_color": "#FF9800"
                         },
                         "bindings": {
@@ -547,19 +482,15 @@
                                     "text_false": ""
                                 }
                             }
-                        }
+                        },
+                        "parent": null
                     },
                     {
                         "id": "nav_presets",
                         "type": "page_nav",
                         "label": "Camera & Presets",
                         "target_page": "presets",
-                        "grid_area": {
-                            "col": 1,
-                            "row": 5,
-                            "col_span": 3,
-                            "row_span": 1
-                        }
+                        "parent": null
                     },
                     {
                         "id": "sel_mode",
@@ -579,12 +510,6 @@
                                 "value": "teleconference"
                             }
                         ],
-                        "grid_area": {
-                            "col": 4,
-                            "row": 5,
-                            "col_span": 3,
-                            "row_span": 1
-                        },
                         "bindings": {
                             "show": {
                                 "value": {
@@ -601,44 +526,130 @@
                                     }
                                 ]
                             }
-                        }
+                        },
+                        "parent": null
+                    }
+                ],
+                "snap": {
+                    "enabled": true,
+                    "x": 8.3333,
+                    "y": 12.5
+                },
+                "layouts": [
+                    {
+                        "id": "landscape",
+                        "orientation": "landscape",
+                        "primary": true,
+                        "inherits": null,
+                        "placements": {
+                            "lbl_title": {
+                                "x": 0.625,
+                                "y": 1.0,
+                                "w": 49.0625,
+                                "h": 18.8
+                            },
+                            "lbl_display_status": {
+                                "x": 50.3125,
+                                "y": 1.0,
+                                "w": 15.9375,
+                                "h": 18.8
+                            },
+                            "btn_on": {
+                                "x": 66.875,
+                                "y": 1.0,
+                                "w": 15.9375,
+                                "h": 18.8
+                            },
+                            "btn_off": {
+                                "x": 83.4375,
+                                "y": 1.0,
+                                "w": 15.9375,
+                                "h": 18.8
+                            },
+                            "btn_laptop": {
+                                "x": 0.625,
+                                "y": 20.8,
+                                "w": 32.5,
+                                "h": 18.8
+                            },
+                            "btn_wireless": {
+                                "x": 33.75,
+                                "y": 20.8,
+                                "w": 32.5,
+                                "h": 18.8
+                            },
+                            "btn_bluray": {
+                                "x": 66.875,
+                                "y": 20.8,
+                                "w": 32.5,
+                                "h": 18.8
+                            },
+                            "sld_volume": {
+                                "x": 0.625,
+                                "y": 40.6,
+                                "w": 65.625,
+                                "h": 18.8
+                            },
+                            "btn_mic_mute": {
+                                "x": 66.875,
+                                "y": 40.6,
+                                "w": 32.5,
+                                "h": 18.8
+                            },
+                            "led_occupancy": {
+                                "x": 0.625,
+                                "y": 60.4,
+                                "w": 15.9375,
+                                "h": 18.8
+                            },
+                            "lbl_occupancy": {
+                                "x": 17.1875,
+                                "y": 60.4,
+                                "w": 32.5,
+                                "h": 18.8
+                            },
+                            "lbl_shutdown_warn": {
+                                "x": 50.3125,
+                                "y": 60.4,
+                                "w": 49.0625,
+                                "h": 18.8
+                            },
+                            "nav_presets": {
+                                "x": 0.625,
+                                "y": 80.2,
+                                "w": 49.0625,
+                                "h": 18.8
+                            },
+                            "sel_mode": {
+                                "x": 50.3125,
+                                "y": 80.2,
+                                "w": 49.0625,
+                                "h": 18.8
+                            }
+                        },
+                        "hidden": []
                     }
                 ]
             },
             {
                 "id": "presets",
                 "name": "Camera & Presets",
-                "grid": {
-                    "columns": 4,
-                    "rows": 3
-                },
                 "elements": [
                     {
                         "id": "lbl_presets",
                         "type": "label",
                         "text": "Camera Presets",
-                        "grid_area": {
-                            "col": 1,
-                            "row": 1,
-                            "col_span": 4,
-                            "row_span": 1
-                        },
                         "style": {
-                            "font_size": 18,
+                            "font_size": 1.2857,
                             "text_align": "center"
-                        }
+                        },
+                        "parent": null
                     },
                     {
                         "id": "cam_wide",
                         "type": "camera_preset",
                         "label": "Wide",
                         "preset_number": 1,
-                        "grid_area": {
-                            "col": 1,
-                            "row": 2,
-                            "col_span": 1,
-                            "row_span": 1
-                        },
                         "bindings": {
                             "do": {
                                 "press": [
@@ -652,19 +663,14 @@
                                     }
                                 ]
                             }
-                        }
+                        },
+                        "parent": null
                     },
                     {
                         "id": "cam_presenter",
                         "type": "camera_preset",
                         "label": "Presenter",
                         "preset_number": 2,
-                        "grid_area": {
-                            "col": 2,
-                            "row": 2,
-                            "col_span": 1,
-                            "row_span": 1
-                        },
                         "bindings": {
                             "do": {
                                 "press": [
@@ -678,19 +684,14 @@
                                     }
                                 ]
                             }
-                        }
+                        },
+                        "parent": null
                     },
                     {
                         "id": "cam_audience",
                         "type": "camera_preset",
                         "label": "Audience",
                         "preset_number": 3,
-                        "grid_area": {
-                            "col": 3,
-                            "row": 2,
-                            "col_span": 1,
-                            "row_span": 1
-                        },
                         "bindings": {
                             "do": {
                                 "press": [
@@ -704,19 +705,14 @@
                                     }
                                 ]
                             }
-                        }
+                        },
+                        "parent": null
                     },
                     {
                         "id": "cam_whiteboard",
                         "type": "camera_preset",
                         "label": "Whiteboard",
                         "preset_number": 4,
-                        "grid_area": {
-                            "col": 4,
-                            "row": 2,
-                            "col_span": 1,
-                            "row_span": 1
-                        },
                         "bindings": {
                             "do": {
                                 "press": [
@@ -730,19 +726,67 @@
                                     }
                                 ]
                             }
-                        }
+                        },
+                        "parent": null
                     },
                     {
                         "id": "nav_back",
                         "type": "page_nav",
                         "label": "Back to Main",
                         "target_page": "main",
-                        "grid_area": {
-                            "col": 1,
-                            "row": 3,
-                            "col_span": 4,
-                            "row_span": 1
-                        }
+                        "parent": null
+                    }
+                ],
+                "snap": {
+                    "enabled": true,
+                    "x": 8.3333,
+                    "y": 12.5
+                },
+                "layouts": [
+                    {
+                        "id": "landscape",
+                        "orientation": "landscape",
+                        "primary": true,
+                        "inherits": null,
+                        "placements": {
+                            "lbl_presets": {
+                                "x": 0.625,
+                                "y": 1.0,
+                                "w": 98.75,
+                                "h": 32.0
+                            },
+                            "cam_wide": {
+                                "x": 0.625,
+                                "y": 34.0,
+                                "w": 24.2188,
+                                "h": 32.0
+                            },
+                            "cam_presenter": {
+                                "x": 25.4688,
+                                "y": 34.0,
+                                "w": 24.2188,
+                                "h": 32.0
+                            },
+                            "cam_audience": {
+                                "x": 50.3125,
+                                "y": 34.0,
+                                "w": 24.2188,
+                                "h": 32.0
+                            },
+                            "cam_whiteboard": {
+                                "x": 75.1562,
+                                "y": 34.0,
+                                "w": 24.2188,
+                                "h": 32.0
+                            },
+                            "nav_back": {
+                                "x": 0.625,
+                                "y": 67.0,
+                                "w": 98.75,
+                                "h": 32.0
+                            }
+                        },
+                        "hidden": []
                     }
                 ]
             }

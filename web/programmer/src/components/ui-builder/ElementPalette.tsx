@@ -36,7 +36,6 @@ const ICONS: Record<string, React.ReactNode> = {
   image: <Image size={16} />,
   clock: <Clock size={16} />,
   group: <Group size={16} />,
-  spacer: <Square size={16} />,
   gauge: <Gauge size={16} />,
   level_meter: <BarChart3 size={16} />,
   matrix: <LayoutGrid size={16} />,

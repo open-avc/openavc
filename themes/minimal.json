@@ -80,9 +80,6 @@
             "border_color": "transparent",
             "border_width": 0
         },
-        "spacer": {
-            "bg_color": "transparent"
-        },
         "camera_preset": {
             "bg_color": "transparent",
             "text_color": "#37474f",

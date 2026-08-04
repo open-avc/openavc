@@ -51,7 +51,7 @@ EXTENSIONS = {
             "type": "status_display",
             "label": "Status Display",
             "renderer": "iframe",
-            "default_size": {"col_span": 3, "row_span": 2},
+            "default_size": {"w": 25, "h": 25},
             "config_schema": [
                 {
                     "key": "title",
@@ -83,7 +83,7 @@ EXTENSIONS = {
 | `type` | Yes | Unique element type name within this plugin. **This also names the renderer file** — the panel loads `panel/<type>.html` (see note below). |
 | `label` | Yes | Human-readable name shown in the Element Palette |
 | `renderer` | Yes | Always `"iframe"` |
-| `default_size` | Yes | Default grid size when dragged onto the canvas: `{"col_span": N, "row_span": N}`. The UI Builder uses this on drop and on click-to-add; if you omit it the element falls back to 4×3 cells. |
+| `default_size` | Yes | How big the element is when dropped, as a percentage of the page it lands on: `{"w": N, "h": N}`. The UI Builder uses this on drop and on click-to-add; if you omit it the element falls back to roughly a third of the page wide by a bit over a third tall. |
 | `config_schema` | No | Array of configuration fields shown in the UI Builder Properties panel. Field types match plugin config (see "Config field types" below): `string`, `text`, `integer`, `float`, `boolean`, `select`, `state_key`, `device_ref`, `macro_ref`. See "Select options" below for static vs. dynamic dropdowns. |
 | `sandbox_permissions` | No | Extra `iframe.sandbox` tokens beyond the default `allow-scripts`. See "Iframe Permissions" below for the whitelist. |
 | `allow_features` | No | Permissions-Policy tokens applied via the iframe's `allow` attribute. See "Iframe Permissions" below for the whitelist. |

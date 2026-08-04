@@ -8,7 +8,7 @@ Design touch panel pages for your AV spaces using the visual UI Builder.
 
 **Left panel: Element Palette.** Drag elements onto the canvas. Use the search box at the top to filter elements by name. Hover over an element to see a description tooltip. Switch to the **Outline** tab for a tree of everything on the current page, where you can search by ID, fold containers away, drag controls in and out of them, and manage z-order and lock.
 - **Controls**: Button, Slider, Select, Text Input, Fader, Keypad
-- **Display**: Label, Status LED, Image, Container, Spacer, Gauge, Level Meter, Clock, List, Matrix
+- **Display**: Label, Status LED, Image, Container, Gauge, Level Meter, Clock, List, Matrix
 - **Navigation**: Page Nav, Camera Preset
 
 Toggle the palette with **Ctrl+E**.
@@ -41,7 +41,6 @@ Toggle the palette with **Ctrl+E**.
 | **Page Nav** | Button that navigates to another page | "Advanced", "Lighting", "Camera" |
 | **Text Input** | Text entry field | IP address entry, room name |
 | **Image** | Static image display | Logo, room diagram, floor plan |
-| **Spacer** | Empty grid cell | Layout spacing and alignment |
 | **Camera Preset** | Camera preset button with optional thumbnail | PTZ camera preset recall |
 | **Gauge** | Circular arc meter with value binding | Temperature, signal level, volume position |
 | **Level Meter** | Segmented bar (audio VU style) | Audio levels, signal strength |

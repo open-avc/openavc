@@ -18,7 +18,6 @@ const ICONS: Record<string, React.ReactNode> = {
   label: <Type size={12} />,
   status_led: <Circle size={12} />,
   image: <Image size={12} />,
-  spacer: <Square size={12} />,
   page_nav: <ArrowRight size={12} />,
   camera_preset: <Camera size={12} />,
   gauge: <Gauge size={12} />,

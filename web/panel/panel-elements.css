@@ -336,12 +336,6 @@
     object-fit: contain;
 }
 
-/* ===== Spacer ===== */
-
-.panel-spacer {
-    background: transparent;
-}
-
 /* ===== List ===== */
 
 .panel-list {

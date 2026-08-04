@@ -730,6 +730,7 @@ class PanelApp {
 
         // Append to root (on top of everything)
         document.body.appendChild(container);
+        this._applyCoordinateSpaces(surface);
 
         // Keep a newly-opened overlay non-interactive while offline; commands
         // would be silently dropped but local optimistic UI would still flip.
@@ -920,13 +921,49 @@ class PanelApp {
      * frame stays exactly where it was and the coordinate space becomes the
      * whole box. Only containers need this; a leaf element's border is nobody's
      * frame of reference.
+     *
+     * A themed or authored border arrives inline, but a stylesheet is just as
+     * capable of putting one there -- panel-elements.css does it today, and
+     * element css_class plus a project stylesheet is reserved (see the power-
+     * user hooks) -- and a border this never saw would shift every child inside
+     * it. So the inline value is tried first and the browser is asked second.
+     * Asking needs the node in the document, which is why this runs as a pass
+     * after the page is attached: computed style on a detached node is empty.
      */
+    _applyCoordinateSpaces(root) {
+        if (!root || typeof root.querySelectorAll !== 'function') return;
+        for (const el of root.querySelectorAll('[data-coordinate-space]')) {
+            this._makeCoordinateSpace(el);
+        }
+    }
+
     _makeCoordinateSpace(el) {
-        const width = el.style.borderWidth;
-        if (!width || width === '0px' || width === '0') return;
-        const style = el.style.borderStyle || 'solid';
-        const color = el.style.borderColor || 'currentColor';
-        el.style.outline = `${width} ${style} ${color}`;
+        // Inline first, and verbatim: it is a CSS expression -- max(1px, Xrem)
+        // -- and re-emitting it keeps the frame scaling with the panel the way
+        // every other measurement does. Resolving it to px here would pin it
+        // until the next re-render.
+        let width = el.style.borderWidth;
+        let style = el.style.borderStyle;
+        let color = el.style.borderColor;
+        if (!width || width === '0' || width === '0px') {
+            const computed = (typeof getComputedStyle === 'function' && el.isConnected)
+                ? getComputedStyle(el)
+                : null;
+            if (!computed) return;
+            const px = Math.max(...[
+                computed.borderTopWidth, computed.borderRightWidth,
+                computed.borderBottomWidth, computed.borderLeftWidth,
+            ].map(v => parseFloat(v) || 0));
+            if (!px) return;
+            // Sides are uniform in every border the platform itself writes, so
+            // the widest is THE frame. An asymmetric one draws as a uniform
+            // frame rather than shifting its contents: the coordinate space is
+            // the invariant, the exact frame is cosmetic.
+            width = `${px}px`;
+            style = computed.borderTopStyle;
+            color = computed.borderTopColor;
+        }
+        el.style.outline = `${width} ${style || 'solid'} ${color || 'currentColor'}`;
         el.style.outlineOffset = `calc(0px - ${width})`;
         el.style.borderWidth = '0';
     }
@@ -957,7 +994,9 @@ class PanelApp {
             // consistent with free positioning warning rather than preventing.
             el.style.overflow = 'visible';
             el.style.pointerEvents = 'auto';
-            this._makeCoordinateSpace(el);
+            // Converted to an outline once the page is attached and the browser
+            // has resolved every border that reaches this box, inline or not.
+            el.dataset.coordinateSpace = '1';
             for (const child of children) {
                 this._renderElementTree(child, ctx, el);
             }
@@ -1162,6 +1201,7 @@ class PanelApp {
         this._renderPageElements(page, surface, { entryAnimation, staggerMs });
 
         this.root.appendChild(surface);
+        this._applyCoordinateSpaces(surface);
         this.evaluateAllBindings();
 
         // Theme Studio direct manipulation — click any element in the preview
@@ -1205,7 +1245,7 @@ class PanelApp {
             button: 'Button', label: 'Label', slider: 'Slider', fader: 'Fader',
             select: 'Select', text_input: 'Text Input', status_led: 'Status LED',
             gauge: 'Gauge', level_meter: 'Level Meter', list: 'List', matrix: 'Matrix',
-            group: 'Group', image: 'Image', clock: 'Clock', spacer: 'Spacer',
+            group: 'Group', image: 'Image', clock: 'Clock',
             page_nav: 'Page Nav', camera_preset: 'Camera Preset', keypad: 'Keypad',
         };
 
@@ -1317,7 +1357,6 @@ class PanelApp {
             case 'select':        return this.renderSelect(element);
             case 'text_input':    return this.renderTextInput(element);
             case 'image':         return this.renderImage(element);
-            case 'spacer':        return this.renderSpacer(element);
             case 'camera_preset': return this.renderCameraPreset(element);
             case 'list':          return this.renderList(element);
             case 'matrix':        return this.renderMatrix(element);
@@ -1934,29 +1973,6 @@ class PanelApp {
         }
 
         this.applyStyle(el, this.getThemedStyle(element.type, element.style));
-        return el;
-    }
-
-    renderSpacer(element) {
-        const el = document.createElement('div');
-        el.className = 'panel-element panel-spacer';
-        el.dataset.elementId = element.id;
-        this.applyStyle(el, this.getThemedStyle(element.type, element.style));
-        // Edit-mode hint: dashed outline + label when the spacer has no visible styling,
-        // so designers can see where an otherwise invisible element sits.
-        const style = element.style || {};
-        const hasVisual = style.bg_color || style.background_image || style.background_gradient || style.border_width;
-        if (this.editMode && !hasVisual) {
-            el.style.border = '1px dashed var(--panel-text, rgba(255,255,255,0.3))';
-            el.style.opacity = '0.3';
-            el.style.borderRadius = el.style.borderRadius || '4px';
-            el.style.display = 'flex';
-            el.style.alignItems = 'center';
-            el.style.justifyContent = 'center';
-            el.style.color = 'var(--panel-text)';
-            el.style.fontSize = '11px';
-            el.textContent = 'Spacer';
-        }
         return el;
     }
 

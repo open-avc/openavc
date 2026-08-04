@@ -65,9 +65,8 @@ export function BasicProperties({
         />
       </FieldRow>
 
-      {/* Label (for most elements except label and spacer) */}
-      {element.type !== "label" &&
-        element.type !== "spacer" && (
+      {/* Label (for most elements except label itself) */}
+      {element.type !== "label" && (
           <>
             <FieldRow label="Label">
               {element.style?.white_space === "pre-line" || element.style?.white_space === "pre-wrap" ? (

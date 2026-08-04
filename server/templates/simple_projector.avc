@@ -1,5 +1,5 @@
 {
-    "openavc_version": "0.7.0",
+    "openavc_version": "0.8.0",
     "project": {
         "id": "simple_projector",
         "name": "Simple Projector",
@@ -67,36 +67,21 @@
             {
                 "id": "main",
                 "name": "Main",
-                "grid": {
-                    "columns": 4,
-                    "rows": 3
-                },
                 "elements": [
                     {
                         "id": "lbl_title",
                         "type": "label",
                         "text": "Projector Control",
-                        "grid_area": {
-                            "col": 1,
-                            "row": 1,
-                            "col_span": 4,
-                            "row_span": 1
-                        },
                         "style": {
-                            "font_size": 20,
+                            "font_size": 1.4286,
                             "text_align": "center"
-                        }
+                        },
+                        "parent": null
                     },
                     {
                         "id": "btn_on",
                         "type": "button",
                         "label": "System On",
-                        "grid_area": {
-                            "col": 1,
-                            "row": 2,
-                            "col_span": 2,
-                            "row_span": 1
-                        },
                         "style": {
                             "bg_color": "#4CAF50"
                         },
@@ -124,18 +109,13 @@
                                     }
                                 ]
                             }
-                        }
+                        },
+                        "parent": null
                     },
                     {
                         "id": "btn_off",
                         "type": "button",
                         "label": "System Off",
-                        "grid_area": {
-                            "col": 3,
-                            "row": 2,
-                            "col_span": 2,
-                            "row_span": 1
-                        },
                         "style": {
                             "bg_color": "#F44336"
                         },
@@ -163,17 +143,12 @@
                                     }
                                 ]
                             }
-                        }
+                        },
+                        "parent": null
                     },
                     {
                         "id": "led_power",
                         "type": "status_led",
-                        "grid_area": {
-                            "col": 2,
-                            "row": 3,
-                            "col_span": 2,
-                            "row_span": 1
-                        },
                         "bindings": {
                             "show": {
                                 "look": {
@@ -185,7 +160,48 @@
                                     "default": "#9E9E9E"
                                 }
                             }
-                        }
+                        },
+                        "parent": null
+                    }
+                ],
+                "snap": {
+                    "enabled": true,
+                    "x": 8.3333,
+                    "y": 12.5
+                },
+                "layouts": [
+                    {
+                        "id": "landscape",
+                        "orientation": "landscape",
+                        "primary": true,
+                        "inherits": null,
+                        "placements": {
+                            "lbl_title": {
+                                "x": 0.625,
+                                "y": 1.0,
+                                "w": 98.75,
+                                "h": 32.0
+                            },
+                            "btn_on": {
+                                "x": 0.625,
+                                "y": 34.0,
+                                "w": 49.0625,
+                                "h": 32.0
+                            },
+                            "btn_off": {
+                                "x": 50.3125,
+                                "y": 34.0,
+                                "w": 49.0625,
+                                "h": 32.0
+                            },
+                            "led_power": {
+                                "x": 25.4688,
+                                "y": 67.0,
+                                "w": 49.0625,
+                                "h": 32.0
+                            }
+                        },
+                        "hidden": []
                     }
                 ]
             }

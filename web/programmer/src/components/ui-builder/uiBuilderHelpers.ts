@@ -62,7 +62,6 @@ export const ELEMENT_TYPES: ElementTypeInfo[] = [
   { type: "image", label: "Image", category: "display", description: "Display an image or logo" },
   { type: "clock", label: "Clock", category: "display", description: "Live clock, date, countdown, or meeting timer" },
   { type: "group", label: "Container", category: "display", description: "A real container: elements dropped inside move, resize and hide with it" },
-  { type: "spacer", label: "Spacer", category: "display", description: "Empty space for layout alignment" },
   { type: "gauge", label: "Gauge", category: "data", description: "Circular dial for displaying a single value (temperature, level)" },
   { type: "level_meter", label: "Level Meter", category: "data", description: "Segmented bar for audio levels (VU/PPM style)" },
   { type: "matrix", label: "Matrix", category: "data", description: "Audio/video routing crosspoint grid or dropdown list" },
@@ -161,7 +160,7 @@ export const BINDING_CAPABILITIES: Record<string, BindingCapability> = {
       { interaction: "audio_mute_route", label: "Audio mute", editor: "actions" },
     ],
   },
-  // page_nav / image / spacer / group / clock / plugin: "Visible when…" only.
+  // page_nav / image / group / clock / plugin: "Visible when…" only.
 };
 
 // --- Screen presets ---
@@ -210,7 +209,6 @@ export const DEFAULT_ELEMENT_SIZES: Record<string, { w: number; h: number }> = {
   select: { w: 25, h: 12.5 },
   text_input: { w: 25, h: 12.5 },
   image: { w: 25, h: 37.5 },
-  spacer: { w: 8.3333, h: 12.5 },
   camera_preset: { w: 16.6667, h: 25 },
   gauge: { w: 25, h: 37.5 },
   level_meter: { w: 8.3333, h: 50 },
@@ -324,8 +322,6 @@ export function createDefaultElement(
       return { ...base, label: "Input", placeholder: "Type here..." };
     case "image":
       return { ...base, label: "" };
-    case "spacer":
-      return { ...base };
     case "camera_preset":
       return { ...base, label: "Preset", preset_number: 1 };
     case "gauge":

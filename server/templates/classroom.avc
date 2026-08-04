@@ -1,5 +1,5 @@
 {
-    "openavc_version": "0.7.0",
+    "openavc_version": "0.8.0",
     "project": {
         "id": "classroom",
         "name": "Classroom",
@@ -128,24 +128,14 @@
             {
                 "id": "main",
                 "name": "Main",
-                "grid": {
-                    "columns": 2,
-                    "rows": 4
-                },
                 "elements": [
                     {
                         "id": "btn_start",
                         "type": "button",
                         "label": "Start Class",
-                        "grid_area": {
-                            "col": 1,
-                            "row": 1,
-                            "col_span": 1,
-                            "row_span": 2
-                        },
                         "style": {
                             "bg_color": "#4CAF50",
-                            "font_size": 20
+                            "font_size": 1.4286
                         },
                         "bindings": {
                             "show": {
@@ -172,21 +162,16 @@
                                     }
                                 ]
                             }
-                        }
+                        },
+                        "parent": null
                     },
                     {
                         "id": "btn_end",
                         "type": "button",
                         "label": "End Class",
-                        "grid_area": {
-                            "col": 2,
-                            "row": 1,
-                            "col_span": 1,
-                            "row_span": 2
-                        },
                         "style": {
                             "bg_color": "#F44336",
-                            "font_size": 20
+                            "font_size": 1.4286
                         },
                         "bindings": {
                             "do": {
@@ -197,18 +182,13 @@
                                     }
                                 ]
                             }
-                        }
+                        },
+                        "parent": null
                     },
                     {
                         "id": "btn_pc",
                         "type": "button",
                         "label": "Computer",
-                        "grid_area": {
-                            "col": 1,
-                            "row": 3,
-                            "col_span": 1,
-                            "row_span": 1
-                        },
                         "bindings": {
                             "show": {
                                 "look": {
@@ -232,18 +212,13 @@
                                     }
                                 ]
                             }
-                        }
+                        },
+                        "parent": null
                     },
                     {
                         "id": "btn_doccam",
                         "type": "button",
                         "label": "Document Camera",
-                        "grid_area": {
-                            "col": 2,
-                            "row": 3,
-                            "col_span": 1,
-                            "row_span": 1
-                        },
                         "bindings": {
                             "show": {
                                 "look": {
@@ -267,20 +242,15 @@
                                     }
                                 ]
                             }
-                        }
+                        },
+                        "parent": null
                     },
                     {
                         "id": "lbl_help",
                         "type": "label",
                         "text": "Press 'Start Class' to turn on the display",
-                        "grid_area": {
-                            "col": 1,
-                            "row": 4,
-                            "col_span": 2,
-                            "row_span": 1
-                        },
                         "style": {
-                            "font_size": 12,
+                            "font_size": 0.8571,
                             "text_align": "center"
                         },
                         "bindings": {
@@ -294,7 +264,54 @@
                                     "text_false": "Press 'Start Class' to turn on the display"
                                 }
                             }
-                        }
+                        },
+                        "parent": null
+                    }
+                ],
+                "snap": {
+                    "enabled": true,
+                    "x": 8.3333,
+                    "y": 12.5
+                },
+                "layouts": [
+                    {
+                        "id": "landscape",
+                        "orientation": "landscape",
+                        "primary": true,
+                        "inherits": null,
+                        "placements": {
+                            "btn_start": {
+                                "x": 0.625,
+                                "y": 1.0,
+                                "w": 49.0625,
+                                "h": 48.5
+                            },
+                            "btn_end": {
+                                "x": 50.3125,
+                                "y": 1.0,
+                                "w": 49.0625,
+                                "h": 48.5
+                            },
+                            "btn_pc": {
+                                "x": 0.625,
+                                "y": 50.5,
+                                "w": 49.0625,
+                                "h": 23.75
+                            },
+                            "btn_doccam": {
+                                "x": 50.3125,
+                                "y": 50.5,
+                                "w": 49.0625,
+                                "h": 23.75
+                            },
+                            "lbl_help": {
+                                "x": 0.625,
+                                "y": 75.25,
+                                "w": 98.75,
+                                "h": 23.75
+                            }
+                        },
+                        "hidden": []
                     }
                 ]
             }
