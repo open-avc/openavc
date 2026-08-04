@@ -2848,15 +2848,31 @@ export function findOverlappingIds(
 
 // --- Touch-target warning (plan section 3.7) ---
 
-/** The reference glass every warning is estimated against: 1280x800, and a
- *  15-inch panel at that resolution is ~100 px per inch. */
-export const TOUCH_REFERENCE = { width: 1280, height: 800, pxPerInch: 100 };
+/** The reference glass every warning is estimated against.
+ *
+ *  1280x800 is the design reference. The density is the part that was wrong:
+ *  100 px/inch describes a 15-inch panel at that resolution, and almost nobody
+ *  deploys one. The mainstream wall panel at 1280x800 is 10.1 inches, which is
+ *  ~149 px/inch -- so the old figure reported a control as half again more
+ *  finger than it actually gets, and told an author 11.2mm where the panel
+ *  gives 7.5mm. Measured against real panel diagonals 2026-08-04.
+ */
+export const TOUCH_REFERENCE = { width: 1280, height: 800, pxPerInch: 149 };
 
-/** Below this many reference pixels a control is uncomfortable to hit. This is
- *  the 44px minimum that used to be a runtime clamp -- as a clamp it overrode
- *  small percentage heights and shoved elements out of their boxes into overlap
- *  on every touch panel, so it lives here as advice instead. */
-export const TOUCH_MIN_PX = 44;
+/** The comfortable finger minimum, and the actual rule.
+ *
+ *  It is in millimetres because that is the real question -- whether a thumb
+ *  can hit the thing is physical, not pixel. The 44px runtime clamp this
+ *  replaced was never that rule: 44 CSS px works out between 6.0mm and 8.5mm
+ *  across every panel in the deployment range (800x480 at 5in through
+ *  1920x1080 at 15.6in), so it sat under the comfortable minimum on all of
+ *  them and only looked like a guarantee. Deleting the clamp lost nothing.
+ *  Stating the rule in millimetres is what makes the advice true.
+ */
+export const TOUCH_MIN_MM = 9;
+
+/** The millimetre rule in reference pixels, derived so the two cannot drift. */
+export const TOUCH_MIN_PX = (TOUCH_MIN_MM / 25.4) * TOUCH_REFERENCE.pxPerInch;
 
 export interface TouchWarning {
   /** Which axis is too small, for the message. */

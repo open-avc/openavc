@@ -340,11 +340,32 @@ const near = (a, b, tol = 1e-4) => Math.abs(a - b) < tol;
 }
 {
   // A child is measured against its CONTAINER's pixels: half a container that
-  // is itself a quarter of the page is an eighth of the panel.
-  const inContainer = H.touchTargetWarning({ x: 0, y: 0, w: 20, h: 50 }, { width: 200, height: 100 });
+  // is itself a quarter of the page is an eighth of the panel. The height here
+  // is deliberately clear of the threshold so this still discriminates ONE
+  // axis rather than reporting "both" and passing by accident.
+  const inContainer = H.touchTargetWarning({ x: 0, y: 0, w: 20, h: 80 }, { width: 200, height: 100 });
   results.l051_touch_warning_container_relative = {
     pass: !!inContainer && inContainer.axis === "width" && inContainer.widthPx === 40,
     detail: inContainer,
+  };
+}
+{
+  // The rule is PHYSICAL. The pixel threshold is derived from it, so nobody can
+  // move one and leave the other -- which is how the old 44px constant came to
+  // claim 11.2mm while a real 10.1in panel delivered 7.5mm.
+  const expectedPx = (H.TOUCH_MIN_MM / 25.4) * H.TOUCH_REFERENCE.pxPerInch;
+  const derived = Math.abs(H.TOUCH_MIN_PX - expectedPx) < 1e-9;
+  // A control exactly at the minimum must not warn; a hair under must.
+  const atMin = (H.TOUCH_MIN_PX / H.TOUCH_REFERENCE.width) * 100;
+  const ok = H.touchTargetWarning({ x: 0, y: 0, w: atMin, h: atMin * (H.TOUCH_REFERENCE.width / H.TOUCH_REFERENCE.height) });
+  const under = H.touchTargetWarning({ x: 0, y: 0, w: atMin * 0.9, h: atMin * 0.9 });
+  // And the millimetre it reports is the millimetre the rule is written in.
+  const reported = under ? under.widthMm : null;
+  const expectedMm = Math.round(((H.TOUCH_MIN_PX * 0.9) / H.TOUCH_REFERENCE.pxPerInch) * 25.4 * 10) / 10;
+  results.l051_touch_minimum_is_physical = {
+    pass: derived && ok === null && !!under && reported === expectedMm,
+    detail: { TOUCH_MIN_MM: H.TOUCH_MIN_MM, TOUCH_MIN_PX: H.TOUCH_MIN_PX,
+              ppi: H.TOUCH_REFERENCE.pxPerInch, atMinWarns: ok, reported, expectedMm },
   };
 }
 

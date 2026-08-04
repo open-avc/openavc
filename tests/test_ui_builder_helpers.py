@@ -105,6 +105,7 @@ SCENARIOS = [
     "l051_drop_innermost_container_wins",
     "l051_touch_warning",
     "l051_touch_warning_container_relative",
+    "l051_touch_minimum_is_physical",
     "h039_dup_reserved_skips_master",
     "l052_rename_preserves_untouched",
     "l052_rename_rewrites_referencing",
@@ -214,3 +215,15 @@ def test_ui_builder_helper(helper_results: dict, scenario: str) -> None:
     assert scenario in helper_results, f"harness did not report {scenario}"
     outcome = helper_results[scenario]
     assert outcome["pass"], f"{scenario} failed: detail={outcome.get('detail')!r}"
+
+
+def test_every_harness_scenario_is_listed(helper_results: dict) -> None:
+    """The list above is hand-maintained, so a scenario can be written into the
+    harness and never run -- the suite stays green and the behaviour is
+    untested. Only this direction matters; the other is covered per-scenario.
+    """
+    unlisted = sorted(set(helper_results) - set(SCENARIOS))
+    assert not unlisted, (
+        "these harness scenarios are not in SCENARIOS, so they never run: "
+        + ", ".join(unlisted)
+    )

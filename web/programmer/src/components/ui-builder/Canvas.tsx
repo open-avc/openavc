@@ -153,9 +153,10 @@ export function Canvas({
     [page, previewMode, activeLayoutId],
   );
 
-  // The 44px touch minimum that used to be a runtime clamp. As a clamp it
-  // shoved elements out of their boxes into overlap on every touch panel, so
-  // it advises here instead.
+  // The comfortable finger minimum, which used to be a 44px runtime clamp. As a
+  // clamp it shoved elements out of their boxes into overlap on every touch
+  // panel, so it advises here instead -- and it is stated in millimetres now,
+  // because 44px was under the comfortable size on every panel we ship to.
   const smallTouchIds = useMemo(
     () => (previewMode ? new Set<string>() : findSmallTouchTargetIds(page, activeLayoutId)),
     [page, previewMode, activeLayoutId],

@@ -1,5 +1,5 @@
 import type { UIElement, Placement } from "../../../api/types";
-import { touchTargetWarning } from "../uiBuilderHelpers";
+import { touchTargetWarning, TOUCH_MIN_MM } from "../uiBuilderHelpers";
 
 interface LayoutPropertiesProps {
   element: UIElement;
@@ -167,8 +167,10 @@ export function LayoutProperties({
           }}
         >
           About {touch.widthPx}&times;{touch.heightPx}px on a 1280&times;800 panel, roughly{" "}
-          {touch.widthMm}&times;{touch.heightMm}mm at 15 inches. Under about 10mm is hard to
-          hit reliably with a finger. This is advice, not a limit.
+          {touch.widthMm}&times;{touch.heightMm}mm on a 10&quot; one. Under about {TOUCH_MIN_MM}mm is
+          hard to hit reliably with a finger. Bigger glass gives you more
+          millimetres for the same design; smaller glass gives you fewer. This is
+          advice, not a limit.
         </div>
       )}
     </div>
