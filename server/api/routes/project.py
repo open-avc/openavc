@@ -88,6 +88,19 @@ async def save_project_config(request: Request) -> dict[str, Any]:
         except (ValueError, TypeError):
             raise HTTPException(status_code=400, detail="Invalid If-Match value")
 
+    # The migration chain keys on this field and treats a missing one as the
+    # OLDEST format -- running the whole chain over a current-format body,
+    # which collapses every placement and re-divides every rem value, then
+    # saves the wreckage stamped current. Every legitimate producer (the IDE,
+    # exports, the library, the seed) includes it, so absence is a caller bug;
+    # refuse it loudly instead of corrupting the project silently.
+    if "openavc_version" not in body:
+        raise HTTPException(
+            status_code=422,
+            detail="Project body is missing 'openavc_version'. Send the whole "
+                   "document from GET /api/project, version field included.",
+        )
+
     try:
         # Run the format-migration chain before validating: this door takes
         # whole project documents (Programmer import saves through here), so an

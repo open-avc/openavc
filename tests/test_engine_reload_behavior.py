@@ -465,6 +465,7 @@ async def test_put_project_persists_bytes_and_hot_reloads(tmp_path):
     ws.set_engine(eng)
 
     body = {
+        "openavc_version": "0.8.0",
         "project": {"id": "p", "name": "Renamed via PUT"},
         "variables": [{"id": "volume", "type": "number", "default": 42}],
     }

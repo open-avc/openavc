@@ -30,6 +30,86 @@ _RETIRED_GEOMETRY = {
 _PAGE_BOX = {"x": 0.0, "y": 0.0, "w": 100.0, "h": 100.0}
 
 
+def _rounded_placement(box: Any) -> Any:
+    """A Placement quantized to 4 decimal places, exactly as the Builder stores.
+
+    Percentages are stored to 4dp at every write path (GEOMETRY_PRECISION in
+    uiBuilderHelpers.ts); an unrounded value is the float jitter that dirties
+    the save-reconcile diff and arms phantom autosaves. The Builder quantizes
+    with JS Math.round, which rounds a half toward +infinity, while Python's
+    round() is banker's -- so mirror the JS arithmetic, or the same reparent
+    stores different bytes depending on who performed it.
+    """
+    import math
+
+    from server.core.project_loader import Placement
+
+    data = box.model_dump() if hasattr(box, "model_dump") else dict(box)
+    for key in ("x", "y", "w", "h"):
+        v = data.get(key)
+        if not isinstance(v, bool) and isinstance(v, (int, float)):
+            data[key] = math.floor(v * 10_000 + 0.5) / 10_000
+    return Placement(**data)
+
+
+def _scrub_navigate_actions(el: Any, page_id: str) -> None:
+    """Drop navigate actions targeting a deleted page from every do-slot.
+
+    Mirrors the Builder's scrub on page delete: every interaction slot, array
+    or legacy single-object shape alike. Both action spellings are checked --
+    the UI event runtime accepts `page` as well as `navigate` (backlog 114),
+    so a hand-authored binding can carry either.
+    """
+    bindings = el.bindings if isinstance(el.bindings, dict) else None
+    do_map = bindings.get("do") if bindings else None
+    if not isinstance(do_map, dict):
+        return
+
+    def dead(action: Any) -> bool:
+        return (
+            isinstance(action, dict)
+            and action.get("action") in ("navigate", "page")
+            and action.get("page") == page_id
+        )
+
+    for slot in list(do_map.keys()):
+        raw = do_map[slot]
+        if isinstance(raw, list):
+            kept = [a for a in raw if not dead(a)]
+            if len(kept) != len(raw):
+                if kept:
+                    do_map[slot] = kept
+                else:
+                    del do_map[slot]
+        elif dead(raw):
+            del do_map[slot]
+
+
+def _validate_parent(page: Any, element_id: str, new_parent_id: str) -> None:
+    """The rules for who may hold whom, shared by every door that sets `parent`.
+
+    They mirror the Builder's canReparent: the container must exist, must BE a
+    container, and must not be the element itself or anything inside it. A
+    parent the Builder refuses to create is also one its container dropdown
+    cannot express or repair, so letting it in here strands the project.
+    """
+    by_id = {el.id: el for el in page.elements}
+    parent = by_id.get(new_parent_id)
+    if parent is None:
+        raise ToolEditError({
+            "error": f"Container '{new_parent_id}' is not an element on page '{page.id}'"
+        })
+    if parent.type != "group":
+        raise ToolEditError({
+            "error": f"'{new_parent_id}' is a {parent.type}, not a container -- "
+                     f"only a group element can hold children"
+        })
+    if new_parent_id == element_id or _is_descendant(by_id, new_parent_id, element_id):
+        raise ToolEditError({
+            "error": f"Element '{element_id}' cannot be placed inside itself or its own contents"
+        })
+
+
 def _primary_layout(page: Any) -> Any:
     """The layout a geometry edit lands in when the caller names no other.
 
@@ -131,21 +211,13 @@ def _reparent_element(page: Any, element_id: str, new_parent_id: str | None) -> 
     layout the caller is not looking at does not shift either. This is the same
     conversion the Builder does when you drag a control into a container.
     """
-    from server.core.project_loader import Placement
 
     by_id = {el.id: el for el in page.elements}
     element = by_id.get(element_id)
     if element is None or (element.parent or None) == new_parent_id:
         return
     if new_parent_id is not None:
-        if new_parent_id not in by_id:
-            raise ToolEditError({
-                "error": f"Container '{new_parent_id}' is not an element on page '{page.id}'"
-            })
-        if new_parent_id == element_id or _is_descendant(by_id, new_parent_id, element_id):
-            raise ToolEditError({
-                "error": f"Element '{element_id}' cannot be placed inside itself or its own contents"
-            })
+        _validate_parent(page, element_id, new_parent_id)
 
     primary_id = _primary_layout(page).id
     rewritten: list[tuple[Any, dict]] = []
@@ -170,7 +242,7 @@ def _reparent_element(page: Any, element_id: str, new_parent_id: str | None) -> 
 
     element.parent = new_parent_id
     for layout, box in rewritten:
-        layout.placements[element_id] = Placement(**box)
+        layout.placements[element_id] = _rounded_placement(box)
 
 
 def _is_descendant(by_id: dict, candidate_id: str, ancestor_id: str) -> bool:
@@ -221,13 +293,43 @@ def _apply_layouts(page: Any, layouts_input: Any) -> None:
     control must not blank the rest) while `hidden` replaces, because it is a
     set and "hide exactly these" is the only unambiguous reading of a list.
     """
-    from server.core.project_loader import Layout, Placement, normalize_primary_layout
+    from server.core.project_loader import Layout, normalize_primary_layout
 
     if not isinstance(layouts_input, list):
         raise ToolEditError({"error": "'layouts' must be an array of layout objects"})
 
     by_id = {lay.id: lay for lay in page.layouts}
     primary_id = _primary_layout(page).id
+
+    def check_inherits(layout_id: str, target: Any) -> None:
+        # A dangling inherits does not error anywhere downstream -- the variant
+        # silently becomes its own chain root and everything without a delta
+        # falls to default boxes. Refuse it at the door, by name.
+        if target is None:
+            return
+        if target == layout_id:
+            raise ToolEditError({"error": f"Layout '{layout_id}' cannot inherit from itself"})
+        if target not in by_id:
+            raise ToolEditError({
+                "error": f"Layout '{layout_id}': inherits '{target}', which is not an "
+                         f"arrangement on this page. Available: {', '.join(by_id)}"
+            })
+
+    def check_orientation(layout_id: str, orientation: Any) -> None:
+        # One arrangement per orientation is the Builder's invariant -- the
+        # runtime draws the first match, so a second one is unreachable and
+        # makes the canvas and the panel disagree.
+        taken = next(
+            (lay.id for lay in page.layouts
+             if lay.orientation == orientation and lay.id != layout_id),
+            None,
+        )
+        if taken is not None:
+            raise ToolEditError({
+                "error": f"Layout '{layout_id}': there is already a {orientation} "
+                         f"arrangement ('{taken}'). Edit that one instead."
+            })
+
     for entry in layouts_input:
         if not isinstance(entry, dict) or not entry.get("id"):
             raise ToolEditError({"error": "Each layout needs an 'id'"})
@@ -235,7 +337,7 @@ def _apply_layouts(page: Any, layouts_input: Any) -> None:
         placements = entry.get("placements") or {}
         if not isinstance(placements, dict):
             raise ToolEditError({"error": f"Layout '{layout_id}': 'placements' must be an object keyed by element id"})
-        boxes = {el_id: Placement(**box) for el_id, box in placements.items()}
+        boxes = {el_id: _rounded_placement(box) for el_id, box in placements.items()}
         existing = by_id.get(layout_id)
         if existing is None:
             # The primary is the page's fallback for an unmatched screen and the
@@ -244,7 +346,9 @@ def _apply_layouts(page: Any, layouts_input: Any) -> None:
             # a new layout is always a variant.
             fields = {k: v for k, v in entry.items() if k not in ("placements", "hidden", "primary")}
             fields.setdefault("inherits", primary_id)
+            check_inherits(layout_id, fields.get("inherits"))
             new_layout = Layout(**fields, placements=boxes, hidden=entry.get("hidden") or [])
+            check_orientation(layout_id, new_layout.orientation)
             new_layout.primary = False
             page.layouts.append(new_layout)
             by_id[layout_id] = new_layout
@@ -254,12 +358,31 @@ def _apply_layouts(page: Any, layouts_input: Any) -> None:
                 "error": f"Layout '{layout_id}': which layout is primary cannot be changed here. "
                          f"'{primary_id}' is the arrangement an unmatched screen falls back to."
             })
+        if "inherits" in entry:
+            check_inherits(layout_id, entry["inherits"])
+        if "orientation" in entry:
+            check_orientation(layout_id, entry["orientation"])
         for field in ("orientation", "inherits"):
             if field in entry:
                 setattr(existing, field, entry[field])
         existing.placements.update(boxes)
         if "hidden" in entry:
             existing.hidden = list(entry["hidden"] or [])
+
+    # Two edits in one call can each be legal and still tie the chains in a
+    # loop (A inherits B, then B inherits A). Both renderers cycle-guard, so
+    # nothing crashes -- but the layouts stop inheriting and the file is
+    # permanently odd. Walk every chain before accepting the batch.
+    for lay in page.layouts:
+        seen: set[str] = set()
+        cursor = lay
+        while cursor is not None and cursor.id not in seen:
+            seen.add(cursor.id)
+            cursor = by_id.get(cursor.inherits) if cursor.inherits else None
+        if cursor is not None:
+            raise ToolEditError({
+                "error": f"Layout inheritance loops: '{lay.id}' eventually inherits from itself"
+            })
 
     page.layouts = normalize_primary_layout(page.layouts)
 
@@ -299,7 +422,7 @@ class UIToolsMixin:
             return {"error": "Page ID is required"}
 
         from server.cloud.ai_tool_handler import _normalize_bindings, _validate_bindings
-        from server.core.project_loader import Placement, UIPage
+        from server.core.project_loader import UIPage
         elements = input.get("elements", [])
 
         def mutate(project):
@@ -337,7 +460,7 @@ class UIToolsMixin:
             # layout inherits from.
             primary = _primary_layout(new_page)
             for el_id, box in boxes.items():
-                primary.placements[el_id] = Placement(**box)
+                primary.placements[el_id] = _rounded_placement(box)
             # A UI-only change just swaps the project and pushes the new
             # ui.definition to connected panels.
             project.ui.pages.append(new_page)
@@ -420,6 +543,37 @@ class UIToolsMixin:
             if len(project.ui.pages) == original_count:
                 raise ToolEditError({"error": f"UI page '{page_id}' not found"})
 
+            # Scrub everything that pointed at the page -- the same set the
+            # Builder's page delete scrubs, so a page deleted by the AI does
+            # not leave masters pinned to a ghost and nav buttons that go
+            # nowhere.
+            for master in project.ui.master_elements:
+                if isinstance(master.pages, list) and page_id in master.pages:
+                    remaining = [pid for pid in master.pages if pid != page_id]
+                    # A master shown nowhere is invisible with no way to see
+                    # why; every-page is the least surprising repair.
+                    master.pages = remaining if remaining else "*"
+            for pg in project.ui.pages:
+                for el in pg.elements:
+                    if el.type == "page_nav" and el.target_page == page_id:
+                        el.target_page = ""
+                    _scrub_navigate_actions(el, page_id)
+            for macro in project.macros:
+                for trigger in macro.triggers or []:
+                    if trigger.conditions:
+                        trigger.conditions = [
+                            c for c in trigger.conditions
+                            if not (getattr(c, "key", None) == "system.current_page"
+                                    and getattr(c, "value", None) == page_id)
+                        ]
+            if project.ui.settings.idle_page == page_id:
+                project.ui.settings.idle_page = (
+                    project.ui.pages[0].id if project.ui.pages else ""
+                )
+            for group in project.ui.page_groups:
+                if page_id in group.pages:
+                    group.pages = [pid for pid in group.pages if pid != page_id]
+
         err = await apply_tool_edit(engine, mutate)
         if err:
             return err
@@ -440,7 +594,7 @@ class UIToolsMixin:
             return {"error": "No elements provided"}
 
         from server.cloud.ai_tool_handler import _normalize_bindings, _validate_bindings
-        from server.core.project_loader import Placement, UIElement
+        from server.core.project_loader import UIElement
 
         def mutate(project):
             page = None
@@ -471,14 +625,22 @@ class UIToolsMixin:
                     if err:
                         raise ToolEditError({"error": f"Element '{el_id}': {err}"})
                 element = UIElement(**el_data)
-                if element.parent is not None and not any(e.id == element.parent for e in page.elements):
-                    raise ToolEditError({
-                        "error": f"Element '{el_id}': container '{element.parent}' "
-                                 f"is not an element on page '{page_id}'"
-                    })
+                if element.parent is not None:
+                    holder = next((e for e in page.elements if e.id == element.parent), None)
+                    if holder is None:
+                        raise ToolEditError({
+                            "error": f"Element '{el_id}': container '{element.parent}' "
+                                     f"is not an element on page '{page_id}'"
+                        })
+                    if holder.type != "group":
+                        raise ToolEditError({
+                            "error": f"Element '{el_id}': '{element.parent}' is a "
+                                     f"{holder.type}, not a container -- only a group "
+                                     f"element can hold children"
+                        })
                 page.elements.append(element)
                 if place is not None:
-                    primary.placements[element.id] = Placement(**place)
+                    primary.placements[element.id] = _rounded_placement(place)
 
         err = await apply_tool_edit(engine, mutate)
         if err:
@@ -538,29 +700,26 @@ class UIToolsMixin:
                 target_el.text = input["text"]
             if "parent" in input:
                 # Percentages are of the parent box, so changing only the parent
-                # teleports the element. Convert it across every arrangement --
-                # unless the caller also states the new box, in which case they
-                # have already said where it goes in the container's space.
+                # teleports the element. The conversion runs across every
+                # arrangement -- including when the caller also states a box,
+                # because the stated box lands in ONE layout and a variant with
+                # its own delta would otherwise keep a box still expressed in
+                # the old parent's space. The same guards apply either way; the
+                # old stated-box shortcut skipped them, which let a parent
+                # cycle into the project.
                 new_parent = input["parent"] or None
-                if "placement" in input:
-                    if new_parent is not None and not any(
-                        e.id == new_parent for e in target_page.elements
-                    ):
-                        raise ToolEditError({
-                            "error": f"Container '{new_parent}' is not an element on page '{target_page.id}'"
-                        })
-                    target_el.parent = new_parent
-                else:
-                    _reparent_element(target_page, element_id, new_parent)
+                _reparent_element(target_page, element_id, new_parent)
             if "placement" in input:
                 from server.core.project_loader import Placement
                 # Partial merge: keep omitted fields (don't snap x/y back to 0)
                 # and preserve any forward-compat keys. The placement lives on
-                # the page's layout, not the element.
+                # the page's layout, not the element. Runs after any reparent,
+                # so the stated box overrides the conversion in the resolved
+                # layout and the other arrangements keep the converted one.
                 existing = _resolved_placements(target_page, layout.id).get(target_el.id, Placement())
-                layout.placements[target_el.id] = _merge_forward_compat(
+                layout.placements[target_el.id] = _rounded_placement(_merge_forward_compat(
                     existing, Placement, input["placement"],
-                )
+                ))
             if "hidden" in input:
                 # Hiding is per-arrangement: a portrait variant can drop a wide
                 # banner that will not fit without touching the landscape panel.
@@ -683,6 +842,11 @@ class UIToolsMixin:
                 err = _validate_bindings(el_data["bindings"], project)
                 if err:
                     raise ToolEditError({"error": f"Master element '{element_id}': {err}"})
+            if isinstance(el_data.get("placements"), dict):
+                el_data["placements"] = {
+                    key: _rounded_placement(box) if isinstance(box, dict) else box
+                    for key, box in el_data["placements"].items()
+                }
             new_el = MasterElement(**el_data)
             project.ui.master_elements.append(new_el)
 

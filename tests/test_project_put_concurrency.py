@@ -16,7 +16,10 @@ from server.api import rest, ws
 from server.core.engine import Engine
 from server.main import app
 
-BODY = {"project": {"id": "t", "name": "Test"}}
+# A body always carries its format version: the route refuses one without it,
+# because the migration chain would treat the body as the oldest format and
+# destructively re-migrate it (see test at the bottom).
+BODY = {"openavc_version": "0.8.0", "project": {"id": "t", "name": "Test"}}
 
 
 @pytest.fixture
@@ -146,3 +149,27 @@ async def test_put_project_legacy_revision_refused_even_alongside_if_match(
     assert resp.status_code == 400
     assert saves == []
     assert engine._project_revision == 5
+
+
+@pytest.mark.asyncio
+async def test_put_project_without_a_version_is_refused(engine, monkeypatch):
+    """No version field, no save.
+
+    The migration chain keys on `openavc_version` and assumes the OLDEST
+    format when it is absent -- which runs the whole chain over a
+    current-format body, collapses every placement to the 1x1 grid cell,
+    re-divides every rem value by 14, and stamps the wreckage current. Every
+    legitimate producer includes the field, so absence is refused rather
+    than guessed at.
+    """
+    saves = _stub_persistence(engine, monkeypatch)
+    engine._project_revision = 1
+    body = {k: v for k, v in BODY.items() if k != "openavc_version"}
+
+    async with _client() as c:
+        resp = await c.put("/api/project", json=body, headers={"If-Match": '"1"'})
+
+    assert resp.status_code == 422
+    assert "openavc_version" in resp.json()["detail"]
+    assert saves == []
+    assert engine._project_revision == 1
