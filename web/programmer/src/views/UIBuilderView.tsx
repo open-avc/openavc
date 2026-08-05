@@ -8,7 +8,6 @@ import {
   useSensor,
   useSensors,
   type DragStartEvent,
-  type DragMoveEvent,
   type DragEndEvent,
 } from "@dnd-kit/core";
 import {
@@ -922,53 +921,6 @@ export function UIBuilderView() {
     }),
   );
 
-  const handleDragStart = useCallback(
-    (event: DragStartEvent) => {
-      const data = event.active.data.current as
-        | { source: string; elementType?: string; elementId?: string }
-        | undefined;
-      setActiveDragSource(data?.source || null);
-      dragElementType.current = data?.elementType || null;
-      const pointerEvent = event.activatorEvent as PointerEvent;
-      dragStartPointer.current = {
-        x: pointerEvent.clientX,
-        y: pointerEvent.clientY,
-      };
-
-      // Only the palette drags through dnd-kit now — moving an element that is
-      // already on the canvas is a pointer gesture Canvas owns, so it can snap
-      // live and commit once on pointer-up.
-      if (data?.source === "palette" && data?.elementType) {
-        draggedElement.current = createDefaultElement(data.elementType, new Set());
-        dragElementSize.current = defaultElementSize(data.elementType, panelElements);
-      } else {
-        draggedElement.current = null;
-        dragElementSize.current = null;
-      }
-
-      const canvasGrid = document.querySelector("[data-canvas-grid]");
-      if (canvasGrid && draggedElement.current && dragElementSize.current) {
-        const rect = canvasGrid.getBoundingClientRect();
-        const size = dragElementSize.current;
-        // The ghost is drawn at the size the element will actually land at,
-        // which is a percentage of the canvas — zoom included, since the rect
-        // is already the scaled one.
-        dragGhostSize.current = {
-          w: (size.w / 100) * rect.width,
-          h: (size.h / 100) * rect.height,
-        };
-        // Centre the element under the pointer, and re-centre the DragOverlay
-        // to match so the ghost and the landing spot agree.
-        const activeRect = event.active.rect.current.initial;
-        dragGrabPx.current = {
-          x: activeRect ? pointerEvent.clientX - activeRect.left : 0,
-          y: activeRect ? pointerEvent.clientY - activeRect.top : 0,
-        };
-      }
-    },
-    [setActiveDragSource, panelElements],
-  );
-
   // The pointer's whereabouts during a palette drag, so a mid-drag Alt press
   // can recompute the preview without waiting for the pointer to twitch.
   const lastPalettePointer = useRef<{ x: number; y: number } | null>(null);
@@ -1015,16 +967,82 @@ export function UIBuilderView() {
     });
   }, [currentPage, activeLayoutId]);
 
-  const handleDragMove = useCallback(
-    (event: DragMoveEvent) => {
-      if (!dragStartPointer.current || !dragElementType.current) return;
-      lastPalettePointer.current = {
-        x: dragStartPointer.current.x + event.delta.x,
-        y: dragStartPointer.current.y + event.delta.y,
-      };
+  // The preview follows the REAL pointer, from a native listener — never
+  // dnd-kit's delta. The delta folds in scroll compensation, so when the
+  // palette list was scrolled (its auto-scroll crawling back up during the
+  // drag), start + delta drifted from the cursor by exactly the scroll — and
+  // the footprint and the landing drifted with it.
+  const palettePointerCleanup = useRef<(() => void) | null>(null);
+
+  const trackPalettePointer = useCallback(() => {
+    palettePointerCleanup.current?.();
+    const onMove = (ev: PointerEvent) => {
+      lastPalettePointer.current = { x: ev.clientX, y: ev.clientY };
       updatePalettePreview();
+    };
+    window.addEventListener("pointermove", onMove);
+    palettePointerCleanup.current = () => {
+      window.removeEventListener("pointermove", onMove);
+      palettePointerCleanup.current = null;
+    };
+  }, [updatePalettePreview]);
+
+  const handleDragStart = useCallback(
+    (event: DragStartEvent) => {
+      const data = event.active.data.current as
+        | { source: string; elementType?: string; elementId?: string }
+        | undefined;
+      setActiveDragSource(data?.source || null);
+      dragElementType.current = data?.elementType || null;
+      const pointerEvent = event.activatorEvent as PointerEvent;
+      dragStartPointer.current = {
+        x: pointerEvent.clientX,
+        y: pointerEvent.clientY,
+      };
+
+      // Only the palette drags through dnd-kit now — moving an element that is
+      // already on the canvas is a pointer gesture Canvas owns, so it can snap
+      // live and commit once on pointer-up.
+      if (data?.source === "palette" && data?.elementType) {
+        draggedElement.current = createDefaultElement(data.elementType, new Set());
+        dragElementSize.current = defaultElementSize(data.elementType, panelElements);
+        lastPalettePointer.current = {
+          x: pointerEvent.clientX,
+          y: pointerEvent.clientY,
+        };
+        trackPalettePointer();
+      } else {
+        draggedElement.current = null;
+        dragElementSize.current = null;
+      }
+
+      const canvasGrid = document.querySelector("[data-canvas-grid]");
+      if (canvasGrid && draggedElement.current && dragElementSize.current) {
+        const rect = canvasGrid.getBoundingClientRect();
+        const size = dragElementSize.current;
+        // The ghost is drawn at the size the element will actually land at,
+        // which is a percentage of the canvas — zoom included, since the rect
+        // is already the scaled one.
+        dragGhostSize.current = {
+          w: (size.w / 100) * rect.width,
+          h: (size.h / 100) * rect.height,
+        };
+        // Centre the element under the pointer, and re-centre the DragOverlay
+        // to match so the ghost and the landing spot agree. Measured from the
+        // palette item's real DOM rect: dnd-kit's own measurement
+        // (active.rect.current.initial) is still null at drag start, so the
+        // old read always fell back to 0,0 and the ghost rode off-cursor by
+        // the grab offset.
+        const itemRect = (pointerEvent.target as Element | null)
+          ?.closest('[aria-roledescription="draggable"]')
+          ?.getBoundingClientRect();
+        dragGrabPx.current = {
+          x: itemRect ? pointerEvent.clientX - itemRect.left : 0,
+          y: itemRect ? pointerEvent.clientY - itemRect.top : 0,
+        };
+      }
     },
-    [updatePalettePreview],
+    [setActiveDragSource, panelElements, trackPalettePointer],
   );
 
   // Alt toggled mid-drag changes the answer without the pointer moving. The
@@ -1045,13 +1063,15 @@ export function UIBuilderView() {
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
+      palettePointerCleanup.current?.();
       const preview = useUIBuilderStore.getState().paletteDragPreview;
       useUIBuilderStore.getState().setPaletteDragPreview(null);
       setActiveDragSource(null);
       dragElementType.current = null;
       draggedElement.current = null;
+      const releasePointer = lastPalettePointer.current;
       lastPalettePointer.current = null;
-      const { active, over, delta } = event;
+      const { active, over } = event;
       if (!over || over.id !== "canvas-drop" || !currentPage || !project)
         return;
       if (!dragStartPointer.current) return;
@@ -1082,8 +1102,10 @@ export function UIBuilderView() {
       if (preview) {
         placement = preview.placement;
       } else {
-        const pointerX = dragStartPointer.current.x + delta.x;
-        const pointerY = dragStartPointer.current.y + delta.y;
+        // Same native-tracked pointer the preview uses — dnd-kit's delta is
+        // scroll-compensated and drifts when the palette list scrolls.
+        const pointerX = (releasePointer ?? dragStartPointer.current).x;
+        const pointerY = (releasePointer ?? dragStartPointer.current).y;
         const centre = {
           x: pointerToPercent(pointerX, canvasRect.left, canvasRect.width),
           y: pointerToPercent(pointerY, canvasRect.top, canvasRect.height),
@@ -1119,6 +1141,7 @@ export function UIBuilderView() {
   );
 
   const handleDragCancel = useCallback(() => {
+    palettePointerCleanup.current?.();
     useUIBuilderStore.getState().setPaletteDragPreview(null);
     setActiveDragSource(null);
     dragElementType.current = null;
@@ -1126,6 +1149,9 @@ export function UIBuilderView() {
     dragStartPointer.current = null;
     lastPalettePointer.current = null;
   }, [setActiveDragSource]);
+
+  // A drag in flight when the view unmounts would leave the tracker attached.
+  useEffect(() => () => palettePointerCleanup.current?.(), []);
 
   if (!project) {
     return (
@@ -1150,8 +1176,11 @@ export function UIBuilderView() {
       // the canvas, which is also when the snapped preview is showing — so
       // what you see mid-drag and what a release does can never disagree.
       collisionDetection={pointerWithin}
+      // No auto-scroll: a palette drag is headed for the canvas, and the list
+      // crawling along under the drag both looks broken and feeds scroll
+      // compensation into dnd-kit's coordinates.
+      autoScroll={false}
       onDragStart={handleDragStart}
-      onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
