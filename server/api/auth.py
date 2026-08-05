@@ -233,6 +233,29 @@ def programmer_auth_satisfied(
     return False
 
 
+def _challenge_headers(request: Request) -> dict[str, str]:
+    """The 401 challenge for this request, if a browser can usefully act on it.
+
+    A `WWW-Authenticate: Basic` header on a fetch/XHR response makes Chrome
+    pop its NATIVE sign-in dialog over whatever page issued the request —
+    the app's own JSON handling never gets a say. The panel iframe inside
+    the UI Builder hit exactly this on claimed instances: its credential-less
+    fallback `fetch('/api/project')` 401'd with the challenge and every
+    canvas mount raised the browser dialog.
+
+    Browsers label every request they make with `Sec-Fetch-Dest`: `document`
+    for a real top-level navigation (where the dialog IS the only way to
+    authenticate a bare API URL in a browser), `empty` for fetch/XHR, and
+    other values for subresources. So: challenge top-level navigations and
+    non-browser clients (no header — curl, scripts, legacy engines), stay
+    silent for everything else and let the application handle its own 401.
+    """
+    dest = request.headers.get("sec-fetch-dest")
+    if dest is not None and dest != "document":
+        return {}
+    return {"WWW-Authenticate": "Basic"}
+
+
 async def require_programmer_auth(
     request: Request,
     credentials: HTTPBasicCredentials | None = Depends(_basic),
@@ -249,7 +272,7 @@ async def require_programmer_auth(
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Authentication required",
-        headers={"WWW-Authenticate": "Basic"},
+        headers=_challenge_headers(request),
     )
 
 
@@ -277,7 +300,7 @@ async def require_local_or_programmer_auth(
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Authentication required",
-        headers={"WWW-Authenticate": "Basic"},
+        headers=_challenge_headers(request),
     )
 
 
@@ -303,7 +326,7 @@ async def require_claimed_auth(
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Authentication required",
-        headers={"WWW-Authenticate": "Basic"},
+        headers=_challenge_headers(request),
     )
 
 

@@ -514,3 +514,56 @@ class TestWsAuthBasicHeader:
         encoded = base64.b64encode(b"justastring").decode("ascii")
         headers = {"authorization": f"Basic {encoded}"}
         assert check_ws_auth({}, headers) is False
+
+
+# ---------------------------------------------------------------------------
+# Basic challenge suppression for browser subresource requests
+# ---------------------------------------------------------------------------
+
+class TestChallengeSuppression:
+    """A 401 must not carry WWW-Authenticate: Basic for fetch/XHR requests.
+
+    Chrome answers a Basic challenge on a fetch with its NATIVE sign-in
+    dialog over the issuing page. The UI Builder's panel iframe hit this on
+    claimed instances via its credential-less fallback fetch of /api/project
+    (v0.24.0 regression). Browsers mark request context in Sec-Fetch-Dest:
+    only a real top-level navigation ("document") or a non-browser client
+    (no header) should be challenged.
+    """
+
+    def _client(self, monkeypatch) -> TestClient:
+        _set_auth(monkeypatch, password="hunter22")
+        return TestClient(_make_app_with_protected_route(), raise_server_exceptions=False)
+
+    def test_fetch_request_gets_401_without_challenge(self, monkeypatch):
+        client = self._client(monkeypatch)
+        r = client.get("/guarded", headers={"Sec-Fetch-Dest": "empty"})
+        assert r.status_code == 401
+        assert "www-authenticate" not in r.headers
+
+    def test_iframe_subresource_gets_401_without_challenge(self, monkeypatch):
+        client = self._client(monkeypatch)
+        r = client.get("/guarded", headers={"Sec-Fetch-Dest": "iframe"})
+        assert r.status_code == 401
+        assert "www-authenticate" not in r.headers
+
+    def test_top_level_navigation_still_challenged(self, monkeypatch):
+        client = self._client(monkeypatch)
+        r = client.get("/guarded", headers={"Sec-Fetch-Dest": "document"})
+        assert r.status_code == 401
+        assert r.headers.get("www-authenticate") == "Basic"
+
+    def test_non_browser_client_still_challenged(self, monkeypatch):
+        client = self._client(monkeypatch)
+        r = client.get("/guarded")
+        assert r.status_code == 401
+        assert r.headers.get("www-authenticate") == "Basic"
+
+    def test_authorized_fetch_unaffected(self, monkeypatch):
+        client = self._client(monkeypatch)
+        cred = base64.b64encode(b"admin:hunter22").decode()
+        r = client.get(
+            "/guarded",
+            headers={"Sec-Fetch-Dest": "empty", "Authorization": f"Basic {cred}"},
+        )
+        assert r.status_code == 200
