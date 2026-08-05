@@ -138,9 +138,13 @@ export function ButtonBindingEditor({
 
   const summarizeAction = (action: Record<string, unknown> | null | undefined): string => {
     if (!action) return "Not configured";
-    if (action.action === "macro") return `Macro: ${action.macro}`;
-    if (action.action === "device.command") return `${action.device}.${action.command}`;
-    if (action.action === "state.set") return `Set ${action.key}`;
+    // A half-built action (type picked, targets not yet chosen) summarizes as
+    // "Incomplete" — never interpolate missing parts into "undefined.undefined".
+    if (action.action === "macro") return action.macro ? `Macro: ${action.macro}` : "Incomplete";
+    if (action.action === "device.command") {
+      return action.device && action.command ? `${action.device}.${action.command}` : "Incomplete";
+    }
+    if (action.action === "state.set") return action.key ? `Set ${action.key}` : "Incomplete";
     if (action.action === "navigate" || action.action === "page") {
       // "page" is the runtime's alias for navigate (engine.py) — AI tools
       // and imports emit it; without this branch it summarized as raw "page".
@@ -148,9 +152,9 @@ export function ButtonBindingEditor({
       if (p === "__next_page__") return "Next page";
       if (p === "__prev_page__") return "Previous page";
       if (/^\d+$/.test(p)) return `Go to page ${Number(p) + 1}`;
-      return `Go to ${p}`;
+      return p ? `Go to ${p}` : "Incomplete";
     }
-    if (action.action === "script.call") return `Call ${action.function}`;
+    if (action.action === "script.call") return action.function ? `Call ${action.function}` : "Incomplete";
     return String(action.action || "Configured");
   };
 
