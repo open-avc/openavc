@@ -89,6 +89,8 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
+import pytest
+
 from server.drivers import spec
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -507,6 +509,10 @@ def _unimplemented(
     return sorted(missing)
 
 
+# Sweeps every registry field over the runtime's source; the suite default of
+# 120s is not enough headroom on GitHub's macOS runners, which run this several
+# times slower than Linux and killed two release runs at exactly this line.
+@pytest.mark.timeout(300)
 def test_every_contract_field_is_read_by_the_runtime() -> None:
     missing = _unimplemented(
         _runtime_source(), RUNTIME_OPT_OUT, RUNTIME_BLIND_SPOTS
