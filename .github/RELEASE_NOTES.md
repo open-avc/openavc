@@ -29,11 +29,10 @@
   possible. Discovery can also identify a device by its TLS certificate
   subject, and network scans on macOS now capture MAC addresses.
 
-- **Signed releases.** Release artifacts carry signatures and the updater
-  verifies them before applying an update, on every platform including the
-  Raspberry Pi image. Automatic rollback now restores user data from the
-  backup taken before the update, so a failed update cannot take recent
-  programming with it.
+- **Update safety.** The updater can verify release signatures before
+  applying an update, on every platform including the Raspberry Pi image.
+  Automatic rollback now restores user data from the backup taken before the
+  update, so a failed update cannot take recent programming with it.
 
 - **Session sign-in.** The Programmer exchanges the password for a session
   token at sign-in instead of sending credentials with every request, and the
