@@ -23,19 +23,28 @@ interface ActionPickerProps {
   eventTokens?: { key: string; label: string }[];
 }
 
-const ACTION_TYPES = [
+// The page move is spelled differently by subsystem, and both spellings are
+// correct. A panel binding writes "ui.navigate" -- the same word the macro step
+// and the WS frame use, so one move is written one way wherever you author it.
+// A control surface writes "navigate", because it moves its own deck's pages by
+// index rather than a panel page, and its plugin is what interprets it.
+// navigateOptions is what tells the two apart here: a surface always supplies
+// its own target list, a panel never does.
+const ACTION_TYPES = (navigateAction: string) => [
   { value: "macro", label: "Run Macro" },
   { value: "device.command", label: "Device Command" },
   { value: "state.set", label: "Set Variable" },
-  { value: "navigate", label: "Navigate Page" },
+  { value: navigateAction, label: "Navigate Page" },
   { value: "script.call", label: "Script Function" },
 ];
 
 export function ActionPicker({ value, project, onChange, forChangeBinding, allowedActions, navigateOptions, eventTokens }: ActionPickerProps) {
   const actionType = String(value?.action || "");
+  const navigateAction = navigateOptions ? "navigate" : "ui.navigate";
+  const allTypes = ACTION_TYPES(navigateAction);
   const actionTypes = allowedActions
-    ? ACTION_TYPES.filter((t) => allowedActions.includes(t.value))
-    : ACTION_TYPES;
+    ? allTypes.filter((t) => allowedActions.includes(t.value))
+    : allTypes;
 
   const handleActionTypeChange = (action: string) => {
     onChange({ action });
@@ -81,8 +90,14 @@ export function ActionPicker({ value, project, onChange, forChangeBinding, allow
       {actionType === "state.set" && (
         <StateSetConfig value={value} onChange={onChange} forChangeBinding={forChangeBinding} />
       )}
-      {actionType === "navigate" && (
-        <NavigateConfig value={value} project={project} onChange={onChange} navigateOptions={navigateOptions} />
+      {actionType === navigateAction && (
+        <NavigateConfig
+          value={value}
+          project={project}
+          onChange={onChange}
+          navigateOptions={navigateOptions}
+          navigateAction={navigateAction}
+        />
       )}
       {actionType === "script.call" && (
         <ScriptCallConfig value={value} onChange={onChange} />
@@ -453,11 +468,13 @@ function NavigateConfig({
   project,
   onChange,
   navigateOptions,
+  navigateAction,
 }: {
   value: Record<string, unknown> | null;
   project: ProjectConfig;
   onChange: (v: Record<string, unknown>) => void;
   navigateOptions?: { value: string; label: string }[];
+  navigateAction: string;
 }) {
   // Control surfaces navigate their own deck pages, not the project's panel
   // pages, so they supply an explicit target list.
@@ -467,7 +484,7 @@ function NavigateConfig({
         <label style={labelStyle}>Go To</label>
         <select
           value={String(value?.page || "")}
-          onChange={(e) => onChange({ action: "navigate", page: e.target.value })}
+          onChange={(e) => onChange({ action: navigateAction, page: e.target.value })}
           style={{ width: "100%", padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
         >
           <option value="">Select...</option>
@@ -492,7 +509,7 @@ function NavigateConfig({
       <select
         value={String(value?.page || "")}
         onChange={(e) =>
-          onChange({ action: "navigate", page: e.target.value })
+          onChange({ action: navigateAction, page: e.target.value })
         }
         style={{ width: "100%", padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
       >

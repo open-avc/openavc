@@ -1222,10 +1222,9 @@ export interface BindingRefIds {
 }
 
 /** First broken reference in an action — a device/macro/page id that no
- *  longer exists. The runtime accepts "page" as an alias for "navigate"
- *  (engine.py executes both), and a value_map runs the per-option action
- *  branches, so both are checked here too — AI tools and imports emit them,
- *  and a Broken badge that misses them lets a dead reference look fine. */
+ *  longer exists. A value_map runs the per-option action branches, so those
+ *  are checked here too — AI tools and imports emit them, and a Broken badge
+ *  that misses them lets a dead reference look fine. */
 export function actionDanglingRef(
   a: Record<string, unknown>,
   ids: BindingRefIds,
@@ -1237,7 +1236,7 @@ export function actionDanglingRef(
   if (act === "macro" && a.macro && !ids.macroIds.has(a.macro as string)) {
     return `Macro "${a.macro}" not found`;
   }
-  if ((act === "navigate" || act === "page") && a.page && !ids.pageIds.has(a.page as string)) {
+  if (act === "ui.navigate" && a.page && !ids.pageIds.has(a.page as string)) {
     return `Page "${a.page}" not found`;
   }
   if (act === "value_map" && a.map && typeof a.map === "object") {
@@ -1263,7 +1262,7 @@ export function actionIncompleteCheck(a: Record<string, unknown>): boolean {
   if (act === "device.command") return !a.device || !a.command;
   if (act === "macro") return !a.macro;
   if (act === "state.set") return !a.key;
-  if (act === "navigate" || act === "page") return !a.page;
+  if (act === "ui.navigate") return !a.page;
   if (act === "script.call") return !a.function;
   if (act === "value_map") {
     const map = a.map as Record<string, unknown> | undefined;
@@ -1286,7 +1285,7 @@ function scrubNavigateActions(el: UIElement, pageId: string): UIElement {
   if (!doMap) return el;
   const isDeadNavigate = (a: unknown) =>
     !!a && typeof a === "object" &&
-    (a as Record<string, unknown>).action === "navigate" &&
+    (a as Record<string, unknown>).action === "ui.navigate" &&
     (a as Record<string, unknown>).page === pageId;
 
   let changed = false;
@@ -3051,7 +3050,7 @@ export function validateProject(project: ProjectConfig): ValidationIssue[] {
     // One action checker for every interaction. Recurses into value_map
     // per-option actions the same way the engine executes them.
     const checkAction = (b: Record<string, unknown>, slotLoc: string) => {
-      if (b.action === "navigate" && b.page && !pageIds.has(b.page as string)) {
+      if (b.action === "ui.navigate" && b.page && !pageIds.has(b.page as string)) {
         issues.push({ severity: "error", message: `Navigate to deleted page "${b.page}"`, location: slotLoc, pageId, elementId: el.id });
       }
       if (b.action === "device.command" && b.device && !deviceIds.has(b.device as string)) {

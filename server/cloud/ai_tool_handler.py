@@ -236,8 +236,12 @@ def _normalize_bindings(bindings: dict) -> dict:
 _VALID_VISIBLE_WHEN_OPS = frozenset((
     "eq", "ne", "gt", "lt", "gte", "lte", "truthy", "falsy",
 ))
+# Panel UI element `do` bindings. The page move is "ui.navigate" here, matching
+# the macro step and the WS frame — one spelling for one concept. A control
+# surface's deck-page action is a separate thing (see SURFACE_BUTTONS_FORMAT)
+# and is still "navigate": it moves the deck's own pages, not a panel page.
 _VALID_ACTION_TYPES = frozenset((
-    "macro", "device.command", "state.set", "navigate", "page",
+    "macro", "device.command", "state.set", "ui.navigate",
     "script.call", "value_map",
 ))
 _VALID_MODES = frozenset(("tap", "toggle", "hold_repeat", "tap_hold"))
@@ -247,8 +251,7 @@ _ACTION_REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
     "macro": ("macro",),
     "device.command": ("device", "command"),
     "state.set": ("key",),
-    "navigate": ("page",),
-    "page": ("page",),
+    "ui.navigate": ("page",),
     "script.call": ("function",),
     "value_map": ("map",),
 }
@@ -262,7 +265,7 @@ def _validate_action(action: dict, path: str) -> str | None:
     if action_type not in _VALID_ACTION_TYPES:
         return (
             f"{path}: action type '{action_type}' is not valid. "
-            f"Use: macro, device.command, state.set, navigate, script.call, value_map"
+            f"Use: macro, device.command, state.set, ui.navigate, script.call, value_map"
         )
     required = _ACTION_REQUIRED_FIELDS.get(action_type, ())
     for field in required:

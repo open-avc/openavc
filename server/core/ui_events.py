@@ -201,8 +201,14 @@ class UIEventRuntime:
                 )
             engine.state.set(key, value, source="ui")
 
-        elif action in ("page", "navigate"):
-            # Page navigation — broadcast to all panels so they can switch
+        elif action == "ui.navigate":
+            # Page navigation — broadcast to all panels so they can switch.
+            # One spelling on purpose: the macro step, the WS frame below and
+            # this binding action are all "ui.navigate", so the same move is
+            # written the same way wherever you author it. A control surface's
+            # deck-page action is a different thing living in plugin config —
+            # it moves the deck's own pages by index, never a panel page — and
+            # keeps its own "navigate" name.
             page_id = action_def.get("page", "")
             if page_id:
                 await engine.events.emit(f"ui.page.{page_id}")

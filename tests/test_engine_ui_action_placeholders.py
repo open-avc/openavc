@@ -318,3 +318,43 @@ async def test_toggle_off_reads_off_action_from_do_press(engine):
     engine.project = _project_with_element(element)
     await engine.handle_ui_event("toggle_off", "btn", {})
     engine.devices.send_command.assert_awaited_once_with("lights", "off", {})
+
+
+# ── The page move has one spelling ──────────────────────────────────────────
+#
+# A binding's page move is "ui.navigate" -- the same word the macro step and
+# the broadcast WS frame use, so the move is written the same way wherever it
+# is authored. The pre-0.24 spellings ("navigate" and its "page" alias) are no
+# longer dispatched: they were the silent-failure case this pins shut, because
+# an unrecognised action name raises nothing and the button simply sits there.
+
+@pytest.mark.asyncio
+async def test_ui_navigate_binding_broadcasts_and_emits(engine):
+    engine.broadcast_ws = AsyncMock()
+    engine.events = AsyncMock()
+
+    await engine.ui_events.execute_action(
+        {"action": "ui.navigate", "page": "advanced"}, {}, element=None,
+    )
+
+    engine.events.emit.assert_awaited_once_with("ui.page.advanced")
+    engine.broadcast_ws.assert_awaited_once_with(
+        {"type": "ui.navigate", "page_id": "advanced"}
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("retired", ["navigate", "page"])
+async def test_the_retired_spellings_no_longer_navigate(engine, retired):
+    """Guard against quietly re-aliasing them. A project carrying one of these
+    is migrated on load (0.7.0 -> 0.8.0), so the runtime does not need to
+    answer it -- and answering it would put the third spelling back."""
+    engine.broadcast_ws = AsyncMock()
+    engine.events = AsyncMock()
+
+    await engine.ui_events.execute_action(
+        {"action": retired, "page": "advanced"}, {}, element=None,
+    )
+
+    engine.broadcast_ws.assert_not_awaited()
+    engine.events.emit.assert_not_awaited()

@@ -145,9 +145,11 @@ export function ButtonBindingEditor({
       return action.device && action.command ? `${action.device}.${action.command}` : "Incomplete";
     }
     if (action.action === "state.set") return action.key ? `Set ${action.key}` : "Incomplete";
-    if (action.action === "navigate" || action.action === "page") {
-      // "page" is the runtime's alias for navigate (engine.py) — AI tools
-      // and imports emit it; without this branch it summarized as raw "page".
+    if (action.action === "ui.navigate" || action.action === "navigate") {
+      // Two spellings because this editor renders two subsystems, not because
+      // either is an alias: a panel binding says "ui.navigate" (matching the
+      // macro step and the WS frame), a control surface says "navigate" for
+      // its own deck pages. Both summarize the same way to the reader.
       const p = String(action.page ?? "");
       if (p === "__next_page__") return "Next page";
       if (p === "__prev_page__") return "Previous page";

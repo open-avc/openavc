@@ -551,6 +551,36 @@ def _relative_to_parent(child: dict, parent: dict) -> dict:
     }
 
 
+_RETIRED_NAVIGATE_ACTIONS = ("navigate", "page")
+
+
+def _rename_navigate_action(action: object) -> None:
+    """Rewrite a retired page-move spelling to the canonical ``ui.navigate``.
+
+    Recurses into ``value_map`` branches, which hold real actions.
+    """
+    if not isinstance(action, dict):
+        return
+    if action.get("action") in _RETIRED_NAVIGATE_ACTIONS:
+        action["action"] = "ui.navigate"
+    branches = action.get("map")
+    if isinstance(branches, dict):
+        for branch in branches.values():
+            for sub in branch if isinstance(branch, list) else [branch]:
+                _rename_navigate_action(sub)
+
+
+def _migrate_element_navigate_0_7_to_0_8(el: dict) -> None:
+    """Canonicalise the page-move action in every ``do`` slot of one element."""
+    bindings = el.get("bindings")
+    do_map = bindings.get("do") if isinstance(bindings, dict) else None
+    if not isinstance(do_map, dict):
+        return
+    for slot in do_map.values():
+        for action in slot if isinstance(slot, list) else [slot]:
+            _rename_navigate_action(action)
+
+
 def migrate_0_7_to_0_8(data: dict) -> dict:
     """
     Migrate from 0.7.0 to 0.8.0 -- the layout engine.
@@ -563,11 +593,25 @@ def migrate_0_7_to_0_8(data: dict) -> dict:
     - Overlay/sidebar boxes stop being px and become viewport percentages.
     - px style measurements become rem.
     - ``spacer`` is gone; ``ui.settings.orientation`` moves onto the layout.
+    - A button's page move is spelled ``ui.navigate``, matching the macro step
+      and the WS frame. The older ``navigate``/``page`` spellings are rewritten
+      here: the runtime no longer answers them, and an unmigrated one would
+      leave a button that does nothing at all without reporting an error.
     """
     ui = data.get("ui")
     if not isinstance(ui, dict):
         data["openavc_version"] = "0.8.0"
         return data
+
+    for page in ui.get("pages", []):
+        if not isinstance(page, dict):
+            continue
+        for el in page.get("elements", []):
+            if isinstance(el, dict):
+                _migrate_element_navigate_0_7_to_0_8(el)
+    for mel in ui.get("master_elements", []):
+        if isinstance(mel, dict):
+            _migrate_element_navigate_0_7_to_0_8(mel)
 
     settings = ui.get("settings") if isinstance(ui.get("settings"), dict) else {}
     orientation = settings.get("orientation") or "landscape"

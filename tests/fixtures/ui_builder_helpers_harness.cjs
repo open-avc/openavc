@@ -507,7 +507,7 @@ function makeValidationProject(elements) {
 {
   // Second action in the array is checked too (navigate to deleted page).
   const proj = makeValidationProject([
-    { id: "b1", type: "button", style: {}, bindings: { do: { press: [{ action: "device.command", device: "real_dev", command: "go" }, { action: "navigate", page: "gone_page" }] } } },
+    { id: "b1", type: "button", style: {}, bindings: { do: { press: [{ action: "device.command", device: "real_dev", command: "go" }, { action: "ui.navigate", page: "gone_page" }] } } },
   ]);
   const issues = H.validateProject(proj).filter((i) => i.severity === "error");
   results.h086_validate_array_navigate = {
@@ -556,9 +556,9 @@ function makeValidationProject(elements) {
           id: "b1", type: "button", style: {},
           bindings: {
             do: {
-              press: [{ action: "navigate", page: "p2" }, { action: "device.command", device: "d1", command: "go" }],
-              release: [{ action: "navigate", page: "p2" }],
-              hold: { action: "navigate", page: "p2" },  // single-object shape
+              press: [{ action: "ui.navigate", page: "p2" }, { action: "device.command", device: "d1", command: "go" }],
+              release: [{ action: "ui.navigate", page: "p2" }],
+              hold: { action: "ui.navigate", page: "p2" },  // single-object shape
             },
           },
         },
@@ -835,11 +835,21 @@ const statusScenario = (name, fnBody) => {
     results[name] = { pass: false, detail: String(e) };
   }
 };
-statusScenario("l147_page_alias_dangling", () => {
-  // engine.py accepts "page" as an alias for "navigate"; a dead page ref via
-  // the alias must badge Broken like the canonical spelling does.
-  const d = H.actionDanglingRef({ action: "page", page: "ghost" }, REF_IDS);
-  return { pass: typeof d === "string" && d.includes("ghost"), detail: d };
+statusScenario("l147_navigate_one_spelling", () => {
+  // One spelling: a panel binding's page move is "ui.navigate", the same word
+  // the macro step and the WS frame use. The two retired spellings ("navigate"
+  // and its "page" alias) are no longer panel actions, so a dead page ref
+  // written either old way must NOT badge -- badging it would report a broken
+  // reference inside an action the runtime will never execute, which points
+  // the author at the page instead of at the actual problem, the action name.
+  const canonical = H.actionDanglingRef({ action: "ui.navigate", page: "ghost" }, REF_IDS);
+  const retired = H.actionDanglingRef({ action: "navigate", page: "ghost" }, REF_IDS);
+  const alias = H.actionDanglingRef({ action: "page", page: "ghost" }, REF_IDS);
+  return {
+    pass: typeof canonical === "string" && canonical.includes("ghost")
+      && retired === null && alias === null,
+    detail: { canonical, retired, alias },
+  };
 });
 statusScenario("l147_value_map_dangling_descends", () => {
   // value_map branches run real actions — a dangling device ref inside an
@@ -864,10 +874,11 @@ statusScenario("l146_script_call_incomplete", () => {
   const filled = H.actionIncompleteCheck({ action: "script.call", function: "do_thing" });
   return { pass: empty === true && filled === false, detail: { empty, filled } };
 });
-statusScenario("l147_page_alias_incomplete", () => {
+statusScenario("l147_navigate_incomplete", () => {
+  // A page move with no target is Incomplete; with one it is configured.
   return {
-    pass: H.actionIncompleteCheck({ action: "page" }) === true &&
-      H.actionIncompleteCheck({ action: "page", page: "main" }) === false,
+    pass: H.actionIncompleteCheck({ action: "ui.navigate" }) === true &&
+      H.actionIncompleteCheck({ action: "ui.navigate", page: "main" }) === false,
     detail: null,
   };
 });
@@ -882,9 +893,9 @@ statusScenario("l147_value_map_branch_incomplete", () => {
 statusScenario("l147_valid_actions_clean", () => {
   // Guard: fully-configured actions with live refs stay unbadged.
   const checks = [
-    H.actionDanglingRef({ action: "navigate", page: "main" }, REF_IDS) === null,
+    H.actionDanglingRef({ action: "ui.navigate", page: "main" }, REF_IDS) === null,
     H.actionDanglingRef({ action: "device.command", device: "proj", command: "power_on" }, REF_IDS) === null,
-    H.actionIncompleteCheck({ action: "navigate", page: "main" }) === false,
+    H.actionIncompleteCheck({ action: "ui.navigate", page: "main" }) === false,
     H.actionIncompleteCheck({ action: "macro", macro: "all_on" }) === false,
   ];
   return { pass: checks.every(Boolean), detail: checks };

@@ -336,3 +336,75 @@ def test_a_migrated_project_loads_and_keeps_every_element():
         placements = page.layouts[0].placements
         assert {el.id for el in page.elements} == set(placements)
     assert project.ui.master_elements[0].placements["landscape"].w > 0
+
+
+# ── The page-move action gets one spelling ──────────────────────────────────
+#
+# A button's page move is "ui.navigate" from 0.8.0 on, matching the macro step
+# and the WS frame. The runtime stopped answering the older "navigate"/"page"
+# spellings, and an unmigrated one is the worst kind of broken: the button
+# still renders, still looks configured, and silently does nothing.
+
+@pytest.mark.parametrize("retired", ["navigate", "page"])
+def test_a_retired_page_move_spelling_is_rewritten(retired):
+    out = migrate_0_7_to_0_8(_project([_page([
+        _el("b", 1, 1, bindings={"do": {"press": [{"action": retired, "page": "home"}]}}),
+    ])]))
+    action = out["ui"]["pages"][0]["elements"][0]["bindings"]["do"]["press"][0]
+    assert action == {"action": "ui.navigate", "page": "home"}
+
+
+def test_the_rewrite_reaches_every_do_slot_and_the_single_object_shape():
+    out = migrate_0_7_to_0_8(_project([_page([
+        _el("b", 1, 1, bindings={"do": {
+            "press": [{"action": "navigate", "page": "a"},
+                      {"action": "macro", "macro": "m"}],
+            "release": [{"action": "page", "page": "b"}],
+            "hold": {"action": "navigate", "page": "c"},   # single object, not a list
+        }}),
+    ])]))
+    do = out["ui"]["pages"][0]["elements"][0]["bindings"]["do"]
+    assert [a["action"] for a in do["press"]] == ["ui.navigate", "macro"]
+    assert do["release"][0]["action"] == "ui.navigate"
+    assert do["hold"]["action"] == "ui.navigate"
+
+
+def test_the_rewrite_descends_into_value_map_branches():
+    """value_map branches hold real actions, so a page move can hide in one."""
+    out = migrate_0_7_to_0_8(_project([_page([
+        _el("s", 1, 1, el_type="select", bindings={"do": {"change": [{
+            "action": "value_map",
+            "map": {"a": {"action": "navigate", "page": "one"},
+                    "b": [{"action": "page", "page": "two"}]},
+        }]}}),
+    ])]))
+    branches = out["ui"]["pages"][0]["elements"][0]["bindings"]["do"]["change"][0]["map"]
+    assert branches["a"]["action"] == "ui.navigate"
+    assert branches["b"][0]["action"] == "ui.navigate"
+
+
+def test_a_master_element_page_move_is_rewritten_too():
+    """Masters carry bindings like any element, and are walked separately."""
+    out = migrate_0_7_to_0_8(_project(
+        pages=[_page([])],
+        masters=[{"id": "hdr", "type": "button", "pages": [],
+                  "grid_area": {"col": 1, "row": 1, "col_span": 1, "row_span": 1},
+                  "bindings": {"do": {"press": [{"action": "navigate", "page": "home"}]}}}],
+    ))
+    assert out["ui"]["master_elements"][0]["bindings"]["do"]["press"][0] == {
+        "action": "ui.navigate", "page": "home",
+    }
+
+
+def test_an_unrelated_action_is_left_alone():
+    """Guard: only the page move is renamed. A deck's own "navigate" lives in
+    plugin config, never in a UI element's bindings, so nothing here should
+    touch a device command that happens to sit beside one."""
+    out = migrate_0_7_to_0_8(_project([_page([
+        _el("b", 1, 1, bindings={"do": {"press": [
+            {"action": "device.command", "device": "proj", "command": "power_on"},
+            {"action": "state.set", "key": "var.x", "value": 1},
+        ]}}),
+    ])]))
+    actions = out["ui"]["pages"][0]["elements"][0]["bindings"]["do"]["press"]
+    assert [a["action"] for a in actions] == ["device.command", "state.set"]

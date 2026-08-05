@@ -98,7 +98,7 @@ def test_visible_when_moves_under_show():
 # --- do.<interaction> ---------------------------------------------------
 
 def test_press_list_moves_to_do():
-    actions = [{"action": "macro", "macro": "m1"}, {"action": "navigate", "page": "p2"}]
+    actions = [{"action": "macro", "macro": "m1"}, {"action": "ui.navigate", "page": "p2"}]
     out = _migrate_bindings_0_6_to_0_7({"press": actions})
     assert out["do"]["press"] == actions
 

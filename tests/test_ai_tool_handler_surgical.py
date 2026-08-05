@@ -958,7 +958,7 @@ async def test_add_ui_page_accepts_valid_inline_bindings(handler, mock_engine):
                 "name": "Good",
                 "elements": [
                     {"id": "b1", "type": "button",
-                     "bindings": {"do": {"press": {"action": "navigate", "page": "main"}}}},
+                     "bindings": {"do": {"press": {"action": "ui.navigate", "page": "main"}}}},
                 ],
             })
 
@@ -2209,7 +2209,7 @@ async def test_delete_ui_page_scrubs_references(handler, mock_engine):
     main.elements.append(UIElement(
         id="btn_go", type="button",
         bindings={"do": {"press": [
-            {"action": "navigate", "page": "settings"},
+            {"action": "ui.navigate", "page": "settings"},
             {"action": "macro", "macro": "all_off"},
         ]}},
     ))

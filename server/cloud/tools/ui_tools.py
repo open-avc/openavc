@@ -56,9 +56,8 @@ def _scrub_navigate_actions(el: Any, page_id: str) -> None:
     """Drop navigate actions targeting a deleted page from every do-slot.
 
     Mirrors the Builder's scrub on page delete: every interaction slot, array
-    or legacy single-object shape alike. Both action spellings are checked --
-    the UI event runtime accepts `page` as well as `navigate` (backlog 114),
-    so a hand-authored binding can carry either.
+    or legacy single-object shape alike. One spelling to check -- the binding
+    action is `ui.navigate`, same as the macro step and the WS frame.
     """
     bindings = el.bindings if isinstance(el.bindings, dict) else None
     do_map = bindings.get("do") if bindings else None
@@ -68,7 +67,7 @@ def _scrub_navigate_actions(el: Any, page_id: str) -> None:
     def dead(action: Any) -> bool:
         return (
             isinstance(action, dict)
-            and action.get("action") in ("navigate", "page")
+            and action.get("action") == "ui.navigate"
             and action.get("page") == page_id
         )
 
