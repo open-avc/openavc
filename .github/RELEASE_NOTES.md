@@ -1,97 +1,70 @@
-# OpenAVC v0.23.0
+# OpenAVC v0.24.0
 
-- **Wireless presentation.** The new Present plugin turns an OpenAVC system
-  into a wireless presentation gateway. Guests browse to the connect address
-  shown for the space and share their screen from the browser, with no app
-  install and no login. Displays join from any browser, or drive an output
-  connected to the OpenAVC server itself, and a routing matrix picks which
-  presenter shows on which display. The Programmer manages displays, links,
-  and routing from the plugin's page, and shows who is presenting. Install
-  Present from Browse Plugins; it requires this release. Under the hood,
-  plugins can now serve guest pages that work without a login, a capability
-  open to every plugin developer.
+- **Free panel layout.** The UI Builder is now a design canvas. Controls go
+  anywhere on the page, sized as percentages of the screen, with drag snapping
+  on an adjustable ruler, alignment and distribution tools, match size, marquee
+  selection, and element locks. Groups are real containers that carry their
+  contents when they move, the Outline panel is a drag-and-drop tree, and any
+  control can lock its aspect ratio. Existing projects convert automatically
+  on first load and keep their look.
 
-- **Browser-trusted HTTPS.** Systems paired with OpenAVC Cloud can turn on a
-  trusted certificate in Settings > Security with one click. The cloud
-  obtains a publicly trusted certificate for the system (the private key
-  never leaves your server), and browsers land on a certified URL with a
-  normal padlock: nothing to install on any client device, which makes
-  HTTPS practical for guest and BYOD scenarios. Clients that cannot resolve
-  the certified name fall back to the bare-IP address automatically. The
-  HTTPS listener also enforces TLS 1.2 or newer with modern ciphers, and the
-  self-signed listener now serves its full certificate chain.
+- **Portrait layouts.** A page can carry a separate arrangement per
+  orientation, so the same project serves a wall-mounted portrait tablet and a
+  landscape touch screen. Panel text and control chrome now scale with the
+  screen, so one design fits any display of the same shape at any size. For
+  looks the theme system cannot express, elements accept a CSS class and a
+  project can ship its own stylesheet.
 
-- **Short URLs.** Turn on Short URLs in Settings > Network and typing the
-  bare address works: `http://192.168.1.20/panel` instead of
-  `http://192.168.1.20:8080/panel`. It composes with HTTPS and trusted
-  certificates, so a bare IP can land directly on the padlocked page. On
-  Windows, Linux, and Raspberry Pi the OS firewall now follows the features
-  you enable, so turning on HTTPS or Short URLs never needs a manual
-  firewall edit.
+- **The Driver Builder authors the whole driver format.** JSON response rules,
+  what a command sets and queries, commands that run while the device is
+  offline, device actions, and an Open Web UI button. The Test tab shows the
+  exact bytes a command puts on the wire before anything is sent, and the
+  platform's own validation runs inline while you edit. Driver authors can
+  check a driver file from the terminal with `python -m server.drivers.check`,
+  and a driver's minimum platform version is computed from the features it
+  uses.
 
-- **Devices that report changes on their own.** Drivers can now receive
-  device-initiated updates instead of waiting for the next poll: a TCP port
-  the device dials back to, inbound HTTP callbacks, server-sent event
-  streams, and multicast announcements all feed the same response rules.
-  A new connection watchdog marks a silent device offline, and response
-  throttling keeps chatty devices from flooding state. The Driver Builder
-  gets editors for both, so volume moved at the wall or an input switched
-  at the device shows up on panels immediately.
+- **Open Web UI.** Devices with a built-in web page get an action that opens
+  it straight from OpenAVC, auto-detected on discovered devices where
+  possible. Discovery can also identify a device by its TLS certificate
+  subject, and network scans on macOS now capture MAC addresses.
 
-- **Faster, safer project saves.** Saving in the Programmer now applies only
-  what changed instead of rebuilding the whole runtime, so editing a UI page
-  or a macro no longer bounces devices. Large projects serialize in the
-  background without freezing the editor, and two sessions editing the same
-  project get a conflict prompt instead of silently overwriting each other.
+- **Signed releases.** Release artifacts carry signatures and the updater
+  verifies them before applying an update, on every platform including the
+  Raspberry Pi image. Automatic rollback now restores user data from the
+  backup taken before the update, so a failed update cannot take recent
+  programming with it.
 
-- **Richer YAML drivers.** Command parameters and device settings can carry
-  human-readable value labels. Config fields gain typed defaults, a float
-  type, and a table type with a row editor on the device page. Commands can
-  declare shared prefix/suffix framing or computed-length binary framing.
-  Connect and poll queries can be gated on a config field, and child entity
-  rosters can follow a count the device reports, so one driver fits the
-  8-channel and 16-channel model. The Driver Builder authors all of it.
+- **Session sign-in.** The Programmer exchanges the password for a session
+  token at sign-in instead of sending credentials with every request, and the
+  live log stream requires an authenticated session.
 
-- **Easier panel binding.** Shows > Value walks you through a guided
-  Device to Property picker with friendly names, a Match Driver Range button
-  fills slider bounds from what the driver declares, and value pickers use
-  driver-declared units and control hints, including for child entities.
+- **Cloud agent hardening.** The agent negotiates its protocol version with
+  the platform so either side can update first, refuses oversize messages
+  instead of stalling fleet operations, and reconnects after sustained silence
+  on the line.
 
-Fixes and reliability:
+- **Verified installs.** Community drivers and plugins are checked against the
+  catalog's checksums before anything is written to disk, and a plugin that
+  wants extra browser permissions in its panel pages asks for them at install
+  time.
 
-- Devices controlled over HTTPS now verify TLS certificates by default. If
-  an HTTPS device drops offline after this update with reason
-  `tls_cert_untrusted`, turn off Verify SSL Certificate for that device or
-  install a trusted certificate on it.
-- Text comparisons in macro conditions and triggers now ignore case, and a
-  condition on a missing value no longer counts as a match.
-- Login brute-force attempts are throttled on every access tier, WebSocket
-  connections and frame sizes are capped, UDP and OSC replies are accepted
-  only from the targeted device, and the simulator API rejects cross-site
-  requests.
-- Automatic update checks run daily instead of hourly, pre-release version
-  ordering is handled correctly, rollbacks restart cleanly, and the Windows
-  tray Check for Updates opens the right page and surfaces available
-  updates.
-- Update backups are kept and pruned by age, fixing version-number ordering
-  that could prune the wrong backup.
-- Projects migrated from very old format versions keep their device groups.
-- Discovery matches SSDP fingerprints against every advertised device type,
-  skips malformed community catalog entries instead of aborting the scan,
-  understands more OUI hint formats, and rate-limits its probes.
-- Device simulator: HTTP simulators send proper response headers, failed
-  starts release their port, serial and raw-path polling are covered, and
-  simulated state machines resolve transitions in a predictable order.
-- Raspberry Pi image: the boot info screen service is enabled so a
-  freshly-imaged Pi shows its address on the connected display, and the
-  Stream Deck udev rule is scoped to the plugdev group.
-- Programmer: the restart dialog no longer misreads a slow restart as a
-  certificate error, macro steps edit with typed value fields and event
-  payload authoring, the script console links jump to the right line, the
-  System Log device filter works, and community driver updates are offered
-  for drivers installed before version tracking.
-- Variables coerce boolean values correctly, and renaming a variable only
-  rewrites the macros that actually reference it.
-- Cloud connections validate session rotation and protocol version, resend
-  reliably after reconnect, and AI assistant errors surface as readable
-  messages instead of raw failures.
+- **Simulator improvements.** Device simulators serve every transport from one
+  implementation, can serve TLS for HTTPS-only devices, model child entities
+  in auto-generated simulators, and answer coalesced or unterminated command
+  streams correctly. A WebSocket server base covers devices that speak
+  WebSocket natively.
+
+- **Reliability fixes.** A slow panel connection no longer stalls updates for
+  other clients. A macro started by a trigger is not cancelled by an unrelated
+  project edit, and macros gain per-macro overlap and cooldown rules. A device
+  that rejects its credentials stops auto-reconnecting instead of retrying
+  into an IP lockout, and a device behind an offline bridge reports that as
+  the reason. Fractional-step sliders and faders no longer emit floating point
+  noise, and the projector power button can turn a cooling projector back on.
+
+- **Odds and ends.** OpenAVC builds as a standard Python wheel, so pip
+  installs work for development and embedded setups. The server answers its
+  root address with a landing page, the System Log gains a Download button,
+  the setup screen lists every network address on the machine, and child
+  processes on Windows no longer pop console windows.
