@@ -926,11 +926,23 @@ const tests = {
             `overlay steps match page.snap, got ${overlay.style.backgroundSize}`);
         const before = document.querySelector('[data-element-id="b1"]').style.left;
 
+        // Snapping off does NOT hide the ruler: the grid toggle controls what
+        // you see, the snap toggle what pulls. Keying the overlay off
+        // snap.enabled made the builder's grid button do nothing on a page
+        // with snapping switched off.
         proj.ui.pages[0].snap = { enabled: false, x: 8.3333, y: 12.5 };
         app.renderCurrentPage();
-        assert(!document.querySelector('.panel-page-snap-overlay'), 'snap off draws nothing');
+        assert(document.querySelector('.panel-page-snap-overlay'),
+            'the ruler still draws with snapping off');
         assert(document.querySelector('[data-element-id="b1"]').style.left === before,
             'turning snap off moves no element');
+
+        // The builder's grid button is what hides it.
+        app._editShowGrid = false;
+        app.renderCurrentPage();
+        assert(!document.querySelector('.panel-page-snap-overlay'),
+            'grid toggled off draws nothing');
+        app._editShowGrid = true;
         app.editMode = false;
     },
 

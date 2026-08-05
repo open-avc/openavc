@@ -1281,8 +1281,11 @@ class PanelApp {
      */
     _renderSnapOverlay(page, surface) {
         if (!this.editMode || this._editShowGrid === false) return;
+        // The ruler draws whenever the builder asks for it, snapping on or
+        // off — the grid toggle controls what you SEE, the snap toggle what
+        // pulls. Keying this off snap.enabled made the grid button do nothing
+        // on a page with snapping switched off.
         const snap = page.snap || {};
-        if (snap.enabled === false) return;
         const stepX = this._pct(snap.x, SNAP_FALLBACK.x);
         const stepY = this._pct(snap.y, SNAP_FALLBACK.y);
         if (!(stepX > 0) || !(stepY > 0)) return;

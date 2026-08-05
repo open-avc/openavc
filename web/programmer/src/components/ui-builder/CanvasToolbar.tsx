@@ -459,7 +459,9 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
         onMouseLeave={() => setHoveredTabId((h) => (h === page.id ? null : h))}
         onContextMenu={(e) => {
           e.preventDefault();
-          setTabMenu({ x: e.clientX, y: e.clientY, pageId: page.id });
+          // Preview is for testing the panel, not editing it — the menu is
+          // all mutations, so it stays shut there.
+          if (!previewMode) setTabMenu({ x: e.clientX, y: e.clientY, pageId: page.id });
         }}
         title={`${page.name}${isRegularPage(page) ? "" : ` (${page.page_type})`} — ${page.elements.length} element${page.elements.length !== 1 ? "s" : ""}. Double-click to rename, right-click for more.`}
       >
@@ -760,7 +762,9 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
           gap: "var(--space-sm)",
           padding: "2px var(--space-md) 4px",
           minHeight: 32,
-          overflow: "hidden",
+          // No overflow clipping here: the snap popover hangs below this row,
+          // and hiding overflow cut it to an invisible sliver. The row itself
+          // cannot wrap (nowrap flex), so there is nothing to clip anyway.
           whiteSpace: "nowrap",
         }}
       >

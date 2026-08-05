@@ -16,7 +16,7 @@ Toggle the palette with **Ctrl+E**.
 
 **Center panel: Canvas.** Visual representation of the panel page:
 - Drag elements anywhere, drag the handles to resize
-- Grid overlay shows the snap increment (set it in the Snap popover in the toolbar, or turn snapping off there)
+- Grid overlay shows the snap increment. The grid button only shows or hides this ruler; whether dragging actually snaps is the checkbox in the Snap popover next to it, where the column and row counts also live
 - Page tabs across the top row (with page type icons). Hovering a tab shows rename, duplicate and delete buttons; right-click any tab for the full page menu (rename, duplicate, set as home, move, group, delete)
 - The tools row below them: arrangement switcher (Landscape / Portrait), screen preset selector (7" Tablet, 10" Tablet, iPad, 1080p), grid and snap controls, the alignment tools, undo/redo, save, and preview
 - Preview mode toggle (**Ctrl+P**) to test interactions with live state
