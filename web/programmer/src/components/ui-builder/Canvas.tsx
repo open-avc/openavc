@@ -69,6 +69,10 @@ export function Canvas({
   const { setNodeRef } = useDroppable({ id: "canvas-drop" });
 
   const selectedElementIds = useUIBuilderStore((s) => s.selectedElementIds);
+  // A palette drag over this canvas, already snapped by the view. Drawing it
+  // here — footprint, guides, adoption highlight — is what makes dragging IN
+  // look exactly like moving.
+  const paletteDragPreview = useUIBuilderStore((s) => s.paletteDragPreview);
   const selectedMasterElementId = useUIBuilderStore((s) => s.selectedMasterElementId);
   const activeLayoutId = useUIBuilderStore((s) => s.activeLayoutId);
   const selectElement = useUIBuilderStore((s) => s.selectElement);
@@ -570,6 +574,10 @@ export function Canvas({
         document.removeEventListener("pointermove", onMove);
         document.removeEventListener("pointerup", onUp);
         document.removeEventListener("keydown", onKey);
+        // keyup too — a leaked keyup handler re-runs the snap math after the
+        // commit, so releasing Alt after the drop visibly re-snapped the
+        // element while the store kept the bypassed position.
+        document.removeEventListener("keyup", onKey);
         cleanupGestureRef.current = null;
       };
 
@@ -850,7 +858,7 @@ export function Canvas({
                 lockedIds={lockedElementIds}
                 hiddenIds={hiddenIds}
                 gestureKind={gesture?.kind ?? null}
-                adoptTargetId={gesture?.adoptInto ?? null}
+                adoptTargetId={gesture?.adoptInto ?? paletteDragPreview?.adoptInto ?? null}
                 onSelect={(id, shiftKey) => (shiftKey ? toggleSelectElement(id) : selectElement(id))}
                 onGestureStart={beginGesture}
                 onContextMenu={handleContextMenu}
@@ -860,6 +868,43 @@ export function Canvas({
             {/* Live smart-guides — the lines a gesture is actually stuck to. */}
             {gesture && (
               <SnapGuides guidesX={gesture.guidesX} guidesY={gesture.guidesY} />
+            )}
+
+            {/* A palette drag, previewed with the same footprint, guides and
+                snap the drop will commit — the box drawn here IS the landing
+                spot. */}
+            {paletteDragPreview && (
+              <>
+                <div
+                  style={{
+                    position: "absolute",
+                    left: `${paletteDragPreview.placement.x}%`,
+                    top: `${paletteDragPreview.placement.y}%`,
+                    width: `${paletteDragPreview.placement.w}%`,
+                    height: `${paletteDragPreview.placement.h}%`,
+                    opacity: 0.85,
+                    pointerEvents: "none",
+                    borderRadius: 8,
+                    outline: "2px solid var(--accent)",
+                    outlineOffset: -1,
+                    background: "var(--bg-elevated)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "var(--text-primary)",
+                    fontSize: "var(--font-size-sm)",
+                    fontWeight: 500,
+                    textTransform: "capitalize",
+                    zIndex: 95,
+                  }}
+                >
+                  {paletteDragPreview.label.replace(/_/g, " ")}
+                </div>
+                <SnapGuides
+                  guidesX={paletteDragPreview.guidesX}
+                  guidesY={paletteDragPreview.guidesY}
+                />
+              </>
             )}
 
             {/* The rubber band itself. */}

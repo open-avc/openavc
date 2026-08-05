@@ -83,4 +83,36 @@ scenario("int_truncates_and_unsets", () => {
   return { pass: Object.values(checks).every(Boolean), detail: checks };
 });
 
+scenario("commit_clamps_once_empty_stays_empty", () => {
+  // The NumericInput commit path: the clamp runs HERE, on a finished edit —
+  // never per keystroke. The defect this replaces: clearing a Width field ran
+  // Math.max(0.1, Number("") || 0) on the change event, committing a live
+  // 0.1%-wide element before you could type the value you meant.
+  const checks = {
+    emptyIsUndefined: H.commitNumeric("", { min: 0.1 }) === undefined,
+    belowFloorClamps: H.commitNumeric("0.05", { min: 0.1 }) === 0.1,
+    aboveCeilingClamps: H.commitNumeric("60", { min: 1, max: 48 }) === 48,
+    inRangeUntouched: H.commitNumeric("25", { min: 0.1 }) === 25,
+    integerTruncates: H.commitNumeric("2.7", { integer: true, min: 1 }) === 2,
+    garbageIsUndefined: H.commitNumeric("abc", { min: 0.1 }) === undefined,
+    unboundedPasses: H.commitNumeric("-3.5", {}) === -3.5,
+  };
+  return { pass: Object.values(checks).every(Boolean), detail: checks };
+});
+
+scenario("live_commit_only_when_no_correction_needed", () => {
+  // The NumericInput keystroke path: a value previews live only when it needs
+  // no clamp, so mid-edit states ("0" on the way to "0.5" with min 0.1, "60"
+  // on the way past a max) are tolerated instead of fought.
+  const checks = {
+    emptySkipped: H.liveNumeric("", { min: 0.1 }) === undefined,
+    belowFloorSkipped: H.liveNumeric("0.05", { min: 0.1 }) === undefined,
+    aboveCeilingSkipped: H.liveNumeric("60", { min: 1, max: 48 }) === undefined,
+    inRangeCommits: H.liveNumeric("25", { min: 0.1 }) === 25,
+    boundaryCommits: H.liveNumeric("0.1", { min: 0.1 }) === 0.1,
+    integerTruncates: H.liveNumeric("6.9", { integer: true, min: 1, max: 48 }) === 6,
+  };
+  return { pass: Object.values(checks).every(Boolean), detail: checks };
+});
+
 process.stdout.write(JSON.stringify(results));

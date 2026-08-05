@@ -206,6 +206,47 @@ const near = (a, b, tol = 1e-4) => Math.abs(a - b) < tol;
     detail: r.placement,
   };
 }
+{
+  // The page thirds are NOT magnetic. On an otherwise empty page with snap
+  // off they read as snapping to nothing — the phantom pull this fixes: a
+  // release with the centre 0.67% from the 33.33 third used to land ON it.
+  const third = H.snapMove(
+    { x: 29, y: 20.4, w: 10, h: 10 },  // centre 34, edges 29/39 — near only the third
+    { snap: SNAP_OFF, others: [] },
+  );
+  // Page edges and centre still attract: the same release near the centre line
+  // sticks, and the guide that says so is drawn.
+  const centre = H.snapMove(
+    { x: 45.4, y: 20.4, w: 10, h: 10 },  // centre 50.4
+    { snap: SNAP_OFF, others: [] },
+  );
+  results.m077_thirds_not_magnetic = {
+    pass:
+      third.placement.x === 29 && third.guidesX.length === 0 &&
+      near(centre.placement.x, 45) && centre.guidesX.includes(50),
+    detail: { third: third.placement, centre: centre.placement },
+  };
+}
+
+// --- Palette drag-in lands exactly like a move ---
+{
+  // paletteDragPlacement is the ONE function both the live preview and the
+  // drop call: the element centred under the pointer, then snapped like any
+  // move. Parity here is what makes the footprint the guides show BE the
+  // landing spot — with the grid, with magnetism, and with Alt held.
+  const size = { w: 25, h: 25 };
+  const gridded = H.paletteDragPlacement({ x: 50.4, y: 42 }, size, { snap: SNAP_ON, others: [] });
+  const viaMove = H.snapMove({ x: 50.4 - 12.5, y: 42 - 12.5, w: 25, h: 25 }, { snap: SNAP_ON, others: [] });
+  const bypassed = H.paletteDragPlacement({ x: 30.2, y: 61.7 }, size, { snap: SNAP_ON, bypass: true, others: [] });
+  results.palette_drop_is_a_move = {
+    pass:
+      eq(gridded, viaMove) &&
+      near(bypassed.placement.x + size.w / 2, 30.2) &&
+      near(bypassed.placement.y + size.h / 2, 61.7) &&
+      bypassed.guidesX.length === 0,
+    detail: { gridded, viaMove, bypassed },
+  };
+}
 
 // --- M-077: snapResize only attracts the edges the handle drags ---
 {

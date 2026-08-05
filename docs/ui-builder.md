@@ -16,12 +16,10 @@ Toggle the palette with **Ctrl+E**.
 
 **Center panel: Canvas.** Visual representation of the panel page:
 - Drag elements anywhere, drag the handles to resize
-- Grid overlay shows the snap increment (set it, or turn snapping off, in the canvas toolbar)
-- Page tabs at the top for multi-page designs (with thumbnail previews and page type icons)
-- Arrangement tabs below them (Landscape / Portrait) when a page has more than one
-- Screen preset selector (7" Tablet, 10" Tablet, iPad, 1080p)
+- Grid overlay shows the snap increment (set it in the Snap popover in the toolbar, or turn snapping off there)
+- Page tabs across the top row (with page type icons). Hovering a tab shows rename, duplicate and delete buttons; right-click any tab for the full page menu (rename, duplicate, set as home, move, group, delete)
+- The tools row below them: arrangement switcher (Landscape / Portrait), screen preset selector (7" Tablet, 10" Tablet, iPad, 1080p), grid and snap controls, the alignment tools, undo/redo, save, and preview
 - Preview mode toggle (**Ctrl+P**) to test interactions with live state
-- Breadcrumb showing current page context (e.g., "Main > Settings (overlay)")
 
 **Right panel: Properties.** Configure the selected element:
 - Basic properties (ID, type, label)
@@ -34,10 +32,10 @@ Toggle the palette with **Ctrl+E**.
 
 Put controls where you want them. Position and size are stored as a percentage of the page (or of the container an element sits in), so a panel you design once looks the same on any screen of that shape. A 1280x800 design fills a 1920x1200 display at the same proportions, with the text and corners scaled up to match. Nothing is letterboxed.
 
-**Snapping** is on by default at the same spacing as a 12-across, 8-down grid. Elements are pulled to that increment and to each other: edges, centers, the page center and thirds. Guides show what you are stuck to.
+**Snapping** is on by default at the same spacing as a 12-across, 8-down grid. Elements are pulled to that increment and to each other: edges, centers, the page edges and the page center. Guides show what you are stuck to. Dragging a new element in from the palette snaps the same way, with the same guides, and lands exactly where the preview shows it.
 
-- Change the increment, or switch snapping off, in the canvas toolbar. It is a ruler, not a container, so changing it never moves anything already placed.
-- **Hold Alt** (Option on a Mac) during a drag, resize or arrow-key nudge to ignore snapping and put the control exactly where the pointer is.
+- Change the increment, or switch snapping off, in the Snap popover in the toolbar. It is a ruler, not a container, so changing it never moves anything already placed.
+- **Hold Alt** (Option on a Mac) during a drag, resize, arrow-key nudge or palette drop to ignore snapping and put the control exactly where the pointer is.
 
 **Aspect Lock** in the Layout section holds an element's shape when a screen stretches. A locked element shrinks to fit its box and stays centered, so a round indicator stays round and a camera image is not squashed. Status LEDs, camera presets and video elements get one automatically when you drop them.
 
@@ -452,14 +450,14 @@ Two ways to select several elements at once:
 Multi-selected elements show a dashed blue outline (vs. solid for single selection). With several selected:
 
 - The Properties panel shows common editable properties (font size, padding, colors) with "Apply to all"
-- The alignment, match-size and distribute buttons appear in the toolbar
+- The alignment, match-size and distribute buttons in the toolbar light up
 - Right-click for a context menu with Delete All, Duplicate All, and alignment options
 
 Dragging any element in the selection moves the whole selection together. If you have a container and something inside it selected at the same time, only the container moves: its contents are positioned relative to it, so they come along automatically.
 
 ## Alignment Tools
 
-The builder toolbar shows these once something is selected.
+These sit in the builder toolbar and light up once the selection can use them.
 
 | Button | Action |
 |--------|--------|

@@ -12,6 +12,7 @@ import type { ProjectConfig, UIPage, UIElement, Placement } from "../../api/type
 import { displayStyleValue, storeStyleValue, REM_BASE_PX } from "./uiBuilderHelpers";
 import { ConfirmDialog } from "../shared/ConfirmDialog";
 import { Modal } from "../shared/Modal";
+import { NumericInput } from "../shared/NumericInput";
 import {
   parseColor, rgbToHex6, contrastRatio, wcagLevel, deriveSurfaceBorder,
   CSS_VAR_FALLBACKS, type WcagLevel,
@@ -2267,12 +2268,13 @@ function PageBackgroundSection({ pageDefaults, savedPageDefaults, onChange }: Pa
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <label style={rowLabel}>Angle (deg)</label>
-                <input
-                  type="number"
+                <NumericInput
                   value={gradient.angle ?? 180}
                   min={0}
                   max={360}
-                  onChange={(e) => patchGradient({ angle: Number(e.target.value) })}
+                  onCommit={(v) => {
+                    if (v !== undefined) patchGradient({ angle: v });
+                  }}
                   style={{ flex: 1, fontSize: 11 }}
                 />
               </div>
@@ -2319,13 +2321,14 @@ function PageBackgroundSection({ pageDefaults, savedPageDefaults, onChange }: Pa
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <label style={rowLabel}>Opacity</label>
-                <input
-                  type="number"
+                <NumericInput
                   value={imageOpacity}
                   min={0}
                   max={1}
                   step={0.05}
-                  onChange={(e) => update({ background_image_opacity: Number(e.target.value) })}
+                  onCommit={(v) => {
+                    if (v !== undefined) update({ background_image_opacity: v });
+                  }}
                   style={{ flex: 1, fontSize: 11 }}
                 />
               </div>
@@ -2790,12 +2793,13 @@ function EditorColumn({
                         />
                       </>
                     ) : tok.type === "number" ? (
-                      <input
-                        type="number"
+                      <NumericInput
                         // A numeric theme variable is a measurement, and the
                         // panel reads stored measurements as rem. Show px.
                         value={(displayStyleValue(tok.key, Number(val || 0)) as number) ?? 0}
-                        onChange={(e) => onSetVar(tok.key, storeStyleValue(tok.key, Number(e.target.value)))}
+                        onCommit={(v) => {
+                          if (v !== undefined) onSetVar(tok.key, storeStyleValue(tok.key, v));
+                        }}
                         min={0}
                         max={64}
                         style={{ flex: 1, fontSize: 11 }}

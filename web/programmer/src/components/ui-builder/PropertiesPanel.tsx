@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight, Trash2, Undo2, Link } from "lucide-react";
 import { ConfirmDialog } from "../shared/ConfirmDialog";
+import { NumericInput } from "../shared/NumericInput";
 import type { UIElement, UIPage, ProjectConfig, OverlayConfig, PageBackground, MasterElement } from "../../api/types";
 import { BasicProperties } from "./PropertySections/BasicProperties";
 import { LayoutProperties } from "./PropertySections/LayoutProperties";
@@ -761,27 +762,34 @@ function PageProperties({
         <>
           {sectionHeader(isSidebar ? "Sidebar" : "Overlay", true)}
           <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+            {/* Stored as percentages of the viewport (the runtime's _pct
+                fallbacks are the placeholders) — the px labels this carried
+                before 0.8.0 wrote pixel-scale numbers into a percent field. */}
             <FieldRow label="Width">
-              <input
-                type="number"
-                value={overlay.width ?? (isSidebar ? 320 : 400)}
-                onChange={(e) => updateOverlay({ width: Number(e.target.value) })}
-                min={100}
+              <NumericInput
+                value={overlay.width}
+                onCommit={(v) => updateOverlay({ width: v })}
+                allowEmpty
+                min={5}
+                max={100}
+                placeholder={isSidebar ? "25" : "31.25"}
                 style={{ flex: 1 }}
               />
-              <span style={{ fontSize: 10, color: "var(--text-muted)" }}>px</span>
+              <span style={{ fontSize: 10, color: "var(--text-muted)" }}>% of screen</span>
             </FieldRow>
 
             {isOverlay && (
               <FieldRow label="Height">
-                <input
-                  type="number"
-                  value={overlay.height ?? 300}
-                  onChange={(e) => updateOverlay({ height: Number(e.target.value) })}
-                  min={100}
+                <NumericInput
+                  value={overlay.height}
+                  onCommit={(v) => updateOverlay({ height: v })}
+                  allowEmpty
+                  min={5}
+                  max={100}
+                  placeholder="37.5"
                   style={{ flex: 1 }}
                 />
-                <span style={{ fontSize: 10, color: "var(--text-muted)" }}>px</span>
+                <span style={{ fontSize: 10, color: "var(--text-muted)" }}>% of screen</span>
               </FieldRow>
             )}
 
@@ -867,12 +875,12 @@ function PageProperties({
         </FieldRow>
 
         <FieldRow label="Columns">
-          <input
-            type="number"
+          <NumericInput
             value={Math.round(100 / pageSnap(page).x)}
-            onChange={(e) =>
-              onChange({ snap: { ...pageSnap(page), x: 100 / Math.max(1, Number(e.target.value)) } })
-            }
+            onCommit={(v) => {
+              if (v !== undefined) onChange({ snap: { ...pageSnap(page), x: 100 / v } });
+            }}
+            integer
             min={1}
             max={48}
             style={{ flex: 1 }}
@@ -880,12 +888,12 @@ function PageProperties({
         </FieldRow>
 
         <FieldRow label="Rows">
-          <input
-            type="number"
+          <NumericInput
             value={Math.round(100 / pageSnap(page).y)}
-            onChange={(e) =>
-              onChange({ snap: { ...pageSnap(page), y: 100 / Math.max(1, Number(e.target.value)) } })
-            }
+            onCommit={(v) => {
+              if (v !== undefined) onChange({ snap: { ...pageSnap(page), y: 100 / v } });
+            }}
+            integer
             min={1}
             max={48}
             style={{ flex: 1 }}
@@ -1016,10 +1024,11 @@ function PageProperties({
               />
             </FieldRow>
             <FieldRow label="Angle">
-              <input
-                type="number"
+              <NumericInput
                 value={bg.gradient?.angle ?? 180}
-                onChange={(e) => updateGradient({ angle: Number(e.target.value) })}
+                onCommit={(v) => {
+                  if (v !== undefined) updateGradient({ angle: v });
+                }}
                 min={0}
                 max={360}
                 style={{ flex: 1 }}

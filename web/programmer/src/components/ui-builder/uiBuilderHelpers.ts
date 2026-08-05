@@ -865,9 +865,11 @@ export interface SnapOutcome {
   guidesY: number[];
 }
 
-/** Every line a moving edge can be attracted to on one axis. */
+/** Every line a moving edge can be attracted to on one axis: the page edges
+ *  and centre, plus every sibling's edges and centre. Deliberately NOT the
+ *  thirds — on an otherwise empty page they read as snapping to nothing. */
 function magnetTargets(others: Placement[], axis: "x" | "y"): number[] {
-  const targets = [0, 100 / 3, 50, (100 * 2) / 3, 100];
+  const targets = [0, 50, 100];
   for (const o of others) {
     const start = axis === "x" ? o.x : o.y;
     const size = axis === "x" ? o.w : o.h;
@@ -985,6 +987,23 @@ export function snapResize(
   }
 
   return { placement: roundPlacement(next), guidesX, guidesY };
+}
+
+/**
+ * Where a palette drag sits right now, and lands when released: the new
+ * element centred under the pointer, then snapped exactly like a move. The
+ * live preview and the drop both call this, so what the guides show IS the
+ * landing spot.
+ */
+export function paletteDragPlacement(
+  centre: { x: number; y: number },
+  size: { w: number; h: number },
+  ctx: SnapContext,
+): SnapOutcome {
+  return snapMove(
+    { x: centre.x - size.w / 2, y: centre.y - size.h / 2, w: size.w, h: size.h },
+    ctx,
+  );
 }
 
 // --- Auto-placement (the pointerless paths) ---

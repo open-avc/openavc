@@ -91,6 +91,8 @@ SCENARIOS = [
     "m077_edge_magnetism_without_grid",
     "m077_snap_right_edge",
     "m077_no_attraction_no_move",
+    "m077_thirds_not_magnetic",
+    "palette_drop_is_a_move",
     "m077_resize_east_leaves_x",
     "m077_resize_west_holds_far_edge",
     "m077_resize_south",

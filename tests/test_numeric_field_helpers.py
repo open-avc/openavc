@@ -83,6 +83,8 @@ SCENARIOS = [
     "garbage_unsets",
     "numbers_parse",
     "int_truncates_and_unsets",
+    "commit_clamps_once_empty_stays_empty",
+    "live_commit_only_when_no_correction_needed",
 ]
 
 

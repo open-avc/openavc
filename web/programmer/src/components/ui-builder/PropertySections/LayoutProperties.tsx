@@ -1,5 +1,6 @@
 import type { UIElement, Placement } from "../../../api/types";
 import { touchTargetWarning, TOUCH_MIN_MM } from "../uiBuilderHelpers";
+import { NumericInput } from "../../shared/NumericInput";
 
 interface LayoutPropertiesProps {
   element: UIElement;
@@ -45,11 +46,6 @@ export function LayoutProperties({
 
   const handleChange = (field: keyof Placement, value: number) => {
     const next: Placement = { ...placement, [field]: value };
-    // Nothing is clamped to the page: free positioning warns rather than
-    // prevents, and a control deliberately bled off an edge is a design, not a
-    // mistake. Size is the one floor — a zero-width element can't be grabbed
-    // back.
-    if (field === "w" || field === "h") next[field] = Math.max(0.1, value);
     // An aspect-locked element keeps its ratio when you type into either box.
     // The ratio is in pixels, so it goes through the reference proportions.
     if (lock && (field === "w" || field === "h")) {
@@ -69,8 +65,8 @@ export function LayoutProperties({
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-sm)" }}>
         <NumberField label="X (%)" value={placement.x} onChange={(v) => handleChange("x", v)} />
         <NumberField label="Y (%)" value={placement.y} onChange={(v) => handleChange("y", v)} />
-        <NumberField label="Width (%)" value={placement.w} onChange={(v) => handleChange("w", v)} />
-        <NumberField label="Height (%)" value={placement.h} onChange={(v) => handleChange("h", v)} />
+        <NumberField label="Width (%)" value={placement.w} min={0.1} onChange={(v) => handleChange("w", v)} />
+        <NumberField label="Height (%)" value={placement.h} min={0.1} onChange={(v) => handleChange("h", v)} />
       </div>
 
       <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
@@ -138,13 +134,14 @@ export function LayoutProperties({
               })
             }
           />
-          <input
-            type="number"
+          <NumericInput
             step={0.01}
             min={0.01}
             disabled={lock === null}
-            value={lock ?? ""}
-            onChange={(e) => onChange({ aspect_lock: Number(e.target.value) || null })}
+            value={lock}
+            onCommit={(v) => {
+              if (v !== undefined) onChange({ aspect_lock: v });
+            }}
             style={{ ...selectStyle, width: 90 }}
           />
           <span style={{ fontSize: 10, color: "var(--text-muted)" }}>width ÷ height</span>
@@ -197,20 +194,26 @@ const selectStyle: React.CSSProperties = {
 function NumberField({
   label,
   value,
+  min,
   onChange,
 }: {
   label: string;
   value: number;
+  /** Size fields floor at 0.1 — a zero-width element can't be grabbed back.
+   *  Position stays unclamped: free positioning warns rather than prevents. */
+  min?: number;
   onChange: (v: number) => void;
 }) {
   return (
     <div>
       <label style={labelStyle}>{label}</label>
-      <input
-        type="number"
+      <NumericInput
         step={0.1}
+        min={min}
         value={Number.isFinite(value) ? round(value) : 0}
-        onChange={(e) => onChange(Number(e.target.value) || 0)}
+        onCommit={(v) => {
+          if (v !== undefined) onChange(v);
+        }}
         style={{ width: "100%", padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
       />
     </div>

@@ -33,6 +33,17 @@ interface UIBuilderStore {
   redoStack: UndoEntry[];
   lastMutationTime: number;
   activeDragSource: string | null;
+  /** A palette drag over the canvas, snapped live: the footprint to draw, the
+   *  guides it is stuck to, and the container it would join. Fed by the view's
+   *  drag-move handler and drawn by the canvas, so dragging IN shows exactly
+   *  what a move shows — and the drop commits exactly this box. */
+  paletteDragPreview: {
+    placement: Placement;
+    guidesX: number[];
+    guidesY: number[];
+    adoptInto: string | null;
+    label: string;
+  } | null;
   /** Containers folded shut in the Outline tree. A view preference, not project
    *  data, but it lives here rather than in the panel so it survives switching
    *  to the palette tab and back. */
@@ -61,6 +72,9 @@ interface UIBuilderStore {
   clearUndoHistory: () => void;
   touchMutation: () => void;
   setActiveDragSource: (source: string | null) => void;
+  setPaletteDragPreview: (
+    preview: UIBuilderStore["paletteDragPreview"],
+  ) => void;
   toggleLock: (elementId: string) => void;
   toggleOutlineCollapse: (elementId: string) => void;
 }
@@ -83,6 +97,7 @@ export const useUIBuilderStore = create<UIBuilderStore>((set, get) => ({
   redoStack: [],
   lastMutationTime: 0,
   activeDragSource: null,
+  paletteDragPreview: null,
   collapsedOutlineIds: [],
 
   // Switching pages drops back to the primary layout: a layout id belongs to
@@ -224,6 +239,8 @@ export const useUIBuilderStore = create<UIBuilderStore>((set, get) => ({
   },
 
   setActiveDragSource: (activeDragSource) => set({ activeDragSource }),
+
+  setPaletteDragPreview: (paletteDragPreview) => set({ paletteDragPreview }),
 
   // Lock lives in the project, not here: a lock that evaporates on reload is
   // worse than none, because you only find out after something has moved.

@@ -4,9 +4,11 @@ import {
   DndContext,
   DragOverlay,
   PointerSensor,
+  pointerWithin,
   useSensor,
   useSensors,
   type DragStartEvent,
+  type DragMoveEvent,
   type DragEndEvent,
 } from "@dnd-kit/core";
 import {
@@ -31,6 +33,7 @@ import { ContextMenu } from "../components/ui-builder/ContextMenu";
 import { ThemeStudio } from "../components/ui-builder/ThemeStudio";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import { Modal, isModalOpen } from "../components/shared/Modal";
+import { NumericInput } from "../components/shared/NumericInput";
 import {
   SCREEN_PRESETS,
   createDefaultElement,
@@ -55,10 +58,10 @@ import {
   getPlacement,
   lockedIdsFor,
   pageSnap,
+  paletteDragPlacement,
   pointerToPercent,
   resolveDropParent,
   roundPlacement,
-  snapMove,
   presetForOrientation,
   layoutOrientation,
   resolveHidden,
@@ -966,11 +969,88 @@ export function UIBuilderView() {
     [setActiveDragSource, panelElements],
   );
 
+  // The pointer's whereabouts during a palette drag, so a mid-drag Alt press
+  // can recompute the preview without waiting for the pointer to twitch.
+  const lastPalettePointer = useRef<{ x: number; y: number } | null>(null);
+
+  // Snap the palette drag live and publish it for the canvas to draw. This is
+  // the SAME math the drop commits, so the footprint and guides never lie.
+  const updatePalettePreview = useCallback(() => {
+    const store = useUIBuilderStore.getState();
+    const pointer = lastPalettePointer.current;
+    const size = dragElementSize.current;
+    const type = dragElementType.current;
+    if (!pointer || !size || !type || !currentPage) {
+      if (store.paletteDragPreview) store.setPaletteDragPreview(null);
+      return;
+    }
+    const rect = document.querySelector("[data-canvas-grid]")?.getBoundingClientRect();
+    const over =
+      rect &&
+      pointer.x >= rect.left && pointer.x <= rect.right &&
+      pointer.y >= rect.top && pointer.y <= rect.bottom;
+    if (!over) {
+      if (store.paletteDragPreview) store.setPaletteDragPreview(null);
+      return;
+    }
+    const centre = {
+      x: pointerToPercent(pointer.x, rect.left, rect.width),
+      y: pointerToPercent(pointer.y, rect.top, rect.height),
+    };
+    const siblings = currentPage.elements
+      .filter((el) => !el.parent)
+      .map((el) => getPlacement(currentPage, el.id, activeLayoutId));
+    const outcome = paletteDragPlacement(centre, size, {
+      snap: pageSnap(currentPage),
+      bypass: altHeld.current,
+      others: siblings,
+    });
+    const { parentId } = resolveDropParent(currentPage, outcome.placement, activeLayoutId);
+    store.setPaletteDragPreview({
+      placement: outcome.placement,
+      guidesX: outcome.guidesX,
+      guidesY: outcome.guidesY,
+      adoptInto: parentId,
+      label: type,
+    });
+  }, [currentPage, activeLayoutId]);
+
+  const handleDragMove = useCallback(
+    (event: DragMoveEvent) => {
+      if (!dragStartPointer.current || !dragElementType.current) return;
+      lastPalettePointer.current = {
+        x: dragStartPointer.current.x + event.delta.x,
+        y: dragStartPointer.current.y + event.delta.y,
+      };
+      updatePalettePreview();
+    },
+    [updatePalettePreview],
+  );
+
+  // Alt toggled mid-drag changes the answer without the pointer moving. The
+  // window-level tracker above updates altHeld first (it registered earlier),
+  // so recomputing here sees the new state.
+  useEffect(() => {
+    if (activeDragSource !== "palette") return;
+    const onModifier = (e: KeyboardEvent) => {
+      if (e.key === "Alt") updatePalettePreview();
+    };
+    window.addEventListener("keydown", onModifier);
+    window.addEventListener("keyup", onModifier);
+    return () => {
+      window.removeEventListener("keydown", onModifier);
+      window.removeEventListener("keyup", onModifier);
+    };
+  }, [activeDragSource, updatePalettePreview]);
+
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
+      const preview = useUIBuilderStore.getState().paletteDragPreview;
+      useUIBuilderStore.getState().setPaletteDragPreview(null);
       setActiveDragSource(null);
       dragElementType.current = null;
       draggedElement.current = null;
+      lastPalettePointer.current = null;
       const { active, over, delta } = event;
       if (!over || over.id !== "canvas-drop" || !currentPage || !project)
         return;
@@ -986,9 +1066,6 @@ export function UIBuilderView() {
       if (!canvasRect) return;
       if (data.source !== "palette" || !data.elementType) return;
 
-      const pointerX = dragStartPointer.current.x + delta.x;
-      const pointerY = dragStartPointer.current.y + delta.y;
-
       // Create new element — collect IDs from ALL pages AND master_elements
       // (shared ui.<id> namespace) to avoid collisions.
       const existingIds = new Set([
@@ -998,25 +1075,29 @@ export function UIBuilderView() {
       const newElement = createDefaultElement(data.elementType, existingIds);
       const size = defaultElementSize(data.elementType, panelElements);
 
-      // The element lands centred on the pointer, snapped like any other drag
-      // and bypassing snap when Alt is held — a drop is a drag that ends.
-      const centreX = pointerToPercent(pointerX, canvasRect.left, canvasRect.width);
-      const centreY = pointerToPercent(pointerY, canvasRect.top, canvasRect.height);
-      const raw: Placement = {
-        x: centreX - size.w / 2,
-        y: centreY - size.h / 2,
-        w: size.w,
-        h: size.h,
-      };
-      const siblings = currentPage.elements
-        .filter((el) => !el.parent)
-        .map((el) => getPlacement(currentPage, el.id, activeLayoutId));
-      const bypass = !!(event.activatorEvent as PointerEvent | undefined)?.altKey || altHeld.current;
-      const placement = snapMove(raw, {
-        snap: pageSnap(currentPage),
-        bypass,
-        others: siblings,
-      }).placement;
+      // The element lands exactly where the live preview showed it — same box,
+      // same snap, same Alt bypass. The recompute below only covers a drop the
+      // preview never saw (nothing moved after entering the canvas).
+      let placement: Placement;
+      if (preview) {
+        placement = preview.placement;
+      } else {
+        const pointerX = dragStartPointer.current.x + delta.x;
+        const pointerY = dragStartPointer.current.y + delta.y;
+        const centre = {
+          x: pointerToPercent(pointerX, canvasRect.left, canvasRect.width),
+          y: pointerToPercent(pointerY, canvasRect.top, canvasRect.height),
+        };
+        const siblings = currentPage.elements
+          .filter((el) => !el.parent)
+          .map((el) => getPlacement(currentPage, el.id, activeLayoutId));
+        const bypass = !!(event.activatorEvent as PointerEvent | undefined)?.altKey || altHeld.current;
+        placement = paletteDragPlacement(centre, size, {
+          snap: pageSnap(currentPage),
+          bypass,
+          others: siblings,
+        }).placement;
+      }
 
       // A drop inside a container becomes a child of it, with coordinates
       // re-expressed relative to that container — which is what the author
@@ -1038,10 +1119,12 @@ export function UIBuilderView() {
   );
 
   const handleDragCancel = useCallback(() => {
+    useUIBuilderStore.getState().setPaletteDragPreview(null);
     setActiveDragSource(null);
     dragElementType.current = null;
     draggedElement.current = null;
     dragStartPointer.current = null;
+    lastPalettePointer.current = null;
   }, [setActiveDragSource]);
 
   if (!project) {
@@ -1063,7 +1146,12 @@ export function UIBuilderView() {
   return (
     <DndContext
       sensors={sensors}
+      // Pointer-based: the drop is accepted exactly when the pointer is over
+      // the canvas, which is also when the snapped preview is showing — so
+      // what you see mid-drag and what a release does can never disagree.
+      collisionDetection={pointerWithin}
       onDragStart={handleDragStart}
+      onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
@@ -1123,76 +1211,74 @@ export function UIBuilderView() {
           </div>
         )}
 
-        {/* Toolbar */}
-        <div style={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
-          <div style={{ flex: 1 }}>
-            <CanvasToolbar
-              pages={pages}
-              selectedPageId={currentPage?.id || null}
-              onValidate={() => setValidationIssues(validateProject(project))}
-            />
-          </div>
-          {!previewMode && (
-            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", padding: "0 var(--space-md)", borderBottom: "1px solid var(--border-color)", background: "var(--bg-surface)", minHeight: 38 }}>
-              <button
-                onClick={() => setShowThemeStudio(true)}
-                title="Open Theme Studio"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "var(--space-xs)",
-                  padding: "var(--space-xs) var(--space-md)",
-                  borderRadius: "var(--border-radius)",
-                  background: "var(--bg-hover)",
-                  fontSize: "var(--font-size-sm)",
-                  border: "none",
-                  cursor: "pointer",
-                  color: "var(--text-secondary)",
-                }}
-              >
-                <Palette size={16} /> Theme
-              </button>
-              <button
-                onClick={() => setShowSettings(true)}
-                title="Panel Settings"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "var(--space-xs)",
-                  padding: "var(--space-xs) var(--space-md)",
-                  borderRadius: "var(--border-radius)",
-                  background: "var(--bg-hover)",
-                  fontSize: "var(--font-size-sm)",
-                  border: "none",
-                  cursor: "pointer",
-                  color: "var(--text-secondary)",
-                }}
-              >
-                <Settings size={16} /> Settings
-              </button>
-              <button
-                onClick={openGlobalShortcuts}
-                title="Keyboard Shortcuts"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  width: 28,
-                  height: 28,
-                  borderRadius: "var(--border-radius)",
-                  background: "var(--bg-hover)",
-                  fontSize: "var(--font-size-sm)",
-                  fontWeight: 700,
-                  border: "none",
-                  cursor: "pointer",
-                  color: "var(--text-secondary)",
-                }}
-              >
-                ?
-              </button>
-            </div>
-          )}
-        </div>
+        {/* Toolbar — two fixed rows; Theme/Settings dock at the end of the pages row */}
+        <CanvasToolbar
+          pages={pages}
+          selectedPageId={currentPage?.id || null}
+          onValidate={() => setValidationIssues(validateProject(project))}
+          trailing={
+            !previewMode ? (
+              <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", flexShrink: 0 }}>
+                <button
+                  onClick={() => setShowThemeStudio(true)}
+                  title="Open Theme Studio"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "var(--space-xs)",
+                    padding: "3px var(--space-md)",
+                    borderRadius: "var(--border-radius)",
+                    background: "var(--bg-hover)",
+                    fontSize: "var(--font-size-sm)",
+                    border: "none",
+                    cursor: "pointer",
+                    color: "var(--text-secondary)",
+                  }}
+                >
+                  <Palette size={14} /> Theme
+                </button>
+                <button
+                  onClick={() => setShowSettings(true)}
+                  title="Panel Settings"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "var(--space-xs)",
+                    padding: "3px var(--space-md)",
+                    borderRadius: "var(--border-radius)",
+                    background: "var(--bg-hover)",
+                    fontSize: "var(--font-size-sm)",
+                    border: "none",
+                    cursor: "pointer",
+                    color: "var(--text-secondary)",
+                  }}
+                >
+                  <Settings size={14} /> Settings
+                </button>
+                <button
+                  onClick={openGlobalShortcuts}
+                  title="Keyboard Shortcuts"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: 24,
+                    height: 24,
+                    borderRadius: "var(--border-radius)",
+                    background: "var(--bg-hover)",
+                    fontSize: "var(--font-size-sm)",
+                    fontWeight: 700,
+                    border: "none",
+                    cursor: "pointer",
+                    color: "var(--text-secondary)",
+                  }}
+                >
+                  ?
+                </button>
+              </div>
+            ) : undefined
+          }
+        />
 
         {/* Main 3-panel layout */}
         <PanelGroup direction="horizontal" style={{ flex: 1 }}>
@@ -1373,43 +1459,19 @@ export function UIBuilderView() {
         </PanelGroup>
       </div>
 
-      {/* Drag overlay — outlined footprint sized to the drop target, with the element type label. */}
+      {/* Drag overlay — outlined footprint sized to the drop target, with the
+          element type label. Only shown while the pointer is OFF the canvas;
+          over it, the canvas draws the snapped footprint in its place. */}
       <DragOverlay dropAnimation={null}>
-        {activeDragSource && draggedElement.current ? (() => {
-          const ghost = draggedElement.current;
-          if (!ghost) return null;
-          const ghostW = dragGhostSize.current.w;
-          const ghostH = dragGhostSize.current.h;
-          // dnd-kit anchors the overlay to the palette button's origin, so
-          // shift the ghost until its centre sits under the pointer — matching
-          // where the centred drop actually lands.
-          const recenter = `translate(${dragGrabPx.current.x - ghostW / 2}px, ${dragGrabPx.current.y - ghostH / 2}px)`;
-          return (
-            <div
-              style={{
-                width: ghostW,
-                height: ghostH,
-                transform: recenter,
-                opacity: 0.85,
-                pointerEvents: "none",
-                filter: "drop-shadow(0 4px 16px rgba(0,0,0,0.5))",
-                borderRadius: 8,
-                outline: "2px solid var(--accent)",
-                outlineOffset: -1,
-                background: "var(--bg-elevated)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "var(--text-primary)",
-                fontSize: "var(--font-size-sm)",
-                fontWeight: 500,
-                textTransform: "capitalize",
-              }}
-            >
-              {ghost.type.replace(/_/g, " ")}
-            </div>
-          );
-        })() : null}
+        {activeDragSource && draggedElement.current ? (
+          <PaletteDragGhost
+            label={draggedElement.current.type}
+            width={dragGhostSize.current.w}
+            height={dragGhostSize.current.h}
+            grabX={dragGrabPx.current.x}
+            grabY={dragGrabPx.current.y}
+          />
+        ) : null}
       </DragOverlay>
 
       {/* Context menu */}
@@ -1692,11 +1754,13 @@ function UISettingsDialog({
 
             <div style={fieldStyle}>
               <label style={labelStyle}>Idle Timeout (seconds)</label>
-              <input
-                type="number"
+              <NumericInput
+                integer
                 min={0}
                 value={draft.idle_timeout_seconds}
-                onChange={(e) => patch({ idle_timeout_seconds: parseInt(e.target.value) || 0 })}
+                onCommit={(v) => {
+                  if (v !== undefined) patch({ idle_timeout_seconds: v });
+                }}
                 style={inputStyle}
               />
               <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
@@ -1736,13 +1800,15 @@ function UISettingsDialog({
               <div style={fieldStyle}>
                 <label style={labelStyle}>Transition Duration</label>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <input
-                    type="number"
+                  <NumericInput
+                    integer
                     min={50}
                     max={1000}
                     step={50}
                     value={draft.page_transition_duration || 200}
-                    onChange={(e) => patch({ page_transition_duration: Number(e.target.value) || 200 })}
+                    onCommit={(v) => {
+                      if (v !== undefined) patch({ page_transition_duration: v });
+                    }}
                     style={{ ...inputStyle, width: 80 }}
                   />
                   <span style={{ fontSize: 11, color: "var(--text-muted)" }}>ms</span>
@@ -1785,13 +1851,15 @@ function UISettingsDialog({
               <div style={fieldStyle}>
                 <label style={labelStyle}>Stagger Delay</label>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <input
-                    type="number"
+                  <NumericInput
+                    integer
                     min={10}
                     max={200}
                     step={10}
                     value={draft.element_stagger_ms || 30}
-                    onChange={(e) => patch({ element_stagger_ms: Number(e.target.value) || 30 })}
+                    onCommit={(v) => {
+                      if (v !== undefined) patch({ element_stagger_ms: v });
+                    }}
                     style={{ ...inputStyle, width: 80 }}
                   />
                   <span style={{ fontSize: 11, color: "var(--text-muted)" }}>ms per element</span>
@@ -1841,5 +1909,56 @@ function UISettingsDialog({
         />
       )}
     </Modal>
+  );
+}
+
+/**
+ * The cross-panel ghost for a palette drag. It hides itself the moment the
+ * snapped canvas footprint takes over, and it subscribes to the store itself
+ * so the per-pointer-move re-render stays contained here instead of re-running
+ * the whole view.
+ */
+function PaletteDragGhost({
+  label,
+  width,
+  height,
+  grabX,
+  grabY,
+}: {
+  label: string;
+  width: number;
+  height: number;
+  grabX: number;
+  grabY: number;
+}) {
+  const overCanvas = useUIBuilderStore((s) => !!s.paletteDragPreview);
+  if (overCanvas) return null;
+  // dnd-kit anchors the overlay to the palette button's origin, so shift the
+  // ghost until its centre sits under the pointer — matching where the centred
+  // drop actually lands.
+  return (
+    <div
+      style={{
+        width,
+        height,
+        transform: `translate(${grabX - width / 2}px, ${grabY - height / 2}px)`,
+        opacity: 0.85,
+        pointerEvents: "none",
+        filter: "drop-shadow(0 4px 16px rgba(0,0,0,0.5))",
+        borderRadius: 8,
+        outline: "2px solid var(--accent)",
+        outlineOffset: -1,
+        background: "var(--bg-elevated)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        color: "var(--text-primary)",
+        fontSize: "var(--font-size-sm)",
+        fontWeight: 500,
+        textTransform: "capitalize",
+      }}
+    >
+      {label.replace(/_/g, " ")}
+    </div>
   );
 }
