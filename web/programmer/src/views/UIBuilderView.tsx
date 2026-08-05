@@ -51,6 +51,7 @@ import {
   validateProject,
   autoPlace,
   defaultElementSize,
+  absolutePlacements,
   getPlacement,
   lockedIdsFor,
   pageSnap,
@@ -550,8 +551,15 @@ export function UIBuilderView() {
         .map((eid) => currentPage.elements.find((e) => e.id === eid))
         .filter((e): e is UIElement => !!e);
       if (els.length === 0) return;
+      // Capture the box the eye sees -- page space, not the stored value. A
+      // container child stores percentages OF ITS CONTAINER, and paste ejects
+      // to page level, so the raw number would reinterpret half-a-container as
+      // half-a-page.
+      const absolute = absolutePlacements(currentPage, activeLayoutId);
       const placements: Record<string, Placement> = {};
-      for (const el of els) placements[el.id] = getPlacement(currentPage, el.id, activeLayoutId);
+      for (const el of els) {
+        placements[el.id] = absolute[el.id] ?? getPlacement(currentPage, el.id, activeLayoutId);
+      }
       setClipboard({ elements: JSON.parse(JSON.stringify(els)), placements });
     },
     [currentPage, activeLayoutId, setClipboard],

@@ -1640,14 +1640,36 @@ export function duplicatePage(
     for (const [oldElId, newElId] of idMap) {
       cloned = rewriteElement(cloned, oldElId, newElId);
     }
+    // The container hierarchy is keyed by element id too, and rewriteElement
+    // only follows bindings -- remap it or every child dangles in the copy.
+    if (cloned.parent && idMap.has(cloned.parent)) {
+      cloned = { ...cloned, parent: idMap.get(cloned.parent)! };
+    }
     return cloned;
   });
 
+  // Geometry does not live on the elements: every arrangement keys its
+  // placements and hidden list by element id, so the renames have to reach
+  // them or the copy loses its whole layout to DEFAULT_PLACEMENT fallbacks.
+  const clonedPage = JSON.parse(JSON.stringify(page)) as UIPage;
+  const newLayouts = (clonedPage.layouts ?? []).map((l) => {
+    const placements: Record<string, Placement> = {};
+    for (const [elId, p] of Object.entries(l.placements ?? {})) {
+      placements[idMap.get(elId) ?? elId] = p;
+    }
+    return {
+      ...l,
+      placements,
+      hidden: (l.hidden ?? []).map((id) => idMap.get(id) ?? id),
+    };
+  });
+
   const newPage: UIPage = {
-    ...JSON.parse(JSON.stringify(page)),
+    ...clonedPage,
     id: newId,
     name: newName,
     elements: newElements,
+    layouts: newLayouts,
   };
 
   // Insert after source page
@@ -2422,19 +2444,28 @@ export function promoteToMaster(
   if (!element) return { pages, masterElements };
 
   // A master's box is a percentage of the VIEWPORT, so it is valid on every
-  // page whatever those pages are arranged like. Take the box it had on the
-  // page it is being promoted from as its landscape placement.
-  const box = getPlacement(page, elementId);
+  // page whatever those pages are arranged like. The STORED placement is a
+  // percentage of the element's parent -- for a container child that is the
+  // container, not the page -- so convert through the flattened page space,
+  // and do it per orientation: a portrait arrangement's position becomes the
+  // master's portrait placement instead of being discarded.
+  const primary = primaryLayout(page);
+  const placements: Record<string, Placement> = {};
+  for (const layout of page.layouts ?? []) {
+    const key = layout.orientation ?? "landscape";
+    if (key in placements && layout.id !== primary?.id) continue;
+    const box = absolutePlacements(page, layout.id)[elementId];
+    if (box) placements[key] = roundPlacement(box);
+  }
+  const primaryKey = primary?.orientation ?? "landscape";
+  if (!(primaryKey in placements)) placements[primaryKey] = { ...DEFAULT_PLACEMENT };
 
-  // Remove from page (and drop the box it no longer needs there)
-  const newPages = pages.map(p =>
-    p.id === pageId
-      ? withoutPlacement(
-          { ...p, elements: p.elements.filter(e => e.id !== elementId) },
-          elementId,
-        )
-      : p
-  );
+  // Remove from page, dropping its box in every layout. If a whole container
+  // is being promoted its children stay behind on the page, re-homed to the
+  // container's own parent without moving -- a master cannot be anyone's
+  // parent, and losing six wired controls to one promote is not a trade
+  // anybody wants. Same conversion a container delete does.
+  const newPages = removeElementFromPage(pages, pageId, elementId);
 
   // Masters and page elements share the ui.<id> namespace. If the promoted
   // id is already taken (possible in imported/hand-edited projects), rename
@@ -2449,11 +2480,13 @@ export function promoteToMaster(
     promoted = rewriteElement(promoted, promoted.id, newId);
   }
 
-  // Add to master elements with pages: "*"
+  // Add to master elements with pages: "*". The parent link stays behind --
+  // masters are placed against the viewport, never inside a page's container.
   const masterEl: MasterElement = {
     ...promoted,
+    parent: null,
     pages: "*",
-    placements: { landscape: roundPlacement(box) },
+    placements,
     hidden: false,
   };
   return { pages: newPages, masterElements: [...masterElements, masterEl] };
@@ -3079,25 +3112,65 @@ export function validateProject(project: ProjectConfig): ValidationIssue[] {
     }
   };
 
-  // Check page elements
+  // Check page elements. Geometry is per-arrangement: a portrait variant can
+  // push a control off-screen or shrink it below a finger while the primary is
+  // fine, so every layout is checked -- but an issue is reported once per
+  // element, naming the arrangement only when it isn't the primary's fault.
   for (const page of project.ui.pages) {
-    const placements = resolvePlacements(page);
     const byId = new Map(page.elements.map((e) => [e.id, e]));
+    const layoutIds = new Set((page.layouts ?? []).map((l) => l.id));
+    const primaryId = primaryLayout(page)?.id;
+
+    // The arrangements themselves: a dangling inherits silently collapses the
+    // variant (everything without its own box falls to default placements),
+    // and orphaned ids are the residue a bad rename or hand edit leaves.
+    for (const layout of page.layouts ?? []) {
+      if (layout.inherits && !layoutIds.has(layout.inherits)) {
+        issues.push({ severity: "error", message: `Arrangement inherits from "${layout.inherits}", which does not exist \u2014 controls without their own position here fall back to default boxes`, location: `${page.name} > ${layout.id}`, pageId: page.id });
+      }
+      for (const elId of Object.keys(layout.placements ?? {})) {
+        if (!byId.has(elId)) {
+          issues.push({ severity: "warning", message: `Arrangement "${layout.id}" positions "${elId}", which is not an element on this page`, location: `${page.name} > ${layout.id}`, pageId: page.id });
+        }
+      }
+      for (const elId of layout.hidden ?? []) {
+        if (!byId.has(elId)) {
+          issues.push({ severity: "warning", message: `Arrangement "${layout.id}" hides "${elId}", which is not an element on this page`, location: `${page.name} > ${layout.id}`, pageId: page.id });
+        }
+      }
+    }
+
+    const arrangements = (page.layouts ?? []).map((l) => ({
+      layout: l,
+      placements: resolvePlacements(page, l.id),
+    }));
     for (const el of page.elements) {
       checkElement(el, page.id, page.name);
-      const p = placements[el.id];
-      if (p && isOutOfBounds(p)) {
-        const where = el.parent ? `its container` : `the page`;
-        issues.push({ severity: "warning", message: `Element extends beyond ${where}`, location: `${page.name} > ${el.id}`, pageId: page.id, elementId: el.id });
-      }
       // A parent that doesn't exist leaves the child unrendered \u2014 the runtime
       // draws children into their container, and there is no container.
       if (el.parent && !byId.has(el.parent)) {
         issues.push({ severity: "error", message: `Container "${el.parent}" does not exist`, location: `${page.name} > ${el.id}`, pageId: page.id, elementId: el.id });
       }
-      const touch = p ? touchTargetWarning(p) : null;
-      if (touch && TOUCHABLE_TYPES.has(el.type)) {
-        issues.push({ severity: "warning", message: `Small touch target (about ${touch.widthPx}\u00d7${touch.heightPx}px, ${touch.widthMm}\u00d7${touch.heightMm}mm on a 15-inch panel)`, location: `${page.name} > ${el.id}`, pageId: page.id, elementId: el.id });
+      let boundsFlagged = false;
+      let touchFlagged = false;
+      for (const { layout, placements } of arrangements) {
+        const inArrangement = layout.id === primaryId ? "" : ` in the "${layout.id}" arrangement`;
+        const p = placements[el.id];
+        if (!boundsFlagged && p && isOutOfBounds(p)) {
+          const where = el.parent ? `its container` : `the page`;
+          issues.push({ severity: "warning", message: `Element extends beyond ${where}${inArrangement}`, location: `${page.name} > ${el.id}`, pageId: page.id, elementId: el.id });
+          boundsFlagged = true;
+        }
+        // Container children are measured against the box they actually sit
+        // in \u2014 half of a small container is a small control, whatever its
+        // percentages say.
+        const touch = p && TOUCHABLE_TYPES.has(el.type)
+          ? touchTargetWarning(p, referenceParentBox(page, el.id, layout.id))
+          : null;
+        if (!touchFlagged && touch) {
+          issues.push({ severity: "warning", message: `Small touch target${inArrangement} (about ${touch.widthPx}\u00d7${touch.heightPx}px on a 1280\u00d7800 panel, roughly ${touch.widthMm}\u00d7${touch.heightMm}mm on a 10" one)`, location: `${page.name} > ${el.id}`, pageId: page.id, elementId: el.id });
+          touchFlagged = true;
+        }
       }
     }
   }

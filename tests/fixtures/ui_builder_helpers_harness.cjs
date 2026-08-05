@@ -2187,4 +2187,136 @@ const variantPage = () => ({
   };
 }
 
+// --- A-001: duplicatePage carries the geometry through the id renames ---
+{
+  // Geometry lives on the page's layouts keyed by element id; the copy renames
+  // every element, so placements, hidden lists and parent links must follow or
+  // the duplicated page loses its entire arrangement.
+  const pages = [{
+    id: "p1", name: "P1", snap: SNAP,
+    elements: [
+      { id: "grp_a", type: "group", style: {}, bindings: {} },
+      { id: "btn_a", type: "button", parent: "grp_a", style: {}, bindings: {} },
+    ],
+    layouts: [
+      LANDSCAPE({ grp_a: { x: 10, y: 10, w: 50, h: 50 }, btn_a: { x: 20, y: 20, w: 40, h: 20 } }),
+      { id: "portrait", orientation: "portrait", inherits: "landscape",
+        placements: { grp_a: { x: 5, y: 40, w: 90, h: 40 } }, hidden: ["btn_a"] },
+    ],
+  }];
+  const after = H.duplicatePage(pages, "p1");
+  const copy = after[1];
+  const grpCopy = copy.elements[0];
+  const btnCopy = copy.elements[1];
+  const land = copy.layouts.find((l) => l.id === "landscape");
+  const port = copy.layouts.find((l) => l.id === "portrait");
+  results.a001_duplicate_page_keeps_geometry = {
+    pass: grpCopy.id !== "grp_a" && btnCopy.parent === grpCopy.id &&
+      !!land.placements[grpCopy.id] && near(land.placements[grpCopy.id].x, 10) &&
+      !!land.placements[btnCopy.id] && near(land.placements[btnCopy.id].w, 40) &&
+      !!port.placements[grpCopy.id] && near(port.placements[grpCopy.id].y, 40) &&
+      port.hidden.length === 1 && port.hidden[0] === btnCopy.id &&
+      !(("grp_a") in land.placements) && !(("btn_a") in port.placements),
+    detail: { ids: copy.elements.map((e) => e.id), parent: btnCopy.parent, land: land.placements, portHidden: port.hidden },
+  };
+}
+
+// --- A-002: promoteToMaster converts through page space, per orientation ---
+{
+  // A container child's stored box is a percentage of the container; a master's
+  // is a percentage of the viewport. Promote has to convert -- and a portrait
+  // arrangement's position becomes the master's portrait placement instead of
+  // being thrown away.
+  const pages = [{
+    id: "p1", name: "P1", snap: SNAP,
+    elements: [
+      { id: "grp_a", type: "group", style: {}, bindings: {} },
+      { id: "btn_a", type: "button", parent: "grp_a", style: {}, bindings: {} },
+    ],
+    layouts: [
+      LANDSCAPE({ grp_a: { x: 25, y: 25, w: 50, h: 50 }, btn_a: { x: 10, y: 10, w: 50, h: 25 } }),
+      { id: "portrait", orientation: "portrait", inherits: "landscape",
+        placements: { grp_a: { x: 0, y: 50, w: 100, h: 50 } }, hidden: [] },
+    ],
+  }];
+  const r = H.promoteToMaster(pages, [], "p1", "btn_a");
+  const m = r.masterElements[0];
+  // Landscape: container 25,25 50x50; child 10%,10% 50%x25% of it -> 30,30 25x12.5.
+  // Portrait: container 0,50 100x50 -> child 10,55 50x12.5.
+  results.a002_promote_converts_container_child = {
+    pass: m.parent == null &&
+      near(m.placements.landscape.x, 30) && near(m.placements.landscape.y, 30) &&
+      near(m.placements.landscape.w, 25) && near(m.placements.landscape.h, 12.5) &&
+      near(m.placements.portrait.x, 10) && near(m.placements.portrait.y, 55) &&
+      near(m.placements.portrait.w, 50) && near(m.placements.portrait.h, 12.5),
+    detail: m.placements,
+  };
+}
+{
+  // Promoting a whole container re-homes its children to page level with the
+  // same no-jump conversion a container delete uses.
+  const pages = [{
+    id: "p1", name: "P1", snap: SNAP,
+    elements: [
+      { id: "grp_a", type: "group", style: {}, bindings: {} },
+      { id: "btn_a", type: "button", parent: "grp_a", style: {}, bindings: {} },
+    ],
+    layouts: [LANDSCAPE({ grp_a: { x: 25, y: 25, w: 50, h: 50 }, btn_a: { x: 10, y: 10, w: 50, h: 25 } })],
+  }];
+  const r = H.promoteToMaster(pages, [], "p1", "grp_a");
+  const child = r.pages[0].elements[0];
+  const box = r.pages[0].layouts[0].placements.btn_a;
+  results.a002_promote_group_rehomes_children = {
+    pass: r.masterElements.length === 1 && child.id === "btn_a" && child.parent == null &&
+      near(box.x, 30) && near(box.y, 30) && near(box.w, 25) && near(box.h, 12.5),
+    detail: { parent: child.parent, box },
+  };
+}
+
+// --- A-003: validateProject checks every arrangement, in the right space ---
+{
+  // An element pushed out of bounds ONLY in the portrait variant must still be
+  // flagged, and a dangling inherits is an error, not a silent collapse.
+  const proj = makeValidationProject([
+    { id: "b1", type: "button", style: {}, bindings: { do: { press: [{ action: "macro", macro: "real_macro" }] } } },
+  ]);
+  const page = proj.ui.pages[0];
+  page.layouts[0].placements = { b1: { x: 10, y: 10, w: 30, h: 20 } };
+  page.layouts.push({
+    id: "portrait", orientation: "portrait", inherits: "landscape",
+    placements: { b1: { x: 90, y: 90, w: 30, h: 20 } }, hidden: [],
+  });
+  page.layouts.push({
+    id: "broken", orientation: "portrait", inherits: "gone", placements: {}, hidden: [],
+  });
+  const issues = H.validateProject(proj);
+  const oob = issues.filter((i) => /extends beyond/.test(i.message));
+  const dangling = issues.filter((i) => /inherits from "gone"/.test(i.message) && i.severity === "error");
+  results.a003_validate_sees_variant_geometry = {
+    pass: oob.length === 1 && /portrait/.test(oob[0].message) && dangling.length === 1,
+    detail: { oob, dangling },
+  };
+}
+{
+  // A container child's touch target is judged against the box it sits in --
+  // 30% of a small container is a small control whatever the percentage says.
+  const proj = makeValidationProject([
+    { id: "grp_a", type: "group", style: {}, bindings: {} },
+    { id: "b1", type: "button", parent: "grp_a", style: {}, bindings: { do: { press: [{ action: "macro", macro: "real_macro" }] } } },
+  ]);
+  const page = proj.ui.pages[0];
+  // Container 20% x 20% of the page (256x160px at reference); button 30% x 30%
+  // of it = ~77x48px -> under the touch minimum on width.
+  page.layouts[0].placements = {
+    grp_a: { x: 0, y: 0, w: 20, h: 20 },
+    b1: { x: 0, y: 0, w: 30, h: 30 },
+  };
+  const issues = H.validateProject(proj);
+  const touch = issues.filter((i) => /Small touch target/.test(i.message) && i.elementId === "b1");
+  results.a003_validate_touch_uses_container_space = {
+    pass: touch.length === 1 && !/15-inch/.test(touch[0].message),
+    detail: touch,
+  };
+}
+
 process.stdout.write(JSON.stringify(results));

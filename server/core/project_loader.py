@@ -334,6 +334,11 @@ class UIElement(_ForwardCompatModel):
     options: list[dict[str, Any]] | None = None
     placeholder: str | None = None
     src: str | None = None
+    # How an image element fits its box (CSS object-fit). The Builder writes it
+    # and the panel reads it; like thumb_size before it, it round-tripped on
+    # extra="allow" alone until it was declared. image_fit below is the same
+    # idea for a button's background image -- two fields, two element types.
+    object_fit: str | None = None  # image: cover, contain, fill
     preset_number: int | None = None
     icon: str | None = None  # Lucide icon name or assets:// reference
     icon_position: str | None = None  # left, right, top, bottom, center
@@ -567,7 +572,10 @@ class PluginConfig(_ForwardCompatModel):
 class ProjectConfig(_ForwardCompatModel):
     # Keep in sync with project_migration.CURRENT_VERSION — the default stamped
     # on a freshly-created project so it isn't immediately "migrated" on reload.
-    openavc_version: str = "0.7.0"
+    # A stale default here is not cosmetic: a project written with it gets the
+    # whole 0.7->0.8 migration re-run over an already-0.8 body on its next
+    # save, which collapses every placement and re-divides every rem value.
+    openavc_version: str = "0.8.0"
     project: ProjectMeta
     devices: list[DeviceConfig] = Field(default_factory=list)
     device_groups: list[DeviceGroup] = Field(default_factory=list)

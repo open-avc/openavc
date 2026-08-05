@@ -157,6 +157,24 @@ class TestDeclaredNotMerelyTolerated:
         assert "custom_css" in UIConfig.model_fields
         from server.core.project_loader import UIElement
         assert "css_class" in UIElement.model_fields
+        # The image element's fit mode: written by the Builder, read by the
+        # renderer, and undeclared until an audit caught it riding the escape
+        # hatch -- the third field found that way, after grid_gap and
+        # thumb_size.
+        assert "object_fit" in UIElement.model_fields
+
+    def test_fresh_project_is_stamped_with_the_current_format(self):
+        """A bare ProjectConfig must not claim an older format than its body.
+
+        The recovery path (engine._create_recovery_project) builds one with no
+        explicit version; stamped 0.7.0, everything built on it afterwards gets
+        the 0.7->0.8 migration re-run on its next save -- placements collapse
+        to the 1x1 cell and every rem value is divided by 14 again.
+        """
+        from server.core.project_migration import CURRENT_VERSION
+        from server.core.project_loader import ProjectMeta
+        fresh = ProjectConfig(project=ProjectMeta(id="x", name="x"))
+        assert fresh.openavc_version == CURRENT_VERSION
 
     def test_nothing_lands_in_model_extra(self):
         project = ProjectConfig(**_project_with_power_fields())

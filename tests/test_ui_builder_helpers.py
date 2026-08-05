@@ -207,6 +207,11 @@ SCENARIOS = [
     "v113_turning_the_canvas_does_not_resize_type",
     "v113_cycles_terminate",
     "v113_drops_measure_the_layout_on_screen",
+    "a001_duplicate_page_keeps_geometry",
+    "a002_promote_converts_container_child",
+    "a002_promote_group_rehomes_children",
+    "a003_validate_sees_variant_geometry",
+    "a003_validate_touch_uses_container_space",
 ]
 
 
