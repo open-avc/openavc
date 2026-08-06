@@ -376,6 +376,409 @@ CASES["no_layouts"] = _project([
 ])
 
 
+# The adversarial case, and the only one here that was not written to exercise a
+# check. The cloud AI built this page live after being told what the guards were
+# and asked to break them: roughly forty hostile shapes on one page, including
+# several nobody thought to write a fixture for -- a floor whose remedy is over
+# 100% of its container, a control with no floor at all sized to 6x4px, a box
+# with a zero dimension, `style` measurements written in px on a control whose
+# units are rem, and an element type that does not exist. Kept verbatim apart
+# from the device id, which was a real product.
+CASES["stress_test"] = _project([
+    _page(
+        "stress_test",
+        [
+            {"id": "led_a1", "type": "status_led", "label": "Sig"},
+            {"id": "led_a2", "type": "status_led"},
+            {"id": "led_a3", "type": "status_led", "label": "OK"},
+            {
+                "id": "led_a4",
+                "type": "status_led",
+                "bindings": {
+                    "show": {
+                        "value": {"source": "state", "key": "device.acme_amp.channel.01.name"},
+                    },
+                },
+            },
+            {"id": "led_a5", "type": "status_led", "label": "Fault"},
+            {"id": "grp_tiny", "type": "group", "label": "Tiny Box"},
+            {"id": "led_b1", "type": "status_led", "label": "In", "parent": "grp_tiny"},
+            {
+                "id": "led_b2",
+                "type": "status_led",
+                "label": "In2",
+                "parent": "grp_tiny",
+            },
+            {
+                "id": "ovf_child",
+                "type": "button",
+                "label": "Overflow",
+                "parent": "grp_tiny",
+            },
+            {"id": "grp_strip", "type": "group", "label": "Ch Strip"},
+            {
+                "id": "fader_strip",
+                "type": "fader",
+                "min": -80,
+                "max": 0,
+                "step": 0.5,
+                "orientation": "vertical",
+                "parent": "grp_strip",
+            },
+            {
+                "id": "meter_strip",
+                "type": "level_meter",
+                "min": -60,
+                "max": 0,
+                "parent": "grp_strip",
+            },
+            {
+                "id": "sel_strip",
+                "type": "select",
+                "options": [
+                    {"label": "Analog 1", "value": "a1"},
+                    {"label": "Digital 1", "value": "d1"},
+                ],
+                "parent": "grp_strip",
+            },
+            {
+                "id": "btn_strip",
+                "type": "button",
+                "label": "Mute",
+                "parent": "grp_strip",
+            },
+            {"id": "keypad_d", "type": "keypad", "digits": 4},
+            {
+                "id": "matrix_d",
+                "type": "matrix",
+                "matrix_config": {
+                    "inputs": [{"id": "1", "label": "In 1"}, {"id": "2", "label": "In 2"}],
+                    "outputs": [{"id": "1", "label": "Out 1"}, {"id": "2", "label": "Out 2"}],
+                },
+                "matrix_style": "crosspoint",
+            },
+            {"id": "list_d", "type": "list", "list_style": "selectable"},
+            {
+                "id": "list_d2",
+                "type": "list",
+                "list_style": "selectable",
+                "item_height": 20,
+            },
+            {
+                "id": "slider_d",
+                "type": "slider",
+                "min": 0,
+                "max": 100,
+                "step": 1,
+                "thumb_size": 20,
+            },
+            {"id": "txt_d", "type": "text_input", "placeholder": "name"},
+            {
+                "id": "fader_ok",
+                "type": "fader",
+                "min": -80,
+                "max": 0,
+                "step": 0.5,
+                "orientation": "vertical",
+            },
+            {"id": "btn_tiny", "type": "button", "label": "X"},
+            {"id": "btn_stack_a", "type": "button", "label": "Under"},
+            {"id": "btn_stack_b", "type": "button", "label": "Over"},
+            {"id": "btn_offpage", "type": "button", "label": "Gone"},
+            {"id": "btn_negative", "type": "button", "label": "Neg"},
+            {"id": "btn_zero_h", "type": "button", "label": "Flat"},
+            {
+                "id": "cam_tiny",
+                "type": "camera_preset",
+                "label": "P1",
+                "preset_number": 1,
+            },
+            {
+                "id": "nav_tiny",
+                "type": "page_nav",
+                "label": "Back",
+                "target_page": "main",
+            },
+            {"id": "gauge_tiny", "type": "gauge", "min": 0, "max": 100},
+            {"id": "clock_tiny", "type": "clock", "clock_mode": "time"},
+            {
+                "id": "lbl_bigfont",
+                "type": "label",
+                "text": "Heading",
+                "style": {"font_size": 24, "padding": 8, "border_radius": 12},
+            },
+            {
+                "id": "btn_bad_macro",
+                "type": "button",
+                "label": "Run",
+                "bindings": {
+                    "do": {
+                        "press": [{"action": "macro", "macro": "macro_that_does_not_exist"}],
+                    },
+                },
+            },
+            {
+                "id": "nav_bad_target",
+                "type": "page_nav",
+                "label": "Go",
+                "target_page": "no_such_page",
+            },
+            {
+                "id": "btn_bad_device",
+                "type": "button",
+                "label": "Dev",
+                "bindings": {
+                    "do": {
+                        "press": [
+                            {
+                                "action": "device.command",
+                                "device": "no_such_amp",
+                                "command": "mute_on",
+                                "params": {"channel": "01"},
+                            },
+                        ],
+                    },
+                },
+            },
+            {
+                "id": "btn_bad_command",
+                "type": "button",
+                "label": "Cmd",
+                "bindings": {
+                    "do": {
+                        "press": [
+                            {
+                                "action": "device.command",
+                                "device": "acme_amp",
+                                "command": "explode",
+                                "params": {},
+                            },
+                        ],
+                    },
+                },
+            },
+            {
+                "id": "lbl_bad_state",
+                "type": "label",
+                "text": "?",
+                "bindings": {
+                    "show": {
+                        "value": {
+                            "source": "state",
+                            "key": "device.acme_amp.channel.99.not_a_thing",
+                        },
+                    },
+                },
+            },
+            {
+                "id": "sel_bad_valuemap",
+                "type": "select",
+                "options": [{"label": "A", "value": "a"}, {"label": "B", "value": "b"}],
+                "bindings": {
+                    "do": {
+                        "change": [
+                            {
+                                "action": "value_map",
+                                "map": {
+                                    "x": {
+                                        "action": "device.command",
+                                        "device": "acme_amp",
+                                        "command": "mute_on",
+                                        "params": {"channel": "01"},
+                                    },
+                                    "y": {
+                                        "action": "device.command",
+                                        "device": "acme_amp",
+                                        "command": "mute_off",
+                                        "params": {"channel": "01"},
+                                    },
+                                },
+                            },
+                        ],
+                    },
+                },
+            },
+            {
+                "id": "btn_press_as_object",
+                "type": "button",
+                "label": "ObjPress",
+                "bindings": {
+                    "do": {
+                        "press": [
+                            {
+                                "action": "device.command",
+                                "device": "acme_amp",
+                                "command": "mute_on",
+                                "params": {"channel": "01"},
+                            },
+                        ],
+                    },
+                },
+            },
+            {"id": "knob_x", "type": "knob", "label": "Knob"},
+            {
+                "id": "btn_value_only",
+                "type": "button",
+                "label": "Vol",
+                "bindings": {
+                    "show": {
+                        "value": {
+                            "source": "state",
+                            "key": "device.acme_amp.channel.01.fader",
+                            "format": "{value} dB",
+                        },
+                    },
+                },
+            },
+            {
+                "id": "lbl_look_only",
+                "type": "label",
+                "text": "Status",
+                "bindings": {
+                    "show": {
+                        "look": {
+                            "key": "device.acme_amp.channel.01.mute",
+                            "default_state": "false",
+                            "states": {"true": {"label": "MUTED"}, "false": {"label": "LIVE"}},
+                        },
+                    },
+                },
+            },
+            {
+                "id": "grp_value",
+                "type": "group",
+                "label": "Box",
+                "bindings": {
+                    "show": {"value": {"source": "state", "key": "device.acme_amp.uptime"}},
+                },
+            },
+            {
+                "id": "img_value",
+                "type": "image",
+                "src": "assets://logo.png",
+                "bindings": {
+                    "show": {"value": {"source": "state", "key": "device.acme_amp.model_id"}},
+                },
+            },
+            {
+                "id": "keypad_value",
+                "type": "keypad",
+                "digits": 4,
+                "bindings": {"show": {"value": {"source": "state", "key": "var.code"}}},
+            },
+            {
+                "id": "meter_look",
+                "type": "level_meter",
+                "min": -60,
+                "max": 0,
+                "bindings": {
+                    "show": {
+                        "look": {
+                            "source": "state",
+                            "key": "device.acme_amp.channel.01.limiting",
+                            "map": {"true": "#FF9800", "false": "#4CAF50"},
+                        },
+                    },
+                },
+            },
+            {
+                "id": "matrix_value",
+                "type": "matrix",
+                "matrix_config": {
+                    "inputs": [{"id": "1", "label": "In 1"}],
+                    "outputs": [{"id": "1", "label": "Out 1"}],
+                },
+                "matrix_style": "crosspoint",
+                "bindings": {"show": {"value": {"source": "state", "key": "var.route"}}},
+            },
+            {
+                "id": "led_states_label",
+                "type": "status_led",
+                "label": "Load",
+                "bindings": {
+                    "show": {
+                        "look": {
+                            "source": "state",
+                            "key": "device.acme_amp.channel.01.load_status",
+                            "states": {
+                                "Ok": {"label": "LOAD OK", "bg_color": "#4CAF50"},
+                                "Short": {"label": "SHORT", "bg_color": "#F44336"},
+                            },
+                        },
+                    },
+                },
+            },
+            {
+                "id": "list_default_h",
+                "type": "list",
+                "list_style": "selectable",
+                "item_height": 44,
+            },
+            {
+                "id": "slider_default_thumb",
+                "type": "slider",
+                "min": 0,
+                "max": 100,
+                "step": 1,
+                "thumb_size": 44,
+            },
+        ],
+        [_landscape({
+            "led_a1": _pct_box(1, 1, 1.5, 1.5),
+            "led_a2": _pct_box(3, 1, 1, 1),
+            "led_a3": _pct_box(5, 1, 2.27, 2.5),
+            "led_a4": _pct_box(8, 1, 1.6, 2.5),
+            "led_a5": _pct_box(10, 1, 0.2, 0.2),
+            "grp_tiny": _pct_box(14, 1, 10, 8),
+            "led_b1": _pct_box(5, 10, 15, 25),
+            "led_b2": _pct_box(25, 10, 22.66, 31.25),
+            "ovf_child": _pct_box(80, 60, 60, 80),
+            "grp_strip": _pct_box(26, 1, 4, 70),
+            "fader_strip": _pct_box(5, 2, 90, 60),
+            "meter_strip": _pct_box(5, 64, 20, 10),
+            "sel_strip": _pct_box(5, 76, 80, 5),
+            "btn_strip": _pct_box(5, 82, 95, 5),
+            "keypad_d": _pct_box(31, 1, 3, 10),
+            "matrix_d": _pct_box(35, 1, 8, 8),
+            "list_d": _pct_box(44, 1, 1.5, 4),
+            "list_d2": _pct_box(46, 1, 2.5, 6),
+            "slider_d": _pct_box(49, 1, 3, 6),
+            "txt_d": _pct_box(53, 1, 3, 5),
+            "fader_ok": _pct_box(57, 1, 5.625, 12.5),
+            "btn_tiny": _pct_box(64, 1, 1, 1),
+            "btn_stack_a": _pct_box(66, 1, 6, 8),
+            "btn_stack_b": _pct_box(66, 1, 6, 8),
+            "btn_offpage": _pct_box(150, 120, 10, 10),
+            "btn_negative": _pct_box(-20, -15, 10, 10),
+            "btn_zero_h": _pct_box(75, 1, 20, 0),
+            "cam_tiny": _pct_box(80, 1, 2, 2),
+            "nav_tiny": _pct_box(83, 1, 1.5, 1.5),
+            "gauge_tiny": _pct_box(86, 1, 0.5, 0.5),
+            "clock_tiny": _pct_box(88, 1, 0.5, 0.5),
+            "lbl_bigfont": _pct_box(90, 1, 8, 4),
+            "btn_bad_macro": _pct_box(1, 46, 8, 8),
+            "nav_bad_target": _pct_box(10, 46, 8, 8),
+            "btn_bad_device": _pct_box(19, 46, 8, 8),
+            "btn_bad_command": _pct_box(32, 46, 8, 8),
+            "lbl_bad_state": _pct_box(41, 46, 8, 8),
+            "sel_bad_valuemap": _pct_box(50, 46, 8, 8),
+            "btn_press_as_object": _pct_box(1, 60, 8, 8),
+            "knob_x": _pct_box(32, 60, 8, 8),
+            "btn_value_only": _pct_box(1, 20, 8, 8),
+            "lbl_look_only": _pct_box(10, 20, 8, 8),
+            "grp_value": _pct_box(19, 20, 8, 8),
+            "img_value": _pct_box(32, 20, 8, 8),
+            "keypad_value": _pct_box(41, 20, 8, 28),
+            "meter_look": _pct_box(50, 20, 8, 12),
+            "matrix_value": _pct_box(59, 20, 22, 30),
+            "led_states_label": _pct_box(86, 20, 8, 8),
+            "list_default_h": _pct_box(10, 30, 10, 14),
+            "slider_default_thumb": _pct_box(21, 30, 10, 14),
+        })],
+    ),
+])
+
+
 def _python_findings(project: ProjectConfig) -> list[dict]:
     findings: list[dict] = []
     for page in project.ui.pages:
