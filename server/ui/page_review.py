@@ -183,6 +183,21 @@ class Adjustment:
     message: str
 
 
+@dataclass(frozen=True)
+class Container:
+    """One box in an element's ancestry, as a remedy would have to name it."""
+
+    label: str
+    """How it reads mid-sentence: ``'grp_strip'``, or ``the page`` for the root."""
+
+    width_px: float
+    height_px: float
+
+
+#: The root every chain ends at. It is the one box no remedy can grow.
+PAGE_CONTAINER = Container("the page", REFERENCE_WIDTH_PX, REFERENCE_HEIGHT_PX)
+
+
 def _mapping(element: Any) -> Mapping[str, Any]:
     """A dict view of an element, whether it arrived as a model or a dict."""
     if isinstance(element, Mapping):
@@ -217,12 +232,109 @@ def _box_px(box: Mapping[str, float]) -> tuple[float, float]:
 # --- Geometry findings -----------------------------------------------------
 
 
+def _blocked_axes(
+    box: Any, box_px: tuple[float, float], parent_px: tuple[float, float],
+) -> list[tuple[str, float, float]]:
+    """The starved axes whose floor is larger than the container itself.
+
+    ``(axis, needs_px, has_px)`` per axis. These are the ones with no percentage
+    to write: 100% of the parent is already under the floor, so every remedy
+    phrased against the parent is a number above 100 -- unreachable, and read as
+    nonsense by anyone who tries it. The container is the fault.
+    """
+    blocked = []
+    if box_px[0] + 0.5 < box.width_px and box.width_px > parent_px[0] + 0.5:
+        blocked.append(("width", box.width_px, box_px[0]))
+    if box_px[1] + 0.5 < box.height_px and box.height_px > parent_px[1] + 0.5:
+        blocked.append(("height", box.height_px, box_px[1]))
+    return blocked
+
+
+def _grown(container: Container, axis: str) -> float:
+    return container.width_px if axis == "width" else container.height_px
+
+
+def container_remedy(
+    ancestors: tuple[Container, ...], blocked: list[tuple[str, float, float]],
+) -> tuple[Container, Container, dict[str, float]] | None:
+    """The nearest ancestor that can be grown until every starved axis fits.
+
+    Percentages cascade, so growing one box scales everything beneath it: a
+    fader at 90% of a 51px strip reaches 72px the moment the strip reaches 80px,
+    and no other edit is needed. That is what makes a single number actionable
+    here where ``w at least 140.62%`` was not.
+
+    Walks outward because a container is only growable up to its own parent --
+    when the immediate one is already pinned, the fix is one level further out,
+    and it still lands on the element underneath. Returns the box to grow, the
+    box its percentage is measured against, and the pixels it needs per axis.
+    """
+    if any(has <= 0 for _, _, has in blocked):
+        return None  # a zero box has no share to scale; that is its own finding
+    chain = (*ancestors, PAGE_CONTAINER)
+    for index, ancestor in enumerate(chain[:-1]):
+        parent = chain[index + 1]
+        needs: dict[str, float] = {}
+        for axis, wants, has in blocked:
+            grown = _grown(ancestor, axis) * wants / has
+            if grown > _grown(parent, axis) + 0.5:
+                break
+            needs[axis] = grown
+        else:
+            return ancestor, parent, needs
+    return None
+
+
+def _container_clause(
+    ancestors: tuple[Container, ...], blocked: list[tuple[str, float, float]],
+) -> str:
+    """The remedy for axes no percentage of the parent can reach."""
+    axes = [axis for axis, _, _ in blocked]
+    remedy = container_remedy(ancestors, blocked)
+    if remedy is None:
+        # Nothing in the ancestry has room to grow, so the page itself is the
+        # binding constraint. Said as the ceiling rather than as a percentage,
+        # because there is no percentage that helps.
+        limits = []
+        for axis, wants, has in blocked:
+            outer = _grown(ancestors[-1], axis) if ancestors else has
+            page = _grown(PAGE_CONTAINER, axis)
+            ceiling = has * page / outer if outer > 0 else page
+            word = "widest" if axis == "width" else "tallest"
+            limits.append(
+                f" No placement fits: the {word} this can be drawn on a "
+                f"{page:.0f}px page is {ceiling:.0f}px, and it needs {wants:.0f}px."
+            )
+        return "".join(limits)
+
+    holder, parent, needs = remedy
+    if len(axes) == 2:
+        size = f"{holder.width_px:.0f}x{holder.height_px:.0f}px"
+        word = "size"
+    elif axes[0] == "width":
+        size = f"{holder.width_px:.0f}px wide"
+        word = "width"
+    else:
+        size = f"{holder.height_px:.0f}px tall"
+        word = "height"
+    gives = " and ".join(
+        f"{'w' if axis == 'width' else 'h'} at least "
+        f"{_pct(needs[axis] / _grown(parent, axis) * 100)}%"
+        for axis in axes
+    )
+    return (
+        f" {holder.label} is {size}, too small to hold it at any {word}: "
+        f"give {holder.label} {gives} of {parent.label}."
+    )
+
+
 def starvation_finding(
     element: Mapping[str, Any],
     box_px: tuple[float, float],
     parent_px: tuple[float, float],
     parent_name: str,
     theme: Mapping[str, Any] | None = None,
+    ancestors: tuple[Container, ...] = (),
 ) -> Finding | None:
     """A control smaller than the parts inside it that do not shrink.
 
@@ -231,6 +343,11 @@ def starvation_finding(
     the dot, the handle, the thumb and the key grid are pixels and are not
     negotiable. Below the floor the control still draws -- it just draws with
     its contents cut off, which reads as a styling bug rather than a sizing one.
+
+    The remedy is a percentage of the element's own parent, EXCEPT when the
+    parent is itself too small to hold the floor. Then no percentage exists and
+    ``ancestors`` is what turns the finding back into something actionable, by
+    naming the box that has to grow instead.
     """
     box = minimum_box(element, theme)
     if box is None:
@@ -242,15 +359,18 @@ def starvation_finding(
 
     el_id = str(element.get("id", "?"))
     el_type = str(element.get("type", "?"))
+    blocked = _blocked_axes(box, box_px, parent_px)
+    stuck = {axis for axis, _, _ in blocked}
     percent = minimum_percent(element, parent_px[0], parent_px[1], theme)
     fixes = []
     if percent:
         need_w, need_h = percent
-        if width_px + 0.5 < box.width_px:
+        if width_px + 0.5 < box.width_px and "width" not in stuck:
             fixes.append(f"w at least {_pct(need_w)}%")
-        if height_px + 0.5 < box.height_px:
+        if height_px + 0.5 < box.height_px and "height" not in stuck:
             fixes.append(f"h at least {_pct(need_h)}%")
     fix = f" Give it {' and '.join(fixes)} of {parent_name}." if fixes else ""
+    fix += _container_clause(ancestors, blocked) if blocked else ""
     return Finding(
         el_id,
         "too_small_for_contents",
@@ -641,6 +761,25 @@ def _layout_findings(
         parent_id = parent_of(el_id)
         return f"its container '{parent_id}'" if parent_id else "the page"
 
+    def ancestors_of(el_id: str) -> tuple[Container, ...]:
+        """Every container above this element, innermost first.
+
+        Only reached when a floor is larger than the immediate parent, and only
+        as far as the boxes actually resolve -- a container the arrangement
+        never positions ends the chain rather than guessing a size for it.
+        """
+        chain: list[Container] = []
+        seen = {el_id}
+        cursor = parent_of(el_id)
+        while cursor and cursor not in seen:
+            seen.add(cursor)
+            box = absolute.get(cursor)
+            if box is None:
+                break
+            chain.append(Container(f"'{cursor}'", *_box_px(box)))
+            cursor = parent_of(cursor)
+        return tuple(chain)
+
     for el_id, dump in dumps.items():
         if not in_scope(el_id) or el_id in hidden:
             continue
@@ -653,7 +792,10 @@ def _layout_findings(
             continue
         box_px = _box_px(box)
         candidates = [
-            starvation_finding(dump, box_px, parent_box_px(el_id), parent_name(el_id), theme),
+            starvation_finding(
+                dump, box_px, parent_box_px(el_id), parent_name(el_id), theme,
+                ancestors_of(el_id),
+            ),
             touch_finding(dump, box_px),
         ]
         if own.get(el_id) is not None:

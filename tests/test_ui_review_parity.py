@@ -361,6 +361,37 @@ CASES["masters"] = _project(
     ],
 )
 
+# A floor larger than the box that holds it, which has no remedy expressed as a
+# percentage of that box -- 100% of it is already too small. The container is
+# what has to move, and which container depends on how far up the room is.
+CASES["floor_bigger_than_the_container"] = _project([
+    _page(
+        "main",
+        [
+            # Two levels up: the fader needs 72x100, the group holding it can
+            # only reach 144x200 inside ITS parent, so the fix is the outer one.
+            {"id": "outer", "type": "group"},
+            {"id": "mid", "type": "group", "parent": "outer"},
+            {"id": "deep_fader", "type": "fader", "parent": "mid"},
+            # item_height is rem: 100 is 1400px of row on an 800px page, so no
+            # arrangement of anything can hold it.
+            {"id": "tall_list", "type": "list", "item_height": 100},
+            # A container so small that growing it to the whole page still
+            # leaves the matrix short.
+            {"id": "pinched_box", "type": "group"},
+            {"id": "pinched_matrix", "type": "matrix", "parent": "pinched_box"},
+        ],
+        [_landscape({
+            "outer": _pct_box(0, 0, 10, 10),
+            "mid": _pct_box(0, 0, 50, 50),
+            "deep_fader": _pct_box(0, 0, 50, 50),
+            "tall_list": _pct_box(20, 0, 10, 10),
+            "pinched_box": _pct_box(40, 0, 1, 1),
+            "pinched_matrix": _pct_box(0, 0, 5, 5),
+        })],
+    ),
+])
+
 # A page with no layouts at all, which a hand-built or half-migrated project can
 # reach. Nothing has a box, so geometry says nothing and bindings still answer.
 CASES["no_layouts"] = _project([

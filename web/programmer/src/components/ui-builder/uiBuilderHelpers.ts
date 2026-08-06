@@ -3192,6 +3192,141 @@ function starvedReasons(
   return reasons;
 }
 
+/** One box in an element's ancestry, as a remedy would have to name it. */
+export interface Container {
+  /** How it reads mid-sentence: `'grp_strip'`, or `the page` for the root. */
+  label: string;
+  widthPx: number;
+  heightPx: number;
+}
+
+/** The root every chain ends at. It is the one box no remedy can grow. */
+const PAGE_CONTAINER: Container = {
+  label: "the page",
+  widthPx: TOUCH_REFERENCE.width,
+  heightPx: TOUCH_REFERENCE.height,
+};
+
+/** A starved axis whose floor is larger than the container itself. */
+interface BlockedAxis {
+  axis: "width" | "height";
+  wants: number;
+  has: number;
+}
+
+/**
+ * The starved axes with no percentage to write.
+ *
+ * 100% of the parent is already under the floor, so every remedy phrased against
+ * the parent comes out above 100 -- unreachable, and read as nonsense by anyone
+ * who tries it. The container is the fault.
+ */
+function blockedAxes(
+  box: ControlMinimumBox,
+  boxPx: { width: number; height: number },
+  parentPx: { width: number; height: number },
+): BlockedAxis[] {
+  const blocked: BlockedAxis[] = [];
+  if (boxPx.width + 0.5 < box.widthPx && box.widthPx > parentPx.width + 0.5) {
+    blocked.push({ axis: "width", wants: box.widthPx, has: boxPx.width });
+  }
+  if (boxPx.height + 0.5 < box.heightPx && box.heightPx > parentPx.height + 0.5) {
+    blocked.push({ axis: "height", wants: box.heightPx, has: boxPx.height });
+  }
+  return blocked;
+}
+
+function grown(container: Container, axis: "width" | "height"): number {
+  return axis === "width" ? container.widthPx : container.heightPx;
+}
+
+/**
+ * The nearest ancestor that can be grown until every starved axis fits.
+ *
+ * Percentages cascade, so growing one box scales everything beneath it: a fader
+ * at 90% of a 51px strip reaches 72px the moment the strip reaches 80px, and no
+ * other edit is needed. That is what makes a single number actionable here where
+ * `w at least 140.62%` was not.
+ *
+ * Walks outward because a container is only growable up to its own parent --
+ * when the immediate one is already pinned, the fix is one level further out,
+ * and it still lands on the element underneath.
+ */
+export function containerRemedy(
+  ancestors: Container[],
+  blocked: BlockedAxis[],
+): { holder: Container; parent: Container; needs: Record<string, number> } | null {
+  // A zero box has no share to scale; that is its own finding.
+  if (blocked.some((b) => b.has <= 0)) return null;
+  const chain = [...ancestors, PAGE_CONTAINER];
+  for (let index = 0; index < chain.length - 1; index++) {
+    const holder = chain[index];
+    const parent = chain[index + 1];
+    const needs: Record<string, number> = {};
+    let fits = true;
+    for (const { axis, wants, has } of blocked) {
+      const size = (grown(holder, axis) * wants) / has;
+      if (size > grown(parent, axis) + 0.5) {
+        fits = false;
+        break;
+      }
+      needs[axis] = size;
+    }
+    if (fits) return { holder, parent, needs };
+  }
+  return null;
+}
+
+/** The remedy for axes no percentage of the parent can reach. */
+function containerClause(ancestors: Container[], blocked: BlockedAxis[]): string {
+  const axes = blocked.map((b) => b.axis);
+  const remedy = containerRemedy(ancestors, blocked);
+  if (!remedy) {
+    // Nothing in the ancestry has room to grow, so the page itself is the
+    // binding constraint. Said as the ceiling rather than as a percentage,
+    // because there is no percentage that helps.
+    return blocked
+      .map(({ axis, wants, has }) => {
+        const outer = ancestors.length
+          ? grown(ancestors[ancestors.length - 1], axis)
+          : has;
+        const page = grown(PAGE_CONTAINER, axis);
+        const ceiling = outer > 0 ? (has * page) / outer : page;
+        const word = axis === "width" ? "widest" : "tallest";
+        return (
+          ` No placement fits: the ${word} this can be drawn on a ` +
+          `${fixed(page, 0)}px page is ${fixed(ceiling, 0)}px, and it needs ${fixed(wants, 0)}px.`
+        );
+      })
+      .join("");
+  }
+
+  const { holder, parent, needs } = remedy;
+  let size: string;
+  let word: string;
+  if (axes.length === 2) {
+    size = `${fixed(holder.widthPx, 0)}x${fixed(holder.heightPx, 0)}px`;
+    word = "size";
+  } else if (axes[0] === "width") {
+    size = `${fixed(holder.widthPx, 0)}px wide`;
+    word = "width";
+  } else {
+    size = `${fixed(holder.heightPx, 0)}px tall`;
+    word = "height";
+  }
+  const gives = axes
+    .map(
+      (axis) =>
+        `${axis === "width" ? "w" : "h"} at least ` +
+        `${pct((needs[axis] / grown(parent, axis)) * 100)}%`,
+    )
+    .join(" and ");
+  return (
+    ` ${holder.label} is ${size}, too small to hold it at any ${word}: ` +
+    `give ${holder.label} ${gives} of ${parent.label}.`
+  );
+}
+
 /**
  * A control smaller than the parts inside it that do not shrink.
  *
@@ -3200,6 +3335,11 @@ function starvedReasons(
  * handle, the thumb and the key grid are pixels and are not negotiable. Below
  * the floor the control still draws -- it just draws with its contents cut off,
  * which reads as a styling bug rather than a sizing one.
+ *
+ * The remedy is a percentage of the element's own parent, EXCEPT when the parent
+ * is itself too small to hold the floor. Then no percentage exists and
+ * `ancestors` is what turns the finding back into something actionable, by
+ * naming the box that has to grow instead.
  */
 export function starvationFinding(
   el: UIElement,
@@ -3207,19 +3347,27 @@ export function starvationFinding(
   parentPx: { width: number; height: number },
   parentName: string,
   theme?: ElementDefaults,
+  ancestors: Container[] = [],
 ): ReviewFinding | null {
   const box = controlMinimumBox(el, theme);
   if (!box) return null;
   const reasons = starvedReasons(box, boxPx.width, boxPx.height);
   if (!reasons.length) return null;
 
+  const blocked = blockedAxes(box, boxPx, parentPx);
+  const stuck = new Set(blocked.map((b) => b.axis));
   const need = controlMinimumPercent(el, parentPx, theme);
   const fixes: string[] = [];
   if (need) {
-    if (boxPx.width + 0.5 < box.widthPx) fixes.push(`w at least ${pct(need.w)}%`);
-    if (boxPx.height + 0.5 < box.heightPx) fixes.push(`h at least ${pct(need.h)}%`);
+    if (boxPx.width + 0.5 < box.widthPx && !stuck.has("width")) {
+      fixes.push(`w at least ${pct(need.w)}%`);
+    }
+    if (boxPx.height + 0.5 < box.heightPx && !stuck.has("height")) {
+      fixes.push(`h at least ${pct(need.h)}%`);
+    }
   }
-  const fix = fixes.length ? ` Give it ${fixes.join(" and ")} of ${parentName}.` : "";
+  let fix = fixes.length ? ` Give it ${fixes.join(" and ")} of ${parentName}.` : "";
+  if (blocked.length) fix += containerClause(ancestors, blocked);
   return {
     elementId: el.id,
     kind: "too_small_for_contents",
@@ -3531,6 +3679,28 @@ function layoutFindings(
     const parent = parentOf(id);
     return parent ? `its container '${parent}'` : "the page";
   };
+  /** Every container above this element, innermost first.
+   *
+   *  Only reached when a floor is larger than the immediate parent, and only as
+   *  far as the boxes actually resolve -- a container the arrangement never
+   *  positions ends the chain rather than guessing a size for it. */
+  const ancestorsOf = (id: string): Container[] => {
+    const chain: Container[] = [];
+    const seen = new Set<string>([id]);
+    let cursor = parentOf(id);
+    while (cursor && !seen.has(cursor)) {
+      seen.add(cursor);
+      const box = own(absolute, cursor);
+      if (!box) break;
+      chain.push({
+        label: `'${cursor}'`,
+        widthPx: (box.w / 100) * TOUCH_REFERENCE.width,
+        heightPx: (box.h / 100) * TOUCH_REFERENCE.height,
+      });
+      cursor = parentOf(cursor);
+    }
+    return chain;
+  };
 
   for (const el of page.elements) {
     if (!ctx.inScope(el.id) || hidden.has(el.id)) continue;
@@ -3547,7 +3717,7 @@ function layoutFindings(
       height: (box.h / 100) * TOUCH_REFERENCE.height,
     };
     const candidates = [
-      starvationFinding(el, boxPx, parentPx, parentName(el.id), ctx.theme),
+      starvationFinding(el, boxPx, parentPx, parentName(el.id), ctx.theme, ancestorsOf(el.id)),
       touchFinding(el, boxPx),
     ];
     const stored = own(ownBoxes, el.id);
