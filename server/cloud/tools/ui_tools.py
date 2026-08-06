@@ -3,6 +3,17 @@
 from typing import Any
 
 from server.cloud.tools import ToolEditError, apply_tool_edit
+from server.ui.page_geometry import (
+    PAGE_BOX,
+    absolute_placements,
+    layout_chain,
+    primary_layout,
+    resolved_placements,
+)
+from server.ui.page_review import review_master_element, review_page
+from server.utils.logger import get_logger
+
+log = get_logger(__name__)
 
 # State-change sources a simulated UI action can never itself produce. They're
 # excluded from _simulate_ui_action's captured effects so concurrent event-loop
@@ -25,9 +36,6 @@ _RETIRED_GEOMETRY = {
     "grid": "layouts[] with placements, plus the authoring-only snap increment",
     "grid_gap": "nothing -- pages no longer have a gap",
 }
-
-# The whole page, as a box. What a page-level element's percentages are of.
-_PAGE_BOX = {"x": 0.0, "y": 0.0, "w": 100.0, "h": 100.0}
 
 
 def _rounded_placement(box: Any) -> Any:
@@ -109,22 +117,10 @@ def _validate_parent(page: Any, element_id: str, new_parent_id: str) -> None:
         })
 
 
-def _primary_layout(page: Any) -> Any:
-    """The layout a geometry edit lands in when the caller names no other.
-
-    The loader guarantees a page has exactly one primary, so this always finds
-    something; the fallback only exists for a page built by hand in a test.
-    """
-    for layout in page.layouts:
-        if layout.primary:
-            return layout
-    return page.layouts[0]
-
-
 def _resolve_layout(page: Any, layout_id: Any) -> Any:
     """The named arrangement, or the primary when none is named."""
     if not layout_id:
-        return _primary_layout(page)
+        return primary_layout(page)
     for layout in page.layouts:
         if layout.id == layout_id:
             return layout
@@ -132,72 +128,6 @@ def _resolve_layout(page: Any, layout_id: Any) -> Any:
         "error": f"Layout '{layout_id}' not found on page '{page.id}'. "
                  f"Available: {', '.join(lay.id for lay in page.layouts)}"
     })
-
-
-def _layout_chain(page: Any, layout_id: str) -> list:
-    """The layouts feeding a chosen one, base first.
-
-    A variant stores only what moved, so reading its geometry means folding in
-    whatever it inherits. The seen-set is a cycle guard: a hand-edited project
-    can point two layouts at each other and every reader still has to answer.
-    Mirrors the panel runtime's `_selectLayout` and the builder's `layoutChain`.
-    """
-    by_id = {lay.id: lay for lay in page.layouts}
-    chain: list = []
-    seen: set[str] = set()
-    cursor = by_id.get(layout_id)
-    while cursor is not None and cursor.id not in seen:
-        seen.add(cursor.id)
-        chain.insert(0, cursor)
-        cursor = by_id.get(cursor.inherits) if cursor.inherits else None
-    return chain
-
-
-def _resolved_placements(page: Any, layout_id: str) -> dict:
-    """One arrangement's boxes with its inherits chain folded down."""
-    placements: dict = {}
-    for layout in _layout_chain(page, layout_id):
-        placements.update(layout.placements)
-    return placements
-
-
-def _absolute_placements(page: Any, layout_id: str) -> dict:
-    """Every element's box in PAGE percentages, container nesting flattened.
-
-    A child's stored percentages are of its container, so boxes under different
-    parents cannot be compared -- 20% wide means two different widths on screen.
-    Anything that has to reason about where things actually sit works here and
-    converts back on the way out.
-    """
-    placements = _resolved_placements(page, layout_id)
-    by_id = {el.id: el for el in page.elements}
-    out: dict = {}
-
-    def resolve(el_id: str, seen: frozenset) -> dict | None:
-        if el_id in out:
-            return out[el_id]
-        place = placements.get(el_id)
-        if place is None:
-            return None
-        named = getattr(by_id.get(el_id), "parent", None)
-        # A parent that is missing, self-referential or already on the chain is
-        # treated as no parent -- a hand-edited project still has to draw.
-        parent_id = named if (named and named != el_id and named in by_id and named not in seen) else None
-        if not parent_id:
-            out[el_id] = {"x": place.x, "y": place.y, "w": place.w, "h": place.h}
-            return out[el_id]
-        base = resolve(parent_id, seen | {parent_id})
-        out[el_id] = {
-            "x": base["x"] + (place.x / 100) * base["w"],
-            "y": base["y"] + (place.y / 100) * base["h"],
-            "w": (place.w / 100) * base["w"],
-            "h": (place.h / 100) * base["h"],
-        } if base else {"x": place.x, "y": place.y, "w": place.w, "h": place.h}
-        return out[el_id]
-
-    for el in page.elements:
-        resolve(el.id, frozenset([el.id]))
-    return out
 
 
 def _reparent_element(page: Any, element_id: str, new_parent_id: str | None) -> None:
@@ -218,11 +148,11 @@ def _reparent_element(page: Any, element_id: str, new_parent_id: str | None) -> 
     if new_parent_id is not None:
         _validate_parent(page, element_id, new_parent_id)
 
-    primary_id = _primary_layout(page).id
+    primary_id = primary_layout(page).id
     rewritten: list[tuple[Any, dict]] = []
     for layout in page.layouts:
-        absolute = _absolute_placements(page, layout.id)
-        base = absolute.get(new_parent_id) if new_parent_id else dict(_PAGE_BOX)
+        absolute = absolute_placements(page, layout.id)
+        base = absolute.get(new_parent_id) if new_parent_id else dict(PAGE_BOX)
         if not base or base["w"] <= 0 or base["h"] <= 0:
             continue
         # A variant only gets a delta if it already had one; inventing entries
@@ -298,7 +228,7 @@ def _apply_layouts(page: Any, layouts_input: Any) -> None:
         raise ToolEditError({"error": "'layouts' must be an array of layout objects"})
 
     by_id = {lay.id: lay for lay in page.layouts}
-    primary_id = _primary_layout(page).id
+    primary_id = primary_layout(page).id
 
     def check_inherits(layout_id: str, target: Any) -> None:
         # A dangling inherits does not error anywhere downstream -- the variant
@@ -386,6 +316,100 @@ def _apply_layouts(page: Any, layouts_input: Any) -> None:
     page.layouts = normalize_primary_layout(page.layouts)
 
 
+def _declared_state_variable(devices: Any, device_ids: list[str], key: str) -> dict | None:
+    """What the driver declares about the state variable behind a bound key.
+
+    The Builder answers this from the device schema it has already fetched, and
+    offers a human a "Match driver range" button. Nothing answered it on this
+    side, which is why a dB fader shipped with no upper bound: the driver states
+    ``max: 0`` and the write path never looked.
+
+    Handles both key shapes -- ``device.<id>.<prop>`` and the child-entity
+    ``device.<id>.<type>.<local_id>.<prop>`` -- and resolves the device by
+    longest matching id rather than by splitting on dots, because a device id
+    may contain them and a child key looks exactly like a nested one.
+
+    Never raises: this is advisory, and no failure to answer it may cost a UI
+    write. An unknown key, a disabled device, a driver with no schema all mean
+    "no opinion".
+    """
+    if devices is None or not isinstance(key, str) or not key.startswith("device."):
+        return None
+    try:
+        for device_id in device_ids:
+            prefix = f"device.{device_id}."
+            if not key.startswith(prefix):
+                continue
+            driver = devices.get_driver(device_id)
+            if driver is None:
+                return None
+            info = getattr(driver, "DRIVER_INFO", None) or {}
+            rest = key[len(prefix):]
+            declared = info.get("state_variables") or {}
+            entry = declared.get(rest)
+            if isinstance(entry, dict):
+                return entry
+            parts = rest.split(".")
+            if len(parts) < 3:
+                return None
+            child_type, raw_id, prop = parts[0], parts[1], ".".join(parts[2:])
+            type_def = (info.get("child_entity_types") or {}).get(child_type)
+            if not isinstance(type_def, dict):
+                return None
+            # A dynamic child type carries its schema per instance, so ask the
+            # driver for that child first and fall back to the type-level one.
+            from server.drivers.child_ids import coerce_child_local_id
+
+            schema: dict = {}
+            local_id = coerce_child_local_id(type_def, raw_id)
+            if local_id is not None and hasattr(driver, "get_child_schema"):
+                schema = driver.get_child_schema(child_type, local_id) or {}
+            if prop not in schema:
+                schema = type_def.get("state_variables") or {}
+            entry = schema.get(prop)
+            return entry if isinstance(entry, dict) else None
+    except Exception:  # pragma: no cover - defensive; advisory path only
+        log.debug("Could not resolve a declared range for '%s'", key, exc_info=True)
+    return None
+
+
+def _theme_defaults(project: Any, element_type: str) -> dict | None:
+    """The project's own theme overrides for one element type.
+
+    Only one control minimum moves with the theme (a slider's thumb), and only
+    ``thumb_size`` in ``element_defaults`` moves it. A custom theme FILE that
+    changed it would not be seen here -- reading it would mean disk access on a
+    write path -- but every built-in theme ships the 44px default, so the
+    override in the project is the case that can actually differ.
+    """
+    try:
+        overrides = project.ui.settings.theme_overrides or {}
+        defaults = (overrides.get("element_defaults") or {}).get(element_type)
+        return defaults if isinstance(defaults, dict) else None
+    except Exception:  # pragma: no cover - defensive
+        return None
+
+
+#: What the warnings are for, said once per reply that carries any. It lives
+#: here rather than in the standing prompt because a rule is only worth its
+#: tokens at the moment it is broken.
+_WARNING_NOTE = (
+    "The write landed -- these are warnings, not failures. Each one names the element, "
+    "what will draw wrong, and the number to change. Fix them before reporting this "
+    "page finished."
+)
+
+
+def _with_findings(result: dict, findings: list, adjustments: list) -> dict:
+    """Hand the caller its own mistakes back, in the reply it is already reading."""
+    if adjustments:
+        result["auto_filled"] = [a.message for a in adjustments]
+    if findings:
+        result["warnings"] = [f.message for f in findings]
+        result["warning_note"] = _WARNING_NOTE
+    return result
+
+
 def _merge_forward_compat(existing: Any, model_cls: type, partial: dict) -> Any:
     """Apply a partial update to a forward-compat (extra='allow') sub-model.
 
@@ -400,6 +424,42 @@ def _merge_forward_compat(existing: Any, model_cls: type, partial: dict) -> Any:
 
 class UIToolsMixin:
     """UI page CRUD, element management, master elements, and action simulation."""
+
+    def _review_write(
+        self, project: Any, page: Any, touched: set[str], *, ranges: bool = True,
+    ) -> tuple[list, list]:
+        """Measure what a write just did to a page, and fix what is unambiguous.
+
+        Runs inside the mutate, so the fills land in the project being written
+        and the findings describe what actually got stored rather than what was
+        asked for. Scoped to ``touched``: a call answers for the elements it
+        wrote, not for everything already on the page.
+
+        ``ranges=False`` for an edit that says nothing about a control's range
+        -- filling in a bound the caller did not mention would be a surprise on
+        an unrelated update, and D2 is that auto-fill happens only where no
+        intent was expressed.
+        """
+        device_ids = sorted((d.id for d in project.devices), key=len, reverse=True)
+        cache: dict[str, dict | None] = {}
+
+        def declared_range(key: str) -> dict | None:
+            if key not in cache:
+                cache[key] = _declared_state_variable(self._devices, device_ids, key)
+            return cache[key]
+
+        findings, adjustments = review_page(
+            page,
+            touched=touched,
+            theme=_theme_defaults(project, "slider"),
+            declared_range=declared_range if ranges else None,
+        )
+        if findings:
+            log.info(
+                "AI UI write on page '%s': %d element(s) reviewed, %d warning(s), %d filled in",
+                getattr(page, "id", "?"), len(touched), len(findings), len(adjustments),
+            )
+        return findings, adjustments
 
     async def _get_ui_page(self, input: dict) -> Any:
         engine = self._get_engine()
@@ -423,6 +483,8 @@ class UIToolsMixin:
         from server.cloud.ai_tool_handler import _normalize_bindings, _validate_bindings
         from server.core.project_loader import UIPage
         elements = input.get("elements", [])
+        findings: list = []
+        adjustments: list = []
 
         def mutate(project):
             if any(p.id == page_id for p in project.ui.pages):
@@ -457,18 +519,23 @@ class UIToolsMixin:
             # Elements are shared by every arrangement; their boxes are not, so
             # a new control's box belongs in the primary -- the one every other
             # layout inherits from.
-            primary = _primary_layout(new_page)
+            primary = primary_layout(new_page)
             for el_id, box in boxes.items():
                 primary.placements[el_id] = _rounded_placement(box)
             # A UI-only change just swaps the project and pushes the new
             # ui.definition to connected panels.
             project.ui.pages.append(new_page)
+            found, filled = self._review_write(
+                project, new_page, {el.id for el in new_page.elements},
+            )
+            findings.extend(found)
+            adjustments.extend(filled)
 
         err = await apply_tool_edit(engine, mutate)
         if err:
             return err
 
-        return {"status": "created", "id": page_id}
+        return _with_findings({"status": "created", "id": page_id}, findings, adjustments)
 
     async def _update_ui_page(self, input: dict) -> Any:
         engine = self._get_engine()
@@ -477,6 +544,8 @@ class UIToolsMixin:
 
         page_id = input.get("page_id", "")
         changed = []
+        findings: list = []
+        adjustments: list = []
 
         def mutate(project):
             page = None
@@ -515,11 +584,28 @@ class UIToolsMixin:
             if not changed:
                 raise ToolEditError({"error": "No fields to update"})
 
+            # Only a layouts edit moves anything, and it answers for the boxes
+            # it named -- a rename or a background swap has no geometry to
+            # measure. Nothing here expresses a range, so no auto-fill.
+            moved = {
+                el_id
+                for entry in (input.get("layouts") or [])
+                if isinstance(entry, dict)
+                for el_id in (entry.get("placements") or {})
+            } if "layouts" in input else set()
+            if moved:
+                found, filled = self._review_write(project, page, moved, ranges=False)
+                findings.extend(found)
+                adjustments.extend(filled)
+
         err = await apply_tool_edit(engine, mutate)
         if err:
             return err
 
-        return {"status": "updated", "page_id": page_id, "changed": changed}
+        return _with_findings(
+            {"status": "updated", "page_id": page_id, "changed": changed},
+            findings, adjustments,
+        )
 
     async def _delete_ui_page(self, input: dict) -> Any:
         engine = self._get_engine()
@@ -594,6 +680,8 @@ class UIToolsMixin:
 
         from server.cloud.ai_tool_handler import _normalize_bindings, _validate_bindings
         from server.core.project_loader import UIElement
+        findings: list = []
+        adjustments: list = []
 
         def mutate(project):
             page = None
@@ -614,7 +702,7 @@ class UIToolsMixin:
             # A new control exists in every arrangement the moment it exists at
             # all, so its box goes in the primary -- write it into a variant and
             # it would have no box anywhere else.
-            primary = _primary_layout(page)
+            primary = primary_layout(page)
             for el_data in elements:
                 el_id = el_data.get("id", "?")
                 place = _take_placement(el_data, f"Element '{el_id}'")
@@ -641,12 +729,21 @@ class UIToolsMixin:
                 if place is not None:
                     primary.placements[element.id] = _rounded_placement(place)
 
+            found, filled = self._review_write(
+                project, page, {el.get("id", "") for el in elements},
+            )
+            findings.extend(found)
+            adjustments.extend(filled)
+
         err = await apply_tool_edit(engine, mutate)
         if err:
             return err
 
         added_ids = [el.get("id", "") for el in elements]
-        return {"status": "created", "page_id": page_id, "element_ids": added_ids}
+        return _with_findings(
+            {"status": "created", "page_id": page_id, "element_ids": added_ids},
+            findings, adjustments,
+        )
 
     async def _update_ui_element(self, input: dict) -> Any:
         engine = self._get_engine()
@@ -654,6 +751,14 @@ class UIToolsMixin:
             return {"error": "No project loaded"}
 
         element_id = input.get("element_id", "")
+        findings: list = []
+        adjustments: list = []
+        # An edit that says nothing about a control's range gets no auto-fill:
+        # completing a bound the caller never mentioned would be a surprise
+        # mutation on an unrelated update.
+        touches_range = any(
+            field in input for field in ("bindings", "min", "max", "step", "unit")
+        )
 
         def mutate(project):
             # Find the element across all pages
@@ -715,7 +820,7 @@ class UIToolsMixin:
                 # the page's layout, not the element. Runs after any reparent,
                 # so the stated box overrides the conversion in the resolved
                 # layout and the other arrangements keep the converted one.
-                existing = _resolved_placements(target_page, layout.id).get(target_el.id, Placement())
+                existing = resolved_placements(target_page, layout.id).get(target_el.id, Placement())
                 layout.placements[target_el.id] = _rounded_placement(_merge_forward_compat(
                     existing, Placement, input["placement"],
                 ))
@@ -731,7 +836,7 @@ class UIToolsMixin:
                     # variant can add a hide but never take back an inherited
                     # one. Say which layout it came from rather than accept an
                     # edit that changes nothing.
-                    for ancestor in _layout_chain(target_page, layout.id):
+                    for ancestor in layout_chain(target_page, layout.id):
                         if ancestor.id != layout.id and element_id in ancestor.hidden:
                             raise ToolEditError({
                                 "error": f"Element '{element_id}' is hidden by layout "
@@ -746,11 +851,19 @@ class UIToolsMixin:
             if "bindings" in input:
                 target_el.bindings = bindings
 
+            found, filled = self._review_write(
+                project, target_page, {element_id}, ranges=touches_range,
+            )
+            findings.extend(found)
+            adjustments.extend(filled)
+
         err = await apply_tool_edit(engine, mutate)
         if err:
             return err
 
-        return {"status": "updated", "element_id": element_id}
+        return _with_findings(
+            {"status": "updated", "element_id": element_id}, findings, adjustments,
+        )
 
     async def _delete_ui_elements(self, input: dict) -> Any:
         engine = self._get_engine()
@@ -816,6 +929,7 @@ class UIToolsMixin:
         from server.core.project_loader import MasterElement
         el_data = {k: v for k, v in input.items() if k != "id"}
         el_data["id"] = element_id
+        findings: list = []
 
         def mutate(project):
             # A master is valid on every page it appears on, so its box is a
@@ -848,12 +962,15 @@ class UIToolsMixin:
                 }
             new_el = MasterElement(**el_data)
             project.ui.master_elements.append(new_el)
+            findings.extend(review_master_element(
+                new_el, _theme_defaults(project, "slider"),
+            ))
 
         err = await apply_tool_edit(engine, mutate)
         if err:
             return err
 
-        return {"status": "created", "id": element_id}
+        return _with_findings({"status": "created", "id": element_id}, findings, [])
 
     async def _delete_master_element(self, input: dict) -> Any:
         engine = self._get_engine()
