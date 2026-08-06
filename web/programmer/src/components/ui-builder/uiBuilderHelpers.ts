@@ -3081,14 +3081,17 @@ function own<T>(table: Record<string, T>, key: string): T | undefined {
 
 /** Whether this element draws text beside its control.
  *
- *  A bound value counts: the caption is rendered either way, and an empty
- *  string today becomes a device name at runtime. */
+ *  Only `label` does. The single type with a caption bonus is `status_led`, and
+ *  panel.js builds its `.led-label` under `if (element.label)` and from nothing
+ *  else -- the same thing HONORED_SHOW_SLOTS records (a status LED renders
+ *  `show.look`, not `show.value`).
+ *
+ *  This used to count a bound `show.value` too. It is not rendered: the review
+ *  would widen the floor by 9px to hold text that never draws, while separately
+ *  warning that the same binding is inert. Mirrors `_has_caption` in
+ *  server/ui/control_minimums.py. */
 function hasCaption(el: UIElement): boolean {
-  if ((el.label ?? "").trim()) return true;
-  const show = ((el.bindings ?? {}) as Record<string, unknown>).show as
-    | Record<string, unknown>
-    | undefined;
-  return !!(show?.text || show?.value);
+  return !!(el.label ?? "").trim();
 }
 
 /** Resolve an authored internal: element wins, then theme, then the default. */

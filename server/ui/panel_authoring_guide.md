@@ -44,8 +44,9 @@ the container instead when the element sits in one.
 
 The dot is the same either way. A caption adds the gap plus a sliver of text, so
 the box has to widen before any of the caption is legible -- how much more than
-that is content, not a floor. A bound `show.value` counts as a caption: it
-renders the same way, and an empty string today is a device name at runtime.
+that is content, not a floor. Only `label` draws it: a status LED renders
+`show.look` and nothing else, so binding `show.value` neither puts text on
+screen nor widens this floor.
 
 | status_led | Smallest box | Of a full page |
 |---|---|---|
@@ -58,10 +59,17 @@ These have no single floor, because the part that does not shrink is one you can
 set. The floor is a formula; the numbers in the last column are what the default
 produces. Work the formula out with your own value if you set one.
 
+**The size you write is in `rem`, not pixels** -- px / 14, like every other
+measurement on an element. The Default column gives both forms: copy the **rem**
+number. Writing the pixel number instead means that many rem, which is 14
+times too big and produces a floor larger than the page. The formulas are in
+pixels because that is what the control is measured in, so multiply your
+authored value by 14 before working one out.
+
 | Type | Floor | Authored by | Default | Of a full page at the default |
 |---|---|---|---|---|
-| slider | 24 + thumb_size wide, 37 + thumb_size tall | `thumb_size` on the element or the theme | thumb_size 44px, so 68 x 81 px | 5.31% x 10.12% |
-| list | 28 wide, 33 + item_height tall | `item_height` on the element | item_height 44px, so 28 x 77 px | 2.19% x 9.62% |
+| slider | 24 + thumb_size wide, 37 + thumb_size tall | `thumb_size` on the element or the theme | thumb_size `3.14` rem (renders 44px), so 68 x 81 px | 5.31% x 10.12% |
+| list | 28 wide, 33 + item_height tall | `item_height` on the element | item_height `3.14` rem (renders 44px), so 28 x 77 px | 2.19% x 9.62% |
 
 ## Per-type notes
 

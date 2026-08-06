@@ -79,7 +79,13 @@ def test_the_same_led_without_a_caption_is_left_alone():
     assert findings == []
 
 
-def test_a_bound_value_counts_as_a_caption():
+def test_a_bound_value_is_not_a_caption_and_only_warns_that_it_is_inert():
+    """The two checks used to contradict each other on the same element.
+
+    A 28px LED with a bound show.value was told it needed 29px for a caption AND
+    that the binding drawing that caption has no effect. Only the second is
+    true, so the box is fine at 28px and one finding comes back, not two.
+    """
     page = _page(
         [UIElement(id="led", type="status_led", bindings={
             "show": {"value": {"key": "device.acme_widget.status"}},
@@ -87,7 +93,8 @@ def test_a_bound_value_counts_as_a_caption():
         {"led": _box(0, 0, 28, 44)},
     )
     findings, _ = review_page(page)
-    assert _of_kind(findings, "too_small_for_contents")
+    assert not _of_kind(findings, "too_small_for_contents")
+    assert _of_kind(findings, "binding_not_rendered")
 
 
 def test_a_fader_narrower_than_its_handle_and_scale_names_both():

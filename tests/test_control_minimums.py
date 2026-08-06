@@ -49,12 +49,21 @@ def test_a_caption_raises_the_status_led_floor() -> None:
     assert (labelled.width_px, labelled.height_px) == (29, 20)
 
 
-def test_a_bound_caption_counts_as_a_caption() -> None:
-    """An empty label today is a device name at runtime, so it still needs room."""
-    bound = minimum_box(
-        {"type": "status_led", "bindings": {"show": {"text": {"key": "device.x.name"}}}}
-    )
-    assert bound.width_px == 29
+def test_a_bound_value_is_not_a_caption() -> None:
+    """A status LED renders show.look and nothing else, so no text appears.
+
+    This used to assert the opposite -- that a bound value "is a device name at
+    runtime, so it still needs room". It is not rendered at all: panel.js builds
+    .led-label under `if (element.label)`, which is what HONORED_SHOW_SLOTS
+    records and what Phase 7 confirmed in a real browser. Widening the floor for
+    it demanded 9px for text that never draws, while the review separately
+    warned the same binding was inert.
+    """
+    for slot in ("value", "text"):  # `text` is not even a slot in the model
+        bound = minimum_box(
+            {"type": "status_led", "bindings": {"show": {slot: {"key": "device.x.name"}}}}
+        )
+        assert bound.width_px == 20, f"show.{slot} must not widen the floor"
 
 
 @pytest.mark.parametrize("thumb_px", [44.0, 66.0, 88.0])

@@ -41,6 +41,7 @@ from pathlib import Path
 from server.ui.control_minimums import (
     REFERENCE_HEIGHT_PX,
     REFERENCE_WIDTH_PX,
+    REM_BASE_PX,
     RULES,
     minimum_box,
     minimum_percent,
@@ -64,6 +65,16 @@ _SLOT_ORDER = ("value", "look", "items")
 def _px(value: float) -> str:
     """A pixel number without a trailing .0 on whole numbers."""
     return f"{value:.0f}" if float(value).is_integer() else f"{value:g}"
+
+
+def _rem(px: float) -> str:
+    """A pixel size as the rem the author actually writes.
+
+    The trap this exists for: the guide used to quote these defaults in pixels
+    only, so copying `44` produced 44 rem -- a 616px floor and a list row told to
+    take 81% of the page.
+    """
+    return f"{px / REM_BASE_PX:.2f}"
 
 
 def _pct(value: float) -> str:
@@ -148,8 +159,9 @@ CAPTION_INTRO = """\
 
 The dot is the same either way. A caption adds the gap plus a sliver of text, so
 the box has to widen before any of the caption is legible -- how much more than
-that is content, not a floor. A bound `show.value` counts as a caption: it
-renders the same way, and an empty string today is a device name at runtime.
+that is content, not a floor. Only `label` draws it: a status LED renders
+`show.look` and nothing else, so binding `show.value` neither puts text on
+screen nor widens this floor.
 
 | status_led | Smallest box | Of a full page |
 |---|---|---|
@@ -162,6 +174,13 @@ SCALED_INTRO = """\
 These have no single floor, because the part that does not shrink is one you can
 set. The floor is a formula; the numbers in the last column are what the default
 produces. Work the formula out with your own value if you set one.
+
+**The size you write is in `rem`, not pixels** -- px / %(rem)s, like every other
+measurement on an element. The Default column gives both forms: copy the **rem**
+number. Writing the pixel number instead means that many rem, which is %(rem)s
+times too big and produces a floor larger than the page. The formulas are in
+pixels because that is what the control is measured in, so multiply your
+authored value by %(rem)s before working one out.
 
 | Type | Floor | Authored by | Default | Of a full page at the default |
 |---|---|---|---|---|
@@ -299,7 +318,8 @@ def _scaled_rows() -> str:
         element = {"type": name}
         rows.append(
             f"| {name} | {width} wide, {height} tall | {authored} | "
-            f"{scale.property} {_px(scale.default_px)}px, so {_box(element)} px | "
+            f"{scale.property} `{_rem(scale.default_px)}` rem "
+            f"(renders {_px(scale.default_px)}px), so {_box(element)} px | "
             f"{_pct_pair(element)} |"
         )
     return "\n".join(rows) + "\n"
@@ -388,7 +408,7 @@ def render() -> str:
         _fixed_rows(),
         CAPTION_INTRO,
         _caption_rows(),
-        SCALED_INTRO,
+        SCALED_INTRO % {"rem": _px(REM_BASE_PX)},
         _scaled_rows(),
         NOTES_INTRO,
         _note_rows(),

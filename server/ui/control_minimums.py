@@ -128,13 +128,20 @@ _CONTROL = FixedInternal("native control", None, 30, "font-driven", "panel-eleme
 def _has_caption(element: Mapping[str, Any]) -> bool:
     """Whether this element draws text beside its control.
 
-    A bound value counts: the caption is rendered either way, and an empty
-    string today becomes a device name at runtime.
+    Only ``label`` does. The single type with a caption bonus is ``status_led``,
+    and ``panel.js`` builds its ``.led-label`` under ``if (element.label)`` and
+    from nothing else -- which is the same thing ``HONORED_SHOW_SLOTS`` already
+    records (a status LED renders ``show.look``, not ``show.value``) and what
+    Phase 7 confirmed by execution in a real browser.
+
+    This used to count a bound ``show.value`` too, on the reasoning that the
+    caption "is rendered either way". It is not: the review would widen the
+    floor by 9px to hold text the renderer never draws, while separately warning
+    that the very same binding is inert. It also honoured ``show.text``, which
+    is not a slot in the binding model at all (``value``, ``look``, ``items``,
+    ``visible_when``) -- a guard on a field the schema cannot express.
     """
-    if (element.get("label") or "").strip():
-        return True
-    show = (element.get("bindings") or {}).get("show") or {}
-    return bool(show.get("text") or show.get("value"))
+    return bool((element.get("label") or "").strip())
 
 
 @dataclass(frozen=True)
