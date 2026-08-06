@@ -1,0 +1,340 @@
+"""The recorded per-control minimums must still be true, and still be tight.
+
+``server/ui/control_minimums.py`` says how small each control can be drawn.
+Those numbers were measured rather than derived, which means nothing about the
+source code keeps them honest -- edit a padding value in ``panel-elements.css``
+and they are quietly wrong, with no test anywhere going red. That is exactly
+how the table this replaced came to contain numbers that were never true.
+
+So this renders every control at its recorded minimum, in a real browser, with
+the real ``panel.js`` and the real stylesheets, and checks two things:
+
+  fits    at the recorded size, every fixed internal still holds its size and
+          stays inside the box. If this fails the minimum is too small and the
+          control is being drawn broken.
+  tight   at one pixel less, on each axis, something fails. If this fails the
+          minimum is too big -- which sounds harmless and is not: an inflated
+          floor makes the Builder and the AI reject layouts that would have
+          rendered perfectly well, and there is no signal anywhere that the
+          number drifted.
+
+A real browser is required. jsdom cannot answer this at all: it has no layout
+engine, so every box measures zero and every assertion below passes vacuously.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from server.ui.control_minimums import TYPES_WITH_MINIMUMS, minimum_box
+
+playwright_api = pytest.importorskip("playwright.sync_api")
+
+OPENAVC_ROOT = Path(__file__).resolve().parents[2]
+PANEL_DIR = OPENAVC_ROOT / "web" / "panel"
+
+REF_W, REF_H = 1280, 800
+
+# A representative element per type. Deliberately minimal: this measures the
+# control's own fixed parts, not how long a caption someone typed.
+SPECIMENS: dict[str, dict] = {
+    "status_led": {"label": "On"},
+    "fader": {"label": "Ch", "min": -80, "max": 10},
+    "slider": {"label": "Vol", "min": 0, "max": 100},
+    "keypad": {"label": "PIN"},
+    "matrix": {"label": "Route", "matrix_config": {"inputs": 2, "outputs": 2}},
+    "list": {"label": "Presets", "options": [{"value": "a", "label": "A"}]},
+    "select": {"label": "Src", "options": [{"value": "a", "label": "A"}]},
+    "text_input": {"label": "Name"},
+    "level_meter": {"label": "L", "min": -60, "max": 0},
+}
+
+# Per-type assertions. Each names the parts that must keep their size.
+#
+# There is no generic version of this and two were tried. Asking the root
+# whether it overflowed cannot work: the flex items carry `min-height: 0`
+# (panel-elements.css:676, :849), so a starved control COLLAPSES rather than
+# overflowing and reports scrollHeight == clientHeight while being unusable.
+# Checking every child against its own parent cannot work either: a zero-width
+# slider fill at value 0, an <option> with no box, and SVG internals are all
+# legitimately zero, and a 44px thumb on a 6px track legitimately overhangs.
+ASSERT_JS = r"""
+([type, extra, w, h]) => {
+  const TOL = 0.01;
+  const app = window.__openavcPanel;
+  const box = document.getElementById('box');
+  box.innerHTML = '';
+  box.style.width = w + 'px';
+  box.style.height = h + 'px';
+  let node;
+  try { node = app.renderElement(Object.assign({ id: 'probe', type }, extra)); }
+  catch (e) { return { ok: false, reason: 'render threw: ' + e }; }
+  if (!node) return { ok: false, reason: 'renderElement returned null' };
+  node.classList.add('panel-element');
+  node.style.position = 'absolute';
+  node.style.left = '0px'; node.style.top = '0px';
+  node.style.width = '100%'; node.style.height = '100%';
+  box.appendChild(node);
+  void node.offsetWidth;
+
+  const R = (el) => el.getBoundingClientRect();
+  const q = (s) => node.querySelector(s);
+  const qa = (s) => Array.from(node.querySelectorAll(s));
+  const outer = R(node);
+  const inside = (el) => {
+    const r = R(el);
+    return r.left >= outer.left - TOL && r.top >= outer.top - TOL &&
+           r.right <= outer.right + TOL && r.bottom <= outer.bottom + TOL;
+  };
+  const bad = (reason) => ({ ok: false, reason });
+
+  switch (type) {
+    case 'status_led': {
+      const dot = q('.led-dot');
+      if (!dot) return bad('no dot');
+      const r = R(dot);
+      if (r.width < 20 - TOL || r.height < 20 - TOL)
+        return bad(`dot shrank to ${r.width.toFixed(1)}x${r.height.toFixed(1)}`);
+      if (!inside(dot)) return bad('dot pushed outside the box');
+      // The caption having NO room is the original defect: the dot is
+      // flex-shrink:0, so it survives and the text is squeezed to nothing
+      // while the control still looks structurally fine.
+      const lab = q('.led-label');
+      if (lab && (lab.textContent || '').trim() && R(lab).width < 1)
+        return bad('caption crushed to zero width');
+      break;
+    }
+    case 'fader': {
+      const handle = q('.fader-handle'), wrap = q('.fader-track-wrap'), scale = q('.fader-scale');
+      if (!handle || !wrap) return bad('missing handle/track');
+      const hr = R(handle), wr = R(wrap);
+      if (hr.width < 44 - TOL || hr.height < 44 - TOL)
+        return bad(`handle shrank to ${hr.width.toFixed(1)}x${hr.height.toFixed(1)}`);
+      if (wr.height < hr.height - TOL) return bad('track shorter than the handle');
+      if (scale) {
+        const sr = R(scale);
+        if (sr.width < 28 - TOL) return bad(`scale column shrank to ${sr.width.toFixed(1)}`);
+        if (sr.height < 1) return bad('scale column crushed to zero height');
+      }
+      if (!inside(handle)) return bad('handle outside the box');
+      break;
+    }
+    case 'slider': {
+      const input = q('input[type="range"]');
+      if (!input) return bad('no range input');
+      // The thumb is a ::-webkit-slider-thumb pseudo-element: there is no node
+      // to measure, so it is read from the custom property panel.js sets.
+      const thumb = parseFloat(getComputedStyle(input).getPropertyValue('--thumb-size')) * 14;
+      const wrap = q('.slider-track-wrapper') || input;
+      const wr = R(wrap);
+      if (wr.width < thumb - TOL) return bad('track narrower than the thumb');
+      if (wr.height < thumb - TOL) return bad('track shorter than the thumb');
+      if (!inside(input)) return bad('range input outside the box');
+      break;
+    }
+    case 'keypad': {
+      const keys = qa('.keypad-key');
+      if (!keys.length) return bad('no keys');
+      for (const k of keys) {
+        const r = R(k);
+        if (r.height < 20 - TOL) return bad(`keys crushed to ${r.height.toFixed(1)}px tall`);
+        if (r.width < 20 - TOL) return bad(`keys crushed to ${r.width.toFixed(1)}px wide`);
+        if (!inside(k)) return bad('a key sits outside the box');
+      }
+      break;
+    }
+    case 'matrix': {
+      const cells = qa('.matrix-cell'), rows = qa('.matrix-list-row');
+      if (cells.length) {
+        for (const c of cells) {
+          const r = R(c);
+          if (r.width < 44 - TOL || r.height < 44 - TOL)
+            return bad(`cell shrank to ${r.width.toFixed(1)}x${r.height.toFixed(1)}`);
+          if (!inside(c)) return bad('a cell sits outside the box');
+        }
+      } else if (rows.length) {
+        for (const r0 of rows) {
+          if (R(r0).height < 1) return bad('a list row collapsed');
+          if (!inside(r0)) return bad('a row sits outside the box');
+        }
+      } else return bad('no cells or rows');
+      break;
+    }
+    case 'list': {
+      const items = qa('.list-item');
+      if (!items.length) return bad('no rows');
+      for (const it of items) {
+        if (R(it).height < 44 - TOL) return bad(`row shrank to ${R(it).height.toFixed(1)}`);
+        if (!inside(it)) return bad('a row sits outside the box');
+      }
+      break;
+    }
+    case 'select':
+    case 'text_input': {
+      const ctl = q('select, input');
+      if (!ctl) return bad('no control');
+      const r = R(ctl);
+      if (r.height < 20 - TOL) return bad(`control ${r.height.toFixed(1)}px tall`);
+      if (r.width < 20 - TOL) return bad(`control ${r.width.toFixed(1)}px wide`);
+      if (!inside(ctl)) return bad('control outside the box');
+      break;
+    }
+    case 'level_meter': {
+      const bar = q('.meter-bar');
+      if (!bar) return bad('no meter bar');
+      const br = R(bar);
+      if (br.width < 1 || br.height < 1)
+        return bad(`meter bar collapsed to ${br.width.toFixed(1)}x${br.height.toFixed(1)}`);
+      for (const s of qa('.meter-segment')) {
+        if (R(s).height < 2 - TOL)
+          return bad(`segments crushed to ${R(s).height.toFixed(2)}px`);
+      }
+      if (!inside(bar)) return bad('meter bar outside the box');
+      break;
+    }
+    default:
+      return bad('no assertion defined for ' + type);
+  }
+  return { ok: true };
+}
+"""
+
+
+def _page_html() -> str:
+    """The panel's own CSS and JS, in a page with one absolutely-sized box.
+
+    The @import in panel.css is resolved by hand so the two stylesheets can be
+    inlined, matching what tests/fixtures/panel_harness.cjs does for jsdom.
+    """
+    elements_css = (PANEL_DIR / "panel-elements.css").read_text(encoding="utf-8")
+    panel_css = "\n".join(
+        line
+        for line in (PANEL_DIR / "panel.css").read_text(encoding="utf-8").splitlines()
+        if not line.strip().startswith("@import")
+    )
+    panel_js = (PANEL_DIR / "panel.js").read_text(encoding="utf-8")
+    return f"""<!DOCTYPE html>
+<html><head><style>{elements_css}
+{panel_css}</style>
+<style>
+  html {{ font-size: 14px; }}
+  #stage {{ position: relative; width: {REF_W}px; height: {REF_H}px; }}
+  #box {{ position: absolute; left: 0; top: 0; }}
+</style></head>
+<body>
+  <div id="panel-root"></div><div id="connection-status"></div>
+  <div id="offline-overlay"></div><div id="loading-state"></div>
+  <div id="stage"><div id="box"></div></div>
+<script>
+  window.fetch = async () => ({{ ok: false, json: async () => ({{}}) }});
+  class FakeWS {{ constructor() {{ this.readyState = 1; }} send() {{}} close() {{}} }}
+  FakeWS.OPEN = 1; window.WebSocket = FakeWS;
+</script>
+<script>{panel_js}</script>
+</body></html>
+"""
+
+
+@pytest.fixture(scope="module")
+def panel_page():
+    with playwright_api.sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": REF_W, "height": REF_H})
+        page.set_content(_page_html(), wait_until="load")
+        assert page.evaluate("() => !!window.__openavcPanel"), (
+            "panel.js did not initialise -- the harness page is wrong, not the minimums"
+        )
+        yield page
+        browser.close()
+
+
+def _holds(page, type_: str, w: float, h: float) -> tuple[bool, str]:
+    result = page.evaluate(ASSERT_JS, [type_, SPECIMENS[type_], w, h])
+    return result.get("ok", False), result.get("reason", "")
+
+
+@pytest.mark.parametrize("type_", TYPES_WITH_MINIMUMS)
+def test_control_is_whole_at_its_recorded_minimum(panel_page, type_: str) -> None:
+    box = minimum_box({"type": type_, **SPECIMENS[type_]})
+    assert box is not None, f"{type_} is in TYPES_WITH_MINIMUMS but has no minimum_box"
+    ok, reason = _holds(panel_page, type_, box.width_px, box.height_px)
+    assert ok, (
+        f"{type_} is drawn broken at its recorded minimum "
+        f"{box.width_px:.0f}x{box.height_px:.0f}: {reason}. "
+        f"The recorded minimum is too small -- re-measure it."
+    )
+
+
+@pytest.mark.parametrize("type_", TYPES_WITH_MINIMUMS)
+def test_recorded_minimum_is_tight_not_merely_safe(panel_page, type_: str) -> None:
+    """One pixel under, on either axis, must fail.
+
+    An inflated floor is not a harmless safety margin: it makes the Builder and
+    the AI reject layouts that render perfectly well, and nothing signals it.
+    """
+    box = minimum_box({"type": type_, **SPECIMENS[type_]})
+    assert box is not None
+
+    narrow_ok, _ = _holds(panel_page, type_, box.width_px - 1, box.height_px)
+    short_ok, _ = _holds(panel_page, type_, box.width_px, box.height_px - 1)
+    assert not narrow_ok, (
+        f"{type_} still renders whole at {box.width_px - 1:.0f}px wide, so its "
+        f"recorded minimum width {box.width_px:.0f} is too big -- re-measure it."
+    )
+    assert not short_ok, (
+        f"{type_} still renders whole at {box.height_px - 1:.0f}px tall, so its "
+        f"recorded minimum height {box.height_px:.0f} is too big -- re-measure it."
+    )
+
+
+def test_an_unlabelled_status_led_is_just_the_dot(panel_page) -> None:
+    """The caption changes the floor, so both cases have to be pinned.
+
+    A labelled LED needs the dot plus a gap plus a sliver of text; an
+    unlabelled one needs only the dot. Recording one number for both would
+    either starve the labelled case or inflate the unlabelled one -- and the
+    unlabelled case is the one a dense status column is built from.
+    """
+    bare = minimum_box({"type": "status_led"})
+    assert bare is not None
+    assert (bare.width_px, bare.height_px) == (20, 20)
+
+    SPECIMENS["status_led"] = {}
+    try:
+        ok, reason = _holds(panel_page, "status_led", bare.width_px, bare.height_px)
+        assert ok, f"an unlabelled LED is broken at 20x20: {reason}"
+        narrow_ok, _ = _holds(panel_page, "status_led", bare.width_px - 1, bare.height_px)
+        assert not narrow_ok, "an unlabelled LED still fits at 19px -- 20 is too big"
+    finally:
+        SPECIMENS["status_led"] = {"label": "On"}
+
+
+def test_the_overridable_internals_move_the_floor(panel_page) -> None:
+    """A bigger thumb or row means a bigger minimum, and the model says by how much.
+
+    slider and list are the two types whose internals are authored rather than
+    fixed, so their floors are functions. Measured linear with slope exactly 1
+    across thumb/row 44, 66 and 88 -- this pins that the model still predicts
+    the real rendering rather than only the default case.
+    """
+    for type_, key, px in (("slider", "thumb_size", 88.0), ("list", "item_height", 88.0)):
+        box = minimum_box({"type": type_, **SPECIMENS[type_], key: px / 14.0})
+        assert box is not None
+        # The specimen dict is what drives the render, so the override has to
+        # go through it as well as through minimum_box.
+        SPECIMENS[type_][key] = px / 14.0
+        try:
+            ok, reason = _holds(panel_page, type_, box.width_px, box.height_px)
+            assert ok, (
+                f"{type_} with {key}={px:.0f}px is broken at its computed minimum "
+                f"{box.width_px:.0f}x{box.height_px:.0f}: {reason}"
+            )
+            short_ok, _ = _holds(panel_page, type_, box.width_px, box.height_px - 1)
+            assert not short_ok, (
+                f"{type_} with {key}={px:.0f}px still fits one pixel shorter -- "
+                f"the scaling model overstates the floor"
+            )
+        finally:
+            del SPECIMENS[type_][key]
